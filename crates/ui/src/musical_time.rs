@@ -23,6 +23,14 @@ pub fn shift(frame: u64, tempo_bpm: f32, beats: i64) -> u64 {
         .ceil() as u64
 }
 
+pub fn size_boundaries(frame: u64, anchor: u64, length: u64) -> impl Iterator<Item = u64> {
+    let length = i128::from(length.max(1));
+    let index = (i128::from(frame) - i128::from(anchor)).div_euclid(length);
+    [index, index + 1]
+        .into_iter()
+        .filter_map(move |index| u64::try_from(i128::from(anchor) + index * length).ok())
+}
+
 pub struct Timeline {
     beats_per_second: f64,
     pixels_per_beat: f64,
@@ -51,12 +59,65 @@ impl Timeline {
         seconds(frame) * self.beats_per_second
     }
 
+    fn visible_step(&self) -> f64 {
+        2.0_f64
+            .powf((10.0 / self.pixels_per_beat).log2().ceil())
+            .max(1.0 / 16.0)
+    }
+
+    fn snap_radius(&self) -> f64 {
+        6.0 / self.pixels_per_beat / self.beats_per_second * f64::from(daw_core::SAMPLE_RATE)
+    }
+
+    pub fn snap_anchor(
+        &self,
+        frame: u64,
+        limits: std::ops::RangeInclusive<u64>,
+        anchors: impl IntoIterator<Item = u64>,
+    ) -> Option<u64> {
+        anchors
+            .into_iter()
+            .filter(|candidate| {
+                limits.contains(candidate) && candidate.abs_diff(frame) as f64 <= self.snap_radius()
+            })
+            .min_by_key(|candidate| candidate.abs_diff(frame))
+    }
+
+    /// Nearby visible musical lines take precedence over source/clip boundaries.
+    pub fn snap(
+        &self,
+        frame: u64,
+        limits: std::ops::RangeInclusive<u64>,
+        anchors: impl IntoIterator<Item = u64>,
+    ) -> u64 {
+        let radius = self.snap_radius();
+        let near = |candidate: u64| {
+            limits.contains(&candidate) && candidate.abs_diff(frame) as f64 <= radius
+        };
+        let step = self.visible_step();
+        for spacing in [step.max(BEATS_PER_BAR as f64), step.max(1.0), step] {
+            let index = (self.beats(frame) / spacing).floor();
+            let grid = [index, index + 1.0]
+                .into_iter()
+                .filter(|index| *index >= 0.0)
+                // Ceil prevents fractional beat boundaries landing in the previous beat.
+                .map(|index| {
+                    (index * spacing / self.beats_per_second * f64::from(daw_core::SAMPLE_RATE))
+                        .ceil() as u64
+                })
+                .filter(|candidate| near(*candidate))
+                .min_by_key(|candidate| candidate.abs_diff(frame));
+            if let Some(candidate) = grid {
+                return candidate;
+            }
+        }
+        self.snap_anchor(frame, limits, anchors).unwrap_or(frame)
+    }
+
     pub fn ticks(&self, width: f32) -> impl Iterator<Item = Tick> + '_ {
         // Power-of-two subdivisions keep every tick aligned to the 4/4 bars.
         // Bound tick density in pixels, including at extreme valid tempos.
-        let step = 2.0_f64
-            .powf((10.0 / self.pixels_per_beat).log2().ceil())
-            .max(1.0 / 16.0);
+        let step = self.visible_step();
         let label_step = 2.0_f64
             .powf((80.0 / self.pixels_per_beat).log2().ceil())
             .max(1.0);
@@ -173,5 +234,66 @@ mod tests {
                 assert!(ticks.iter().all(|tick| tick.x.is_finite()));
             }
         }
+    }
+
+    #[test]
+    fn snapping_prioritizes_bars_beats_and_visible_subdivisions_before_anchors() {
+        let timeline = Timeline::new(120.0, 70.0, 0.0);
+        for (raw, expected) in [(2.03, 2.0), (2.53, 2.5), (2.28, 2.25)] {
+            assert_eq!(
+                timeline.snap(frames(raw), 0..=u64::MAX, [frames(raw)]),
+                frames(expected)
+            );
+        }
+        assert_eq!(
+            timeline.snap(frames(2.13), 0..=u64::MAX, [frames(2.14)]),
+            frames(2.14)
+        );
+        assert_eq!(timeline.snap(frames(2.13), 0..=u64::MAX, []), frames(2.13));
+        let close = Timeline::new(120.0, 300.0, 1.5);
+        assert_eq!(close.snap(frames(2.07), 0..=u64::MAX, []), frames(2.0625));
+        let far = Timeline::new(120.0, 10.0, 0.0);
+        assert_eq!(far.snap(frames(2.25), 0..=u64::MAX, []), frames(2.0));
+        // The bar wins even when a visible subdivision is closer to the pointer.
+        let dense = Timeline::new(120.0, 80.0, 0.0);
+        assert_eq!(dense.snap(frames(2.075), 0..=u64::MAX, []), frames(2.0));
+    }
+
+    #[test]
+    fn snap_candidates_respect_bounds_fractional_tempo_and_extreme_positions() {
+        let timeline = Timeline::new(120.0, 70.0, 0.0);
+        assert_eq!(
+            timeline.snap(frames(2.03), frames(2.01)..=frames(2.04), [frames(2.02)]),
+            frames(2.02)
+        );
+        let fractional = Timeline::new(123.5, 70.0, 0.0);
+        let boundary = shift(0, 123.5, 4);
+        assert_eq!(fractional.snap(boundary + 100, 0..=u64::MAX, []), boundary);
+        assert_eq!(position(boundary, 123.5), (2, 1));
+        for tempo in [f32::MIN_POSITIVE, 60.0, 120.0, 999.0, f32::MAX] {
+            let timeline = Timeline::new(tempo, 70.0, 0.0);
+            for frame in [0, 1, frames(3.0), u64::MAX - 1, u64::MAX] {
+                assert_eq!(timeline.snap(frame, frame..=frame, []), frame);
+            }
+        }
+    }
+
+    #[test]
+    fn size_boundaries_use_the_trimmed_base_and_remain_in_the_frame_range() {
+        assert_eq!(size_boundaries(26, 3, 10).collect::<Vec<_>>(), vec![23, 33]);
+        assert_eq!(size_boundaries(0, 23, 10).collect::<Vec<_>>(), vec![3]);
+        assert_eq!(
+            size_boundaries(u64::MAX, u64::MAX - 20, 15).collect::<Vec<_>>(),
+            vec![u64::MAX - 5]
+        );
+        let timeline = Timeline::new(120.0, 70.0, 0.0);
+        assert_eq!(
+            timeline.snap_anchor(
+                frames(4.251),
+                frames(3.13)..=u64::MAX,
+                size_boundaries(frames(4.251), frames(2.0), frames(1.13)),
+            ),
+            Some(frames(4.26))
+        );
     }
 }

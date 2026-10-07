@@ -357,7 +357,7 @@ struct Drag {
     mode: ClipDragMode,
     origin: Pos2,
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClipDragMode {
     Move,
     TrimLeft,
@@ -1585,21 +1585,43 @@ impl DawUi {
         {
             let at = self.ruler_frame(rect, pointer);
             let original = &drag.original;
+            let unsnapped = ui.input(|input| input.modifiers.shift);
             let (start, end) = match drag.mode {
                 LoopDragMode::Create => {
-                    let origin = self.ruler_frame(rect, drag.origin);
+                    let origin = self.selection_frame(
+                        i128::from(self.ruler_frame(rect, drag.origin)),
+                        0..=u64::MAX,
+                        unsnapped,
+                    );
+                    let at = self.selection_frame(i128::from(at), 0..=u64::MAX, unsnapped);
                     (origin.min(at), origin.max(at))
                 }
-                LoopDragMode::Start => (at.min(original.end_frame - 1), original.end_frame),
-                LoopDragMode::End => (original.start_frame, at.max(original.start_frame + 1)),
+                LoopDragMode::Start => (
+                    self.selection_frame(
+                        i128::from(at),
+                        0..=original.end_frame - 1,
+                        unsnapped || at == original.start_frame,
+                    ),
+                    original.end_frame,
+                ),
+                LoopDragMode::End => (
+                    original.start_frame,
+                    self.selection_frame(
+                        i128::from(at),
+                        original.start_frame + 1..=u64::MAX,
+                        unsnapped || at == original.end_frame,
+                    ),
+                ),
                 LoopDragMode::Move => {
                     let length = original.end_frame - original.start_frame;
                     let delta = (f64::from(pointer.x - drag.origin.x) / f64::from(self.zoom)
                         * f64::from(daw_core::SAMPLE_RATE))
                     .round() as i128;
-                    let start = (i128::from(original.start_frame) + delta)
-                        .clamp(0, i128::from(u64::MAX - length))
-                        as u64;
+                    let start = self.selection_frame(
+                        i128::from(original.start_frame) + delta,
+                        0..=u64::MAX - length,
+                        unsnapped || delta == 0,
+                    );
                     (start, start + length)
                 }
             };
@@ -1661,7 +1683,7 @@ impl DawUi {
             let ticks = Rect::from_min_max(labels.left_bottom(), rect.max);
             let selection_response = ui.interact(
                 labels, response.id.with("selection"), Sense::click_and_drag(),
-            ).on_hover_text("Drag empty space to select a loop range. Drag its edges to resize or its body to move.");
+            ).on_hover_text("Drag empty space to select a loop range. Drag its edges to resize or its body to move. Hold Shift to bypass snapping.");
             let playhead_response = ui
                 .interact(ticks, response.id.with("playhead"), Sense::click_and_drag())
                 .on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -2137,7 +2159,77 @@ impl DawUi {
             })
             .map_or(drag.track, |track| track.id)
     }
-    fn clip_drag_preview(&self, drag: &Drag, pointer: Pos2) -> Option<ClipPreview> {
+    fn snap_frame(
+        &self,
+        raw: i128,
+        limits: std::ops::RangeInclusive<u64>,
+        anchors: impl IntoIterator<Item = u64>,
+        unsnapped: bool,
+    ) -> u64 {
+        let frame = raw.clamp(i128::from(*limits.start()), i128::from(*limits.end())) as u64;
+        if unsnapped || raw != i128::from(frame) {
+            return frame;
+        }
+        self.musical_timeline().snap(frame, limits, anchors)
+    }
+    fn clip_edge_frame(
+        &self,
+        drag: &Drag,
+        raw: i128,
+        limits: std::ops::RangeInclusive<u64>,
+        fixed: u64,
+        unsnapped: bool,
+    ) -> u64 {
+        let clip = &drag.clip;
+        let length = clip
+            .repeat
+            .map_or(clip.length_frames, |repeat| repeat.length_frames);
+        let bounded = raw.clamp(0, i128::from(u64::MAX)) as u64;
+        if !unsnapped
+            && raw == i128::from(bounded)
+            && limits.contains(&bounded)
+            && matches!(drag.mode, ClipDragMode::LoopLeft | ClipDragMode::LoopRight)
+            && let Some(frame) = self.musical_timeline().snap_anchor(
+                bounded,
+                limits.clone(),
+                musical_time::size_boundaries(bounded, fixed, length),
+            )
+        {
+            return frame;
+        }
+        let anchors = [clip.start_frame, clip.end(), *limits.start(), *limits.end()];
+        self.snap_frame(raw, limits, anchors, unsnapped)
+    }
+    fn selection_frame(
+        &self,
+        raw: i128,
+        limits: std::ops::RangeInclusive<u64>,
+        unsnapped: bool,
+    ) -> u64 {
+        let bounded = raw.clamp(0, i128::from(u64::MAX)) as u64;
+        let anchors = self.session.project.tracks.iter().flat_map(|track| {
+            track.clips.iter().flat_map(|clip| {
+                let length = clip
+                    .repeat
+                    .map_or(clip.length_frames, |repeat| repeat.length_frames);
+                [clip.start_frame, clip.end()]
+                    .into_iter()
+                    .chain(musical_time::size_boundaries(
+                        bounded,
+                        clip.start_frame,
+                        length,
+                    ))
+                    .filter(move |frame| *frame >= clip.start_frame && *frame <= clip.end())
+            })
+        });
+        self.snap_frame(raw, limits, anchors, unsnapped)
+    }
+    fn clip_drag_preview(
+        &self,
+        drag: &Drag,
+        pointer: Pos2,
+        unsnapped: bool,
+    ) -> Option<ClipPreview> {
         if drag.mode == ClipDragMode::Body {
             return None;
         }
@@ -2156,6 +2248,8 @@ impl DawUi {
         let start = i128::from(clip.start_frame);
         let offset = i128::from(clip.source_offset_frame);
         let length = i128::from(clip.length_frames);
+        // Do not shift an unchanged edge to a nearby grid line.
+        let unsnapped = unsnapped || delta == 0;
         // A split or body trim can already be shorter than its saved repeat base.
         // Keep that range intact rather than extending it on an inward header drag.
         let loop_minimum = clip.repeat.map_or(length, |repeat| {
@@ -2163,13 +2257,28 @@ impl DawUi {
         });
         match drag.mode {
             ClipDragMode::TrimLeft if clip.repeat.is_some() => {
-                let delta = delta.clamp(0, length - 1);
+                let next = self.clip_edge_frame(
+                    drag,
+                    start + delta,
+                    clip.start_frame..=clip.end() - 1,
+                    clip.end(),
+                    unsnapped,
+                );
+                let delta = i128::from(next) - start;
                 clip.start_frame = (start + delta) as u64;
                 clip.length_frames = (length - delta) as u64;
                 clip.repeat = clip.repeat.map(|repeat| repeat.shifted(delta));
             }
             ClipDragMode::TrimLeft => {
-                let delta = delta.clamp(-offset.min(start), length - 1);
+                let minimum = (start - offset.min(start)) as u64;
+                let next = self.clip_edge_frame(
+                    drag,
+                    start + delta,
+                    minimum..=clip.end() - 1,
+                    clip.end(),
+                    unsnapped,
+                );
+                let delta = i128::from(next) - start;
                 clip.start_frame = (start + delta) as u64;
                 clip.source_offset_frame = (offset + delta) as u64;
                 clip.length_frames = (length - delta) as u64;
@@ -2188,10 +2297,24 @@ impl DawUi {
                 } else {
                     (source_length - offset).min(i128::from(u64::MAX) - start)
                 };
-                clip.length_frames = (length + delta).clamp(1, maximum) as u64;
+                let end = self.clip_edge_frame(
+                    drag,
+                    start + length + delta,
+                    clip.start_frame + 1..=(start + maximum) as u64,
+                    clip.start_frame,
+                    unsnapped,
+                );
+                clip.length_frames = end - clip.start_frame;
             }
             ClipDragMode::LoopLeft => {
-                let delta = delta.clamp(-start, length - loop_minimum);
+                let next = self.clip_edge_frame(
+                    drag,
+                    start + delta,
+                    0..=(start + length - loop_minimum) as u64,
+                    clip.end(),
+                    unsnapped,
+                );
+                let delta = i128::from(next) - start;
                 if delta != 0 {
                     let repeat = clip.repeat.unwrap_or(daw_core::ClipLoop {
                         length_frames: clip.length_frames,
@@ -2203,8 +2326,14 @@ impl DawUi {
                 }
             }
             ClipDragMode::LoopRight => {
-                let new_length =
-                    (length + delta).clamp(loop_minimum, i128::from(u64::MAX) - start) as u64;
+                let end = self.clip_edge_frame(
+                    drag,
+                    start + length + delta,
+                    (start + loop_minimum) as u64..=u64::MAX,
+                    clip.start_frame,
+                    unsnapped,
+                );
+                let new_length = end - clip.start_frame;
                 if new_length != clip.length_frames {
                     clip.repeat = Some(clip.repeat.unwrap_or(daw_core::ClipLoop {
                         length_frames: clip.length_frames,
@@ -2396,7 +2525,9 @@ impl DawUi {
         let Some(drag) = self.drag.as_ref() else {
             return;
         };
-        let Some(preview) = self.clip_drag_preview(drag, pointer) else {
+        let Some(preview) =
+            self.clip_drag_preview(drag, pointer, ui.input(|input| input.modifiers.shift))
+        else {
             return;
         };
         let Some(track) = self
@@ -2574,7 +2705,9 @@ impl DawUi {
             let pointer = ui
                 .input(|input| input.pointer.latest_pos())
                 .unwrap_or(drag.origin);
-            if let Some(preview) = self.clip_drag_preview(&drag, pointer) {
+            if let Some(preview) =
+                self.clip_drag_preview(&drag, pointer, ui.input(|input| input.modifiers.shift))
+            {
                 let c = preview.clip;
                 if preview.track == drag.track
                     && (
@@ -2657,11 +2790,15 @@ impl DawUi {
                 match ClipDragMode::at(block, pos) {
                     ClipDragMode::LoopLeft | ClipDragMode::LoopRight => {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                        response.clone().on_hover_text("Drag to loop clip");
+                        response
+                            .clone()
+                            .on_hover_text("Drag to loop clip. Hold Shift to bypass snapping.");
                     }
                     ClipDragMode::TrimLeft | ClipDragMode::TrimRight => {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                        response.clone().on_hover_text("Drag to trim clip");
+                        response
+                            .clone()
+                            .on_hover_text("Drag to trim clip. Hold Shift to bypass snapping.");
                     }
                     ClipDragMode::Move => {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
@@ -3667,6 +3804,232 @@ mod tests {
             modifiers: Default::default(),
         }
     }
+    fn shift_frame(
+        app: &mut DawUi,
+        ctx: &egui::Context,
+        mut events: Vec<egui::Event>,
+        shift: bool,
+    ) -> Vec<egui::epaint::ClippedShape> {
+        let modifiers = egui::Modifiers {
+            shift,
+            ..Default::default()
+        };
+        for event in &mut events {
+            if let egui::Event::PointerButton {
+                modifiers: value, ..
+            } = event
+            {
+                *value = modifiers;
+            }
+        }
+        events.insert(0, egui::Event::ModifiersChanged(modifiers));
+        frame_shapes(app, ctx, events, Vec2::new(1280.0, 800.0))
+    }
+
+    #[test]
+    fn clip_edges_snap_preview_and_release_with_dynamic_shift_override() {
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 0.5)] {
+            for (mode, target, snapped) in [
+                (ClipDragMode::TrimLeft, 2.27, 2.25),
+                (ClipDragMode::TrimRight, 4.251, 4.25),
+                (ClipDragMode::LoopLeft, 0.8751, 0.87),
+                (ClipDragMode::LoopRight, 4.251, 4.26),
+            ] {
+                for free_release in [false, true] {
+                    let (mut app, track) = fixture();
+                    app.zoom = zoom;
+                    app.scroll = scroll;
+                    let clip = &mut app.session.project.tracks[0].clips[0];
+                    clip.start_frame = frames(2.0);
+                    clip.source_offset_frame = frames(0.5);
+                    clip.length_frames = frames(1.13);
+                    let original = clip.clone();
+                    let left = matches!(mode, ClipDragMode::TrimLeft | ClipDragMode::LoopLeft);
+                    let looping = matches!(mode, ClipDragMode::LoopLeft | ClipDragMode::LoopRight);
+                    let ctx = context();
+                    frame(&mut app, &ctx, vec![]);
+                    let lane = app.lane_bounds[&track];
+                    let block = app.clip_block(lane, &original, original.start_frame);
+                    let start = Pos2::new(
+                        if left {
+                            block.left() + 1.0
+                        } else {
+                            block.right() - 1.0
+                        },
+                        block.top() + if looping { 12.0 } else { 40.0 },
+                    );
+                    let original_edge = if left {
+                        original.start_frame
+                    } else {
+                        original.end()
+                    };
+                    let end =
+                        start + Vec2::new((target - seconds(original_edge)) as f32 * zoom, 0.0);
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(start), button(start, true)],
+                    );
+                    shift_frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(end)],
+                        !free_release,
+                    );
+                    assert_eq!(app.drag.as_ref().unwrap().mode, mode);
+                    let before = app
+                        .clip_drag_preview(app.drag.as_ref().unwrap(), end, !free_release)
+                        .unwrap();
+                    // Change Shift at the same pointer position, then release with that state.
+                    let shapes = shift_frame(&mut app, &ctx, vec![], free_release);
+                    let preview = app
+                        .clip_drag_preview(app.drag.as_ref().unwrap(), end, free_release)
+                        .unwrap();
+                    let edge = |clip: &Clip| if left { clip.start_frame } else { clip.end() };
+                    assert_ne!(edge(&before.clip), edge(&preview.clip));
+                    let expected = frames(if free_release { target } else { snapped });
+                    assert!(
+                        edge(&preview.clip).abs_diff(expected) <= 1,
+                        "{mode:?}: {} != {expected}",
+                        edge(&preview.clip)
+                    );
+                    assert!(preview.valid);
+                    assert!(has_preview_outline(
+                        &shapes,
+                        app.clip_block(lane, &preview.clip, preview.clip.start_frame),
+                        theme::ACCENT
+                    ));
+                    assert_eq!(
+                        app.session.project.tracks[0].clips[0].length_frames,
+                        original.length_frames
+                    );
+                    assert!(!app.dirty);
+                    shift_frame(&mut app, &ctx, vec![button(end, false)], free_release);
+                    let placed = &app.session.project.tracks[0].clips[0];
+                    assert_eq!(
+                        (
+                            placed.start_frame,
+                            placed.length_frames,
+                            placed.source_offset_frame,
+                            placed.repeat
+                        ),
+                        (
+                            preview.clip.start_frame,
+                            preview.clip.length_frames,
+                            preview.clip.source_offset_frame,
+                            preview.clip.repeat
+                        )
+                    );
+                    if looping {
+                        assert_eq!(placed.repeat.unwrap().length_frames, original.length_frames);
+                    }
+                    assert!(app.dirty);
+                    assert!(app.error.is_none());
+                    app.session.project.validate().unwrap();
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn loop_selection_snaps_creation_edges_and_movement_with_shift_override() {
+        for (press, target, snapped, raw) in [
+            (1.03, 3.27, (1.0, 3.25), (1.03, 3.27)),
+            (2.0, 2.27, (2.25, 4.0), (2.27, 4.0)),
+            (4.0, 4.27, (2.0, 4.25), (2.0, 4.27)),
+            (3.0, 3.27, (2.25, 4.25), (2.27, 4.27)),
+        ] {
+            for free_release in [false, true] {
+                let (mut app, track) = fixture();
+                let region = &mut app.session.project.transport.r#loop;
+                region.start_frame = frames(2.0);
+                region.end_frame = frames(4.0);
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                let lane = app.lane_bounds[&track];
+                let point =
+                    |time: f64| Pos2::new(lane.left() + time as f32 * 70.0, lane.top() - 29.0);
+                let start = point(press);
+                let end = point(target);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                shift_frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(end)],
+                    !free_release,
+                );
+                shift_frame(&mut app, &ctx, vec![], free_release);
+                let region = &app.session.project.transport.r#loop;
+                let live = (region.start_frame, region.end_frame);
+                let expected = if free_release { raw } else { snapped };
+                assert!(live.0.abs_diff(frames(expected.0)) <= 1);
+                assert!(live.1.abs_diff(frames(expected.1)) <= 1);
+                assert!(!app.dirty);
+                shift_frame(&mut app, &ctx, vec![button(end, false)], free_release);
+                let region = &app.session.project.transport.r#loop;
+                assert_eq!((region.start_frame, region.end_frame), live);
+                assert!(!region.enabled);
+                assert!(app.dirty);
+                assert!(app.error.is_none());
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn source_bounds_and_clip_size_are_fallbacks_to_grid_snapping() {
+        let (mut app, track) = fixture();
+        app.session.project.tracks[0].clips[0].length_frames = frames(3.15);
+        assert_eq!(
+            app.selection_frame(i128::from(frames(3.16)), 0..=u64::MAX, false),
+            frames(3.15)
+        );
+        app.session.project.tracks[0].clips[0].length_frames = frames(3.26);
+        assert_eq!(
+            app.selection_frame(i128::from(frames(3.26)), 0..=u64::MAX, false),
+            frames(3.25)
+        );
+        let clip = &mut app.session.project.tracks[0].clips[0];
+        clip.start_frame = frames(2.0);
+        clip.source_offset_frame = frames(0.5);
+        clip.length_frames = frames(1.13);
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let drag = Drag {
+            clip: app.session.project.tracks[0].clips[0].clone(),
+            track,
+            mode: ClipDragMode::LoopRight,
+            origin: Pos2::ZERO,
+        };
+        let preview = app
+            .clip_drag_preview(&drag, Pos2::new((4.251 - 3.13) * 70.0, 0.0), false)
+            .unwrap();
+        let repeated = Drag {
+            clip: preview.clip,
+            ..drag
+        };
+        let returned = app
+            .clip_drag_preview(&repeated, Pos2::new((3.15 - 4.26) * 70.0, 0.0), false)
+            .unwrap();
+        assert_eq!(returned.clip.length_frames, frames(1.13));
+        assert_eq!(returned.clip.repeat, None);
+        let trim = Drag {
+            mode: ClipDragMode::TrimRight,
+            clip: returned.clip,
+            ..repeated
+        };
+        let restored = app
+            .clip_drag_preview(&trim, Pos2::new(20.0 * 70.0, 0.0), false)
+            .unwrap();
+        assert_eq!(restored.clip.length_frames, frames(9.5));
+        assert_eq!(restored.clip.repeat, None);
+        assert_eq!(app.snap_frame(-1, 0..=u64::MAX, [1], false), 0);
+        assert_eq!(app.snap_frame(100, 0..=99, [98], false), 99);
+    }
     fn shortcut_event(action: FileAction) -> egui::Event {
         let shortcut = action.shortcut();
         egui::Event::Key {
@@ -4583,7 +4946,7 @@ mod tests {
                 Vec2::new(1280.0, 800.0),
             );
             let preview = app
-                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                 .unwrap();
             assert_eq!(preview.track, second);
             assert_eq!(preview.clip.start_frame, frames(3.25));
@@ -4635,7 +4998,7 @@ mod tests {
                 Vec2::new(1280.0, 800.0),
             );
             let preview = app
-                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                 .unwrap();
             assert_eq!(preview.track, target);
             assert_eq!(preview.clip.start_frame, 0);
@@ -4685,7 +5048,7 @@ mod tests {
             Vec2::new(1280.0, 800.0),
         );
         let preview = app
-            .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+            .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
             .unwrap();
         assert!(!preview.valid);
         let block = Rect::from_min_size(
@@ -4972,7 +5335,7 @@ mod tests {
                     Vec2::new(1280.0, 800.0),
                 );
                 let preview = app
-                    .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                    .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                     .unwrap();
                 assert!(preview.valid);
                 assert_eq!(
@@ -5035,7 +5398,7 @@ mod tests {
                     origin: end,
                 };
                 let resized = app
-                    .clip_drag_preview(&again, end + Vec2::new(zoom, 0.0))
+                    .clip_drag_preview(&again, end + Vec2::new(zoom, 0.0), false)
                     .unwrap();
                 assert_eq!(resized.clip.length_frames, frames(2.25));
                 assert_eq!(resized.clip.repeat, placed.repeat);
@@ -5044,7 +5407,7 @@ mod tests {
                     ..again
                 };
                 let trimmed = app
-                    .clip_drag_preview(&trim, end + Vec2::new(0.25 * zoom, 0.0))
+                    .clip_drag_preview(&trim, end + Vec2::new(0.25 * zoom, 0.0), false)
                     .unwrap();
                 assert_eq!(trimmed.clip.source_offset_frame, placed.source_offset_frame);
                 assert_eq!(trimmed.clip.repeat.unwrap().length_frames, frames(0.5));
@@ -5166,7 +5529,7 @@ mod tests {
                 origin,
             });
             let preview = app
-                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                 .unwrap();
             assert!(preview.valid);
             assert_eq!(preview.clip.start_frame, expected_start);
@@ -5238,7 +5601,7 @@ mod tests {
                     Vec2::new(1280.0, 800.0),
                 );
                 let preview = app
-                    .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                    .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                     .unwrap();
                 let minimum = initial.min(frames(0.5));
                 assert!(preview.valid);
@@ -5322,7 +5685,7 @@ mod tests {
             );
             frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
             let preview = app
-                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                 .unwrap();
             assert!(preview.valid);
             frame(app, ctx, vec![button(end, false)]);
@@ -5458,7 +5821,7 @@ mod tests {
                     Vec2::new(1280.0, 800.0),
                 );
                 let preview = app
-                    .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                    .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                     .unwrap();
                 assert!(preview.valid);
                 assert_eq!(preview.track, track);
@@ -5576,7 +5939,7 @@ mod tests {
                 Vec2::new(1280.0, 800.0),
             );
             let preview = app
-                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                 .unwrap();
             let clip = &preview.clip;
             assert_eq!(
@@ -5657,7 +6020,7 @@ mod tests {
                 Vec2::new(1280.0, 800.0),
             );
             let preview = app
-                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                 .unwrap();
             assert!(!preview.valid);
             assert!(has_preview_outline(

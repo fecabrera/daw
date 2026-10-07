@@ -29,7 +29,7 @@ Use ASD-STE100 principles and Plain Language for specifications, technical docum
 
 MVP-09 is retired. Undo/redo is outside this iteration.
 
-The iteration excludes recording, snapping, time signatures, metronome, themes, configurable audio settings, disk audio caches, source inclusion, source manager, track groups, plugins, MIDI, instruments, automation, stem separation, time stretching, and mobile delivery. Keep these features on the roadmap in MVP.md.
+The iteration excludes recording, configurable snapping, time signatures, metronome, themes, configurable audio settings, disk audio caches, source inclusion, source manager, track groups, plugins, MIDI, instruments, automation, stem separation, time stretching, and mobile delivery. Keep these features on the roadmap in MVP.md.
 
 ## Shared architecture
 
@@ -155,7 +155,7 @@ Menu imports use the selected track and playhead. If no track exists, create one
 | Delete clip | Remove its arrangement record without deleting source files. |
 | Delete track | Remove the track and its clips without deleting source files. |
 
-No snapping is available. Convert pointer positions to the nearest valid integer frame; this precision conversion is not grid snapping. Reject invalid edits and retain the previous valid state. Make live edits visible to rendering at a block boundary without blocking the callback.
+Clip trims and loop-selection creation, resizing, and movement snap within a 6-point radius. Prioritize visible bar lines, beat lines, and subdivisions, then source or clip boundaries. Clip header looping prioritizes multiples of the saved trimmed base length, measured from the fixed opposite endpoint, before the grid. Grid resolution follows the ruler at the current tempo and zoom. Holding Shift bypasses snapping in previews and on release; changing Shift during a drag takes effect immediately. Bounds and minimum lengths take precedence over snapping. Movement of a loop selection preserves its length. Clip moves and imports retain sample-based positions. Convert unsnapped pointer positions to the nearest valid integer frame. Reject invalid edits and retain the previous valid state. Make live edits visible to rendering at a block boundary without blocking the callback.
 
 ## Audio rendering and transport
 
