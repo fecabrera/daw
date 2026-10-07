@@ -356,9 +356,9 @@ struct Drag {
     mode: u8,
     origin: Pos2,
 }
-struct MovePreview {
+struct ClipPreview {
     track: Id,
-    start: u64,
+    clip: Clip,
     valid: bool,
 }
 struct FileDropTarget {
@@ -366,9 +366,18 @@ struct FileDropTarget {
     start: u64,
     lane: Rect,
 }
+#[derive(Clone, Copy)]
+enum LoopDragMode {
+    Create,
+    Start,
+    End,
+    Move,
+}
 struct LoopDrag {
-    start: u64,
+    origin: Pos2,
+    mode: LoopDragMode,
     original: daw_core::Loop,
+    dirty: bool,
 }
 
 pub struct DawUi {
@@ -641,6 +650,7 @@ impl DawUi {
             self.busy.clear();
             match message {
                 Ok(Job::Loaded(session, dirty)) => {
+                    self.loop_drag = None;
                     if !dirty {
                         self.output = None;
                         self.inputs.clear();
@@ -1487,6 +1497,111 @@ impl DawUi {
             }
         });
     }
+    fn loop_pixels(&self, rect: Rect) -> (f32, f32) {
+        let region = &self.session.project.transport.r#loop;
+        let pixel = |frame| rect.left() + ((seconds(frame) - self.scroll) as f32) * self.zoom;
+        (pixel(region.start_frame), pixel(region.end_frame))
+    }
+    fn loop_drag_mode(&self, rect: Rect, pointer: Pos2) -> LoopDragMode {
+        let region = &self.session.project.transport.r#loop;
+        if region.end_frame <= region.start_frame {
+            return LoopDragMode::Create;
+        }
+        let (left, right) = self.loop_pixels(rect);
+        let left_distance = (pointer.x - left).abs();
+        let right_distance = (pointer.x - right).abs();
+        if left_distance.min(right_distance) <= 5.0 {
+            if left_distance <= right_distance {
+                LoopDragMode::Start
+            } else {
+                LoopDragMode::End
+            }
+        } else if (left..right).contains(&pointer.x) {
+            LoopDragMode::Move
+        } else {
+            LoopDragMode::Create
+        }
+    }
+    fn ruler_frame(&self, rect: Rect, pointer: Pos2) -> u64 {
+        frames(self.scroll + f64::from((pointer.x - rect.left()) / self.zoom))
+    }
+    fn ruler_interaction(
+        &mut self,
+        ui: &egui::Ui,
+        rect: Rect,
+        selection: &egui::Response,
+        playhead: &egui::Response,
+    ) {
+        if !ui.is_enabled() || !ui.input(|input| input.focused) {
+            if let Some(drag) = self.loop_drag.take() {
+                self.session.project.transport.r#loop = drag.original;
+                self.dirty = drag.dirty;
+                self.sync_needed = true;
+            }
+            return;
+        }
+        if selection.drag_started_by(egui::PointerButton::Primary) {
+            let origin = ui.input(|input| input.pointer.press_origin()).unwrap();
+            self.loop_drag = Some(LoopDrag {
+                origin,
+                mode: self.loop_drag_mode(rect, origin),
+                original: self.session.project.transport.r#loop.clone(),
+                dirty: self.dirty,
+            });
+        }
+        if (selection.dragged_by(egui::PointerButton::Primary)
+            || selection.drag_stopped_by(egui::PointerButton::Primary))
+            && let Some(pointer) = selection.interact_pointer_pos()
+            && let Some(drag) = &self.loop_drag
+        {
+            let at = self.ruler_frame(rect, pointer);
+            let original = &drag.original;
+            let (start, end) = match drag.mode {
+                LoopDragMode::Create => {
+                    let origin = self.ruler_frame(rect, drag.origin);
+                    (origin.min(at), origin.max(at))
+                }
+                LoopDragMode::Start => (at.min(original.end_frame - 1), original.end_frame),
+                LoopDragMode::End => (original.start_frame, at.max(original.start_frame + 1)),
+                LoopDragMode::Move => {
+                    let length = original.end_frame - original.start_frame;
+                    let delta = (f64::from(pointer.x - drag.origin.x) / f64::from(self.zoom)
+                        * f64::from(daw_core::SAMPLE_RATE))
+                    .round() as i128;
+                    let start = (i128::from(original.start_frame) + delta)
+                        .clamp(0, i128::from(u64::MAX - length))
+                        as u64;
+                    (start, start + length)
+                }
+            };
+            let region = &mut self.session.project.transport.r#loop;
+            if end > start && (region.start_frame, region.end_frame) != (start, end) {
+                region.start_frame = start;
+                region.end_frame = end;
+                self.sync_needed = true;
+            }
+        }
+        if selection.drag_stopped_by(egui::PointerButton::Primary)
+            && let Some(drag) = self.loop_drag.take()
+        {
+            let region = &self.session.project.transport.r#loop;
+            if (region.start_frame, region.end_frame)
+                != (drag.original.start_frame, drag.original.end_frame)
+            {
+                self.changed();
+            }
+        }
+        if (playhead.clicked_by(egui::PointerButton::Primary)
+            || playhead.dragged_by(egui::PointerButton::Primary)
+            || playhead.drag_stopped_by(egui::PointerButton::Primary))
+            && let Some(pointer) = playhead.interact_pointer_pos()
+        {
+            let at = self.ruler_frame(rect, pointer);
+            if at != self.session.project.transport.playhead_frame {
+                self.seek(at);
+            }
+        }
+    }
     fn ruler(&mut self, ui: &mut egui::Ui) {
         rows::centered(ui, RULER_HEIGHT, |ui| {
             ui.allocate_ui(Vec2::new(TRACK_WIDTH, RULER_HEIGHT), |ui| {
@@ -1515,35 +1630,60 @@ impl DawUi {
             let labels =
                 Rect::from_min_max(rect.min, Pos2::new(rect.right(), rect.bottom() - 20.0));
             let ticks = Rect::from_min_max(labels.left_bottom(), rect.max);
-            let label_response = ui.interact(labels, response.id.with("labels"), Sense::click());
-            let response = ui
-                .interact(
-                    ticks,
-                    response.id.with("selection"),
-                    Sense::click_and_drag(),
-                )
-                .on_hover_text("Drag to select a loop range. Click to seek.");
+            let selection_response = ui.interact(
+                labels, response.id.with("selection"), Sense::click_and_drag(),
+            ).on_hover_text("Drag empty space to select a loop range. Drag its edges to resize or its body to move.");
+            let playhead_response = ui
+                .interact(ticks, response.id.with("playhead"), Sense::click_and_drag())
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .on_hover_text("Click or drag to position the playhead.");
+            self.ruler_interaction(ui, rect, &selection_response, &playhead_response);
             let painter = ui.painter().with_clip_rect(rect);
             painter.rect_filled(rect, 0.0, theme::BACKGROUND);
             painter.rect_filled(labels, 0.0, theme::PANEL);
             let l = &self.session.project.transport.r#loop;
-            if l.end_frame > l.start_frame {
-                let x1 = rect.left() + ((seconds(l.start_frame) - self.scroll) as f32) * self.zoom;
-                let x2 = rect.left() + ((seconds(l.end_frame) - self.scroll) as f32) * self.zoom;
-                if x2 > rect.left() && x1 < rect.right() {
-                    painter.rect_filled(
-                        Rect::from_min_max(
-                            Pos2::new(x1.max(rect.left()), ticks.top()),
-                            Pos2::new(x2.min(rect.right()), ticks.bottom()),
-                        ),
-                        0.0,
-                        if l.enabled {
-                            theme::RULER_SELECTION
-                        } else {
-                            theme::RULER_SELECTION_INACTIVE
-                        },
-                    );
+            let (x1, x2) = self.loop_pixels(rect);
+            if l.end_frame > l.start_frame && x2 > rect.left() && x1 < rect.right() {
+                let band = Rect::from_min_max(
+                    Pos2::new(x1.max(rect.left()), labels.top()),
+                    Pos2::new(x2.min(rect.right()), labels.bottom()),
+                );
+                painter.rect_filled(
+                    band,
+                    0.0,
+                    if l.enabled {
+                        theme::RULER_SELECTION
+                    } else {
+                        theme::RULER_SELECTION_INACTIVE
+                    },
+                );
+                // Draw handles at the real endpoints, including when the range is scrolled.
+                for x in [x1, x2] {
+                    if (rect.left()..=rect.right()).contains(&x) {
+                        painter.rect_filled(
+                            Rect::from_min_max(
+                                Pos2::new(x - 1.5, labels.top() + 2.0),
+                                Pos2::new(x + 1.5, labels.bottom() - 2.0),
+                            ),
+                            0.0,
+                            theme::ACCENT,
+                        );
+                    }
                 }
+            }
+            if let Some(pointer) = selection_response.hover_pos() {
+                let mode = self
+                    .loop_drag
+                    .as_ref()
+                    .map_or_else(|| self.loop_drag_mode(rect, pointer), |drag| drag.mode);
+                ui.ctx().set_cursor_icon(match mode {
+                    LoopDragMode::Create => egui::CursorIcon::Crosshair,
+                    LoopDragMode::Start | LoopDragMode::End => egui::CursorIcon::ResizeHorizontal,
+                    LoopDragMode::Move if selection_response.dragged() => {
+                        egui::CursorIcon::Grabbing
+                    }
+                    LoopDragMode::Move => egui::CursorIcon::Grab,
+                });
             }
             painter.line_segment(
                 [ticks.left_top(), ticks.right_top()],
@@ -1555,18 +1695,15 @@ impl DawUi {
                 if x < rect.left() || x > rect.right() {
                     continue;
                 }
-                let height = if tick.bar {
-                    11.0
+                let top = if tick.bar {
+                    rect.top()
                 } else if tick.whole_beat {
-                    8.0
+                    ticks.top()
                 } else {
-                    5.0
+                    ticks.bottom() - 5.0
                 };
                 painter.line_segment(
-                    [
-                        Pos2::new(x, ticks.bottom() - height),
-                        Pos2::new(x, ticks.bottom()),
-                    ],
+                    [Pos2::new(x, top), Pos2::new(x, ticks.bottom())],
                     Stroke::new(1.0_f32, theme::SECONDARY),
                 );
                 if let Some(label) = tick.label {
@@ -1592,7 +1729,7 @@ impl DawUi {
                 let painter = painter.with_clip_rect(rect);
                 painter.line_segment(
                     [
-                        Pos2::new(playhead_x, rect.top()),
+                        Pos2::new(playhead_x, ticks.top()),
                         Pos2::new(playhead_x, rect.bottom()),
                     ],
                     Stroke::new(1.0_f32, theme::ACCENT),
@@ -1608,45 +1745,6 @@ impl DawUi {
                     theme::ACCENT,
                     Stroke::NONE,
                 ));
-            }
-            if label_response.clicked()
-                && let Some(pointer) = label_response.interact_pointer_pos()
-            {
-                self.seek(frames(
-                    self.scroll + f64::from((pointer.x - rect.left()) / self.zoom),
-                ));
-            }
-            if let Some(pointer) = response.interact_pointer_pos() {
-                let at = frames(self.scroll + f64::from((pointer.x - rect.left()) / self.zoom));
-                if response.drag_started() {
-                    let origin = ui.input(|i| i.pointer.press_origin()).unwrap_or(pointer);
-                    self.loop_drag = Some(LoopDrag {
-                        start: frames(
-                            self.scroll + f64::from((origin.x - rect.left()) / self.zoom),
-                        ),
-                        original: self.session.project.transport.r#loop.clone(),
-                    });
-                }
-                if response.dragged()
-                    && let Some(drag) = &self.loop_drag
-                {
-                    self.session.project.transport.r#loop.start_frame = drag.start.min(at);
-                    self.session.project.transport.r#loop.end_frame = drag.start.max(at);
-                }
-                if response.clicked() {
-                    self.seek(at);
-                }
-            }
-            if response.drag_stopped()
-                && let Some(drag) = self.loop_drag.take()
-            {
-                let region = &self.session.project.transport.r#loop;
-                if region.end_frame <= region.start_frame {
-                    self.session.project.transport.r#loop = drag.original;
-                    self.fail("Loop end must be after its start");
-                } else {
-                    self.changed();
-                }
             }
         });
     }
@@ -2010,22 +2108,49 @@ impl DawUi {
             })
             .map_or(drag.track, |track| track.id)
     }
-    fn move_preview(&self, pointer: Pos2) -> Option<MovePreview> {
-        let drag = self.drag.as_ref().filter(|drag| drag.mode == 0)?;
-        let track = self.drag_destination(drag, pointer);
+    fn clip_drag_preview(&self, drag: &Drag, pointer: Pos2) -> Option<ClipPreview> {
+        if drag.mode > 2 {
+            return None;
+        }
+        let track = if drag.mode == 0 {
+            self.drag_destination(drag, pointer)
+        } else {
+            drag.track
+        };
         self.lane_bounds.get(&track)?;
-        let start = self.move_start(drag, pointer);
+        let mut clip = drag.clip.clone();
+        let delta = i128::from(self.drag_delta(drag, pointer));
+        let start = i128::from(clip.start_frame);
+        let offset = i128::from(clip.source_offset_frame);
+        let length = i128::from(clip.length_frames);
+        match drag.mode {
+            1 => {
+                let delta = delta.clamp(-offset.min(start), length - 1);
+                clip.start_frame = (start + delta) as u64;
+                clip.source_offset_frame = (offset + delta) as u64;
+                clip.length_frames = (length - delta) as u64;
+            }
+            2 => {
+                let source_length = i128::from(
+                    self.session
+                        .project
+                        .assets
+                        .iter()
+                        .find(|asset| asset.id == clip.asset_id)?
+                        .decoded_frame_count,
+                );
+                let maximum = (source_length - offset).min(i128::from(u64::MAX) - start);
+                clip.length_frames = (length + delta).clamp(1, maximum) as u64;
+            }
+            _ => clip.start_frame = self.move_start(drag, pointer),
+        }
         let valid = self.placement_valid(
             Some(track),
-            Some(drag.clip.id),
-            start,
-            drag.clip.length_frames,
+            Some(clip.id),
+            clip.start_frame,
+            clip.length_frames,
         );
-        Some(MovePreview {
-            track,
-            start,
-            valid,
-        })
+        Some(ClipPreview { track, clip, valid })
     }
     fn placement_valid(
         &self,
@@ -2170,16 +2295,18 @@ impl DawUi {
         let Some(pointer) = ui.input(|input| input.pointer.latest_pos()) else {
             return;
         };
-        let Some(preview) = self.move_preview(pointer) else {
+        let Some(drag) = self.drag.as_ref() else {
             return;
         };
-        let drag = self.drag.as_ref().unwrap();
+        let Some(preview) = self.clip_drag_preview(drag, pointer) else {
+            return;
+        };
         let lane = self.lane_bounds[&preview.track];
-        let block = self.clip_block(lane, &drag.clip, preview.start);
+        let block = self.clip_block(lane, &preview.clip, preview.clip.start_frame);
         let painter = ui.painter_at(viewport.intersect(lane));
         let mut ghost = painter.clone();
         ghost.multiply_opacity(0.75);
-        self.paint_clip(&ghost, lane, block, &drag.clip, false, None);
+        self.paint_clip(&ghost, lane, block, &preview.clip, false, None);
         painter.rect_stroke(
             block,
             2.0,
@@ -2193,7 +2320,11 @@ impl DawUi {
             ),
             StrokeKind::Inside,
         );
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        ui.ctx().set_cursor_icon(if drag.mode == 0 {
+            egui::CursorIcon::Grabbing
+        } else {
+            egui::CursorIcon::ResizeHorizontal
+        });
     }
     fn paint_clip(
         &self,
@@ -2323,37 +2454,24 @@ impl DawUi {
             let pointer = ui
                 .input(|input| input.pointer.latest_pos())
                 .unwrap_or(drag.origin);
-            let delta = self.drag_delta(&drag, pointer);
-            let destination = if drag.mode == 0 {
-                self.drag_destination(&drag, pointer)
-            } else {
-                drag.track
-            };
-            let move_start = self.move_start(&drag, pointer);
-            let c = drag.clip;
-            let position = c.start_frame as i128 + delta as i128;
-            let length = c.length_frames as i128;
-            let offset = c.source_offset_frame as i128;
-            let (start, source, len) = match drag.mode {
-                1 => (position, offset + delta as i128, length - delta as i128),
-                2 => (c.start_frame as i128, offset, length + delta as i128),
-                _ => (i128::from(move_start), offset, length),
-            };
-            if start < 0
-                || source < 0
-                || len <= 0
-                || start > u64::MAX as i128
-                || source > u64::MAX as i128
-                || len > u64::MAX as i128
-            {
-                self.fail("Clip edit exceeds valid source or timeline bounds");
-            } else {
+            if let Some(preview) = self.clip_drag_preview(&drag, pointer) {
+                let c = preview.clip;
+                if preview.track == drag.track
+                    && (c.start_frame, c.source_offset_frame, c.length_frames)
+                        == (
+                            drag.clip.start_frame,
+                            drag.clip.source_offset_frame,
+                            drag.clip.length_frames,
+                        )
+                {
+                    return;
+                }
                 self.edit(Edit::Place {
                     clip_id: c.id,
-                    track_id: destination,
-                    start: start as u64,
-                    offset: source as u64,
-                    length: len as u64,
+                    track_id: preview.track,
+                    start: c.start_frame,
+                    offset: c.source_offset_frame,
+                    length: c.length_frames,
                 });
             }
         }
@@ -2384,7 +2502,7 @@ impl DawUi {
             if self
                 .drag
                 .as_ref()
-                .is_some_and(|drag| drag.mode == 0 && drag.clip.id == clip.id)
+                .is_some_and(|drag| drag.mode < 3 && drag.clip.id == clip.id)
             {
                 clip_painter.multiply_opacity(0.35);
             }
@@ -3667,7 +3785,7 @@ mod tests {
             .find(|tick| tick.beat == 4.0)
             .unwrap()
             .x;
-        let label = Pos2::new(lane.left() + bar_two + 3.0, lane.top() - 29.0);
+        let label = Pos2::new(lane.left() + bar_two + 3.0, lane.top() - 10.0);
         frame(
             &mut app,
             &ctx,
@@ -3682,7 +3800,7 @@ mod tests {
             musical_time::monitor(app.session.project.transport.playhead_frame, 60.0),
             "0002.01"
         );
-        let start = Pos2::new(lane.left() + bar_two, lane.top() - 10.0);
+        let start = Pos2::new(lane.left() + bar_two, lane.top() - 29.0);
         let end = start + Vec2::new(280.0, 0.0);
         frame(
             &mut app,
@@ -3708,7 +3826,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let lane = app.lane_bounds[&track];
-        let start = Pos2::new(lane.left() + 70.0, lane.top() - 10.0);
+        let start = Pos2::new(lane.left() + 70.0, lane.top() - 29.0);
         frame(
             &mut app,
             &ctx,
@@ -3722,7 +3840,8 @@ mod tests {
         assert_eq!(region.end_frame, 144000);
         assert!(app.dirty);
         app.session.project.transport.r#loop.enabled = true;
-        let start = Pos2::new(lane.left() + 70.0, lane.top() - 10.0);
+        app.dirty = false;
+        let start = Pos2::new(lane.left() + 70.0, lane.top() - 29.0);
         let end = start + Vec2::new(0.0, 15.0);
         frame(
             &mut app,
@@ -3733,21 +3852,186 @@ mod tests {
         frame(&mut app, &ctx, vec![button(end, false)]);
         app.session.project.validate().unwrap();
         assert_eq!(app.session.project.transport.r#loop.end_frame, 144000);
-        assert!(app.error.is_some());
+        assert!(app.error.is_none());
+        assert!(!app.dirty);
     }
 
     #[test]
-    fn ruler_label_band_cannot_edit_selection() {
+    fn ruler_upper_selection_resizes_moves_and_paints_only_in_the_label_band() {
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+            let (mut app, track) = fixture();
+            app.zoom = zoom;
+            app.scroll = scroll;
+            app.session.project.transport.playhead_frame = frames(8.0);
+            let region = &mut app.session.project.transport.r#loop;
+            region.start_frame = frames(2.0);
+            region.end_frame = frames(5.0);
+            region.enabled = true;
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&track];
+            let point = |seconds: f64| {
+                Pos2::new(
+                    lane.left() + (seconds - scroll) as f32 * zoom,
+                    lane.top() - 29.0,
+                )
+            };
+            for (start, end, expected) in [
+                (point(2.0), point(3.0), (3.0, 5.0)),
+                (point(5.0), point(6.0), (3.0, 6.0)),
+                (point(4.0), point(5.0), (4.0, 7.0)),
+                (point(5.0), point(-10.0), (0.0, 3.0)),
+            ] {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                let region = &app.session.project.transport.r#loop;
+                assert_eq!(
+                    (region.start_frame, region.end_frame),
+                    (frames(expected.0), frames(expected.1))
+                );
+                frame(&mut app, &ctx, vec![button(end, false)]);
+                assert!(app.loop_drag.is_none());
+                assert!(app.dirty);
+                app.session.project.validate().unwrap();
+            }
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let band = Rect::from_min_max(
+                Pos2::new(lane.left(), lane.top() - RULER_HEIGHT),
+                Pos2::new(point(3.0).x, lane.top() - 20.0),
+            );
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == band && rect.fill == theme::RULER_SELECTION)));
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == theme::RULER_SELECTION && rect.rect.bottom() > lane.top() - 20.0)));
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == theme::ACCENT && rect.rect.width() == 3.0 && rect.rect.height() == 14.0)));
+            assert_eq!(app.session.project.transport.playhead_frame, frames(8.0));
+            assert!(app.session.project.transport.r#loop.enabled);
+            assert_eq!(app.session.project.tracks[0].clips[0].start_frame, 0);
+            assert_eq!(app.session.project.tracks[0].clips[0].length_frames, 480000);
+            assert!(app.error.is_none());
+        }
+    }
+    #[test]
+    fn ruler_resizing_clamps_and_interrupted_selection_drags_restore_the_range() {
+        for left in [true, false] {
+            let (mut app, track) = fixture();
+            let region = &mut app.session.project.transport.r#loop;
+            region.start_frame = frames(1.0);
+            region.end_frame = frames(3.0);
+            region.enabled = true;
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&track];
+            let start = Pos2::new(
+                lane.left() + if left { 70.0 } else { 210.0 },
+                lane.top() - 29.0,
+            );
+            let end = start + Vec2::new(if left { 500.0 } else { -500.0 }, 25.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            let region = &app.session.project.transport.r#loop;
+            assert_eq!(region.end_frame - region.start_frame, 1);
+            app.session.project.validate().unwrap();
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert!(app.error.is_none());
+        }
+        for focus_loss in [false, true] {
+            let (mut app, track) = fixture();
+            let region = &mut app.session.project.transport.r#loop;
+            region.start_frame = frames(1.0);
+            region.end_frame = frames(3.0);
+            region.enabled = true;
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&track];
+            let start = Pos2::new(lane.left() + 280.0, lane.top() - 29.0);
+            let end = start + Vec2::new(140.0, 0.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(
+                app.session.project.transport.r#loop.start_frame,
+                frames(4.0)
+            );
+            assert!(!app.dirty);
+            let (sender, receiver) = mpsc::channel();
+            if focus_loss {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        focused: false,
+                        events: vec![egui::Event::WindowFocused(false)],
+                        ..Default::default()
+                    },
+                    |ui| app.show(ui),
+                );
+                output.textures_delta.clear();
+            } else {
+                app.job = Some(receiver);
+                frame(&mut app, &ctx, vec![]);
+            }
+            let region = &app.session.project.transport.r#loop;
+            assert_eq!(
+                (region.start_frame, region.end_frame),
+                (frames(1.0), frames(3.0))
+            );
+            assert!(region.enabled);
+            assert!(app.loop_drag.is_none());
+            assert!(!app.dirty);
+            assert!(app.error.is_none());
+            drop(sender);
+        }
+    }
+    #[test]
+    fn ruler_playhead_marker_drags_live_and_clamps_at_the_track_start() {
+        let (mut app, track) = fixture();
+        app.scroll = 1.0;
+        app.session.project.transport.playhead_frame = frames(2.0);
+        app.session.project.transport.r#loop.start_frame = frames(1.0);
+        app.session.project.transport.r#loop.end_frame = frames(3.0);
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let lane = app.lane_bounds[&track];
+        let marker = Pos2::new(lane.left() + 70.0, lane.top() - 10.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(marker), button(marker, true)],
+        );
+        let left = marker - Vec2::new(500.0, 0.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(left)]);
+        assert_eq!(app.session.project.transport.playhead_frame, 0);
+        let right = marker + Vec2::new(140.0, -25.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(right)]);
+        assert_eq!(app.session.project.transport.playhead_frame, frames(4.0));
+        frame(&mut app, &ctx, vec![button(right, false)]);
+        let region = &app.session.project.transport.r#loop;
+        assert_eq!(
+            (region.start_frame, region.end_frame),
+            (frames(1.0), frames(3.0))
+        );
+        assert!(app.loop_drag.is_none());
+        assert!(app.error.is_none());
+    }
+    #[test]
+    fn ruler_lower_band_seeks_without_editing_selection() {
         let (mut app, track) = fixture();
         app.session.project.transport.r#loop.start_frame = 48000;
         app.session.project.transport.r#loop.end_frame = 144000;
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let lane = app.lane_bounds[&track];
-        let start = Pos2::new(lane.left() + 280.0, lane.top() - 35.0);
-        // Starting in the labels must not edit a selection, even when the
-        // pointer later enters the lower tick band.
-        let end = start + Vec2::new(140.0, 30.0);
+        let start = Pos2::new(lane.left() + 280.0, lane.top() - 10.0);
+        // A playhead drag must retain its role when it enters the upper band.
+        let end = start + Vec2::new(140.0, -25.0);
         frame(
             &mut app,
             &ctx,
@@ -3757,7 +4041,7 @@ mod tests {
         frame(&mut app, &ctx, vec![button(end, false)]);
         let region = &app.session.project.transport.r#loop;
         assert_eq!((region.start_frame, region.end_frame), (48000, 144000));
-        assert!(!app.dirty);
+        assert_eq!(app.session.project.transport.playhead_frame, 288000);
         assert!(app.error.is_none());
 
         frame(
@@ -4140,9 +4424,11 @@ mod tests {
                 vec![egui::Event::PointerMoved(end)],
                 Vec2::new(1280.0, 800.0),
             );
-            let preview = app.move_preview(end).unwrap();
+            let preview = app
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .unwrap();
             assert_eq!(preview.track, second);
-            assert_eq!(preview.start, frames(3.25));
+            assert_eq!(preview.clip.start_frame, frames(3.25));
             assert!(preview.valid);
             let lane = app.lane_bounds[&second];
             let block = Rect::from_min_size(
@@ -4160,7 +4446,7 @@ mod tests {
             assert!(app.drag.is_none());
             assert!(app.session.project.tracks[0].clips.is_empty());
             let placed = &app.session.project.tracks[1].clips[0];
-            assert_eq!(placed.start_frame, preview.start);
+            assert_eq!(placed.start_frame, preview.clip.start_frame);
             assert_eq!(placed.source_offset_frame, original.source_offset_frame);
             assert_eq!(placed.length_frames, original.length_frames);
             assert!(app.error.is_none());
@@ -4190,9 +4476,11 @@ mod tests {
                 vec![egui::Event::PointerMoved(end)],
                 Vec2::new(1280.0, 800.0),
             );
-            let preview = app.move_preview(end).unwrap();
+            let preview = app
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .unwrap();
             assert_eq!(preview.track, target);
-            assert_eq!(preview.start, 0);
+            assert_eq!(preview.clip.start_frame, 0);
             assert!(preview.valid);
             let block = Rect::from_min_size(lane.min, Vec2::new(700.0, ROW_HEIGHT));
             assert!(has_preview_outline(&shapes, block, theme::ACCENT));
@@ -4238,7 +4526,9 @@ mod tests {
             vec![egui::Event::PointerMoved(end)],
             Vec2::new(1280.0, 800.0),
         );
-        let preview = app.move_preview(end).unwrap();
+        let preview = app
+            .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+            .unwrap();
         assert!(!preview.valid);
         let block = Rect::from_min_size(
             lane.min + Vec2::new(70.0, 0.0),
@@ -4258,6 +4548,282 @@ mod tests {
         for track in &app.session.project.tracks {
             assert_eq!(track.clips.len(), 1);
             assert_eq!(track.clips[0].start_frame, 0);
+        }
+    }
+    #[test]
+    fn clip_trim_preview_shows_the_waveform_and_matches_the_committed_range() {
+        let source = TestWav::new();
+        let audio = daw_media::decode_wav(&source.0).unwrap();
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+            for left in [true, false] {
+                let (mut app, track) = fixture();
+                app.zoom = zoom;
+                app.scroll = scroll;
+                app.session.project.assets[0].decoded_frame_count = 48000;
+                app.session.project.assets[0].source_metadata.channels = 1;
+                let clip = &mut app.session.project.tracks[0].clips[0];
+                clip.start_frame = frames(2.0);
+                clip.source_offset_frame = frames(0.25);
+                clip.length_frames = frames(0.5);
+                let original = clip.clone();
+                app.session.audio.insert(clip.asset_id, audio.clone());
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                let lane = app.lane_bounds[&track];
+                let block = app.clip_block(lane, &original, original.start_frame);
+                let start = Pos2::new(
+                    if left {
+                        block.left() + 1.0
+                    } else {
+                        block.right() - 1.0
+                    },
+                    lane.top() + 40.0,
+                );
+                let end = start + Vec2::new(if left { 0.25 * zoom } else { -0.25 * zoom }, 0.0);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                let shapes = frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(end)],
+                    Vec2::new(1280.0, 800.0),
+                );
+                let preview = app
+                    .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                    .unwrap();
+                assert!(preview.valid);
+                assert_eq!(preview.track, track);
+                assert_eq!(
+                    preview.clip.start_frame,
+                    if left { frames(2.25) } else { frames(2.0) }
+                );
+                assert_eq!(
+                    preview.clip.source_offset_frame,
+                    if left { frames(0.5) } else { frames(0.25) }
+                );
+                assert_eq!(preview.clip.length_frames, frames(0.25));
+                let block = app.clip_block(lane, &preview.clip, preview.clip.start_frame);
+                assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == theme::WAVEFORM.gamma_multiply(0.75))));
+                let unchanged = &app.session.project.tracks[0].clips[0];
+                assert_eq!(
+                    (
+                        unchanged.start_frame,
+                        unchanged.source_offset_frame,
+                        unchanged.length_frames
+                    ),
+                    (
+                        original.start_frame,
+                        original.source_offset_frame,
+                        original.length_frames
+                    )
+                );
+                assert!(!app.dirty);
+                frame(&mut app, &ctx, vec![button(end, false)]);
+                let placed = &app.session.project.tracks[0].clips[0];
+                assert_eq!(
+                    (
+                        placed.start_frame,
+                        placed.source_offset_frame,
+                        placed.length_frames
+                    ),
+                    (
+                        preview.clip.start_frame,
+                        preview.clip.source_offset_frame,
+                        preview.clip.length_frames
+                    )
+                );
+                assert!(std::sync::Arc::ptr_eq(
+                    &app.session.audio[&placed.asset_id].samples,
+                    &audio.samples
+                ));
+                assert!(app.dirty);
+                assert!(app.error.is_none());
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+    #[test]
+    fn clip_trim_preview_and_release_clamp_source_timeline_and_minimum_length() {
+        for (left, start_seconds, offset_seconds, length_seconds, delta, expected) in [
+            (true, 5.0, 3.0, 4.0, -20.0, (frames(2.0), 0, frames(7.0))),
+            (true, 1.0, 3.0, 4.0, -20.0, (0, frames(2.0), frames(5.0))),
+            (
+                false,
+                2.0,
+                3.0,
+                4.0,
+                20.0,
+                (frames(2.0), frames(3.0), frames(7.0)),
+            ),
+            (
+                true,
+                2.0,
+                3.0,
+                4.0,
+                20.0,
+                (frames(6.0) - 1, frames(7.0) - 1, 1),
+            ),
+            (false, 2.0, 3.0, 4.0, -20.0, (frames(2.0), frames(3.0), 1)),
+            (true, 1.0, 0.0, 4.0, -20.0, (frames(1.0), 0, frames(4.0))),
+            (false, 1.0, 0.0, 10.0, 20.0, (frames(1.0), 0, frames(10.0))),
+        ] {
+            let (mut app, track) = fixture();
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.start_frame = frames(start_seconds);
+            clip.source_offset_frame = frames(offset_seconds);
+            clip.length_frames = frames(length_seconds);
+            let original = (
+                clip.start_frame,
+                clip.source_offset_frame,
+                clip.length_frames,
+            );
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&track];
+            let block = app.clip_block(
+                lane,
+                &app.session.project.tracks[0].clips[0],
+                frames(start_seconds),
+            );
+            let start = Pos2::new(
+                if left {
+                    block.left() + 1.0
+                } else {
+                    block.right() - 1.0
+                },
+                lane.top() + 40.0,
+            );
+            let end = start + Vec2::new(delta * app.zoom, 0.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end)],
+                Vec2::new(1280.0, 800.0),
+            );
+            let preview = app
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .unwrap();
+            let clip = &preview.clip;
+            assert_eq!(
+                (
+                    clip.start_frame,
+                    clip.source_offset_frame,
+                    clip.length_frames
+                ),
+                expected
+            );
+            assert!(preview.valid);
+            assert!(has_preview_outline(
+                &shapes,
+                app.clip_block(lane, clip, clip.start_frame),
+                theme::ACCENT
+            ));
+            assert!(!app.dirty);
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            let clip = &app.session.project.tracks[0].clips[0];
+            assert_eq!(
+                (
+                    clip.start_frame,
+                    clip.source_offset_frame,
+                    clip.length_frames
+                ),
+                expected
+            );
+            assert_eq!(app.dirty, expected != original);
+            assert!(app.error.is_none());
+            app.session.project.validate().unwrap();
+        }
+    }
+    #[test]
+    fn overlapping_clip_trim_preview_is_red_and_release_retains_the_original() {
+        for left in [true, false] {
+            let (mut app, track) = fixture();
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.start_frame = frames(2.0);
+            clip.source_offset_frame = frames(3.0);
+            clip.length_frames = frames(4.0);
+            let original = clip.clone();
+            let mut neighbor = clip.clone();
+            neighbor.id = Id::new_v4();
+            neighbor.start_frame = frames(if left { 0.0 } else { 7.0 });
+            neighbor.source_offset_frame = 0;
+            neighbor.length_frames = frames(1.0);
+            app.session.project.tracks[0].clips.push(neighbor);
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&track];
+            let block = app.clip_block(lane, &original, original.start_frame);
+            let start = Pos2::new(
+                if left {
+                    block.left() + 1.0
+                } else {
+                    block.right() - 1.0
+                },
+                lane.top() + 40.0,
+            );
+            let end = start
+                + Vec2::new(
+                    if left {
+                        -1.5 * app.zoom
+                    } else {
+                        2.0 * app.zoom
+                    },
+                    0.0,
+                );
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end)],
+                Vec2::new(1280.0, 800.0),
+            );
+            let preview = app
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .unwrap();
+            assert!(!preview.valid);
+            assert!(has_preview_outline(
+                &shapes,
+                app.clip_block(lane, &preview.clip, preview.clip.start_frame),
+                theme::ERROR
+            ));
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert!(
+                app.error
+                    .as_ref()
+                    .is_some_and(|error| error.contains("overlap"))
+            );
+            assert!(!app.dirty);
+            let clip = app.session.project.tracks[0]
+                .clips
+                .iter()
+                .find(|clip| clip.id == original.id)
+                .unwrap();
+            assert_eq!(
+                (
+                    clip.start_frame,
+                    clip.source_offset_frame,
+                    clip.length_frames
+                ),
+                (
+                    original.start_frame,
+                    original.source_offset_frame,
+                    original.length_frames
+                )
+            );
+            app.session.project.validate().unwrap();
         }
     }
     #[test]

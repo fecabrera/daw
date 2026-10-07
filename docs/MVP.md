@@ -108,7 +108,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - Include a Tracks header and an Add track button. Keep Add track enabled regardless of the track count.
 - Place a toolbar above the timeline. Toggle Play to Pause during playback, using the corresponding Lucide icons. Include a separate Stop button.
 - Put New project, Open, Import WAV, Save, Save as, and Export WAV in the File menu. Use the native macOS menu bar and an in-window menu on Windows and Linux. Group these actions with separators and provide keyboard shortcuts.
-- Display a bars-and-beats ruler and grid above the track lanes using project tempo and 4/4. Show a visible playhead and waveforms within clips. Include a matching bar.beat monitor beside the toolbar time display. Count bars and beats from 1; start the monitor at 0001.01.
+- Display a bars-and-beats ruler and grid above the track lanes using project tempo and 4/4. Use the upper ruler band for loop selection, edge resizing, and moving the selection body; use the lower band for playhead clicks and dragging. Keep moved selections the same length and clamp them at frame zero. Show a visible playhead and waveforms within clips. Include a matching bar.beat monitor beside the toolbar time display. Count bars and beats from 1; start the monitor at 0001.01.
 - Keep the track list visible during horizontal timeline scrolling. Keep track rows and timeline lanes aligned during vertical scrolling.
 - Provide timeline zoom and loop-region controls, plus master gain, peak metering, and clipping status, within the initial layout.
 - Place Master in a track-style block fixed at the bottom of the track list, above the status bar. Include master gain and L/R output monitors without Mute or Solo buttons. It is separate from the audio tracks.
@@ -254,7 +254,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - Do not provide timeline snapping in the MVP. Clip placement, trimming, and selections use sample-based positions without snapping to a grid or clip boundaries.
 - Clips on the same track must not overlap. Clips on different tracks may overlap in time.
 - Reject imports, moves, and trims that would create overlap; retain the previous valid placement and give clear feedback.
-- Show a translucent clip preview while moving, including across tracks. Clamp movement at frame zero. The preview and dropped clip must use the same position.
+- Show a translucent clip preview while moving, including across tracks. Clamp movement at frame zero. The preview and dropped clip must use the same position. Both trim edges show the proposed waveform and range. Clamp trims to available source audio, valid timeline bounds, and at least one sample; preview and release use the same range.
 - Preview WAV files dragged into the timeline at the hovered track and sample position. Load the waveform in the background without changing the project. Reuse prepared audio on drop; empty timeline drops create a track. Cancelled hovers and invalid drops leave the project unchanged.
 - Clips may touch at their boundaries. Missing-source placeholders reserve their existing time ranges under the same placement rules.
 - Project validation must detect same-track overlap, including in headless mode.

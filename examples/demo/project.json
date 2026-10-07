@@ -2,8 +2,9 @@
   "project_id": "c385f2b7-f340-5cd0-9c7f-e732eb051ed7",
   "name": "Four track demo",
   "sample_rate_hz": 48000,
+  "tempo_bpm": 120.0,
   "master": {
-    "gain_db": 0
+    "gain_db": 0.0
   },
   "assets": [
     {
@@ -75,7 +76,7 @@
     {
       "id": "ba06b4d7-7c18-521b-90db-2b6b5246e036",
       "name": "Bass",
-      "gain_db": 0,
+      "gain_db": 0.0,
       "pan": -0.1,
       "muted": false,
       "soloed": false,
@@ -93,7 +94,7 @@
     {
       "id": "0f971b2d-b43f-52b9-bf31-597c3307e79c",
       "name": "Keys",
-      "gain_db": 0,
+      "gain_db": 0.0,
       "pan": 0.3,
       "muted": false,
       "soloed": false,
@@ -111,8 +112,8 @@
     {
       "id": "3fc79029-232b-5846-8e58-cea309114094",
       "name": "Pulse",
-      "gain_db": 0,
-      "pan": 0,
+      "gain_db": 0.0,
+      "pan": 0.0,
       "muted": false,
       "soloed": false,
       "clips": [
@@ -129,7 +130,7 @@
     {
       "id": "a782df0f-627b-5a7b-a16b-61cb55ecaeed",
       "name": "Lead",
-      "gain_db": 0,
+      "gain_db": 0.0,
       "pan": -0.25,
       "muted": false,
       "soloed": false,
@@ -146,9 +147,9 @@
     }
   ],
   "transport": {
-    "playhead_frame": 0,
+    "playhead_frame": 288256,
     "loop": {
-      "enabled": false,
+      "enabled": true,
       "start_frame": 0,
       "end_frame": 576000
     }
