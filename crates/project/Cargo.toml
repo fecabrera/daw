@@ -1,0 +1,15 @@
+[package]
+name = "daw-project"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+daw-core.workspace = true
+daw-media.workspace = true
+daw-engine.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+hound.workspace = true

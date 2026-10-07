@@ -1,0 +1,9 @@
+[package]
+name = "daw-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+daw-core.workspace = true
+daw-media.workspace = true

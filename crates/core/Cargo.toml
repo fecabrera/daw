@@ -1,0 +1,10 @@
+[package]
+name = "daw-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+uuid.workspace = true
+thiserror.workspace = true

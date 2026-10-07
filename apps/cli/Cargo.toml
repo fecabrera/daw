@@ -1,0 +1,12 @@
+[package]
+name = "daw-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+daw-core.workspace = true
+daw-project.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

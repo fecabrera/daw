@@ -1,0 +1,156 @@
+{
+  "project_id": "c385f2b7-f340-5cd0-9c7f-e732eb051ed7",
+  "name": "Four track demo",
+  "sample_rate_hz": 48000,
+  "master": {
+    "gain_db": 0
+  },
+  "assets": [
+    {
+      "id": "c2b576b0-3693-5f65-8595-a5751fd525ad",
+      "name": "bass.wav",
+      "source": {
+        "kind": "external",
+        "path": "../audio/bass.wav",
+        "path_kind": "relative"
+      },
+      "source_metadata": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "sample_format": "pcm_int",
+        "bits_per_sample": 16
+      },
+      "decoded_frame_count": 576000
+    },
+    {
+      "id": "d7aa118d-644d-535e-bdab-50a6ef55cd38",
+      "name": "keys.wav",
+      "source": {
+        "kind": "external",
+        "path": "../audio/keys.wav",
+        "path_kind": "relative"
+      },
+      "source_metadata": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "sample_format": "pcm_int",
+        "bits_per_sample": 16
+      },
+      "decoded_frame_count": 576000
+    },
+    {
+      "id": "c135d434-6f6b-557b-86f1-d578c2c23f0f",
+      "name": "pulse.wav",
+      "source": {
+        "kind": "external",
+        "path": "../audio/pulse.wav",
+        "path_kind": "relative"
+      },
+      "source_metadata": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "sample_format": "pcm_int",
+        "bits_per_sample": 16
+      },
+      "decoded_frame_count": 576000
+    },
+    {
+      "id": "dfe2008a-c515-57aa-b964-233fc53c21f2",
+      "name": "lead.wav",
+      "source": {
+        "kind": "external",
+        "path": "../audio/lead.wav",
+        "path_kind": "relative"
+      },
+      "source_metadata": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "sample_format": "pcm_int",
+        "bits_per_sample": 16
+      },
+      "decoded_frame_count": 576000
+    }
+  ],
+  "tracks": [
+    {
+      "id": "ba06b4d7-7c18-521b-90db-2b6b5246e036",
+      "name": "Bass",
+      "gain_db": 0,
+      "pan": -0.1,
+      "muted": false,
+      "soloed": false,
+      "clips": [
+        {
+          "id": "e4a8334a-4943-5ec5-8a98-8af8c26d6e3a",
+          "asset_id": "c2b576b0-3693-5f65-8595-a5751fd525ad",
+          "name": "Bass 1",
+          "start_frame": 0,
+          "source_offset_frame": 0,
+          "length_frames": 576000
+        }
+      ]
+    },
+    {
+      "id": "0f971b2d-b43f-52b9-bf31-597c3307e79c",
+      "name": "Keys",
+      "gain_db": 0,
+      "pan": 0.3,
+      "muted": false,
+      "soloed": false,
+      "clips": [
+        {
+          "id": "b06c1525-62c9-5a03-8c2a-15df1c83ce20",
+          "asset_id": "d7aa118d-644d-535e-bdab-50a6ef55cd38",
+          "name": "Keys 1",
+          "start_frame": 0,
+          "source_offset_frame": 0,
+          "length_frames": 576000
+        }
+      ]
+    },
+    {
+      "id": "3fc79029-232b-5846-8e58-cea309114094",
+      "name": "Pulse",
+      "gain_db": 0,
+      "pan": 0,
+      "muted": false,
+      "soloed": false,
+      "clips": [
+        {
+          "id": "2dc4fca4-b481-564e-b633-dd38da5fd560",
+          "asset_id": "c135d434-6f6b-557b-86f1-d578c2c23f0f",
+          "name": "Pulse 1",
+          "start_frame": 0,
+          "source_offset_frame": 0,
+          "length_frames": 576000
+        }
+      ]
+    },
+    {
+      "id": "a782df0f-627b-5a7b-a16b-61cb55ecaeed",
+      "name": "Lead",
+      "gain_db": 0,
+      "pan": -0.25,
+      "muted": false,
+      "soloed": false,
+      "clips": [
+        {
+          "id": "92fb4c69-9401-55fc-b47b-fd9a0e4a9135",
+          "asset_id": "dfe2008a-c515-57aa-b964-233fc53c21f2",
+          "name": "Lead 1",
+          "start_frame": 0,
+          "source_offset_frame": 0,
+          "length_frames": 576000
+        }
+      ]
+    }
+  ],
+  "transport": {
+    "playhead_frame": 0,
+    "loop": {
+      "enabled": false,
+      "start_frame": 0,
+      "end_frame": 576000
+    }
+  }
+}
