@@ -9,6 +9,89 @@ fn default_tempo_bpm() -> f32 {
     DEFAULT_TEMPO_BPM
 }
 
+/// An opaque display color, independent of the UI toolkit and audio engine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+/// The original clip color, retained when explicitly stored in older projects.
+pub const LEGACY_CLIP_COLOR: RgbColor = RgbColor {
+    r: 43,
+    g: 81,
+    b: 99,
+};
+
+/// Material Design 400 shades, ordered from Deep Orange through Red.
+/// https://mui.com/material-ui/customization/color/#color-palette
+pub const DEFAULT_TRACK_COLORS: [RgbColor; 16] = [
+    rgb(0xff7043), // Deep Orange
+    rgb(0xffa726), // Orange
+    rgb(0xffca28), // Amber
+    rgb(0xffee58), // Yellow
+    rgb(0xd4e157), // Lime
+    rgb(0x9ccc65), // Light Green
+    rgb(0x66bb6a), // Green
+    rgb(0x26a69a), // Teal
+    rgb(0x26c6da), // Cyan
+    rgb(0x29b6f6), // Light Blue
+    rgb(0x42a5f5), // Blue
+    rgb(0x5c6bc0), // Indigo
+    rgb(0x7e57c2), // Deep Purple
+    rgb(0xab47bc), // Purple
+    rgb(0xec407a), // Pink
+    rgb(0xef5350), // Red
+];
+
+pub const DEFAULT_TRACK_COLOR: RgbColor = DEFAULT_TRACK_COLORS[0];
+
+const fn rgb(hex: u32) -> RgbColor {
+    RgbColor {
+        r: (hex >> 16) as u8,
+        g: (hex >> 8) as u8,
+        b: hex as u8,
+    }
+}
+
+/// Assign defaults by zero-based track position, repeating after all 16 hues.
+pub const fn default_track_color(index: usize) -> RgbColor {
+    DEFAULT_TRACK_COLORS[index % DEFAULT_TRACK_COLORS.len()]
+}
+
+fn first_track_color() -> RgbColor {
+    DEFAULT_TRACK_COLOR
+}
+
+fn deserialize_tracks<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Vec<Track>, D::Error> {
+    // Capture whether color was present before flattening into the required Track fields.
+    #[derive(Deserialize)]
+    struct StoredTrack {
+        #[serde(default, deserialize_with = "deserialize_present_color")]
+        color: Option<RgbColor>,
+        #[serde(flatten)]
+        track: Track,
+    }
+    fn deserialize_present_color<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Option<RgbColor>, D::Error> {
+        RgbColor::deserialize(deserializer).map(Some)
+    }
+    Vec::<StoredTrack>::deserialize(deserializer).map(|tracks| {
+        tracks
+            .into_iter()
+            .enumerate()
+            .map(|(index, stored)| Track {
+                color: stored.color.unwrap_or_else(|| default_track_color(index)),
+                ..stored.track
+            })
+            .collect()
+    })
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct Error(pub String);
@@ -23,6 +106,7 @@ pub struct Project {
     pub tempo_bpm: f32,
     pub master: Master,
     pub assets: Vec<Asset>,
+    #[serde(deserialize_with = "deserialize_tracks")]
     pub tracks: Vec<Track>,
     pub transport: Transport,
 }
@@ -56,6 +140,9 @@ pub struct SourceMetadata {
 pub struct Track {
     pub id: Id,
     pub name: String,
+    /// Default color for this track's clips; older projects assign it by track position.
+    #[serde(default = "first_track_color")]
+    pub color: RgbColor,
     pub gain_db: f32,
     pub pan: f32,
     pub muted: bool,
@@ -67,6 +154,9 @@ pub struct Clip {
     pub id: Id,
     pub asset_id: Id,
     pub name: String,
+    /// None inherits the containing track's color.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<RgbColor>,
     pub start_frame: u64,
     pub source_offset_frame: u64,
     pub length_frames: u64,
@@ -212,6 +302,7 @@ impl Project {
         self.tracks.push(Track {
             id,
             name: format!("Track {}", self.tracks.len() + 1),
+            color: default_track_color(self.tracks.len()),
             gain_db: 0.0,
             pan: 0.0,
             muted: false,
@@ -223,6 +314,21 @@ impl Project {
     pub fn edit(&mut self, command: Edit) -> Result<()> {
         let mut next = self.clone();
         match command {
+            Edit::SetTrackColor { track_id, color } => {
+                next.tracks
+                    .iter_mut()
+                    .find(|t| t.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?
+                    .color = color;
+            }
+            Edit::SetClipColor { clip_id, color } => {
+                next.tracks
+                    .iter_mut()
+                    .flat_map(|t| &mut t.clips)
+                    .find(|c| c.id == clip_id)
+                    .ok_or_else(|| Error("Clip not found".into()))?
+                    .color = color;
+            }
             Edit::DeleteTrack(id) => next.tracks.retain(|t| t.id != id),
             Edit::DeleteClip(id) => {
                 for t in &mut next.tracks {
@@ -288,6 +394,14 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    SetTrackColor {
+        track_id: Id,
+        color: RgbColor,
+    },
+    SetClipColor {
+        clip_id: Id,
+        color: Option<RgbColor>,
+    },
     DeleteTrack(Id),
     DeleteClip(Id),
     Place {
@@ -316,6 +430,64 @@ mod tests {
         project.tempo_bpm = 123.45;
         project.validate().unwrap();
     }
+    #[test]
+    fn new_tracks_cycle_material_400_colors_without_recoloring_existing_tracks() {
+        let mut project = Project::default();
+        for index in 0..34 {
+            project.add_track().unwrap();
+            assert_eq!(
+                project.tracks[index].color,
+                DEFAULT_TRACK_COLORS[index % 16]
+            );
+        }
+        assert_eq!(
+            project.tracks[0].color,
+            RgbColor {
+                r: 255,
+                g: 112,
+                b: 67
+            }
+        );
+        assert_eq!(
+            project.tracks[1].color,
+            RgbColor {
+                r: 255,
+                g: 167,
+                b: 38
+            }
+        );
+        assert_eq!(
+            project.tracks[15].color,
+            RgbColor {
+                r: 239,
+                g: 83,
+                b: 80
+            }
+        );
+        project.tracks[0].color = RgbColor { r: 3, g: 4, b: 5 };
+        let removed = project.tracks[4].id;
+        let before = project
+            .tracks
+            .iter()
+            .filter(|t| t.id != removed)
+            .map(|t| (t.id, t.color))
+            .collect::<Vec<_>>();
+        project.edit(Edit::DeleteTrack(removed)).unwrap();
+        project.add_track().unwrap();
+        assert_eq!(
+            project.tracks.last().unwrap().color,
+            default_track_color(33)
+        );
+        assert_eq!(
+            project.tracks[..33]
+                .iter()
+                .map(|t| (t.id, t.color))
+                .collect::<Vec<_>>(),
+            before
+        );
+        project.validate().unwrap();
+    }
+
     #[test]
     fn many_tracks_validate_and_solo_overrides_mute() {
         let mut p = Project::default();

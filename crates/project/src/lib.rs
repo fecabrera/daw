@@ -137,6 +137,7 @@ impl Session {
             id: clip_id,
             asset_id,
             name: name.clone(),
+            color: None,
             start_frame: start,
             source_offset_frame: 0,
             length_frames: data.samples.len() as u64,

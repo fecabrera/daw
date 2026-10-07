@@ -1,4 +1,4 @@
-use daw_core::{Edit, Project};
+use daw_core::{DEFAULT_TRACK_COLOR, Edit, Project, RgbColor, default_track_color};
 use daw_project::Session;
 use std::{fs, path::PathBuf};
 
@@ -151,6 +151,229 @@ fn edit_rejection_is_transactional_and_split_preserves_ranges() {
         .find(|c| c.start_frame == 2400)
         .unwrap();
     assert_eq!(right.source_offset_frame, 2400);
+}
+
+#[test]
+fn display_colors_persist_and_survive_clip_edits_without_changing_audio() {
+    let f = Fixture::new();
+    let source = f.wav("colors.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    let clip = session.import(&source, None, 0).unwrap();
+    let track = session.project.tracks[0].id;
+    let track_color = RgbColor {
+        r: 42,
+        g: 31,
+        b: 60,
+    };
+    let clip_color = Some(RgbColor {
+        r: 150,
+        g: 70,
+        b: 30,
+    });
+    let audio = session.plan().sample_at(1234);
+    session
+        .project
+        .edit(Edit::SetTrackColor {
+            track_id: track,
+            color: track_color,
+        })
+        .unwrap();
+    session
+        .project
+        .edit(Edit::SetClipColor {
+            clip_id: clip,
+            color: clip_color,
+        })
+        .unwrap();
+    assert_eq!(session.plan().sample_at(1234), audio);
+    let before = serde_json::to_value(&session.project).unwrap();
+    for command in [
+        Edit::SetTrackColor {
+            track_id: daw_core::Id::new_v4(),
+            color: DEFAULT_TRACK_COLOR,
+        },
+        Edit::SetClipColor {
+            clip_id: daw_core::Id::new_v4(),
+            color: None,
+        },
+    ] {
+        assert!(session.project.edit(command).is_err());
+        assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+    }
+    session.save(&f.0.join("project")).unwrap();
+    let mut loaded = Session::open(&f.0.join("project")).unwrap();
+    assert_eq!(loaded.project.tracks[0].color, track_color);
+    assert_eq!(loaded.project.tracks[0].clips[0].color, clip_color);
+    let destination = loaded.project.add_track().unwrap();
+    loaded
+        .project
+        .edit(Edit::Place {
+            clip_id: clip,
+            track_id: destination,
+            start: 100,
+            offset: 100,
+            length: 4600,
+        })
+        .unwrap();
+    loaded
+        .project
+        .edit(Edit::Split {
+            clip_id: clip,
+            at: 2400,
+        })
+        .unwrap();
+    assert_eq!(loaded.project.tracks[0].color, track_color);
+    assert_eq!(loaded.project.tracks[1].color, default_track_color(1));
+    assert!(
+        loaded.project.tracks[1]
+            .clips
+            .iter()
+            .all(|c| c.color == clip_color)
+    );
+    for id in loaded.project.tracks[1]
+        .clips
+        .iter()
+        .map(|c| c.id)
+        .collect::<Vec<_>>()
+    {
+        loaded
+            .project
+            .edit(Edit::SetClipColor {
+                clip_id: id,
+                color: None,
+            })
+            .unwrap();
+    }
+    loaded
+        .project
+        .edit(Edit::SetTrackColor {
+            track_id: track,
+            color: DEFAULT_TRACK_COLOR,
+        })
+        .unwrap();
+    loaded.save(&f.0.join("project")).unwrap();
+    let reset = Session::open(&f.0.join("project")).unwrap();
+    let manifest = serde_json::to_value(&reset.project).unwrap();
+    assert!(
+        reset
+            .project
+            .tracks
+            .iter()
+            .enumerate()
+            .all(|(index, t)| t.color == default_track_color(index))
+    );
+    assert!(
+        reset.project.tracks[1]
+            .clips
+            .iter()
+            .all(|c| c.color.is_none())
+    );
+    assert_eq!(
+        manifest["tracks"][0]["color"],
+        serde_json::json!({"r":255,"g":112,"b":67})
+    );
+    assert!(manifest["tracks"][1]["clips"][0].get("color").is_none());
+}
+
+#[test]
+fn older_manifests_use_default_colors_and_invalid_rgb_is_rejected() {
+    let f = Fixture::new();
+    let source = f.wav("default-colors.wav", 48000, 1, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    session.save(&f.0.join("project")).unwrap();
+    let manifest = f.0.join("project/project.json");
+    let mut original: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    assert_eq!(
+        original["tracks"][0]["color"],
+        serde_json::json!({"r":255,"g":112,"b":67})
+    );
+    original["tracks"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("color");
+    fs::write(&manifest, serde_json::to_vec(&original).unwrap()).unwrap();
+    assert!(original["tracks"][0].get("color").is_none());
+    assert!(original["tracks"][0]["clips"][0].get("color").is_none());
+    let loaded = Session::open(&f.0.join("project")).unwrap();
+    assert_eq!(loaded.project.tracks[0].color, DEFAULT_TRACK_COLOR);
+    assert_eq!(loaded.project.tracks[0].clips[0].color, None);
+    for path in ["/tracks/0/color", "/tracks/0/clips/0/color"] {
+        for bad in [
+            serde_json::json!(-1),
+            serde_json::json!(256),
+            serde_json::json!(12.5),
+        ] {
+            let mut value = original.clone();
+            let parent = path.rsplit_once('/').unwrap().0;
+            value.pointer_mut(parent).unwrap()["color"] =
+                serde_json::json!({"r":bad,"g":30,"b":60});
+            fs::write(&manifest, serde_json::to_vec(&value).unwrap()).unwrap();
+            assert!(Session::open(&f.0.join("project")).is_err());
+        }
+    }
+    original["tracks"][0]["clips"][0]["color"] = serde_json::Value::Null;
+    fs::write(&manifest, serde_json::to_vec(&original).unwrap()).unwrap();
+    assert_eq!(
+        Session::open(&f.0.join("project")).unwrap().project.tracks[0].clips[0].color,
+        None
+    );
+    original["tracks"][0]["color"] = serde_json::Value::Null;
+    fs::write(&manifest, serde_json::to_vec(&original).unwrap()).unwrap();
+    assert!(Session::open(&f.0.join("project")).is_err());
+}
+
+#[test]
+fn missing_track_colors_get_the_palette_order_and_saved_colors_are_preserved() {
+    let f = Fixture::new();
+    let mut session = Session::default();
+    for _ in 0..18 {
+        session.project.add_track().unwrap();
+    }
+    let custom = RgbColor {
+        r: 12,
+        g: 34,
+        b: 56,
+    };
+    session.project.tracks[3].color = custom;
+    session.project.tracks[6].color = daw_core::LEGACY_CLIP_COLOR;
+    session.save(&f.0).unwrap();
+    let saved = Session::open(&f.0).unwrap();
+    for (index, track) in saved.project.tracks.iter().enumerate() {
+        assert_eq!(track.color, session.project.tracks[index].color);
+    }
+    let manifest = f.0.join("project.json");
+    let mut value = serde_json::to_value(&saved.project).unwrap();
+    for (index, track) in value["tracks"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .enumerate()
+    {
+        if index != 3 && index != 6 {
+            track.as_object_mut().unwrap().remove("color");
+        }
+    }
+    fs::write(&manifest, serde_json::to_vec(&value).unwrap()).unwrap();
+    let mut loaded = Session::open(&f.0).unwrap();
+    for (index, track) in loaded.project.tracks.iter().enumerate() {
+        assert_eq!(
+            track.color,
+            match index {
+                3 => custom,
+                6 => daw_core::LEGACY_CLIP_COLOR,
+                _ => default_track_color(index),
+            }
+        );
+    }
+    loaded.save(&f.0).unwrap();
+    assert_eq!(
+        serde_json::to_value(&Session::open(&f.0).unwrap().project).unwrap(),
+        serde_json::to_value(&loaded.project).unwrap()
+    );
+    loaded.project.add_track().unwrap();
+    assert_eq!(loaded.project.tracks[18].color, default_track_color(18));
 }
 
 #[test]

@@ -2052,7 +2052,7 @@ impl DawUi {
                             ui.close();
                         }
                     });
-                    self.lane(ui, track.id, &track.clips);
+                    self.lane(ui, &track);
                 });
             }
         });
@@ -2238,6 +2238,7 @@ impl DawUi {
             id: Id::nil(),
             asset_id: Id::nil(),
             name: hover.name.clone(),
+            color: None,
             start_frame: target.start,
             source_offset_frame: 0,
             length_frames: audio.map_or_else(
@@ -2256,20 +2257,34 @@ impl DawUi {
         let painter = ui.painter_at(viewport.intersect(target.lane));
         let mut ghost = painter.clone();
         ghost.multiply_opacity(0.75);
+        let track_color = target
+            .track
+            .and_then(|id| {
+                self.session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|track| track.id == id)
+            })
+            .map_or_else(
+                || daw_core::default_track_color(self.session.project.tracks.len()),
+                |track| track.color,
+            );
+        let colors = theme::clip_colors(track_color, clip.color);
         if let Some(audio) = audio {
-            self.paint_clip(&ghost, target.lane, block, &clip, false, Some(audio));
+            self.paint_clip(&ghost, track_color, block, &clip, false, Some(audio));
         } else {
-            ghost.rect_filled(block, 2.0, theme::CLIP);
+            ghost.rect_filled(block, 2.0, colors.body);
             let header =
                 Rect::from_min_max(block.min, Pos2::new(block.right(), block.top() + 22.0));
-            ghost.rect_filled(header, 2.0, theme::CLIP_HEADER);
+            ghost.rect_filled(header, 2.0, colors.header);
             let text = ghost.with_clip_rect(block);
             text.text(
                 Pos2::new(header.left() + 7.0, header.center().y),
                 egui::Align2::LEFT_CENTER,
                 &clip.name,
                 egui::FontId::proportional(11.0),
-                theme::CLIP_TEXT,
+                colors.text,
             );
             text.text(
                 Pos2::new(block.center().x, block.top() + 44.0),
@@ -2301,12 +2316,21 @@ impl DawUi {
         let Some(preview) = self.clip_drag_preview(drag, pointer) else {
             return;
         };
+        let Some(track) = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|track| track.id == preview.track)
+        else {
+            return;
+        };
         let lane = self.lane_bounds[&preview.track];
         let block = self.clip_block(lane, &preview.clip, preview.clip.start_frame);
         let painter = ui.painter_at(viewport.intersect(lane));
         let mut ghost = painter.clone();
         ghost.multiply_opacity(0.75);
-        self.paint_clip(&ghost, lane, block, &preview.clip, false, None);
+        self.paint_clip(&ghost, track.color, block, &preview.clip, false, None);
         painter.rect_stroke(
             block,
             2.0,
@@ -2329,7 +2353,7 @@ impl DawUi {
     fn paint_clip(
         &self,
         painter: &egui::Painter,
-        lane: Rect,
+        track_color: daw_core::RgbColor,
         block: Rect,
         clip: &Clip,
         selected: bool,
@@ -2337,10 +2361,16 @@ impl DawUi {
     ) {
         let audio = prepared.or_else(|| self.session.audio.get(&clip.asset_id));
         let missing = audio.is_none();
+        let lane = painter.clip_rect();
+        let colors = if missing {
+            theme::ClipColors::default()
+        } else {
+            theme::clip_colors(track_color, clip.color)
+        };
         painter.rect_filled(
             block,
             2.0,
-            if missing { theme::MISSING } else { theme::CLIP },
+            if missing { theme::MISSING } else { colors.body },
         );
         let header = Rect::from_min_max(block.min, Pos2::new(block.right(), block.top() + 22.0));
         painter.rect_filled(
@@ -2349,7 +2379,7 @@ impl DawUi {
             if missing {
                 theme::BORDER
             } else {
-                theme::CLIP_HEADER
+                colors.header
             },
         );
         let clip_painter = painter.with_clip_rect(block.intersect(lane));
@@ -2358,7 +2388,7 @@ impl DawUi {
             egui::Align2::LEFT_CENTER,
             &clip.name,
             egui::FontId::proportional(11.0),
-            theme::CLIP_TEXT,
+            colors.text,
         );
         if missing {
             clip_painter.text(
@@ -2379,13 +2409,13 @@ impl DawUi {
                     clip_painter.rect_filled(
                         Rect::from_min_max(Pos2::new(body.left(), top), body.max),
                         0.0,
-                        theme::CLIP_CHANNEL,
+                        colors.channel,
                     );
                 }
                 if channel == 1 {
                     clip_painter.line_segment(
                         [Pos2::new(block.left(), top), Pos2::new(block.right(), top)],
-                        Stroke::new(1.0_f32, theme::CLIP_HEADER),
+                        Stroke::new(1.0_f32, colors.header),
                     );
                 }
                 let left = body.left().max(lane.left());
@@ -2426,7 +2456,7 @@ impl DawUi {
                             Pos2::new(pixel as f32, center - max.clamp(-1.0, 1.0) * height * 0.42),
                             Pos2::new(pixel as f32, center - min.clamp(-1.0, 1.0) * height * 0.42),
                         ],
-                        Stroke::new(1.0_f32, theme::WAVEFORM),
+                        Stroke::new(1.0_f32, colors.waveform),
                     );
                 }
             }
@@ -2476,7 +2506,8 @@ impl DawUi {
             }
         }
     }
-    fn lane(&mut self, ui: &mut egui::Ui, track_id: Id, clips: &[Clip]) {
+    fn lane(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
+        let track_id = track.id;
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click());
         self.lane_bounds.insert(track_id, rect);
@@ -2487,7 +2518,7 @@ impl DawUi {
             Stroke::new(1.0_f32, theme::BORDER),
         );
         self.paint_grid(&painter, rect);
-        for clip in clips {
+        for clip in &track.clips {
             let block = self.clip_block(rect, clip, clip.start_frame);
             if !block.intersects(rect) {
                 continue;
@@ -2506,7 +2537,7 @@ impl DawUi {
             {
                 clip_painter.multiply_opacity(0.35);
             }
-            self.paint_clip(&clip_painter, rect, block, clip, selected, None);
+            self.paint_clip(&clip_painter, track.color, block, clip, selected, None);
             response.context_menu(|ui| {
                 if ui.button("Split at playhead").clicked() {
                     self.edit(Edit::Split {
@@ -2661,6 +2692,7 @@ mod tests {
             id: Id::new_v4(),
             asset_id: asset,
             name: "Test".into(),
+            color: None,
             start_frame: 0,
             source_offset_frame: 0,
             length_frames: 480000,
@@ -4182,7 +4214,7 @@ mod tests {
         assert!(has_preview_outline(&shapes, block, theme::ACCENT));
         assert!(shapes.iter().any(
             |shape| matches!(&shape.shape, egui::Shape::LineSegment {stroke, ..}
-            if stroke.color == theme::WAVEFORM.gamma_multiply(0.75))
+            if stroke.color == theme::clip_colors(app.session.project.tracks[1].color, None).waveform.gamma_multiply(0.75))
         ));
         assert!(app.session.project.tracks[1].clips.is_empty());
         assert_eq!(app.session.project.assets.len(), 1);
@@ -4259,25 +4291,53 @@ mod tests {
         let source = TestWav::new();
         let mut app = DawUi::default();
         let ctx = context();
-        let point = Pos2::new(TRACK_WIDTH + 140.0, 140.0);
-        let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
-        let target = app.file_drop_target.as_ref().unwrap();
-        assert_eq!(target.track, None);
-        assert_eq!(target.start, frames(2.0));
-        let block = Rect::from_min_size(
-            Pos2::new(point.x, target.lane.top()),
-            Vec2::new(70.0, ROW_HEIGHT),
-        );
-        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
-        assert!(app.session.project.tracks.is_empty());
-        file_frame(&mut app, &ctx, &source.0, point, true);
-        finish_import(&mut app, &ctx);
-        assert!(app.error.is_none());
-        assert_eq!(app.session.project.tracks.len(), 1);
-        assert_eq!(
-            app.session.project.tracks[0].clips[0].start_frame,
-            frames(2.0)
-        );
+        for index in 0..2 {
+            let point = Pos2::new(
+                TRACK_WIDTH + 140.0,
+                if index == 0 {
+                    140.0
+                } else {
+                    app.lane_bounds[&app.session.project.tracks[index - 1].id].bottom() + 20.0
+                },
+            );
+            let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
+            let target = app.file_drop_target.as_ref().unwrap();
+            assert_eq!(target.track, None);
+            assert_eq!(target.start, frames(2.0));
+            let block = Rect::from_min_size(
+                Pos2::new(point.x, target.lane.top()),
+                Vec2::new(70.0, ROW_HEIGHT),
+            );
+            let colors = theme::clip_colors(daw_core::default_track_color(index), None);
+            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+            assert!(
+                shapes
+                    .iter()
+                    .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                if rect.rect == block && rect.fill == colors.body.gamma_multiply(0.75)))
+            );
+            assert_eq!(app.session.project.tracks.len(), index);
+            file_frame(&mut app, &ctx, &source.0, point, true);
+            finish_import(&mut app, &ctx);
+            assert!(app.error.is_none());
+            assert_eq!(app.session.project.tracks.len(), index + 1);
+            assert_eq!(
+                app.session.project.tracks[index].color,
+                daw_core::default_track_color(index)
+            );
+            assert_eq!(app.session.project.tracks[index].clips[0].color, None);
+            assert_eq!(
+                app.session.project.tracks[index].clips[0].start_frame,
+                frames(2.0)
+            );
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            assert!(
+                shapes
+                    .iter()
+                    .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                if rect.rect == block && rect.fill == colors.body))
+            );
+        }
     }
     #[test]
     fn rejected_file_drop_and_cancelled_hover_leave_the_project_unchanged() {
@@ -4551,6 +4611,227 @@ mod tests {
         }
     }
     #[test]
+    fn saved_colors_render_on_clips_and_drag_previews_with_neutral_track_panels() {
+        let source = TestWav::new();
+        let mut audio = daw_media::decode_wav(&source.0).unwrap();
+        audio.metadata.channels = 2;
+        for custom in [
+            None,
+            Some(daw_core::RgbColor {
+                r: 160,
+                g: 70,
+                b: 35,
+            }),
+            Some(daw_core::RgbColor {
+                r: 235,
+                g: 225,
+                b: 190,
+            }),
+        ] {
+            let (mut app, track) = fixture();
+            let track_color = daw_core::RgbColor {
+                r: 45,
+                g: 31,
+                b: 55,
+            };
+            app.edit(Edit::SetTrackColor {
+                track_id: track,
+                color: track_color,
+            });
+            let clip_id = app.session.project.tracks[0].clips[0].id;
+            app.edit(Edit::SetClipColor {
+                clip_id,
+                color: custom,
+            });
+            assert!(app.dirty);
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.length_frames = 48000;
+            let clip = clip.clone();
+            app.session.audio.insert(clip.asset_id, audio.clone());
+            let colors = theme::clip_colors(track_color, custom);
+            let ctx = context();
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let has_fill = |shapes: &[egui::epaint::ClippedShape], color| {
+                shapes.iter().any(
+                    |shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == color),
+                )
+            };
+            let lane = app.lane_bounds[&track];
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                if rect.fill == theme::PANEL && rect.rect.top() == lane.top() && rect.rect.right() <= lane.left())));
+            assert!(
+                !shapes
+                    .iter()
+                    .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                if rect.fill == colors.body && rect.rect.right() <= lane.left()))
+            );
+            for color in [colors.body, colors.header, colors.channel] {
+                assert!(has_fill(&shapes, color));
+            }
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment {stroke, ..} if stroke.color == colors.waveform)));
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Test" && text.fallback_color == colors.text)));
+            let lane = app.lane_bounds[&track];
+            let start = lane.min + Vec2::new(20.0, 12.0);
+            let end = start + Vec2::new(140.0, 0.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end)],
+                Vec2::new(1280.0, 800.0),
+            );
+            assert!(has_fill(&shapes, colors.body.gamma_multiply(0.75)));
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment {stroke, ..} if stroke.color == colors.waveform.gamma_multiply(0.75))));
+            assert!(has_preview_outline(
+                &shapes,
+                app.clip_block(lane, &clip, frames(2.0)),
+                theme::ACCENT
+            ));
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert_eq!(app.session.project.tracks[0].clips[0].color, custom);
+            app.edit(Edit::SetTrackColor {
+                track_id: track,
+                color: daw_core::LEGACY_CLIP_COLOR,
+            });
+            app.edit(Edit::SetClipColor {
+                clip_id,
+                color: None,
+            });
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            for color in [theme::CLIP, theme::CLIP_HEADER, theme::CLIP_CHANNEL] {
+                assert!(has_fill(&shapes, color));
+            }
+            app.session.audio.clear();
+            app.edit(Edit::SetClipColor {
+                clip_id,
+                color: custom,
+            });
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            assert!(has_fill(&shapes, theme::MISSING));
+        }
+    }
+
+    #[test]
+    fn clip_color_inheritance_follows_track_changes_moves_and_file_drops() {
+        let source = TestWav::new();
+        let audio = daw_media::decode_wav(&source.0).unwrap();
+        let first_color = daw_core::RgbColor {
+            r: 120,
+            g: 55,
+            b: 80,
+        };
+        let second_color = daw_core::RgbColor {
+            r: 40,
+            g: 105,
+            b: 62,
+        };
+        let changed_color = daw_core::RgbColor {
+            r: 85,
+            g: 80,
+            b: 145,
+        };
+        for override_color in [
+            None,
+            Some(daw_core::RgbColor {
+                r: 160,
+                g: 75,
+                b: 30,
+            }),
+        ] {
+            let (mut app, first) = fixture();
+            let second = app.session.project.add_track().unwrap();
+            app.session.project.tracks[0].color = first_color;
+            app.session.project.tracks[1].color = second_color;
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.color = override_color;
+            clip.length_frames = 48000;
+            let clip = clip.clone();
+            app.session.audio.insert(clip.asset_id, audio.clone());
+            let ctx = context();
+            let size = Vec2::new(1280.0, 800.0);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+            let has_clip_fill = |shapes: &[egui::epaint::ClippedShape], block, color| {
+                shapes.iter().any(|shape| {
+                    matches!(&shape.shape, egui::Shape::Rect(rect)
+                    if rect.rect == block && rect.fill == color)
+                })
+            };
+            let first_lane = app.lane_bounds[&first];
+            let second_lane = app.lane_bounds[&second];
+            let start = first_lane.min + Vec2::new(20.0, 12.0);
+            let end = Pos2::new(start.x + 140.0, second_lane.top() + 12.0);
+            assert!(has_clip_fill(
+                &shapes,
+                app.clip_block(first_lane, &clip, 0),
+                theme::clip_colors(first_color, override_color).body
+            ));
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let shapes = frame_shapes(&mut app, &ctx, vec![egui::Event::PointerMoved(end)], size);
+            let block = app.clip_block(second_lane, &clip, frames(2.0));
+            assert!(has_clip_fill(
+                &shapes,
+                block,
+                theme::clip_colors(second_color, override_color)
+                    .body
+                    .gamma_multiply(0.75)
+            ));
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert!(app.session.project.tracks[0].clips.is_empty());
+            assert_eq!(app.session.project.tracks[1].clips[0].color, override_color);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+            assert!(has_clip_fill(
+                &shapes,
+                block,
+                theme::clip_colors(second_color, override_color).body
+            ));
+            app.edit(Edit::SetTrackColor {
+                track_id: second,
+                color: changed_color,
+            });
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+            assert!(has_clip_fill(
+                &shapes,
+                block,
+                theme::clip_colors(changed_color, override_color).body
+            ));
+            assert_eq!(app.session.project.tracks[1].clips[0].color, override_color);
+
+            let point = Pos2::new(second_lane.left() - 20.0, second_lane.center().y);
+            let new_block = app.clip_block(second_lane, &clip, 0);
+            let inherited = theme::clip_colors(changed_color, None);
+            let loading = file_frame(&mut app, &ctx, &source.0, point, false);
+            assert!(loading.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                if rect.rect.left_top() == second_lane.left_top() && rect.fill == inherited.body.gamma_multiply(0.75))));
+            let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
+            assert!(has_clip_fill(
+                &shapes,
+                new_block,
+                inherited.body.gamma_multiply(0.75)
+            ));
+            file_frame(&mut app, &ctx, &source.0, point, true);
+            finish_import(&mut app, &ctx);
+            assert!(app.error.is_none());
+            let imported = app.session.project.tracks[1]
+                .clips
+                .iter()
+                .find(|c| c.id != clip.id)
+                .unwrap();
+            assert_eq!(imported.color, None);
+            assert_eq!(imported.start_frame, 0);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+            assert!(has_clip_fill(&shapes, new_block, inherited.body));
+        }
+    }
+
+    #[test]
     fn clip_trim_preview_shows_the_waveform_and_matches_the_committed_range() {
         let source = TestWav::new();
         let audio = daw_media::decode_wav(&source.0).unwrap();
@@ -4607,7 +4888,7 @@ mod tests {
                 assert_eq!(preview.clip.length_frames, frames(0.25));
                 let block = app.clip_block(lane, &preview.clip, preview.clip.start_frame);
                 assert!(has_preview_outline(&shapes, block, theme::ACCENT));
-                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == theme::WAVEFORM.gamma_multiply(0.75))));
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == theme::clip_colors(app.session.project.tracks[0].color, None).waveform.gamma_multiply(0.75))));
                 let unchanged = &app.session.project.tracks[0].clips[0];
                 assert_eq!(
                     (

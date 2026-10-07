@@ -302,6 +302,7 @@ mod tests {
             id: Id::new_v4(),
             asset_id: id,
             name: "Test".into(),
+            color: None,
             start_frame: 0,
             source_offset_frame: 0,
             length_frames: 2000,

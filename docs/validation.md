@@ -278,3 +278,19 @@ All 49 UI tests and strict Clippy checks for UI and desktop pass. Pointer tests 
 ## Ruler line heights
 
 Bar lines now extend through both ruler bands to the top of the header. Beat lines extend through the lower tick band and stop at the bottom of the upper loop band. Subdivision ticks retain their short height. All 49 UI tests and strict Clippy checks for UI and desktop pass. The macOS debug bundle is rebuilt.
+
+## Shared accent value
+
+`theme::ACCENT` is the single accent value. Selected control fills and active/inactive ruler selection fills now derive from it by blending with neutral theme surfaces. Accent strokes, knob arcs, playheads, and handles already use that shared value. The accent remains #7536A0; the derived fills retain similar muted shades. All 49 UI tests and strict Clippy checks for UI and desktop pass. The macOS debug bundle is rebuilt.
+
+## Track and clip color support
+
+Every track stores an opaque RGB color for its clips, initialized from the hardcoded #2B5163 default. Older manifests without track colors receive that default; null track colors are rejected. Clips inherit their containing track's color unless they have an explicit RGB override. Track panels keep the neutral background. The default retains the exact existing blue palette. Core edit commands support future color controls. The clip renderer and all drag previews share one resolved palette, with derived header/channel shades and contrasting text and waveform colors. Moves use the destination track's color for inheriting clips and preserve explicit overrides. File-drop previews inherit the target track's color, including their loading placeholder. Missing sources keep their gray warning appearance.
+
+All 74 workspace tests and strict workspace Clippy checks pass. Persistence tests cover save/reopen, older manifests, reset to defaults, invalid RGB values, required track colors, clip overrides, transactional errors, override preservation during move/trim/split, and unchanged audio. Shape tests cover current defaults, dark and light clip overrides, neutral track panels, inherited colors, headers, stereo channel fills, text, waveforms, move previews, committed colors, reset, and missing sources. Pointer tests verify inheritance and overrides across track moves and subsequent track color edits, plus loading/decoded file-drop previews and imported clips. The macOS debug bundle is rebuilt.
+
+## Material 400 track defaults
+
+New tracks cycle through the 16 Material Design 400 colors from Deep Orange to Red, in the requested right-to-left order. Assignment uses the track count before creation and repeats after 16 hues. Existing tracks retain their assigned colors when tracks are added or deleted. Projects without saved track colors receive the palette by display position; saved colors and clip overrides remain intact. The original saved blue retains its existing palette. New-track file-drop previews use the same next-color calculation as import. Track panels and the app accent remain unchanged.
+
+All 76 workspace tests and strict workspace Clippy checks pass. Added checks cover two palette cycles, the first/second/last hues, color stability after deletion, mixed missing/saved/legacy colors, save/reopen, and continuation after loading. File-drop shape checks confirm that first and second new-track previews match their committed colors. Existing inheritance, override, drag, trim, invalid RGB, and audio checks pass. The macOS debug bundle is rebuilt.
