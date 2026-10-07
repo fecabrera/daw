@@ -1,4 +1,4 @@
-use daw_core::{DEFAULT_TRACK_COLOR, Edit, Project, RgbColor, default_track_color};
+use daw_core::{ClipLoop, DEFAULT_TRACK_COLOR, Edit, Project, RgbColor, default_track_color};
 use daw_project::Session;
 use std::{fs, path::PathBuf};
 
@@ -132,7 +132,8 @@ fn edit_rejection_is_transactional_and_split_preserves_ranges() {
                 track_id: track,
                 start: 1,
                 offset: 0,
-                length: 4800
+                length: 4800,
+                repeat: None
             })
             .is_err()
     );
@@ -213,6 +214,7 @@ fn display_colors_persist_and_survive_clip_edits_without_changing_audio() {
             start: 100,
             offset: 100,
             length: 4600,
+            repeat: None,
         })
         .unwrap();
     loaded
@@ -374,6 +376,181 @@ fn missing_track_colors_get_the_palette_order_and_saved_colors_are_preserved() {
     );
     loaded.project.add_track().unwrap();
     assert_eq!(loaded.project.tracks[18].color, default_track_color(18));
+}
+
+#[test]
+fn clip_repeats_save_reopen_move_split_and_export_without_copying_audio() {
+    let f = Fixture::new();
+    let source = f.wav("repeat.wav", 48000, 2, 24, false);
+    let mut session = Session::default();
+    let id = session.import(&source, None, 0).unwrap();
+    let track = session.project.tracks[0].id;
+    let asset = session.project.tracks[0].clips[0].asset_id;
+    let samples = session.audio[&asset].samples.clone();
+    let repeat = ClipLoop {
+        length_frames: 2000,
+        phase_frame: 700,
+    };
+    session
+        .project
+        .edit(Edit::Place {
+            clip_id: id,
+            track_id: track,
+            start: 100,
+            offset: 1000,
+            length: 7500,
+            repeat: Some(repeat),
+        })
+        .unwrap();
+    let original = session.project.tracks[0].clips[0].clone();
+    session.save(&f.0.join("project")).unwrap();
+    let mut loaded = Session::open(&f.0.join("project")).unwrap();
+    let clip = &loaded.project.tracks[0].clips[0];
+    assert_eq!(clip.repeat, Some(repeat));
+    assert_eq!(clip.length_frames, 7500);
+    assert_eq!(clip.source_frame(2000), 1700);
+    session.export(&f.0.join("one.wav"), false).unwrap();
+    loaded.export(&f.0.join("two.wav"), false).unwrap();
+    assert_eq!(
+        fs::read(f.0.join("one.wav")).unwrap(),
+        fs::read(f.0.join("two.wav")).unwrap()
+    );
+    assert_eq!(
+        hound::WavReader::open(f.0.join("one.wav"))
+            .unwrap()
+            .duration(),
+        7600
+    );
+    let destination = loaded.project.add_track().unwrap();
+    loaded
+        .project
+        .edit(Edit::Place {
+            clip_id: id,
+            track_id: destination,
+            start: 100,
+            offset: 1000,
+            length: 7500,
+            repeat: Some(repeat),
+        })
+        .unwrap();
+    loaded
+        .project
+        .edit(Edit::Split {
+            clip_id: id,
+            at: 2600,
+        })
+        .unwrap();
+    let right = loaded.project.tracks[1]
+        .clips
+        .iter()
+        .find(|c| c.start_frame == 2600)
+        .unwrap();
+    assert_eq!(right.source_offset_frame, 1000);
+    assert_eq!(right.repeat.unwrap().phase_frame, 1200);
+    for local in 0..right.length_frames {
+        assert_eq!(
+            right.source_frame(local),
+            original.source_frame(local + 2500)
+        );
+    }
+    assert_eq!(loaded.project.assets.len(), 1);
+    assert!(std::sync::Arc::ptr_eq(
+        &session.audio[&asset].samples,
+        &samples
+    ));
+    let older =
+        serde_json::to_value(&Session::open(&f.0.join("project")).unwrap().project).unwrap();
+    let mut older = older;
+    older["tracks"][0]["clips"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("repeat");
+    older["tracks"][0]["clips"][0]["length_frames"] = serde_json::json!(2000);
+    let older: Project = serde_json::from_value(older).unwrap();
+    older.validate().unwrap();
+    assert_eq!(older.tracks[0].clips[0].repeat, None);
+}
+
+#[test]
+fn invalid_clip_repeats_and_overlaps_are_rejected_transactionally() {
+    let f = Fixture::new();
+    let source = f.wav("repeat-bounds.wav", 48000, 1, 16, false);
+    let mut session = Session::default();
+    let id = session.import(&source, None, 0).unwrap();
+    let track = session.project.tracks[0].id;
+    session.import(&source, Some(track), 6000).unwrap();
+    let before = serde_json::to_value(&session.project).unwrap();
+    for (start, offset, length, repeat) in [
+        (
+            0,
+            0,
+            5500,
+            ClipLoop {
+                length_frames: 0,
+                phase_frame: 0,
+            },
+        ),
+        (
+            0,
+            0,
+            5500,
+            ClipLoop {
+                length_frames: 1000,
+                phase_frame: 1000,
+            },
+        ),
+        (
+            0,
+            4000,
+            5500,
+            ClipLoop {
+                length_frames: 1000,
+                phase_frame: 0,
+            },
+        ),
+        (
+            0,
+            u64::MAX,
+            5500,
+            ClipLoop {
+                length_frames: 1000,
+                phase_frame: 0,
+            },
+        ),
+        (
+            u64::MAX - 10,
+            0,
+            100,
+            ClipLoop {
+                length_frames: 1000,
+                phase_frame: 0,
+            },
+        ),
+        (
+            0,
+            0,
+            6500,
+            ClipLoop {
+                length_frames: 1000,
+                phase_frame: 0,
+            },
+        ),
+    ] {
+        assert!(
+            session
+                .project
+                .edit(Edit::Place {
+                    clip_id: id,
+                    track_id: track,
+                    start,
+                    offset,
+                    length,
+                    repeat: Some(repeat)
+                })
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+    }
 }
 
 #[test]

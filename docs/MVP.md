@@ -136,7 +136,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - If no track is soloed, play all tracks that are not muted.
 - Use the same mute/solo rules for playback and export.
 - Retain floating-point headroom within the mixer. Show a clipping indicator when the master signal exceeds the output range; clamp only at the final device output and integer WAV export. Do not apply automatic normalization or a limiter in the MVP.
-- Apply 5 ms linear fades at clip starts and ends. For clips shorter than 10 ms, shorten each fade to half the clip duration so the fades do not overlap.
+- Apply 5 ms linear fades at clip starts and ends, and at repeat boundaries within looped clips. For ranges shorter than 10 ms, shorten each fade to half the range duration so the fades do not overlap.
 - Smooth live gain, pan/balance, mute, and solo transitions to avoid clicks.
 
 ## Project storage
@@ -226,7 +226,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - source.kind is external for the MVP. Reserve an included variant for future project-owned sources. path_kind distinguishes relative and absolute paths; resolve relative paths from the project folder.
 - Clips reference assets by ID. More than one clip can use the same asset without duplicating its source record.
 - Preserve asset metadata and clip ranges when sources are missing. Calculate missing-source status when opening the project; do not persist it as a flag.
-- Clip ranges use an inclusive start and exclusive end. Require nonnegative integer positions, positive clip lengths, and source_offset_frame + length_frames no greater than decoded_frame_count.
+- Clip ranges use an inclusive start and exclusive end. Require nonnegative integer positions, positive clip lengths, and checked timeline ends. Normal clips require source_offset_frame + length_frames no greater than decoded_frame_count. Looped clips store an optional `repeat` object with positive `length_frames` and `phase_frame` less than that length. The source offset plus repeat length must fit saved decoded bounds; the visible clip length can extend beyond them. Map local frames through the saved repeat phase and length. Missing or null `repeat` fields retain normal clip behavior; omit unset repeats when saving. Moves and splits preserve the repeat base, with splits advancing the right piece's phase.
 - Permit any track count. Require unique IDs, valid asset references, and no same-track clip overlap. Enabled loops require end_frame greater than start_frame.
 - Do not store decoded PCM, waveform caches, output device settings, or active playback state in the manifest. Open projects stopped at the saved playhead position.
 - Keep the fixed MVP pan law, fades, export format, and dither policy in the application's MVP defaults. Add explicit settings when they become configurable.
@@ -254,8 +254,10 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 
 - Do not provide timeline snapping in the MVP. Clip placement, trimming, and selections use sample-based positions without snapping to a grid or clip boundaries.
 - Clips on the same track must not overlap. Clips on different tracks may overlap in time.
-- Reject imports, moves, and trims that would create overlap; retain the previous valid placement and give clear feedback.
-- Show a translucent clip preview while moving, including across tracks. Clamp movement at frame zero. The preview and dropped clip must use the same position. Both trim edges show the proposed waveform and range. Clamp trims to available source audio, valid timeline bounds, and at least one sample; preview and release use the same range.
+- Reject imports, moves, trims, and clip loop resizes that would create overlap; retain the previous valid placement and give clear feedback.
+- Show a translucent clip preview while moving, including across tracks. Clamp movement at frame zero. The preview and dropped clip must use the same position. Both trim edges below the header show the proposed waveform and range. Clamp normal trims to available source audio, valid timeline bounds, and at least one sample; looped clips can trim inward within their current visible range while retaining the repeat base. Preview and release use the same range.
+- Drag either header edge to repeat the clip's current trimmed range, using its current length as the base on the first resize. Retain that base for later resizes. Keep the opposite endpoint fixed, allow partial repeats above the base length, clamp to valid timeline bounds and a minimum of the base length, and preserve existing audio timing when extending left. A clip already shorter than its base after a split or body trim retains its current length as the minimum. Show a repeated waveform preview and repeat boundary markers. Commit only on release; cancellation and unchanged clamped releases must not modify the project. Reuse source samples for waveforms, playback, and export.
+- When boundary resizing returns a loop to its base length, clear the repeat flag and restore its original trimmed source range, even when opposite-edge resizing has shifted the phase. For contiguous partial ranges, advance source offset by phase and clear the repeat flag. Restore normal body trimming into the original source bounds. Apply the same restoration before body trimming previously saved clips at their base length or with contiguous partial ranges. Preserve repeat data for other ranges that cross a repeat boundary. Keep timeline placement and source references unchanged.
 - Preview WAV files dragged into the timeline at the hovered track and sample position. Load the waveform in the background without changing the project. Reuse prepared audio on drop; empty timeline drops create a track. Cancelled hovers and invalid drops leave the project unchanged.
 - Clips may touch at their boundaries. Missing-source placeholders reserve their existing time ranges under the same placement rules.
 - Project validation must detect same-track overlap, including in headless mode.

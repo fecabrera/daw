@@ -141,6 +141,7 @@ impl Session {
             start_frame: start,
             source_offset_frame: 0,
             length_frames: data.samples.len() as u64,
+            repeat: None,
         });
         next.assets.push(Asset {
             id: asset_id,

@@ -24,11 +24,11 @@ impl RenderPlan {
                     continue;
                 };
                 let local = frame - c.start_frame;
-                let Some(source) = audio.samples.get((c.source_offset_frame + local) as usize)
-                else {
+                let source_frame = c.source_frame(local);
+                let Some(source) = audio.samples.get(source_frame as usize) else {
                     continue;
                 };
-                let fade = clip_fade(local, c.length_frames);
+                let fade = sample_fade(c, local, source_frame);
                 let coefficients = pan_coefficients(t.pan, audio.metadata.channels == 1);
                 for ch in 0..2 {
                     mix[ch] += source[ch] * gain * fade * coefficients[ch];
@@ -44,6 +44,16 @@ impl RenderPlan {
         }
     }
 }
+fn sample_fade(clip: &daw_core::Clip, local: u64, source_frame: u64) -> f32 {
+    let outer = clip_fade(local, clip.length_frames);
+    clip.repeat.map_or(outer, |repeat| {
+        outer.min(clip_fade(
+            source_frame - clip.source_offset_frame,
+            repeat.length_frames,
+        ))
+    })
+}
+
 pub fn clip_fade(position: u64, length: u64) -> f32 {
     let fade = 240.min(length / 2);
     if fade == 0 {
@@ -224,9 +234,10 @@ impl Renderer {
                         continue;
                     };
                     let local = self.playhead - c.start_frame;
-                    if let Some(s) = audio.samples.get((c.source_offset_frame + local) as usize) {
+                    let source_frame = c.source_frame(local);
+                    if let Some(s) = audio.samples.get(source_frame as usize) {
                         let base = if audio.metadata.channels == 1 { 0 } else { 2 };
-                        let fade = clip_fade(local, c.length_frames);
+                        let fade = sample_fade(c, local, source_frame);
                         for ch in 0..2 {
                             let sample = s[ch] * g.value[base + ch] * fade;
                             mix[ch] += sample;
@@ -306,6 +317,7 @@ mod tests {
             start_frame: 0,
             source_offset_frame: 0,
             length_frames: 2000,
+            repeat: None,
         });
         RenderPlan {
             project,
@@ -319,6 +331,45 @@ mod tests {
             )]),
         }
     }
+    #[test]
+    fn repeated_clip_playback_and_render_share_the_trimmed_source_and_fades() {
+        let mut plan = plan();
+        let id = plan.project.tracks[0].clips[0].asset_id;
+        let samples = (0..2000)
+            .map(|frame| [frame as f32 / 2000.0, -(frame as f32) / 4000.0])
+            .collect::<Vec<_>>();
+        plan.audio.get_mut(&id).unwrap().samples = std::sync::Arc::new(samples);
+        let original = plan.audio[&id].samples.clone();
+        for phase in [0, 375] {
+            let clip = &mut plan.project.tracks[0].clips[0];
+            clip.source_offset_frame = 400;
+            clip.length_frames = 4250;
+            clip.repeat = Some(daw_core::ClipLoop {
+                length_frames: 1000,
+                phase_frame: phase,
+            });
+            plan.project.validate().unwrap();
+            let mut renderer = Renderer::new(plan.clone());
+            renderer.play();
+            renderer.ramp = 1.0;
+            let mut exported = vec![[0.0; 2]; 4250];
+            plan.render(0, &mut exported);
+            for (local, actual) in exported.iter().enumerate() {
+                let position = (local + phase as usize) % 1000;
+                let fade = clip_fade(position as u64, 1000).min(clip_fade(local as u64, 4250));
+                let expected = original[400 + position].map(|sample| sample * fade);
+                assert_eq!(*actual, expected);
+                assert_eq!(renderer.next_sample(), expected);
+            }
+            assert_eq!(renderer.next_sample(), [0.0; 2]);
+            assert!(!renderer.playing);
+            assert!(std::sync::Arc::ptr_eq(&plan.audio[&id].samples, &original));
+            plan.audio.clear();
+            assert_eq!(plan.sample_at(1000), [0.0; 2]);
+            plan.audio.insert(id, renderer.plan.audio[&id].clone());
+        }
+    }
+
     #[test]
     fn transport_pauses_at_position_wraps_and_stops_at_end() {
         let mut renderer = Renderer::new(plan());

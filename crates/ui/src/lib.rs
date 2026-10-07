@@ -20,6 +20,7 @@ pub mod panels;
 pub mod rows;
 pub mod theme;
 pub mod toolbars;
+mod waveforms;
 
 const TRACK_WIDTH: f32 = 250.0;
 const ROW_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE + 14.0;
@@ -353,8 +354,36 @@ fn monitor_drag_position(
 struct Drag {
     clip: Clip,
     track: Id,
-    mode: u8,
+    mode: ClipDragMode,
     origin: Pos2,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ClipDragMode {
+    Move,
+    TrimLeft,
+    TrimRight,
+    LoopLeft,
+    LoopRight,
+    Body,
+}
+
+impl ClipDragMode {
+    fn at(block: Rect, pointer: Pos2) -> Self {
+        let left = (pointer.x - block.left()).abs();
+        let right = (pointer.x - block.right()).abs();
+        if left.min(right) < 8.0 {
+            match (pointer.y < block.top() + 22.0, left <= right) {
+                (true, true) => Self::LoopLeft,
+                (true, false) => Self::LoopRight,
+                (false, true) => Self::TrimLeft,
+                (false, false) => Self::TrimRight,
+            }
+        } else if pointer.y < block.top() + 26.0 {
+            Self::Move
+        } else {
+            Self::Body
+        }
+    }
 }
 struct ClipPreview {
     track: Id,
@@ -2109,28 +2138,43 @@ impl DawUi {
             .map_or(drag.track, |track| track.id)
     }
     fn clip_drag_preview(&self, drag: &Drag, pointer: Pos2) -> Option<ClipPreview> {
-        if drag.mode > 2 {
+        if drag.mode == ClipDragMode::Body {
             return None;
         }
-        let track = if drag.mode == 0 {
+        let track = if drag.mode == ClipDragMode::Move {
             self.drag_destination(drag, pointer)
         } else {
             drag.track
         };
         self.lane_bounds.get(&track)?;
         let mut clip = drag.clip.clone();
+        if matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight) {
+            // Also restore trimming for clips saved with an unnecessary loop flag.
+            clip.restore_source_range();
+        }
         let delta = i128::from(self.drag_delta(drag, pointer));
         let start = i128::from(clip.start_frame);
         let offset = i128::from(clip.source_offset_frame);
         let length = i128::from(clip.length_frames);
+        // A split or body trim can already be shorter than its saved repeat base.
+        // Keep that range intact rather than extending it on an inward header drag.
+        let loop_minimum = clip.repeat.map_or(length, |repeat| {
+            length.min(i128::from(repeat.length_frames))
+        });
         match drag.mode {
-            1 => {
+            ClipDragMode::TrimLeft if clip.repeat.is_some() => {
+                let delta = delta.clamp(0, length - 1);
+                clip.start_frame = (start + delta) as u64;
+                clip.length_frames = (length - delta) as u64;
+                clip.repeat = clip.repeat.map(|repeat| repeat.shifted(delta));
+            }
+            ClipDragMode::TrimLeft => {
                 let delta = delta.clamp(-offset.min(start), length - 1);
                 clip.start_frame = (start + delta) as u64;
                 clip.source_offset_frame = (offset + delta) as u64;
                 clip.length_frames = (length - delta) as u64;
             }
-            2 => {
+            ClipDragMode::TrimRight => {
                 let source_length = i128::from(
                     self.session
                         .project
@@ -2139,10 +2183,48 @@ impl DawUi {
                         .find(|asset| asset.id == clip.asset_id)?
                         .decoded_frame_count,
                 );
-                let maximum = (source_length - offset).min(i128::from(u64::MAX) - start);
+                let maximum = if clip.repeat.is_some() {
+                    length
+                } else {
+                    (source_length - offset).min(i128::from(u64::MAX) - start)
+                };
                 clip.length_frames = (length + delta).clamp(1, maximum) as u64;
             }
+            ClipDragMode::LoopLeft => {
+                let delta = delta.clamp(-start, length - loop_minimum);
+                if delta != 0 {
+                    let repeat = clip.repeat.unwrap_or(daw_core::ClipLoop {
+                        length_frames: clip.length_frames,
+                        phase_frame: 0,
+                    });
+                    clip.start_frame = (start + delta) as u64;
+                    clip.length_frames = (length - delta) as u64;
+                    clip.repeat = Some(repeat.shifted(delta));
+                }
+            }
+            ClipDragMode::LoopRight => {
+                let new_length =
+                    (length + delta).clamp(loop_minimum, i128::from(u64::MAX) - start) as u64;
+                if new_length != clip.length_frames {
+                    clip.repeat = Some(clip.repeat.unwrap_or(daw_core::ClipLoop {
+                        length_frames: clip.length_frames,
+                        phase_frame: 0,
+                    }));
+                    clip.length_frames = new_length;
+                }
+            }
             _ => clip.start_frame = self.move_start(drag, pointer),
+        }
+        if matches!(
+            drag.mode,
+            ClipDragMode::LoopLeft
+                | ClipDragMode::LoopRight
+                | ClipDragMode::TrimLeft
+                | ClipDragMode::TrimRight
+        ) && (clip.start_frame != drag.clip.start_frame
+            || clip.length_frames != drag.clip.length_frames)
+        {
+            clip.restore_source_range();
         }
         let valid = self.placement_valid(
             Some(track),
@@ -2245,6 +2327,7 @@ impl DawUi {
                 || frames(120.0 / f64::from(self.zoom)),
                 |audio| audio.samples.len() as u64,
             ),
+            repeat: None,
         };
         let valid = match &hover.audio {
             Some(Ok(_)) => {
@@ -2344,11 +2427,12 @@ impl DawUi {
             ),
             StrokeKind::Inside,
         );
-        ui.ctx().set_cursor_icon(if drag.mode == 0 {
-            egui::CursorIcon::Grabbing
-        } else {
-            egui::CursorIcon::ResizeHorizontal
-        });
+        ui.ctx()
+            .set_cursor_icon(if drag.mode == ClipDragMode::Move {
+                egui::CursorIcon::Grabbing
+            } else {
+                egui::CursorIcon::ResizeHorizontal
+            });
     }
     fn paint_clip(
         &self,
@@ -2424,33 +2508,14 @@ impl DawUi {
                     let local = ((pixel as f32 - body.left()) / self.zoom
                         * f64::from(daw_core::SAMPLE_RATE) as f32)
                         .max(0.0) as u64;
-                    let offset = clip.source_offset_frame + local;
                     let samples_per_pixel = f64::from(daw_core::SAMPLE_RATE) / f64::from(self.zoom);
-                    let lo = (offset / 256) as usize;
-                    let hi = ((offset + samples_per_pixel.ceil() as u64) / 256) as usize;
-                    let mut min = 0.0_f32;
-                    let mut max = 0.0_f32;
-                    if samples_per_pixel < 256.0 {
-                        for s in audio
-                            .samples
-                            .iter()
-                            .skip(offset as usize)
-                            .take(samples_per_pixel.ceil() as usize + 1)
-                        {
-                            min = min.min(s[channel]);
-                            max = max.max(s[channel]);
-                        }
-                    } else {
-                        for p in audio
-                            .peaks
-                            .iter()
-                            .skip(lo)
-                            .take((hi - lo + 1).min(audio.peaks.len()))
-                        {
-                            min = min.min(p[channel][0]);
-                            max = max.max(p[channel][1]);
-                        }
-                    }
+                    let [min, max] = waveforms::extrema(
+                        audio,
+                        clip,
+                        local,
+                        samples_per_pixel.ceil() as u64 + 1,
+                        channel,
+                    );
                     clip_painter.line_segment(
                         [
                             Pos2::new(pixel as f32, center - max.clamp(-1.0, 1.0) * height * 0.42),
@@ -2458,6 +2523,31 @@ impl DawUi {
                         ],
                         Stroke::new(1.0_f32, colors.waveform),
                     );
+                }
+            }
+        }
+        if let Some(repeat) = clip.repeat {
+            let step = seconds(repeat.length_frames) as f32 * self.zoom;
+            if step >= 4.0 {
+                let first = repeat.length_frames - repeat.phase_frame;
+                let visible = frames(f64::from((lane.left() - block.left()).max(0.0) / self.zoom));
+                let skipped = visible.saturating_sub(first) / repeat.length_frames;
+                let mut local = first.saturating_add(skipped.saturating_mul(repeat.length_frames));
+                while local < clip.length_frames {
+                    let x = block.left() + seconds(local) as f32 * self.zoom;
+                    if x > lane.right() {
+                        break;
+                    }
+                    if x >= lane.left() {
+                        clip_painter.line_segment(
+                            [Pos2::new(x, block.top()), Pos2::new(x, block.bottom())],
+                            Stroke::new(1.0, colors.text.gamma_multiply(0.25)),
+                        );
+                    }
+                    let Some(next) = local.checked_add(repeat.length_frames) else {
+                        break;
+                    };
+                    local = next;
                 }
             }
         }
@@ -2479,7 +2569,7 @@ impl DawUi {
         }
         if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary))
             && let Some(drag) = self.drag.take()
-            && drag.mode < 3
+            && drag.mode != ClipDragMode::Body
         {
             let pointer = ui
                 .input(|input| input.pointer.latest_pos())
@@ -2487,12 +2577,17 @@ impl DawUi {
             if let Some(preview) = self.clip_drag_preview(&drag, pointer) {
                 let c = preview.clip;
                 if preview.track == drag.track
-                    && (c.start_frame, c.source_offset_frame, c.length_frames)
-                        == (
-                            drag.clip.start_frame,
-                            drag.clip.source_offset_frame,
-                            drag.clip.length_frames,
-                        )
+                    && (
+                        c.start_frame,
+                        c.source_offset_frame,
+                        c.length_frames,
+                        c.repeat,
+                    ) == (
+                        drag.clip.start_frame,
+                        drag.clip.source_offset_frame,
+                        drag.clip.length_frames,
+                        drag.clip.repeat,
+                    )
                 {
                     return;
                 }
@@ -2502,6 +2597,7 @@ impl DawUi {
                     start: c.start_frame,
                     offset: c.source_offset_frame,
                     length: c.length_frames,
+                    repeat: c.repeat,
                 });
             }
         }
@@ -2533,7 +2629,7 @@ impl DawUi {
             if self
                 .drag
                 .as_ref()
-                .is_some_and(|drag| drag.mode < 3 && drag.clip.id == clip.id)
+                .is_some_and(|drag| drag.mode != ClipDragMode::Body && drag.clip.id == clip.id)
             {
                 clip_painter.multiply_opacity(0.35);
             }
@@ -2558,25 +2654,26 @@ impl DawUi {
             if response.hovered()
                 && let Some(pos) = response.hover_pos()
             {
-                if (pos.x - block.left()).abs() < 7.0 || (pos.x - block.right()).abs() < 7.0 {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                } else if pos.y < block.top() + 26.0 {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                match ClipDragMode::at(block, pos) {
+                    ClipDragMode::LoopLeft | ClipDragMode::LoopRight => {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                        response.clone().on_hover_text("Drag to loop clip");
+                    }
+                    ClipDragMode::TrimLeft | ClipDragMode::TrimRight => {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                        response.clone().on_hover_text("Drag to trim clip");
+                    }
+                    ClipDragMode::Move => {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                    }
+                    ClipDragMode::Body => {}
                 }
             }
             if response.drag_started()
                 && let Some(pos) = response.interact_pointer_pos()
             {
                 let origin = ui.input(|i| i.pointer.press_origin()).unwrap_or(pos);
-                let mode = if (origin.x - block.left()).abs() < 8.0 {
-                    1
-                } else if (origin.x - block.right()).abs() < 8.0 {
-                    2
-                } else if origin.y < block.top() + 26.0 {
-                    0
-                } else {
-                    3
-                };
+                let mode = ClipDragMode::at(block, origin);
                 self.drag = Some(Drag {
                     clip: clip.clone(),
                     track: track_id,
@@ -2696,6 +2793,7 @@ mod tests {
             start_frame: 0,
             source_offset_frame: 0,
             length_frames: 480000,
+            repeat: None,
         });
         (app, track)
     }
@@ -4832,6 +4930,493 @@ mod tests {
     }
 
     #[test]
+    fn header_edge_drags_preview_and_commit_repeats_of_the_trimmed_clip() {
+        let source = TestWav::new();
+        let audio = daw_media::decode_wav(&source.0).unwrap();
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+            for left in [true, false] {
+                let (mut app, track) = fixture();
+                app.zoom = zoom;
+                app.scroll = scroll;
+                app.session.project.assets[0].decoded_frame_count = 48000;
+                app.session.project.assets[0].source_metadata.channels = 1;
+                let clip = &mut app.session.project.tracks[0].clips[0];
+                clip.start_frame = frames(2.0);
+                clip.source_offset_frame = frames(0.25);
+                clip.length_frames = frames(0.5);
+                let original = clip.clone();
+                app.session.audio.insert(clip.asset_id, audio.clone());
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                let lane = app.lane_bounds[&track];
+                let block = app.clip_block(lane, &original, original.start_frame);
+                let start = Pos2::new(
+                    if left {
+                        block.left() + 1.0
+                    } else {
+                        block.right() - 1.0
+                    },
+                    block.top() + 12.0,
+                );
+                // Cross into the body after pressing: the initial header hit must keep looping.
+                let end = start + Vec2::new(if left { -0.75 * zoom } else { 0.75 * zoom }, 28.0);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                let shapes = frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(end)],
+                    Vec2::new(1280.0, 800.0),
+                );
+                let preview = app
+                    .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                    .unwrap();
+                assert!(preview.valid);
+                assert_eq!(
+                    preview.clip.start_frame,
+                    frames(if left { 1.25 } else { 2.0 })
+                );
+                assert_eq!(
+                    preview.clip.source_offset_frame,
+                    original.source_offset_frame
+                );
+                assert_eq!(preview.clip.length_frames, frames(1.25));
+                assert_eq!(
+                    preview.clip.repeat,
+                    Some(daw_core::ClipLoop {
+                        length_frames: frames(0.5),
+                        phase_frame: frames(if left { 0.25 } else { 0.0 }),
+                    })
+                );
+                if left {
+                    for local in [0, 1, frames(0.25), frames(0.5) - 1] {
+                        assert_eq!(
+                            preview.clip.source_frame(local + frames(0.75)),
+                            original.source_frame(local)
+                        );
+                    }
+                }
+                let block = app.clip_block(lane, &preview.clip, preview.clip.start_frame);
+                assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                let colors = theme::clip_colors(app.session.project.tracks[0].color, None);
+                let extension_x = if left {
+                    block.left() + 5.0
+                } else {
+                    block.right() - 5.0
+                };
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::LineSegment { points, stroke } if stroke.color == colors.waveform.gamma_multiply(0.75)
+                        && (points[0].x - extension_x).abs() < 2.0 && points[0].y != points[1].y)));
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::LineSegment { points, stroke } if stroke.color == colors.text.gamma_multiply(0.25).gamma_multiply(0.75)
+                        && points[0].y == block.top() && points[1].y == block.bottom())));
+                assert_eq!(app.session.project.tracks[0].clips[0].repeat, None);
+                assert!(!app.dirty);
+                frame(&mut app, &ctx, vec![button(end, false)]);
+                let placed = &app.session.project.tracks[0].clips[0];
+                assert_eq!(placed.start_frame, preview.clip.start_frame);
+                assert_eq!(placed.length_frames, preview.clip.length_frames);
+                assert_eq!(placed.repeat, preview.clip.repeat);
+                assert!(std::sync::Arc::ptr_eq(
+                    &app.session.audio[&placed.asset_id].samples,
+                    &audio.samples
+                ));
+                assert!(app.dirty);
+                assert!(app.error.is_none());
+                app.session.project.validate().unwrap();
+
+                let again = Drag {
+                    clip: placed.clone(),
+                    track,
+                    mode: ClipDragMode::LoopRight,
+                    origin: end,
+                };
+                let resized = app
+                    .clip_drag_preview(&again, end + Vec2::new(zoom, 0.0))
+                    .unwrap();
+                assert_eq!(resized.clip.length_frames, frames(2.25));
+                assert_eq!(resized.clip.repeat, placed.repeat);
+                let trim = Drag {
+                    mode: ClipDragMode::TrimLeft,
+                    ..again
+                };
+                let trimmed = app
+                    .clip_drag_preview(&trim, end + Vec2::new(0.25 * zoom, 0.0))
+                    .unwrap();
+                assert_eq!(trimmed.clip.source_offset_frame, placed.source_offset_frame);
+                assert_eq!(trimmed.clip.repeat.unwrap().length_frames, frames(0.5));
+                assert_eq!(
+                    trimmed.clip.source_frame(0),
+                    placed.source_frame(frames(0.25))
+                );
+                assert_eq!(trimmed.clip.length_frames, frames(1.0));
+            }
+        }
+    }
+
+    #[test]
+    fn interrupted_header_loop_drags_leave_the_saved_range_unchanged() {
+        for focus_loss in [false, true] {
+            let (mut app, track) = fixture();
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.start_frame = frames(2.0);
+            clip.length_frames = frames(1.0);
+            let original = clip.clone();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&track];
+            let start = lane.min + Vec2::new(3.0 * app.zoom - 1.0, 12.0);
+            let end = start + Vec2::new(app.zoom, 0.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert!(app.drag.is_some());
+            let (sender, receiver) = mpsc::channel();
+            if focus_loss {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        focused: false,
+                        events: vec![egui::Event::WindowFocused(false)],
+                        ..Default::default()
+                    },
+                    |ui| app.show(ui),
+                );
+                output.textures_delta.clear();
+            } else {
+                app.job = Some(receiver);
+                frame(&mut app, &ctx, vec![]);
+            }
+            assert!(app.drag.is_none());
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            let clip = &app.session.project.tracks[0].clips[0];
+            assert_eq!(
+                (
+                    clip.start_frame,
+                    clip.source_offset_frame,
+                    clip.length_frames,
+                    clip.repeat
+                ),
+                (
+                    original.start_frame,
+                    original.source_offset_frame,
+                    original.length_frames,
+                    original.repeat
+                )
+            );
+            assert!(!app.dirty);
+            assert!(app.error.is_none());
+            drop(sender);
+        }
+    }
+
+    #[test]
+    fn header_loops_clamp_timeline_and_minimum_length_without_dirtying_no_ops() {
+        for (mode, start, delta, expected_start, expected_length) in [
+            (ClipDragMode::LoopLeft, frames(2.0), -20.0, 0, frames(2.5)),
+            (
+                ClipDragMode::LoopLeft,
+                frames(2.0),
+                20.0,
+                frames(2.0),
+                frames(0.5),
+            ),
+            (
+                ClipDragMode::LoopRight,
+                frames(2.0),
+                -20.0,
+                frames(2.0),
+                frames(0.5),
+            ),
+            (ClipDragMode::LoopLeft, 0, -20.0, 0, frames(0.5)),
+            (
+                ClipDragMode::LoopRight,
+                frames(2.0),
+                0.0,
+                frames(2.0),
+                frames(0.5),
+            ),
+            (
+                ClipDragMode::LoopRight,
+                u64::MAX - frames(1.0),
+                20.0,
+                u64::MAX - frames(1.0),
+                frames(1.0),
+            ),
+        ] {
+            let (mut app, track) = fixture();
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.start_frame = start;
+            clip.source_offset_frame = frames(3.0);
+            clip.length_frames = frames(0.5);
+            let original = clip.clone();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let origin = app.lane_bounds[&track].center();
+            let end = origin + Vec2::new(delta * app.zoom, 0.0);
+            app.drag = Some(Drag {
+                clip: original.clone(),
+                track,
+                mode,
+                origin,
+            });
+            let preview = app
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .unwrap();
+            assert!(preview.valid);
+            assert_eq!(preview.clip.start_frame, expected_start);
+            assert_eq!(preview.clip.length_frames, expected_length);
+            assert_eq!(
+                preview.clip.source_offset_frame,
+                original.source_offset_frame
+            );
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end), button(end, false)],
+            );
+            let placed = &app.session.project.tracks[0].clips[0];
+            assert_eq!(placed.start_frame, expected_start);
+            assert_eq!(placed.length_frames, expected_length);
+            assert_eq!(placed.repeat, preview.clip.repeat);
+            let changed = expected_start != start || expected_length != original.length_frames;
+            assert_eq!(app.dirty, changed);
+            assert_eq!(placed.repeat.is_some(), changed);
+            app.session.project.validate().unwrap();
+        }
+    }
+
+    #[test]
+    fn repeated_clip_header_edges_stop_at_the_base_length_in_preview_and_release() {
+        for left in [true, false] {
+            for initial in [frames(0.25), frames(0.5), frames(1.25)] {
+                let (mut app, track) = fixture();
+                let clip = &mut app.session.project.tracks[0].clips[0];
+                clip.start_frame = frames(2.0);
+                clip.source_offset_frame = frames(3.0);
+                clip.length_frames = initial;
+                clip.repeat = Some(daw_core::ClipLoop {
+                    length_frames: frames(0.5),
+                    phase_frame: frames(0.25),
+                });
+                let original = clip.clone();
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                let lane = app.lane_bounds[&track];
+                let block = app.clip_block(lane, &original, original.start_frame);
+                let start = Pos2::new(
+                    if left {
+                        block.left() + 1.0
+                    } else {
+                        block.right() - 1.0
+                    },
+                    block.top() + 12.0,
+                );
+                let end = start
+                    + Vec2::new(
+                        if left {
+                            20.0 * app.zoom
+                        } else {
+                            -20.0 * app.zoom
+                        },
+                        0.0,
+                    );
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                let shapes = frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(end)],
+                    Vec2::new(1280.0, 800.0),
+                );
+                let preview = app
+                    .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                    .unwrap();
+                let minimum = initial.min(frames(0.5));
+                assert!(preview.valid);
+                assert_eq!(preview.clip.length_frames, minimum);
+                assert_eq!(
+                    preview.clip.source_offset_frame,
+                    original.source_offset_frame
+                );
+                if left {
+                    assert_eq!(preview.clip.end(), original.end());
+                    let repeat = original
+                        .repeat
+                        .unwrap()
+                        .shifted(i128::from(initial - minimum));
+                    assert_eq!(
+                        preview.clip.repeat,
+                        if initial > minimum
+                            && (minimum == repeat.length_frames
+                                || minimum <= repeat.length_frames - repeat.phase_frame)
+                        {
+                            None
+                        } else {
+                            Some(repeat)
+                        }
+                    );
+                } else {
+                    assert_eq!(preview.clip.start_frame, original.start_frame);
+                    assert_eq!(
+                        preview.clip.repeat,
+                        if initial > minimum {
+                            None
+                        } else {
+                            original.repeat
+                        }
+                    );
+                }
+                assert!(has_preview_outline(
+                    &shapes,
+                    app.clip_block(lane, &preview.clip, preview.clip.start_frame),
+                    theme::ACCENT
+                ));
+                frame(&mut app, &ctx, vec![button(end, false)]);
+                let placed = &app.session.project.tracks[0].clips[0];
+                assert_eq!(placed.start_frame, preview.clip.start_frame);
+                assert_eq!(placed.length_frames, minimum);
+                assert_eq!(placed.repeat, preview.clip.repeat);
+                assert_eq!(app.dirty, initial > minimum);
+                assert!(app.error.is_none());
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn trimming_looping_and_returning_to_the_base_restores_full_source_extension() {
+        fn drag_edge(
+            app: &mut DawUi,
+            ctx: &egui::Context,
+            track: Id,
+            left: bool,
+            header: bool,
+            delta: f32,
+        ) {
+            frame(app, ctx, vec![]);
+            let clip = app.session.project.tracks[0].clips[0].clone();
+            let lane = app.lane_bounds[&track];
+            let block = app.clip_block(lane, &clip, clip.start_frame);
+            let start = Pos2::new(
+                if left {
+                    block.left() + 1.0
+                } else {
+                    block.right() - 1.0
+                },
+                block.top() + if header { 12.0 } else { 40.0 },
+            );
+            let end = start + Vec2::new(delta * app.zoom, 0.0);
+            frame(
+                app,
+                ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
+            let preview = app
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end)
+                .unwrap();
+            assert!(preview.valid);
+            frame(app, ctx, vec![button(end, false)]);
+            let placed = &app.session.project.tracks[0].clips[0];
+            assert_eq!(placed.start_frame, preview.clip.start_frame);
+            assert_eq!(placed.source_offset_frame, preview.clip.source_offset_frame);
+            assert_eq!(placed.length_frames, preview.clip.length_frames);
+            assert_eq!(placed.repeat, preview.clip.repeat);
+            assert!(app.error.is_none());
+            app.session.project.validate().unwrap();
+        }
+
+        let source = TestWav::new();
+        let audio = daw_media::decode_wav(&source.0).unwrap();
+        for (left, return_left) in [(false, false), (true, true), (false, true), (true, false)] {
+            let (mut app, track) = fixture();
+            app.session.project.assets[0].decoded_frame_count = 48000;
+            app.session.project.assets[0].source_metadata.channels = 1;
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.start_frame = frames(2.0);
+            clip.length_frames = frames(1.0);
+            let original = clip.clone();
+            app.session.audio.insert(clip.asset_id, audio.clone());
+            let ctx = context();
+            drag_edge(&mut app, &ctx, track, true, false, 0.25);
+            drag_edge(&mut app, &ctx, track, false, false, -0.25);
+            let trimmed = app.session.project.tracks[0].clips[0].clone();
+            assert_eq!(trimmed.source_offset_frame, frames(0.25));
+            assert_eq!(trimmed.length_frames, frames(0.5));
+            drag_edge(
+                &mut app,
+                &ctx,
+                track,
+                left,
+                true,
+                if left { -0.75 } else { 0.75 },
+            );
+            let looped = app.session.project.tracks[0].clips[0].clone();
+            assert!(looped.repeat.is_some());
+            drag_edge(
+                &mut app,
+                &ctx,
+                track,
+                return_left,
+                true,
+                if return_left { 0.75 } else { -0.75 },
+            );
+            let returned = &app.session.project.tracks[0].clips[0];
+            assert_eq!(returned.repeat, None);
+            let returned_start = if return_left {
+                looped.end() - trimmed.length_frames
+            } else {
+                looped.start_frame
+            };
+            assert_eq!(returned.start_frame, returned_start);
+            assert_eq!(returned.source_offset_frame, trimmed.source_offset_frame);
+            assert_eq!(returned.length_frames, trimmed.length_frames);
+            drag_edge(&mut app, &ctx, track, true, false, -2.0);
+            drag_edge(&mut app, &ctx, track, false, false, 2.0);
+            let restored = &app.session.project.tracks[0].clips[0];
+            assert_eq!(restored.repeat, None);
+            assert_eq!(
+                restored.start_frame,
+                returned_start - trimmed.source_offset_frame
+            );
+            assert_eq!(restored.source_offset_frame, original.source_offset_frame);
+            assert_eq!(restored.length_frames, original.length_frames);
+            assert!(std::sync::Arc::ptr_eq(
+                &app.session.audio[&restored.asset_id].samples,
+                &audio.samples
+            ));
+        }
+
+        // Previously saved base-length loops must also allow source extension.
+        for phase in [0, frames(0.25)] {
+            let (mut app, track) = fixture();
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.start_frame = frames(2.0);
+            clip.source_offset_frame = frames(3.0);
+            clip.length_frames = frames(1.0);
+            clip.repeat = Some(daw_core::ClipLoop {
+                length_frames: frames(1.0),
+                phase_frame: phase,
+            });
+            let ctx = context();
+            drag_edge(&mut app, &ctx, track, false, false, 20.0);
+            let restored = &app.session.project.tracks[0].clips[0];
+            assert_eq!(restored.repeat, None);
+            assert_eq!(restored.source_offset_frame, frames(3.0));
+            assert_eq!(restored.length_frames, frames(7.0));
+        }
+    }
+
+    #[test]
     fn clip_trim_preview_shows_the_waveform_and_matches_the_committed_range() {
         let source = TestWav::new();
         let audio = daw_media::decode_wav(&source.0).unwrap();
@@ -5025,8 +5610,8 @@ mod tests {
         }
     }
     #[test]
-    fn overlapping_clip_trim_preview_is_red_and_release_retains_the_original() {
-        for left in [true, false] {
+    fn overlapping_clip_trim_and_loop_previews_are_red_and_retain_the_original() {
+        for (left, header) in [(true, false), (false, false), (true, true), (false, true)] {
             let (mut app, track) = fixture();
             let clip = &mut app.session.project.tracks[0].clips[0];
             clip.start_frame = frames(2.0);
@@ -5049,7 +5634,7 @@ mod tests {
                 } else {
                     block.right() - 1.0
                 },
-                lane.top() + 40.0,
+                lane.top() + if header { 12.0 } else { 40.0 },
             );
             let end = start
                 + Vec2::new(
@@ -5104,6 +5689,7 @@ mod tests {
                     original.length_frames
                 )
             );
+            assert_eq!(clip.repeat, original.repeat);
             app.session.project.validate().unwrap();
         }
     }

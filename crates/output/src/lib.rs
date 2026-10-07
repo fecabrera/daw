@@ -451,6 +451,7 @@ mod tests {
             start_frame: 0,
             source_offset_frame: 0,
             length_frames: 48_000,
+            repeat: None,
         });
         RenderPlan {
             project,

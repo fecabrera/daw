@@ -160,6 +160,38 @@ pub struct Clip {
     pub start_frame: u64,
     pub source_offset_frame: u64,
     pub length_frames: u64,
+    /// Repeat this source range without duplicating the underlying audio.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat: Option<ClipLoop>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipLoop {
+    pub length_frames: u64,
+    #[serde(default)]
+    pub phase_frame: u64,
+}
+
+impl ClipLoop {
+    /// Requires a nonzero loop length and a phase within that length.
+    pub fn position(self, local: u64) -> u64 {
+        let local = local % self.length_frames;
+        let remaining = self.length_frames - self.phase_frame;
+        if local >= remaining {
+            local - remaining
+        } else {
+            local + self.phase_frame
+        }
+    }
+
+    pub fn shifted(self, frames: i128) -> Self {
+        let length = i128::from(self.length_frames);
+        Self {
+            phase_frame: ((i128::from(self.phase_frame) + frames.rem_euclid(length)) % length)
+                as u64,
+            ..self
+        }
+    }
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Transport {
@@ -190,6 +222,25 @@ impl Default for Project {
 impl Clip {
     pub fn end(&self) -> u64 {
         self.start_frame.saturating_add(self.length_frames)
+    }
+
+    /// Map a timeline position inside a validated clip to its source frame.
+    pub fn source_frame(&self, local: u64) -> u64 {
+        self.source_offset_frame + self.repeat.map_or(local, |repeat| repeat.position(local))
+    }
+
+    /// Restore the original base at one copy, or unwrap a contiguous partial range.
+    pub fn restore_source_range(&mut self) {
+        let Some(repeat) = self.repeat else {
+            return;
+        };
+        if self.length_frames == repeat.length_frames {
+            // Returning to one copy exits looping, including after opposite-edge resizes.
+            self.repeat = None;
+        } else if self.length_frames <= repeat.length_frames - repeat.phase_frame {
+            self.source_offset_frame += repeat.phase_frame;
+            self.repeat = None;
+        }
     }
 }
 pub fn linear_gain(db: f32) -> f32 {
@@ -277,10 +328,18 @@ impl Project {
                     .iter()
                     .find(|a| a.id == c.asset_id)
                     .ok_or_else(|| invalid("Clip references a missing asset record"))?;
+                if c.repeat.is_some_and(|repeat| {
+                    repeat.length_frames == 0 || repeat.phase_frame >= repeat.length_frames
+                }) {
+                    return Err(invalid("Invalid clip loop length or phase"));
+                }
+                let source_length = c
+                    .repeat
+                    .map_or(c.length_frames, |repeat| repeat.length_frames);
                 if c.length_frames == 0
                     || c.start_frame.checked_add(c.length_frames).is_none()
                     || c.source_offset_frame
-                        .checked_add(c.length_frames)
+                        .checked_add(source_length)
                         .is_none_or(|end| end > a.decoded_frame_count)
                 {
                     return Err(invalid("Clip range exceeds saved asset bounds"));
@@ -341,6 +400,7 @@ impl Project {
                 start,
                 offset,
                 length,
+                repeat,
             } => {
                 let c = next
                     .tracks
@@ -361,6 +421,7 @@ impl Project {
                     start_frame: start,
                     source_offset_frame: offset,
                     length_frames: length,
+                    repeat,
                     ..c
                 });
             }
@@ -378,8 +439,13 @@ impl Project {
                 let right = Clip {
                     id: Id::new_v4(),
                     start_frame: at,
-                    source_offset_frame: c.source_offset_frame + left_len,
+                    source_offset_frame: if c.repeat.is_some() {
+                        c.source_offset_frame
+                    } else {
+                        c.source_offset_frame + left_len
+                    },
                     length_frames: c.length_frames - left_len,
+                    repeat: c.repeat.map(|repeat| repeat.shifted(i128::from(left_len))),
                     ..c.clone()
                 };
                 c.length_frames = left_len;
@@ -410,6 +476,7 @@ pub enum Edit {
         start: u64,
         offset: u64,
         length: u64,
+        repeat: Option<ClipLoop>,
     },
     Split {
         clip_id: Id,
@@ -420,6 +487,75 @@ pub enum Edit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn restoring_source_trimming_restores_the_base_and_preserves_partial_audio_ranges() {
+        for (length, phase, restored) in [
+            (10, 0, true),
+            (10, 3, true),
+            (7, 3, true),
+            (8, 3, false),
+            (13, 0, false),
+        ] {
+            let mut clip = Clip {
+                id: Id::nil(),
+                asset_id: Id::nil(),
+                name: "Trimmed".into(),
+                color: None,
+                start_frame: 20,
+                source_offset_frame: 100,
+                length_frames: length,
+                repeat: Some(ClipLoop {
+                    length_frames: 10,
+                    phase_frame: phase,
+                }),
+            };
+            let before = clip.clone();
+            clip.restore_source_range();
+            assert_eq!(clip.repeat.is_none(), restored);
+            assert_eq!(clip.start_frame, before.start_frame);
+            assert_eq!(clip.length_frames, before.length_frames);
+            assert_eq!(
+                clip.source_offset_frame,
+                100 + if restored && length < 10 { phase } else { 0 }
+            );
+            for local in 0..length {
+                assert_eq!(
+                    clip.source_frame(local),
+                    if length == 10 {
+                        100 + local
+                    } else {
+                        before.source_frame(local)
+                    }
+                );
+            }
+            let offset = clip.source_offset_frame;
+            clip.restore_source_range();
+            assert_eq!(clip.source_offset_frame, offset);
+        }
+    }
+
+    #[test]
+    fn clip_loop_phase_wraps_in_both_directions_without_overflow() {
+        let repeat = ClipLoop {
+            length_frames: 4,
+            phase_frame: 3,
+        };
+        assert_eq!(
+            (0..8).map(|n| repeat.position(n)).collect::<Vec<_>>(),
+            [3, 0, 1, 2, 3, 0, 1, 2]
+        );
+        assert_eq!(repeat.shifted(-6).phase_frame, 1);
+        assert_eq!(repeat.shifted(10).phase_frame, 1);
+        let large = ClipLoop {
+            length_frames: u64::MAX,
+            phase_frame: u64::MAX - 1,
+        };
+        assert_eq!(large.position(1), 0);
+        assert_eq!(large.position(u64::MAX), u64::MAX - 1);
+        assert_eq!(large.shifted(i128::MAX).phase_frame, (u64::MAX - 1) / 2 - 1);
+        assert!(large.shifted(i128::MIN).phase_frame < large.length_frames);
+    }
+
     #[test]
     fn tempo_must_be_positive_and_finite() {
         let mut project = Project::default();

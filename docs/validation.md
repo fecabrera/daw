@@ -294,3 +294,35 @@ All 74 workspace tests and strict workspace Clippy checks pass. Persistence test
 New tracks cycle through the 16 Material Design 400 colors from Deep Orange to Red, in the requested right-to-left order. Assignment uses the track count before creation and repeats after 16 hues. Existing tracks retain their assigned colors when tracks are added or deleted. Projects without saved track colors receive the palette by display position; saved colors and clip overrides remain intact. The original saved blue retains its existing palette. New-track file-drop previews use the same next-color calculation as import. Track panels and the app accent remain unchanged.
 
 All 76 workspace tests and strict workspace Clippy checks pass. Added checks cover two palette cycles, the first/second/last hues, color stability after deletion, mixed missing/saved/legacy colors, save/reopen, and continuation after loading. File-drop shape checks confirm that first and second new-track previews match their committed colors. Existing inheritance, override, drag, trim, invalid RGB, and audio checks pass. The macOS debug bundle is rebuilt.
+
+## Clip header looping
+
+Dragging either header edge repeats the clip's current trimmed source range. The first resize stores the repeat length; later resizes retain it. Left extensions preserve the audio's existing timeline alignment. Partial repeats are allowed. Header interiors still move clips, and edges below the header still trim. Looped body trims shorten the visible range while retaining the base. Preview and release share the same range, phase, waveform, and overlap rules. Repeat boundaries appear in the waveform. Repeat data saves with the clip; moves and splits preserve it. Playback and export reuse decoded samples and apply the existing short fades at repeat boundaries.
+
+All 85 workspace tests pass, including documentation checks. Added pointer and shape tests cover both header edges at different zoom/scroll positions, crossing into the body during a header drag, repeat previews and committed ranges, trimmed source offsets, left phase alignment, repeat-base retention, body trimming, overlap rejection, one-frame and timeline limits, unchanged clamped releases, and cancellation on focus loss or disabled controls. Waveform tests compare cached and direct sample extrema at wrapped windows, exclude samples outside the base, and cover tiny repeats and shortened sources. Engine tests compare realtime playback and offline rendering against the trimmed source and fades. Project tests cover save/reopen, repeatable WAV export, move/split phase preservation, shared samples, older manifests, and transactional rejection of invalid repeat data and overlaps.
+
+Formatting, strict workspace Clippy, and diff checks pass. The macOS debug bundle is rebuilt. Native pointer and audible loop checks remain manual; the new interaction is verified through egui input and shape tests.
+
+## Minimum clip loop length
+
+Header loop resizing now stops at the repeat base length instead of one frame. Normal clips cannot shrink through a header drag; extended loops can shrink to one base-length copy. Both edges use this limit for preview and release while retaining the opposite endpoint and phase alignment. Clips already shorter than the base after a split or body trim retain their current length as the minimum.
+
+All 57 UI tests, formatting, strict workspace Clippy, and diff checks pass. Pointer tests cover both edges above, at, and below the base length, unchanged clamped releases, and matching preview and committed ranges. The macOS debug bundle is rebuilt.
+
+## Clip header repeat separators
+
+Repeat separators now span the header and waveform body. They use a subdued contrasting stroke so they remain visible on both surfaces and follow the clip's resolved color palette. The existing loop preview shape test verifies full-height separators for both header edges at different zoom and scroll positions. That test, formatting, strict UI Clippy, and diff checks pass. The macOS debug bundle is rebuilt.
+
+## Restore source trimming after looping
+
+Boundary resizing now clears the repeat flag when the clip becomes a single contiguous source range. It advances the source offset by the repeat phase while preserving sample mapping and timeline placement. Returning an aligned loop to its base length restores both body edges' ability to extend into the original source. Previously saved contiguous loop ranges also restore before body trimming. Ranges that still cross a repeat boundary retain their repeat data.
+
+All 88 workspace tests pass, including documentation checks. Pointer tests perform the full trim, loop, return-to-base, and source-extension sequence on both header edges, compare every preview with release, clamp both body edges at the original source bounds, and check shared audio storage. They also cover source extension on previously saved base-length loops. Core tests compare every source frame before and after restoration, preserve wrapped ranges, and verify restoration can repeat without shifting the source again.
+
+Formatting, strict workspace Clippy, and diff checks pass. The macOS debug bundle is rebuilt.
+
+## Source recovery after opposite-edge loop resizing
+
+The previous restoration missed base-length loops with a nonzero phase. Extending from one header edge and shrinking from the other reproduced the failure: the clip stayed looped and the body edge could not recover the source. Returning to exactly one base-length copy now exits looping and restores the original trimmed source range, regardless of phase. Contiguous partial ranges still preserve their sample mapping; other wrapped ranges retain repeat data.
+
+The expanded pointer regression failed before the fix and passes afterward. It covers all four extend/shrink edge combinations and source extension for saved base-length loops with zero and nonzero phases. Core checks cover restoring the original base, preserving contiguous partial and wrapped partial ranges, and repeated restoration. All 88 workspace tests, formatting, strict workspace Clippy, and diff checks pass. The macOS debug bundle is rebuilt and the empty running app is restarted with it. A temporary native project opens, but automated drags did not change either the clip or the existing zoom slider, so native pointer behavior remains unverified. The temporary project is closed afterward.
