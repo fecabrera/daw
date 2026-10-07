@@ -108,7 +108,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - Include a Tracks header and an Add track button. Keep Add track enabled regardless of the track count.
 - Place a toolbar above the timeline. Toggle Play to Pause during playback, using the corresponding Lucide icons. Include a separate Stop button.
 - Put New project, Open, Import WAV, Save, Save as, and Export WAV in the File menu. Use the native macOS menu bar and an in-window menu on Windows and Linux. Group these actions with separators and provide keyboard shortcuts.
-- Display a time ruler in seconds above the track lanes, a visible playhead, and waveforms within clips.
+- Display a bars-and-beats ruler and grid above the track lanes using project tempo and 4/4. Show a visible playhead and waveforms within clips. Include a matching bar.beat monitor beside the toolbar time display. Count bars and beats from 1; start the monitor at 0001.01.
 - Keep the track list visible during horizontal timeline scrolling. Keep track rows and timeline lanes aligned during vertical scrolling.
 - Provide timeline zoom and loop-region controls, plus master gain, peak metering, and clipping status, within the initial layout.
 - Place Master in a track-style block fixed at the bottom of the track list, above the status bar. Include master gain and L/R output monitors without Mute or Solo buttons. It is separate from the audio tracks.
@@ -387,7 +387,6 @@ Source management is also a future goal; its delivery horizon remains to be defi
 
 #### Musical Timing
 
-- Tempo-based beat and bar ruler.
 - Metronome/click.
 - Time signatures.
 

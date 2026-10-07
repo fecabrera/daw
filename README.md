@@ -37,6 +37,8 @@ Adjacent track blocks share a single 1-point horizontal divider, with no gaps or
 
 The ruler's bottom divider extends across the full workspace, including below the Tracks header. It remains visible when the project has no tracks.
 
+The ruler and grid use bars and beats at the project tempo in 4/4. Bars and beats start at 1. Bar numbers appear at normal zoom; closer zoom shows bar.beat labels, such as 2.3. Bar lines are stronger than beat lines; finer subdivisions appear as space permits. The toolbar adds a bar.beat monitor beside the time display, starting at 0001.01, with the same semibold font, digit widths, and text colors. Tempo changes update this scale and monitor without moving or stretching audio.
+
 The selection range appears at the right edge of the bottom status bar. It shows the ruler selection's start and end in seconds to two decimal places. The playback toolbar shows the playhead time.
 
 Master uses a compact 68-point outlined block with two rows: its name and gain. It stays fixed at the bottom of the track column, above the status bar. Two vertical L/R output bars fit its inner height at the right edge; their red clipping markers can be clicked to clear. It has no Mute or Solo buttons and is separate from the audio tracks. Audio tracks scroll above it.
@@ -60,7 +62,7 @@ Unsaved changes, export replacement, and error messages use one reusable applica
 - Double-click a track name to edit it in place. Enter saves the name; Esc restores the previous name. Clicking elsewhere keeps the input and draft until you return to it and press Enter or Esc.
 - Each track is 68 points tall, with its name above one control row: M, S, gain knob, gain input, pan knob, pan input. Stereo meters stay at the right edge. Adjust gain and pan with the shared knobs or numeric inputs. Gain knobs mark 0 dB at the top; pan marks center. Drag up or right to increase, hold Shift for fine adjustment, use arrow keys for small steps, or double-click to reset. Gain dragging covers -60 to +12 dB; numeric track gain entry retains its existing finite-value validation. Pan ranges from -1 to 1. Commit numeric inputs with Enter or focus loss; Escape cancels an input change.
 - Each track has two vertical L/R level bars at the right edge. Left is the first bar; Right is the second. Levels fill from the bottom; silent bars are dark. Red marks a channel that exceeded 0 dBFS before master gain. Click that channel to clear the warning. Hover to read its current peak level.
-- Use Play/Pause or Space to start, pause, and resume. Stop returns to where playback started, including after pause/resume or a seek. Click the ruler to seek. Drag the ruler's lower tick strip to select a loop range, then enable looping with the Repeat icon button. The upper time-label strip cannot edit the selection. The button is highlighted while looping is enabled.
+- Use Play/Pause or Space to start, pause, and resume. Stop returns to where playback started, including after pause/resume or a seek. Click the ruler to seek. Drag the ruler's lower tick strip to select a loop range, then enable looping with the Repeat icon button. The upper bar/beat-label strip cannot edit the selection. The button is highlighted while looping is enabled.
 - Use the zoom slider and horizontal timeline scrollbar. Drag the slider left to zoom out or right to zoom in. Clips on one track cannot overlap. There is no snapping or undo/redo.
 - Save to a project folder. Source WAV files remain external; moving the project alone does not include them.
 

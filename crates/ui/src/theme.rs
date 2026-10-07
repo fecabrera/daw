@@ -15,6 +15,7 @@ pub const SELECTION_OUTLINE: Stroke = Stroke {
 };
 pub const SELECTED: Color32 = Color32::from_rgb(46, 32, 55);
 pub const GRID: Color32 = Color32::from_rgb(40, 40, 40);
+pub const GRID_SUBDIVISION: Color32 = Color32::from_rgb(28, 28, 28);
 pub const RULER_SELECTION: Color32 = Color32::from_rgb(78, 55, 89);
 pub const RULER_SELECTION_INACTIVE: Color32 = Color32::from_rgb(41, 33, 45);
 pub const CLIP: Color32 = Color32::from_rgb(43, 81, 99);

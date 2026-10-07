@@ -14,6 +14,7 @@ pub mod fonts;
 pub mod icons;
 pub mod knobs;
 pub mod meters;
+mod musical_time;
 pub mod panels;
 pub mod rows;
 pub mod theme;
@@ -45,7 +46,10 @@ fn transport_time(frame: u64) -> String {
 }
 
 fn transport_time_label(ui: &mut egui::Ui, frame: u64) {
-    let text = transport_time(frame);
+    transport_monitor(ui, &transport_time(frame), "Time");
+}
+
+fn transport_monitor(ui: &mut egui::Ui, text: &str, tooltip: &str) {
     let font = fonts::semibold(13.0);
     // Digits share a fixed advance; unit letters and punctuation keep theirs.
     let (digit_width, field_width) = ui.fonts_mut(|fonts| {
@@ -54,8 +58,9 @@ fn transport_time_label(ui: &mut egui::Ui, frame: u64) {
             .map(|c| fonts.glyph_width(&font, c))
             .fold(0.0_f32, f32::max)
             .ceil();
-        let unit_width: f32 = "hms."
+        let unit_width: f32 = text
             .chars()
+            .filter(|character| !character.is_ascii_digit())
             .map(|c| {
                 fonts
                     .layout(c.to_string(), font.clone(), theme::TIME_UNIT, f32::INFINITY)
@@ -65,7 +70,9 @@ fn transport_time_label(ui: &mut egui::Ui, frame: u64) {
             .sum();
         (
             digit_width,
-            8.0 * digit_width + unit_width + 2.0 * f32::from(theme::TOOLBAR_PADDING),
+            text.chars().filter(char::is_ascii_digit).count() as f32 * digit_width
+                + unit_width
+                + 2.0 * f32::from(theme::TOOLBAR_PADDING),
         )
     });
     let (rect, response) = ui.allocate_exact_size(
@@ -73,7 +80,8 @@ fn transport_time_label(ui: &mut egui::Ui, frame: u64) {
         Sense::hover(),
     );
     response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), &text));
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), text));
+    response.on_hover_text(tooltip);
     let painter = ui.painter().with_clip_rect(rect);
     let mut x = rect.left() + f32::from(theme::TOOLBAR_PADDING);
     for character in text.chars() {
@@ -801,6 +809,14 @@ impl DawUi {
                 }
             }
             transport_time_label(ui, self.session.project.transport.playhead_frame);
+            transport_monitor(
+                ui,
+                &musical_time::monitor(
+                    self.session.project.transport.playhead_frame,
+                    self.session.project.tempo_bpm,
+                ),
+                "Bars and beats (4/4)",
+            );
             ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.scope(|ui| {
@@ -1112,42 +1128,29 @@ impl DawUi {
                 [ticks.left_top(), ticks.right_top()],
                 Stroke::new(1.0_f32, theme::BORDER),
             );
-            let major_step = [
-                0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0,
-                300.0,
-            ]
-            .into_iter()
-            .find(|step| step * f64::from(self.zoom) >= 150.0)
-            .unwrap_or(300.0);
-            let minor_step = major_step / 5.0;
-            let start = (self.scroll / minor_step).floor() as i64;
-            let count = (rect.width() / (minor_step as f32 * self.zoom)).ceil() as i64 + 2;
-            for i in start..start + count {
-                let time = i as f64 * minor_step;
-                let x = rect.left() + ((time - self.scroll) as f32) * self.zoom;
+            let timeline = self.musical_timeline();
+            for tick in timeline.ticks(rect.width()) {
+                let x = rect.left() + tick.x;
                 if x < rect.left() || x > rect.right() {
                     continue;
                 }
-                let major = i % 5 == 0;
+                let height = if tick.bar {
+                    11.0
+                } else if tick.whole_beat {
+                    8.0
+                } else {
+                    5.0
+                };
                 painter.line_segment(
                     [
-                        Pos2::new(x, ticks.bottom() - if major { 11.0 } else { 6.0 }),
+                        Pos2::new(x, ticks.bottom() - height),
                         Pos2::new(x, ticks.bottom()),
                     ],
                     Stroke::new(1.0_f32, theme::SECONDARY),
                 );
-                if major {
-                    let hundredths = (time * 100.0).round() as u64;
-                    let minutes = hundredths / 6000;
-                    let whole_seconds = hundredths / 100 % 60;
-                    let label = if major_step < 0.1 {
-                        format!("{minutes}:{whole_seconds:02}.{:02}", hundredths % 100)
-                    } else if major_step < 1.0 {
-                        format!("{minutes}:{whole_seconds:02}.{}", hundredths / 10 % 10)
-                    } else {
-                        format!("{minutes}:{whole_seconds:02}")
-                    };
-                    let selected = time >= seconds(l.start_frame) && time < seconds(l.end_frame);
+                if let Some(label) = tick.label {
+                    let selected = tick.beat >= timeline.beats(l.start_frame)
+                        && tick.beat < timeline.beats(l.end_frame);
                     painter.text(
                         Pos2::new(x + 3.0, labels.center().y),
                         egui::Align2::LEFT_CENTER,
@@ -1545,14 +1548,25 @@ impl DawUi {
             }
         });
     }
+    fn musical_timeline(&self) -> musical_time::Timeline {
+        musical_time::Timeline::new(self.session.project.tempo_bpm, self.zoom, self.scroll)
+    }
     fn paint_grid(&self, painter: &egui::Painter, rect: Rect) {
-        let step = if self.zoom > 30.0 { 1.0 } else { 5.0 };
-        let first = (self.scroll / step).floor() as i64;
-        for i in first..first + (rect.width() / (step as f32 * self.zoom)) as i64 + 3 {
-            let x = rect.left() + ((i as f64 * step - self.scroll) as f32) * self.zoom;
+        for tick in self.musical_timeline().ticks(rect.width()) {
+            let x = rect.left() + tick.x;
+            if x < rect.left() || x > rect.right() {
+                continue;
+            }
+            let color = if tick.bar {
+                theme::BORDER
+            } else if tick.whole_beat {
+                theme::GRID
+            } else {
+                theme::GRID_SUBDIVISION
+            };
             painter.line_segment(
                 [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-                Stroke::new(1.0_f32, theme::GRID),
+                Stroke::new(1.0_f32, color),
             );
         }
     }
@@ -2373,6 +2387,57 @@ mod tests {
         frame(&mut app, &ctx, vec![button(end, false)]);
         assert_eq!(app.session.project.tracks[0].clips[0].start_frame, 48000);
         assert!(app.dirty);
+    }
+    #[test]
+    fn musical_ruler_seek_and_loop_match_the_project_tempo() {
+        let (mut app, track) = fixture();
+        app.session.project.tempo_bpm = 60.0;
+        app.tempo_input = "60.0".into();
+        let original_clip = app.session.project.tracks[0].clips[0].clone();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        let lane = app.lane_bounds[&track];
+        let bar_two = app
+            .musical_timeline()
+            .ticks(lane.width())
+            .find(|tick| tick.beat == 4.0)
+            .unwrap()
+            .x;
+        let label = Pos2::new(lane.left() + bar_two + 3.0, lane.top() - 29.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(label), button(label, true)],
+        );
+        frame(&mut app, &ctx, vec![button(label, false)]);
+        assert_eq!(
+            app.session.project.transport.playhead_frame,
+            frames(4.0 + 3.0 / 70.0)
+        );
+        assert_eq!(
+            musical_time::monitor(app.session.project.transport.playhead_frame, 60.0),
+            "0002.01"
+        );
+        let start = Pos2::new(lane.left() + bar_two, lane.top() - 10.0);
+        let end = start + Vec2::new(280.0, 0.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        let region = &app.session.project.transport.r#loop;
+        assert_eq!(region.start_frame, frames(4.0));
+        assert_eq!(region.end_frame, frames(8.0));
+        assert_eq!(musical_time::monitor(region.end_frame, 60.0), "0003.01");
+        app.session.project.tempo_bpm = 120.0;
+        assert_eq!(musical_time::monitor(region.start_frame, 120.0), "0003.01");
+        let clip = &app.session.project.tracks[0].clips[0];
+        assert_eq!(clip.start_frame, original_clip.start_frame);
+        assert_eq!(clip.length_frames, original_clip.length_frames);
+        assert_eq!(clip.source_offset_frame, original_clip.source_offset_frame);
     }
     #[test]
     fn ruler_selects_a_loop_and_track_controls_align() {
