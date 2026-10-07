@@ -218,7 +218,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 #### Field rules
 
 - Use UUIDs for project, asset, track, and clip identities. Track array order defines display order.
-- Store tempo_bpm as a positive finite BPM value. Default to 120.0 for new projects and manifests without this field. Set it by double-clicking the playback toolbar's tempo monitor. Show `120bpm` with the time monitor's styling and three fixed-width digit slots. Enter commits; Esc cancels; focus loss retains the draft. It does not move or stretch audio clips.
+- Store tempo_bpm as a positive finite BPM value. Default to 120.0 for new projects and manifests without this field. Set it by double-clicking the playback toolbar's tempo monitor. Show `120bpm` with the time monitor's styling and three fixed-width digit slots. Enter commits; Esc or focus loss cancels the draft and restores the monitor. It does not move or stretch audio clips.
 - All frame positions, offsets, and lengths use the project's 48 kHz timeline, including source offsets after resampling. One frame contains one sample per channel; five minutes equals 14,400,000 frames.
 - Source metadata describes the original file. decoded_frame_count describes its length after conversion to the project sample rate. Use pcm_int or ieee_float for sample_format.
 - pan ranges from -1.0 (left) to 1.0 (right); 0.0 is center. Gain values are finite decibel values; mute is a separate boolean.

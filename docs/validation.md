@@ -204,3 +204,9 @@ All 23 UI tests and strict Clippy checks for UI and desktop pass. Pointer and ke
 ## Centered gain and pan values
 
 The shared numeric input now centers text for track gain, track pan, and Master gain. All 23 UI tests pass, including the existing gain editing checks. The macOS debug bundle is rebuilt.
+
+## Cancel editable labels on focus loss
+
+Track name and tempo editors now use one shared action handler. Escape, widget focus loss, or window focus loss cancels the draft and restores the label or monitor without changing the project. Enter commits even though a single-line input also loses focus on Enter. Disabled inline editors cancel their drafts.
+
+All 24 UI tests and strict Clippy checks for UI and desktop pass. Pointer tests verify clicking elsewhere cancels each editor without modifying its stored value or dirty state. Keyboard and window-focus tests cover Tab and app deactivation for both editors. Existing Enter, Escape, unchanged-value, and invalid-tempo checks pass. The macOS debug bundle is rebuilt.

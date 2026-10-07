@@ -36,6 +36,37 @@ fn numeric_input(ui: &mut egui::Ui, text: &mut String, tooltip: &str) -> egui::R
     .on_hover_text(tooltip)
 }
 
+#[derive(PartialEq, Eq)]
+enum InlineEditAction {
+    Commit,
+    Cancel,
+}
+
+fn inline_edit_action(ui: &mut egui::Ui, response: &egui::Response) -> Option<InlineEditAction> {
+    if !ui.is_enabled() || !ui.input(|input| input.focused) {
+        return Some(InlineEditAction::Cancel);
+    }
+    if response.has_focus() || response.lost_focus() {
+        let (cancel, commit) = ui.input_mut(|input| {
+            (
+                input.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+                input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+            )
+        });
+        if cancel {
+            return Some(InlineEditAction::Cancel);
+        }
+        // Single-line inputs also lose focus on Enter. Commit takes precedence.
+        if commit {
+            return Some(InlineEditAction::Commit);
+        }
+        if response.lost_focus() {
+            return Some(InlineEditAction::Cancel);
+        }
+    }
+    None
+}
+
 fn transport_time(frame: u64) -> String {
     let rate = u64::from(daw_core::SAMPLE_RATE);
     let total_seconds = frame / rate;
@@ -714,11 +745,7 @@ impl DawUi {
             {
                 self.tempo_bounds = output.response.rect;
             }
-            if !ui.is_enabled() {
-                self.tempo_edit = Some(edit);
-                return;
-            }
-            if edit.focus {
+            if edit.focus && ui.is_enabled() {
                 output.response.request_focus();
                 output
                     .state
@@ -730,18 +757,9 @@ impl DawUi {
                 output.state.store(ui.ctx(), output.response.id);
                 edit.focus = false;
             }
-            let (cancel, commit) = if output.response.has_focus() || output.response.lost_focus() {
-                ui.input_mut(|input| {
-                    let cancel = input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
-                    let commit = input.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
-                    (cancel, commit)
-                })
-            } else {
-                (false, false)
-            };
-            if cancel || commit {
+            if let Some(action) = inline_edit_action(ui, &output.response) {
                 output.response.surrender_focus();
-                if commit && !cancel {
+                if action == InlineEditAction::Commit {
                     match edit.text.parse::<f32>() {
                         Ok(value) if value.is_finite() && value > 0.0 => {
                             self.session.project.tempo_bpm = value;
@@ -1316,19 +1334,9 @@ impl DawUi {
                 output.state.store(ui.ctx(), output.response.id);
                 edit.focus = false;
             }
-            let (cancel, commit) = if output.response.has_focus() || output.response.lost_focus() {
-                ui.input_mut(|input| {
-                    let cancel = input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
-                    let commit = input.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
-                    (cancel, commit)
-                })
-            } else {
-                (false, false)
-            };
-            if cancel || commit {
+            if let Some(action) = inline_edit_action(ui, &output.response) {
                 output.response.surrender_focus();
-                if commit
-                    && !cancel
+                if action == InlineEditAction::Commit
                     && edit.text != track.name
                     && let Some(track) = self
                         .session
@@ -2053,12 +2061,10 @@ mod tests {
             vec![egui::Event::PointerMoved(outside), button(outside, true)],
         );
         frame(&mut app, &ctx, vec![button(outside, false)]);
-        assert_eq!(app.tempo_edit.as_ref().unwrap().text, "99.25");
+        assert!(app.tempo_edit.is_none());
         assert_eq!(app.session.project.tempo_bpm, 135.5);
-        assert!(
-            !app.dirty,
-            "focus loss must retain the draft without committing"
-        );
+        assert!(!app.dirty, "focus loss must cancel without committing");
+        assert!(app.error.is_none());
 
         app.pending = Some(Action::CloseProject);
         app.perform_pending();
@@ -2159,7 +2165,7 @@ mod tests {
         assert!(!app.dirty);
     }
     #[test]
-    fn track_name_draft_survives_focus_loss_and_is_cleared_with_its_track() {
+    fn track_name_focus_loss_cancels_and_project_changes_clear_the_draft() {
         let (mut app, track) = fixture();
         let ctx = context();
         app.track_name_edit = Some(TrackNameEdit {
@@ -2175,9 +2181,14 @@ mod tests {
             vec![egui::Event::PointerMoved(outside), button(outside, true)],
         );
         frame(&mut app, &ctx, vec![button(outside, false)]);
-        assert_eq!(app.track_name_edit.as_ref().unwrap().text, "Draft");
+        assert!(app.track_name_edit.is_none());
         assert_eq!(app.session.project.tracks[0].name, "Track 1");
         assert!(!app.dirty);
+        app.track_name_edit = Some(TrackNameEdit {
+            track,
+            text: "Draft".into(),
+            focus: true,
+        });
         app.edit(Edit::DeleteTrack(track));
         assert!(app.track_name_edit.is_none());
 
@@ -2190,6 +2201,56 @@ mod tests {
         app.pending = Some(Action::CloseProject);
         app.perform_pending();
         assert!(app.track_name_edit.is_none());
+    }
+    #[test]
+    fn inline_label_edits_cancel_on_tab_and_window_focus_loss() {
+        for tempo in [false, true] {
+            for window_focus_loss in [false, true] {
+                let (mut app, track) = fixture();
+                let ctx = context();
+                if tempo {
+                    start_tempo_edit(&mut app, &ctx);
+                } else {
+                    app.track_name_edit = Some(TrackNameEdit {
+                        track,
+                        text: "Track 1".into(),
+                        focus: true,
+                    });
+                    frame(&mut app, &ctx, vec![]);
+                }
+                frame(&mut app, &ctx, vec![egui::Event::Text("90".into())]);
+                if window_focus_loss {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            focused: false,
+                            events: vec![egui::Event::WindowFocused(false)],
+                            ..Default::default()
+                        },
+                        |ui| app.show(ui),
+                    );
+                    output.textures_delta.clear();
+                } else {
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::Key {
+                            key: egui::Key::Tab,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: Default::default(),
+                        }],
+                    );
+                    frame(&mut app, &ctx, vec![]);
+                }
+                assert!(app.track_name_edit.is_none());
+                assert!(app.tempo_edit.is_none());
+                assert_eq!(app.session.project.tracks[0].name, "Track 1");
+                assert_eq!(app.session.project.tempo_bpm, 120.0);
+                assert!(!app.dirty);
+                assert!(app.error.is_none());
+            }
+        }
     }
     #[test]
     fn master_numeric_gain_commits_clamps_and_cancels() {
