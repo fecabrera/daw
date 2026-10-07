@@ -234,3 +234,31 @@ Workspace tests, including all 32 UI tests, and strict workspace Clippy pass. Fi
 File drags over the track controls now target the hovered row at frame zero. Preview and import use that same position, regardless of horizontal scroll. Empty space in the track column follows the existing new-track behavior at frame zero. The preview stays clipped to the timeline. Toolbar, ruler, Master, and out-of-window drops remain ignored.
 
 All 33 UI tests and strict Clippy checks for UI and desktop pass. File-event tests verify the preview outline and imported position after moving from the timeline into the controls at two zoom/scroll settings. Direct drops over the controls also import at zero with a scrolled timeline. Tests cover ignored drops on the toolbar, ruler, Master, and outside the window. The macOS debug bundle is rebuilt. Native Finder drag verification remains open.
+
+## Selection monitor styling
+
+The bottom-right selection endpoints now use the shared transport monitor renderer. Both positions have semibold text and fixed-width digit slots, with default-colored digits and darker periods and dash. The Selection label retains the standard UI font. All 33 UI tests and strict Clippy checks for UI and desktop pass. The macOS debug bundle is rebuilt.
+
+## Tempo monitor dragging
+
+The BPM monitor supports primary-button vertical dragging: up increases tempo and down decreases it by 1 BPM per point, or 0.1 BPM with Shift. Shift can change during the drag. Changes use incremental pointer motion, round to hundredths, and clamp at 0.01 BPM. Horizontal motion and stationary frames do not change tempo. Double-click numeric editing remains available. Background jobs disable dragging.
+
+All 35 UI tests and strict Clippy checks for UI and desktop pass. Pointer tests verify both directions, Shift transitions, stable stationary frames, the positive minimum, disabled dragging during a job, and unchanged clip placement and duration. Existing double-click, Enter, Escape, and focus-loss tests pass. The macOS debug bundle is rebuilt.
+
+## Bar and beat monitor dragging
+
+The toolbar's bar.beat monitor retains the shared transport styling and now has separate vertical drag targets for bars and beats. Each point moves by one whole bar or beat, with upward motion seeking forward. Shift slows movement tenfold while accumulating partial motion until a whole unit is reached. Beats carry and borrow across bars. Seeking uses project tempo and preserves position within the beat to sample precision. Backward movement clamps at frame zero; reversing direction then advances immediately. The existing audio seek path updates playback. Release, window focus loss, disabled controls, and new/open/close project actions clear the drag state.
+
+All 38 UI tests and strict Clippy checks for UI and desktop pass. Pointer tests verify both drag targets, carry and borrow, fractional tempo, preserved beat phase, retained drag units when crossing sections, stationary and horizontal motion, accumulated fine motion, start clamping and reversal, and disabled dragging during a job. Beat conversion tests cover fractional boundaries and sample precision. Clip placement and duration remain unchanged. The macOS debug bundle is rebuilt.
+
+## Selection endpoint dragging
+
+Both endpoints of the selection monitor now share the toolbar monitor's drag handler. Each endpoint has separate bar and beat targets, with whole-unit vertical adjustment, carry and borrow, accumulated Shift motion, and preserved beat phase. The shared renderer supplies digit group bounds for all four targets without changing its styling. Endpoints clamp to keep the range ordered; enabled loops retain at least one sample of duration. Changes mark the project modified and sync playback while preserving the loop toggle and playhead. Release, focus loss, project reset/load, and disabled controls clear the drag state. Background jobs disable editing.
+
+All 41 UI tests and strict Clippy checks for UI and desktop pass. Pointer tests cover all four targets at fractional tempo, stationary and horizontal motion, endpoint independence, Shift accumulation, creation of a selection with Loop disabled, clamping with Loop enabled and disabled, immediate reversal at limits, and blocked adjustment during a job. Existing toolbar drag and tempo editing tests pass after sharing the handler. Clip positions and durations remain unchanged. The macOS debug bundle is rebuilt.
+
+## Time monitor dragging
+
+The time monitor has separate vertical drag targets for hours, minutes, and seconds. Each target includes its suffix; the seconds target also includes the decimal fraction. Up seeks forward and down seeks backward by whole units, with automatic carry and borrow. Shift slows adjustment tenfold, accumulating motion until a whole unit is reached. Fractional seconds remain exact in sample frames. The shared monitor drag handler now supports musical beats and exact frame increments. Seeking clamps at frame zero and saturates at the maximum frame, with immediate reversal at limits. Disabled controls, release, focus loss, and new/open/close project actions clear the drag state.
+
+All 43 UI tests and strict Clippy checks for UI and desktop pass. Pointer tests cover each time target, carry and borrow at hour boundaries, expansion from 99 to 100 hours, retained drag units across sections, exact fractional-frame preservation, stationary and horizontal motion, accumulated Shift adjustment, clamping and reversal, and blocked dragging during a job. Frame conversion checks cover both limits. Existing bar/beat and selection drag tests pass after sharing the handler. Clip placement, duration, tempo, and loop state remain unchanged. The macOS debug bundle is rebuilt.

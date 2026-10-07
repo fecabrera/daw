@@ -78,12 +78,9 @@ fn transport_time(frame: u64) -> String {
     format!("{hours:02}h{minutes:02}m{seconds:02}.{hundredths:02}s")
 }
 
-fn transport_time_label(ui: &mut egui::Ui, frame: u64) {
-    transport_monitor(ui, &transport_time(frame), "Time");
-}
-
-fn transport_monitor(ui: &mut egui::Ui, text: &str, tooltip: &str) {
-    transport_monitor_control(ui, text, tooltip, 0, Sense::hover());
+struct MonitorResponse {
+    response: egui::Response,
+    digit_bounds: Vec<Rect>,
 }
 
 fn transport_monitor_control(
@@ -92,7 +89,7 @@ fn transport_monitor_control(
     tooltip: &str,
     minimum_digits: usize,
     sense: Sense,
-) -> egui::Response {
+) -> MonitorResponse {
     let font = fonts::semibold(13.0);
     // Digits share a fixed advance; unit letters and punctuation keep theirs.
     let digit_count = text.chars().filter(char::is_ascii_digit).count();
@@ -127,6 +124,8 @@ fn transport_monitor_control(
     let mut x = rect.left()
         + f32::from(theme::TOOLBAR_PADDING)
         + (digit_slots - digit_count) as f32 * digit_width;
+    let mut digit_bounds: Vec<Rect> = Vec::new();
+    let mut in_digits = false;
     for character in text.chars() {
         let is_digit = character.is_ascii_digit();
         let color = if is_digit {
@@ -140,6 +139,17 @@ fn transport_monitor_control(
         } else {
             galley.size().x
         };
+        if is_digit {
+            if in_digits {
+                digit_bounds.last_mut().unwrap().max.x = x + width;
+            } else {
+                digit_bounds.push(Rect::from_min_max(
+                    Pos2::new(x, rect.top()),
+                    Pos2::new(x + width, rect.bottom()),
+                ));
+            }
+        }
+        in_digits = is_digit;
         painter.galley(
             Pos2::new(
                 x + (width - galley.size().x) / 2.0,
@@ -150,7 +160,16 @@ fn transport_monitor_control(
         );
         x += width;
     }
-    response
+    if let Some(first) = digit_bounds.first_mut() {
+        first.min.x = rect.left();
+    }
+    if let Some(last) = digit_bounds.last_mut() {
+        last.max.x = rect.right();
+    }
+    MonitorResponse {
+        response,
+        digit_bounds,
+    }
 }
 
 enum Job {
@@ -233,6 +252,104 @@ struct TempoEdit {
     focus: bool,
     width: f32,
 }
+#[derive(Clone, Copy)]
+enum PositionStep {
+    Beats { count: i64, tempo: f32 },
+    Frames(u64),
+}
+
+impl PositionStep {
+    fn shift(self, frame: u64, steps: i64) -> u64 {
+        match self {
+            Self::Beats { count, tempo } => {
+                musical_time::shift(frame, tempo, steps.saturating_mul(count))
+            }
+            Self::Frames(count) => (i128::from(frame) + i128::from(steps) * i128::from(count))
+                .clamp(0, i128::from(u64::MAX)) as u64,
+        }
+    }
+}
+
+fn musical_steps(tempo: f32) -> [PositionStep; 2] {
+    [
+        PositionStep::Beats {
+            count: musical_time::BEATS_PER_BAR as i64,
+            tempo,
+        },
+        PositionStep::Beats { count: 1, tempo },
+    ]
+}
+
+struct MonitorDrag {
+    frame: u64,
+    units: f64,
+    applied: i64,
+    step: PositionStep,
+}
+
+fn musical_sections(
+    ui: &egui::Ui,
+    monitor: &MonitorResponse,
+    offset: usize,
+) -> [egui::Response; 2] {
+    std::array::from_fn(|index| {
+        ui.interact(
+            monitor.digit_bounds[offset + index],
+            monitor.response.id.with(offset + index),
+            Sense::drag(),
+        )
+        .on_hover_cursor(egui::CursorIcon::ResizeVertical)
+        .on_hover_text(if index == 0 {
+            "Drag up or down by bars. Hold Shift for slower adjustment."
+        } else {
+            "Drag up or down by beats. Beats carry across bars. Hold Shift for slower adjustment."
+        })
+    })
+}
+
+fn monitor_drag_position(
+    ui: &egui::Ui,
+    responses: &[egui::Response],
+    drag: &mut Option<MonitorDrag>,
+    frame: u64,
+    steps: &[PositionStep],
+    limits: std::ops::RangeInclusive<u64>,
+) -> Option<u64> {
+    let active = responses.iter().enumerate().find(|(_, response)| {
+        response.dragged_by(egui::PointerButton::Primary)
+            && ui.is_enabled()
+            && ui.input(|input| input.focused)
+    });
+    let Some((index, response)) = active else {
+        *drag = None;
+        return None;
+    };
+    let state = drag.get_or_insert(MonitorDrag {
+        frame,
+        units: 0.0,
+        applied: 0,
+        step: steps[index],
+    });
+    let fine = ui.input(|input| if input.modifiers.shift { 0.1 } else { 1.0 });
+    state.units -= f64::from(response.drag_delta().y) * fine;
+    // Accumulated tenths can fall a rounding error short of a whole unit.
+    let steps = (state.units + state.units.signum() * 1e-9).trunc() as i64;
+    if steps == state.applied {
+        return None;
+    }
+    let destination = state
+        .step
+        .shift(state.frame, steps)
+        .clamp(*limits.start(), *limits.end());
+    state.applied = steps;
+    if (destination == *limits.start() && steps < 0) || (destination == *limits.end() && steps > 0)
+    {
+        state.frame = destination;
+        state.units = 0.0;
+        state.applied = 0;
+    }
+    Some(destination)
+}
 struct Drag {
     clip: Clip,
     track: Id,
@@ -263,6 +380,9 @@ pub struct DawUi {
     track_name_edit: Option<TrackNameEdit>,
     master_gain_input: String,
     tempo_edit: Option<TempoEdit>,
+    time_drag: Option<MonitorDrag>,
+    musical_drag: Option<MonitorDrag>,
+    selection_drag: [Option<MonitorDrag>; 2],
     zoom: f32,
     scroll: f64,
     drag: Option<Drag>,
@@ -276,6 +396,12 @@ pub struct DawUi {
     master_bounds: Rect,
     #[cfg(test)]
     tempo_bounds: Rect,
+    #[cfg(test)]
+    musical_bounds: [Rect; 2],
+    #[cfg(test)]
+    time_bounds: [Rect; 3],
+    #[cfg(test)]
+    selection_bounds: [Rect; 4],
     dirty: bool,
     sync_needed: bool,
     job: Option<mpsc::Receiver<Result<Job, String>>>,
@@ -300,6 +426,9 @@ impl Default for DawUi {
             track_name_edit: None,
             master_gain_input: "0.0".into(),
             tempo_edit: None,
+            musical_drag: None,
+            time_drag: None,
+            selection_drag: [None, None],
             zoom: 70.0,
             scroll: 0.0,
             drag: None,
@@ -313,6 +442,12 @@ impl Default for DawUi {
             master_bounds: Rect::NOTHING,
             #[cfg(test)]
             tempo_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            musical_bounds: [Rect::NOTHING; 2],
+            #[cfg(test)]
+            time_bounds: [Rect::NOTHING; 3],
+            #[cfg(test)]
+            selection_bounds: [Rect::NOTHING; 4],
             dirty: false,
             sync_needed: false,
             job: None,
@@ -381,6 +516,9 @@ impl DawUi {
                 self.track_name_edit = None;
                 self.master_gain_input = format!("{:.1}", self.session.project.master.gain_db);
                 self.tempo_edit = None;
+                self.musical_drag = None;
+                self.time_drag = None;
+                self.selection_drag = [None, None];
                 self.selected_track = None;
                 self.selected_clip = None;
                 self.notices.clear();
@@ -509,6 +647,9 @@ impl DawUi {
                         self.track_name_edit = None;
                         self.master_gain_input = format!("{:.1}", session.project.master.gain_db);
                         self.tempo_edit = None;
+                        self.musical_drag = None;
+                        self.time_drag = None;
+                        self.selection_drag = [None, None];
                         self.scroll = 0.0;
                     }
                     self.notices = session.warnings.clone();
@@ -664,17 +805,8 @@ impl DawUi {
                     ui.label(&output.description);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(format!(
-                        "Selection {}–{}",
-                        musical_time::monitor(
-                            self.session.project.transport.r#loop.start_frame,
-                            self.session.project.tempo_bpm,
-                        ),
-                        musical_time::monitor(
-                            self.session.project.transport.r#loop.end_frame,
-                            self.session.project.tempo_bpm,
-                        ),
-                    ));
+                    ui.add_enabled_ui(self.job.is_none(), |ui| self.selection_control(ui));
+                    ui.label("Selection");
                 });
             });
             for notice in &self.notices {
@@ -858,10 +990,12 @@ impl DawUi {
             let response = transport_monitor_control(
                 ui,
                 &format!("{previous}bpm"),
-                "Tempo (BPM): double-click to edit",
+                "Tempo (BPM): drag up or down to adjust; hold Shift for fine adjustment. Double-click to edit.",
                 3,
-                Sense::click(),
-            );
+                Sense::click_and_drag(),
+            )
+            .response
+            .on_hover_cursor(egui::CursorIcon::ResizeVertical);
             #[cfg(test)]
             {
                 self.tempo_bounds = response.rect;
@@ -872,6 +1006,141 @@ impl DawUi {
                     focus: true,
                     width: response.rect.width(),
                 });
+            } else if response.dragged_by(egui::PointerButton::Primary)
+                && ui.is_enabled()
+                && ui.input(|input| input.focused)
+            {
+                let delta = response.drag_delta().y;
+                if delta != 0.0 {
+                    let step = ui.input(|input| if input.modifiers.shift { 0.1 } else { 1.0 });
+                    // Round drag changes to hundredths to avoid displaying float noise.
+                    let adjusted =
+                        ((f64::from(previous) - f64::from(delta) * step) * 100.0).round() / 100.0;
+                    let value = adjusted.clamp(0.01, f64::from(f32::MAX)) as f32;
+                    if value != previous {
+                        self.session.project.tempo_bpm = value;
+                        self.changed();
+                    }
+                }
+            }
+        }
+    }
+    fn time_control(&mut self, ui: &mut egui::Ui) {
+        let frame = self.session.project.transport.playhead_frame;
+        let monitor =
+            transport_monitor_control(ui, &transport_time(frame), "Time", 0, Sense::hover());
+        let responses: [egui::Response; 3] = std::array::from_fn(|index| {
+            // Seconds include the decimal fraction; each unit includes its suffix.
+            let right = if index < 2 {
+                monitor.digit_bounds[index + 1].left()
+            } else {
+                monitor.response.rect.right()
+            };
+            let bounds = Rect::from_min_max(
+                monitor.digit_bounds[index].min,
+                Pos2::new(right, monitor.response.rect.bottom()),
+            );
+            ui.interact(bounds, monitor.response.id.with(index), Sense::drag())
+                .on_hover_cursor(egui::CursorIcon::ResizeVertical)
+                .on_hover_text(format!(
+                    "Drag up or down by {}. Hold Shift for slower adjustment.",
+                    ["hours", "minutes", "seconds"][index],
+                ))
+        });
+        #[cfg(test)]
+        {
+            self.time_bounds = responses.each_ref().map(|response| response.rect);
+        }
+        let steps = [3600, 60, 1]
+            .map(|seconds| PositionStep::Frames(seconds * u64::from(daw_core::SAMPLE_RATE)));
+        if let Some(destination) = monitor_drag_position(
+            ui,
+            &responses,
+            &mut self.time_drag,
+            frame,
+            &steps,
+            0..=u64::MAX,
+        ) && destination != frame
+        {
+            self.seek(destination);
+        }
+    }
+    fn musical_control(&mut self, ui: &mut egui::Ui) {
+        let frame = self.session.project.transport.playhead_frame;
+        let tempo = self.session.project.tempo_bpm;
+        let monitor = transport_monitor_control(
+            ui,
+            &musical_time::monitor(frame, tempo),
+            "Bars and beats (4/4)",
+            0,
+            Sense::hover(),
+        );
+        let responses = musical_sections(ui, &monitor, 0);
+        #[cfg(test)]
+        {
+            self.musical_bounds = responses.each_ref().map(|response| response.rect);
+        }
+        if let Some(destination) = monitor_drag_position(
+            ui,
+            &responses,
+            &mut self.musical_drag,
+            frame,
+            &musical_steps(tempo),
+            0..=u64::MAX,
+        ) && destination != frame
+        {
+            self.seek(destination);
+        }
+    }
+    fn selection_control(&mut self, ui: &mut egui::Ui) {
+        let tempo = self.session.project.tempo_bpm;
+        let region = &self.session.project.transport.r#loop;
+        let text = format!(
+            "{}–{}",
+            musical_time::monitor(region.start_frame, tempo),
+            musical_time::monitor(region.end_frame, tempo),
+        );
+        let monitor = transport_monitor_control(
+            ui,
+            &text,
+            "Selection range in bars and beats (4/4)",
+            0,
+            Sense::hover(),
+        );
+        for endpoint in 0..2 {
+            let responses = musical_sections(ui, &monitor, endpoint * 2);
+            #[cfg(test)]
+            {
+                for (section, response) in responses.iter().enumerate() {
+                    self.selection_bounds[endpoint * 2 + section] = response.rect;
+                }
+            }
+            let region = &self.session.project.transport.r#loop;
+            let gap = u64::from(region.enabled);
+            let (frame, limits) = if endpoint == 0 {
+                (region.start_frame, 0..=region.end_frame.saturating_sub(gap))
+            } else {
+                (
+                    region.end_frame,
+                    region.start_frame.saturating_add(gap)..=u64::MAX,
+                )
+            };
+            if let Some(destination) = monitor_drag_position(
+                ui,
+                &responses,
+                &mut self.selection_drag[endpoint],
+                frame,
+                &musical_steps(tempo),
+                limits,
+            ) && destination != frame
+            {
+                let region = &mut self.session.project.transport.r#loop;
+                if endpoint == 0 {
+                    region.start_frame = destination;
+                } else {
+                    region.end_frame = destination;
+                }
+                self.changed();
             }
         }
     }
@@ -963,15 +1232,8 @@ impl DawUi {
                     self.changed();
                 }
             }
-            transport_time_label(ui, self.session.project.transport.playhead_frame);
-            transport_monitor(
-                ui,
-                &musical_time::monitor(
-                    self.session.project.transport.playhead_frame,
-                    self.session.project.tempo_bpm,
-                ),
-                "Bars and beats (4/4)",
-            );
+            ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
+            ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.scope(|ui| {
@@ -2384,6 +2646,540 @@ mod tests {
         app.poll();
         assert!(app.tempo_edit.is_none());
         assert_eq!(app.session.project.tempo_bpm, 87.5);
+    }
+    #[test]
+    fn tempo_drag_uses_vertical_motion_and_shift_for_fine_adjustment() {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        let start = app.tempo_bounds.center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        let right = start + Vec2::new(20.0, 0.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(right)]);
+        assert_eq!(app.session.project.tempo_bpm, 120.0);
+        assert!(!app.dirty, "horizontal motion must not change tempo");
+
+        let up = right - Vec2::new(0.0, 10.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(up)]);
+        assert_eq!(app.session.project.tempo_bpm, 130.0);
+        assert!(app.dirty);
+        app.dirty = false;
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.session.project.tempo_bpm, 130.0);
+        assert!(!app.dirty, "stationary frames must not repeat the change");
+
+        let fine = egui::Modifiers {
+            shift: true,
+            ..Default::default()
+        };
+        let fine_up = up - Vec2::new(0.0, 10.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::ModifiersChanged(fine),
+                egui::Event::PointerMoved(fine_up),
+            ],
+        );
+        assert_eq!(app.session.project.tempo_bpm, 131.0);
+        let fine_down = fine_up + Vec2::new(0.0, 3.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(fine_down)]);
+        assert_eq!(app.session.project.tempo_bpm, 130.7);
+
+        let down = fine_down + Vec2::new(0.0, 10.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::ModifiersChanged(Default::default()),
+                egui::Event::PointerMoved(down),
+            ],
+        );
+        assert_eq!(app.session.project.tempo_bpm, 120.7);
+        frame(&mut app, &ctx, vec![button(down, false)]);
+        assert!(app.tempo_edit.is_none());
+        assert!(app.error.is_none());
+        let clip = &app.session.project.tracks[0].clips[0];
+        assert_eq!(app.session.project.tracks[0].id, track);
+        assert_eq!(clip.start_frame, 0);
+        assert_eq!(clip.length_frames, 480000);
+        assert_eq!(clip.source_offset_frame, 0);
+        app.session.project.validate().unwrap();
+    }
+    #[test]
+    fn tempo_drag_stays_positive_and_is_disabled_during_background_jobs() {
+        let mut app = DawUi::default();
+        app.session.project.tempo_bpm = 2.0;
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        let start = app.tempo_bounds.center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        let down = start + Vec2::new(0.0, 20.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(down)]);
+        assert_eq!(app.session.project.tempo_bpm, 0.01);
+        app.session.project.validate().unwrap();
+        app.dirty = false;
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(down + Vec2::new(0.0, 10.0))],
+        );
+        assert_eq!(app.session.project.tempo_bpm, 0.01);
+        assert!(!app.dirty);
+
+        let (sender, receiver) = mpsc::channel();
+        app.job = Some(receiver);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start)]);
+        assert_eq!(app.session.project.tempo_bpm, 0.01);
+        assert!(!app.dirty);
+        frame(&mut app, &ctx, vec![button(start, false)]);
+        drop(sender);
+    }
+    #[test]
+    fn musical_monitor_drags_bars_and_beats_with_carry_and_borrow() {
+        for tempo in [60.0, 123.5] {
+            for section in 0..2 {
+                let (mut app, _) = fixture();
+                app.session.project.tempo_bpm = tempo;
+                let initial = musical_time::shift(0, tempo, 3) + frames(0.1);
+                app.session.project.transport.playhead_frame = initial;
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                frame(&mut app, &ctx, vec![]);
+                let start = app.musical_bounds[section].center();
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                // Moving over the other section must retain the original drag unit.
+                let right = start + Vec2::new(100.0, 0.0);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(right)]);
+                assert_eq!(app.session.project.transport.playhead_frame, initial);
+                assert!(!app.dirty);
+                let up = right - Vec2::new(0.0, 1.0);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(up)]);
+                let moved = app.session.project.transport.playhead_frame;
+                assert_eq!(
+                    musical_time::monitor(moved, tempo),
+                    if section == 0 { "0002.04" } else { "0002.01" }
+                );
+                let expected_seconds =
+                    if section == 0 { 4.0 } else { 1.0 } * 60.0 / f64::from(tempo);
+                assert!((seconds(moved - initial) - expected_seconds).abs() <= 1.0 / 48000.0);
+                assert!(app.dirty);
+                app.dirty = false;
+                frame(&mut app, &ctx, vec![]);
+                assert_eq!(app.session.project.transport.playhead_frame, moved);
+                assert!(!app.dirty);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(right)]);
+                assert_eq!(app.session.project.transport.playhead_frame, initial);
+                assert_eq!(musical_time::monitor(initial, tempo), "0001.04");
+                frame(&mut app, &ctx, vec![button(right, false)]);
+                assert!(app.musical_drag.is_none());
+                assert_eq!(app.session.project.tempo_bpm, tempo);
+                assert_eq!(app.session.project.tracks[0].clips[0].length_frames, 480000);
+                assert_eq!(app.session.project.tracks[0].clips[0].start_frame, 0);
+                assert!(app.error.is_none());
+            }
+        }
+    }
+    #[test]
+    fn musical_monitor_shift_drag_keeps_whole_units_and_clamps_at_start() {
+        for section in 0..2 {
+            let mut app = DawUi::default();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            let start = app.musical_bounds[section].center();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let fine = egui::Modifiers {
+                shift: true,
+                ..Default::default()
+            };
+            let halfway = start - Vec2::new(0.0, 5.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::ModifiersChanged(fine),
+                    egui::Event::PointerMoved(halfway),
+                ],
+            );
+            assert_eq!(app.session.project.transport.playhead_frame, 0);
+            assert!(!app.dirty);
+            let up = halfway - Vec2::new(0.0, 5.0);
+            for point in 1..=5 {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(
+                        halfway - Vec2::new(0.0, point as f32),
+                    )],
+                );
+            }
+            assert_eq!(
+                musical_time::monitor(app.session.project.transport.playhead_frame, 120.0),
+                if section == 0 { "0002.01" } else { "0001.02" }
+            );
+            let down = up + Vec2::new(0.0, 20.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::ModifiersChanged(Default::default()),
+                    egui::Event::PointerMoved(down),
+                ],
+            );
+            assert_eq!(app.session.project.transport.playhead_frame, 0);
+            let reversed = down - Vec2::new(0.0, 1.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(reversed)]);
+            let moved = app.session.project.transport.playhead_frame;
+            assert_eq!(
+                musical_time::monitor(moved, 120.0),
+                if section == 0 { "0002.01" } else { "0001.02" }
+            );
+            app.dirty = false;
+            let (sender, receiver) = mpsc::channel();
+            app.job = Some(receiver);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(reversed - Vec2::new(0.0, 20.0))],
+            );
+            assert_eq!(app.session.project.transport.playhead_frame, moved);
+            assert!(!app.dirty);
+            assert!(app.musical_drag.is_none());
+            frame(&mut app, &ctx, vec![button(reversed, false)]);
+            drop(sender);
+            app.session.project.validate().unwrap();
+        }
+    }
+    #[test]
+    fn selection_monitor_drags_each_endpoint_by_bars_and_beats() {
+        for target in 0..4 {
+            let (mut app, _) = fixture();
+            let tempo = 123.5;
+            app.session.project.tempo_bpm = tempo;
+            let start_frame = musical_time::shift(0, tempo, 3);
+            let end_frame = musical_time::shift(0, tempo, 15);
+            let region = &mut app.session.project.transport.r#loop;
+            region.start_frame = start_frame;
+            region.end_frame = end_frame;
+            region.enabled = true;
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            let start = app.selection_bounds[target].center();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let left = start - Vec2::new(100.0, 0.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(left)]);
+            assert!(!app.dirty);
+            let up = left - Vec2::new(0.0, 1.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(up)]);
+            let region = &app.session.project.transport.r#loop;
+            assert_eq!(
+                musical_time::monitor(
+                    if target < 2 {
+                        region.start_frame
+                    } else {
+                        region.end_frame
+                    },
+                    tempo
+                ),
+                ["0002.04", "0002.01", "0005.04", "0005.01"][target],
+            );
+            assert_eq!(
+                if target < 2 {
+                    region.end_frame
+                } else {
+                    region.start_frame
+                },
+                if target < 2 { end_frame } else { start_frame }
+            );
+            assert!(region.enabled);
+            assert!(app.dirty);
+            app.dirty = false;
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.dirty);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(left)]);
+            let region = &app.session.project.transport.r#loop;
+            assert_eq!(
+                (region.start_frame, region.end_frame),
+                (start_frame, end_frame)
+            );
+            frame(&mut app, &ctx, vec![button(left, false)]);
+            assert!(app.selection_drag.iter().all(Option::is_none));
+            assert_eq!(app.session.project.transport.playhead_frame, 0);
+            assert_eq!(app.session.project.tracks[0].clips[0].start_frame, 0);
+            assert_eq!(app.session.project.tracks[0].clips[0].length_frames, 480000);
+            assert!(app.error.is_none());
+            app.session.project.validate().unwrap();
+        }
+    }
+    #[test]
+    fn selection_monitor_shift_drag_can_create_a_range_without_enabling_loop() {
+        for target in 2..4 {
+            let mut app = DawUi::default();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            let start = app.selection_bounds[target].center();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let left = start - Vec2::new(100.0, 0.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(left),
+                    egui::Event::ModifiersChanged(egui::Modifiers {
+                        shift: true,
+                        ..Default::default()
+                    }),
+                ],
+            );
+            for point in 1..=9 {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(
+                        left - Vec2::new(0.0, point as f32),
+                    )],
+                );
+                assert_eq!(app.session.project.transport.r#loop.end_frame, 0);
+                assert!(!app.dirty);
+            }
+            let up = left - Vec2::new(0.0, 10.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(up)]);
+            let region = &app.session.project.transport.r#loop;
+            assert_eq!(
+                musical_time::monitor(region.end_frame, 120.0),
+                if target == 2 { "0002.01" } else { "0001.02" }
+            );
+            assert_eq!(region.start_frame, 0);
+            assert!(!region.enabled);
+            assert!(app.dirty);
+            frame(&mut app, &ctx, vec![button(up, false)]);
+        }
+    }
+    #[test]
+    fn selection_monitor_clamps_endpoints_and_blocks_dragging_during_jobs() {
+        for enabled in [false, true] {
+            for endpoint in 0..2 {
+                let mut app = DawUi::default();
+                let region = &mut app.session.project.transport.r#loop;
+                region.start_frame = frames(2.0);
+                region.end_frame = frames(4.0);
+                region.enabled = enabled;
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                frame(&mut app, &ctx, vec![]);
+                let start = app.selection_bounds[endpoint * 2 + 1].center();
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                let direction = if endpoint == 0 { -1.0 } else { 1.0 };
+                let end = start + Vec2::new(0.0, direction * 20.0);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                let region = &app.session.project.transport.r#loop;
+                let expected = if endpoint == 0 {
+                    frames(4.0) - u64::from(enabled)
+                } else {
+                    frames(2.0) + u64::from(enabled)
+                };
+                assert_eq!(
+                    if endpoint == 0 {
+                        region.start_frame
+                    } else {
+                        region.end_frame
+                    },
+                    expected
+                );
+                assert_eq!(region.enabled, enabled);
+                app.session.project.validate().unwrap();
+                app.dirty = false;
+                let farther = end + Vec2::new(0.0, direction * 10.0);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(farther)]);
+                assert!(!app.dirty);
+                let reverse = farther - Vec2::new(0.0, direction);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(reverse)]);
+                assert!(
+                    app.dirty,
+                    "reversing at a range limit must adjust immediately"
+                );
+                let original = app.session.project.transport.r#loop.clone();
+                app.dirty = false;
+                let (sender, receiver) = mpsc::channel();
+                app.job = Some(receiver);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start)]);
+                let region = &app.session.project.transport.r#loop;
+                assert_eq!(
+                    (region.start_frame, region.end_frame),
+                    (original.start_frame, original.end_frame)
+                );
+                assert!(!app.dirty);
+                assert!(app.selection_drag.iter().all(Option::is_none));
+                frame(&mut app, &ctx, vec![button(start, false)]);
+                drop(sender);
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+    #[test]
+    fn time_monitor_drags_hours_minutes_and_seconds_with_carry_and_borrow() {
+        for (initial_seconds, direction, expected) in [
+            (
+                3599.25,
+                -1.0,
+                ["01h59m59.25s", "01h00m59.25s", "01h00m00.25s"],
+            ),
+            (
+                3600.25,
+                1.0,
+                ["00h00m00.25s", "00h59m00.25s", "00h59m59.25s"],
+            ),
+            (
+                359999.25,
+                -1.0,
+                ["100h59m59.25s", "100h00m59.25s", "100h00m00.25s"],
+            ),
+        ] {
+            for (section, expected) in expected.into_iter().enumerate() {
+                let (mut app, _) = fixture();
+                let initial = frames(initial_seconds) + 17;
+                app.session.project.transport.playhead_frame = initial;
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                frame(&mut app, &ctx, vec![]);
+                let start = app.time_bounds[section].center();
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                let right = start + Vec2::new(100.0, 0.0);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(right)]);
+                assert_eq!(app.session.project.transport.playhead_frame, initial);
+                assert!(!app.dirty);
+                let moved_pointer = right + Vec2::new(0.0, direction);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(moved_pointer)],
+                );
+                let moved = app.session.project.transport.playhead_frame;
+                assert_eq!(transport_time(moved), expected);
+                assert_eq!(moved % 48000, initial % 48000);
+                assert!(app.dirty);
+                app.dirty = false;
+                frame(&mut app, &ctx, vec![]);
+                assert_eq!(app.session.project.transport.playhead_frame, moved);
+                assert!(!app.dirty);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(right)]);
+                assert_eq!(app.session.project.transport.playhead_frame, initial);
+                frame(&mut app, &ctx, vec![button(right, false)]);
+                assert!(app.time_drag.is_none());
+                assert_eq!(app.session.project.tempo_bpm, 120.0);
+                assert_eq!(app.session.project.tracks[0].clips[0].start_frame, 0);
+                assert_eq!(app.session.project.tracks[0].clips[0].length_frames, 480000);
+                assert!(!app.session.project.transport.r#loop.enabled);
+                assert!(app.error.is_none());
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+    #[test]
+    fn time_monitor_shift_drag_clamps_and_stops_when_disabled() {
+        for section in 0..3 {
+            let mut app = DawUi::default();
+            let initial = frames(0.25) + 17;
+            app.session.project.transport.playhead_frame = initial;
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            let start = app.time_bounds[section].center();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let right = start + Vec2::new(100.0, 0.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(right),
+                    egui::Event::ModifiersChanged(egui::Modifiers {
+                        shift: true,
+                        ..Default::default()
+                    }),
+                ],
+            );
+            for point in 1..=9 {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(
+                        right - Vec2::new(0.0, point as f32),
+                    )],
+                );
+                assert_eq!(app.session.project.transport.playhead_frame, initial);
+                assert!(!app.dirty);
+            }
+            let up = right - Vec2::new(0.0, 10.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(up)]);
+            let step = [3600, 60, 1][section] * 48000;
+            assert_eq!(app.session.project.transport.playhead_frame, initial + step);
+            let down = up + Vec2::new(0.0, 20.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::ModifiersChanged(Default::default()),
+                    egui::Event::PointerMoved(down),
+                ],
+            );
+            assert_eq!(app.session.project.transport.playhead_frame, 0);
+            let reverse = down - Vec2::new(0.0, 1.0);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(reverse)]);
+            assert_eq!(app.session.project.transport.playhead_frame, step);
+            app.dirty = false;
+            let (sender, receiver) = mpsc::channel();
+            app.job = Some(receiver);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start)]);
+            assert_eq!(app.session.project.transport.playhead_frame, step);
+            assert!(!app.dirty);
+            assert!(app.time_drag.is_none());
+            frame(&mut app, &ctx, vec![button(start, false)]);
+            drop(sender);
+        }
+        let hour = PositionStep::Frames(3600 * 48000);
+        assert_eq!(hour.shift(u64::MAX - 10, 1), u64::MAX);
+        assert_eq!(hour.shift(0, i64::MIN), 0);
     }
     #[test]
     fn tempo_monitor_reserves_equal_digit_slots() {

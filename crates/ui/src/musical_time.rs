@@ -12,6 +12,17 @@ pub fn monitor(frame: u64, tempo_bpm: f32) -> String {
     format!("{bar:04}.{beat:02}")
 }
 
+pub fn shift(frame: u64, tempo_bpm: f32, beats: i64) -> u64 {
+    if beats == 0 {
+        return frame;
+    }
+    let frames_per_beat = f64::from(daw_core::SAMPLE_RATE) * 60.0 / f64::from(tempo_bpm);
+    // The next sample must not fall just before a fractional beat boundary.
+    (frame as f64 + beats as f64 * frames_per_beat)
+        .max(0.0)
+        .ceil() as u64
+}
+
 pub struct Timeline {
     beats_per_second: f64,
     pixels_per_beat: f64,
@@ -100,6 +111,25 @@ mod tests {
         assert_eq!(monitor(boundary, 123.5), "0001.02");
     }
 
+    #[test]
+    fn shifting_whole_beats_preserves_phase_and_crosses_fractional_boundaries() {
+        for tempo in [60.0, 123.5, 127.0] {
+            assert_eq!(monitor(shift(0, tempo, 1), tempo), "0001.02");
+            assert_eq!(monitor(shift(0, tempo, 4), tempo), "0002.01");
+            let fourth_beat = shift(0, tempo, 3);
+            assert_eq!(monitor(shift(fourth_beat, tempo, 1), tempo), "0002.01");
+            assert_eq!(
+                monitor(shift(shift(0, tempo, 4), tempo, -1), tempo),
+                "0001.04"
+            );
+            let phase = fourth_beat + frames(0.1);
+            let advanced = shift(phase, tempo, 4);
+            let returned = shift(advanced, tempo, -4);
+            assert!(returned.abs_diff(phase) <= 1);
+            assert_eq!(shift(phase, tempo, 0), phase);
+            assert_eq!(shift(phase, tempo, -100), 0);
+        }
+    }
     #[test]
     fn ruler_and_grid_ticks_follow_tempo_scroll_and_zoom() {
         let timeline = Timeline::new(120.0, 70.0, 0.0);
