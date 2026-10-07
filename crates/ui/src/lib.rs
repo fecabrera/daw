@@ -30,6 +30,7 @@ fn numeric_input(ui: &mut egui::Ui, text: &mut String, tooltip: &str) -> egui::R
         egui::TextEdit::singleline(text)
             .text_color(theme::TEXT)
             .font(egui::TextStyle::Small)
+            .horizontal_align(egui::Align::Center)
             .desired_width(36.0),
     )
     .on_hover_text(tooltip)
@@ -50,8 +51,20 @@ fn transport_time_label(ui: &mut egui::Ui, frame: u64) {
 }
 
 fn transport_monitor(ui: &mut egui::Ui, text: &str, tooltip: &str) {
+    transport_monitor_control(ui, text, tooltip, 0, Sense::hover());
+}
+
+fn transport_monitor_control(
+    ui: &mut egui::Ui,
+    text: &str,
+    tooltip: &str,
+    minimum_digits: usize,
+    sense: Sense,
+) -> egui::Response {
     let font = fonts::semibold(13.0);
     // Digits share a fixed advance; unit letters and punctuation keep theirs.
+    let digit_count = text.chars().filter(char::is_ascii_digit).count();
+    let digit_slots = digit_count.max(minimum_digits);
     let (digit_width, field_width) = ui.fonts_mut(|fonts| {
         let digit_width = "0123456789"
             .chars()
@@ -70,20 +83,18 @@ fn transport_monitor(ui: &mut egui::Ui, text: &str, tooltip: &str) {
             .sum();
         (
             digit_width,
-            text.chars().filter(char::is_ascii_digit).count() as f32 * digit_width
-                + unit_width
-                + 2.0 * f32::from(theme::TOOLBAR_PADDING),
+            digit_slots as f32 * digit_width + unit_width + 2.0 * f32::from(theme::TOOLBAR_PADDING),
         )
     });
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(field_width, ui.spacing().interact_size.y),
-        Sense::hover(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(field_width, ui.spacing().interact_size.y), sense);
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), text));
-    response.on_hover_text(tooltip);
+    let response = response.on_hover_text(tooltip);
     let painter = ui.painter().with_clip_rect(rect);
-    let mut x = rect.left() + f32::from(theme::TOOLBAR_PADDING);
+    let mut x = rect.left()
+        + f32::from(theme::TOOLBAR_PADDING)
+        + (digit_slots - digit_count) as f32 * digit_width;
     for character in text.chars() {
         let is_digit = character.is_ascii_digit();
         let color = if is_digit {
@@ -107,6 +118,7 @@ fn transport_monitor(ui: &mut egui::Ui, text: &str, tooltip: &str) {
         );
         x += width;
     }
+    response
 }
 
 enum Job {
@@ -184,6 +196,11 @@ struct TrackNameEdit {
     text: String,
     focus: bool,
 }
+struct TempoEdit {
+    text: String,
+    focus: bool,
+    width: f32,
+}
 struct Drag {
     clip: Clip,
     track: Id,
@@ -203,7 +220,7 @@ pub struct DawUi {
     inputs: HashMap<Id, Inputs>,
     track_name_edit: Option<TrackNameEdit>,
     master_gain_input: String,
-    tempo_input: String,
+    tempo_edit: Option<TempoEdit>,
     zoom: f32,
     scroll: f64,
     drag: Option<Drag>,
@@ -238,7 +255,7 @@ impl Default for DawUi {
             inputs: HashMap::new(),
             track_name_edit: None,
             master_gain_input: "0.0".into(),
-            tempo_input: format!("{:?}", daw_core::DEFAULT_TEMPO_BPM),
+            tempo_edit: None,
             zoom: 70.0,
             scroll: 0.0,
             drag: None,
@@ -317,7 +334,7 @@ impl DawUi {
                 self.inputs.clear();
                 self.track_name_edit = None;
                 self.master_gain_input = format!("{:.1}", self.session.project.master.gain_db);
-                self.tempo_input = format!("{:?}", self.session.project.tempo_bpm);
+                self.tempo_edit = None;
                 self.selected_track = None;
                 self.selected_clip = None;
                 self.notices.clear();
@@ -392,7 +409,7 @@ impl DawUi {
                         self.inputs.clear();
                         self.track_name_edit = None;
                         self.master_gain_input = format!("{:.1}", session.project.master.gain_db);
-                        self.tempo_input = format!("{:?}", session.project.tempo_bpm);
+                        self.tempo_edit = None;
                         self.scroll = 0.0;
                     }
                     self.notices = session.warnings.clone();
@@ -675,49 +692,88 @@ impl DawUi {
         }
     }
     fn tempo_control(&mut self, ui: &mut egui::Ui) {
-        ui.label("BPM");
         let previous = self.session.project.tempo_bpm;
-        let response = numeric_input(ui, &mut self.tempo_input, "Tempo (BPM)");
-        response.widget_info(|| {
-            egui::WidgetInfo::text_edit(
-                ui.is_enabled(),
-                format!("{previous:?}"),
-                &self.tempo_input,
-                "Tempo (BPM)",
-            )
-        });
-        #[cfg(test)]
-        {
-            self.tempo_bounds = response.rect;
-        }
-        if !ui.is_enabled() {
-            return;
-        }
-        let focused = response.has_focus() || response.lost_focus();
-        let cancel = focused
-            && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
-        let commit = response.lost_focus()
-            || (focused
-                && ui
-                    .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Enter)));
-        if cancel {
-            self.tempo_input = format!("{previous:?}");
-            response.surrender_focus();
-        } else if commit {
-            match self.tempo_input.parse::<f32>() {
-                Ok(value) if value.is_finite() && value > 0.0 => {
-                    self.session.project.tempo_bpm = value;
-                    self.tempo_input = format!("{value:?}");
-                    if value != previous {
-                        self.changed();
+        if let Some(mut edit) = self.tempo_edit.take() {
+            let mut output = egui::TextEdit::singleline(&mut edit.text)
+                .id(ui.make_persistent_id("tempo"))
+                .font(fonts::semibold(13.0))
+                .text_color(theme::TEXT)
+                .horizontal_align(egui::Align::Center)
+                .desired_width(edit.width)
+                .min_size(Vec2::new(edit.width, toolbars::CONTROL_HEIGHT))
+                .show(ui);
+            output.response.widget_info(|| {
+                egui::WidgetInfo::text_edit(
+                    ui.is_enabled(),
+                    previous.to_string(),
+                    &edit.text,
+                    "Tempo (BPM)",
+                )
+            });
+            #[cfg(test)]
+            {
+                self.tempo_bounds = output.response.rect;
+            }
+            if !ui.is_enabled() {
+                self.tempo_edit = Some(edit);
+                return;
+            }
+            if edit.focus {
+                output.response.request_focus();
+                output
+                    .state
+                    .cursor
+                    .set_char_range(Some(egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(edit.text.chars().count()),
+                    )));
+                output.state.store(ui.ctx(), output.response.id);
+                edit.focus = false;
+            }
+            let (cancel, commit) = if output.response.has_focus() || output.response.lost_focus() {
+                ui.input_mut(|input| {
+                    let cancel = input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
+                    let commit = input.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+                    (cancel, commit)
+                })
+            } else {
+                (false, false)
+            };
+            if cancel || commit {
+                output.response.surrender_focus();
+                if commit && !cancel {
+                    match edit.text.parse::<f32>() {
+                        Ok(value) if value.is_finite() && value > 0.0 => {
+                            self.session.project.tempo_bpm = value;
+                            if value != previous {
+                                self.changed();
+                            }
+                        }
+                        _ => self.fail("Tempo must be a positive finite BPM value"),
                     }
                 }
-                _ => {
-                    self.tempo_input = format!("{previous:?}");
-                    self.fail("Tempo must be a positive finite BPM value");
-                }
+            } else {
+                self.tempo_edit = Some(edit);
             }
-            response.surrender_focus();
+        } else {
+            let response = transport_monitor_control(
+                ui,
+                &format!("{previous}bpm"),
+                "Tempo (BPM): double-click to edit",
+                3,
+                Sense::click(),
+            );
+            #[cfg(test)]
+            {
+                self.tempo_bounds = response.rect;
+            }
+            if response.double_clicked() {
+                self.tempo_edit = Some(TempoEdit {
+                    text: previous.to_string(),
+                    focus: true,
+                    width: response.rect.width(),
+                });
+            }
         }
     }
     fn toolbar(&mut self, ui: &mut egui::Ui) {
@@ -1926,15 +1982,31 @@ mod tests {
         icons::configure(&ctx);
         ctx
     }
+    fn start_tempo_edit(app: &mut DawUi, ctx: &egui::Context) {
+        frame(app, ctx, vec![]);
+        frame(app, ctx, vec![]);
+        let monitor = app.tempo_bounds;
+        let point = monitor.center();
+        frame(
+            app,
+            ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(app, ctx, vec![button(point, false)]);
+        assert!(
+            app.tempo_edit.is_none(),
+            "single click must retain the monitor"
+        );
+        frame(app, ctx, vec![button(point, true)]);
+        frame(app, ctx, vec![button(point, false)]);
+        assert!(app.tempo_edit.is_some());
+        frame(app, ctx, vec![]);
+        assert!(ctx.egui_wants_keyboard_input());
+        assert_eq!(app.tempo_bounds.width(), monitor.width());
+    }
     #[test]
-    fn toolbar_tempo_commits_cancels_and_rejects_invalid_values() {
+    fn toolbar_tempo_double_click_commits_cancels_and_rejects_invalid_values() {
         let mut app = DawUi::default();
-        let ctx = context();
-        // Let the toolbar layout settle before sending pointer input.
-        frame(&mut app, &ctx, vec![]);
-        frame(&mut app, &ctx, vec![]);
-        assert_eq!(app.tempo_input, "120.0");
-        let input = app.tempo_bounds.center();
         let key = |key| egui::Event::Key {
             key,
             physical_key: None,
@@ -1954,31 +2026,26 @@ mod tests {
         ] {
             app.dirty = false;
             app.error = None;
-            frame(
-                &mut app,
-                &ctx,
-                vec![egui::Event::PointerMoved(input), button(input, true)],
-            );
-            frame(&mut app, &ctx, vec![button(input, false)]);
-            assert!(
-                ctx.egui_wants_keyboard_input(),
-                "tempo input should take focus"
-            );
-            app.tempo_input = text.into();
+            let ctx = context();
+            start_tempo_edit(&mut app, &ctx);
+            let input = if text.is_empty() {
+                key(egui::Key::Backspace)
+            } else {
+                egui::Event::Text(text.into())
+            };
+            frame(&mut app, &ctx, vec![input]);
+            assert_eq!(app.tempo_edit.as_ref().unwrap().text, text);
             frame(&mut app, &ctx, vec![key(action)]);
             assert_eq!(app.session.project.tempo_bpm, expected);
-            assert_eq!(app.tempo_input, format!("{expected:?}"));
+            assert!(app.tempo_edit.is_none());
             assert_eq!(app.dirty, changed);
             assert_eq!(app.error.is_some(), invalid);
         }
         app.error = None;
-        frame(
-            &mut app,
-            &ctx,
-            vec![egui::Event::PointerMoved(input), button(input, true)],
-        );
-        frame(&mut app, &ctx, vec![button(input, false)]);
-        app.tempo_input = "99.25".into();
+        app.dirty = false;
+        let ctx = context();
+        start_tempo_edit(&mut app, &ctx);
+        frame(&mut app, &ctx, vec![egui::Event::Text("99.25".into())]);
         let outside = Pos2::new(30.0, app.tempo_bounds.bottom() + 20.0);
         frame(
             &mut app,
@@ -1986,20 +2053,47 @@ mod tests {
             vec![egui::Event::PointerMoved(outside), button(outside, true)],
         );
         frame(&mut app, &ctx, vec![button(outside, false)]);
-        assert_eq!(app.session.project.tempo_bpm, 99.25);
-        assert!(app.dirty);
+        assert_eq!(app.tempo_edit.as_ref().unwrap().text, "99.25");
+        assert_eq!(app.session.project.tempo_bpm, 135.5);
+        assert!(
+            !app.dirty,
+            "focus loss must retain the draft without committing"
+        );
 
         app.pending = Some(Action::CloseProject);
         app.perform_pending();
-        assert_eq!(app.tempo_input, "120.0");
+        assert!(app.tempo_edit.is_none());
         assert_eq!(app.session.project.tempo_bpm, 120.0);
+        let ctx = context();
+        start_tempo_edit(&mut app, &ctx);
         let (sender, receiver) = mpsc::channel();
         let mut session = Session::default();
         session.project.tempo_bpm = 87.5;
         sender.send(Ok(Job::Loaded(session, false))).unwrap();
         app.job = Some(receiver);
         app.poll();
-        assert_eq!(app.tempo_input, "87.5");
+        assert!(app.tempo_edit.is_none());
+        assert_eq!(app.session.project.tempo_bpm, 87.5);
+    }
+    #[test]
+    fn tempo_monitor_reserves_equal_digit_slots() {
+        let mut app = DawUi::default();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        let default = app.tempo_bounds;
+        for tempo in [111.0, 888.0, 60.0, 9.0] {
+            app.session.project.tempo_bpm = tempo;
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(app.tempo_bounds, default);
+        }
+        app.session.project.tempo_bpm = 120.25;
+        frame(&mut app, &ctx, vec![]);
+        let fractional = app.tempo_bounds;
+        assert!(fractional.width() > default.width());
+        app.session.project.tempo_bpm = 888.88;
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.tempo_bounds, fractional);
     }
     #[test]
     fn track_name_double_click_commits_with_enter_and_cancels_with_escape() {
@@ -2392,7 +2486,6 @@ mod tests {
     fn musical_ruler_seek_and_loop_match_the_project_tempo() {
         let (mut app, track) = fixture();
         app.session.project.tempo_bpm = 60.0;
-        app.tempo_input = "60.0".into();
         let original_clip = app.session.project.tracks[0].clips[0].clone();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
