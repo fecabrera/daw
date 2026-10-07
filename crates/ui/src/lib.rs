@@ -1,4 +1,4 @@
-use daw_core::{Clip, Edit, Id, MAX_TRACKS, frames, seconds};
+use daw_core::{Clip, Edit, Id, frames, seconds};
 use daw_output::AudioOutput;
 use daw_project::Session;
 use egui::{Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
@@ -504,7 +504,7 @@ impl DawUi {
                     });
                 }
                 ui.separator();
-                ui.label("48 kHz · WAV · 4 tracks maximum");
+                ui.label("48 kHz · WAV");
                 if let Some(output) = &self.output {
                     ui.separator();
                     ui.label(&output.description);
@@ -981,14 +981,8 @@ impl DawUi {
                 toolbars::Toolbar::row(ui, |ui| {
                     ui.label("Tracks");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if icons::button(
-                            ui,
-                            icons::Lucide::Plus,
-                            "Add track",
-                            self.session.project.tracks.len() < MAX_TRACKS,
-                            theme::TEXT,
-                        )
-                        .clicked()
+                        if icons::button(ui, icons::Lucide::Plus, "Add track", true, theme::TEXT)
+                            .clicked()
                         {
                             match self.session.project.add_track() {
                                 Ok(id) => {
@@ -1984,13 +1978,37 @@ mod tests {
         assert!(!app.dirty);
     }
     #[test]
+    fn add_track_button_remains_enabled_beyond_four_tracks() {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let add = Pos2::new(
+            TRACK_WIDTH - 19.0,
+            app.lane_bounds[&track].top() - RULER_HEIGHT / 2.0,
+        );
+        for expected in 2..=8 {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(add), button(add, true)],
+            );
+            frame(&mut app, &ctx, vec![button(add, false)]);
+            assert_eq!(app.session.project.tracks.len(), expected);
+            assert_eq!(
+                app.selected_track,
+                Some(app.session.project.tracks.last().unwrap().id)
+            );
+            assert!(app.dirty);
+        }
+    }
+    #[test]
     fn master_stays_pinned_while_tracks_scroll_and_window_resizes() {
         let (mut app, track) = fixture();
-        for _ in 0..3 {
+        for _ in 0..7 {
             app.session.project.add_track().unwrap();
         }
         let ctx = context();
-        // Four compact tracks must overflow to exercise scrolling.
+        // Eight compact tracks must overflow to exercise scrolling.
         let size = Vec2::new(900.0, 450.0);
         frame_sized(&mut app, &ctx, vec![], size);
         let master = app.master_bounds;
@@ -2016,7 +2034,7 @@ mod tests {
         assert!(app.lane_bounds[&track].top() < lane.top());
         assert_eq!(app.master_bounds, master);
         assert!(!app.dirty);
-        assert_eq!(app.session.project.tracks.len(), MAX_TRACKS);
+        assert_eq!(app.session.project.tracks.len(), 8);
 
         frame_sized(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert_eq!(app.master_bounds.bottom(), app.scrollbar_bounds.bottom());

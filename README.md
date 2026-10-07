@@ -1,6 +1,6 @@
 # Desktop DAW
 
-A Rust desktop audio editor with a four-track limit, external WAV sources, and headless WAV export. The project format is experimental.
+A Rust desktop audio editor with no fixed track-count limit, external WAV sources, and headless WAV export. The project format is experimental.
 
 ## Run
 
@@ -39,7 +39,7 @@ The ruler's bottom divider extends across the full workspace, including below th
 
 The selection range appears at the right edge of the bottom status bar. It shows the ruler selection's start and end in seconds to two decimal places. The playback toolbar shows the playhead time.
 
-Master uses a compact 68-point outlined block with two rows: its name and gain. It stays fixed at the bottom of the track column, above the status bar. Two vertical L/R output bars fit its inner height at the right edge; their red clipping markers can be clicked to clear. It has no Mute or Solo buttons and does not count toward the four-track limit. Audio tracks scroll above it.
+Master uses a compact 68-point outlined block with two rows: its name and gain. It stays fixed at the bottom of the track column, above the status bar. Two vertical L/R output bars fit its inner height at the right edge; their red clipping markers can be clicked to clear. It has no Mute or Solo buttons and is separate from the audio tracks. Audio tracks scroll above it.
 
 The header uses one 13-point Outfit label: `[project name] - DAW`, with ` *` after the project name for unsaved changes. The native window title uses the same text.
 
@@ -53,7 +53,7 @@ The native macOS menu bar contains the File menu. Windows and Linux show File in
 
 Unsaved changes, export replacement, and error messages use one reusable application dialog component. It provides a centered title, consistent padding, bounded width, wrapped message text, and a shared button row. Each caller handles its own actions. File and folder pickers use native dialogs through `rfd`.
 
-- Add up to four tracks with the Lucide Plus button at the right of the Tracks header. A flexible spacer separates it from the Tracks label. The Tracks header uses the playback toolbar's 8-point padding on all sides; the ruler matches its 38-point height. Select a track, then import a WAV at the playhead. Dropping a WAV onto the window imports it into the selected track.
+- Add tracks with the Lucide Plus button at the right of the Tracks header. A flexible spacer separates it from the Tracks label. The Tracks header uses the playback toolbar's 8-point padding on all sides; the ruler matches its 38-point height. Select a track, then import a WAV at the playhead. Dropping a WAV onto the window imports it into the selected track.
 - Drag a clip's name strip to move it. Drop onto another track to change tracks. Drag either edge to trim.
 - Right-click a clip to split at the playhead or delete it. Right-click a track block to delete that track.
 - Each track is 68 points tall, with its name above one control row: M, S, gain knob, gain input, pan knob, pan input. Stereo meters stay at the right edge. Adjust gain and pan with the shared knobs or numeric inputs. Gain knobs mark 0 dB at the top; pan marks center. Drag up or right to increase, hold Shift for fine adjustment, use arrow keys for small steps, or double-click to reset. Gain dragging covers -60 to +12 dB; numeric track gain entry retains its existing finite-value validation. Pan ranges from -1 to 1. Commit numeric inputs with Enter or focus loss; Escape cancels an input change.

@@ -6,7 +6,7 @@ Date: 2026-10-07.
 
 Scope baseline: [MVP.md](../MVP.md).
 
-Build a desktop digital audio workstation (DAW) that can arrange and mix up to four audio tracks. Provide a command-line interface (CLI) that validates projects and exports the same mix without graphics or an audio device. This iteration covers the complete MVP; the two-track prototype is an intermediate milestone.
+Build a desktop digital audio workstation (DAW) that can arrange and mix audio tracks with no fixed track-count limit. Provide a command-line interface (CLI) that validates projects and exports the same mix without graphics or an audio device. This iteration covers the complete MVP; the two-track prototype is an intermediate milestone.
 
 Use ASD-STE100 principles and Plain Language for specifications, technical documentation, and user instructions. Use consistent terms and explicit requirements. In this specification, **must** indicates a requirement. Implementation defaults below resolve routine details within the agreed scope.
 
@@ -15,7 +15,7 @@ Use ASD-STE100 principles and Plain Language for specifications, technical docum
 | Baseline ID | Required capability |
 | --- | --- |
 | MVP-01 | Import supported WAV sources and display waveforms. |
-| MVP-02 | Add and delete tracks, with a hard limit of four. Provide gain, pan/balance, mute, and solo. |
+| MVP-02 | Add and delete tracks with no fixed track-count limit. Provide gain, pan/balance, mute, and solo. |
 | MVP-03 | Move, trim, split, and delete clips without changing source files or allowing overlap on one track. |
 | MVP-04 | Provide a timeline, left track list, top playback toolbar, zoom, and scrolling. |
 | MVP-05 | Play, pause, stop, seek, and loop a selected range. |
@@ -114,7 +114,7 @@ schema_version is optional and ignored. Do not branch on its value or reject a f
 - Require source.kind to equal external. Accept relative or absolute path_kind values. Accept pcm_int and ieee_float source sample formats in the supported WAV combinations.
 - Require each clip to reference an asset record. Missing asset records are invalid manifests; missing source files are warnings.
 - Require positive clip lengths. The saved source offset plus length must fit the asset's saved decoded_frame_count.
-- Permit zero through four tracks. Reject a fifth track during editing and reject manifests with more than four tracks.
+- Permit zero or more tracks with no fixed track-count limit in editing or project loading. Track capacity depends on available memory; playback capacity also depends on CPU performance and audio buffer settings.
 - Use inclusive starts and exclusive ends. Touching clips are valid; overlapping clips on one track are invalid.
 - Require an enabled loop to have end_frame greater than start_frame. Open projects stopped at their saved playhead position.
 - Reject malformed JSON, missing required fields, invalid ranges, and unsupported structures with clear errors. Ignore unknown fields while the schema is experimental; their preservation on save is not guaranteed.
@@ -141,7 +141,7 @@ Accept uncompressed WAV containing 16-bit or 24-bit integer PCM, or 32-bit IEEE 
 
 Decode sources before playback. Convert their audio to 32-bit floating-point PCM at 48 kHz using Rubato when required. Preserve original channel metadata and source information. Generate waveform peak data on a worker thread. Commit the imported asset and clip only after decoding and placement validation succeed.
 
-Import into a selected track at the playhead. If no track exists, create one for the import. Reject placement that overlaps an existing clip. Import must not create a fifth track. Keep the interface responsive during import; show progress or an active operation indicator.
+Import into a selected track at the playhead. If no track exists, create one for the import. Reject placement that overlaps an existing clip. Import can create a track regardless of the current track count. Keep the interface responsive during import; show progress or an active operation indicator.
 
 | Operation | Behavior |
 | --- | --- |
@@ -216,7 +216,7 @@ Use a Lucide Repeat icon button immediately after Stop to toggle looping, with n
 
 - Align track controls with their lanes during vertical scrolling. Horizontal timeline scrolling must not move the track list.
 - Place the horizontal scrollbar inside the bottom edge of the timeline viewport. Keep it there for all track counts and window sizes. Do not use a separate window-wide scrollbar panel. Align it with the timeline, not the track list. Size its thumb to the visible time range and update it when zoom changes. Do not show a numeric scroll input.
-- Include an icon-only Add track button using Lucide's Plus icon. Keep the Tracks label on the left and the button on the right, with a flexible spacer between them. Use the playback toolbar's shared 8-point padding on all four sides, with a 22-point control row and 38-point total header height. Retain the Add track tooltip and accessible name, and disable the button at four tracks. Use the track information blocks defined below. Provide Delete track in the track context menu.
+- Include an icon-only Add track button using Lucide's Plus icon. Keep the Tracks label on the left and the button on the right, with a flexible spacer between them. Use the playback toolbar's shared 8-point padding on all four sides, with a 22-point control row and 38-point total header height. Retain the Add track tooltip and accessible name. Keep the button enabled regardless of the track count. Use the track information blocks defined below. Provide Delete track in the track context menu.
 - Use a 38-point ruler aligned with the Tracks header, with an upper 18-point time-label band and a lower 20-point tick band. Match the supplied [ruler reference](assets/ruler-reference.png) and [selection reference](assets/ruler-selection-reference.png): the toolbar background in the upper time-label band, the timeline background in the lower tick band, a thin horizontal border between bands, taller major ticks, shorter minor ticks, and a muted purple highlight across the selected range in the lower band. Use a softer, darker highlight when Loop is disabled and the stronger highlight when it is enabled. Use 11-point Outfit for time labels. Format major labels as `m:ss`, such as `0:05` and `0:30`; show fractional seconds when zoom requires them. Adjust tick spacing with zoom. Only drags that start in the lower band can create or edit the loop selection. Drags from the upper band must leave the selection unchanged, even if the pointer enters the lower band. Clicking either band can seek. Keep the playhead, clip names, and source waveforms visible. Distinguish missing-source placeholders visibly.
 - Include the Play/Pause toggle and Stop button, seek interaction, loop selection/toggle, and horizontal zoom in the playback toolbar. Put master gain, stereo peak meters, and clipping status in the fixed Master block described below.
 - Display transport time as `00h00m00.00s` in a fixed-width field. Use bundled Outfit at 13 points. Use semibold weight (600) for all characters. Render digits in the default text color (`#C7C9CC`). Center each digit in an equal-width slot sized for the widest semibold digit. Render `h`, `m`, `s`, and `.` in a slightly darker gray (`#AAAEB3`), with normal character widths. Set the field width to eight digit slots plus the unit and punctuation widths and 8-point padding on each side. Use zero-padded hours, minutes, seconds, and hundredths. Time updates must not move adjacent controls or change digit alignment during playback.
@@ -235,7 +235,7 @@ Use a Lucide Repeat icon button immediately after Stop to toggle looping, with n
 - Commit numeric input on Enter or focus loss. Invalid input must leave the previous value unchanged and show clear feedback. Escape cancels an uncommitted input change.
 - Use the same outlined design for Mute and Solo as the toolbar buttons. Label them `M` and `S`. Use equal button sizes, Mute and Solo tooltips, and full accessible names with on/off states. Show enabled states with the shared purple selection style. Permit both buttons to be enabled; solo overrides mute.
 - Use one reusable knob component for track gain, track pan, and master gain, inspired by the [knob reference](assets/knob-reference.png). Use 28-point controls with dark faces, purple value arcs, light pointers, and the shared border and text colors. Put a fixed 0 dB mark at twelve o'clock on gain knobs; put a center mark there on pan knobs. Gain dragging covers -60 to +12 dB, with 0 dB at the midpoint of the sweep; numeric track gain entry retains its existing finite-value validation. Pan ranges from -1 to +1. Drag up or right to increase; hold Shift for fine adjustment. Arrow keys change gain by 0.1 dB or pan by 0.01. Double-click resets to 0 dB or center. Keep numeric entry for precise values. Keep track deletion in the context menu.
-- Implement the block as a reusable UI component shared by all four tracks.
+- Implement the block as a reusable UI component shared by all tracks.
 
 ### Master block
 
@@ -245,7 +245,7 @@ Use a Lucide Repeat icon button immediately after Stop to toggle looping, with n
 - Provide master gain and L/R output meters with red clipping markers and click-to-clear behavior. Do not add a separate clipping text row. Retain the current master gain range of -60 to +12 dB. Show meters at zero before output starts.
 - Master has no Mute or Solo buttons. It uses the existing master gain and output monitoring; it has no Pan control in this change.
 - Use the same numeric input component for track gain, track pan, and Master gain: 36-point width, 11-point Outfit, left-aligned default text color, and the shared input background, border, and padding. Master gain commits with Enter or focus loss and cancels an uncommitted edit with Escape. Retain its -60 to +12 dB range and reject non-finite input.
-- Master is the final mix output. It does not count toward the four audio-track limit and cannot hold clips, be deleted, or receive imported audio.
+- Master is the final mix output. It is separate from the audio tracks and cannot hold clips, be deleted, or receive imported audio.
 
 ### Clip appearance and interaction
 
@@ -291,7 +291,7 @@ Validation must inspect the manifest and referenced audio, not only JSON syntax.
 | Test ID | Verification | Pass condition |
 | --- | --- | --- |
 | AT-01 | Import each supported sample format in mono and stereo, including a source that requires resampling | Correct source metadata, duration, 48 kHz decoded audio, and waveform; unsupported formats produce clear errors. |
-| AT-02 | Create four tracks, then attempt a fifth; load a five-track manifest in desktop and CLI | Four tracks work; every fifth-track attempt fails clearly. |
+| AT-02 | Create at least eight tracks; save, reopen, play, and export the project in desktop and CLI | All tracks are retained and mixed. Add track stays enabled. |
 | AT-03 | Move, trim, split, and delete; attempt overlap and test touching boundaries | Source files remain unchanged; valid edits work; overlaps fail without partial changes. |
 | AT-04 | Verify mono pan, stereo balance, mute/solo combinations, gains, fades, and clipping | Results match the mixing rules; solo overrides mute. |
 | AT-05 | Start from a nonzero playhead, pause/resume, seek, loop, edit while playing, and stop | Pause holds position; Stop restores the original playback start through seeks and edits; the icon follows Play/Pause state; empty projects cannot play; no unintended clicks or callback blocking. |
@@ -324,7 +324,7 @@ Run cargo fmt, cargo clippy, and cargo test. Use meaningful automated tests for 
 1. Shared core and persistence: define entities, validators, commands, and the experimental manifest. Build CLI without desktop dependencies.
 2. Media and renderer: decode/resample WAV, implement processors and offline rendering, and complete initial CLI validation/export.
 3. Two-track prototype: add output, shared panels, waveforms, transport, clip movement, and desktop export. Verify desktop/CLI parity.
-4. Complete four-track editing: implement trims, splits, limits, loop interaction, missing-source handling, safe saves, and errors.
+4. Complete track editing: implement trims, splits, loop interaction, missing-source handling, safe saves, and errors.
 5. Validate the full MVP: run AT-01 through AT-12 on the reference platforms and record results.
 
 The iteration is complete when all applicable acceptance tests pass. Roadmap features do not block completion.

@@ -3,7 +3,6 @@ use uuid::Uuid;
 
 pub use uuid::Uuid as Id;
 pub const SAMPLE_RATE: u32 = 48_000;
-pub const MAX_TRACKS: usize = 4;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
@@ -126,9 +125,6 @@ impl Project {
         if self.sample_rate_hz != SAMPLE_RATE {
             return Err(invalid("Project sample rate must be 48 kHz"));
         }
-        if self.tracks.len() > MAX_TRACKS {
-            return Err(invalid("MVP projects cannot contain more than four tracks"));
-        }
         if !self.master.gain_db.is_finite() || !linear_gain(self.master.gain_db).is_finite() {
             return Err(invalid("Invalid master gain"));
         }
@@ -201,9 +197,6 @@ impl Project {
         Ok(())
     }
     pub fn add_track(&mut self) -> Result<Id> {
-        if self.tracks.len() >= MAX_TRACKS {
-            return Err(Error("Four-track limit reached".into()));
-        }
         let id = Id::new_v4();
         self.tracks.push(Track {
             id,
@@ -303,15 +296,16 @@ pub enum Edit {
 mod tests {
     use super::*;
     #[test]
-    fn track_limit_and_solo_precedence() {
+    fn many_tracks_validate_and_solo_overrides_mute() {
         let mut p = Project::default();
-        for _ in 0..4 {
+        for _ in 0..32 {
             p.add_track().unwrap();
         }
-        assert!(p.add_track().is_err());
+        assert_eq!(p.tracks.len(), 32);
+        p.validate().unwrap();
         p.tracks[0].muted = true;
         p.tracks[0].soloed = true;
         assert!(p.audible(&p.tracks[0]));
-        assert!(!p.audible(&p.tracks[1]));
+        assert!(p.tracks[1..].iter().all(|t| !p.audible(t)));
     }
 }

@@ -29,7 +29,7 @@ Provide a headless command-line mode from the start, using the same project mode
 | ID | Area | Requirement |
 | --- | --- | --- |
 | MVP-01 | Import | Import WAV files and display a waveform for each clip. |
-| MVP-02 | Tracks | Allow a maximum of four stereo audio tracks per project. Add and delete tracks within this hard limit. Provide gain, pan, mute, and solo controls per track. |
+| MVP-02 | Tracks | Allow stereo audio tracks with no fixed track-count limit. Add and delete tracks. Provide gain, pan, mute, and solo controls per track. |
 | MVP-03 | Clips | Move, trim, split, and delete clips without modifying the source recording. Clips on the same track must not overlap; clips on different tracks can play simultaneously. |
 | MVP-04 | Timeline | Provide a simple timeline with a track list on the left and a toolbar above the timeline containing playback controls. Provide horizontal zoom and scrolling. |
 | MVP-05 | Transport | Play, pause, stop, seek, and loop a selected region. |
@@ -105,13 +105,13 @@ Use the supplied Audacity 4 screenshots as layout references.
 
 - Place the track list on the left and the timeline to its right.
 - Align each track's controls with its corresponding timeline lane. Use a simple outlined block containing the track name, a gain input box in dB, a pan/balance input box, and Mute and Solo buttons. Keep track deletion available through a context menu.
-- Include a Tracks header and an Add track button. Disable Add track when the project contains four tracks.
+- Include a Tracks header and an Add track button. Keep Add track enabled regardless of the track count.
 - Place a toolbar above the timeline. Toggle Play to Pause during playback, using the corresponding Lucide icons. Include a separate Stop button.
 - Put New project, Open, Import WAV, Save, Save as, and Export WAV in the File menu. Use the native macOS menu bar and an in-window menu on Windows and Linux. Group these actions with separators and provide keyboard shortcuts.
 - Display a time ruler in seconds above the track lanes, a visible playhead, and waveforms within clips.
 - Keep the track list visible during horizontal timeline scrolling. Keep track rows and timeline lanes aligned during vertical scrolling.
 - Provide timeline zoom and loop-region controls, plus master gain, peak metering, and clipping status, within the initial layout.
-- Place Master in a track-style block fixed at the bottom of the track list, above the status bar. Include master gain and L/R output monitors without Mute or Solo buttons. It does not count toward the four audio-track limit.
+- Place Master in a track-style block fixed at the bottom of the track list, above the status bar. Include master gain and L/R output monitors without Mute or Solo buttons. It is separate from the audio tracks.
 - Show the empty track list and timeline before tracks are added. Use the shared UI panel foundation and reusable controls.
 - Use simple colored clip blocks with a thin outline, slightly rounded corners, a name strip at the top, and a waveform body. Mono clips show one waveform; stereo clips show two stacked waveforms. See the [clip reference](specs/assets/clip-reference.png) and the implementation specification for details.
 
@@ -224,7 +224,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - Clips reference assets by ID. More than one clip can use the same asset without duplicating its source record.
 - Preserve asset metadata and clip ranges when sources are missing. Calculate missing-source status when opening the project; do not persist it as a flag.
 - Clip ranges use an inclusive start and exclusive end. Require nonnegative integer positions, positive clip lengths, and source_offset_frame + length_frames no greater than decoded_frame_count.
-- Require no more than four tracks, unique IDs, valid asset references, and no same-track clip overlap. Enabled loops require end_frame greater than start_frame.
+- Permit any track count. Require unique IDs, valid asset references, and no same-track clip overlap. Enabled loops require end_frame greater than start_frame.
 - Do not store decoded PCM, waveform caches, output device settings, or active playback state in the manifest. Open projects stopped at the saved playhead position.
 - Keep the fixed MVP pan law, fades, export format, and dither policy in the application's MVP defaults. Add explicit settings when they become configurable.
 - Do not reject a project based on schema_version. Reject malformed JSON, invalid fields, and unsupported project structures with clear errors. Compatibility with earlier experimental manifests is not guaranteed.
@@ -342,7 +342,7 @@ Windows and Linux validation:
 
 ### Acceptance criteria
 
-- Play and mix four stereo audio tracks simultaneously within the agreed test workload on each reference machine, with a minimum of 8 GB of RAM. Reject creation or loading of a project with more than four tracks in both desktop and headless modes, with a clear error.
+- Play and mix four stereo audio tracks simultaneously within the agreed test workload on each reference machine, with a minimum of 8 GB of RAM. Permit projects with more than four tracks in desktop and headless modes. Track capacity depends on available memory; playback capacity also depends on CPU performance and audio buffer settings.
 - A user can assemble a short piece, save the project, reopen it, and export the same mix.
 - Playback continues without audible dropouts during scrolling, zooming, and editing in the agreed test workload.
 - The import, arrangement, playback, save/reopen, and export workflow works on macOS, Linux, and Windows.
@@ -379,7 +379,6 @@ Source management is also a future goal; its delivery horizon remains to be defi
 
 #### Audio Features
 
-- Remove the MVP's four-track hard limit and use no fixed application track-count limit. Limit track capacity by available memory and the configured audio-memory budget; simultaneous playback capacity also depends on CPU performance and audio buffer settings.
 - Audio recording.
 - Additional import and export formats.
 - User-configurable export bit depth and sample format, mono/stereo export, channel mapping/downmix rules, and dither modes including an off option.

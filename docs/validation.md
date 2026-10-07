@@ -46,7 +46,7 @@ Native drag automation did not establish clip movement. Separate egui input test
 | Test | Evidence | Remaining validation |
 | --- | --- | --- |
 | AT-01: import | Six WAV format/channel combinations, resampling, stereo waveform display | Native mono waveform and import interactions on all platforms |
-| AT-02: track limit | Core limit, rejected fifth-track CLI manifest, disabled Add track | Native five-track manifest error on all platforms |
+| AT-02: track capacity | Automated checks for creation, save/reopen, mixing, meters, export, and Add track beyond four tracks | Native playback and performance checks with larger projects on reference platforms |
 | AT-03: edits | Transactional core edits and egui movement/trim tests | Native move, trim, split, delete, and overlap feedback |
 | AT-04: mixing | Pan/balance, solo precedence, gain targets, fades, headroom, saturated export | Native clipping indicator and audible transition checks |
 | AT-05: transport | Sample-counter tests, loop wrap/end behavior, native play/stop | Audible seek/loop continuity and editing during playback |
@@ -170,3 +170,9 @@ Track gain, track pan, and Master gain boxes now use the default UI text color t
 Track and clip selections now share the same 2-point purple stroke and 2-point rounded corners, drawn inside their bounds. Selected tracks receive a complete outline; neutral 1-point shared dividers remain. Native macOS inspection confirms the first track has a visible top selection edge and retains its default semibold name color. All 15 UI tests and strict Clippy checks for the UI and desktop packages pass. The macOS debug bundle is rebuilt.
 
 Audio tracks now use a 68-point block with exactly two control rows: name, then M/S, gain knob and input, and pan knob and input. The vertical meters use the 54-point inner height, matching Master. Timeline lanes use the same reduced height. Native macOS inspection confirms both rows fit with the existing padding and complete selection outline. The scrolling test uses a smaller viewport so four compact tracks overflow. All 15 UI tests and strict Clippy checks for the UI and desktop packages pass. The macOS debug bundle is rebuilt.
+
+## Track capacity
+
+The four-track cap is removed from track creation, project validation, imports, and the Add track button. The status bar no longer reports a maximum. Current requirements specify no fixed track-count limit; earlier four-track rejection checks above describe the previous implementation.
+
+All 35 workspace tests and strict Clippy pass. Core validation accepts 32 tracks. An eight-track workflow imports, saves, reopens, mixes, and exports identical WAV bytes before and after reopening. Output tests verify eight-track playback and stereo meters, then a live update to nine tracks. Pointer-driven UI checks add eight tracks and retain the fixed Master block while scrolling and resizing. The headless CLI smoke check validates and exports an eight-track project. The macOS debug bundle is rebuilt. Larger-project native playback and performance checks on the reference platforms remain open.

@@ -43,14 +43,21 @@ def main():
         project.write_text(json.dumps(missing))
         assert "Missing source" in run(0, "validate", "--project", folder).stderr
         assert "Missing source" in run(0, "render", "--project", folder, "--output", folder / "missing-mix.wav").stderr
-        fifth = copy.deepcopy(manifest)
-        fifth["tracks"].append(dict(fifth["tracks"][0], id=str(uuid.uuid4()), clips=[]))
-        project.write_text(json.dumps(fifth))
-        run(1, "validate", "--project", folder)
+        expanded = copy.deepcopy(manifest)
+        for _ in range(4):
+            track = copy.deepcopy(manifest["tracks"][0])
+            track["id"] = str(uuid.uuid4())
+            for clip in track["clips"]:
+                clip["id"] = str(uuid.uuid4())
+            expanded["tracks"].append(track)
+        assert len(expanded["tracks"]) == 8
+        project.write_text(json.dumps(expanded))
+        run(0, "validate", "--project", folder)
+        run(0, "render", "--project", folder, "--output", folder / "eight-tracks.wav")
         project.write_text("invalid json")
         run(1, "validate", "--project", folder)
         run(2, "render")
-    print("CLI smoke check passed: WAV format, repeatability, missing sources, track limit, overwrite, and exit codes")
+    print("CLI smoke check passed: WAV format, repeatability, missing sources, eight-track projects, overwrite, and exit codes")
 
 
 if __name__ == "__main__":

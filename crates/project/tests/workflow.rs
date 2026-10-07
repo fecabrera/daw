@@ -175,22 +175,33 @@ fn schema_version_is_ignored_and_invalid_structure_is_rejected() {
 }
 
 #[test]
-fn four_tracks_render_together_and_solo_overrides_mute() {
+fn eight_tracks_save_reopen_export_and_solo_overrides_mute() {
     let f = Fixture::new();
     let source = f.wav("source.wav", 48000, 2, 24, false);
     let mut s = Session::default();
-    for _ in 0..4 {
+    for _ in 0..8 {
         s.import(&source, None, 0).unwrap();
     }
-    assert!(s.import(&source, None, 0).is_err());
+    let folder = f.0.join("project");
+    s.save(&folder).unwrap();
+    let reopened = Session::open(&folder).unwrap();
+    assert_eq!(reopened.project.tracks.len(), 8);
+    let original_export = f.0.join("original.wav");
+    let reopened_export = f.0.join("reopened.wav");
+    s.export(&original_export, false).unwrap();
+    reopened.export(&reopened_export, false).unwrap();
+    assert_eq!(
+        fs::read(original_export).unwrap(),
+        fs::read(reopened_export).unwrap()
+    );
     let all = s.plan().sample_at(1200);
     s.project.tracks[0].muted = true;
     s.project.tracks[0].soloed = true;
     let solo = s.plan().sample_at(1200);
-    assert!((all[0] - solo[0] * 4.0).abs() < 1e-6);
+    assert!((all[0] - solo[0] * 8.0).abs() < 1e-6);
     s.project.tracks[0].soloed = false;
-    let three = s.plan().sample_at(1200);
-    assert!((three[0] - solo[0] * 3.0).abs() < 1e-6);
+    let seven = s.plan().sample_at(1200);
+    assert!((seven[0] - solo[0] * 7.0).abs() < 1e-6);
 }
 
 #[test]

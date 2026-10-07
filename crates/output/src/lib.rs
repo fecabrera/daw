@@ -531,6 +531,78 @@ mod tests {
     }
 
     #[test]
+    fn playback_and_meters_include_tracks_beyond_four() {
+        let mut plan = transport_plan();
+        let clip = plan.project.tracks[0].clips[0].clone();
+        for _ in 0..7 {
+            plan.project.add_track().unwrap();
+            plan.project
+                .tracks
+                .last_mut()
+                .unwrap()
+                .clips
+                .push(daw_core::Clip {
+                    id: Id::new_v4(),
+                    ..clip.clone()
+                });
+        }
+        for track in &mut plan.project.tracks {
+            track.gain_db = -12.0;
+        }
+        plan.project.validate().unwrap();
+        let expected = plan.sample_at(5800);
+        let meters = track_meters(&plan, &HashMap::new());
+        let mut prepared = PreparedRenderer::new(plan.clone(), &meters);
+        prepared.play();
+        for _ in 0..1000 {
+            prepared.next_sample();
+        }
+        let actual = prepared.next_sample();
+        for ch in 0..2 {
+            assert!((actual[ch] - expected[ch]).abs() < 1e-6);
+        }
+        prepared.publish_track_peaks();
+        assert_eq!(meters.len(), 8);
+        for meter in meters.values() {
+            for peak in &meter.peaks {
+                assert!(
+                    (f32::from_bits(peak.load(Ordering::Relaxed)) - expected[0].abs() / 8.0).abs()
+                        < 1e-6
+                );
+            }
+        }
+
+        // A live plan update must also prepare meters for newly added tracks.
+        plan.project.add_track().unwrap();
+        plan.project
+            .tracks
+            .last_mut()
+            .unwrap()
+            .clips
+            .push(daw_core::Clip {
+                id: Id::new_v4(),
+                ..clip
+            });
+        let updated_meters = track_meters(&plan, &meters);
+        let mut updated = PreparedRenderer::new(plan.clone(), &updated_meters);
+        updated.inherit(&prepared);
+        for _ in 0..1000 {
+            updated.next_sample();
+        }
+        let expected = plan.sample_at(updated.playhead);
+        let actual = updated.next_sample();
+        for ch in 0..2 {
+            assert!((actual[ch] - expected[ch]).abs() < 1e-6);
+        }
+        updated.publish_track_peaks();
+        assert_eq!(updated_meters.len(), 9);
+        let last = plan.project.tracks.last().unwrap().id;
+        assert_eq!(
+            f32::from_bits(updated_meters[&last].peaks[0].load(Ordering::Relaxed)),
+            0.25
+        );
+    }
+    #[test]
     fn track_meter_latches_each_channel_and_follows_track_identity() {
         let mut plan = RenderPlan {
             project: daw_core::Project::default(),
