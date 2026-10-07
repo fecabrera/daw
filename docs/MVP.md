@@ -254,6 +254,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - Do not provide timeline snapping in the MVP. Clip placement, trimming, and selections use sample-based positions without snapping to a grid or clip boundaries.
 - Clips on the same track must not overlap. Clips on different tracks may overlap in time.
 - Reject imports, moves, and trims that would create overlap; retain the previous valid placement and give clear feedback.
+- Show a translucent clip preview while moving, including across tracks. Clamp movement at frame zero. The preview and dropped clip must use the same position.
 - Clips may touch at their boundaries. Missing-source placeholders reserve their existing time ranges under the same placement rules.
 - Project validation must detect same-track overlap, including in headless mode.
 

@@ -216,3 +216,9 @@ All 24 UI tests and strict Clippy checks for UI and desktop pass. Pointer tests 
 The bottom-right Selection monitor now displays both endpoints with the existing bar.beat formatter, such as 0002.01–0004.03. It uses the project tempo in 4/4, counts bars and beats from 1, and updates with ruler selection or tempo changes. Its placement and standard UI style remain unchanged.
 
 All 24 UI tests and strict Clippy checks for UI and desktop pass. Existing formatter tests cover beat/bar boundaries and fractional tempo; ruler tests cover selection changes at project tempo. The macOS debug bundle is rebuilt.
+
+## Clip move preview and timeline start clamp
+
+Moving a clip now dims the original and draws a translucent copy of its name and waveform at the proposed position, including moves between tracks. The overlay uses the shared clip renderer and is clipped to the scrolling timeline viewport. Valid moves use the accent outline; overlapping or overflowing placements use red. Preview and drop share pointer-to-frame conversion and track targeting. Release is handled after all lane positions are current. Leftward movement clamps at frame zero while preserving source offset and duration; trimming retains its existing bounds checks. A window focus loss or disabled workspace clears the drag.
+
+All 27 UI tests and strict Clippy checks for UI and desktop pass. Pointer-driven tests inspect painted preview outlines, confirm the project remains unchanged during dragging, and compare previews with dropped positions at different zoom and scroll values. Same-track and cross-track leftward moves clamp to zero. Overlap previews are red and rejected drops retain both original clips without marking the project modified. Existing movement and trim checks pass. The macOS debug bundle is rebuilt.

@@ -238,6 +238,11 @@ struct Drag {
     mode: u8,
     origin: Pos2,
 }
+struct MovePreview {
+    track: Id,
+    start: u64,
+    valid: bool,
+}
 struct LoopDrag {
     start: u64,
     original: daw_core::Loop,
@@ -999,10 +1004,13 @@ impl DawUi {
             Pos2::new(bounds.right(), scrollbar_rect.top()),
         );
         self.paint_grid(&painter.with_clip_rect(timeline_rect), timeline_rect);
-        egui::ScrollArea::vertical()
+        self.lane_bounds.clear();
+        let tracks = egui::ScrollArea::vertical()
             .max_height((master_rect.top() - ui.cursor().top()).max(0.0))
             .auto_shrink([false, false])
             .show(ui, |ui| self.tracks(ui));
+        self.finish_clip_drag(ui);
+        self.paint_drag_preview(ui, tracks.inner_rect.intersect(timeline_rect));
         // One shared border separates the entire header from the track workspace.
         let header_bottom = timeline_rect.top() - 0.5;
         for (left, right, color) in [
@@ -1640,6 +1648,252 @@ impl DawUi {
             );
         }
     }
+    fn clip_block(&self, lane: Rect, clip: &Clip, start: u64) -> Rect {
+        let left = lane.left() + ((seconds(start) - self.scroll) as f32) * self.zoom;
+        let right = left + seconds(clip.length_frames) as f32 * self.zoom;
+        Rect::from_min_max(
+            Pos2::new(left, lane.top()),
+            Pos2::new(right.max(left + 2.0), lane.bottom()),
+        )
+    }
+    fn drag_delta(&self, drag: &Drag, pointer: Pos2) -> i64 {
+        (f64::from(pointer.x - drag.origin.x) / f64::from(self.zoom)
+            * f64::from(daw_core::SAMPLE_RATE))
+        .round() as i64
+    }
+    fn move_start(&self, drag: &Drag, pointer: Pos2) -> u64 {
+        (i128::from(drag.clip.start_frame) + i128::from(self.drag_delta(drag, pointer)))
+            .clamp(0, i128::from(u64::MAX)) as u64
+    }
+    fn drag_destination(&self, drag: &Drag, pointer: Pos2) -> Id {
+        self.session
+            .project
+            .tracks
+            .iter()
+            .find(|track| {
+                self.lane_bounds
+                    .get(&track.id)
+                    .is_some_and(|lane| lane.contains(pointer))
+            })
+            .map_or(drag.track, |track| track.id)
+    }
+    fn move_preview(&self, pointer: Pos2) -> Option<MovePreview> {
+        let drag = self.drag.as_ref().filter(|drag| drag.mode == 0)?;
+        let track = self.drag_destination(drag, pointer);
+        self.lane_bounds.get(&track)?;
+        let start = self.move_start(drag, pointer);
+        let valid = start
+            .checked_add(drag.clip.length_frames)
+            .is_some_and(|end| {
+                self.session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|t| t.id == track)
+                    .is_some_and(|track| {
+                        track.clips.iter().all(|clip| {
+                            clip.id == drag.clip.id
+                                || end <= clip.start_frame
+                                || start >= clip.end()
+                        })
+                    })
+            });
+        Some(MovePreview {
+            track,
+            start,
+            valid,
+        })
+    }
+    fn paint_drag_preview(&self, ui: &egui::Ui, viewport: Rect) {
+        let Some(pointer) = ui.input(|input| input.pointer.latest_pos()) else {
+            return;
+        };
+        let Some(preview) = self.move_preview(pointer) else {
+            return;
+        };
+        let drag = self.drag.as_ref().unwrap();
+        let lane = self.lane_bounds[&preview.track];
+        let block = self.clip_block(lane, &drag.clip, preview.start);
+        let painter = ui.painter_at(viewport.intersect(lane));
+        let mut ghost = painter.clone();
+        ghost.multiply_opacity(0.75);
+        self.paint_clip(&ghost, lane, block, &drag.clip, false);
+        painter.rect_stroke(
+            block,
+            2.0,
+            Stroke::new(
+                2.0,
+                if preview.valid {
+                    theme::ACCENT
+                } else {
+                    theme::ERROR
+                },
+            ),
+            StrokeKind::Inside,
+        );
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    }
+    fn paint_clip(
+        &self,
+        painter: &egui::Painter,
+        lane: Rect,
+        block: Rect,
+        clip: &Clip,
+        selected: bool,
+    ) {
+        let missing = !self.session.audio.contains_key(&clip.asset_id);
+        painter.rect_filled(
+            block,
+            2.0,
+            if missing { theme::MISSING } else { theme::CLIP },
+        );
+        let header = Rect::from_min_max(block.min, Pos2::new(block.right(), block.top() + 22.0));
+        painter.rect_filled(
+            header,
+            2.0,
+            if missing {
+                theme::BORDER
+            } else {
+                theme::CLIP_HEADER
+            },
+        );
+        let clip_painter = painter.with_clip_rect(block.intersect(lane));
+        clip_painter.text(
+            Pos2::new(header.left() + 7.0, header.center().y),
+            egui::Align2::LEFT_CENTER,
+            &clip.name,
+            egui::FontId::proportional(11.0),
+            theme::CLIP_TEXT,
+        );
+        if missing {
+            clip_painter.text(
+                block.center(),
+                egui::Align2::CENTER_CENTER,
+                "Missing source",
+                egui::FontId::proportional(13.0),
+                theme::WARNING,
+            );
+        } else if let Some(audio) = self.session.audio.get(&clip.asset_id) {
+            let channels = usize::from(audio.metadata.channels);
+            let body = Rect::from_min_max(Pos2::new(block.left(), block.top() + 22.0), block.max);
+            let height = body.height() / channels as f32;
+            for channel in 0..channels {
+                let top = body.top() + height * channel as f32;
+                let center = top + height * 0.5;
+                if channel == 1 {
+                    clip_painter.rect_filled(
+                        Rect::from_min_max(Pos2::new(body.left(), top), body.max),
+                        0.0,
+                        theme::CLIP_CHANNEL,
+                    );
+                }
+                if channel == 1 {
+                    clip_painter.line_segment(
+                        [Pos2::new(block.left(), top), Pos2::new(block.right(), top)],
+                        Stroke::new(1.0_f32, theme::CLIP_HEADER),
+                    );
+                }
+                let left = body.left().max(lane.left());
+                let right = body.right().min(lane.right());
+                for pixel in (left as i32)..=(right as i32) {
+                    let local = ((pixel as f32 - body.left()) / self.zoom
+                        * f64::from(daw_core::SAMPLE_RATE) as f32)
+                        .max(0.0) as u64;
+                    let offset = clip.source_offset_frame + local;
+                    let samples_per_pixel = f64::from(daw_core::SAMPLE_RATE) / f64::from(self.zoom);
+                    let lo = (offset / 256) as usize;
+                    let hi = ((offset + samples_per_pixel.ceil() as u64) / 256) as usize;
+                    let mut min = 0.0_f32;
+                    let mut max = 0.0_f32;
+                    if samples_per_pixel < 256.0 {
+                        for s in audio
+                            .samples
+                            .iter()
+                            .skip(offset as usize)
+                            .take(samples_per_pixel.ceil() as usize + 1)
+                        {
+                            min = min.min(s[channel]);
+                            max = max.max(s[channel]);
+                        }
+                    } else {
+                        for p in audio
+                            .peaks
+                            .iter()
+                            .skip(lo)
+                            .take((hi - lo + 1).min(audio.peaks.len()))
+                        {
+                            min = min.min(p[channel][0]);
+                            max = max.max(p[channel][1]);
+                        }
+                    }
+                    clip_painter.line_segment(
+                        [
+                            Pos2::new(pixel as f32, center - max.clamp(-1.0, 1.0) * height * 0.42),
+                            Pos2::new(pixel as f32, center - min.clamp(-1.0, 1.0) * height * 0.42),
+                        ],
+                        Stroke::new(1.0_f32, theme::WAVEFORM),
+                    );
+                }
+            }
+        }
+        painter.rect_stroke(
+            block,
+            2.0,
+            if selected {
+                theme::SELECTION_OUTLINE
+            } else {
+                Stroke::new(1.0, theme::DIVIDER)
+            },
+            StrokeKind::Inside,
+        );
+    }
+    fn finish_clip_drag(&mut self, ui: &mut egui::Ui) {
+        if !ui.is_enabled() || !ui.input(|input| input.focused) {
+            self.drag = None;
+            return;
+        }
+        if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary))
+            && let Some(drag) = self.drag.take()
+            && drag.mode < 3
+        {
+            let pointer = ui
+                .input(|input| input.pointer.latest_pos())
+                .unwrap_or(drag.origin);
+            let delta = self.drag_delta(&drag, pointer);
+            let destination = if drag.mode == 0 {
+                self.drag_destination(&drag, pointer)
+            } else {
+                drag.track
+            };
+            let move_start = self.move_start(&drag, pointer);
+            let c = drag.clip;
+            let position = c.start_frame as i128 + delta as i128;
+            let length = c.length_frames as i128;
+            let offset = c.source_offset_frame as i128;
+            let (start, source, len) = match drag.mode {
+                1 => (position, offset + delta as i128, length - delta as i128),
+                2 => (c.start_frame as i128, offset, length + delta as i128),
+                _ => (i128::from(move_start), offset, length),
+            };
+            if start < 0
+                || source < 0
+                || len <= 0
+                || start > u64::MAX as i128
+                || source > u64::MAX as i128
+                || len > u64::MAX as i128
+            {
+                self.fail("Clip edit exceeds valid source or timeline bounds");
+            } else {
+                self.edit(Edit::Place {
+                    clip_id: c.id,
+                    track_id: destination,
+                    start: start as u64,
+                    offset: source as u64,
+                    length: len as u64,
+                });
+            }
+        }
+    }
     fn lane(&mut self, ui: &mut egui::Ui, track_id: Id, clips: &[Clip]) {
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click());
@@ -1652,12 +1906,7 @@ impl DawUi {
         );
         self.paint_grid(&painter, rect);
         for clip in clips {
-            let x1 = rect.left() + ((seconds(clip.start_frame) - self.scroll) as f32) * self.zoom;
-            let x2 = x1 + seconds(clip.length_frames) as f32 * self.zoom;
-            let block = Rect::from_min_max(
-                Pos2::new(x1, rect.top()),
-                Pos2::new(x2.max(x1 + 2.0), rect.bottom()),
-            );
+            let block = self.clip_block(rect, clip, clip.start_frame);
             if !block.intersects(rect) {
                 continue;
             }
@@ -1667,120 +1916,15 @@ impl DawUi {
                 Sense::click_and_drag(),
             );
             let selected = self.selected_clip == Some(clip.id);
-            let missing = !self.session.audio.contains_key(&clip.asset_id);
-            painter.rect_filled(
-                block,
-                2.0,
-                if missing { theme::MISSING } else { theme::CLIP },
-            );
-            let header =
-                Rect::from_min_max(block.min, Pos2::new(block.right(), block.top() + 22.0));
-            painter.rect_filled(
-                header,
-                2.0,
-                if missing {
-                    theme::BORDER
-                } else {
-                    theme::CLIP_HEADER
-                },
-            );
-            let clip_painter = painter.with_clip_rect(block.intersect(rect));
-            clip_painter.text(
-                Pos2::new(header.left() + 7.0, header.center().y),
-                egui::Align2::LEFT_CENTER,
-                &clip.name,
-                egui::FontId::proportional(11.0),
-                theme::CLIP_TEXT,
-            );
-            if missing {
-                clip_painter.text(
-                    block.center(),
-                    egui::Align2::CENTER_CENTER,
-                    "Missing source",
-                    egui::FontId::proportional(13.0),
-                    theme::WARNING,
-                );
-            } else if let Some(audio) = self.session.audio.get(&clip.asset_id) {
-                let channels = usize::from(audio.metadata.channels);
-                let body =
-                    Rect::from_min_max(Pos2::new(block.left(), block.top() + 22.0), block.max);
-                let height = body.height() / channels as f32;
-                for channel in 0..channels {
-                    let top = body.top() + height * channel as f32;
-                    let center = top + height * 0.5;
-                    if channel == 1 {
-                        clip_painter.rect_filled(
-                            Rect::from_min_max(Pos2::new(body.left(), top), body.max),
-                            0.0,
-                            theme::CLIP_CHANNEL,
-                        );
-                    }
-                    if channel == 1 {
-                        clip_painter.line_segment(
-                            [Pos2::new(block.left(), top), Pos2::new(block.right(), top)],
-                            Stroke::new(1.0_f32, theme::CLIP_HEADER),
-                        );
-                    }
-                    let left = body.left().max(rect.left());
-                    let right = body.right().min(rect.right());
-                    for pixel in (left as i32)..=(right as i32) {
-                        let local = ((pixel as f32 - body.left()) / self.zoom
-                            * f64::from(daw_core::SAMPLE_RATE) as f32)
-                            .max(0.0) as u64;
-                        let offset = clip.source_offset_frame + local;
-                        let samples_per_pixel =
-                            f64::from(daw_core::SAMPLE_RATE) / f64::from(self.zoom);
-                        let lo = (offset / 256) as usize;
-                        let hi = ((offset + samples_per_pixel.ceil() as u64) / 256) as usize;
-                        let mut min = 0.0_f32;
-                        let mut max = 0.0_f32;
-                        if samples_per_pixel < 256.0 {
-                            for s in audio
-                                .samples
-                                .iter()
-                                .skip(offset as usize)
-                                .take(samples_per_pixel.ceil() as usize + 1)
-                            {
-                                min = min.min(s[channel]);
-                                max = max.max(s[channel]);
-                            }
-                        } else {
-                            for p in audio
-                                .peaks
-                                .iter()
-                                .skip(lo)
-                                .take((hi - lo + 1).min(audio.peaks.len()))
-                            {
-                                min = min.min(p[channel][0]);
-                                max = max.max(p[channel][1]);
-                            }
-                        }
-                        clip_painter.line_segment(
-                            [
-                                Pos2::new(
-                                    pixel as f32,
-                                    center - max.clamp(-1.0, 1.0) * height * 0.42,
-                                ),
-                                Pos2::new(
-                                    pixel as f32,
-                                    center - min.clamp(-1.0, 1.0) * height * 0.42,
-                                ),
-                            ],
-                            Stroke::new(1.0_f32, theme::WAVEFORM),
-                        );
-                    }
-                }
+            let mut clip_painter = painter.clone();
+            if self
+                .drag
+                .as_ref()
+                .is_some_and(|drag| drag.mode == 0 && drag.clip.id == clip.id)
+            {
+                clip_painter.multiply_opacity(0.35);
             }
-            painter.rect_stroke(
-                block,
-                2.0,
-                if selected {
-                    theme::SELECTION_OUTLINE
-                } else {
-                    Stroke::new(1.0, theme::DIVIDER)
-                },
-                StrokeKind::Inside,
-            );
+            self.paint_clip(&clip_painter, rect, block, clip, selected);
             response.context_menu(|ui| {
                 if ui.button("Split at playhead").clicked() {
                     self.edit(Edit::Split {
@@ -1827,54 +1971,6 @@ impl DawUi {
                     origin,
                 });
                 self.selected_clip = Some(clip.id);
-            }
-            if response.drag_stopped()
-                && let Some(drag) = self.drag.take()
-                && drag.clip.id == clip.id
-                && drag.mode < 3
-            {
-                let pointer = ui.input(|i| i.pointer.latest_pos()).unwrap_or(drag.origin);
-                let delta = (f64::from(pointer.x - drag.origin.x) / f64::from(self.zoom) * 48_000.0)
-                    .round() as i64;
-                let destination = self
-                    .lane_bounds
-                    .iter()
-                    .find(|(id, r)| {
-                        r.contains(pointer)
-                            && self.session.project.tracks.iter().any(|t| t.id == **id)
-                    })
-                    .map(|(id, _)| *id)
-                    .unwrap_or(drag.track);
-                let c = drag.clip;
-                let position = c.start_frame as i128 + delta as i128;
-                let length = c.length_frames as i128;
-                let offset = c.source_offset_frame as i128;
-                let (start, source, len) = match drag.mode {
-                    1 => (position, offset + delta as i128, length - delta as i128),
-                    2 => (c.start_frame as i128, offset, length + delta as i128),
-                    _ => (position, offset, length),
-                };
-                if start < 0
-                    || source < 0
-                    || len <= 0
-                    || start > u64::MAX as i128
-                    || source > u64::MAX as i128
-                    || len > u64::MAX as i128
-                {
-                    self.fail("Clip edit exceeds valid source or timeline bounds");
-                } else {
-                    self.edit(Edit::Place {
-                        clip_id: c.id,
-                        track_id: if drag.mode == 0 {
-                            destination
-                        } else {
-                            drag.track
-                        },
-                        start: start as u64,
-                        offset: source as u64,
-                        length: len as u64,
-                    });
-                }
             }
         }
         let x = rect.left()
@@ -2297,6 +2393,14 @@ mod tests {
         frame_sized(app, ctx, events, Vec2::new(1280.0, 800.0));
     }
     fn frame_sized(app: &mut DawUi, ctx: &egui::Context, events: Vec<egui::Event>, size: Vec2) {
+        frame_shapes(app, ctx, events, size);
+    }
+    fn frame_shapes(
+        app: &mut DawUi,
+        ctx: &egui::Context,
+        events: Vec<egui::Event>,
+        size: Vec2,
+    ) -> Vec<egui::epaint::ClippedShape> {
         let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
@@ -2307,6 +2411,7 @@ mod tests {
         );
         // These input tests have no GPU renderer. Discard texture updates explicitly.
         output.textures_delta.clear();
+        output.shapes
     }
     fn button(pos: Pos2, pressed: bool) -> egui::Event {
         egui::Event::PointerButton {
@@ -2666,6 +2771,161 @@ mod tests {
         assert_eq!(app.session.project.transport.playhead_frame, 192000);
         let region = &app.session.project.transport.r#loop;
         assert_eq!((region.start_frame, region.end_frame), (48000, 144000));
+    }
+    fn has_preview_outline(
+        shapes: &[egui::epaint::ClippedShape],
+        block: Rect,
+        color: egui::Color32,
+    ) -> bool {
+        shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::Shape::Rect(rect)
+            if rect.rect == block && rect.stroke == Stroke::new(2.0, color))
+        })
+    }
+    #[test]
+    fn clip_move_preview_is_painted_at_the_drop_position_without_editing_the_project() {
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+            let (mut app, first) = fixture();
+            let second = app.session.project.add_track().unwrap();
+            app.zoom = zoom;
+            app.scroll = scroll;
+            app.session.project.tracks[0].clips[0].start_frame = frames(2.0);
+            let original = app.session.project.tracks[0].clips[0].clone();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let start =
+                app.lane_bounds[&first].min + Vec2::new((2.0 - scroll as f32) * zoom + 20.0, 12.0);
+            let end = Pos2::new(start.x + 1.25 * zoom, app.lane_bounds[&second].top() + 12.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end)],
+                Vec2::new(1280.0, 800.0),
+            );
+            let preview = app.move_preview(end).unwrap();
+            assert_eq!(preview.track, second);
+            assert_eq!(preview.start, frames(3.25));
+            assert!(preview.valid);
+            let lane = app.lane_bounds[&second];
+            let block = Rect::from_min_size(
+                lane.min + Vec2::new((3.25 - scroll as f32) * zoom, 0.0),
+                Vec2::new(10.0 * zoom, ROW_HEIGHT),
+            );
+            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+            assert_eq!(
+                app.session.project.tracks[0].clips[0].start_frame,
+                original.start_frame
+            );
+            assert!(app.session.project.tracks[1].clips.is_empty());
+            assert!(!app.dirty);
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert!(app.drag.is_none());
+            assert!(app.session.project.tracks[0].clips.is_empty());
+            let placed = &app.session.project.tracks[1].clips[0];
+            assert_eq!(placed.start_frame, preview.start);
+            assert_eq!(placed.source_offset_frame, original.source_offset_frame);
+            assert_eq!(placed.length_frames, original.length_frames);
+            assert!(app.error.is_none());
+        }
+    }
+    #[test]
+    fn moving_left_clamps_the_preview_and_drop_to_the_track_start() {
+        for across_tracks in [false, true] {
+            let (mut app, first) = fixture();
+            let second = app.session.project.add_track().unwrap();
+            app.session.project.tracks[0].clips[0].start_frame = frames(2.0);
+            let original = app.session.project.tracks[0].clips[0].clone();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let start = app.lane_bounds[&first].min + Vec2::new(180.0, 12.0);
+            let target = if across_tracks { second } else { first };
+            let lane = app.lane_bounds[&target];
+            let end = lane.min + Vec2::new(if across_tracks { 10.0 } else { -100.0 }, 12.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end)],
+                Vec2::new(1280.0, 800.0),
+            );
+            let preview = app.move_preview(end).unwrap();
+            assert_eq!(preview.track, target);
+            assert_eq!(preview.start, 0);
+            assert!(preview.valid);
+            let block = Rect::from_min_size(lane.min, Vec2::new(700.0, ROW_HEIGHT));
+            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+            assert_eq!(
+                app.session.project.tracks[0].clips[0].start_frame,
+                frames(2.0)
+            );
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            let placed = &app
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|track| track.id == target)
+                .unwrap()
+                .clips[0];
+            assert_eq!(placed.start_frame, 0);
+            assert_eq!(placed.source_offset_frame, original.source_offset_frame);
+            assert_eq!(placed.length_frames, original.length_frames);
+            assert!(app.error.is_none());
+        }
+    }
+    #[test]
+    fn overlapping_move_preview_is_red_and_rejected_drop_preserves_the_clips() {
+        let (mut app, first) = fixture();
+        let second = app.session.project.add_track().unwrap();
+        let mut occupied = app.session.project.tracks[0].clips[0].clone();
+        occupied.id = Id::new_v4();
+        app.session.project.tracks[1].clips.push(occupied);
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let start = app.lane_bounds[&first].min + Vec2::new(20.0, 12.0);
+        let lane = app.lane_bounds[&second];
+        let end = lane.min + Vec2::new(90.0, 12.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        let shapes = frame_shapes(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(end)],
+            Vec2::new(1280.0, 800.0),
+        );
+        let preview = app.move_preview(end).unwrap();
+        assert!(!preview.valid);
+        let block = Rect::from_min_size(
+            lane.min + Vec2::new(70.0, 0.0),
+            Vec2::new(700.0, ROW_HEIGHT),
+        );
+        assert!(has_preview_outline(&shapes, block, theme::ERROR));
+        assert!(app.error.is_none());
+        assert!(!app.dirty);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert!(app.drag.is_none());
+        assert!(
+            app.error
+                .as_ref()
+                .is_some_and(|error| error.contains("overlap"))
+        );
+        assert!(!app.dirty);
+        for track in &app.session.project.tracks {
+            assert_eq!(track.clips.len(), 1);
+            assert_eq!(track.clips[0].start_frame, 0);
+        }
     }
     #[test]
     fn clips_move_between_tracks_and_trim_without_changing_sources() {
