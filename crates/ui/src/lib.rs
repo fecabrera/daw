@@ -10,6 +10,7 @@ use std::{
 };
 
 pub mod dialogs;
+mod file_drop;
 pub mod fonts;
 pub mod icons;
 pub mod knobs;
@@ -243,6 +244,11 @@ struct MovePreview {
     start: u64,
     valid: bool,
 }
+struct FileDropTarget {
+    track: Option<Id>,
+    start: u64,
+    lane: Rect,
+}
 struct LoopDrag {
     start: u64,
     original: daw_core::Loop,
@@ -260,6 +266,8 @@ pub struct DawUi {
     zoom: f32,
     scroll: f64,
     drag: Option<Drag>,
+    file_hover: Option<file_drop::FileHover>,
+    file_drop_target: Option<FileDropTarget>,
     loop_drag: Option<LoopDrag>,
     lane_bounds: HashMap<Id, Rect>,
     #[cfg(test)]
@@ -295,6 +303,8 @@ impl Default for DawUi {
             zoom: 70.0,
             scroll: 0.0,
             drag: None,
+            file_hover: None,
+            file_drop_target: None,
             loop_drag: None,
             lane_bounds: HashMap::new(),
             #[cfg(test)]
@@ -376,6 +386,8 @@ impl DawUi {
                 self.notices.clear();
                 self.scroll = 0.0;
                 self.drag = None;
+                self.file_hover = None;
+                self.file_drop_target = None;
                 self.loop_drag = None;
                 self.lane_bounds.clear();
                 self.sync_needed = false;
@@ -405,17 +417,68 @@ impl DawUi {
         });
     }
     fn import(&mut self, path: PathBuf) {
-        let mut session = self.session.clone();
         let track = self
             .selected_track
-            .or_else(|| session.project.tracks.first().map(|t| t.id));
-        let at = session.project.transport.playhead_frame;
+            .or_else(|| self.session.project.tracks.first().map(|track| track.id));
+        self.import_at(
+            path,
+            track,
+            self.session.project.transport.playhead_frame,
+            None,
+        );
+    }
+    fn import_at(
+        &mut self,
+        path: PathBuf,
+        track: Option<Id>,
+        at: u64,
+        prepared: Option<file_drop::FileHover>,
+    ) {
+        let mut session = self.session.clone();
         self.run_job("Importing WAV and building waveform", move || {
+            let audio = match prepared {
+                Some(prepared) => prepared.into_audio()?,
+                None => daw_media::decode_wav(&path).map_err(|error| error.to_string())?,
+            };
             session
-                .import(&path, track, at)
+                .import_decoded(&path, audio, track, at)
                 .map(|_| Job::Loaded(session, true))
-                .map_err(|e| e.to_string())
+                .map_err(|error| error.to_string())
         });
+    }
+    fn update_file_hover(&mut self, ctx: &egui::Context) {
+        self.file_drop_target = None;
+        let path = if self.file_action_enabled(FileAction::Import) {
+            ctx.input(|input| {
+                input
+                    .raw
+                    .hovered_files
+                    .first()
+                    .and_then(|file| file.path.clone())
+                    .or_else(|| {
+                        input
+                            .raw
+                            .dropped_files
+                            .first()
+                            .map(|file| file.path().to_path_buf())
+                    })
+            })
+        } else {
+            None
+        };
+        match path {
+            Some(path) => {
+                if self
+                    .file_hover
+                    .as_ref()
+                    .is_none_or(|hover| hover.path != path)
+                {
+                    self.file_hover = Some(file_drop::FileHover::new(path));
+                }
+                self.file_hover.as_mut().unwrap().poll();
+            }
+            None => self.file_hover = None,
+        }
     }
     fn export(&mut self, path: PathBuf, overwrite: bool) {
         let session = self.session.clone();
@@ -554,6 +617,7 @@ impl DawUi {
     pub fn show(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.poll();
+        self.update_file_hover(&ctx);
         if !self.native_file_menu
             && let Some(action) = self.take_file_shortcut(&ctx)
         {
@@ -637,8 +701,14 @@ impl DawUi {
         }
         self.dialogs(&ctx);
         if self.job.is_none() {
-            if let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned()) {
-                self.import(dropped.path().to_path_buf());
+            if self.file_action_enabled(FileAction::Import)
+                && let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned())
+                && let Some(target) = self.file_drop_target.take()
+            {
+                let path = dropped.path().to_path_buf();
+                let prepared = self.file_hover.take().filter(|hover| hover.path == path);
+                self.selected_track = target.track;
+                self.import_at(path, target.track, target.start, prepared);
             }
             if !ctx.egui_wants_keyboard_input() {
                 if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
@@ -1011,6 +1081,7 @@ impl DawUi {
             .show(ui, |ui| self.tracks(ui));
         self.finish_clip_drag(ui);
         self.paint_drag_preview(ui, tracks.inner_rect.intersect(timeline_rect));
+        self.paint_file_hover(ui, tracks.inner_rect.intersect(timeline_rect));
         // One shared border separates the entire header from the track workspace.
         let header_bottom = timeline_rect.top() - 0.5;
         for (left, right, color) in [
@@ -1682,27 +1753,156 @@ impl DawUi {
         let track = self.drag_destination(drag, pointer);
         self.lane_bounds.get(&track)?;
         let start = self.move_start(drag, pointer);
-        let valid = start
-            .checked_add(drag.clip.length_frames)
-            .is_some_and(|end| {
-                self.session
-                    .project
-                    .tracks
-                    .iter()
-                    .find(|t| t.id == track)
-                    .is_some_and(|track| {
-                        track.clips.iter().all(|clip| {
-                            clip.id == drag.clip.id
-                                || end <= clip.start_frame
-                                || start >= clip.end()
-                        })
-                    })
-            });
+        let valid = self.placement_valid(
+            Some(track),
+            Some(drag.clip.id),
+            start,
+            drag.clip.length_frames,
+        );
         Some(MovePreview {
             track,
             start,
             valid,
         })
+    }
+    fn placement_valid(
+        &self,
+        track: Option<Id>,
+        ignore: Option<Id>,
+        start: u64,
+        length: u64,
+    ) -> bool {
+        length > 0
+            && start.checked_add(length).is_some_and(|end| {
+                track.is_none_or(|id| {
+                    self.session
+                        .project
+                        .tracks
+                        .iter()
+                        .find(|track| track.id == id)
+                        .is_some_and(|track| {
+                            track.clips.iter().all(|clip| {
+                                Some(clip.id) == ignore
+                                    || end <= clip.start_frame
+                                    || start >= clip.end()
+                            })
+                        })
+                })
+            })
+    }
+    fn file_target(&self, pointer: Pos2, viewport: Rect) -> Option<FileDropTarget> {
+        let drop_viewport = Rect::from_min_max(
+            Pos2::new(viewport.left() - TRACK_WIDTH, viewport.top()),
+            viewport.max,
+        );
+        if !drop_viewport.contains(pointer) {
+            return None;
+        }
+        // Track controls always target frame zero, even when the timeline is scrolled.
+        let start = if pointer.x < viewport.left() {
+            0
+        } else {
+            frames((self.scroll + f64::from((pointer.x - viewport.left()) / self.zoom)).max(0.0))
+        };
+        if let Some(track) = self.session.project.tracks.iter().find(|track| {
+            self.lane_bounds
+                .get(&track.id)
+                .is_some_and(|lane| pointer.y >= lane.top() && pointer.y <= lane.bottom())
+        }) {
+            return Some(FileDropTarget {
+                track: Some(track.id),
+                start,
+                lane: self.lane_bounds[&track.id],
+            });
+        }
+        let top = self
+            .lane_bounds
+            .values()
+            .map(Rect::bottom)
+            .fold(viewport.top(), f32::max);
+        if pointer.y < top || top >= viewport.bottom() {
+            return None;
+        }
+        Some(FileDropTarget {
+            track: None,
+            start,
+            lane: Rect::from_min_size(
+                Pos2::new(viewport.left(), top),
+                Vec2::new(viewport.width(), ROW_HEIGHT),
+            ),
+        })
+    }
+    fn paint_file_hover(&mut self, ui: &egui::Ui, viewport: Rect) {
+        if !ui.is_enabled()
+            || !self.file_action_enabled(FileAction::Import)
+            || self.file_hover.is_none()
+        {
+            return;
+        }
+        let Some(pointer) = ui.input(|input| input.pointer.latest_pos()) else {
+            return;
+        };
+        let Some(target) = self.file_target(pointer, viewport) else {
+            return;
+        };
+        let hover = self.file_hover.as_ref().unwrap();
+        let audio = hover.audio.as_ref().and_then(|result| result.as_ref().ok());
+        let clip = Clip {
+            id: Id::nil(),
+            asset_id: Id::nil(),
+            name: hover.name.clone(),
+            start_frame: target.start,
+            source_offset_frame: 0,
+            length_frames: audio.map_or_else(
+                || frames(120.0 / f64::from(self.zoom)),
+                |audio| audio.samples.len() as u64,
+            ),
+        };
+        let valid = match &hover.audio {
+            Some(Ok(_)) => {
+                self.placement_valid(target.track, None, target.start, clip.length_frames)
+            }
+            Some(Err(_)) => false,
+            None => true,
+        };
+        let block = self.clip_block(target.lane, &clip, target.start);
+        let painter = ui.painter_at(viewport.intersect(target.lane));
+        let mut ghost = painter.clone();
+        ghost.multiply_opacity(0.75);
+        if let Some(audio) = audio {
+            self.paint_clip(&ghost, target.lane, block, &clip, false, Some(audio));
+        } else {
+            ghost.rect_filled(block, 2.0, theme::CLIP);
+            let header =
+                Rect::from_min_max(block.min, Pos2::new(block.right(), block.top() + 22.0));
+            ghost.rect_filled(header, 2.0, theme::CLIP_HEADER);
+            let text = ghost.with_clip_rect(block);
+            text.text(
+                Pos2::new(header.left() + 7.0, header.center().y),
+                egui::Align2::LEFT_CENTER,
+                &clip.name,
+                egui::FontId::proportional(11.0),
+                theme::CLIP_TEXT,
+            );
+            text.text(
+                Pos2::new(block.center().x, block.top() + 44.0),
+                egui::Align2::CENTER_CENTER,
+                if hover.audio.is_some() {
+                    "Unsupported WAV"
+                } else {
+                    "Loading waveform…"
+                },
+                egui::FontId::proportional(11.0),
+                theme::TEXT,
+            );
+        }
+        painter.rect_stroke(
+            block,
+            2.0,
+            Stroke::new(2.0, if valid { theme::ACCENT } else { theme::ERROR }),
+            StrokeKind::Inside,
+        );
+        self.file_drop_target = Some(target);
     }
     fn paint_drag_preview(&self, ui: &egui::Ui, viewport: Rect) {
         let Some(pointer) = ui.input(|input| input.pointer.latest_pos()) else {
@@ -1717,7 +1917,7 @@ impl DawUi {
         let painter = ui.painter_at(viewport.intersect(lane));
         let mut ghost = painter.clone();
         ghost.multiply_opacity(0.75);
-        self.paint_clip(&ghost, lane, block, &drag.clip, false);
+        self.paint_clip(&ghost, lane, block, &drag.clip, false, None);
         painter.rect_stroke(
             block,
             2.0,
@@ -1740,8 +1940,10 @@ impl DawUi {
         block: Rect,
         clip: &Clip,
         selected: bool,
+        prepared: Option<&daw_media::AudioData>,
     ) {
-        let missing = !self.session.audio.contains_key(&clip.asset_id);
+        let audio = prepared.or_else(|| self.session.audio.get(&clip.asset_id));
+        let missing = audio.is_none();
         painter.rect_filled(
             block,
             2.0,
@@ -1773,7 +1975,7 @@ impl DawUi {
                 egui::FontId::proportional(13.0),
                 theme::WARNING,
             );
-        } else if let Some(audio) = self.session.audio.get(&clip.asset_id) {
+        } else if let Some(audio) = audio {
             let channels = usize::from(audio.metadata.channels);
             let body = Rect::from_min_max(Pos2::new(block.left(), block.top() + 22.0), block.max);
             let height = body.height() / channels as f32;
@@ -1924,7 +2126,7 @@ impl DawUi {
             {
                 clip_painter.multiply_opacity(0.35);
             }
-            self.paint_clip(&clip_painter, rect, block, clip, selected);
+            self.paint_clip(&clip_painter, rect, block, clip, selected, None);
             response.context_menu(|ui| {
                 if ui.button("Split at playhead").clicked() {
                     self.edit(Edit::Split {
@@ -2771,6 +2973,341 @@ mod tests {
         assert_eq!(app.session.project.transport.playhead_frame, 192000);
         let region = &app.session.project.transport.r#loop;
         assert_eq!((region.start_frame, region.end_frame), (48000, 144000));
+    }
+    #[derive(Debug)]
+    struct TestDrop(std::path::PathBuf);
+    impl egui::DroppedFile for TestDrop {
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+        fn bytes(&self) -> Result<Vec<u8>, String> {
+            std::fs::read(&self.0).map_err(|error| error.to_string())
+        }
+    }
+    struct TestWav(std::path::PathBuf);
+    impl TestWav {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!("daw-file-hover-{}.wav", Id::new_v4()));
+            let mut writer = hound::WavWriter::create(
+                &path,
+                hound::WavSpec {
+                    channels: 1,
+                    sample_rate: 48000,
+                    bits_per_sample: 16,
+                    sample_format: hound::SampleFormat::Int,
+                },
+            )
+            .unwrap();
+            for index in 0..48000 {
+                writer
+                    .write_sample(if index % 128 < 64 {
+                        8000_i16
+                    } else {
+                        -8000_i16
+                    })
+                    .unwrap();
+            }
+            writer.finalize().unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for TestWav {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+    fn file_frame(
+        app: &mut DawUi,
+        ctx: &egui::Context,
+        path: &std::path::Path,
+        pointer: Pos2,
+        dropped: bool,
+    ) -> Vec<egui::epaint::ClippedShape> {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                events: vec![egui::Event::PointerMoved(pointer)],
+                hovered_files: if dropped {
+                    vec![]
+                } else {
+                    vec![egui::HoveredFile {
+                        path: Some(path.to_path_buf()),
+                        ..Default::default()
+                    }]
+                },
+                dropped_files: if dropped {
+                    vec![std::sync::Arc::new(TestDrop(path.to_path_buf()))]
+                } else {
+                    vec![]
+                },
+                ..Default::default()
+            },
+            |ui| app.show(ui),
+        );
+        output.textures_delta.clear();
+        output.shapes
+    }
+    fn ready_file_hover(
+        app: &mut DawUi,
+        ctx: &egui::Context,
+        path: &std::path::Path,
+        pointer: Pos2,
+    ) -> Vec<egui::epaint::ClippedShape> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let shapes = file_frame(app, ctx, path, pointer, false);
+            if app
+                .file_hover
+                .as_ref()
+                .is_some_and(|hover| hover.audio.is_some())
+            {
+                return shapes;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "file preview worker timed out"
+            );
+            std::thread::yield_now();
+        }
+    }
+    fn finish_import(app: &mut DawUi, ctx: &egui::Context) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while app.job.is_some() {
+            frame(app, ctx, vec![]);
+            assert!(
+                std::time::Instant::now() < deadline,
+                "file import worker timed out"
+            );
+            std::thread::yield_now();
+        }
+    }
+    #[test]
+    fn file_hover_previews_the_cursor_target_and_drop_reuses_prepared_audio() {
+        let source = TestWav::new();
+        let (mut app, first) = fixture();
+        let second = app.session.project.add_track().unwrap();
+        app.selected_track = Some(first);
+        app.session.project.transport.playhead_frame = frames(9.0);
+        app.zoom = 140.0;
+        app.scroll = 1.0;
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let lane = app.lane_bounds[&second];
+        let point = lane.min + Vec2::new(280.0, 12.0);
+        let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
+        let target = app.file_drop_target.as_ref().unwrap();
+        assert_eq!(target.track, Some(second));
+        assert_eq!(target.start, frames(3.0));
+        let block = Rect::from_min_size(point - Vec2::new(0.0, 12.0), Vec2::new(140.0, ROW_HEIGHT));
+        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+        assert!(shapes.iter().any(
+            |shape| matches!(&shape.shape, egui::Shape::LineSegment {stroke, ..}
+            if stroke.color == theme::WAVEFORM.gamma_multiply(0.75))
+        ));
+        assert!(app.session.project.tracks[1].clips.is_empty());
+        assert_eq!(app.session.project.assets.len(), 1);
+        assert!(!app.dirty);
+        let audio = app
+            .file_hover
+            .as_ref()
+            .unwrap()
+            .audio
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .samples
+            .clone();
+        let moved = point + Vec2::new(140.0, 0.0);
+        file_frame(&mut app, &ctx, &source.0, moved, false);
+        assert_eq!(app.file_drop_target.as_ref().unwrap().start, frames(4.0));
+        file_frame(&mut app, &ctx, &source.0, moved, true);
+        finish_import(&mut app, &ctx);
+        assert!(app.error.is_none());
+        let clip = &app.session.project.tracks[1].clips[0];
+        assert_eq!(clip.start_frame, frames(4.0));
+        assert_eq!(clip.length_frames, 48000);
+        assert!(std::sync::Arc::ptr_eq(
+            &audio,
+            &app.session.audio[&clip.asset_id].samples
+        ));
+        assert!(app.dirty);
+        assert!(app.file_hover.is_none());
+    }
+    #[test]
+    fn file_drag_over_track_controls_clamps_preview_and_drop_to_track_start() {
+        let source = TestWav::new();
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 0.5)] {
+            let (mut app, first) = fixture();
+            let second = app.session.project.add_track().unwrap();
+            app.selected_track = Some(first);
+            app.zoom = zoom;
+            app.scroll = scroll;
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&second];
+            let point = lane.min + Vec2::new(140.0, 12.0);
+            ready_file_hover(&mut app, &ctx, &source.0, point);
+            assert!(app.file_drop_target.as_ref().unwrap().start > 0);
+
+            let controls = Pos2::new(lane.left() - 120.0, point.y);
+            let shapes = file_frame(&mut app, &ctx, &source.0, controls, false);
+            let target = app.file_drop_target.as_ref().unwrap();
+            assert_eq!(target.track, Some(second));
+            assert_eq!(target.start, 0);
+            let block = Rect::from_min_size(
+                lane.min - Vec2::new(scroll as f32 * zoom, 0.0),
+                Vec2::new(zoom, ROW_HEIGHT),
+            );
+            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+            assert!(app.session.project.tracks[1].clips.is_empty());
+            assert!(!app.dirty);
+
+            file_frame(&mut app, &ctx, &source.0, controls, true);
+            finish_import(&mut app, &ctx);
+            assert!(app.error.is_none());
+            let clip = &app.session.project.tracks[1].clips[0];
+            assert_eq!(clip.start_frame, 0);
+            assert_eq!(clip.source_offset_frame, 0);
+            assert_eq!(clip.length_frames, 48000);
+            assert_eq!(app.session.project.tracks[0].clips.len(), 1);
+            assert!(app.dirty);
+        }
+    }
+    #[test]
+    fn file_drop_on_empty_timeline_previews_and_creates_a_track() {
+        let source = TestWav::new();
+        let mut app = DawUi::default();
+        let ctx = context();
+        let point = Pos2::new(TRACK_WIDTH + 140.0, 140.0);
+        let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
+        let target = app.file_drop_target.as_ref().unwrap();
+        assert_eq!(target.track, None);
+        assert_eq!(target.start, frames(2.0));
+        let block = Rect::from_min_size(
+            Pos2::new(point.x, target.lane.top()),
+            Vec2::new(70.0, ROW_HEIGHT),
+        );
+        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+        assert!(app.session.project.tracks.is_empty());
+        file_frame(&mut app, &ctx, &source.0, point, true);
+        finish_import(&mut app, &ctx);
+        assert!(app.error.is_none());
+        assert_eq!(app.session.project.tracks.len(), 1);
+        assert_eq!(
+            app.session.project.tracks[0].clips[0].start_frame,
+            frames(2.0)
+        );
+    }
+    #[test]
+    fn rejected_file_drop_and_cancelled_hover_leave_the_project_unchanged() {
+        let source = TestWav::new();
+        let (mut app, track) = fixture();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let lane = app.lane_bounds[&track];
+        let point = lane.min + Vec2::new(70.0, 12.0);
+        let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
+        let block =
+            Rect::from_min_size(lane.min + Vec2::new(70.0, 0.0), Vec2::new(70.0, ROW_HEIGHT));
+        assert!(has_preview_outline(&shapes, block, theme::ERROR));
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.file_hover.is_none());
+        assert!(app.file_drop_target.is_none());
+        assert!(app.job.is_none());
+        assert!(!app.dirty);
+        ready_file_hover(&mut app, &ctx, &source.0, point);
+        file_frame(&mut app, &ctx, &source.0, point, true);
+        finish_import(&mut app, &ctx);
+        assert!(
+            app.error
+                .as_ref()
+                .is_some_and(|error| error.contains("overlap"))
+        );
+        assert_eq!(app.session.project.assets.len(), 1);
+        assert_eq!(app.session.project.tracks[0].clips.len(), 1);
+        assert_eq!(app.session.project.tracks[0].clips[0].start_frame, 0);
+        assert!(!app.dirty);
+    }
+    #[test]
+    fn direct_file_drop_imports_at_the_cursor_and_drops_outside_the_track_workspace_are_ignored() {
+        let source = TestWav::new();
+        let mut app = DawUi::default();
+        let ctx = context();
+        let point = Pos2::new(TRACK_WIDTH + 210.0, 140.0);
+        file_frame(&mut app, &ctx, &source.0, point, true);
+        finish_import(&mut app, &ctx);
+        assert!(app.error.is_none());
+        assert_eq!(
+            app.session.project.tracks[0].clips[0].start_frame,
+            frames(3.0)
+        );
+        app.scroll = 2.0;
+        let lane = app.lane_bounds[&app.session.project.tracks[0].id];
+        file_frame(
+            &mut app,
+            &ctx,
+            &source.0,
+            Pos2::new(30.0, lane.center().y),
+            true,
+        );
+        finish_import(&mut app, &ctx);
+        assert!(app.error.is_none());
+        assert_eq!(app.session.project.tracks[0].clips.len(), 2);
+        assert!(
+            app.session.project.tracks[0]
+                .clips
+                .iter()
+                .any(|clip| clip.start_frame == 0)
+        );
+        app.dirty = false;
+        let lane = app.lane_bounds[&app.session.project.tracks[0].id];
+        let master = app.master_bounds.center();
+        for point in [
+            Pos2::new(30.0, 20.0),
+            Pos2::new(30.0, lane.top() - 12.0),
+            Pos2::new(-10.0, lane.center().y),
+            master,
+        ] {
+            file_frame(&mut app, &ctx, &source.0, point, true);
+            assert!(app.file_drop_target.is_none());
+            assert!(app.job.is_none());
+            assert_eq!(app.session.project.assets.len(), 2);
+            assert!(!app.dirty);
+        }
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.file_hover.is_none());
+    }
+    #[test]
+    fn invalid_file_hover_is_red_and_import_failure_does_not_create_a_track() {
+        let source = TestWav::new();
+        std::fs::write(&source.0, b"invalid WAV").unwrap();
+        let mut app = DawUi::default();
+        let ctx = context();
+        let point = Pos2::new(TRACK_WIDTH + 140.0, 140.0);
+        let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
+        assert!(
+            app.file_hover
+                .as_ref()
+                .unwrap()
+                .audio
+                .as_ref()
+                .unwrap()
+                .is_err()
+        );
+        assert!(
+            shapes
+                .iter()
+                .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+            if rect.stroke == Stroke::new(2.0, theme::ERROR)))
+        );
+        assert!(!app.dirty);
+        file_frame(&mut app, &ctx, &source.0, point, true);
+        finish_import(&mut app, &ctx);
+        assert!(app.error.is_some());
+        assert!(app.session.project.tracks.is_empty());
+        assert!(app.session.project.assets.is_empty());
+        assert!(!app.dirty);
     }
     fn has_preview_outline(
         shapes: &[egui::epaint::ClippedShape],

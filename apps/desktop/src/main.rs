@@ -1,12 +1,30 @@
+#[cfg(target_os = "linux")]
+mod linux_file_drag;
+#[cfg(target_os = "macos")]
+mod macos_file_drag;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+#[cfg(target_os = "windows")]
+mod windows_file_drag;
 
 struct App {
     ui: daw_ui::DawUi,
     #[cfg(target_os = "macos")]
     menu: macos_menu::NativeMenu,
+    #[cfg(target_os = "macos")]
+    file_drag_pointer: Option<macos_file_drag::FileDragPointer>,
+    #[cfg(target_os = "windows")]
+    file_drag_pointer: Option<windows_file_drag::FileDragPointer>,
+    #[cfg(target_os = "linux")]
+    file_drag_pointer: Option<linux_file_drag::FileDragPointer>,
 }
 impl eframe::App for App {
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        if let Some(pointer) = &self.file_drag_pointer {
+            pointer.update(ctx, input);
+        }
+    }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         #[cfg(target_os = "macos")]
         self.menu.dispatch(&mut self.ui);
@@ -60,6 +78,12 @@ fn main() -> eframe::Result {
                 ui,
                 #[cfg(target_os = "macos")]
                 menu,
+                #[cfg(target_os = "macos")]
+                file_drag_pointer: macos_file_drag::FileDragPointer::new(cc),
+                #[cfg(target_os = "windows")]
+                file_drag_pointer: windows_file_drag::FileDragPointer::new(cc),
+                #[cfg(target_os = "linux")]
+                file_drag_pointer: linux_file_drag::FileDragPointer::new(cc),
             }))
         }),
     )

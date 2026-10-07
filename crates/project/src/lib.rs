@@ -105,6 +105,17 @@ impl Session {
     pub fn import(&mut self, path: &Path, track: Option<Id>, start: u64) -> Result<Id> {
         let path = absolute(path)?;
         let data = WavDecoder.decode(&path).map_err(error)?;
+        self.import_decoded(&path, data, track, start)
+    }
+    /// Import audio prepared by the file-drag preview worker without decoding it again.
+    pub fn import_decoded(
+        &mut self,
+        path: &Path,
+        data: AudioData,
+        track: Option<Id>,
+        start: u64,
+    ) -> Result<Id> {
+        let path = absolute(path)?;
         let name = path
             .file_name()
             .unwrap_or_default()

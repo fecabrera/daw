@@ -142,7 +142,7 @@ Accept uncompressed WAV containing 16-bit or 24-bit integer PCM, or 32-bit IEEE 
 
 Decode sources before playback. Convert their audio to 32-bit floating-point PCM at 48 kHz using Rubato when required. Preserve original channel metadata and source information. Generate waveform peak data on a worker thread. Commit the imported asset and clip only after decoding and placement validation succeed.
 
-Import into a selected track at the playhead. If no track exists, create one for the import. Reject placement that overlaps an existing clip. Import can create a track regardless of the current track count. Keep the interface responsive during import; show progress or an active operation indicator.
+Menu imports use the selected track and playhead. If no track exists, create one for the import. File drags into the timeline show a translucent clip preview at the cursor position on the hovered track. Prepare duration and waveform on a worker; show a loading placeholder until ready and reuse prepared audio on drop. Drops in empty timeline space create a new track at the next track row. Preview and drop must use the same track and sample position, including zoom and scroll. Show red outlines for overlap or invalid sources. Cancelled hovers and rejected drops must leave the project unchanged. Dragging over the track controls must target that row at frame zero, regardless of horizontal scroll. Ignore drops outside the track workspace and disable file drops during background operations or dialogs. Reject placement that overlaps an existing clip. Import can create a track regardless of the current track count. Keep the interface responsive during import; show progress or an active operation indicator.
 
 | Operation | Behavior |
 | --- | --- |

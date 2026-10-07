@@ -255,6 +255,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - Clips on the same track must not overlap. Clips on different tracks may overlap in time.
 - Reject imports, moves, and trims that would create overlap; retain the previous valid placement and give clear feedback.
 - Show a translucent clip preview while moving, including across tracks. Clamp movement at frame zero. The preview and dropped clip must use the same position.
+- Preview WAV files dragged into the timeline at the hovered track and sample position. Load the waveform in the background without changing the project. Reuse prepared audio on drop; empty timeline drops create a track. Cancelled hovers and invalid drops leave the project unchanged.
 - Clips may touch at their boundaries. Missing-source placeholders reserve their existing time ranges under the same placement rules.
 - Project validation must detect same-track overlap, including in headless mode.
 

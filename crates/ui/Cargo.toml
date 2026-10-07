@@ -14,3 +14,6 @@ egui.workspace = true
 egui_extras = { version = "0.36.2", default-features = false, features = ["svg"] }
 egui-lucide = "0.1.0"
 rfd.workspace = true
+
+[dev-dependencies]
+hound.workspace = true
