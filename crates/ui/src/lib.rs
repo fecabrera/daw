@@ -1323,6 +1323,10 @@ impl DawUi {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         let bounds = ui.max_rect();
         let timeline_left = bounds.left() + TRACK_WIDTH;
+        self.timeline_swipe(
+            ui,
+            Rect::from_min_max(Pos2::new(timeline_left, bounds.top()), bounds.max),
+        );
         let painter = ui.painter().clone();
         let track_surface =
             Rect::from_min_max(bounds.min, Pos2::new(timeline_left, bounds.bottom()));
@@ -1487,10 +1491,32 @@ impl DawUi {
                 .line_segment(edge, Stroke::new(1.0, theme::BORDER));
         }
     }
+    fn timeline_extent(&self) -> f64 {
+        seconds(self.session.project.end()).max(60.0) + 30.0
+    }
+    fn timeline_swipe(&mut self, ui: &egui::Ui, viewport: Rect) {
+        if !ui.is_enabled()
+            || !ui.input(|input| input.focused)
+            || !ui.rect_contains_pointer(viewport)
+        {
+            return;
+        }
+        let delta = ui.input_mut(|input| std::mem::take(&mut input.smooth_scroll_delta.x));
+        if delta == 0.0 {
+            return;
+        }
+        let maximum =
+            (self.timeline_extent() - f64::from(viewport.width()) / f64::from(self.zoom)).max(0.0);
+        let scroll = (self.scroll - f64::from(delta) / f64::from(self.zoom)).clamp(0.0, maximum);
+        if scroll != self.scroll {
+            self.scroll = scroll;
+            ui.ctx().request_repaint();
+        }
+    }
     fn timeline_scrollbar(&mut self, ui: &mut egui::Ui) {
         ui.scope(|ui| {
             let width = ui.available_width();
-            let extent = seconds(self.session.project.end()).max(60.0) + 30.0;
+            let extent = self.timeline_extent();
             let offset = self.scroll * f64::from(self.zoom);
             let output = ui
                 .scope(|ui| {
@@ -4179,6 +4205,157 @@ mod tests {
         );
         assert_eq!(app.lane_bounds[&track], lane);
         assert!(!app.dirty);
+    }
+    fn trackpad_scroll(pointer: Pos2, delta: Vec2) -> Vec<egui::Event> {
+        vec![
+            egui::Event::PointerMoved(pointer),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: Vec2::ZERO,
+                modifiers: Default::default(),
+                phase: egui::TouchPhase::Start,
+            },
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta,
+                modifiers: Default::default(),
+                phase: egui::TouchPhase::Move,
+            },
+        ]
+    }
+    #[test]
+    fn horizontal_trackpad_swipes_scroll_the_timeline_and_clamp_without_editing() {
+        for zoom in [70.0, 140.0] {
+            for y in [-29.0, 40.0, 90.0] {
+                let (mut app, track) = fixture();
+                app.zoom = zoom;
+                app.session.project.tracks[0].clips[0].start_frame = frames(2.0);
+                let original = app.session.project.tracks[0].clips[0].clone();
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                let lane = app.lane_bounds[&track];
+                let pointer = lane.min + Vec2::new(80.0, y);
+                let maximum = app.timeline_extent()
+                    - f64::from(app.scrollbar_bounds.width()) / f64::from(zoom);
+                for (delta, expected) in [
+                    (-0.5 * zoom, 0.5),
+                    (0.25 * zoom, 0.25),
+                    (zoom, 0.0),
+                    (-90_000.0, maximum),
+                    (90_000.0, 0.0),
+                ] {
+                    let shapes = frame_shapes(
+                        &mut app,
+                        &ctx,
+                        trackpad_scroll(pointer, Vec2::new(delta, 0.0)),
+                        Vec2::new(1280.0, 800.0),
+                    );
+                    assert!(
+                        (app.scroll - expected).abs() < 0.00001,
+                        "{} != {expected}",
+                        app.scroll
+                    );
+                    assert_eq!(app.lane_bounds[&track], lane);
+                    if expected <= 0.5 {
+                        let block = app.clip_block(lane, &original, original.start_frame);
+                        assert!(
+                            shapes
+                                .iter()
+                                .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                            if rect.rect == block && rect.fill == theme::MISSING))
+                        );
+                    }
+                    // The scrollbar retains the swipe position on the next frame.
+                    frame(&mut app, &ctx, vec![]);
+                    assert!((app.scroll - expected).abs() < 0.00001);
+                    assert!(!app.dirty);
+                    assert!(app.error.is_none());
+                }
+                let clip = &app.session.project.tracks[0].clips[0];
+                assert_eq!(
+                    (
+                        clip.start_frame,
+                        clip.source_offset_frame,
+                        clip.length_frames,
+                        clip.repeat
+                    ),
+                    (
+                        original.start_frame,
+                        original.source_offset_frame,
+                        original.length_frames,
+                        original.repeat
+                    )
+                );
+                assert_eq!(app.session.project.transport.playhead_frame, 0);
+                assert_eq!(app.session.project.transport.r#loop.start_frame, 0);
+                assert_eq!(app.session.project.transport.r#loop.end_frame, 0);
+            }
+        }
+        // When the full extent fits, swiping must keep the offset at zero.
+        let mut app = DawUi {
+            zoom: 1.0,
+            ..Default::default()
+        };
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let pointer = app.scrollbar_bounds.center() - Vec2::new(0.0, 100.0);
+        frame(
+            &mut app,
+            &ctx,
+            trackpad_scroll(pointer, Vec2::new(-200.0, 0.0)),
+        );
+        assert_eq!(app.scroll, 0.0);
+    }
+    #[test]
+    fn timeline_swipes_preserve_vertical_scrolling_and_respect_hover_and_disabled_ui() {
+        let (mut app, track) = fixture();
+        for _ in 0..7 {
+            app.session.project.add_track().unwrap();
+        }
+        app.scroll = 1.0;
+        let ctx = context();
+        let size = Vec2::new(900.0, 450.0);
+        frame_sized(&mut app, &ctx, vec![], size);
+        let lane = app.lane_bounds[&track];
+        let master = app.master_bounds;
+        let pointer = lane.min + Vec2::new(80.0, 40.0);
+        // A diagonal swipe keeps its vertical component for the track scroll area.
+        frame_sized(
+            &mut app,
+            &ctx,
+            trackpad_scroll(pointer, Vec2::new(-35.0, -80.0)),
+            size,
+        );
+        frame_sized(&mut app, &ctx, vec![], size);
+        assert!((app.scroll - 1.5).abs() < 0.00001);
+        assert!(app.lane_bounds[&track].top() < lane.top());
+        assert_eq!(app.master_bounds, master);
+        for pointer in [
+            Pos2::new(30.0, pointer.y),
+            master.center(),
+            Pos2::new(pointer.x, 50.0),
+            Pos2::new(pointer.x, app.scrollbar_bounds.bottom() + 10.0),
+        ] {
+            frame_sized(
+                &mut app,
+                &ctx,
+                trackpad_scroll(pointer, Vec2::new(-70.0, 0.0)),
+                size,
+            );
+            assert!((app.scroll - 1.5).abs() < 0.00001);
+        }
+        let (_sender, receiver) = mpsc::channel();
+        app.job = Some(receiver);
+        frame_sized(
+            &mut app,
+            &ctx,
+            trackpad_scroll(pointer, Vec2::new(-70.0, 0.0)),
+            size,
+        );
+        assert!((app.scroll - 1.5).abs() < 0.00001);
+        assert_eq!(app.master_bounds, master);
+        assert!(!app.dirty);
+        assert!(app.error.is_none());
     }
     #[test]
     fn add_track_button_remains_enabled_beyond_four_tracks() {
