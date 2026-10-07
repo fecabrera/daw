@@ -195,6 +195,7 @@ pub struct DawUi {
     inputs: HashMap<Id, Inputs>,
     track_name_edit: Option<TrackNameEdit>,
     master_gain_input: String,
+    tempo_input: String,
     zoom: f32,
     scroll: f64,
     drag: Option<Drag>,
@@ -204,6 +205,8 @@ pub struct DawUi {
     scrollbar_bounds: Rect,
     #[cfg(test)]
     master_bounds: Rect,
+    #[cfg(test)]
+    tempo_bounds: Rect,
     dirty: bool,
     sync_needed: bool,
     job: Option<mpsc::Receiver<Result<Job, String>>>,
@@ -227,6 +230,7 @@ impl Default for DawUi {
             inputs: HashMap::new(),
             track_name_edit: None,
             master_gain_input: "0.0".into(),
+            tempo_input: format!("{:?}", daw_core::DEFAULT_TEMPO_BPM),
             zoom: 70.0,
             scroll: 0.0,
             drag: None,
@@ -236,6 +240,8 @@ impl Default for DawUi {
             scrollbar_bounds: Rect::NOTHING,
             #[cfg(test)]
             master_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            tempo_bounds: Rect::NOTHING,
             dirty: false,
             sync_needed: false,
             job: None,
@@ -303,6 +309,7 @@ impl DawUi {
                 self.inputs.clear();
                 self.track_name_edit = None;
                 self.master_gain_input = format!("{:.1}", self.session.project.master.gain_db);
+                self.tempo_input = format!("{:?}", self.session.project.tempo_bpm);
                 self.selected_track = None;
                 self.selected_clip = None;
                 self.notices.clear();
@@ -377,6 +384,7 @@ impl DawUi {
                         self.inputs.clear();
                         self.track_name_edit = None;
                         self.master_gain_input = format!("{:.1}", session.project.master.gain_db);
+                        self.tempo_input = format!("{:?}", session.project.tempo_bpm);
                         self.scroll = 0.0;
                     }
                     self.notices = session.warnings.clone();
@@ -658,6 +666,52 @@ impl DawUi {
             }
         }
     }
+    fn tempo_control(&mut self, ui: &mut egui::Ui) {
+        ui.label("BPM");
+        let previous = self.session.project.tempo_bpm;
+        let response = numeric_input(ui, &mut self.tempo_input, "Tempo (BPM)");
+        response.widget_info(|| {
+            egui::WidgetInfo::text_edit(
+                ui.is_enabled(),
+                format!("{previous:?}"),
+                &self.tempo_input,
+                "Tempo (BPM)",
+            )
+        });
+        #[cfg(test)]
+        {
+            self.tempo_bounds = response.rect;
+        }
+        if !ui.is_enabled() {
+            return;
+        }
+        let focused = response.has_focus() || response.lost_focus();
+        let cancel = focused
+            && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        let commit = response.lost_focus()
+            || (focused
+                && ui
+                    .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Enter)));
+        if cancel {
+            self.tempo_input = format!("{previous:?}");
+            response.surrender_focus();
+        } else if commit {
+            match self.tempo_input.parse::<f32>() {
+                Ok(value) if value.is_finite() && value > 0.0 => {
+                    self.session.project.tempo_bpm = value;
+                    self.tempo_input = format!("{value:?}");
+                    if value != previous {
+                        self.changed();
+                    }
+                }
+                _ => {
+                    self.tempo_input = format!("{previous:?}");
+                    self.fail("Tempo must be a positive finite BPM value");
+                }
+            }
+            response.surrender_focus();
+        }
+    }
     fn toolbar(&mut self, ui: &mut egui::Ui) {
         let window_title = format!(
             "{}{} - DAW",
@@ -747,6 +801,7 @@ impl DawUi {
                 }
             }
             transport_time_label(ui, self.session.project.transport.playhead_frame);
+            ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.scope(|ui| {
                     ui.spacing_mut().slider_width = 56.0;
@@ -1856,6 +1911,81 @@ mod tests {
         fonts::configure(&ctx);
         icons::configure(&ctx);
         ctx
+    }
+    #[test]
+    fn toolbar_tempo_commits_cancels_and_rejects_invalid_values() {
+        let mut app = DawUi::default();
+        let ctx = context();
+        // Let the toolbar layout settle before sending pointer input.
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.tempo_input, "120.0");
+        let input = app.tempo_bounds.center();
+        let key = |key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        };
+        for (text, action, expected, changed, invalid) in [
+            ("135.5", egui::Key::Enter, 135.5, true, false),
+            ("80", egui::Key::Escape, 135.5, false, false),
+            ("135.5", egui::Key::Enter, 135.5, false, false),
+            ("0", egui::Key::Enter, 135.5, false, true),
+            ("-12", egui::Key::Enter, 135.5, false, true),
+            ("NaN", egui::Key::Enter, 135.5, false, true),
+            ("inf", egui::Key::Enter, 135.5, false, true),
+            ("", egui::Key::Enter, 135.5, false, true),
+        ] {
+            app.dirty = false;
+            app.error = None;
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(input), button(input, true)],
+            );
+            frame(&mut app, &ctx, vec![button(input, false)]);
+            assert!(
+                ctx.egui_wants_keyboard_input(),
+                "tempo input should take focus"
+            );
+            app.tempo_input = text.into();
+            frame(&mut app, &ctx, vec![key(action)]);
+            assert_eq!(app.session.project.tempo_bpm, expected);
+            assert_eq!(app.tempo_input, format!("{expected:?}"));
+            assert_eq!(app.dirty, changed);
+            assert_eq!(app.error.is_some(), invalid);
+        }
+        app.error = None;
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(input), button(input, true)],
+        );
+        frame(&mut app, &ctx, vec![button(input, false)]);
+        app.tempo_input = "99.25".into();
+        let outside = Pos2::new(30.0, app.tempo_bounds.bottom() + 20.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(outside), button(outside, true)],
+        );
+        frame(&mut app, &ctx, vec![button(outside, false)]);
+        assert_eq!(app.session.project.tempo_bpm, 99.25);
+        assert!(app.dirty);
+
+        app.pending = Some(Action::CloseProject);
+        app.perform_pending();
+        assert_eq!(app.tempo_input, "120.0");
+        assert_eq!(app.session.project.tempo_bpm, 120.0);
+        let (sender, receiver) = mpsc::channel();
+        let mut session = Session::default();
+        session.project.tempo_bpm = 87.5;
+        sender.send(Ok(Job::Loaded(session, false))).unwrap();
+        app.job = Some(receiver);
+        app.poll();
+        assert_eq!(app.tempo_input, "87.5");
     }
     #[test]
     fn track_name_double_click_commits_with_enter_and_cancels_with_escape() {

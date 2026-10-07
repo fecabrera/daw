@@ -3,6 +3,11 @@ use uuid::Uuid;
 
 pub use uuid::Uuid as Id;
 pub const SAMPLE_RATE: u32 = 48_000;
+pub const DEFAULT_TEMPO_BPM: f32 = 120.0;
+
+fn default_tempo_bpm() -> f32 {
+    DEFAULT_TEMPO_BPM
+}
 
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
@@ -14,6 +19,8 @@ pub struct Project {
     pub project_id: Id,
     pub name: String,
     pub sample_rate_hz: u32,
+    #[serde(default = "default_tempo_bpm")]
+    pub tempo_bpm: f32,
     pub master: Master,
     pub assets: Vec<Asset>,
     pub tracks: Vec<Track>,
@@ -82,6 +89,7 @@ impl Default for Project {
             project_id: Id::new_v4(),
             name: "Untitled".into(),
             sample_rate_hz: SAMPLE_RATE,
+            tempo_bpm: DEFAULT_TEMPO_BPM,
             master: Master { gain_db: 0.0 },
             assets: vec![],
             tracks: vec![],
@@ -124,6 +132,9 @@ impl Project {
         let invalid = |text: &str| Error(text.into());
         if self.sample_rate_hz != SAMPLE_RATE {
             return Err(invalid("Project sample rate must be 48 kHz"));
+        }
+        if !self.tempo_bpm.is_finite() || self.tempo_bpm <= 0.0 {
+            return Err(invalid("Tempo must be a positive finite BPM value"));
         }
         if !self.master.gain_db.is_finite() || !linear_gain(self.master.gain_db).is_finite() {
             return Err(invalid("Invalid master gain"));
@@ -295,6 +306,16 @@ pub enum Edit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tempo_must_be_positive_and_finite() {
+        let mut project = Project::default();
+        for value in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            project.tempo_bpm = value;
+            assert!(project.validate().is_err());
+        }
+        project.tempo_bpm = 123.45;
+        project.validate().unwrap();
+    }
     #[test]
     fn many_tracks_validate_and_solo_overrides_mute() {
         let mut p = Project::default();

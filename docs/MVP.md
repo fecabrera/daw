@@ -162,6 +162,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
   "project_id": "c2e1c40e-e9bd-444e-88c0-a195f18b1b2e",
   "name": "My project",
   "sample_rate_hz": 48000,
+  "tempo_bpm": 120.0,
   "master": {
     "gain_db": 0.0
   },
@@ -217,6 +218,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 #### Field rules
 
 - Use UUIDs for project, asset, track, and clip identities. Track array order defines display order.
+- Store tempo_bpm as a positive finite BPM value. Default to 120.0 for new projects and manifests without this field. Set it from the playback toolbar's BPM box. It does not move or stretch audio clips.
 - All frame positions, offsets, and lengths use the project's 48 kHz timeline, including source offsets after resampling. One frame contains one sample per channel; five minutes equals 14,400,000 frames.
 - Source metadata describes the original file. decoded_frame_count describes its length after conversion to the project sample rate. Use pcm_int or ieee_float for sample_format.
 - pan ranges from -1.0 (left) to 1.0 (right); 0.0 is center. Gain values are finite decibel values; mute is a separate boolean.
@@ -385,7 +387,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 
 #### Musical Timing
 
-- Project tempo.
+- Tempo-based beat and bar ruler.
 - Metronome/click.
 - Time signatures.
 

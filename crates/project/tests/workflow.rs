@@ -154,6 +154,24 @@ fn edit_rejection_is_transactional_and_split_preserves_ranges() {
 }
 
 #[test]
+fn tempo_round_trips_and_older_projects_use_the_default() {
+    let f = Fixture::new();
+    let mut session = Session::default();
+    session.project.tempo_bpm = 97.25;
+    session.save(&f.0).unwrap();
+    assert_eq!(Session::open(&f.0).unwrap().project.tempo_bpm, 97.25);
+    let manifest = f.0.join("project.json");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    value.as_object_mut().unwrap().remove("tempo_bpm");
+    fs::write(&manifest, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert_eq!(Session::open(&f.0).unwrap().project.tempo_bpm, 120.0);
+    value["tempo_bpm"] = serde_json::json!(0.0);
+    fs::write(&manifest, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(Session::open(&f.0).is_err());
+}
+
+#[test]
 fn schema_version_is_ignored_and_invalid_structure_is_rejected() {
     let f = Fixture::new();
     let mut value = serde_json::to_value(Project::default()).unwrap();

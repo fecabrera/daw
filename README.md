@@ -53,6 +53,7 @@ The native macOS menu bar contains the File menu. Windows and Linux show File in
 
 Unsaved changes, export replacement, and error messages use one reusable application dialog component. It provides a centered title, consistent padding, bounded width, wrapped message text, and a shared button row. Each caller handles its own actions. File and folder pickers use native dialogs through `rfd`.
 
+- Set project tempo in the playback toolbar's BPM box. It starts at 120.0 and saves with the project. Enter or focus loss commits a positive finite value; Esc cancels. Invalid values retain the previous tempo. Changing tempo does not move or stretch audio clips.
 - Add tracks with the Lucide Plus button at the right of the Tracks header. A flexible spacer separates it from the Tracks label. The Tracks header uses the playback toolbar's 8-point padding on all sides; the ruler matches its 38-point height. Select a track, then import a WAV at the playhead. Dropping a WAV onto the window imports it into the selected track.
 - Drag a clip's name strip to move it. Drop onto another track to change tracks. Drag either edge to trim.
 - Right-click a clip to split at the playhead or delete it. Right-click a track block to delete that track.
