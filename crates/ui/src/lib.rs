@@ -596,9 +596,15 @@ impl DawUi {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(format!(
-                        "Selection {:.2}–{:.2} s",
-                        seconds(self.session.project.transport.r#loop.start_frame),
-                        seconds(self.session.project.transport.r#loop.end_frame)
+                        "Selection {}–{}",
+                        musical_time::monitor(
+                            self.session.project.transport.r#loop.start_frame,
+                            self.session.project.tempo_bpm,
+                        ),
+                        musical_time::monitor(
+                            self.session.project.transport.r#loop.end_frame,
+                            self.session.project.tempo_bpm,
+                        ),
                     ));
                 });
             });

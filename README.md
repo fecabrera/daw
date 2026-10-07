@@ -39,7 +39,7 @@ The ruler's bottom divider extends across the full workspace, including below th
 
 The ruler and grid use bars and beats at the project tempo in 4/4. Bars and beats start at 1. Bar numbers appear at normal zoom; closer zoom shows bar.beat labels, such as 2.3. Bar lines are stronger than beat lines; finer subdivisions appear as space permits. The toolbar adds a bar.beat monitor beside the time display, starting at 0001.01, with the same semibold font, digit widths, and text colors. Tempo changes update this scale and monitor without moving or stretching audio.
 
-The selection range appears at the right edge of the bottom status bar. It shows the ruler selection's start and end in seconds to two decimal places. The playback toolbar shows the playhead time.
+The selection range appears at the right edge of the bottom status bar. It shows the ruler selection's start and end in bar.beat format, such as `0002.01–0004.03`, at the project tempo in 4/4. It uses the same format as the playback toolbar's bar.beat monitor, with bars and beats counted from 1. The playback toolbar also shows the playhead time.
 
 Master uses a compact 68-point outlined block with two rows: its name and gain. It stays fixed at the bottom of the track column, above the status bar. Two vertical L/R output bars fit its inner height at the right edge; their red clipping markers can be clicked to clear. It has no Mute or Solo buttons and is separate from the audio tracks. Audio tracks scroll above it.
 
