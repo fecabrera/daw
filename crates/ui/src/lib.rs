@@ -171,6 +171,11 @@ struct Inputs {
     gain: String,
     pan: String,
 }
+struct TrackNameEdit {
+    track: Id,
+    text: String,
+    focus: bool,
+}
 struct Drag {
     clip: Clip,
     track: Id,
@@ -188,6 +193,7 @@ pub struct DawUi {
     selected_track: Option<Id>,
     selected_clip: Option<Id>,
     inputs: HashMap<Id, Inputs>,
+    track_name_edit: Option<TrackNameEdit>,
     master_gain_input: String,
     zoom: f32,
     scroll: f64,
@@ -219,6 +225,7 @@ impl Default for DawUi {
             selected_track: None,
             selected_clip: None,
             inputs: HashMap::new(),
+            track_name_edit: None,
             master_gain_input: "0.0".into(),
             zoom: 70.0,
             scroll: 0.0,
@@ -294,6 +301,7 @@ impl DawUi {
                 self.session = Session::default();
                 self.dirty = false;
                 self.inputs.clear();
+                self.track_name_edit = None;
                 self.master_gain_input = format!("{:.1}", self.session.project.master.gain_db);
                 self.selected_track = None;
                 self.selected_clip = None;
@@ -367,6 +375,7 @@ impl DawUi {
                     if !dirty {
                         self.output = None;
                         self.inputs.clear();
+                        self.track_name_edit = None;
                         self.master_gain_input = format!("{:.1}", session.project.master.gain_db);
                         self.scroll = 0.0;
                     }
@@ -457,7 +466,19 @@ impl DawUi {
     }
     fn edit(&mut self, command: Edit) {
         match self.session.project.edit(command) {
-            Ok(()) => self.changed(),
+            Ok(()) => {
+                if self.track_name_edit.as_ref().is_some_and(|edit| {
+                    !self
+                        .session
+                        .project
+                        .tracks
+                        .iter()
+                        .any(|t| t.id == edit.track)
+                }) {
+                    self.track_name_edit = None;
+                }
+                self.changed();
+            }
             Err(e) => self.fail(e),
         }
     }
@@ -1150,6 +1171,90 @@ impl DawUi {
             }
         });
     }
+    fn track_name(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
+        let width = ui.available_width();
+        if self
+            .track_name_edit
+            .as_ref()
+            .is_some_and(|edit| edit.track == track.id)
+        {
+            let mut edit = self.track_name_edit.take().unwrap();
+            let mut output = egui::TextEdit::singleline(&mut edit.text)
+                .id(ui.make_persistent_id(("track_name", track.id)))
+                .font(egui::FontId::proportional(13.0))
+                .text_color(theme::TEXT)
+                .horizontal_align(egui::Align::Center)
+                .desired_width(width)
+                .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
+                .show(ui);
+            output.response.widget_info(|| {
+                egui::WidgetInfo::text_edit(ui.is_enabled(), &track.name, &edit.text, "Track name")
+            });
+            if edit.focus {
+                output.response.request_focus();
+                output
+                    .state
+                    .cursor
+                    .set_char_range(Some(egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(edit.text.chars().count()),
+                    )));
+                output.state.store(ui.ctx(), output.response.id);
+                edit.focus = false;
+            }
+            let (cancel, commit) = if output.response.has_focus() || output.response.lost_focus() {
+                ui.input_mut(|input| {
+                    let cancel = input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
+                    let commit = input.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+                    (cancel, commit)
+                })
+            } else {
+                (false, false)
+            };
+            if cancel || commit {
+                output.response.surrender_focus();
+                if commit
+                    && !cancel
+                    && edit.text != track.name
+                    && let Some(track) = self
+                        .session
+                        .project
+                        .tracks
+                        .iter_mut()
+                        .find(|t| t.id == edit.track)
+                {
+                    track.name = edit.text;
+                    self.changed();
+                }
+            } else {
+                self.track_name_edit = Some(edit);
+            }
+        } else {
+            let response = ui
+                .add_sized(
+                    [width, toolbars::CONTROL_HEIGHT],
+                    egui::Button::new(
+                        egui::RichText::new(&track.name)
+                            .font(egui::FontId::proportional(13.0))
+                            .color(theme::TEXT),
+                    )
+                    .selected(self.selected_track == Some(track.id))
+                    .frame(false)
+                    .truncate(),
+                )
+                .on_hover_text(&track.name);
+            if response.clicked() {
+                self.selected_track = Some(track.id);
+            }
+            if response.double_clicked() && self.track_name_edit.is_none() {
+                self.track_name_edit = Some(TrackNameEdit {
+                    track: track.id,
+                    text: track.name.clone(),
+                    focus: true,
+                });
+            }
+        }
+    }
     fn tracks(&mut self, ui: &mut egui::Ui) {
         let tracks = self.session.project.tracks.clone();
         ui.scope(|ui| {
@@ -1186,24 +1291,7 @@ impl DawUi {
                                 let cleared =
                                     meters::stereo_panel(ui, ROW_HEIGHT - 14.0, levels, |ui| {
                                         rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                                            let name_width = ui.available_width();
-                                            if ui
-                                                .add_sized(
-                                                    [name_width, 22.0],
-                                                    egui::Button::new(
-                                                        egui::RichText::new(&track.name)
-                                                            .font(egui::FontId::proportional(13.0))
-                                                            .color(theme::TEXT),
-                                                    )
-                                                    .selected(self.selected_track == Some(track.id))
-                                                    .frame(false)
-                                                    .truncate(),
-                                                )
-                                                .on_hover_text(&track.name)
-                                                .clicked()
-                                            {
-                                                self.selected_track = Some(track.id);
-                                            }
+                                            self.track_name(ui, &track);
                                         });
                                         let inputs =
                                             self.inputs.entry(track.id).or_insert_with(|| Inputs {
@@ -1768,6 +1856,102 @@ mod tests {
         fonts::configure(&ctx);
         icons::configure(&ctx);
         ctx
+    }
+    #[test]
+    fn track_name_double_click_commits_with_enter_and_cancels_with_escape() {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let name = Pos2::new(110.0, app.lane_bounds[&track].top() + 18.0);
+        let key = |key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        };
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(name), button(name, true)],
+        );
+        frame(&mut app, &ctx, vec![button(name, false)]);
+        assert!(app.track_name_edit.is_none());
+        assert_eq!(app.selected_track, Some(track));
+        frame(&mut app, &ctx, vec![button(name, true)]);
+        frame(&mut app, &ctx, vec![button(name, false)]);
+        assert_eq!(app.track_name_edit.as_ref().unwrap().track, track);
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![egui::Event::Text("Bajo 🎸".into())]);
+        assert_eq!(app.track_name_edit.as_ref().unwrap().text, "Bajo 🎸");
+        assert_eq!(app.session.project.tracks[0].name, "Track 1");
+        assert!(!app.dirty);
+        frame(&mut app, &ctx, vec![key(egui::Key::Enter)]);
+        assert!(app.track_name_edit.is_none());
+        assert_eq!(app.session.project.tracks[0].name, "Bajo 🎸");
+        assert!(app.dirty);
+
+        app.dirty = false;
+        for _ in 0..2 {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(name), button(name, true)],
+            );
+            frame(&mut app, &ctx, vec![button(name, false)]);
+        }
+        frame(&mut app, &ctx, vec![]);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Text("Discard this".into())],
+        );
+        frame(&mut app, &ctx, vec![key(egui::Key::Escape)]);
+        assert!(app.track_name_edit.is_none());
+        assert_eq!(app.session.project.tracks[0].name, "Bajo 🎸");
+        assert!(!app.dirty);
+        app.track_name_edit = Some(TrackNameEdit {
+            track,
+            text: "Bajo 🎸".into(),
+            focus: true,
+        });
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![key(egui::Key::Enter)]);
+        assert!(app.track_name_edit.is_none());
+        assert!(!app.dirty);
+    }
+    #[test]
+    fn track_name_draft_survives_focus_loss_and_is_cleared_with_its_track() {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.track_name_edit = Some(TrackNameEdit {
+            track,
+            text: "Draft".into(),
+            focus: true,
+        });
+        frame(&mut app, &ctx, vec![]);
+        let outside = app.lane_bounds[&track].min + Vec2::new(40.0, 40.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(outside), button(outside, true)],
+        );
+        frame(&mut app, &ctx, vec![button(outside, false)]);
+        assert_eq!(app.track_name_edit.as_ref().unwrap().text, "Draft");
+        assert_eq!(app.session.project.tracks[0].name, "Track 1");
+        assert!(!app.dirty);
+        app.edit(Edit::DeleteTrack(track));
+        assert!(app.track_name_edit.is_none());
+
+        let track = app.session.project.add_track().unwrap();
+        app.track_name_edit = Some(TrackNameEdit {
+            track,
+            text: "Draft".into(),
+            focus: true,
+        });
+        app.pending = Some(Action::CloseProject);
+        app.perform_pending();
+        assert!(app.track_name_edit.is_none());
     }
     #[test]
     fn master_numeric_gain_commits_clamps_and_cancels() {
