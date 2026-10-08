@@ -459,6 +459,8 @@ impl ClipDragMode {
 }
 struct ClipPreview {
     track: Id,
+    // Indices beyond the existing tracks describe preview-only destination rows.
+    track_index: usize,
     clip: Clip,
     valid: bool,
 }
@@ -510,6 +512,7 @@ pub struct DawUi {
     file_drop_target: Option<FileDropTarget>,
     loop_drag: Option<LoopDrag>,
     lane_bounds: HashMap<Id, Rect>,
+    timeline_bounds: Rect,
     #[cfg(test)]
     scrollbar_bounds: Rect,
     #[cfg(test)]
@@ -559,6 +562,7 @@ impl Default for DawUi {
             file_drop_target: None,
             loop_drag: None,
             lane_bounds: HashMap::new(),
+            timeline_bounds: Rect::NOTHING,
             #[cfg(test)]
             scrollbar_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -1752,6 +1756,7 @@ impl DawUi {
             .max_height((master_rect.top() - ui.cursor().top()).max(0.0))
             .auto_shrink([false, false])
             .show(ui, |ui| self.tracks(ui));
+        self.timeline_bounds = timeline_rect;
         self.timeline_selection(
             ui,
             &background,
@@ -2781,10 +2786,19 @@ impl DawUi {
         if last_track >= tracks.len() {
             return None;
         }
-        let track_delta = (target_track as i128 - anchor_track as i128).clamp(
-            -(first_track as i128),
-            (tracks.len() - 1 - last_track) as i128,
-        );
+        let new_tracks = self.timeline_bounds.contains(pointer)
+            && self
+                .file_target(pointer, self.timeline_bounds, true)
+                .is_some_and(|target| target.track.is_none());
+        let track_delta = if new_tracks {
+            // Place the whole group below the last track, preserving track gaps.
+            (tracks.len() - first_track) as i128
+        } else {
+            (target_track as i128 - anchor_track as i128).clamp(
+                -(first_track as i128),
+                (tracks.len() - 1 - last_track) as i128,
+            )
+        };
         let ignored: HashSet<_> = if drag.duplicate {
             HashSet::new()
         } else {
@@ -2794,9 +2808,10 @@ impl DawUi {
             .iter()
             .map(|entry| {
                 let index = (entry.track_index as i128 + track_delta) as usize;
-                let anchors = tracks[index]
-                    .clips
-                    .iter()
+                let anchors = tracks
+                    .get(index)
+                    .into_iter()
+                    .flat_map(|track| &track.clips)
                     .filter(|clip| !ignored.contains(&clip.id))
                     .flat_map(|clip| [clip.start_frame, clip.end()])
                     .collect();
@@ -2816,9 +2831,11 @@ impl DawUi {
         let mut previews: Vec<_> = clips
             .iter()
             .map(|entry| {
-                let track = tracks[(entry.track_index as i128 + track_delta) as usize].id;
+                let track_index = (entry.track_index as i128 + track_delta) as usize;
+                let track = tracks.get(track_index).map_or(Id::nil(), |track| track.id);
                 ClipPreview {
                     track,
+                    track_index,
                     clip: Clip {
                         start_frame: (i128::from(entry.clip.start_frame) + delta) as u64,
                         ..entry.clip.clone()
@@ -2833,16 +2850,13 @@ impl DawUi {
                 .start_frame
                 .checked_add(preview.clip.length_frames)
                 .is_some_and(|end| {
-                    tracks
-                        .iter()
-                        .find(|track| track.id == preview.track)
-                        .is_some_and(|track| {
-                            track.clips.iter().all(|clip| {
-                                ignored.contains(&clip.id)
-                                    || end <= clip.start_frame
-                                    || preview.clip.start_frame >= clip.end()
-                            })
+                    tracks.get(preview.track_index).is_none_or(|track| {
+                        track.clips.iter().all(|clip| {
+                            ignored.contains(&clip.id)
+                                || end <= clip.start_frame
+                                || preview.clip.start_frame >= clip.end()
                         })
+                    })
                 })
         });
         for preview in &mut previews {
@@ -2999,7 +3013,17 @@ impl DawUi {
             clip.start_frame,
             clip.length_frames,
         );
-        Some(ClipPreview { track, clip, valid })
+        Some(ClipPreview {
+            track,
+            track_index: self
+                .session
+                .project
+                .tracks
+                .iter()
+                .position(|t| t.id == track)?,
+            clip,
+            valid,
+        })
     }
     fn placement_valid(
         &self,
@@ -3178,6 +3202,23 @@ impl DawUi {
         );
         self.file_drop_target = Some(target);
     }
+    fn preview_lane(&self, preview: &ClipPreview) -> Option<Rect> {
+        if preview.track_index < self.session.project.tracks.len() {
+            return self.lane_bounds.get(&preview.track).copied();
+        }
+        let top = self
+            .lane_bounds
+            .values()
+            .map(Rect::bottom)
+            .fold(self.timeline_bounds.top(), f32::max);
+        Some(Rect::from_min_size(
+            Pos2::new(
+                self.timeline_bounds.left(),
+                top + (preview.track_index - self.session.project.tracks.len()) as f32 * ROW_HEIGHT,
+            ),
+            Vec2::new(self.timeline_bounds.width(), ROW_HEIGHT),
+        ))
+    }
     fn paint_drag_preview(&self, ui: &egui::Ui, viewport: Rect) {
         let Some(pointer) = ui.input(|input| input.pointer.latest_pos()) else {
             return;
@@ -3188,23 +3229,28 @@ impl DawUi {
         for preview in
             self.clip_drag_previews(drag, pointer, ui.input(|input| input.modifiers.shift))
         {
-            let Some(track) = self
+            let track_color = self
                 .session
                 .project
                 .tracks
-                .iter()
-                .find(|track| track.id == preview.track)
-            else {
-                continue;
-            };
-            let Some(lane) = self.lane_bounds.get(&preview.track).copied() else {
+                .get(preview.track_index)
+                .map_or_else(
+                    || daw_core::default_track_color(preview.track_index),
+                    |track| track.color,
+                );
+            let Some(lane) = self.preview_lane(&preview) else {
                 continue;
             };
             let block = self.clip_block(lane, &preview.clip, preview.clip.start_frame);
+            let viewport = if preview.track_index >= self.session.project.tracks.len() {
+                self.timeline_bounds
+            } else {
+                viewport
+            };
             let painter = ui.painter_at(viewport.intersect(lane));
             let mut ghost = painter.clone();
             ghost.multiply_opacity(0.75);
-            self.paint_clip(&ghost, track.color, block, &preview.clip, false, None);
+            self.paint_clip(&ghost, track_color, block, &preview.clip, false, None);
             painter.rect_stroke(
                 block,
                 2.0,
@@ -3371,7 +3417,7 @@ impl DawUi {
                 .input(|input| input.pointer.latest_pos())
                 .unwrap_or(drag.origin);
             if drag.mode == ClipDragMode::Move {
-                let previews = self.clip_drag_previews(
+                let mut previews = self.clip_drag_previews(
                     &drag,
                     pointer,
                     ui.input(|input| input.modifiers.shift),
@@ -3383,22 +3429,26 @@ impl DawUi {
                     .iter()
                     .position(|preview| preview.clip.id == drag.clip.id)
                     .unwrap_or(0);
+                let mut next = self.session.project.clone();
+                for preview in &mut previews {
+                    while next.tracks.len() <= preview.track_index {
+                        if let Err(error) = next.add_track() {
+                            self.fail(error);
+                            return;
+                        }
+                    }
+                    preview.track = next.tracks[preview.track_index].id;
+                }
                 if drag.duplicate {
                     let clips = previews
                         .into_iter()
                         .map(|preview| SelectedClip {
                             track: preview.track,
-                            track_index: self
-                                .session
-                                .project
-                                .tracks
-                                .iter()
-                                .position(|track| track.id == preview.track)
-                                .unwrap(),
+                            track_index: preview.track_index,
                             clip: preview.clip,
                         })
                         .collect();
-                    self.insert_clips(self.session.project.clone(), clips, primary);
+                    self.insert_clips(next, clips, primary);
                 } else {
                     let changed = previews.iter().any(|preview| {
                         self.session.project.tracks.iter().any(|track| {
@@ -3425,8 +3475,9 @@ impl DawUi {
                             repeat: preview.clip.repeat,
                         })
                         .collect();
-                    match self.session.project.edit(Edit::Batch(edits)) {
+                    match next.edit(Edit::Batch(edits)) {
                         Ok(()) => {
+                            self.session.project = next;
                             self.selected_track = Some(selected_track);
                             self.selected_clip = Some(drag.clip.id);
                             self.selected_clips = ids;
@@ -4035,6 +4086,294 @@ mod tests {
         assert!(app.error.is_some());
         assert_eq!(format!("{:?}", app.session.project), before);
         assert_eq!(app.clip_clipboard.as_ref().unwrap().token, token);
+    }
+    #[test]
+    fn empty_timeline_clip_drag_previews_and_creates_tracks() {
+        let wav = TestWav::new();
+        let audio = daw_media::decode_wav(&wav.0).unwrap();
+        for group in [false, true] {
+            for duplicate in [false, true] {
+                for shift in [false, true] {
+                    for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+                        let (mut app, tracks, ids) = multi_clip_fixture();
+                        // Preserve a gap between selected tracks when adding new rows.
+                        let c = app.session.project.tracks[1].clips.pop().unwrap();
+                        app.session.project.tracks[2].clips.push(c);
+                        app.zoom = zoom;
+                        app.scroll = scroll;
+                        let asset = app.session.project.tracks[0].clips[0].asset_id;
+                        app.session.audio.insert(asset, audio.clone());
+                        let ctx = context();
+                        if group {
+                            select_group(&mut app, &ctx, ids);
+                        } else {
+                            frame(&mut app, &ctx, vec![]);
+                            click_clip(&mut app, &ctx, ids[0], false);
+                        }
+                        let originals = app.selected_clip_snapshots();
+                        let before = format!("{:?}", app.session.project);
+                        let block = app.clip_block(
+                            app.lane_bounds[&tracks[0]],
+                            &originals[0].clip,
+                            originals[0].clip.start_frame,
+                        );
+                        let start = Pos2::new(block.center().x, block.top() + 12.0);
+                        let end = Pos2::new(
+                            start.x + 5.02 * zoom,
+                            if zoom == 140.0 {
+                                app.timeline_bounds.bottom() - 1.0
+                            } else {
+                                app.lane_bounds[&tracks[2]].bottom() + 100.0
+                            },
+                        );
+                        assert!(app.timeline_bounds.contains(end));
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(start), button(start, true)],
+                        );
+                        let modifiers = egui::Modifiers {
+                            alt: duplicate && cfg!(target_os = "macos"),
+                            ctrl: duplicate && !cfg!(target_os = "macos"),
+                            shift,
+                            ..Default::default()
+                        };
+                        let shapes = frame_shapes(
+                            &mut app,
+                            &ctx,
+                            vec![
+                                egui::Event::ModifiersChanged(modifiers),
+                                egui::Event::PointerMoved(end),
+                            ],
+                            Vec2::new(1280.0, 800.0),
+                        );
+                        let previews =
+                            app.clip_drag_previews(app.drag.as_ref().unwrap(), end, shift);
+                        assert_eq!(previews.len(), originals.len());
+                        let mut blocks = Vec::new();
+                        for preview in &previews {
+                            let source = originals
+                                .iter()
+                                .find(|source| source.clip.id == preview.clip.id)
+                                .unwrap();
+                            assert_eq!(preview.track_index, source.track_index + 3);
+                            assert_eq!(preview.track, Id::nil());
+                            assert!(preview.valid);
+                            assert!(
+                                preview.clip.start_frame.abs_diff(
+                                    source.clip.start_frame
+                                        + frames(if shift { 5.02 } else { 5.0 })
+                                ) <= 1
+                            );
+                            let block = app.clip_block(
+                                app.preview_lane(preview).unwrap(),
+                                &preview.clip,
+                                preview.clip.start_frame,
+                            );
+                            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                            let colors = theme::clip_colors(
+                                daw_core::default_track_color(preview.track_index),
+                                preview.clip.color,
+                            );
+                            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                                if rect.rect == block && rect.fill == colors.body.gamma_multiply(0.75))));
+                            blocks.push(block);
+                        }
+                        // Stationary hovering must not create tracks or modify clips.
+                        frame(&mut app, &ctx, vec![]);
+                        assert_eq!(format!("{:?}", app.session.project), before);
+                        assert!(!app.dirty);
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerButton {
+                                pos: end,
+                                button: egui::PointerButton::Primary,
+                                pressed: false,
+                                modifiers,
+                            }],
+                        );
+                        assert!(app.error.is_none());
+                        assert!(app.dirty);
+                        assert!(app.drag.is_none());
+                        assert_eq!(app.session.project.tracks.len(), if group { 6 } else { 4 });
+                        for index in 3..app.session.project.tracks.len() {
+                            let track = &app.session.project.tracks[index];
+                            assert_eq!(track.name, format!("Track {}", index + 1));
+                            assert_eq!(track.color, daw_core::default_track_color(index));
+                        }
+                        if group {
+                            assert!(app.session.project.tracks[4].clips.is_empty());
+                        }
+                        let placed = app.selected_clip_snapshots();
+                        assert_eq!(placed.len(), originals.len());
+                        frame(&mut app, &ctx, vec![]);
+                        for ((entry, preview), block) in placed.iter().zip(&previews).zip(blocks) {
+                            let source = originals
+                                .iter()
+                                .find(|source| source.clip.id == preview.clip.id)
+                                .unwrap();
+                            assert_eq!(entry.track_index, preview.track_index);
+                            assert_eq!(
+                                entry.track,
+                                app.session.project.tracks[entry.track_index].id
+                            );
+                            assert_eq!(
+                                app.clip_block(
+                                    app.lane_bounds[&entry.track],
+                                    &entry.clip,
+                                    entry.clip.start_frame
+                                ),
+                                block
+                            );
+                            let mut expected = preview.clip.clone();
+                            expected.id = entry.clip.id;
+                            assert_eq!(format!("{:?}", entry.clip), format!("{expected:?}"));
+                            assert_eq!(entry.clip.id == source.clip.id, !duplicate);
+                            assert_eq!(
+                                app.session.project.tracks[source.track_index]
+                                    .clips
+                                    .iter()
+                                    .any(|clip| clip.id == source.clip.id),
+                                duplicate
+                            );
+                        }
+                        assert_eq!(app.session.project.assets.len(), 1);
+                        assert!(std::sync::Arc::ptr_eq(
+                            &audio.samples,
+                            &app.session.audio[&asset].samples
+                        ));
+                        app.session.project.validate().unwrap();
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn empty_timeline_clip_drag_cancellation_and_failure_keep_tracks_unchanged() {
+        for duplicate in [false, true] {
+            for cancel in [false, true] {
+                let (mut app, tracks, ids) = multi_clip_fixture();
+                let ctx = context();
+                select_group(&mut app, &ctx, ids);
+                let clip = app.session.project.tracks[0].clips[0].clone();
+                let block = app.clip_block(app.lane_bounds[&tracks[0]], &clip, clip.start_frame);
+                let start = Pos2::new(block.center().x, block.top() + 12.0);
+                let end = Pos2::new(
+                    start.x + app.zoom,
+                    app.lane_bounds[&tracks[2]].bottom() + 12.0,
+                );
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                let modifiers = egui::Modifiers {
+                    alt: duplicate && cfg!(target_os = "macos"),
+                    ctrl: duplicate && !cfg!(target_os = "macos"),
+                    ..Default::default()
+                };
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::ModifiersChanged(modifiers),
+                        egui::Event::PointerMoved(end),
+                    ],
+                );
+                assert!(
+                    app.clip_drag_previews(app.drag.as_ref().unwrap(), end, false)
+                        .iter()
+                        .all(|preview| preview.track_index >= 3)
+                );
+                let before = format!("{:?}", app.session.project);
+                if !cancel {
+                    // Force final validation to reject a member after staging new tracks.
+                    app.drag.as_mut().unwrap().clips[0].clip.source_offset_frame = u64::MAX;
+                }
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1280.0, 800.0),
+                        )),
+                        focused: !cancel,
+                        events: vec![egui::Event::PointerButton {
+                            pos: end,
+                            button: egui::PointerButton::Primary,
+                            pressed: false,
+                            modifiers,
+                        }],
+                        ..Default::default()
+                    },
+                    |ui| app.show(ui),
+                );
+                output.textures_delta.clear();
+                assert_eq!(format!("{:?}", app.session.project), before);
+                assert_eq!(app.selected_clips, HashSet::from(ids));
+                assert!(!app.dirty);
+                assert!(app.drag.is_none());
+                assert_eq!(app.error.is_some(), !cancel);
+            }
+        }
+    }
+    #[test]
+    fn empty_timeline_clip_drag_can_return_to_existing_tracks_and_clamp_at_zero() {
+        for new_track in [false, true] {
+            let (mut app, tracks, ids) = multi_clip_fixture();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            click_clip(&mut app, &ctx, ids[0], false);
+            let clip = app.session.project.tracks[0].clips[0].clone();
+            let block = app.clip_block(app.lane_bounds[&tracks[0]], &clip, clip.start_frame);
+            let start = Pos2::new(block.center().x, block.top() + 12.0);
+            let empty = Pos2::new(start.x, app.lane_bounds[&tracks[2]].bottom() + 12.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(empty)]);
+            assert_eq!(
+                app.clip_drag_previews(app.drag.as_ref().unwrap(), empty, false)[0].track_index,
+                3
+            );
+            // Ruler, track controls, scrollbar, and outside the window cannot create tracks.
+            for pointer in [
+                Pos2::new(start.x, app.timeline_bounds.top() - 10.0),
+                Pos2::new(TRACK_WIDTH - 10.0, empty.y),
+                Pos2::new(start.x, app.scrollbar_bounds.center().y),
+                Pos2::new(1400.0, empty.y),
+            ] {
+                assert_eq!(
+                    app.clip_drag_previews(app.drag.as_ref().unwrap(), pointer, false)[0]
+                        .track_index,
+                    0
+                );
+            }
+            let end = if new_track {
+                Pos2::new(app.timeline_bounds.left() + 1.0, empty.y)
+            } else {
+                Pos2::new(start.x, app.lane_bounds[&tracks[2]].top() + 12.0)
+            };
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            let preview = app
+                .clip_drag_previews(app.drag.as_ref().unwrap(), end, false)
+                .remove(0);
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert!(app.error.is_none());
+            assert_eq!(
+                app.session.project.tracks.len(),
+                if new_track { 4 } else { 3 }
+            );
+            let placed = &app.session.project.tracks[preview.track_index].clips[0];
+            assert_eq!(placed.id, clip.id);
+            assert_eq!(
+                placed.start_frame,
+                if new_track { 0 } else { clip.start_frame }
+            );
+            assert_eq!(placed.start_frame, preview.clip.start_frame);
+        }
     }
     #[test]
     fn multiple_clip_drag_move_and_duplicate_preserve_layout_and_preview() {
