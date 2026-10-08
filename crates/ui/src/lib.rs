@@ -1237,10 +1237,12 @@ impl DawUi {
         if self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        self.update_window_title(&ctx);
         egui::Panel::top("toolbar")
             .frame(egui::Frame::new().fill(theme::PANEL))
             .show_separator_line(true)
             .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
                 ui.add_enabled_ui(
                     self.export_dialog.is_none()
                         && self.overwrite.is_none()
@@ -1644,7 +1646,7 @@ impl DawUi {
             }
         }
     }
-    fn toolbar(&mut self, ui: &mut egui::Ui) {
+    fn update_window_title(&mut self, ctx: &egui::Context) {
         let window_title = format!(
             "{}{} - DAW",
             self.session.project.name,
@@ -1652,9 +1654,10 @@ impl DawUi {
         );
         if self.window_title != window_title {
             self.window_title = window_title;
-            ui.ctx()
-                .send_viewport_cmd(egui::ViewportCommand::Title(self.window_title.clone()));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.window_title.clone()));
         }
+    }
+    fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 0.0;
         toolbars::Toolbar::row(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
@@ -1664,12 +1667,14 @@ impl DawUi {
                 if !self.native_menu {
                     ui.menu_button("File", |ui| self.file_menu(ui));
                     ui.menu_button("Edit", |ui| self.edit_menu(ui));
+                    #[cfg(not(target_os = "windows"))]
                     ui.separator();
                 }
+                #[cfg(not(target_os = "windows"))]
                 let title = ui.label(&self.window_title);
                 #[cfg(target_os = "macos")]
                 Self::drag_window(title.interact(Sense::drag()));
-                #[cfg(not(target_os = "macos"))]
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
                 let _ = title;
                 #[cfg(target_os = "macos")]
                 {
@@ -5298,6 +5303,86 @@ mod tests {
         icons::configure(&ctx);
         ctx
     }
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_native_title_updates_without_repeating_in_the_menu_row() {
+        let mut app = DawUi::default();
+        app.session.project.name = "Windows project".into();
+        app.dirty = true;
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(900.0, 600.0));
+        let text_rect = |label: &str| {
+            shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        Some(Rect::from_min_size(text.pos, text.galley.size()))
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("Missing text: {label}"))
+        };
+        assert!(!shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == app.window_title)
+        }));
+        let file = text_rect("File");
+        let edit = text_rect("Edit");
+        assert!((file.center().y - edit.center().y).abs() < 0.1);
+        assert!(file.bottom() < app.time_bounds[0].top());
+        assert_eq!(app.window_title, "Windows project * - DAW");
+        app.dirty = false;
+        app.session.project.name = "Renamed".into();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 600.0))),
+                ..Default::default()
+            },
+            |ui| app.show(ui),
+        );
+        output.textures_delta.clear();
+        assert!(
+            output.viewport_output[&egui::ViewportId::ROOT]
+                .commands
+                .contains(&egui::ViewportCommand::Title("Renamed - DAW".into()))
+        );
+        assert_eq!(app.window_title, "Renamed - DAW");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_close_requests_preserve_unsaved_changes_and_wait_for_jobs() {
+        for busy in [false, true] {
+            let mut app = DawUi {
+                dirty: true,
+                ..Default::default()
+            };
+            let (_sender, receiver) = mpsc::channel();
+            if busy {
+                app.job = Some(receiver);
+            }
+            let ctx = context();
+            let mut input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 600.0))),
+                ..Default::default()
+            };
+            input
+                .viewports
+                .get_mut(&egui::ViewportId::ROOT)
+                .unwrap()
+                .events
+                .push(egui::ViewportEvent::Close);
+            let mut output = ctx.run_ui(input, |ui| app.show(ui));
+            output.textures_delta.clear();
+            let commands = &output.viewport_output[&egui::ViewportId::ROOT].commands;
+            assert!(commands.contains(&egui::ViewportCommand::CancelClose));
+            assert!(!commands.contains(&egui::ViewportCommand::Close));
+            assert!(app.dirty);
+            assert!(!app.allow_close);
+            assert_eq!(app.unsaved_prompt, !busy);
+            assert_eq!(app.pending.is_some(), !busy);
+        }
+    }
     fn start_tempo_edit(app: &mut DawUi, ctx: &egui::Context) {
         frame(app, ctx, vec![]);
         frame(app, ctx, vec![]);
@@ -8771,7 +8856,10 @@ mod tests {
         let mut app = DawUi::default();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
-        let point = Pos2::new(app.scrollbar_bounds.left() + 3.26 * app.zoom, 140.0);
+        let point = Pos2::new(
+            app.scrollbar_bounds.left() + 3.26 * app.zoom,
+            app.timeline_bounds.top() + RULER_HEIGHT + 20.0,
+        );
         ready_file_hover(&mut app, &ctx, &source.0, point);
         assert_eq!(app.file_drop_target.as_ref().unwrap().start, frames(3.28));
         // Keep the hover path, but hold its decoded result to simulate a pending worker.
@@ -8799,7 +8887,7 @@ mod tests {
                 frame(&mut app, &ctx, vec![]);
                 let point = Pos2::new(
                     app.scrollbar_bounds.left() + (3.13 - scroll) as f32 * zoom,
-                    140.0,
+                    app.timeline_bounds.top() + RULER_HEIGHT + 20.0,
                 );
                 assert!(app.file_hover.is_none());
                 file_frame_with_shift(&mut app, &ctx, &source.0, point, true, free_release);
@@ -8824,7 +8912,10 @@ mod tests {
         let mut app = DawUi::default();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
-        let point = Pos2::new(app.scrollbar_bounds.left() + 2.42 * app.zoom, 140.0);
+        let point = Pos2::new(
+            app.scrollbar_bounds.left() + 2.42 * app.zoom,
+            app.timeline_bounds.top() + RULER_HEIGHT + 20.0,
+        );
         ready_file_hover(&mut app, &ctx, &source.0, point);
         assert_eq!(app.file_drop_target.as_ref().unwrap().start, frames(2.5));
         // Re-snapping 2.5 would pull the end to bar 3 and shift the start to 2.52.
@@ -8881,11 +8972,12 @@ mod tests {
         let source = TestWav::new();
         let mut app = DawUi::default();
         let ctx = context();
+        frame(&mut app, &ctx, vec![]);
         for index in 0..2 {
             let point = Pos2::new(
                 TRACK_WIDTH + 140.0,
                 if index == 0 {
-                    140.0
+                    app.timeline_bounds.top() + RULER_HEIGHT + 20.0
                 } else {
                     app.lane_bounds[&app.session.project.tracks[index - 1].id].bottom() + 20.0
                 },
@@ -8964,7 +9056,11 @@ mod tests {
         let source = TestWav::new();
         let mut app = DawUi::default();
         let ctx = context();
-        let point = Pos2::new(TRACK_WIDTH + 210.0, 140.0);
+        frame(&mut app, &ctx, vec![]);
+        let point = Pos2::new(
+            TRACK_WIDTH + 210.0,
+            app.timeline_bounds.top() + RULER_HEIGHT + 20.0,
+        );
         file_frame(&mut app, &ctx, &source.0, point, true);
         finish_import(&mut app, &ctx);
         assert!(app.error.is_none());
@@ -9014,7 +9110,11 @@ mod tests {
         std::fs::write(&source.0, b"invalid WAV").unwrap();
         let mut app = DawUi::default();
         let ctx = context();
-        let point = Pos2::new(TRACK_WIDTH + 140.0, 140.0);
+        frame(&mut app, &ctx, vec![]);
+        let point = Pos2::new(
+            TRACK_WIDTH + 140.0,
+            app.timeline_bounds.top() + RULER_HEIGHT + 20.0,
+        );
         let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
         assert!(
             app.file_hover

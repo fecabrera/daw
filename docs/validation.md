@@ -452,3 +452,31 @@ Option on macOS and Ctrl on Windows/Linux select pitch-preserving stretching whe
 Rubber Band 4.0.0 is bundled through rubberband 0.1.5 / rubberband-sys 0.1.4, using R3/Finer, offline mode, linked stereo channels, and no internal worker threads. The original asset is retained. Reduced integer ratios are saved on clips; offsets and repeat ranges use stretched-frame coordinates. Session caches hold one full-source buffer per asset and ratio, shared by waveform painting, live playback, and export. Preparing a new stretch retains only buffers still used by the project. Reopening rebuilds these buffers. Playback does no stretch processing or buffer allocation. Missing and shortened sources retain existing silence/warning behavior. Bundled library licenses and source notices accompany the macOS app; building the bindings needs a C++ compiler and Clang/libclang.
 
 All 149 workspace tests pass, including 107 UI tests and 23 project integration tests. New checks cover both edges at both header/body heights, platform modifiers, snapped and free previews, background commits, source sharing, extension to original source bounds after stretching, ratio/start clamps, overlap, Escape cancellation, processing failure rollback, ratio/offset/phase scaling, and return to the original ratio. A 440 Hz stereo signal keeps its pitch and opposite-channel relationship at half and one-and-a-half duration. Integration checks cover trims, loops, splits, copies, cache reuse, retained source-file bytes, old optional-field defaults, saved/reopened settings, equivalent live/offline samples, and byte-identical exports before/after reopen. Formatting, strict workspace Clippy, and diff checks pass. The macOS debug bundle is rebuilt. Physical desktop gestures and Windows/Linux builds remain unverified.
+
+## Windows custom title bar
+
+Windows now uses a custom themed title bar instead of the native title bar. The first row contains the project title, unsaved marker, and Minimize, Maximize/Restore, and Close controls. File and Edit occupy the second row; playback controls occupy the third. All rows use the shared toolbar component. A thin border outlines the window. Title-area dragging and double-clicking issue native move and maximize/restore commands. Border handles issue resize commands for all edges and corners, except when maximized or fullscreen. Close uses the existing unsaved-change and background-job guards. The previous Windows single-row title/menu presentation is superseded. macOS and Linux retain their existing window presentation.
+
+Checks run on Windows x64 with the pinned Rust toolchain and LLVM/libclang configured:
+
+| Command | Result |
+| --- | --- |
+| `cargo build -p daw-desktop` | Passed; Windows debug executable built. |
+| `cargo fmt --all --check` | Passed. |
+| `cargo clippy --workspace --all-targets -- -D warnings` | Passed. |
+| `cargo test --workspace --no-fail-fast` | 152 passed; two existing UI tests failed on Windows. All five new header tests and all project integration tests passed. |
+| `git diff --check` | Passed. |
+
+New egui input tests cover separate title/menu/playback rows, title and unsaved-marker updates, minimize/maximize/restore/close commands, title dragging and double-clicking, all eight resize directions, suppressed resizing when maximized, and close cancellation for unsaved changes or active jobs. File-drop tests now use timeline geometry instead of a fixed vertical position, so they work with the additional Windows row.
+
+The unchanged revision was also tested from an ignored temporary copy. It reproduced `export_jobs_use_selected_settings_and_overwrite_retains_them` (a source path is not absolute on Windows) and `save_before_close_waits_for_named_save_and_cancels_on_failure_or_cancellation` (a fixture path cannot be found). These failures remain outside this header change. Logs are in `work/windows-header-baseline-tests.log` and `work/windows-header-workspace-tests.log`.
+
+Native window gestures, Windows scaling and snapping, file-dialog interaction, and real audio-device playback were not checked. Automated egui tests verify viewport commands, not their native execution. macOS and Linux builds were not run for this change.
+
+## Standard Windows title bar restored
+
+The standard Windows title bar supersedes the custom Windows header described above. Windows draws the project title, unsaved marker, and native caption buttons and handles window moving and resizing. File and Edit remain in the first application toolbar row, with playback controls below. The project title is not repeated in the menu row. Custom caption drawing and border resize handles were removed. Native close requests retain the existing unsaved-change prompt and active-job guard.
+
+On Windows x64, `cargo build -p daw-desktop`, `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `git diff --check` passed. `cargo test --workspace --no-fail-fast` completed with 149 passing tests and the same two baseline UI failures recorded above. Updated egui checks verify native title commands after a project rename, the unsaved marker, no duplicate project label in the menu row, menu/playback ordering, and cancellation of close requests for unsaved changes or active jobs. The test log is `work/windows-native-title-tests.log`.
+
+Native caption-button interaction, Windows scaling and snapping, and real audio-device playback were not checked. macOS and Linux builds were not run.

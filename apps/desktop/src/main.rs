@@ -48,6 +48,8 @@ fn main() -> eframe::Result {
     let viewport = egui::ViewportBuilder::default()
         .with_inner_size([1280.0, 800.0])
         .with_min_inner_size([900.0, 600.0]);
+    #[cfg(target_os = "windows")]
+    let viewport = viewport.with_decorations(true);
     #[cfg(target_os = "macos")]
     let viewport = viewport
         .with_fullsize_content_view(true)
