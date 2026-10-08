@@ -2607,6 +2607,18 @@ impl DawUi {
                             });
                         },
                     );
+                    // Include child controls without taking their pointer interaction.
+                    if ui.is_enabled()
+                        && self.file_action_enabled(FileAction::Import)
+                        && ui.rect_contains_pointer(inner.response.rect)
+                        && ui.input(|input| {
+                            input.focused
+                                && (input.pointer.button_pressed(egui::PointerButton::Primary)
+                                    || input.pointer.button_pressed(egui::PointerButton::Secondary))
+                        })
+                    {
+                        self.selected_track = Some(track.id);
+                    }
                     let rect = inner.response.rect.shrink(0.5);
                     let selected = self.selected_track == Some(track.id);
                     let painter = ui.painter();
@@ -5299,6 +5311,144 @@ mod tests {
         app.session.project.tempo_bpm = 888.88;
         frame(&mut app, &ctx, vec![]);
         assert_eq!(app.tempo_bounds, fractional);
+    }
+    #[test]
+    fn track_panel_clicks_select_without_consuming_control_interactions() {
+        for (name, offset) in [
+            ("top border", Vec2::new(2.0, 1.0)),
+            ("left padding", Vec2::new(2.0, 40.0)),
+            ("right padding", Vec2::new(248.0, 40.0)),
+            ("bottom padding", Vec2::new(30.0, 66.0)),
+            ("between rows", Vec2::new(60.0, 31.0)),
+            ("name", Vec2::new(110.0, 18.0)),
+            ("mute", Vec2::new(21.0, 47.0)),
+            ("solo", Vec2::new(53.0, 47.0)),
+            ("gain knob", Vec2::new(85.0, 47.0)),
+            ("gain input", Vec2::new(120.0, 47.0)),
+            ("pan knob", Vec2::new(157.0, 47.0)),
+            ("pan input", Vec2::new(193.0, 47.0)),
+            ("left meter", Vec2::new(226.0, 20.0)),
+            ("right meter", Vec2::new(238.0, 20.0)),
+        ] {
+            let (mut app, first) = fixture();
+            let second = app.session.project.add_track().unwrap();
+            let clip = app.session.project.tracks[0].clips[0].id;
+            app.select_clip(clip, first, false);
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&second];
+            let panel = Rect::from_min_size(
+                Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
+                Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+            );
+            let point = panel.min + offset;
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point), button(point, true)],
+                Vec2::new(1280.0, 800.0),
+            );
+            assert_eq!(app.selected_track, Some(second), "{name}");
+            assert!(has_preview_outline(&shapes, panel, theme::ACCENT), "{name}");
+            assert_eq!(app.selected_clips, HashSet::from([clip]));
+            assert_eq!(app.selected_clip, Some(clip));
+            assert!(!app.dirty);
+            if name.ends_with("knob") {
+                let moved = point - Vec2::new(0.0, 15.0);
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(moved)]);
+                frame(&mut app, &ctx, vec![button(moved, false)]);
+                let track = &app.session.project.tracks[1];
+                assert!(if name == "gain knob" {
+                    track.gain_db > 0.0
+                } else {
+                    track.pan > 0.0
+                });
+                assert!(app.dirty);
+            } else {
+                frame(&mut app, &ctx, vec![button(point, false)]);
+                let track = &app.session.project.tracks[1];
+                if matches!(name, "mute" | "solo") {
+                    assert_eq!(track.muted, name == "mute", "{name}");
+                    assert_eq!(track.soloed, name == "solo", "{name}");
+                    assert!(app.dirty);
+                }
+                if name.ends_with("input") {
+                    assert!(ctx.egui_wants_keyboard_input(), "{name}");
+                }
+            }
+            assert_eq!(app.selected_track, Some(second));
+            assert!(app.error.is_none());
+        }
+    }
+    #[test]
+    fn track_panel_selection_respects_visibility_focus_and_disabled_ui() {
+        for blocked in ["job", "unfocused", "outside", "covered", "dialog"] {
+            let (mut app, first) = fixture();
+            let second = app.session.project.add_track().unwrap();
+            app.selected_track = Some(first);
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&second];
+            let point = Pos2::new(
+                if blocked == "outside" {
+                    -20.0
+                } else {
+                    lane.left() - TRACK_WIDTH + 2.0
+                },
+                lane.top() + 40.0,
+            );
+            let (_sender, receiver) = mpsc::channel();
+            if blocked == "job" {
+                app.job = Some(receiver);
+            }
+            if blocked == "dialog" {
+                app.error = Some("Test dialog".into());
+            }
+            let cover = |ctx: &egui::Context| {
+                egui::Area::new(egui::Id::new("panel_cover"))
+                    .order(egui::Order::Foreground)
+                    .fixed_pos(point - Vec2::splat(20.0))
+                    .show(ctx, |ui| {
+                        ui.allocate_exact_size(Vec2::splat(50.0), Sense::click());
+                    });
+            };
+            if blocked == "covered" {
+                // Establish a foreground layer over the panel, as with a popup/dialog.
+                for _ in 0..2 {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(1280.0, 800.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            app.show(ui);
+                            cover(ui.ctx());
+                        },
+                    );
+                    output.textures_delta.clear();
+                }
+            }
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused: blocked != "unfocused",
+                    events: vec![egui::Event::PointerMoved(point), button(point, true)],
+                    ..Default::default()
+                },
+                |ui| {
+                    app.show(ui);
+                    if blocked == "covered" {
+                        cover(ui.ctx());
+                    }
+                },
+            );
+            output.textures_delta.clear();
+            assert_eq!(app.selected_track, Some(first), "{blocked}");
+            assert!(!app.dirty);
+        }
     }
     #[test]
     fn track_name_double_click_commits_with_enter_and_cancels_with_escape() {
