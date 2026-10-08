@@ -1,4 +1,4 @@
-use daw_core::{Asset, Clip, Id, Project, Source};
+use daw_core::{Asset, Clip, ClipStretch, Id, Project, Source};
 use daw_engine::RenderPlan;
 use daw_media::{
     AudioData, AudioDecoder, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec,
@@ -59,6 +59,7 @@ pub fn project_folder_name(name: &str) -> Result<&str> {
 pub struct Session {
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
+    pub stretched_audio: HashMap<(Id, ClipStretch), AudioData>,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
 }
@@ -67,7 +68,39 @@ impl Session {
         RenderPlan {
             project: self.project.clone(),
             audio: self.audio.clone(),
+            stretched_audio: self.stretched_audio.clone(),
         }
+    }
+    pub fn audio_for_clip(&self, clip: &Clip) -> Option<&AudioData> {
+        match clip.stretch {
+            Some(stretch) => self.stretched_audio.get(&(clip.asset_id, stretch)),
+            None => self.audio.get(&clip.asset_id),
+        }
+    }
+
+    /// Build missing stretch buffers on a worker. Original audio remains untouched.
+    pub fn prepare_stretches(&mut self) -> Result<()> {
+        self.project.validate().map_err(error)?;
+        let mut prepared = HashMap::new();
+        for clip in self.project.tracks.iter().flat_map(|track| &track.clips) {
+            let Some(stretch) = clip.stretch else {
+                continue;
+            };
+            let key = (clip.asset_id, stretch);
+            if prepared.contains_key(&key) {
+                continue;
+            }
+            if let Some(audio) = self.stretched_audio.get(&key) {
+                prepared.insert(key, audio.clone());
+            } else if let Some(audio) = self.audio.get(&clip.asset_id) {
+                prepared.insert(
+                    key,
+                    daw_media::stretch_audio(audio, stretch).map_err(error)?,
+                );
+            }
+        }
+        self.stretched_audio = prepared;
+        Ok(())
     }
     pub fn open(folder: &Path) -> Result<Self> {
         let folder = absolute(folder)?;
@@ -77,6 +110,7 @@ impl Session {
         let mut session = Self {
             project,
             audio: HashMap::new(),
+            stretched_audio: HashMap::new(),
             folder: Some(folder),
             warnings: vec![],
         };
@@ -117,6 +151,7 @@ impl Session {
             }
             session.audio.insert(asset.id, data);
         }
+        session.prepare_stretches()?;
         Ok(session)
     }
     pub fn source_path(&self, asset: &Asset) -> Result<PathBuf> {
@@ -173,6 +208,7 @@ impl Session {
             .find(|t| t.id == track_id)
             .ok_or_else(|| error("Select a track for import"))?;
         t.clips.push(Clip {
+            stretch: None,
             id: clip_id,
             asset_id,
             name: name.clone(),
@@ -312,7 +348,9 @@ impl Session {
         let parent = path.parent().ok_or_else(|| error("Invalid output path"))?;
         let temp = parent.join(format!(".export-{}.tmp", Id::new_v4()));
         let result = (|| {
-            let plan = self.plan();
+            let mut snapshot = self.clone();
+            snapshot.prepare_stretches()?;
+            let plan = snapshot.plan();
             let mut encoder = ExportEncoder::create(&temp, settings).map_err(error)?;
             let mut block = vec![[0.0; 2]; 1024];
             let mut position = 0;

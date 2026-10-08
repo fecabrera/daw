@@ -1444,3 +1444,104 @@ fn export_preserves_float_headroom_then_warns_and_saturates() {
     assert_eq!(*samples.iter().max().unwrap(), 8_388_607);
     assert_eq!(*samples.iter().min().unwrap(), -8_388_608);
 }
+
+#[test]
+fn stretched_clips_keep_sources_and_caches_through_trim_loop_split_copy_save_and_export() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("source.wav", 48000, 2, 24, false);
+    let original_file = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let asset = session.project.assets[0].id;
+    let original_audio = session.audio[&asset].samples.clone();
+    let original = session.project.tracks[0].clips[0].clone();
+    let clip = &mut session.project.tracks[0].clips[0];
+    clip.source_offset_frame = 1200;
+    clip.length_frames = 2400;
+    *clip = clip.stretched_to(0, 4800).unwrap();
+    session.prepare_stretches().unwrap();
+    let stretched = session.project.tracks[0].clips[0].clone();
+    assert_eq!(stretched.source_offset_frame, 2400);
+    let cached = session.audio_for_clip(&stretched).unwrap().samples.clone();
+    assert_eq!(cached.len(), 9600);
+    session.prepare_stretches().unwrap();
+    assert!(std::sync::Arc::ptr_eq(
+        &cached,
+        &session.audio_for_clip(&stretched).unwrap().samples
+    ));
+    assert!(std::sync::Arc::ptr_eq(
+        &original_audio,
+        &session.audio[&asset].samples
+    ));
+    assert_eq!(original.length_frames, 4800);
+    // Restore the full source extent using stretched-frame coordinates.
+    session.project.tracks[0].clips[0].length_frames = 9600 - stretched.source_offset_frame;
+    session.project.validate().unwrap();
+    session.project.tracks[0].clips[0] = stretched.clone();
+    let clip = &mut session.project.tracks[0].clips[0];
+    clip.repeat = Some(ClipLoop {
+        length_frames: 4800,
+        phase_frame: 300,
+    });
+    clip.length_frames = 7200;
+    let id = clip.id;
+    session
+        .project
+        .edit(Edit::Split {
+            clip_id: id,
+            at: 2400,
+        })
+        .unwrap();
+    let second = session.project.add_track().unwrap();
+    let copy = daw_core::Clip {
+        id: daw_core::Id::new_v4(),
+        ..session.project.tracks[0].clips[1].clone()
+    };
+    session
+        .project
+        .edit(Edit::InsertClip {
+            track_id: second,
+            clip: copy,
+        })
+        .unwrap();
+    session.prepare_stretches().unwrap();
+    assert_eq!(session.stretched_audio.len(), 1);
+    let plan = session.plan();
+    let mut live = daw_engine::Renderer::new(plan.clone());
+    live.play();
+    let block: Vec<_> = (0..7200).map(|_| live.next_sample()).collect();
+    for frame in [1000, 3500, 6000] {
+        let expected = plan.sample_at(frame as u64);
+        for channel in 0..2 {
+            assert!((block[frame][channel] - expected[channel]).abs() < 0.00001);
+        }
+    }
+    let folder = fixture.0.join("project");
+    session.save(&folder).unwrap();
+    let loaded = Session::open(&folder).unwrap();
+    assert_eq!(
+        serde_json::to_value(&loaded.project.tracks).unwrap(),
+        serde_json::to_value(&session.project.tracks).unwrap()
+    );
+    assert_eq!(loaded.stretched_audio.len(), 1);
+    let before = fixture.0.join("before.wav");
+    let after = fixture.0.join("after.wav");
+    session.export(&before, false).unwrap();
+    loaded.export(&after, false).unwrap();
+    assert_eq!(fs::read(before).unwrap(), fs::read(after).unwrap());
+    assert_eq!(fs::read(&source).unwrap(), original_file);
+    // Old projects without the optional field retain normal source mapping.
+    let mut json = serde_json::to_value(&loaded.project).unwrap();
+    for track in json["tracks"].as_array_mut().unwrap() {
+        for clip in track["clips"].as_array_mut().unwrap() {
+            clip.as_object_mut().unwrap().remove("stretch");
+        }
+    }
+    let old: Project = serde_json::from_value(json).unwrap();
+    assert!(
+        old.tracks
+            .iter()
+            .flat_map(|track| &track.clips)
+            .all(|clip| clip.stretch.is_none())
+    );
+}

@@ -1,4 +1,4 @@
-use daw_core::{Id, Project, linear_gain};
+use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
 use daw_media::AudioData;
 use std::collections::HashMap;
 
@@ -6,8 +6,15 @@ use std::collections::HashMap;
 pub struct RenderPlan {
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
+    pub stretched_audio: HashMap<(Id, ClipStretch), AudioData>,
 }
 impl RenderPlan {
+    pub fn audio_for_clip(&self, clip: &Clip) -> Option<&AudioData> {
+        match clip.stretch {
+            Some(stretch) => self.stretched_audio.get(&(clip.asset_id, stretch)),
+            None => self.audio.get(&clip.asset_id),
+        }
+    }
     pub fn sample_at(&self, frame: u64) -> [f32; 2] {
         let mut mix = [0.0; 2];
         for t in &self.project.tracks {
@@ -20,7 +27,7 @@ impl RenderPlan {
                 .iter()
                 .find(|c| frame >= c.start_frame && frame < c.end())
             {
-                let Some(audio) = self.audio.get(&c.asset_id) else {
+                let Some(audio) = self.audio_for_clip(c) else {
                     continue;
                 };
                 let local = frame - c.start_frame;
@@ -230,7 +237,7 @@ impl Renderer {
                     .iter()
                     .find(|c| self.playhead >= c.start_frame && self.playhead < c.end())
                 {
-                    let Some(audio) = self.plan.audio.get(&c.asset_id) else {
+                    let Some(audio) = self.plan.audio_for_clip(c) else {
                         continue;
                     };
                     let local = self.playhead - c.start_frame;
@@ -310,6 +317,7 @@ mod tests {
             decoded_frame_count: 2000,
         });
         project.tracks[0].clips.push(Clip {
+            stretch: None,
             id: Id::new_v4(),
             asset_id: id,
             name: "Test".into(),
@@ -320,6 +328,7 @@ mod tests {
             repeat: None,
         });
         RenderPlan {
+            stretched_audio: HashMap::new(),
             project,
             audio: HashMap::from([(
                 id,

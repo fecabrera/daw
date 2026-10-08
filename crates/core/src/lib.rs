@@ -163,6 +163,57 @@ pub struct Clip {
     /// Repeat this source range without duplicating the underlying audio.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat: Option<ClipLoop>,
+    /// Ratio applied to the original asset. Offsets and loop ranges use stretched frames.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stretch: Option<ClipStretch>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ClipStretch {
+    pub source_frames: u64,
+    pub output_frames: u64,
+}
+
+impl ClipStretch {
+    pub fn new(source_frames: u64, output_frames: u64) -> Option<Self> {
+        if source_frames == 0 || output_frames == 0 {
+            return None;
+        }
+        let mut a = source_frames;
+        let mut b = output_frames;
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        Some(Self {
+            source_frames: source_frames / a,
+            output_frames: output_frames / a,
+        })
+    }
+
+    pub fn ratio(self) -> f64 {
+        self.output_frames as f64 / self.source_frames as f64
+    }
+
+    pub fn valid(self) -> bool {
+        self.source_frames > 0 && self.output_frames > 0 && (0.125..=8.0).contains(&self.ratio())
+    }
+
+    pub fn scale(self, frames: u64) -> Option<u64> {
+        if self.source_frames == 0 {
+            return None;
+        }
+        u64::try_from(
+            (u128::from(frames) * u128::from(self.output_frames)
+                + u128::from(self.source_frames / 2))
+                / u128::from(self.source_frames),
+        )
+        .ok()
+    }
+
+    pub fn original_frame(self, frame: u64) -> u64 {
+        ((u128::from(frame) * u128::from(self.source_frames)) / u128::from(self.output_frames))
+            as u64
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,6 +271,46 @@ impl Default for Project {
     }
 }
 impl Clip {
+    pub fn source_length(&self, original_frames: u64) -> Option<u64> {
+        self.stretch.map_or(Some(original_frames), |stretch| {
+            stretch.scale(original_frames)
+        })
+    }
+
+    /// Rescale the current source position and repeat base without changing the source asset.
+    pub fn stretched_to(&self, start: u64, length: u64) -> Option<Self> {
+        let change = ClipStretch::new(self.length_frames, length)?;
+        let old = self.stretch.unwrap_or(ClipStretch {
+            source_frames: 1,
+            output_frames: 1,
+        });
+        // Reduce cross factors before multiplication to keep repeated edits within u64.
+        let a = ClipStretch::new(old.source_frames, change.output_frames)?;
+        let b = ClipStretch::new(change.source_frames, old.output_frames)?;
+        let stretch = ClipStretch::new(
+            a.source_frames.checked_mul(b.source_frames)?,
+            a.output_frames.checked_mul(b.output_frames)?,
+        )?;
+        if !stretch.valid() {
+            return None;
+        }
+        let mut clip = self.clone();
+        clip.start_frame = start;
+        clip.length_frames = length;
+        clip.source_offset_frame = change.scale(self.source_offset_frame)?;
+        clip.repeat = match self.repeat {
+            Some(repeat) => {
+                let length_frames = change.scale(repeat.length_frames)?.max(1);
+                Some(ClipLoop {
+                    length_frames,
+                    phase_frame: change.scale(repeat.phase_frame)?.min(length_frames - 1),
+                })
+            }
+            None => None,
+        };
+        clip.stretch = (stretch.source_frames != stretch.output_frames).then_some(stretch);
+        Some(clip)
+    }
     pub fn end(&self) -> u64 {
         self.start_frame.saturating_add(self.length_frames)
     }
@@ -333,6 +424,14 @@ impl Project {
                 }) {
                     return Err(invalid("Invalid clip loop length or phase"));
                 }
+                if c.stretch.is_some_and(|stretch| !stretch.valid()) {
+                    return Err(invalid(
+                        "Clip stretch must be between 1/8 and 8 times the source duration",
+                    ));
+                }
+                let available = c
+                    .source_length(a.decoded_frame_count)
+                    .ok_or_else(|| invalid("Stretched source length exceeds supported bounds"))?;
                 let source_length = c
                     .repeat
                     .map_or(c.length_frames, |repeat| repeat.length_frames);
@@ -340,7 +439,7 @@ impl Project {
                     || c.start_frame.checked_add(c.length_frames).is_none()
                     || c.source_offset_frame
                         .checked_add(source_length)
-                        .is_none_or(|end| end > a.decoded_frame_count)
+                        .is_none_or(|end| end > available)
                 {
                     return Err(invalid("Clip range exceeds saved asset bounds"));
                 }
@@ -529,6 +628,56 @@ pub enum Edit {
 mod tests {
     use super::*;
     #[test]
+    fn stretch_scales_offsets_and_repeats_and_can_return_to_original_duration() {
+        let clip = Clip {
+            id: Id::nil(),
+            asset_id: Id::nil(),
+            name: "Trimmed".into(),
+            color: None,
+            start_frame: 100,
+            source_offset_frame: 200,
+            length_frames: 100,
+            repeat: Some(ClipLoop {
+                length_frames: 40,
+                phase_frame: 10,
+            }),
+            stretch: None,
+        };
+        let longer = clip.stretched_to(0, 200).unwrap();
+        assert_eq!(longer.source_offset_frame, 400);
+        assert_eq!(
+            longer.repeat,
+            Some(ClipLoop {
+                length_frames: 80,
+                phase_frame: 20
+            })
+        );
+        assert_eq!(longer.source_length(1000), Some(2000));
+        assert_eq!(longer.stretch, ClipStretch::new(1, 2));
+        let restored = longer.stretched_to(100, 100).unwrap();
+        assert_eq!(restored.stretch, None);
+        assert_eq!(restored.source_offset_frame, clip.source_offset_frame);
+        assert_eq!(restored.repeat, clip.repeat);
+        assert!(clip.stretched_to(0, 12).is_none());
+        assert!(clip.stretched_to(0, 801).is_none());
+        assert!(clip.stretched_to(0, 0).is_none());
+        assert!(
+            !ClipStretch {
+                source_frames: 0,
+                output_frames: 1
+            }
+            .valid()
+        );
+        assert_eq!(
+            ClipStretch {
+                source_frames: 1,
+                output_frames: u64::MAX
+            }
+            .scale(2),
+            None
+        );
+    }
+    #[test]
     fn restoring_source_trimming_restores_the_base_and_preserves_partial_audio_ranges() {
         for (length, phase, restored) in [
             (10, 0, true),
@@ -538,6 +687,7 @@ mod tests {
             (13, 0, false),
         ] {
             let mut clip = Clip {
+                stretch: None,
                 id: Id::nil(),
                 asset_id: Id::nil(),
                 name: "Trimmed".into(),

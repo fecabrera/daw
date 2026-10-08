@@ -3,9 +3,11 @@ use rubato::Resampler;
 use std::{fs::File, path::Path, sync::Arc};
 
 mod export;
+mod stretch;
 pub use export::{
     AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, Mp3Bitrate, WavCodec, WavEncoder,
 };
+pub use stretch::stretch_audio;
 use symphonia::core::{
     audio::SampleBuffer, codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,
     meta::MetadataOptions, probe::Hint,

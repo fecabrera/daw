@@ -444,6 +444,7 @@ mod tests {
             decoded_frame_count: 48_000,
         });
         project.tracks[0].clips.push(Clip {
+            stretch: None,
             id: Id::new_v4(),
             asset_id: id,
             name: "Test".into(),
@@ -454,6 +455,7 @@ mod tests {
             repeat: None,
         });
         RenderPlan {
+            stretched_audio: HashMap::new(),
             project,
             audio: HashMap::from([(
                 id,
@@ -607,6 +609,7 @@ mod tests {
     #[test]
     fn track_meter_latches_each_channel_and_follows_track_identity() {
         let mut plan = RenderPlan {
+            stretched_audio: HashMap::new(),
             project: daw_core::Project::default(),
             audio: HashMap::new(),
         };
@@ -637,6 +640,7 @@ mod tests {
     fn callback_resamples_without_device_and_retires_plans() {
         for rate in [44_100, 48_000, 96_000] {
             let plan = RenderPlan {
+                stretched_audio: HashMap::new(),
                 project: daw_core::Project::default(),
                 audio: HashMap::new(),
             };

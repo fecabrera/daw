@@ -1,0 +1,19 @@
+Rubber Band Library 4.0.0
+Copyright 2007-2024 Particular Programs Ltd.
+https://www.breakfastquay.com/rubberband/
+https://github.com/breakfastquay/rubberband
+
+Bundled and statically built through rubberband-sys 0.1.4 (GPL-2.0-or-later).
+Unmodified source: https://crates.io/crates/rubberband-sys/0.1.4
+The crate includes the Rubber Band source and single-file build.
+See RubberBand-GPL.txt, RubberBand-KissFFT.txt, and RubberBand-Speex.txt.
+The GPL applies to this bundled library and the combined executable;
+the repository's BSD license applies to its original code.
+
+Rust wrapper: rubberband 0.1.5, MIT
+https://github.com/jefflongo/rubberband-rs
+https://crates.io/crates/rubberband/0.1.5
+See RubberBand-Rust-Bindings.txt.
+
+Build dependency: a C++ compiler and Clang/libclang for bindgen.
+No system Rubber Band installation is needed to build or run this app.

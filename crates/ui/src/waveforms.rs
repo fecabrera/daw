@@ -3,25 +3,44 @@ use daw_media::AudioData;
 
 /// Inspect a visible timeline window without reading outside the clip's source range.
 pub fn extrema(audio: &AudioData, clip: &Clip, local: u64, count: u64, channel: usize) -> [f32; 2] {
+    preview_extrema(audio, clip, local, count, channel, None)
+}
+
+/// Before the worker finishes, display the original waveform at the proposed ratio.
+pub fn preview_extrema(
+    audio: &AudioData,
+    clip: &Clip,
+    local: u64,
+    count: u64,
+    channel: usize,
+    unprepared: Option<daw_core::ClipStretch>,
+) -> [f32; 2] {
+    let read = |start: u64, count: u64| {
+        if let Some(stretch) = unprepared {
+            if count == 0 {
+                return [0.0; 2];
+            }
+            let first = stretch.original_frame(start);
+            let last = stretch.original_frame(start.saturating_add(count - 1));
+            source_extrema(audio, first, last.saturating_sub(first) + 1, channel)
+        } else {
+            source_extrema(audio, start, count, channel)
+        }
+    };
     let count = count.min(clip.length_frames.saturating_sub(local));
     if count == 0 {
         return [0.0; 2];
     }
     let Some(repeat) = clip.repeat else {
-        return source_extrema(audio, clip.source_frame(local), count, channel);
+        return read(clip.source_frame(local), count);
     };
     if count >= repeat.length_frames {
-        return source_extrema(
-            audio,
-            clip.source_offset_frame,
-            repeat.length_frames,
-            channel,
-        );
+        return read(clip.source_offset_frame, repeat.length_frames);
     }
     let position = repeat.position(local);
     let first = count.min(repeat.length_frames - position);
-    let a = source_extrema(audio, clip.source_offset_frame + position, first, channel);
-    let b = source_extrema(audio, clip.source_offset_frame, count - first, channel);
+    let a = read(clip.source_offset_frame + position, first);
+    let b = read(clip.source_offset_frame, count - first);
     [a[0].min(b[0]), a[1].max(b[1])]
 }
 
@@ -82,6 +101,7 @@ mod tests {
 
     fn clip(offset: u64, length: u64, repeat: Option<ClipLoop>) -> Clip {
         Clip {
+            stretch: None,
             id: Id::nil(),
             asset_id: Id::nil(),
             name: "Loop".into(),
