@@ -437,3 +437,10 @@ All 142 workspace tests pass, including 103 UI tests and 22 project integration 
 ## Half-beat ruler ticks
 
 Visible half-beat ruler ticks are now 8 points tall, compared with 5 points for finer subdivisions. Whole-beat and bar tick heights, grid positions, zoom visibility, and snapping use the existing behavior. All seven existing ruler tests pass, along with formatting, strict workspace Clippy, and diff checks. The macOS debug bundle is rebuilt.
+
+
+## Track grip handles
+
+Each audio track has an unframed 16-point Lucide Grip at the far left of its name row, centered in a 22-point hit target. The balanced header keeps the name centered in its existing content column and retains control-row and meter positions. The handle has a Reorder track accessibility label, drag tooltip, and grab/grabbing cursors. It starts the shared track reorder gesture, including insertion preview, auto-scroll, release, and cancellation. Existing name dragging and double-click editing remain available.
+
+All 104 UI tests pass. The new input check covers handle selection, reorder preview and release, Escape cancellation, centered name geometry, preserved clip selection, and blocked dragging during background jobs. Existing track reordering, control interactions, name editing, and meter layout checks pass. Formatting, strict workspace Clippy, and diff checks pass. The macOS debug bundle is rebuilt. Physical desktop interaction remains unverified.

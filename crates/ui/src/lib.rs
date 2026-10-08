@@ -2505,16 +2505,19 @@ impl DawUi {
                     focus: true,
                 });
             }
-            if response.drag_started_by(egui::PointerButton::Primary)
-                && self.file_action_enabled(FileAction::Import)
-                && ui.input(|input| input.focused)
-                && self.drag.is_none()
-                && self.marquee.is_none()
-                && self.loop_drag.is_none()
-            {
-                self.track_drag = Some(track.id);
-                self.selected_track = Some(track.id);
-            }
+            self.start_track_drag(ui, &response, track.id);
+        }
+    }
+    fn start_track_drag(&mut self, ui: &egui::Ui, response: &egui::Response, track: Id) {
+        if response.drag_started_by(egui::PointerButton::Primary)
+            && self.file_action_enabled(FileAction::Import)
+            && ui.input(|input| input.focused)
+            && self.drag.is_none()
+            && self.marquee.is_none()
+            && self.loop_drag.is_none()
+        {
+            self.track_drag = Some(track);
+            self.selected_track = Some(track);
         }
     }
     fn track_reorder(&mut self, ui: &egui::Ui, viewport: Rect) {
@@ -2661,7 +2664,23 @@ impl DawUi {
                                 let cleared =
                                     meters::stereo_panel(ui, ROW_HEIGHT - 14.0, levels, |ui| {
                                         rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                                            self.track_name(ui, &track);
+                                            let handle_width = toolbars::CONTROL_HEIGHT;
+                                            let name_width = (ui.available_width()
+                                                - 2.0
+                                                    * (handle_width + ui.spacing().item_spacing.x))
+                                                .max(1.0);
+                                            let grip = icons::grip(ui);
+                                            self.start_track_drag(ui, &grip, track.id);
+                                            ui.allocate_ui_with_layout(
+                                                Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| self.track_name(ui, &track),
+                                            );
+                                            // Balance the handle so the name remains centered.
+                                            ui.allocate_exact_size(
+                                                Vec2::new(handle_width, toolbars::CONTROL_HEIGHT),
+                                                Sense::hover(),
+                                            );
                                         });
                                         let inputs =
                                             self.inputs.entry(track.id).or_insert_with(|| Inputs {
@@ -5557,6 +5576,88 @@ mod tests {
         app.session.project.tempo_bpm = 888.88;
         frame(&mut app, &ctx, vec![]);
         assert_eq!(app.tempo_bounds, fractional);
+    }
+    #[test]
+    fn grip_handles_reorder_tracks_and_preserve_name_alignment_and_cancellation() {
+        for cancel in [false, true] {
+            let (mut app, tracks, ids) = multi_clip_fixture();
+            let ctx = context();
+            select_group(&mut app, &ctx, [ids[0], ids[2]]);
+            let before = format!("{:?}", app.session.project);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let name = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text)
+                        if text.galley.text() == app.session.project.tracks[0].name =>
+                    {
+                        Some(text.pos + text.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let lane = app.lane_bounds[&tracks[0]];
+            // The name stays centered in the content column, before the meter rail.
+            assert!((name.x - (lane.left() - TRACK_WIDTH + 112.0)).abs() < 1.0);
+            let grip = Pos2::new(lane.left() - TRACK_WIDTH + 18.0, lane.top() + 18.0);
+            let destination = Pos2::new(grip.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(grip), button(grip, true)],
+            );
+            assert_eq!(app.selected_track, Some(tracks[0]));
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(destination)]);
+            assert_eq!(app.track_drag, Some(tracks[0]));
+            assert_eq!(format!("{:?}", app.session.project), before);
+            assert!(app.track_name_edit.is_none());
+            if cancel {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            frame(&mut app, &ctx, vec![button(destination, false)]);
+            assert!(app.track_drag.is_none());
+            assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[2]]));
+            if cancel {
+                assert_eq!(format!("{:?}", app.session.project), before);
+                assert!(!app.dirty);
+            } else {
+                assert_eq!(
+                    app.session
+                        .project
+                        .tracks
+                        .iter()
+                        .map(|track| track.id)
+                        .collect::<Vec<_>>(),
+                    [tracks[1], tracks[2], tracks[0]]
+                );
+                assert!(app.dirty);
+            }
+            let (_tx, rx) = mpsc::channel();
+            app.job = Some(rx);
+            frame(&mut app, &ctx, vec![]);
+            let grip = Pos2::new(18.0, app.lane_bounds[&tracks[0]].top() + 18.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(grip), button(grip, true)],
+            );
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(grip + Vec2::new(0.0, 70.0))],
+            );
+            assert!(app.track_drag.is_none());
+        }
     }
     #[test]
     fn track_name_drags_preview_and_reorder_whole_tracks() {
