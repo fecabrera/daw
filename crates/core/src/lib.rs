@@ -401,6 +401,18 @@ impl Project {
                     .color = color;
             }
             Edit::DeleteTrack(id) => self.tracks.retain(|t| t.id != id),
+            Edit::ReorderTrack { track_id, index } => {
+                if index >= self.tracks.len() {
+                    return Err(Error("Track position is out of bounds".into()));
+                }
+                let source = self
+                    .tracks
+                    .iter()
+                    .position(|track| track.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?;
+                let track = self.tracks.remove(source);
+                self.tracks.insert(index, track);
+            }
             Edit::DeleteClip(id) => {
                 for t in &mut self.tracks {
                     t.clips.retain(|c| c.id != id);
@@ -489,6 +501,11 @@ pub enum Edit {
         color: Option<RgbColor>,
     },
     DeleteTrack(Id),
+    /// Move a whole track to a zero-based position in the resulting track order.
+    ReorderTrack {
+        track_id: Id,
+        index: usize,
+    },
     DeleteClip(Id),
     InsertClip {
         track_id: Id,

@@ -13,6 +13,17 @@ pub fn centered<R>(
     )
 }
 
+/// Keep row widget identities attached to an item when its position changes.
+pub fn centered_with_id<R>(
+    ui: &mut Ui,
+    id_salt: impl egui::AsIdSalt,
+    height: f32,
+    content: impl FnOnce(&mut Ui) -> R,
+) -> InnerResponse<R> {
+    ui.push_id(id_salt, |ui| centered(ui, height, content))
+        .inner
+}
+
 pub fn wrapped<R>(
     ui: &mut Ui,
     height: f32,

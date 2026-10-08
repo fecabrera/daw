@@ -507,6 +507,7 @@ pub struct DawUi {
     zoom: f32,
     scroll: f64,
     drag: Option<Drag>,
+    track_drag: Option<Id>,
     marquee: Option<Marquee>,
     file_hover: Option<file_drop::FileHover>,
     file_drop_target: Option<FileDropTarget>,
@@ -557,6 +558,7 @@ impl Default for DawUi {
             zoom: 70.0,
             scroll: 0.0,
             drag: None,
+            track_drag: None,
             marquee: None,
             file_hover: None,
             file_drop_target: None,
@@ -654,6 +656,7 @@ impl DawUi {
                 self.notices.clear();
                 self.scroll = 0.0;
                 self.drag = None;
+                self.track_drag = None;
                 self.file_hover = None;
                 self.file_drop_target = None;
                 self.loop_drag = None;
@@ -784,6 +787,7 @@ impl DawUi {
             match message {
                 Ok(Job::Loaded(session, dirty)) => {
                     self.loop_drag = None;
+                    self.track_drag = None;
                     if !dirty {
                         self.selected_clip = None;
                         self.selected_clips.clear();
@@ -1061,6 +1065,7 @@ impl DawUi {
             && !ctx.egui_wants_keyboard_input()
             && ctx.input(|input| input.focused)
             && self.drag.is_none()
+            && self.track_drag.is_none()
             && self.loop_drag.is_none()
             && self.marquee.is_none()
     }
@@ -1755,8 +1760,12 @@ impl DawUi {
         let tracks = egui::ScrollArea::vertical()
             .max_height((master_rect.top() - ui.cursor().top()).max(0.0))
             .auto_shrink([false, false])
-            .show(ui, |ui| self.tracks(ui));
+            .show(ui, |ui| {
+                self.tracks(ui);
+                self.scroll_track_drag(ui);
+            });
         self.timeline_bounds = timeline_rect;
+        self.track_reorder(ui, tracks.inner_rect);
         self.timeline_selection(
             ui,
             &background,
@@ -1978,6 +1987,7 @@ impl DawUi {
             || !ui.input(|input| input.focused)
             || !ui.rect_contains_pointer(viewport)
             || self.drag.is_some()
+            || self.track_drag.is_some()
             || self.loop_drag.is_some()
             || self.marquee.is_some()
         {
@@ -2396,11 +2406,16 @@ impl DawUi {
                             .font(egui::FontId::proportional(13.0))
                             .color(theme::TEXT),
                     )
+                    .sense(Sense::click_and_drag())
                     .selected(self.selected_track == Some(track.id))
                     .frame(false)
                     .truncate(),
                 )
-                .on_hover_text(&track.name);
+                .on_hover_text(format!(
+                    "{}\nDrag to reorder. Double-click to edit.",
+                    track.name
+                ))
+                .on_hover_cursor(egui::CursorIcon::Grab);
             if response.clicked() {
                 self.selected_track = Some(track.id);
             }
@@ -2411,7 +2426,125 @@ impl DawUi {
                     focus: true,
                 });
             }
+            if response.drag_started_by(egui::PointerButton::Primary)
+                && self.file_action_enabled(FileAction::Import)
+                && ui.input(|input| input.focused)
+                && self.drag.is_none()
+                && self.marquee.is_none()
+                && self.loop_drag.is_none()
+            {
+                self.track_drag = Some(track.id);
+                self.selected_track = Some(track.id);
+            }
         }
+    }
+    fn track_reorder(&mut self, ui: &egui::Ui, viewport: Rect) {
+        let Some(track_id) = self.track_drag else {
+            return;
+        };
+        if !ui.is_enabled()
+            || !self.file_action_enabled(FileAction::Import)
+            || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape))
+        {
+            self.track_drag = None;
+            return;
+        }
+        let Some(source) = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .position(|track| track.id == track_id)
+        else {
+            self.track_drag = None;
+            return;
+        };
+        let pointer = ui.input(|input| input.pointer.latest_pos());
+        let target = pointer
+            .filter(|_| ui.rect_contains_pointer(viewport))
+            .map(|pointer| {
+                let slot = self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .position(|track| {
+                        self.lane_bounds
+                            .get(&track.id)
+                            .is_some_and(|lane| pointer.y < lane.center().y)
+                    })
+                    .unwrap_or(self.session.project.tracks.len());
+                let index = slot - usize::from(slot > source);
+                (slot, index)
+            });
+        if let Some((slot, index)) = target
+            && index != source
+        {
+            let y = self
+                .session
+                .project
+                .tracks
+                .get(slot)
+                .and_then(|track| self.lane_bounds.get(&track.id))
+                .map_or_else(
+                    || self.lane_bounds[&self.session.project.tracks.last().unwrap().id].bottom(),
+                    Rect::top,
+                )
+                .clamp(viewport.top(), viewport.bottom());
+            ui.painter_at(viewport).line_segment(
+                [
+                    Pos2::new(viewport.left(), y),
+                    Pos2::new(viewport.right(), y),
+                ],
+                Stroke::new(2.0, theme::ACCENT),
+            );
+        }
+        ui.ctx().set_cursor_icon(if target.is_some() {
+            egui::CursorIcon::Grabbing
+        } else {
+            egui::CursorIcon::NotAllowed
+        });
+        if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
+            self.track_drag = None;
+            if let Some((_, index)) = target
+                && index != source
+            {
+                self.edit(Edit::ReorderTrack { track_id, index });
+            }
+        } else if !ui.input(|input| input.pointer.button_down(egui::PointerButton::Primary)) {
+            self.track_drag = None;
+        }
+    }
+    fn scroll_track_drag(&self, ui: &egui::Ui) {
+        if self.track_drag.is_none()
+            || !ui.is_enabled()
+            || !self.file_action_enabled(FileAction::Import)
+            || ui.input(|input| {
+                !input.focused
+                    || !input.pointer.button_down(egui::PointerButton::Primary)
+                    || input.key_pressed(egui::Key::Escape)
+            })
+        {
+            return;
+        }
+        let viewport = ui.clip_rect();
+        let Some(pointer) = ui
+            .input(|input| input.pointer.latest_pos())
+            .filter(|_| ui.rect_contains_pointer(viewport))
+        else {
+            return;
+        };
+        let edge = 24.0_f32.min(viewport.height() / 2.0);
+        let direction = if pointer.y < viewport.top() + edge {
+            1.0
+        } else if pointer.y > viewport.bottom() - edge {
+            -1.0
+        } else {
+            return;
+        };
+        let delta = direction * 360.0 * ui.input(|input| input.stable_dt.min(0.05));
+        ui.scroll_with_delta_animation(Vec2::new(0.0, delta), egui::style::ScrollAnimation::none());
+        ui.ctx().request_repaint();
     }
     fn tracks(&mut self, ui: &mut egui::Ui) {
         let tracks = self.session.project.tracks.clone();
@@ -2419,7 +2552,7 @@ impl DawUi {
             ui.spacing_mut().item_spacing.y = 0.0;
             let count = tracks.len();
             for (index, track) in tracks.into_iter().enumerate() {
-                rows::centered(ui, ROW_HEIGHT, |ui| {
+                rows::centered_with_id(ui, track.id, ROW_HEIGHT, |ui| {
                     let inner = ui.allocate_ui_with_layout(
                         Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
                         egui::Layout::top_down(egui::Align::Min),
@@ -3831,7 +3964,7 @@ mod tests {
         shift_frame(app, ctx, vec![button(point, false)], shift);
         shift_frame(app, ctx, vec![], false);
     }
-    fn select_group(app: &mut DawUi, ctx: &egui::Context, ids: [Id; 3]) {
+    fn select_group<const N: usize>(app: &mut DawUi, ctx: &egui::Context, ids: [Id; N]) {
         frame(app, ctx, vec![]);
         for (index, id) in ids.into_iter().enumerate() {
             click_clip(app, ctx, id, index != 0);
@@ -5311,6 +5444,254 @@ mod tests {
         app.session.project.tempo_bpm = 888.88;
         frame(&mut app, &ctx, vec![]);
         assert_eq!(app.tempo_bounds, fractional);
+    }
+    #[test]
+    fn track_name_drags_preview_and_reorder_whole_tracks() {
+        for (source, destination, order) in [
+            (0, 2, [1, 2, 0]),
+            (2, 0, [2, 0, 1]),
+            (0, 1, [1, 0, 2]),
+            (1, 0, [1, 0, 2]),
+            (2, 1, [0, 2, 1]),
+            (1, 2, [0, 2, 1]),
+        ] {
+            let (mut app, tracks, ids) = multi_clip_fixture();
+            let ctx = context();
+            select_group(&mut app, &ctx, [ids[0], ids[2]]);
+            app.copy_clip(&ctx);
+            let token = app.clip_clipboard.as_ref().unwrap().token.clone();
+            let before = app.session.project.clone();
+            let master = app.master_bounds;
+            let start = Pos2::new(110.0, app.lane_bounds[&tracks[source]].top() + 18.0);
+            let slot = destination + usize::from(destination > source);
+            let y = if destination > source {
+                app.lane_bounds[&tracks[destination]].bottom() - 10.0
+            } else {
+                app.lane_bounds[&tracks[destination]].top() + 10.0
+            };
+            // Reordering can target either the panel or its timeline lane.
+            let end = Pos2::new(
+                if source == 0 {
+                    TRACK_WIDTH + 100.0
+                } else {
+                    110.0
+                },
+                y,
+            );
+            let line_y = if slot == tracks.len() {
+                app.lane_bounds[&tracks[2]].bottom()
+            } else {
+                app.lane_bounds[&tracks[slot]].top()
+            };
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end)],
+                Vec2::new(1280.0, 800.0),
+            );
+            assert_eq!(app.track_drag, Some(tracks[source]));
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { points, stroke }
+                if points[0].y == line_y && points[1].y == line_y && stroke.color == theme::ACCENT && stroke.width == 2.0)));
+            assert_eq!(format!("{:?}", app.session.project), format!("{before:?}"));
+            assert!(!app.dirty);
+            assert!(app.track_name_edit.is_none());
+            assert!(!app.clip_action_enabled(ClipAction::Copy, &ctx));
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(format!("{:?}", app.session.project), format!("{before:?}"));
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert!(app.track_drag.is_none());
+            assert_eq!(
+                app.session
+                    .project
+                    .tracks
+                    .iter()
+                    .map(|track| track.id)
+                    .collect::<Vec<_>>(),
+                order.map(|index| tracks[index])
+            );
+            for (index, track) in app.session.project.tracks.iter().enumerate() {
+                assert_eq!(
+                    format!("{track:?}"),
+                    format!("{:?}", before.tracks[order[index]])
+                );
+            }
+            assert_eq!(app.selected_track, Some(tracks[source]));
+            assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[2]]));
+            assert_eq!(app.clip_clipboard.as_ref().unwrap().token, token);
+            assert!(app.dirty);
+            assert!(app.error.is_none());
+            assert_eq!(
+                format!("{:?}", app.session.project.transport),
+                format!("{:?}", before.transport)
+            );
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(app.master_bounds, master);
+            assert!(
+                app.lane_bounds[&tracks[order[0]]].top() < app.lane_bounds[&tracks[order[1]]].top()
+            );
+            assert!(
+                app.lane_bounds[&tracks[order[1]]].top() < app.lane_bounds[&tracks[order[2]]].top()
+            );
+            assert!(app.clip_action_enabled(ClipAction::Copy, &ctx));
+        }
+    }
+    #[test]
+    fn track_reordering_cancels_and_no_op_drops_do_not_modify_the_project() {
+        for cancel in [
+            "escape",
+            "unfocused",
+            "job",
+            "dialog",
+            "outside",
+            "master",
+            "same",
+        ] {
+            let (mut app, tracks, ids) = multi_clip_fixture();
+            let ctx = context();
+            select_group(&mut app, &ctx, [ids[0], ids[2]]);
+            let start = Pos2::new(110.0, app.lane_bounds[&tracks[0]].top() + 18.0);
+            let end = Pos2::new(110.0, app.lane_bounds[&tracks[2]].bottom() - 10.0);
+            let before = format!("{:?}", app.session.project);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert!(app.track_drag.is_some());
+            let (_sender, receiver) = mpsc::channel();
+            if cancel == "job" {
+                app.job = Some(receiver);
+            }
+            if cancel == "dialog" {
+                app.error = Some("Test dialog".into());
+            }
+            let point = match cancel {
+                "outside" => Pos2::new(-20.0, end.y),
+                "master" => app.master_bounds.center(),
+                "same" => start + Vec2::new(10.0, 0.0),
+                _ => end,
+            };
+            let mut events = vec![egui::Event::PointerMoved(point), button(point, false)];
+            if cancel == "escape" {
+                events.push(egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                });
+            }
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused: cancel != "unfocused",
+                    events,
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            output.textures_delta.clear();
+            assert!(app.track_drag.is_none(), "{cancel}");
+            assert_eq!(format!("{:?}", app.session.project), before, "{cancel}");
+            assert!(!app.dirty);
+            assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[2]]));
+            assert_eq!(app.selected_track, Some(tracks[0]));
+        }
+        let (mut app, _) = fixture();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let start = Pos2::new(110.0, app.lane_bounds.values().next().unwrap().top() + 18.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        let end = start + Vec2::new(0.0, 120.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert_eq!(app.session.project.tracks.len(), 1);
+        assert!(!app.dirty);
+    }
+    #[test]
+    fn track_reordering_scrolls_at_viewport_edges_and_keeps_the_master_pinned() {
+        let (mut app, first) = fixture();
+        for _ in 0..11 {
+            app.session.project.add_track().unwrap();
+        }
+        let order: Vec<_> = app
+            .session
+            .project
+            .tracks
+            .iter()
+            .map(|track| track.id)
+            .collect();
+        let ctx = context();
+        let size = Vec2::new(1280.0, 480.0);
+        frame_sized(&mut app, &ctx, vec![], size);
+        let master = app.master_bounds;
+        let start = Pos2::new(110.0, app.lane_bounds[&first].top() + 18.0);
+        let end = Pos2::new(110.0, master.top() - 3.0);
+        frame_sized(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+            size,
+        );
+        frame_sized(&mut app, &ctx, vec![egui::Event::PointerMoved(end)], size);
+        for _ in 0..180 {
+            frame_sized(&mut app, &ctx, vec![], size);
+        }
+        assert_eq!(app.track_drag, Some(first));
+        assert_eq!(
+            app.session
+                .project
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            order
+        );
+        assert!(app.lane_bounds[&first].top() < start.y - 100.0);
+        assert!(app.lane_bounds[order.last().unwrap()].bottom() <= master.top() + 1.0);
+        assert_eq!(app.master_bounds, master);
+        assert!(!app.dirty);
+        frame_sized(&mut app, &ctx, vec![button(end, false)], size);
+        assert_eq!(app.session.project.tracks.last().unwrap().id, first);
+        assert!(app.dirty);
+        assert!(app.track_drag.is_none());
+        // Scroll back to the top while dragging the same track upward.
+        frame_sized(&mut app, &ctx, vec![], size);
+        let start = Pos2::new(110.0, app.lane_bounds[&first].top() + 18.0);
+        let end = Pos2::new(110.0, app.timeline_bounds.top() + 3.0);
+        frame_sized(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+            size,
+        );
+        frame_sized(&mut app, &ctx, vec![egui::Event::PointerMoved(end)], size);
+        for _ in 0..180 {
+            frame_sized(&mut app, &ctx, vec![], size);
+        }
+        assert_eq!(app.track_drag, Some(first));
+        assert!(app.lane_bounds[&order[1]].top() >= app.timeline_bounds.top() - 1.0);
+        frame_sized(&mut app, &ctx, vec![button(end, false)], size);
+        assert_eq!(
+            app.session
+                .project
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            order
+        );
+        assert_eq!(app.master_bounds, master);
     }
     #[test]
     fn track_panel_clicks_select_without_consuming_control_interactions() {

@@ -48,6 +48,132 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn track_reordering_preserves_data_audio_and_saved_order() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("reorder.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    for index in 0..6 {
+        session.import(&source, None, index * 4800).unwrap();
+        let track = &mut session.project.tracks[index as usize];
+        track.name = format!("Instrument {index}");
+        track.gain_db = -(index as f32);
+        track.pan = index as f32 / 10.0;
+        track.muted = index == 4;
+        track.soloed = index == 2;
+        let clip = &mut track.clips[0];
+        clip.name = format!("Take {index}");
+        clip.source_offset_frame = 100;
+        clip.length_frames = 3600;
+        if index == 2 {
+            clip.repeat = Some(ClipLoop {
+                length_frames: 1200,
+                phase_frame: 300,
+            });
+            clip.color = Some(RgbColor {
+                r: 10,
+                g: 90,
+                b: 160,
+            });
+        }
+    }
+    let original = session.project.clone();
+    let before_audio = fixture.0.join("before.wav");
+    session.export(&before_audio, false).unwrap();
+    let moved = original.tracks[0].id;
+    session
+        .project
+        .edit(Edit::ReorderTrack {
+            track_id: moved,
+            index: 5,
+        })
+        .unwrap();
+    let expected: Vec<_> = [1, 2, 3, 4, 5, 0]
+        .map(|index| original.tracks[index].clone())
+        .into();
+    assert_eq!(
+        serde_json::to_value(&session.project.tracks).unwrap(),
+        serde_json::to_value(&expected).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&session.project.assets).unwrap(),
+        serde_json::to_value(&original.assets).unwrap()
+    );
+    let snapshot = serde_json::to_value(&session.project).unwrap();
+    for invalid in [
+        Edit::ReorderTrack {
+            track_id: moved,
+            index: 6,
+        },
+        Edit::ReorderTrack {
+            track_id: daw_core::Id::new_v4(),
+            index: 0,
+        },
+        Edit::Batch(vec![
+            Edit::ReorderTrack {
+                track_id: moved,
+                index: 0,
+            },
+            Edit::ReorderTrack {
+                track_id: moved,
+                index: usize::MAX,
+            },
+        ]),
+    ] {
+        assert!(session.project.edit(invalid).is_err());
+        assert_eq!(serde_json::to_value(&session.project).unwrap(), snapshot);
+    }
+    session
+        .project
+        .edit(Edit::ReorderTrack {
+            track_id: moved,
+            index: 5,
+        })
+        .unwrap();
+    assert_eq!(serde_json::to_value(&session.project).unwrap(), snapshot);
+    let project_folder = fixture.0.join("reordered-project");
+    session.save(&project_folder).unwrap();
+    let mut reopened = Session::open(&project_folder).unwrap();
+    assert_eq!(
+        serde_json::to_value(&reopened.project.tracks).unwrap(),
+        serde_json::to_value(&expected).unwrap()
+    );
+    let after_audio = fixture.0.join("after.wav");
+    reopened.export(&after_audio, false).unwrap();
+    assert_eq!(
+        fs::read(before_audio).unwrap(),
+        fs::read(after_audio).unwrap()
+    );
+    // Move the last track back to the top, then move a middle track upward.
+    reopened
+        .project
+        .edit(Edit::ReorderTrack {
+            track_id: moved,
+            index: 0,
+        })
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&reopened.project.tracks).unwrap(),
+        serde_json::to_value(&original.tracks).unwrap()
+    );
+    reopened
+        .project
+        .edit(Edit::ReorderTrack {
+            track_id: original.tracks[4].id,
+            index: 1,
+        })
+        .unwrap();
+    assert_eq!(
+        reopened
+            .project
+            .tracks
+            .iter()
+            .map(|track| track.id)
+            .collect::<Vec<_>>(),
+        [0, 4, 1, 2, 3, 5].map(|index| original.tracks[index].id)
+    );
+}
+
+#[test]
 fn batched_group_edits_validate_final_layout_and_persist() {
     let fixture = Fixture::new();
     let source = fixture.wav("group.wav", 48000, 2, 16, false);
