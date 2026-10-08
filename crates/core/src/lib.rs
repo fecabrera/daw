@@ -372,30 +372,42 @@ impl Project {
     }
     pub fn edit(&mut self, command: Edit) -> Result<()> {
         let mut next = self.clone();
+        next.apply_edit(command)?;
+        next.validate()?;
+        *self = next;
+        Ok(())
+    }
+
+    fn apply_edit(&mut self, command: Edit) -> Result<()> {
         match command {
+            Edit::Batch(commands) => {
+                for command in commands {
+                    self.apply_edit(command)?;
+                }
+            }
             Edit::SetTrackColor { track_id, color } => {
-                next.tracks
+                self.tracks
                     .iter_mut()
                     .find(|t| t.id == track_id)
                     .ok_or_else(|| Error("Track not found".into()))?
                     .color = color;
             }
             Edit::SetClipColor { clip_id, color } => {
-                next.tracks
+                self.tracks
                     .iter_mut()
                     .flat_map(|t| &mut t.clips)
                     .find(|c| c.id == clip_id)
                     .ok_or_else(|| Error("Clip not found".into()))?
                     .color = color;
             }
-            Edit::DeleteTrack(id) => next.tracks.retain(|t| t.id != id),
+            Edit::DeleteTrack(id) => self.tracks.retain(|t| t.id != id),
             Edit::DeleteClip(id) => {
-                for t in &mut next.tracks {
+                for t in &mut self.tracks {
                     t.clips.retain(|c| c.id != id);
                 }
             }
             Edit::InsertClip { track_id, clip } => {
-                next.tracks
+                self.tracks
                     .iter_mut()
                     .find(|track| track.id == track_id)
                     .ok_or_else(|| Error("Track not found".into()))?
@@ -410,7 +422,7 @@ impl Project {
                 length,
                 repeat,
             } => {
-                let c = next
+                let c = self
                     .tracks
                     .iter_mut()
                     .find_map(|t| {
@@ -420,7 +432,7 @@ impl Project {
                             .map(|i| t.clips.remove(i))
                     })
                     .ok_or_else(|| Error("Clip not found".into()))?;
-                let target = next
+                let target = self
                     .tracks
                     .iter_mut()
                     .find(|t| t.id == track_id)
@@ -434,7 +446,7 @@ impl Project {
                 });
             }
             Edit::Split { clip_id, at } => {
-                let t = next
+                let t = self
                     .tracks
                     .iter_mut()
                     .find(|t| t.clips.iter().any(|c| c.id == clip_id))
@@ -460,14 +472,14 @@ impl Project {
                 t.clips.push(right);
             }
         }
-        next.validate()?;
-        *self = next;
         Ok(())
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    /// Apply all commands and validate the final state as one transaction.
+    Batch(Vec<Edit>),
     SetTrackColor {
         track_id: Id,
         color: RgbColor,

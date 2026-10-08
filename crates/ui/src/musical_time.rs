@@ -124,6 +124,43 @@ impl Timeline {
         self.snap_anchor(frame, limits, anchors).unwrap_or(frame)
     }
 
+    /// Snap every group edge by grid priority, then nearest destination boundary.
+    pub fn snap_group_delta(&self, delta: i128, ranges: &[(u64, u64, Vec<u64>)]) -> i128 {
+        let minimum = -i128::from(ranges.iter().map(|range| range.0).min().unwrap_or(0));
+        let maximum = ranges
+            .iter()
+            .map(|range| i128::from(u64::MAX) - i128::from(range.0) - i128::from(range.1))
+            .min()
+            .unwrap_or(0);
+        let delta = delta.clamp(minimum, maximum);
+        let candidates = |spacing: Option<f64>| {
+            ranges
+                .iter()
+                .flat_map(|(start, length, anchors)| {
+                    [*start, start + length]
+                        .into_iter()
+                        .filter_map(move |edge| {
+                            let frame = (i128::from(edge) + delta) as u64;
+                            let limits = (i128::from(edge) + minimum) as u64
+                                ..=(i128::from(edge) + maximum) as u64;
+                            let target = if let Some(spacing) = spacing {
+                                self.grid_target(frame, limits, spacing)
+                            } else {
+                                self.snap_anchor(frame, limits, anchors.iter().copied())
+                            };
+                            target.map(|target| i128::from(target) - i128::from(edge))
+                        })
+                })
+                .min_by_key(|candidate| candidate.abs_diff(delta))
+        };
+        for spacing in self.grid_spacings() {
+            if let Some(delta) = candidates(Some(spacing)) {
+                return delta;
+            }
+        }
+        candidates(None).unwrap_or(delta)
+    }
+
     /// Snap either edge without changing length. Compare both edges at each grid priority.
     pub fn snap_range(
         &self,
@@ -337,6 +374,34 @@ mod tests {
             ),
             Some(frames(4.26))
         );
+    }
+
+    #[test]
+    fn group_snapping_prioritizes_all_edges_and_preserves_group_bounds() {
+        let timeline = Timeline::new(120.0, 70.0, 0.0);
+        let ranges = [
+            (frames(3.0), frames(0.7), vec![]),
+            (frames(7.96), frames(0.5), vec![]),
+        ];
+        // The companion's bar boundary takes priority over the first clip's closer beat.
+        assert_eq!(
+            timeline.snap_group_delta(i128::from(frames(0.02)), &ranges),
+            i128::from(frames(0.04))
+        );
+        let ranges = [
+            (frames(2.63), frames(0.5), vec![frames(3.13)]),
+            (frames(5.13), frames(0.5), vec![]),
+        ];
+        assert_eq!(
+            timeline.snap_group_delta(i128::from(frames(0.51)), &ranges),
+            i128::from(frames(0.5))
+        );
+        assert_eq!(
+            timeline.snap_group_delta(-i128::from(frames(100.0)), &ranges),
+            -i128::from(frames(2.63))
+        );
+        let ranges = [(0, 5, vec![]), (u64::MAX - 10, 5, vec![])];
+        assert!((0..=5).contains(&timeline.snap_group_delta(100, &ranges)));
     }
 
     #[test]

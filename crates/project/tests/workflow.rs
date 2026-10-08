@@ -48,6 +48,113 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn batched_group_edits_validate_final_layout_and_persist() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("group.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let track = session.project.tracks[0].id;
+    session.project.tracks[0].clips[0].length_frames = 1200;
+    let a = session.project.tracks[0].clips[0].clone();
+    let b = daw_core::Clip {
+        id: daw_core::Id::new_v4(),
+        name: "B".into(),
+        start_frame: 1200,
+        source_offset_frame: 1200,
+        ..a.clone()
+    };
+    session
+        .project
+        .edit(Edit::InsertClip {
+            track_id: track,
+            clip: b.clone(),
+        })
+        .unwrap();
+    let place = |clip: &daw_core::Clip, start| Edit::Place {
+        clip_id: clip.id,
+        track_id: track,
+        start,
+        offset: clip.source_offset_frame,
+        length: clip.length_frames,
+        repeat: clip.repeat,
+    };
+    // Moving A first temporarily overlaps B. Validate only after both moves finish.
+    session
+        .project
+        .edit(Edit::Batch(vec![place(&a, 1200), place(&b, 2400)]))
+        .unwrap();
+    let before = serde_json::to_value(&session.project).unwrap();
+    for invalid in [
+        Edit::Batch(vec![place(&a, 0), place(&b, 0)]),
+        Edit::Batch(vec![
+            place(&a, 0),
+            Edit::InsertClip {
+                track_id: daw_core::Id::new_v4(),
+                clip: b.clone(),
+            },
+        ]),
+        Edit::Batch(vec![
+            place(&a, 0),
+            Edit::Batch(vec![Edit::Place {
+                clip_id: b.id,
+                track_id: track,
+                start: 2400,
+                offset: 4700,
+                length: 1200,
+                repeat: None,
+            }]),
+        ]),
+    ] {
+        assert!(session.project.edit(invalid).is_err());
+        assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+    }
+    let second = session.project.add_track().unwrap();
+    let copies: Vec<_> = session.project.tracks[0]
+        .clips
+        .iter()
+        .map(|clip| daw_core::Clip {
+            id: daw_core::Id::new_v4(),
+            start_frame: clip.start_frame + 4800,
+            color: Some(RgbColor {
+                r: 20,
+                g: 80,
+                b: 160,
+            }),
+            ..clip.clone()
+        })
+        .collect();
+    session
+        .project
+        .edit(Edit::Batch(
+            copies
+                .iter()
+                .map(|clip| Edit::InsertClip {
+                    track_id: second,
+                    clip: clip.clone(),
+                })
+                .collect(),
+        ))
+        .unwrap();
+    assert_eq!(session.project.assets.len(), 1);
+    assert_eq!(session.audio.len(), 1);
+    let folder = fixture.0.join("project");
+    session.save(&folder).unwrap();
+    let loaded = Session::open(&folder).unwrap();
+    assert_eq!(
+        serde_json::to_value(&loaded.project.tracks).unwrap(),
+        serde_json::to_value(&session.project.tracks).unwrap()
+    );
+    session
+        .export(&fixture.0.join("before.wav"), false)
+        .unwrap();
+    loaded.export(&fixture.0.join("after.wav"), false).unwrap();
+    assert_eq!(
+        fs::read(fixture.0.join("before.wav")).unwrap(),
+        fs::read(fixture.0.join("after.wav")).unwrap()
+    );
+}
+
+#[test]
 fn inserted_clip_snapshots_share_assets_persist_and_reject_invalid_placement() {
     let fixture = Fixture::new();
     let source = fixture.wav("copy.wav", 48000, 2, 16, false);
