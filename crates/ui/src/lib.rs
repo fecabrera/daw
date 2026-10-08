@@ -27,6 +27,28 @@ const ROW_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE + 14.0;
 const MASTER_HEIGHT: f32 = ROW_HEIGHT;
 const RULER_HEIGHT: f32 = toolbars::HEIGHT;
 
+fn placement_start(
+    project: &daw_core::Project,
+    raw: i128,
+    length: u64,
+    track: Option<Id>,
+    ignore: Option<Id>,
+    snap_zoom: Option<f32>,
+) -> u64 {
+    let start = raw.clamp(0, i128::from(u64::MAX - length)) as u64;
+    let Some(zoom) = snap_zoom.filter(|_| raw == i128::from(start)) else {
+        return start;
+    };
+    let anchors = project
+        .tracks
+        .iter()
+        .filter(|candidate| Some(candidate.id) == track)
+        .flat_map(|track| &track.clips)
+        .filter(|clip| Some(clip.id) != ignore)
+        .flat_map(|clip| [clip.start_frame, clip.end()]);
+    musical_time::Timeline::new(project.tempo_bpm, zoom, 0.0).snap_range(start, length, anchors)
+}
+
 fn numeric_input(ui: &mut egui::Ui, text: &mut String, tooltip: &str) -> egui::Response {
     ui.add(
         egui::TextEdit::singleline(text)
@@ -393,6 +415,8 @@ struct ClipPreview {
 struct FileDropTarget {
     track: Option<Id>,
     start: u64,
+    raw_start: u64,
+    snap_zoom: Option<f32>,
     lane: Rect,
 }
 #[derive(Clone, Copy)]
@@ -601,6 +625,7 @@ impl DawUi {
             track,
             self.session.project.transport.playhead_frame,
             None,
+            None,
         );
     }
     fn import_at(
@@ -609,6 +634,7 @@ impl DawUi {
         track: Option<Id>,
         at: u64,
         prepared: Option<file_drop::FileHover>,
+        snap_zoom: Option<f32>,
     ) {
         let mut session = self.session.clone();
         self.run_job("Importing WAV and building waveform", move || {
@@ -616,6 +642,16 @@ impl DawUi {
                 Some(prepared) => prepared.into_audio()?,
                 None => daw_media::decode_wav(&path).map_err(|error| error.to_string())?,
             };
+            // A drop can arrive before decoding finishes. Use the actual duration
+            // and the release frame's snapping setting on the import worker.
+            let at = placement_start(
+                &session.project,
+                i128::from(at),
+                audio.samples.len() as u64,
+                track,
+                None,
+                snap_zoom,
+            );
             session
                 .import_decoded(&path, audio, track, at)
                 .map(|_| Job::Loaded(session, true))
@@ -879,7 +915,13 @@ impl DawUi {
                 let path = dropped.path().to_path_buf();
                 let prepared = self.file_hover.take().filter(|hover| hover.path == path);
                 self.selected_track = target.track;
-                self.import_at(path, target.track, target.start, prepared);
+                self.import_at(
+                    path,
+                    target.track,
+                    target.raw_start,
+                    prepared,
+                    target.snap_zoom,
+                );
             }
             if !ctx.egui_wants_keyboard_input() {
                 if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
@@ -2177,21 +2219,14 @@ impl DawUi {
     }
     fn move_start(&self, drag: &Drag, pointer: Pos2, track: Id, unsnapped: bool) -> u64 {
         let raw = i128::from(drag.clip.start_frame) + i128::from(self.drag_delta(drag, pointer));
-        let start = raw.clamp(0, i128::from(u64::MAX - drag.clip.length_frames)) as u64;
-        if unsnapped || raw != i128::from(start) {
-            return start;
-        }
-        let anchors = self
-            .session
-            .project
-            .tracks
-            .iter()
-            .filter(|candidate| candidate.id == track)
-            .flat_map(|track| &track.clips)
-            .filter(|clip| clip.id != drag.clip.id)
-            .flat_map(|clip| [clip.start_frame, clip.end()]);
-        self.musical_timeline()
-            .snap_range(start, drag.clip.length_frames, anchors)
+        placement_start(
+            &self.session.project,
+            raw,
+            drag.clip.length_frames,
+            Some(track),
+            Some(drag.clip.id),
+            (!unsnapped).then_some(self.zoom),
+        )
     }
     fn drag_destination(&self, drag: &Drag, pointer: Pos2) -> Id {
         self.session
@@ -2434,7 +2469,12 @@ impl DawUi {
                 })
             })
     }
-    fn file_target(&self, pointer: Pos2, viewport: Rect) -> Option<FileDropTarget> {
+    fn file_target(
+        &self,
+        pointer: Pos2,
+        viewport: Rect,
+        unsnapped: bool,
+    ) -> Option<FileDropTarget> {
         let drop_viewport = Rect::from_min_max(
             Pos2::new(viewport.left() - TRACK_WIDTH, viewport.top()),
             viewport.max,
@@ -2448,6 +2488,7 @@ impl DawUi {
         } else {
             frames((self.scroll + f64::from((pointer.x - viewport.left()) / self.zoom)).max(0.0))
         };
+        let snap_zoom = (!unsnapped && pointer.x >= viewport.left()).then_some(self.zoom);
         if let Some(track) = self.session.project.tracks.iter().find(|track| {
             self.lane_bounds
                 .get(&track.id)
@@ -2456,6 +2497,8 @@ impl DawUi {
             return Some(FileDropTarget {
                 track: Some(track.id),
                 start,
+                raw_start: start,
+                snap_zoom,
                 lane: self.lane_bounds[&track.id],
             });
         }
@@ -2470,6 +2513,8 @@ impl DawUi {
         Some(FileDropTarget {
             track: None,
             start,
+            raw_start: start,
+            snap_zoom,
             lane: Rect::from_min_size(
                 Pos2::new(viewport.left(), top),
                 Vec2::new(viewport.width(), ROW_HEIGHT),
@@ -2486,11 +2531,23 @@ impl DawUi {
         let Some(pointer) = ui.input(|input| input.pointer.latest_pos()) else {
             return;
         };
-        let Some(target) = self.file_target(pointer, viewport) else {
+        let Some(mut target) =
+            self.file_target(pointer, viewport, ui.input(|input| input.modifiers.shift))
+        else {
             return;
         };
         let hover = self.file_hover.as_ref().unwrap();
         let audio = hover.audio.as_ref().and_then(|result| result.as_ref().ok());
+        // Until decoding finishes, snap only the known start edge. The loading
+        // placeholder width must not act as a clip-duration snap target.
+        target.start = placement_start(
+            &self.session.project,
+            i128::from(target.raw_start),
+            audio.map_or(0, |audio| audio.samples.len() as u64),
+            target.track,
+            None,
+            target.snap_zoom,
+        );
         let clip = Clip {
             id: Id::nil(),
             asset_id: Id::nil(),
@@ -4760,6 +4817,9 @@ mod tests {
     struct TestWav(std::path::PathBuf);
     impl TestWav {
         fn new() -> Self {
+            Self::new_frames(48_000)
+        }
+        fn new_frames(length: u64) -> Self {
             let path = std::env::temp_dir().join(format!("daw-file-hover-{}.wav", Id::new_v4()));
             let mut writer = hound::WavWriter::create(
                 &path,
@@ -4771,7 +4831,7 @@ mod tests {
                 },
             )
             .unwrap();
-            for index in 0..48000 {
+            for index in 0..length {
                 writer
                     .write_sample(if index % 128 < 64 {
                         8000_i16
@@ -4796,10 +4856,26 @@ mod tests {
         pointer: Pos2,
         dropped: bool,
     ) -> Vec<egui::epaint::ClippedShape> {
+        file_frame_with_shift(app, ctx, path, pointer, dropped, false)
+    }
+    fn file_frame_with_shift(
+        app: &mut DawUi,
+        ctx: &egui::Context,
+        path: &std::path::Path,
+        pointer: Pos2,
+        dropped: bool,
+        shift: bool,
+    ) -> Vec<egui::epaint::ClippedShape> {
         let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
-                events: vec![egui::Event::PointerMoved(pointer)],
+                events: vec![
+                    egui::Event::ModifiersChanged(egui::Modifiers {
+                        shift,
+                        ..Default::default()
+                    }),
+                    egui::Event::PointerMoved(pointer),
+                ],
                 hovered_files: if dropped {
                     vec![]
                 } else {
@@ -4906,6 +4982,174 @@ mod tests {
         ));
         assert!(app.dirty);
         assert!(app.file_hover.is_none());
+    }
+    #[test]
+    fn file_drops_snap_either_edge_and_match_preview_with_dynamic_shift() {
+        for (target, length, snapped) in [(3.02, 1.13, 3.0), (3.13, 0.89, 3.11), (3.26, 0.72, 3.28)]
+        {
+            let source = TestWav::new_frames(frames(length));
+            for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+                for new_track in [false, true] {
+                    for free_release in [false, true] {
+                        let (mut app, first) = fixture();
+                        let track = if new_track {
+                            None
+                        } else {
+                            Some(app.session.project.add_track().unwrap())
+                        };
+                        app.zoom = zoom;
+                        app.scroll = scroll;
+                        let ctx = context();
+                        frame(&mut app, &ctx, vec![]);
+                        let lane = track.map_or_else(
+                            || {
+                                Rect::from_min_size(
+                                    app.lane_bounds[&first].left_bottom(),
+                                    app.lane_bounds[&first].size(),
+                                )
+                            },
+                            |track| app.lane_bounds[&track],
+                        );
+                        let point = Pos2::new(
+                            lane.left() + (target - scroll) as f32 * zoom,
+                            lane.top() + 12.0,
+                        );
+                        ready_file_hover(&mut app, &ctx, &source.0, point);
+                        file_frame_with_shift(
+                            &mut app,
+                            &ctx,
+                            &source.0,
+                            point,
+                            false,
+                            !free_release,
+                        );
+                        let before = app.file_drop_target.as_ref().unwrap().start;
+                        let shapes = file_frame_with_shift(
+                            &mut app,
+                            &ctx,
+                            &source.0,
+                            point,
+                            false,
+                            free_release,
+                        );
+                        let preview = app.file_drop_target.as_ref().unwrap();
+                        let start = preview.start;
+                        assert_ne!(start, before);
+                        assert!(
+                            start.abs_diff(frames(if free_release { target } else { snapped }))
+                                <= 1
+                        );
+                        assert_eq!(preview.track, track);
+                        let block = Rect::from_min_size(
+                            Pos2::new(
+                                lane.left() + (seconds(start) - scroll) as f32 * zoom,
+                                lane.top(),
+                            ),
+                            Vec2::new(seconds(frames(length)) as f32 * zoom, ROW_HEIGHT),
+                        );
+                        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                        let samples = app
+                            .file_hover
+                            .as_ref()
+                            .unwrap()
+                            .audio
+                            .as_ref()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .samples
+                            .clone();
+                        assert_eq!(app.session.project.assets.len(), 1);
+                        assert!(!app.dirty);
+                        file_frame_with_shift(&mut app, &ctx, &source.0, point, true, free_release);
+                        finish_import(&mut app, &ctx);
+                        assert!(app.error.is_none());
+                        let clip = &app.session.project.tracks[1].clips[0];
+                        assert_eq!(clip.start_frame, start);
+                        assert_eq!(clip.length_frames, frames(length));
+                        assert_eq!(clip.source_offset_frame, 0);
+                        assert_eq!(clip.repeat, None);
+                        assert!(std::sync::Arc::ptr_eq(
+                            &samples,
+                            &app.session.audio[&clip.asset_id].samples
+                        ));
+                        assert!(app.dirty);
+                        app.session.project.validate().unwrap();
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn file_loading_snaps_only_the_start_and_direct_drops_use_the_real_duration() {
+        let source = TestWav::new_frames(frames(0.72));
+        let mut app = DawUi::default();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let point = Pos2::new(app.scrollbar_bounds.left() + 3.26 * app.zoom, 140.0);
+        ready_file_hover(&mut app, &ctx, &source.0, point);
+        assert_eq!(app.file_drop_target.as_ref().unwrap().start, frames(3.28));
+        // Keep the hover path, but hold its decoded result to simulate a pending worker.
+        let audio = app.file_hover.as_mut().unwrap().audio.take();
+        file_frame(&mut app, &ctx, &source.0, point, false);
+        assert_eq!(app.file_drop_target.as_ref().unwrap().start, frames(3.25));
+        assert!(!app.dirty);
+        app.file_hover.as_mut().unwrap().audio = audio;
+        file_frame(&mut app, &ctx, &source.0, point, true);
+        finish_import(&mut app, &ctx);
+        assert_eq!(
+            app.session.project.tracks[0].clips[0].start_frame,
+            frames(3.28)
+        );
+
+        let source = TestWav::new_frames(frames(0.89));
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+            for free_release in [false, true] {
+                let mut app = DawUi {
+                    zoom,
+                    scroll,
+                    ..Default::default()
+                };
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                let point = Pos2::new(
+                    app.scrollbar_bounds.left() + (3.13 - scroll) as f32 * zoom,
+                    140.0,
+                );
+                assert!(app.file_hover.is_none());
+                file_frame_with_shift(&mut app, &ctx, &source.0, point, true, free_release);
+                // Import finishes on a later frame after the release modifiers have changed.
+                finish_import(&mut app, &ctx);
+                assert!(app.error.is_none());
+                let clip = &app.session.project.tracks[0].clips[0];
+                assert!(
+                    clip.start_frame
+                        .abs_diff(frames(if free_release { 3.13 } else { 3.11 }))
+                        <= 1
+                );
+                assert_eq!(clip.length_frames, frames(0.89));
+                assert!(app.dirty);
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+    #[test]
+    fn prepared_file_drop_does_not_snap_the_preview_a_second_time() {
+        let source = TestWav::new_frames(frames(1.48));
+        let mut app = DawUi::default();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let point = Pos2::new(app.scrollbar_bounds.left() + 2.42 * app.zoom, 140.0);
+        ready_file_hover(&mut app, &ctx, &source.0, point);
+        assert_eq!(app.file_drop_target.as_ref().unwrap().start, frames(2.5));
+        // Re-snapping 2.5 would pull the end to bar 3 and shift the start to 2.52.
+        file_frame(&mut app, &ctx, &source.0, point, true);
+        finish_import(&mut app, &ctx);
+        assert!(app.error.is_none());
+        assert_eq!(
+            app.session.project.tracks[0].clips[0].start_frame,
+            frames(2.5)
+        );
     }
     #[test]
     fn file_drag_over_track_controls_clamps_preview_and_drop_to_track_start() {
