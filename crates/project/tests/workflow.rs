@@ -48,6 +48,92 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn inserted_clip_snapshots_share_assets_persist_and_reject_invalid_placement() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("copy.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let track = session.project.tracks[0].id;
+    let original = session.project.tracks[0].clips[0].clone();
+    let samples = session.audio[&original.asset_id].samples.clone();
+    let copy = daw_core::Clip {
+        id: daw_core::Id::new_v4(),
+        start_frame: 6000,
+        source_offset_frame: 1000,
+        length_frames: 7500,
+        repeat: Some(ClipLoop {
+            length_frames: 2000,
+            phase_frame: 700,
+        }),
+        color: Some(RgbColor {
+            r: 100,
+            g: 50,
+            b: 150,
+        }),
+        ..original.clone()
+    };
+    session
+        .project
+        .edit(Edit::InsertClip {
+            track_id: track,
+            clip: copy.clone(),
+        })
+        .unwrap();
+    assert_eq!(session.project.assets.len(), 1);
+    assert_eq!(session.audio.len(), 1);
+    assert!(std::sync::Arc::ptr_eq(
+        &samples,
+        &session.audio[&copy.asset_id].samples
+    ));
+    let before = serde_json::to_value(&session.project).unwrap();
+    for failure in 0..7 {
+        let mut invalid = copy.clone();
+        invalid.id = daw_core::Id::new_v4();
+        let mut destination = track;
+        match failure {
+            0 => invalid.id = copy.id,
+            1 => invalid.asset_id = daw_core::Id::new_v4(),
+            2 => invalid.start_frame = 100,
+            3 => invalid.source_offset_frame = 4800,
+            4 => invalid.start_frame = u64::MAX,
+            5 => destination = daw_core::Id::new_v4(),
+            _ => {
+                invalid.repeat = Some(ClipLoop {
+                    length_frames: 0,
+                    phase_frame: 0,
+                })
+            }
+        }
+        assert!(
+            session
+                .project
+                .edit(Edit::InsertClip {
+                    track_id: destination,
+                    clip: invalid
+                })
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+    }
+    let folder = fixture.0.join("project");
+    session.save(&folder).unwrap();
+    let loaded = Session::open(&folder).unwrap();
+    let pasted = &loaded.project.tracks[0].clips[1];
+    assert_eq!(
+        serde_json::to_value(pasted).unwrap(),
+        serde_json::to_value(&copy).unwrap()
+    );
+    session
+        .export(&fixture.0.join("before.wav"), false)
+        .unwrap();
+    loaded.export(&fixture.0.join("after.wav"), false).unwrap();
+    assert_eq!(
+        fs::read(fixture.0.join("before.wav")).unwrap(),
+        fs::read(fixture.0.join("after.wav")).unwrap()
+    );
+}
+
+#[test]
 fn supported_encodings_and_resampling() {
     let f = Fixture::new();
     for channels in [1, 2] {

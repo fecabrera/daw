@@ -261,6 +261,32 @@ impl FileAction {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClipAction {
+    Copy,
+    Paste,
+}
+impl ClipAction {
+    pub const ALL: [Self; 2] = [Self::Copy, Self::Paste];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Copy => "Copy",
+            Self::Paste => "Paste",
+        }
+    }
+
+    pub fn shortcut(self) -> egui::KeyboardShortcut {
+        egui::KeyboardShortcut::new(
+            egui::Modifiers::COMMAND,
+            match self {
+                Self::Copy => egui::Key::C,
+                Self::Paste => egui::Key::V,
+            },
+        )
+    }
+}
+
 struct Inputs {
     gain: String,
     pan: String,
@@ -419,6 +445,12 @@ struct FileDropTarget {
     snap_zoom: Option<f32>,
     lane: Rect,
 }
+struct ClipClipboard {
+    project: Id,
+    track: Id,
+    clip: Clip,
+    token: String,
+}
 #[derive(Clone, Copy)]
 enum LoopDragMode {
     Create,
@@ -438,6 +470,7 @@ pub struct DawUi {
     output: Option<AudioOutput>,
     selected_track: Option<Id>,
     selected_clip: Option<Id>,
+    clip_clipboard: Option<ClipClipboard>,
     inputs: HashMap<Id, Inputs>,
     track_name_edit: Option<TrackNameEdit>,
     master_gain_input: String,
@@ -474,7 +507,7 @@ pub struct DawUi {
     unsaved_prompt: bool,
     overwrite: Option<PathBuf>,
     allow_close: bool,
-    native_file_menu: bool,
+    native_menu: bool,
     window_title: String,
 }
 impl Default for DawUi {
@@ -484,6 +517,7 @@ impl Default for DawUi {
             output: None,
             selected_track: None,
             selected_clip: None,
+            clip_clipboard: None,
             inputs: HashMap::new(),
             track_name_edit: None,
             master_gain_input: "0.0".into(),
@@ -520,15 +554,15 @@ impl Default for DawUi {
             unsaved_prompt: false,
             overwrite: None,
             allow_close: false,
-            native_file_menu: false,
+            native_menu: false,
             window_title: String::new(),
         }
     }
 }
 impl DawUi {
     /// Let the desktop adapter provide file menus and their keyboard shortcuts.
-    pub fn use_native_file_menu(&mut self) {
-        self.native_file_menu = true;
+    pub fn use_native_menu(&mut self) {
+        self.native_menu = true;
     }
 
     pub fn new(project: Option<PathBuf>) -> Self {
@@ -583,6 +617,7 @@ impl DawUi {
                 self.selection_drag = [None, None];
                 self.selected_track = None;
                 self.selected_clip = None;
+                self.clip_clipboard = None;
                 self.notices.clear();
                 self.scroll = 0.0;
                 self.drag = None;
@@ -717,6 +752,7 @@ impl DawUi {
                 Ok(Job::Loaded(session, dirty)) => {
                     self.loop_drag = None;
                     if !dirty {
+                        self.clip_clipboard = None;
                         self.output = None;
                         self.inputs.clear();
                         self.track_name_edit = None;
@@ -830,11 +866,145 @@ impl DawUi {
             Err(e) => self.fail(e),
         }
     }
+    fn copy_clip(&mut self, ctx: &egui::Context) {
+        let Some((track, clip)) = self.session.project.tracks.iter().find_map(|track| {
+            track
+                .clips
+                .iter()
+                .find(|clip| Some(clip.id) == self.selected_clip)
+                .map(|clip| (track.id, clip.clone()))
+        }) else {
+            return;
+        };
+        let token = format!("DAW clip {}", Id::new_v4());
+        // egui-winit sends Paste only when the system clipboard contains text.
+        // The opaque token identifies our internal clip snapshot without copying PCM.
+        ctx.copy_text(token.clone());
+        self.clip_clipboard = Some(ClipClipboard {
+            project: self.session.project.project_id,
+            track,
+            clip,
+            token,
+        });
+    }
+    fn paste_clip(&mut self) {
+        let Some(clipboard) = self
+            .clip_clipboard
+            .as_ref()
+            .filter(|clipboard| clipboard.project == self.session.project.project_id)
+        else {
+            return;
+        };
+        let project = &self.session.project;
+        let track = self
+            .selected_track
+            .filter(|id| project.tracks.iter().any(|track| track.id == *id))
+            .or_else(|| {
+                project
+                    .tracks
+                    .iter()
+                    .find(|track| track.id == clipboard.track)
+                    .map(|track| track.id)
+            })
+            .or_else(|| project.tracks.first().map(|track| track.id));
+        let Some(track_id) = track else {
+            self.fail("Select a track before pasting a clip");
+            return;
+        };
+        let clip = Clip {
+            id: Id::new_v4(),
+            start_frame: project.transport.playhead_frame,
+            ..clipboard.clip.clone()
+        };
+        let id = clip.id;
+        match self
+            .session
+            .project
+            .edit(Edit::InsertClip { track_id, clip })
+        {
+            Ok(()) => {
+                self.selected_track = Some(track_id);
+                self.selected_clip = Some(id);
+                self.changed();
+            }
+            Err(error) => self.fail(error),
+        }
+    }
+    fn clip_actions_available(&self, ctx: &egui::Context) -> bool {
+        self.file_action_enabled(FileAction::Import)
+            && !ctx.egui_wants_keyboard_input()
+            && ctx.input(|input| input.focused)
+            && self.drag.is_none()
+            && self.loop_drag.is_none()
+    }
+
+    pub fn clip_action_enabled(&self, action: ClipAction, ctx: &egui::Context) -> bool {
+        self.clip_actions_available(ctx)
+            && match action {
+                ClipAction::Copy => self.session.project.tracks.iter().any(|track| {
+                    track
+                        .clips
+                        .iter()
+                        .any(|clip| Some(clip.id) == self.selected_clip)
+                }),
+                ClipAction::Paste => self.clip_clipboard.as_ref().is_some_and(|clipboard| {
+                    clipboard.project == self.session.project.project_id
+                        && !self.session.project.tracks.is_empty()
+                }),
+            }
+    }
+
+    pub fn perform_clip_action(&mut self, action: ClipAction, ctx: &egui::Context) {
+        if !self.clip_action_enabled(action, ctx) {
+            return;
+        }
+        match action {
+            ClipAction::Copy => self.copy_clip(ctx),
+            ClipAction::Paste => self.paste_clip(),
+        }
+    }
+
+    fn clip_shortcuts(&mut self, ctx: &egui::Context) {
+        if !self.clip_actions_available(ctx) {
+            return;
+        }
+        let token = self
+            .clip_clipboard
+            .as_ref()
+            .map(|clipboard| clipboard.token.as_str());
+        let (copy, paste) = ctx.input_mut(|input| {
+            let copy = input
+                .events
+                .iter()
+                .any(|event| matches!(event, egui::Event::Copy));
+            let paste = input.events.iter().any(
+                |event| matches!(event, egui::Event::Paste(text) if Some(text.as_str()) == token),
+            );
+            let native_paste = input
+                .events
+                .iter()
+                .any(|event| matches!(event, egui::Event::Paste(_)));
+            input.events.retain(|event| {
+                !matches!(event, egui::Event::Copy)
+                    && !matches!(event, egui::Event::Paste(text) if Some(text.as_str()) == token)
+            });
+            (
+                input.consume_shortcut(&ClipAction::Copy.shortcut()) || copy,
+                (input.consume_shortcut(&ClipAction::Paste.shortcut()) && !native_paste) || paste,
+            )
+        });
+        if copy {
+            self.copy_clip(ctx);
+        }
+        if paste {
+            self.paste_clip();
+        }
+    }
     pub fn show(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.poll();
         self.update_file_hover(&ctx);
-        if !self.native_file_menu
+        if !self.native_menu
             && let Some(action) = self.take_file_shortcut(&ctx)
         {
             self.perform_file_action(action);
@@ -907,6 +1077,7 @@ impl DawUi {
             }
         }
         self.dialogs(&ctx);
+        self.clip_shortcuts(&ctx);
         if self.job.is_none() {
             if self.file_action_enabled(FileAction::Import)
                 && let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned())
@@ -958,6 +1129,21 @@ impl DawUi {
             {
                 ui.close();
                 self.perform_file_action(action);
+            }
+        }
+    }
+
+    fn edit_menu(&mut self, ui: &mut egui::Ui) {
+        ui.set_min_width(220.0);
+        for action in ClipAction::ALL {
+            let button = egui::Button::new(action.label())
+                .shortcut_text(ui.ctx().format_shortcut(&action.shortcut()));
+            if ui
+                .add_enabled(self.clip_action_enabled(action, ui.ctx()), button)
+                .clicked()
+            {
+                self.perform_clip_action(action, ui.ctx());
+                ui.close();
             }
         }
     }
@@ -1242,8 +1428,9 @@ impl DawUi {
                 // Keep the native macOS window buttons clear of application controls.
                 #[cfg(target_os = "macos")]
                 ui.add_space(78.0);
-                if !self.native_file_menu {
+                if !self.native_menu {
                     ui.menu_button("File", |ui| self.file_menu(ui));
+                    ui.menu_button("Edit", |ui| self.edit_menu(ui));
                     ui.separator();
                 }
                 let title = ui.label(&self.window_title);
@@ -4149,6 +4336,330 @@ mod tests {
             modifiers: shortcut.modifiers,
         }
     }
+    fn clip_key(key: egui::Key, mac: bool) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers {
+                command: true,
+                mac_cmd: mac,
+                ctrl: !mac,
+                ..Default::default()
+            },
+        }
+    }
+    #[test]
+    fn edit_menu_clicks_copy_and_paste_and_native_actions_share_guards() {
+        fn menu_frame(
+            app: &mut DawUi,
+            ctx: &egui::Context,
+            events: Vec<egui::Event>,
+        ) -> egui::FullOutput {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 400.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| app.edit_menu(ui),
+            );
+            output.textures_delta.clear();
+            output
+        }
+        let (mut app, first) = fixture();
+        let second = app.session.project.add_track().unwrap();
+        let ctx = context();
+        menu_frame(&mut app, &ctx, vec![]);
+        assert!(!app.clip_action_enabled(ClipAction::Copy, &ctx));
+        assert!(!app.clip_action_enabled(ClipAction::Paste, &ctx));
+        app.selected_clip = Some(app.session.project.tracks[0].clips[0].id);
+        app.selected_track = Some(first);
+        assert!(app.clip_action_enabled(ClipAction::Copy, &ctx));
+        for action in ClipAction::ALL {
+            if action == ClipAction::Paste {
+                app.selected_track = Some(second);
+                app.session.project.transport.playhead_frame = frames(2.0);
+                assert!(app.clip_action_enabled(action, &ctx));
+            }
+            let output = menu_frame(&mut app, &ctx, vec![]);
+            let point = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == action.label() => {
+                        Some(text.pos + text.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .expect("menu action label");
+            menu_frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point), button(point, true)],
+            );
+            let output = menu_frame(&mut app, &ctx, vec![button(point, false)]);
+            if action == ClipAction::Copy {
+                assert!(!app.dirty);
+                let token = &app.clip_clipboard.as_ref().unwrap().token;
+                assert!(output.platform_output.commands.iter().any(
+                    |command| matches!(command, egui::OutputCommand::CopyText(text) if text == token)
+                ));
+            }
+        }
+        assert_eq!(app.session.project.tracks[1].clips.len(), 1);
+        assert_eq!(
+            app.session.project.tracks[1].clips[0].start_frame,
+            frames(2.0)
+        );
+        assert!(app.dirty);
+        // Native menu callbacks use the same guarded actions as menu clicks.
+        app.error = Some("Blocked".into());
+        let token = app.clip_clipboard.as_ref().unwrap().token.clone();
+        for action in ClipAction::ALL {
+            assert!(!app.clip_action_enabled(action, &ctx));
+            app.perform_clip_action(action, &ctx);
+        }
+        assert_eq!(app.clip_clipboard.as_ref().unwrap().token, token);
+        assert_eq!(app.session.project.tracks[1].clips.len(), 1);
+        app.error = None;
+        app.session.project.transport.playhead_frame = frames(20.0);
+        app.perform_clip_action(ClipAction::Paste, &ctx);
+        assert_eq!(app.session.project.tracks[1].clips.len(), 2);
+        app.track_name_edit = Some(TrackNameEdit {
+            track: second,
+            text: "Draft".into(),
+            focus: true,
+        });
+        frame(&mut app, &ctx, vec![]);
+        for action in ClipAction::ALL {
+            assert!(!app.clip_action_enabled(action, &ctx));
+            app.perform_clip_action(action, &ctx);
+        }
+        assert_eq!(app.session.project.tracks[1].clips.len(), 2);
+        assert_eq!(app.clip_clipboard.as_ref().unwrap().token, token);
+    }
+
+    #[test]
+    fn native_clip_copy_paste_preserves_snapshot_and_reuses_source_audio() {
+        let source = TestWav::new();
+        let audio = daw_media::decode_wav(&source.0).unwrap();
+        for color in [
+            None,
+            Some(daw_core::RgbColor {
+                r: 20,
+                g: 80,
+                b: 160,
+            }),
+        ] {
+            let (mut app, first) = fixture();
+            let second = app.session.project.add_track().unwrap();
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.start_frame = frames(2.0);
+            clip.source_offset_frame = frames(0.25);
+            clip.length_frames = frames(1.25);
+            clip.repeat = Some(daw_core::ClipLoop {
+                length_frames: frames(0.5),
+                phase_frame: frames(0.125),
+            });
+            clip.color = color;
+            let original = clip.clone();
+            app.session.audio.insert(original.asset_id, audio.clone());
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let click = app
+                .clip_block(app.lane_bounds[&first], &original, original.start_frame)
+                .min
+                + Vec2::new(20.0, 12.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(click), button(click, true)],
+            );
+            frame(&mut app, &ctx, vec![button(click, false)]);
+            assert_eq!(app.selected_clip, Some(original.id));
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    events: vec![egui::Event::Copy],
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            let token = app.clip_clipboard.as_ref().unwrap().token.clone();
+            assert!(output.platform_output.commands.iter().any(
+                |command| matches!(command, egui::OutputCommand::CopyText(text) if text == &token)
+            ));
+            output.textures_delta.clear();
+            assert!(!app.dirty);
+            // Deleting the original must not invalidate the copied snapshot or its asset.
+            app.edit(Edit::DeleteClip(original.id));
+            app.dirty = false;
+            app.selected_track = Some(second);
+            for start in [frames(4.13), frames(6.25)] {
+                app.session.project.transport.playhead_frame = start;
+                frame(&mut app, &ctx, vec![egui::Event::Paste(token.clone())]);
+                let pasted = app.session.project.tracks[1].clips.last().unwrap();
+                assert_ne!(pasted.id, original.id);
+                assert_eq!(pasted.start_frame, start);
+                assert_eq!(
+                    (
+                        pasted.asset_id,
+                        pasted.source_offset_frame,
+                        pasted.length_frames,
+                        pasted.repeat,
+                        pasted.color,
+                        pasted.name.as_str()
+                    ),
+                    (
+                        original.asset_id,
+                        original.source_offset_frame,
+                        original.length_frames,
+                        original.repeat,
+                        original.color,
+                        original.name.as_str()
+                    )
+                );
+                assert_eq!(app.selected_clip, Some(pasted.id));
+                assert_eq!(app.selected_track, Some(second));
+                assert_eq!(app.session.project.transport.playhead_frame, start);
+                assert!(app.dirty);
+                assert!(app.error.is_none());
+            }
+            assert_ne!(
+                app.session.project.tracks[1].clips[0].id,
+                app.session.project.tracks[1].clips[1].id
+            );
+            assert_eq!(app.session.project.assets.len(), 1);
+            assert_eq!(app.session.audio.len(), 1);
+            assert!(std::sync::Arc::ptr_eq(
+                &audio.samples,
+                &app.session.audio[&original.asset_id].samples
+            ));
+            app.session.project.validate().unwrap();
+        }
+    }
+    #[test]
+    fn clip_shortcuts_accept_command_and_control_without_duplicate_native_actions() {
+        for mac in [false, true] {
+            let (mut app, first) = fixture();
+            let second = app.session.project.add_track().unwrap();
+            let original = app.session.project.tracks[0].clips[0].clone();
+            app.selected_clip = Some(original.id);
+            app.selected_track = Some(first);
+            let ctx = context();
+            frame(
+                &mut app,
+                &ctx,
+                vec![clip_key(egui::Key::C, mac), egui::Event::Copy],
+            );
+            assert!(app.clip_clipboard.is_some());
+            assert!(!app.dirty);
+            app.selected_track = Some(second);
+            app.session.project.transport.playhead_frame = frames(2.0);
+            let token = app.clip_clipboard.as_ref().unwrap().token.clone();
+            frame(
+                &mut app,
+                &ctx,
+                vec![clip_key(egui::Key::V, mac), egui::Event::Paste(token)],
+            );
+            assert_eq!(app.session.project.tracks[1].clips.len(), 1);
+            assert_eq!(
+                app.session.project.tracks[1].clips[0].start_frame,
+                frames(2.0)
+            );
+            app.session.project.transport.playhead_frame = frames(20.0);
+            frame(&mut app, &ctx, vec![clip_key(egui::Key::V, mac)]);
+            assert_eq!(app.session.project.tracks[1].clips.len(), 2);
+            // Ordinary external text must not paste the old internal clip.
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    clip_key(egui::Key::V, mac),
+                    egui::Event::Paste("external text".into()),
+                ],
+            );
+            assert_eq!(app.session.project.tracks[1].clips.len(), 2);
+            assert!(app.error.is_none());
+        }
+    }
+    #[test]
+    fn clip_clipboard_respects_text_editing_busy_dialogs_focus_and_project_changes() {
+        for blocked in 0..6 {
+            let (mut app, first) = fixture();
+            let second = app.session.project.add_track().unwrap();
+            app.selected_clip = Some(app.session.project.tracks[0].clips[0].id);
+            let ctx = context();
+            frame(&mut app, &ctx, vec![egui::Event::Copy]);
+            let token = app.clip_clipboard.as_ref().unwrap().token.clone();
+            app.selected_track = Some(second);
+            let (_sender, receiver) = mpsc::channel();
+            match blocked {
+                0 => app.job = Some(receiver),
+                1 => app.error = Some("Pending error".into()),
+                2 => app.unsaved_prompt = true,
+                3 => app.overwrite = Some(PathBuf::from("existing.wav")),
+                4 => {}
+                _ => {
+                    app.track_name_edit = Some(TrackNameEdit {
+                        track: first,
+                        text: "Track 1".into(),
+                        focus: true,
+                    });
+                    frame(&mut app, &ctx, vec![]);
+                }
+            }
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused: blocked != 4,
+                    events: vec![
+                        egui::Event::Copy,
+                        egui::Event::Paste(if blocked == 5 {
+                            "Renamed".into()
+                        } else {
+                            token.clone()
+                        }),
+                    ],
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            output.textures_delta.clear();
+            assert!(app.session.project.tracks[1].clips.is_empty());
+            assert_eq!(app.clip_clipboard.as_ref().unwrap().token, token);
+            assert!(!app.dirty);
+            if blocked == 5 {
+                assert!(
+                    app.track_name_edit
+                        .as_ref()
+                        .unwrap()
+                        .text
+                        .contains("Renamed")
+                );
+                assert_eq!(app.session.project.tracks[0].name, "Track 1");
+            }
+        }
+        let (mut app, track) = fixture();
+        app.selected_clip = Some(app.session.project.tracks[0].clips[0].id);
+        app.selected_track = Some(track);
+        let ctx = context();
+        frame(&mut app, &ctx, vec![egui::Event::Copy]);
+        let token = app.clip_clipboard.as_ref().unwrap().token.clone();
+        frame(&mut app, &ctx, vec![egui::Event::Paste(token.clone())]);
+        assert!(app.error.as_ref().unwrap().contains("overlap"));
+        assert_eq!(app.session.project.tracks[0].clips.len(), 1);
+        assert!(!app.dirty);
+        app.error = None;
+        app.pending = Some(Action::New);
+        app.perform_pending();
+        assert!(app.clip_clipboard.is_none());
+        frame(&mut app, &ctx, vec![egui::Event::Paste(token)]);
+        assert!(app.session.project.tracks.is_empty());
+        assert!(!app.dirty);
+    }
 
     #[test]
     fn new_shortcut_preserves_unsaved_project_and_is_blocked_during_jobs() {
@@ -4254,7 +4765,7 @@ mod tests {
     fn native_menu_owns_shortcuts_and_uses_guarded_file_actions() {
         let (mut app, track) = fixture();
         let ctx = context();
-        app.use_native_file_menu();
+        app.use_native_menu();
         frame(&mut app, &ctx, vec![shortcut_event(FileAction::New)]);
         assert_eq!(app.session.project.tracks[0].id, track);
 

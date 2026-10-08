@@ -27,10 +27,10 @@ impl eframe::App for App {
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         #[cfg(target_os = "macos")]
-        self.menu.dispatch(&mut self.ui);
+        self.menu.dispatch(&mut self.ui, ui.ctx());
         self.ui.show(ui);
         #[cfg(target_os = "macos")]
-        self.menu.update_enabled(&self.ui);
+        self.menu.update_enabled(&self.ui, ui.ctx());
     }
 }
 fn main() -> eframe::Result {
@@ -70,8 +70,8 @@ fn main() -> eframe::Result {
             let (ui, menu) = {
                 let mut ui = ui;
                 let menu = macos_menu::NativeMenu::new(cc.egui_ctx.clone());
-                ui.use_native_file_menu();
-                menu.update_enabled(&ui);
+                ui.use_native_menu();
+                menu.update_enabled(&ui, &cc.egui_ctx);
                 (ui, menu)
             };
             Ok(Box::new(App {

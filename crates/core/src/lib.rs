@@ -394,6 +394,14 @@ impl Project {
                     t.clips.retain(|c| c.id != id);
                 }
             }
+            Edit::InsertClip { track_id, clip } => {
+                next.tracks
+                    .iter_mut()
+                    .find(|track| track.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?
+                    .clips
+                    .push(clip);
+            }
             Edit::Place {
                 clip_id,
                 track_id,
@@ -470,6 +478,10 @@ pub enum Edit {
     },
     DeleteTrack(Id),
     DeleteClip(Id),
+    InsertClip {
+        track_id: Id,
+        clip: Clip,
+    },
     Place {
         clip_id: Id,
         track_id: Id,
