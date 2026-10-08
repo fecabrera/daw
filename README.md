@@ -99,6 +99,8 @@ The CLI infers WAV or MP3 from the output extension unless `--format wav|mp3` is
 
 ## Checks
 
+Repository contributors and coding agents should follow [AGENTS.md](AGENTS.md) for architecture, development, documentation, and validation rules.
+
 ```sh
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
