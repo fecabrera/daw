@@ -1492,6 +1492,15 @@ impl DawUi {
             }
         }
     }
+    fn set_tempo(&mut self, bpm: f32) {
+        if bpm == self.session.project.tempo_bpm {
+            return;
+        }
+        match self.session.project.edit(Edit::SetTempo { bpm }) {
+            Ok(()) => self.changed(),
+            Err(error) => self.fail(format!("Tempo change rejected: {error}")),
+        }
+    }
     fn tempo_control(&mut self, ui: &mut egui::Ui) {
         let previous = self.session.project.tempo_bpm;
         if let Some(mut edit) = self.tempo_edit.take() {
@@ -1532,10 +1541,7 @@ impl DawUi {
                 if action == InlineEditAction::Commit {
                     match edit.text.parse::<f32>() {
                         Ok(value) if value.is_finite() && value > 0.0 => {
-                            self.session.project.tempo_bpm = value;
-                            if value != previous {
-                                self.changed();
-                            }
+                            self.set_tempo(value);
                         }
                         _ => self.fail("Tempo must be a positive finite BPM value"),
                     }
@@ -1575,8 +1581,7 @@ impl DawUi {
                         ((f64::from(previous) - f64::from(delta) * step) * 100.0).round() / 100.0;
                     let value = adjusted.clamp(0.01, f64::from(f32::MAX)) as f32;
                     if value != previous {
-                        self.session.project.tempo_bpm = value;
-                        self.changed();
+                        self.set_tempo(value);
                     }
                 }
             }
@@ -5747,6 +5752,88 @@ mod tests {
         assert!(app.tempo_edit.is_none());
         assert_eq!(app.session.project.tempo_bpm, 87.5);
     }
+    #[test]
+    fn tempo_entry_and_drag_keep_clip_beats_and_reject_overlap() {
+        for drag in [false, true] {
+            let (mut app, track) = fixture();
+            app.session.project.tracks[0].clips[0].length_frames = frames(1.0);
+            let mut second = app.session.project.tracks[0].clips[0].clone();
+            second.id = Id::new_v4();
+            second.start_frame = frames(1.5);
+            second.length_frames = frames(0.25);
+            app.session.project.tracks[0].clips.push(second.clone());
+            app.session.project.transport.r#loop = daw_core::Loop {
+                enabled: true,
+                start_frame: frames(0.5),
+                end_frame: frames(2.0),
+            };
+            let ctx = context();
+            let key = |key| egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            };
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            let pointer = app.tempo_bounds.center();
+            if drag {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(pointer), button(pointer, true)],
+                );
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(pointer - Vec2::new(0.0, 10.0))],
+                );
+            } else {
+                start_tempo_edit(&mut app, &ctx);
+                frame(&mut app, &ctx, vec![egui::Event::Text("130".into())]);
+                frame(&mut app, &ctx, vec![key(egui::Key::Enter)]);
+            }
+            assert_eq!(app.session.project.tempo_bpm, 130.0);
+            assert_eq!(app.session.project.tracks[0].clips[1].start_frame, 66462);
+            assert_eq!(
+                app.session.project.tracks[0].clips[1].length_frames,
+                second.length_frames
+            );
+            let region = &app.session.project.transport.r#loop;
+            assert!(region.enabled);
+            assert_eq!(region.start_frame, 22154);
+            assert_eq!(region.end_frame, 88616);
+            assert_eq!(musical_time::monitor(region.start_frame, 130.0), "0001.02");
+            assert_eq!(musical_time::monitor(region.end_frame, 130.0), "0002.01");
+            assert!(app.dirty);
+            assert!(app.error.is_none());
+            assert_eq!(app.session.project.tracks[0].id, track);
+            let before = format!("{:?}", app.session.project);
+            app.dirty = false;
+            if drag {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(pointer - Vec2::new(0.0, 120.0))],
+                );
+                frame(&mut app, &ctx, vec![button(pointer, false)]);
+            } else {
+                // Start a distinct double-click sequence, as in the entry tests above.
+                let edit_ctx = context();
+                start_tempo_edit(&mut app, &edit_ctx);
+                frame(&mut app, &edit_ctx, vec![egui::Event::Text("240".into())]);
+                frame(&mut app, &edit_ctx, vec![key(egui::Key::Enter)]);
+                assert!(app.tempo_edit.is_none());
+            }
+            assert_eq!(format!("{:?}", app.session.project), before);
+            assert!(!app.dirty);
+            assert!(!app.sync_needed);
+            let error = app.error.as_ref().unwrap();
+            assert!(error.contains("Tempo change rejected") && error.contains("overlap"));
+        }
+    }
+
     #[test]
     fn tempo_drag_uses_vertical_motion_and_shift_for_fine_adjustment() {
         let (mut app, track) = fixture();

@@ -57,7 +57,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 
 - Keep project audio at 48 kHz. Convert supported imports to that rate; convert device output separately when required.
 - Store timeline positions and durations in integer sample frames. Use explicit names such as `start_frame` and `length_frames`. Treat clip ends as exclusive. Convert to seconds or musical positions at display/input boundaries.
-- The ruler currently uses 4/4, with bars and beats counted from 1. Tempo must be positive and finite. Changing tempo changes the ruler and monitors; it does not move or stretch audio.
+- The ruler currently uses 4/4, with bars and beats counted from 1. Tempo must be positive and finite. Change tempo through `Edit::SetTempo`: move each clip start to retain its beat position, rounded to the nearest sample frame, while preserving clip length and source/stretch metadata. Reject overlaps or timeline overflow as one transaction. Scale both loop-selection endpoints to retain their beat positions, including when Loop is disabled; round up as with ruler snapping. Keep the playhead frame unchanged.
 - Preserve stable project, asset, track, and clip IDs. Reordering preserves identity; copies receive new clip IDs and share their source audio.
 - Keep clip lengths positive, frame arithmetic within bounds, and clips on the same track non-overlapping. Validate final group edits as one transaction through `Project::edit` and `Edit::Batch` where applicable.
 - Edits must not change source recordings. Preserve source offsets, repeat bases/phases, stretch ratios, and color overrides across compatible operations.

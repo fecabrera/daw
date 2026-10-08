@@ -484,6 +484,33 @@ impl Project {
                     self.apply_edit(command)?;
                 }
             }
+            Edit::SetTempo { bpm } => {
+                if !bpm.is_finite() || bpm <= 0.0 {
+                    return Err(Error("Tempo must be a positive finite BPM value".into()));
+                }
+                if bpm != self.tempo_bpm {
+                    // Beat position = frames * BPM / (sample rate * 60).
+                    // Only starts move. Source ranges and playback duration stay intact.
+                    let ratio = f64::from(self.tempo_bpm) / f64::from(bpm);
+                    let checked_frame = |frame: f64| {
+                        // u64::MAX rounds up to 2^64 as f64. Reject before casting.
+                        if !frame.is_finite() || frame < 0.0 || frame >= u64::MAX as f64 {
+                            return Err(Error("Tempo change exceeds timeline bounds".into()));
+                        }
+                        Ok(frame as u64)
+                    };
+                    for clip in self.tracks.iter_mut().flat_map(|track| &mut track.clips) {
+                        clip.start_frame =
+                            checked_frame((clip.start_frame as f64 * ratio).round())?;
+                    }
+                    let region = &mut self.transport.r#loop;
+                    // Match ruler snapping: fractional beat boundaries must not land
+                    // in the preceding beat in the selection monitor.
+                    region.start_frame = checked_frame((region.start_frame as f64 * ratio).ceil())?;
+                    region.end_frame = checked_frame((region.end_frame as f64 * ratio).ceil())?;
+                    self.tempo_bpm = bpm;
+                }
+            }
             Edit::SetTrackColor { track_id, color } => {
                 self.tracks
                     .iter_mut()
@@ -591,6 +618,12 @@ impl Project {
 pub enum Edit {
     /// Apply all commands and validate the final state as one transaction.
     Batch(Vec<Edit>),
+    /// Retain clip start beat positions, rounding to the nearest sample frame.
+    /// Scale loop-selection endpoints too, rounding up as with ruler snapping.
+    /// Lengths stay unchanged; final overlap/bounds validation is transactional.
+    SetTempo {
+        bpm: f32,
+    },
     SetTrackColor {
         track_id: Id,
         color: RgbColor,

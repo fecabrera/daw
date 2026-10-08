@@ -1296,6 +1296,200 @@ fn invalid_clip_repeats_and_overlaps_are_rejected_transactionally() {
 }
 
 #[test]
+fn tempo_edits_retain_clip_beats_and_source_metadata_across_save_and_render() {
+    let f = Fixture::new();
+    let source = f.wav("tempo.wav", 48000, 2, 16, false);
+    let source_bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 48000).unwrap();
+    session.import(&source, None, 72123).unwrap();
+    for track in &mut session.project.tracks {
+        let clip = &mut track.clips[0];
+        clip.source_offset_frame = 600;
+        clip.length_frames = 2400;
+        clip.repeat = Some(ClipLoop {
+            length_frames: 1200,
+            phase_frame: 123,
+        });
+        clip.stretch = daw_core::ClipStretch::new(2, 3);
+        clip.color = Some(DEFAULT_TRACK_COLOR);
+    }
+    session.prepare_stretches().unwrap();
+    let prepared_count = session.stretched_audio.len();
+    session.project.transport.playhead_frame = 1234;
+    session.project.transport.r#loop = daw_core::Loop {
+        enabled: true,
+        start_frame: 100,
+        end_frame: 4000,
+    };
+    let original = session.project.clone();
+    let samples = session.audio[&original.assets[0].id].samples.clone();
+    for bpm in [60.0, 123.5, 240.0] {
+        session.project = original.clone();
+        session.project.edit(Edit::SetTempo { bpm }).unwrap();
+        for (track, before) in session.project.tracks.iter().zip(&original.tracks) {
+            assert_eq!(track.id, before.id);
+            let mut expected = before.clips[0].clone();
+            expected.start_frame =
+                (expected.start_frame as f64 * 120.0 / f64::from(bpm)).round() as u64;
+            assert_eq!(
+                serde_json::to_value(&track.clips[0]).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+            let old_beats = before.clips[0].start_frame as f64 * 120.0 / (48000.0 * 60.0);
+            let new_beats = track.clips[0].start_frame as f64 * f64::from(bpm) / (48000.0 * 60.0);
+            assert!(
+                (new_beats - old_beats).abs() <= f64::from(bpm) / (48000.0 * 60.0) * 0.5 + 1e-12
+            );
+        }
+        let region = &session.project.transport.r#loop;
+        assert_eq!(
+            session.project.transport.playhead_frame,
+            original.transport.playhead_frame
+        );
+        assert_eq!(region.enabled, original.transport.r#loop.enabled);
+        assert_eq!(
+            region.start_frame,
+            (100.0 * 120.0 / f64::from(bpm)).ceil() as u64
+        );
+        assert_eq!(
+            region.end_frame,
+            (4000.0 * 120.0 / f64::from(bpm)).ceil() as u64
+        );
+        assert!(std::sync::Arc::ptr_eq(
+            &samples,
+            &session.audio[&original.assets[0].id].samples
+        ));
+        assert_eq!(session.stretched_audio.len(), prepared_count);
+    }
+    // Live playback uses the new positions, with the same prepared source samples.
+    session.project.transport.r#loop.enabled = false;
+    let plan = session.plan();
+    let mut live = daw_engine::Renderer::new(plan.clone());
+    live.seek(0);
+    live.play();
+    for frame in 0..26400 {
+        assert_eq!(live.next_sample(), plan.sample_at(frame));
+    }
+    assert_eq!(plan.sample_at(47999), [0.0; 2]);
+    let folder = f.0.join("project");
+    session.save(&folder).unwrap();
+    let loaded = Session::open(&folder).unwrap();
+    assert_eq!(
+        serde_json::to_value(&loaded.project).unwrap(),
+        serde_json::to_value(&session.project).unwrap()
+    );
+    let before = f.0.join("before.wav");
+    let after = f.0.join("after.wav");
+    session.export(&before, false).unwrap();
+    loaded.export(&after, false).unwrap();
+    assert_eq!(fs::read(before).unwrap(), fs::read(after).unwrap());
+    assert_eq!(fs::read(source).unwrap(), source_bytes);
+}
+
+#[test]
+fn tempo_edits_reject_overlap_invalid_values_and_timeline_overflow_atomically() {
+    let f = Fixture::new();
+    let source = f.wav("tempo.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 24000).unwrap();
+    session.import(&source, None, 0).unwrap();
+    let track = session.project.tracks[1].id;
+    let mut second = session.project.tracks[1].clips[0].clone();
+    second.id = daw_core::Id::new_v4();
+    second.start_frame = second.length_frames;
+    session
+        .project
+        .edit(Edit::InsertClip {
+            track_id: track,
+            clip: second,
+        })
+        .unwrap();
+    session.project.transport.r#loop = daw_core::Loop {
+        enabled: true,
+        start_frame: 24000,
+        end_frame: 96000,
+    };
+    let original = serde_json::to_value(&session.project).unwrap();
+    for bpm in [240.0, f32::MAX, 0.0, -1.0, f32::NAN, f32::INFINITY] {
+        assert!(session.project.edit(Edit::SetTempo { bpm }).is_err());
+        assert_eq!(serde_json::to_value(&session.project).unwrap(), original);
+    }
+    session.project.edit(Edit::SetTempo { bpm: 120.0 }).unwrap();
+    assert_eq!(serde_json::to_value(&session.project).unwrap(), original);
+    // Adjacent exclusive endpoints are valid; speeding up creates an overlap.
+    session.project.edit(Edit::SetTempo { bpm: 60.0 }).unwrap();
+    session.project.edit(Edit::SetTempo { bpm: 120.0 }).unwrap();
+    assert_eq!(serde_json::to_value(&session.project).unwrap(), original);
+    session.project.tracks[0].clips[0].start_frame = u64::MAX - 4800;
+    session.project.validate().unwrap();
+    let before = serde_json::to_value(&session.project).unwrap();
+    for bpm in [60.0, f32::MIN_POSITIVE] {
+        assert!(session.project.edit(Edit::SetTempo { bpm }).is_err());
+        assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+    }
+    session.project.tracks[0].clips[0].start_frame = u64::MAX / 2 - 1024;
+    session.project.validate().unwrap();
+    let before = serde_json::to_value(&session.project).unwrap();
+    assert!(session.project.edit(Edit::SetTempo { bpm: 60.0 }).is_err());
+    assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+}
+
+#[test]
+fn tempo_changes_scale_enabled_and_disabled_selections_and_reject_invalid_ranges() {
+    let f = Fixture::new();
+    let source = f.wav("loop-tempo.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 24000).unwrap();
+    let base = session.project.clone();
+    for enabled in [false, true] {
+        for bpm in [60.0, 123.5, 240.0] {
+            session.project = base.clone();
+            session.project.transport.playhead_frame = 12345;
+            session.project.transport.r#loop = daw_core::Loop {
+                enabled,
+                start_frame: 24000,
+                end_frame: 96000,
+            };
+            session.project.edit(Edit::SetTempo { bpm }).unwrap();
+            let region = &session.project.transport.r#loop;
+            assert_eq!(region.enabled, enabled);
+            assert_eq!(
+                region.start_frame,
+                (24000.0 * 120.0 / f64::from(bpm)).ceil() as u64
+            );
+            assert_eq!(
+                region.end_frame,
+                (96000.0 * 120.0 / f64::from(bpm)).ceil() as u64
+            );
+            assert_eq!(session.project.transport.playhead_frame, 12345);
+            for (frame, old_beats) in [(region.start_frame, 1.0), (region.end_frame, 4.0)] {
+                let beats = frame as f64 * f64::from(bpm) / (48000.0 * 60.0);
+                assert!(
+                    beats >= old_beats && beats - old_beats < f64::from(bpm) / (48000.0 * 60.0)
+                );
+            }
+        }
+    }
+    session.project = base.clone();
+    session.project.edit(Edit::SetTempo { bpm: 60.0 }).unwrap();
+    assert_eq!(session.project.transport.r#loop.start_frame, 0);
+    assert_eq!(session.project.transport.r#loop.end_frame, 0);
+    for (start_frame, end_frame, bpm) in [(24000, u64::MAX, 60.0), (1, 2, f32::MAX)] {
+        session.project = base.clone();
+        session.project.transport.r#loop = daw_core::Loop {
+            enabled: true,
+            start_frame,
+            end_frame,
+        };
+        session.project.validate().unwrap();
+        let before = serde_json::to_value(&session.project).unwrap();
+        assert!(session.project.edit(Edit::SetTempo { bpm }).is_err());
+        assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+    }
+}
+
+#[test]
 fn tempo_round_trips_and_older_projects_use_the_default() {
     let f = Fixture::new();
     let mut session = Session::default();
