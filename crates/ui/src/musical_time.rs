@@ -69,6 +69,32 @@ impl Timeline {
         6.0 / self.pixels_per_beat / self.beats_per_second * f64::from(daw_core::SAMPLE_RATE)
     }
 
+    fn grid_spacings(&self) -> [f64; 3] {
+        let step = self.visible_step();
+        [step.max(BEATS_PER_BAR as f64), step.max(1.0), step]
+    }
+
+    fn grid_target(
+        &self,
+        frame: u64,
+        limits: std::ops::RangeInclusive<u64>,
+        spacing: f64,
+    ) -> Option<u64> {
+        let index = (self.beats(frame) / spacing).floor();
+        self.snap_anchor(
+            frame,
+            limits,
+            [index, index + 1.0]
+                .into_iter()
+                .filter(|index| *index >= 0.0)
+                // Ceil prevents fractional beat boundaries landing in the previous beat.
+                .map(|index| {
+                    (index * spacing / self.beats_per_second * f64::from(daw_core::SAMPLE_RATE))
+                        .ceil() as u64
+                }),
+        )
+    }
+
     pub fn snap_anchor(
         &self,
         frame: u64,
@@ -90,28 +116,44 @@ impl Timeline {
         limits: std::ops::RangeInclusive<u64>,
         anchors: impl IntoIterator<Item = u64>,
     ) -> u64 {
-        let radius = self.snap_radius();
-        let near = |candidate: u64| {
-            limits.contains(&candidate) && candidate.abs_diff(frame) as f64 <= radius
-        };
-        let step = self.visible_step();
-        for spacing in [step.max(BEATS_PER_BAR as f64), step.max(1.0), step] {
-            let index = (self.beats(frame) / spacing).floor();
-            let grid = [index, index + 1.0]
-                .into_iter()
-                .filter(|index| *index >= 0.0)
-                // Ceil prevents fractional beat boundaries landing in the previous beat.
-                .map(|index| {
-                    (index * spacing / self.beats_per_second * f64::from(daw_core::SAMPLE_RATE))
-                        .ceil() as u64
-                })
-                .filter(|candidate| near(*candidate))
-                .min_by_key(|candidate| candidate.abs_diff(frame));
-            if let Some(candidate) = grid {
+        for spacing in self.grid_spacings() {
+            if let Some(candidate) = self.grid_target(frame, limits.clone(), spacing) {
                 return candidate;
             }
         }
         self.snap_anchor(frame, limits, anchors).unwrap_or(frame)
+    }
+
+    /// Snap either edge without changing length. Compare both edges at each grid priority.
+    pub fn snap_range(
+        &self,
+        start: u64,
+        length: u64,
+        anchors: impl IntoIterator<Item = u64>,
+    ) -> u64 {
+        let maximum = u64::MAX - length;
+        let start = start.min(maximum);
+        for spacing in self.grid_spacings() {
+            let left = self.grid_target(start, 0..=maximum, spacing);
+            let right = self
+                .grid_target(start + length, length..=u64::MAX, spacing)
+                .map(|end| end - length);
+            if let Some(candidate) = [left, right]
+                .into_iter()
+                .flatten()
+                .min_by_key(|candidate| candidate.abs_diff(start))
+            {
+                return candidate;
+            }
+        }
+        self.snap_anchor(
+            start,
+            0..=maximum,
+            anchors
+                .into_iter()
+                .flat_map(|edge| [Some(edge), edge.checked_sub(length)].into_iter().flatten()),
+        )
+        .unwrap_or(start)
     }
 
     pub fn ticks(&self, width: f32) -> impl Iterator<Item = Tick> + '_ {
@@ -295,5 +337,40 @@ mod tests {
             ),
             Some(frames(4.26))
         );
+    }
+
+    #[test]
+    fn range_snapping_compares_both_edges_by_grid_priority_then_distance() {
+        let timeline = Timeline::new(120.0, 70.0, 0.0);
+        for (start, length, expected) in [
+            (3.02, 1.13, 3.0),  // left beat
+            (3.13, 1.13, 3.12), // right subdivision
+            (3.26, 0.72, 3.28), // right bar beats a closer left subdivision
+            (2.03, 1.98, 2.02), // nearer right bar beats the left bar
+            (2.52, 1.24, 2.5),  // left beat beats a closer right subdivision
+        ] {
+            assert_eq!(
+                timeline.snap_range(frames(start), frames(length), [frames(start)]),
+                frames(expected)
+            );
+        }
+        assert_eq!(
+            timeline.snap_range(frames(3.16), frames(0.48), [frames(3.15)]),
+            frames(3.15)
+        );
+        assert_eq!(
+            timeline.snap_range(frames(1.9), frames(1.26), [frames(3.15)]),
+            frames(1.89)
+        );
+        let fractional = Timeline::new(123.5, 70.0, 0.0);
+        let bar = shift(0, 123.5, 4);
+        let length = frames(1.13);
+        assert_eq!(
+            fractional.snap_range(bar - length + 100, length, []),
+            bar - length
+        );
+        for length in [1, frames(1.13), u64::MAX - 1, u64::MAX] {
+            assert!(timeline.snap_range(u64::MAX - length, length, []) <= u64::MAX - length);
+        }
     }
 }

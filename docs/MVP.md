@@ -253,7 +253,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 
 ## Clip placement
 
-- Clip trims and loop-selection creation, resizing, and movement snap within 6 points of a target. Prioritize visible bars, beats, and subdivisions, then source or clip boundaries. Clip header looping prioritizes the trimmed repeat base and its multiples before the grid. Use the ruler's tempo- and zoom-dependent spacing. Hold Shift to bypass snapping throughout a drag; bounds and minimum lengths still apply. Preview and release must match. Clip movement and imports retain sample-based placement.
+- Clip moves, trims, playhead positioning, and loop-selection creation, resizing, and movement snap within 6 points of a target. Prioritize visible bars, beats, and subdivisions, then source or clip boundaries. Clip moves compare both edges at each grid priority, prefer the nearest match, and preserve length. Other clip boundaries on the destination track provide fallback targets. Clip header looping prioritizes the trimmed repeat base and its multiples before the grid. Use the ruler's tempo- and zoom-dependent spacing. Hold Shift to bypass snapping throughout a drag; bounds and minimum lengths still apply. Preview and release must match. Imports retain sample-based placement.
 - Clips on the same track must not overlap. Clips on different tracks may overlap in time.
 - Reject imports, moves, trims, and clip loop resizes that would create overlap; retain the previous valid placement and give clear feedback.
 - Show a translucent clip preview while moving, including across tracks. Clamp movement at frame zero. The preview and dropped clip must use the same position. Both trim edges below the header show the proposed waveform and range. Clamp normal trims to available source audio, valid timeline bounds, and at least one sample; looped clips can trim inward within their current visible range while retaining the repeat base. Preview and release use the same range.
@@ -405,7 +405,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 
 #### Editing
 
-- Additional snapping controls and targets for clip placement and import.
+- Additional snapping controls and targets for import.
 - Introduce undo/redo progressively, starting with basic track and clip edits.
 
 ### Mid-term

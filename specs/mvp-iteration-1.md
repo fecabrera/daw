@@ -147,7 +147,7 @@ Menu imports use the selected track and playhead. If no track exists, create one
 
 | Operation | Behavior |
 | --- | --- |
-| Move | Change track and/or timeline start without changing source offset, length, or repeat base. Reject negative starts and overlap. |
+| Move | Change track and/or timeline start without changing source offset, length, or repeat base. Snap using either clip edge; clamp to valid timeline bounds and reject overlap. |
 | Trim start | Change start, source offset, and length together, within source bounds. For looped clips, shorten the visible range and advance phase instead of source offset. |
 | Trim end | Change length within source bounds. Looped clips can shorten within their current visible range while retaining the base. |
 | Loop clip | Resize a header edge using the current trimmed range as the first repeat base. Retain the base on later resizes, keep the opposite endpoint fixed, and shift phase on left resizes to preserve existing audio timing. Permit partial repeats above the base length; clamp to valid timeline bounds and a minimum of the base length. Clips already shortened below the base retain their current length as the minimum. |
@@ -155,7 +155,7 @@ Menu imports use the selected track and playhead. If no track exists, create one
 | Delete clip | Remove its arrangement record without deleting source files. |
 | Delete track | Remove the track and its clips without deleting source files. |
 
-Clip trims and loop-selection creation, resizing, and movement snap within a 6-point radius. Prioritize visible bar lines, beat lines, and subdivisions, then source or clip boundaries. Clip header looping prioritizes multiples of the saved trimmed base length, measured from the fixed opposite endpoint, before the grid. Grid resolution follows the ruler at the current tempo and zoom. Holding Shift bypasses snapping in previews and on release; changing Shift during a drag takes effect immediately. Bounds and minimum lengths take precedence over snapping. Movement of a loop selection preserves its length. Clip moves and imports retain sample-based positions. Convert unsnapped pointer positions to the nearest valid integer frame. Reject invalid edits and retain the previous valid state. Make live edits visible to rendering at a block boundary without blocking the callback.
+Clip moves, trims, playhead positioning, and loop-selection creation, resizing, and movement snap within a 6-point radius. Prioritize visible bar lines, beat lines, and subdivisions, then source or clip boundaries. Clip moves compare both edges at each grid priority and use the nearest match at that priority without changing length. Use other clip boundaries on the destination track as fallback targets. Playhead clicks and drags use the same grid priority, with project clip boundaries as fallback targets. Clip header looping prioritizes multiples of the saved trimmed base length, measured from the fixed opposite endpoint, before the grid. Grid resolution follows the ruler at the current tempo and zoom. Holding Shift bypasses snapping in previews and on release; changing Shift during a drag takes effect immediately. Bounds and minimum lengths take precedence over snapping. Movement of a loop selection preserves its length. Imports retain sample-based positions. Convert unsnapped pointer positions to the nearest valid integer frame. Reject invalid edits and retain the previous valid state. Make live edits visible to rendering at a block boundary without blocking the callback.
 
 ## Audio rendering and transport
 

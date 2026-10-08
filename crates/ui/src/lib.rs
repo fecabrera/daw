@@ -1673,7 +1673,11 @@ impl DawUi {
             || playhead.drag_stopped_by(egui::PointerButton::Primary))
             && let Some(pointer) = playhead.interact_pointer_pos()
         {
-            let at = self.ruler_frame(rect, pointer);
+            let at = self.selection_frame(
+                i128::from(self.ruler_frame(rect, pointer)),
+                0..=u64::MAX,
+                ui.input(|input| input.modifiers.shift),
+            );
             if at != self.session.project.transport.playhead_frame {
                 self.seek(at);
             }
@@ -1713,7 +1717,9 @@ impl DawUi {
             let playhead_response = ui
                 .interact(ticks, response.id.with("playhead"), Sense::click_and_drag())
                 .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .on_hover_text("Click or drag to position the playhead.");
+                .on_hover_text(
+                    "Click or drag to position the playhead. Hold Shift to bypass snapping.",
+                );
             self.ruler_interaction(ui, rect, &selection_response, &playhead_response);
             let painter = ui.painter().with_clip_rect(rect);
             painter.rect_filled(rect, 0.0, theme::BACKGROUND);
@@ -2169,9 +2175,23 @@ impl DawUi {
             * f64::from(daw_core::SAMPLE_RATE))
         .round() as i64
     }
-    fn move_start(&self, drag: &Drag, pointer: Pos2) -> u64 {
-        (i128::from(drag.clip.start_frame) + i128::from(self.drag_delta(drag, pointer)))
-            .clamp(0, i128::from(u64::MAX)) as u64
+    fn move_start(&self, drag: &Drag, pointer: Pos2, track: Id, unsnapped: bool) -> u64 {
+        let raw = i128::from(drag.clip.start_frame) + i128::from(self.drag_delta(drag, pointer));
+        let start = raw.clamp(0, i128::from(u64::MAX - drag.clip.length_frames)) as u64;
+        if unsnapped || raw != i128::from(start) {
+            return start;
+        }
+        let anchors = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .filter(|candidate| candidate.id == track)
+            .flat_map(|track| &track.clips)
+            .filter(|clip| clip.id != drag.clip.id)
+            .flat_map(|clip| [clip.start_frame, clip.end()]);
+        self.musical_timeline()
+            .snap_range(start, drag.clip.length_frames, anchors)
     }
     fn drag_destination(&self, drag: &Drag, pointer: Pos2) -> Id {
         self.session
@@ -2368,7 +2388,7 @@ impl DawUi {
                     clip.length_frames = new_length;
                 }
             }
-            _ => clip.start_frame = self.move_start(drag, pointer),
+            _ => clip.start_frame = self.move_start(drag, pointer, track, unsnapped),
         }
         if matches!(
             drag.mode,
@@ -2828,6 +2848,9 @@ impl DawUi {
                     }
                     ClipDragMode::Move => {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                        response
+                            .clone()
+                            .on_hover_text("Drag to move clip. Hold Shift to bypass snapping.");
                     }
                     ClipDragMode::Body => {}
                 }
@@ -2860,9 +2883,12 @@ impl DawUi {
         {
             self.selected_track = Some(track_id);
             self.selected_clip = None;
-            self.seek(frames(
-                self.scroll + f64::from((pos.x - rect.left()) / self.zoom),
-            ));
+            let at = self.selection_frame(
+                i128::from(self.ruler_frame(rect, pos)),
+                0..=u64::MAX,
+                ui.input(|input| input.modifiers.shift),
+            );
+            self.seek(at);
         }
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
@@ -4462,10 +4488,7 @@ mod tests {
             vec![egui::Event::PointerMoved(label), button(label, true)],
         );
         frame(&mut app, &ctx, vec![button(label, false)]);
-        assert_eq!(
-            app.session.project.transport.playhead_frame,
-            frames(4.0 + 3.0 / 70.0)
-        );
+        assert_eq!(app.session.project.transport.playhead_frame, frames(4.0));
         assert_eq!(
             musical_time::monitor(app.session.project.transport.playhead_frame, 60.0),
             "0002.01"
@@ -5148,6 +5171,209 @@ mod tests {
             assert_eq!(placed.source_offset_frame, original.source_offset_frame);
             assert_eq!(placed.length_frames, original.length_frames);
             assert!(app.error.is_none());
+        }
+    }
+
+    #[test]
+    fn clip_moves_snap_either_edge_and_match_release_with_dynamic_shift() {
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+            for across_tracks in [false, true] {
+                for (target, length, expected) in
+                    [(3.02, 1.13, 3.0), (3.13, 0.89, 3.11), (3.26, 0.72, 3.28)]
+                {
+                    for free_release in [false, true] {
+                        let (mut app, track) = fixture();
+                        let destination = if across_tracks {
+                            app.session.project.add_track().unwrap()
+                        } else {
+                            track
+                        };
+                        app.zoom = zoom;
+                        app.scroll = scroll;
+                        let clip = &mut app.session.project.tracks[0].clips[0];
+                        clip.start_frame = frames(2.0);
+                        clip.source_offset_frame = frames(0.5);
+                        clip.length_frames = frames(length);
+                        if length == 0.72 {
+                            clip.repeat = Some(daw_core::ClipLoop {
+                                length_frames: frames(0.36),
+                                phase_frame: frames(0.07),
+                            });
+                        }
+                        let original = clip.clone();
+                        let ctx = context();
+                        frame(&mut app, &ctx, vec![]);
+                        let lane = app.lane_bounds[&track];
+                        let start = app.clip_block(lane, &original, original.start_frame).min
+                            + Vec2::new(20.0, 12.0);
+                        let end = Pos2::new(
+                            start.x + (target - 2.0) as f32 * zoom,
+                            app.lane_bounds[&destination].top() + 12.0,
+                        );
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(start), button(start, true)],
+                        );
+                        shift_frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(end)],
+                            !free_release,
+                        );
+                        let before = app
+                            .clip_drag_preview(app.drag.as_ref().unwrap(), end, !free_release)
+                            .unwrap();
+                        let shapes = shift_frame(&mut app, &ctx, vec![], free_release);
+                        let preview = app
+                            .clip_drag_preview(app.drag.as_ref().unwrap(), end, free_release)
+                            .unwrap();
+                        assert_ne!(before.clip.start_frame, preview.clip.start_frame);
+                        assert!(
+                            preview.clip.start_frame.abs_diff(frames(if free_release {
+                                target
+                            } else {
+                                expected
+                            })) <= 1
+                        );
+                        assert_eq!(preview.track, destination);
+                        assert!(preview.valid);
+                        let block = app.clip_block(
+                            app.lane_bounds[&destination],
+                            &preview.clip,
+                            preview.clip.start_frame,
+                        );
+                        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                        assert_eq!(
+                            app.session.project.tracks[0].clips[0].start_frame,
+                            original.start_frame
+                        );
+                        assert!(!app.dirty);
+                        shift_frame(&mut app, &ctx, vec![button(end, false)], free_release);
+                        let placed = app
+                            .session
+                            .project
+                            .tracks
+                            .iter()
+                            .find(|track| track.id == destination)
+                            .unwrap()
+                            .clips
+                            .iter()
+                            .find(|clip| clip.id == original.id)
+                            .unwrap();
+                        assert_eq!(placed.start_frame, preview.clip.start_frame);
+                        assert_eq!(
+                            (
+                                placed.length_frames,
+                                placed.source_offset_frame,
+                                placed.repeat
+                            ),
+                            (
+                                original.length_frames,
+                                original.source_offset_frame,
+                                original.repeat
+                            )
+                        );
+                        assert!(app.dirty);
+                        assert!(app.error.is_none());
+                        app.session.project.validate().unwrap();
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn playhead_clicks_and_drags_snap_to_grid_with_dynamic_shift() {
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+            for free_release in [false, true] {
+                let (mut app, track) = fixture();
+                app.zoom = zoom;
+                app.scroll = scroll;
+                app.session.project.tracks[0].clips[0].length_frames = frames(3.26);
+                app.session.project.transport.r#loop.start_frame = frames(1.0);
+                app.session.project.transport.r#loop.end_frame = frames(3.0);
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                let lane = app.lane_bounds[&track];
+                let point = |time: f64| {
+                    Pos2::new(
+                        lane.left() + (time - scroll) as f32 * zoom,
+                        lane.top() - 10.0,
+                    )
+                };
+                let click = point(2.27);
+                shift_frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(click), button(click, true)],
+                    free_release,
+                );
+                shift_frame(&mut app, &ctx, vec![button(click, false)], free_release);
+                let position = if free_release { 2.27 } else { 2.25 };
+                assert!(
+                    app.session
+                        .project
+                        .transport
+                        .playhead_frame
+                        .abs_diff(frames(position))
+                        <= 1
+                );
+                let marker = point(position);
+                let end = point(3.27);
+                shift_frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(marker), button(marker, true)],
+                    !free_release,
+                );
+                shift_frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(end)],
+                    !free_release,
+                );
+                let before = app.session.project.transport.playhead_frame;
+                shift_frame(&mut app, &ctx, vec![], free_release);
+                let live = app.session.project.transport.playhead_frame;
+                assert_ne!(live, before);
+                assert!(live.abs_diff(frames(if free_release { 3.27 } else { 3.25 })) <= 1);
+                shift_frame(&mut app, &ctx, vec![button(end, false)], free_release);
+                assert_eq!(app.session.project.transport.playhead_frame, live);
+                let background = point(4.27) + Vec2::new(0.0, 50.0);
+                shift_frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(background),
+                        button(background, true),
+                    ],
+                    free_release,
+                );
+                shift_frame(
+                    &mut app,
+                    &ctx,
+                    vec![button(background, false)],
+                    free_release,
+                );
+                assert!(
+                    app.session
+                        .project
+                        .transport
+                        .playhead_frame
+                        .abs_diff(frames(if free_release { 4.27 } else { 4.25 }))
+                        <= 1
+                );
+                let selection = &app.session.project.transport.r#loop;
+                assert_eq!(
+                    (selection.start_frame, selection.end_frame),
+                    (frames(1.0), frames(3.0))
+                );
+                assert!(!selection.enabled);
+                assert!(app.loop_drag.is_none());
+                assert_eq!(app.session.project.tracks[0].clips[0].start_frame, 0);
+                assert!(app.error.is_none());
+            }
         }
     }
     #[test]
