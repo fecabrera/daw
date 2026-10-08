@@ -151,6 +151,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - Use an experimental project.json manifest at the project folder root and an assets/ directory for project-owned assets. The manifest schema can change substantially during MVP development.
 - Store source paths relative to the project folder where possible; otherwise store absolute paths. Resolve relative paths from the project folder, not the application's working directory.
 - When closing the application or opening another project with unsaved changes, prompt to Save, Discard, or Cancel. Continue after Save only if saving succeeds.
+- First Save and every Save As ask for the project name, then use the system folder picker to select the parent location. Create a new named child folder and set the manifest name only on success. Regular Save reuses the current folder. Reject invalid names and existing destination folders. Cancellation or failure retains the current project and unsaved state; cancel pending close/open/new actions. Save As preserves the original project and source references.
 - Save by writing a temporary manifest and replacing the previous manifest only after writing succeeds. On failure, preserve the previous manifest and keep the project marked unsaved.
 - Revalidate source metadata when opening a project. Warn if a changed source causes saved clip ranges to exceed its current duration; preserve clip data and treat unavailable ranges as silence.
 

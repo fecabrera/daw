@@ -48,6 +48,133 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn named_project_save_and_save_as_create_child_folders_and_keep_sources() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("source.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let id = session.project.project_id;
+    let asset = session.project.assets[0].id;
+    let samples = session.audio[&asset].samples.clone();
+    session.save_new(&fixture.0, "  First mix  ").unwrap();
+    let first = fixture.0.join("First mix");
+    assert_eq!(session.folder, Some(first.clone()));
+    assert_eq!(session.project.name, "First mix");
+    assert!(first.join("assets").is_dir());
+    assert!(!fixture.0.join("project.json").exists());
+    let manifest = fs::read(first.join("project.json")).unwrap();
+    session.export(&fixture.0.join("first.wav"), false).unwrap();
+    let parent = fixture.0.join("another location");
+    fs::create_dir(&parent).unwrap();
+    session.save_new(&parent, "Second mix").unwrap();
+    let second = parent.join("Second mix");
+    assert_eq!(session.folder, Some(second.clone()));
+    assert_eq!(session.project.name, "Second mix");
+    assert_eq!(session.project.project_id, id);
+    assert!(std::sync::Arc::ptr_eq(
+        &samples,
+        &session.audio[&asset].samples
+    ));
+    assert_eq!(fs::read(first.join("project.json")).unwrap(), manifest);
+    let reopened = Session::open(&second).unwrap();
+    assert!(reopened.warnings.is_empty());
+    assert_eq!(reopened.project.name, "Second mix");
+    assert_eq!(reopened.project.project_id, id);
+    assert_eq!(reopened.audio[&asset].samples, samples);
+    assert_eq!(
+        session.source_path(&session.project.assets[0]).unwrap(),
+        source
+    );
+    reopened
+        .export(&fixture.0.join("second.wav"), false)
+        .unwrap();
+    assert_eq!(
+        fs::read(fixture.0.join("first.wav")).unwrap(),
+        fs::read(fixture.0.join("second.wav")).unwrap()
+    );
+    session.save(&second).unwrap();
+    assert!(!second.join("Second mix").exists());
+    assert_eq!(Session::open(&first).unwrap().project.name, "First mix");
+}
+
+#[test]
+fn named_saves_reject_invalid_names_collisions_and_fail_without_changing_session() {
+    use daw_project::project_folder_name;
+    let fixture = Fixture::new();
+    for name in [
+        "",
+        "  ",
+        ".",
+        "..",
+        "../escape",
+        "a/b",
+        "a\\b",
+        "a:b",
+        "bad\nname",
+        "a?b",
+        "a*b",
+        "a\"b",
+        "a<b",
+        "a>b",
+        "a|b",
+        "name.",
+        "CON",
+        "nul.wav",
+        "COM1",
+        "lpt9.txt",
+    ] {
+        assert!(project_folder_name(name).is_err(), "Accepted {name:?}");
+        assert!(Session::default().save_new(&fixture.0, name).is_err());
+    }
+    assert!(project_folder_name(&"a".repeat(256)).is_err());
+    assert_eq!(project_folder_name("  Música 01  ").unwrap(), "Música 01");
+    assert_eq!(
+        project_folder_name("Composition 1").unwrap(),
+        "Composition 1"
+    );
+    assert!(fs::read_dir(&fixture.0).unwrap().next().is_none());
+    let source = fixture.wav("source.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    session.save_new(&fixture.0, "Existing").unwrap();
+    let before = serde_json::to_value(&session.project).unwrap();
+    let folder = session.folder.clone();
+    let manifest = fs::read(fixture.0.join("Existing/project.json")).unwrap();
+    assert!(
+        session
+            .save_new(&fixture.0, "Existing")
+            .unwrap_err()
+            .to_string()
+            .contains("already exists")
+    );
+    assert_eq!(
+        fs::read(fixture.0.join("Existing/project.json")).unwrap(),
+        manifest
+    );
+    fs::write(fixture.0.join("occupied"), b"leave this file").unwrap();
+    assert!(session.save_new(&fixture.0, "occupied").is_err());
+    assert_eq!(
+        fs::read(fixture.0.join("occupied")).unwrap(),
+        b"leave this file"
+    );
+    assert!(session.save_new(&fixture.0.join("absent"), "New").is_err());
+    assert!(!fixture.0.join("absent").exists());
+    assert!(session.save_new(&source, "New").is_err());
+    assert_eq!(session.folder, folder);
+    assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+    let mut invalid_source = session.clone();
+    invalid_source.folder = None;
+    let before = serde_json::to_value(&invalid_source.project).unwrap();
+    assert!(invalid_source.save_new(&fixture.0, "Failed save").is_err());
+    assert!(!fixture.0.join("Failed save").exists());
+    assert!(invalid_source.folder.is_none());
+    assert_eq!(
+        serde_json::to_value(&invalid_source.project).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn export_progress_tracks_encoded_frames_without_changing_audio() {
     use daw_media::{ExportFormat, ExportSettings};
     let fixture = Fixture::new();

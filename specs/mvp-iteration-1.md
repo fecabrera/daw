@@ -54,7 +54,7 @@ Use one reusable toolbar component for the window header, playback toolbar, and 
 
 Use a shared row layout with vertical centering for all control rows and toolbars, including track controls, Master, the status bar, and dialog actions. Reserve the tallest item's height before placing the row's items, so later knobs or controls do not shift the center. Keep the existing row heights, spacing, and panel structure.
 
-Use one reusable application dialog component for export options, export status, unsaved changes, export replacement, and errors. The component must share the title presentation, centered position, 8-point content padding and spacing, non-resizable sizing, wrapped message text, and button layout. Dialog titles must use the standard UI body font: 13-point Outfit. Use a default width of 320 points and a maximum width of 560 points. Button rows must wrap when needed. Each caller supplies its title, message, action labels, action values, and enabled state, then handles the selected action. Keep native file and folder pickers in `rfd`.
+Use one reusable application dialog component for project naming, export options, export status, unsaved changes, export replacement, and errors. The component must share the title presentation, centered position, 8-point content padding and spacing, non-resizable sizing, wrapped message text, and button layout. Dialog titles must use the standard UI body font: 13-point Outfit. Use a default width of 320 points and a maximum width of 560 points. Button rows must wrap when needed. Each caller supplies its title, message, action labels, action values, and enabled state, then handles the selected action. Keep native file and folder pickers in `rfd`.
 
 ### Libraries and build rules
 
@@ -125,6 +125,8 @@ schema_version is optional and ignored. Do not branch on its value or reject a f
 ### Source paths and saving
 
 Resolve relative source paths from the project folder, never from the process working directory. On save, use a relative path when the platform can express it; otherwise use an absolute path. On Save As, recalculate paths from the destination folder while preserving the referenced file.
+
+The first Save and every Save As must open the shared application naming dialog. Pre-fill and select the current project name. Continue or Enter with a valid name opens the system folder picker for the parent location; create a new child folder using that name. Set the manifest name and current folder only after successful saving. Regular Save uses the current folder. Reject blank names, path separators, control characters, unsupported folder characters, reserved names, and overlong names. Never overwrite an existing destination folder in this flow. Cancel or Escape in the name dialog and cancellation of the system picker must leave the project unchanged and cancel any pending close/open/new action. Such actions may proceed only after a successful save. Failures must preserve current name, folder, sources, and unsaved state; remove only empty newly created directories on rollback. Save As must retain the original project and source files.
 
 Write a temporary manifest in the destination folder. Replace the existing manifest only after the write completes successfully. On failure, preserve the previous manifest, show an error, and keep the project marked unsaved. Do not report a successful save before replacement succeeds.
 

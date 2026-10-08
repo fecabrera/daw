@@ -20,6 +20,7 @@ pub mod knobs;
 pub mod meters;
 mod musical_time;
 pub mod panels;
+mod project_name_dialog;
 pub mod rows;
 pub mod theme;
 pub mod toolbars;
@@ -537,6 +538,7 @@ pub struct DawUi {
     error: Option<String>,
     pending: Option<Action>,
     unsaved_prompt: bool,
+    project_name_dialog: Option<project_name_dialog::ProjectNameDialog>,
     overwrite: Option<PathBuf>,
     export_settings: ExportSettings,
     export_dialog: Option<ExportSettings>,
@@ -592,6 +594,7 @@ impl Default for DawUi {
             error: None,
             pending: None,
             unsaved_prompt: false,
+            project_name_dialog: None,
             overwrite: None,
             export_settings: ExportSettings::default(),
             export_dialog: None,
@@ -674,6 +677,7 @@ impl DawUi {
                 self.lane_bounds.clear();
                 self.export_dialog = None;
                 self.export_status = None;
+                self.project_name_dialog = None;
                 self.overwrite = None;
                 self.sync_needed = false;
             }
@@ -683,20 +687,34 @@ impl DawUi {
         }
     }
     fn save(&mut self, save_as: bool) {
-        let folder = if save_as || self.session.folder.is_none() {
-            rfd::FileDialog::new()
-                .set_title("Save project folder")
-                .pick_folder()
-        } else {
-            self.session.folder.clone()
-        };
-        let Some(folder) = folder else {
+        if save_as || self.session.folder.is_none() {
+            self.project_name_dialog = Some(project_name_dialog::ProjectNameDialog::new(
+                self.session.project.name.clone(),
+                save_as,
+            ));
+            self.unsaved_prompt = false;
+            return;
+        }
+        let folder = self.session.folder.clone().unwrap();
+        let mut session = self.session.clone();
+        self.run_job("Saving project", move || {
+            session
+                .save(&folder)
+                .map(|()| Job::Saved(session))
+                .map_err(|e| e.to_string())
+        });
+    }
+    fn save_named(&mut self, name: String, parent: Option<PathBuf>) {
+        self.project_name_dialog = None;
+        let Some(parent) = parent else {
+            self.pending = None;
+            self.unsaved_prompt = false;
             return;
         };
         let mut session = self.session.clone();
         self.run_job("Saving project", move || {
             session
-                .save(&folder)
+                .save_new(&parent, &name)
                 .map(|()| Job::Saved(session))
                 .map_err(|e| e.to_string())
         });
@@ -824,6 +842,7 @@ impl DawUi {
                     self.loop_drag = None;
                     self.track_drag = None;
                     if !dirty {
+                        self.project_name_dialog = None;
                         self.selected_clip = None;
                         self.selected_clips.clear();
                         self.marquee = None;
@@ -848,6 +867,7 @@ impl DawUi {
                     self.sync_needed = true;
                 }
                 Ok(Job::Saved(session)) => {
+                    self.project_name_dialog = None;
                     self.session = session;
                     self.dirty = false;
                     self.unsaved_prompt = false;
@@ -1198,6 +1218,7 @@ impl DawUi {
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             if self.job.is_none() {
+                self.project_name_dialog = None;
                 self.request(Action::CloseWindow);
             }
         }
@@ -1211,7 +1232,8 @@ impl DawUi {
                 ui.add_enabled_ui(
                     self.export_dialog.is_none()
                         && self.overwrite.is_none()
-                        && self.export_status.is_none(),
+                        && self.export_status.is_none()
+                        && self.project_name_dialog.is_none(),
                     |ui| self.toolbar(ui),
                 );
             });
@@ -1238,7 +1260,8 @@ impl DawUi {
                         self.job.is_none()
                             && self.export_dialog.is_none()
                             && self.overwrite.is_none()
-                            && self.export_status.is_none(),
+                            && self.export_status.is_none()
+                            && self.project_name_dialog.is_none(),
                         |ui| self.selection_control(ui),
                     );
                     ui.label("Selection");
@@ -1258,7 +1281,8 @@ impl DawUi {
                     self.job.is_none()
                         && self.export_dialog.is_none()
                         && self.overwrite.is_none()
-                        && self.export_status.is_none(),
+                        && self.export_status.is_none()
+                        && self.project_name_dialog.is_none(),
                     |ui| self.workspace(ui),
                 );
             });
@@ -1274,7 +1298,8 @@ impl DawUi {
         }
         self.dialogs(&ctx);
         self.clip_shortcuts(&ctx);
-        if self.job.is_none() && self.export_status.is_none() {
+        if self.job.is_none() && self.export_status.is_none() && self.project_name_dialog.is_none()
+        {
             if self.file_action_enabled(FileAction::Import)
                 && let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned())
                 && let Some(target) = self.file_drop_target.take()
@@ -1358,6 +1383,7 @@ impl DawUi {
             && self.overwrite.is_none()
             && self.export_dialog.is_none()
             && self.export_status.is_none()
+            && self.project_name_dialog.is_none()
             && self.error.is_none()
             && (action != FileAction::Export || self.session.project.end() > 0)
     }
@@ -3889,6 +3915,18 @@ impl DawUi {
                     self.unsaved_prompt = false;
                 }
                 None => {}
+            }
+        }
+        if let Some(mut draft) = self.project_name_dialog.take() {
+            match draft.show(ctx) {
+                Some(project_name_dialog::Action::Cancel) => self.save_named(String::new(), None),
+                Some(project_name_dialog::Action::Continue(name)) => {
+                    let parent = rfd::FileDialog::new()
+                        .set_title("Choose project location")
+                        .pick_folder();
+                    self.save_named(name, parent);
+                }
+                None => self.project_name_dialog = Some(draft),
             }
         }
         if let Some(mut settings) = self.export_dialog {
@@ -6765,6 +6803,218 @@ mod tests {
         assert!(app.inputs.is_empty());
         assert!(app.lane_bounds.is_empty());
         assert_eq!(app.scroll, 0.0);
+    }
+
+    #[test]
+    fn save_and_save_as_prompt_for_a_name_and_cancel_without_changes() {
+        for save_as in [false, true] {
+            for existing in [false, true] {
+                if existing && !save_as {
+                    continue;
+                }
+                let (mut app, track) = fixture();
+                let ctx = context();
+                app.dirty = true;
+                if existing {
+                    app.session.folder = Some(PathBuf::from("/tmp/existing-project"));
+                    app.session.project.name = "Current mix".into();
+                }
+                let before = format!("{:?}", app.session.project);
+                let folder = app.session.folder.clone();
+                let action = if save_as {
+                    FileAction::SaveAs
+                } else {
+                    FileAction::Save
+                };
+                frame(&mut app, &ctx, vec![shortcut_event(action)]);
+                frame(&mut app, &ctx, vec![]);
+                let draft = app.project_name_dialog.as_ref().unwrap();
+                assert_eq!(draft.name, app.session.project.name);
+                assert_eq!(draft.save_as, save_as);
+                assert!(app.job.is_none());
+                assert!(
+                    FileAction::ALL
+                        .into_iter()
+                        .all(|action| !app.file_action_enabled(action))
+                );
+                let point = Pos2::new(21.0, app.lane_bounds[&track].top() + 47.0);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                );
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![button(point, false), shortcut_event(FileAction::New)],
+                );
+                assert_eq!(format!("{:?}", app.session.project), before);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+                assert!(app.project_name_dialog.is_none());
+                assert!(app.pending.is_none());
+                assert_eq!(format!("{:?}", app.session.project), before);
+                assert_eq!(app.session.folder, folder);
+                assert!(app.dirty);
+                assert!(app.job.is_none());
+                app.save(save_as);
+                app.save_named("Draft name".into(), None);
+                assert!(app.project_name_dialog.is_none());
+                assert_eq!(format!("{:?}", app.session.project), before);
+                assert_eq!(app.session.folder, folder);
+                assert!(app.dirty);
+                assert!(app.job.is_none());
+            }
+        }
+    }
+
+    fn wait_for_save(app: &mut DawUi) {
+        for _ in 0..400 {
+            app.poll();
+            if app.job.is_none() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("Save did not finish");
+    }
+
+    struct SaveLocation(PathBuf);
+    impl SaveLocation {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!("daw-save-test-{}", Id::new_v4()));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for SaveLocation {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn named_save_jobs_update_name_and_folder_only_after_success() {
+        let location = SaveLocation::new();
+        let wav = TestWav::new();
+        let mut app = DawUi::default();
+        app.session.import(&wav.0, None, 0).unwrap();
+        app.dirty = true;
+        let id = app.session.project.project_id;
+        app.save(false);
+        assert!(app.project_name_dialog.is_some());
+        app.save_named("First mix".into(), Some(location.0.clone()));
+        assert_eq!(app.session.project.name, "Untitled");
+        assert!(app.session.folder.is_none());
+        assert!(app.dirty);
+        wait_for_save(&mut app);
+        assert!(app.error.is_none());
+        let first = location.0.join("First mix");
+        assert_eq!(app.session.folder, Some(first.clone()));
+        assert_eq!(app.session.project.name, "First mix");
+        assert_eq!(app.session.project.project_id, id);
+        assert!(!app.dirty);
+        let original = std::fs::read(first.join("project.json")).unwrap();
+        app.save(true);
+        assert_eq!(app.project_name_dialog.as_ref().unwrap().name, "First mix");
+        app.save_named("Second mix".into(), Some(location.0.clone()));
+        assert_eq!(app.session.project.name, "First mix");
+        assert_eq!(app.session.folder, Some(first.clone()));
+        wait_for_save(&mut app);
+        assert!(app.error.is_none());
+        let second = location.0.join("Second mix");
+        assert_eq!(app.session.folder, Some(second.clone()));
+        assert_eq!(app.session.project.name, "Second mix");
+        assert_eq!(std::fs::read(first.join("project.json")).unwrap(), original);
+        assert_eq!(Session::open(&first).unwrap().project.name, "First mix");
+        assert_eq!(Session::open(&second).unwrap().project.name, "Second mix");
+        app.session.project.tracks[0].name = "Updated track".into();
+        app.dirty = true;
+        app.save(false);
+        assert!(app.project_name_dialog.is_none());
+        assert!(app.job.is_some());
+        wait_for_save(&mut app);
+        assert!(app.error.is_none());
+        assert!(!second.join("Second mix").exists());
+        assert_eq!(
+            Session::open(&second).unwrap().project.tracks[0].name,
+            "Updated track"
+        );
+        assert_eq!(std::fs::read(first.join("project.json")).unwrap(), original);
+    }
+
+    #[test]
+    fn save_before_close_waits_for_named_save_and_cancels_on_failure_or_cancellation() {
+        for outcome in 0..4 {
+            let location = SaveLocation::new();
+            let (mut app, _) = fixture();
+            let ctx = context();
+            app.dirty = true;
+            let before = format!("{:?}", app.session.project);
+            app.request(Action::CloseProject);
+            assert!(app.unsaved_prompt);
+            app.save(false);
+            assert!(!app.unsaved_prompt);
+            assert!(app.project_name_dialog.is_some());
+            assert!(matches!(app.pending, Some(Action::CloseProject)));
+            match outcome {
+                0 => {
+                    frame(&mut app, &ctx, vec![]);
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::Key {
+                            key: egui::Key::Escape,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: Default::default(),
+                        }],
+                    );
+                }
+                1 => app.save_named("Draft".into(), None),
+                2 => {
+                    app.save_named("Saved mix".into(), Some(location.0.clone()));
+                    assert!(!app.session.project.tracks.is_empty());
+                    wait_for_save(&mut app);
+                    assert_eq!(
+                        Session::open(&location.0.join("Saved mix"))
+                            .unwrap()
+                            .project
+                            .name,
+                        "Saved mix"
+                    );
+                    assert!(app.session.project.tracks.is_empty());
+                    assert!(!app.dirty);
+                }
+                _ => {
+                    std::fs::create_dir(location.0.join("Occupied")).unwrap();
+                    app.save_named("Occupied".into(), Some(location.0.clone()));
+                    wait_for_save(&mut app);
+                    assert!(app.error.as_ref().unwrap().contains("already exists"));
+                    assert!(!location.0.join("Occupied/project.json").exists());
+                }
+            }
+            assert!(app.pending.is_none());
+            assert!(!app.unsaved_prompt);
+            assert!(app.project_name_dialog.is_none());
+            assert!(app.job.is_none());
+            assert!(!app.allow_close);
+            if outcome != 2 {
+                assert_eq!(format!("{:?}", app.session.project), before);
+                assert!(app.dirty);
+                assert!(app.session.folder.is_none());
+            }
+        }
     }
 
     #[test]

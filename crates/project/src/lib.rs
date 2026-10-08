@@ -19,6 +19,42 @@ fn error(e: impl std::fmt::Display) -> Error {
     Error(e.to_string())
 }
 
+/// A portable folder name, shared by the naming dialog and project creation.
+pub fn project_folder_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() || name == "." || name == ".." {
+        return Err(error("Enter a project name"));
+    }
+    if name.len() > 255 {
+        return Err(error("Project name is too long"));
+    }
+    if name.ends_with('.')
+        || name
+            .chars()
+            .any(|c| c.is_control() || "/\\:*?\"<>|".contains(c))
+    {
+        return Err(error(
+            "Use a folder name without / \\ : * ? \" < > | or a trailing period",
+        ));
+    }
+    let base = name
+        .split('.')
+        .next()
+        .unwrap()
+        .trim_end()
+        .to_ascii_uppercase();
+    if ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"].contains(&base.as_str())
+        || ["COM", "LPT"].iter().any(|prefix| {
+            base.strip_prefix(prefix).is_some_and(|suffix| {
+                matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+            })
+        })
+    {
+        return Err(error("This folder name is reserved; choose another name"));
+    }
+    Ok(name)
+}
+
 #[derive(Clone, Default)]
 pub struct Session {
     pub project: Project,
@@ -161,6 +197,29 @@ impl Session {
         self.project = next;
         self.audio.insert(asset_id, data);
         Ok(clip_id)
+    }
+    /// Creates a named project inside an existing parent without replacing another folder.
+    pub fn save_new(&mut self, parent: &Path, name: &str) -> Result<()> {
+        let name = project_folder_name(name)?;
+        let folder = absolute(parent)?.join(name);
+        let mut next = self.clone();
+        next.project.name = name.to_owned();
+        next.project.validate().map_err(error)?;
+        fs::create_dir(&folder).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                error("A folder with this project name already exists; choose another name or location")
+            } else {
+                error(e)
+            }
+        })?;
+        if let Err(e) = next.save(&folder) {
+            // Only remove empty directories; retain any unrelated files that appeared meanwhile.
+            let _ = fs::remove_dir(folder.join("assets"));
+            let _ = fs::remove_dir(&folder);
+            return Err(e);
+        }
+        *self = next;
+        Ok(())
     }
     pub fn save(&mut self, folder: &Path) -> Result<()> {
         let folder = absolute(folder)?;
