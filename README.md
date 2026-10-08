@@ -1,6 +1,6 @@
 # Desktop DAW
 
-A Rust desktop audio editor with no fixed track-count limit, external WAV sources, and headless WAV export. The project format is experimental.
+A Rust desktop audio editor with no fixed track-count limit, external WAV sources, and headless WAV/MP3 export. The project format is experimental.
 
 ## Run
 
@@ -55,9 +55,9 @@ Rows and toolbars use a shared layout that centers items vertically within the t
 
 On macOS, the first toolbar row shares the title-bar area with the native window buttons. Drag the window from the combined title or unused space in that row. A thin border across the full window width separates this header from the playback toolbar. Both rows have uniform 8-point padding, with 8-point horizontal spacing between controls. A single 1-point divider joins the toolbar to the tracks and timeline. Windows and Linux use standard native title bars.
 
-The native macOS menu bar contains File and Edit menus. Windows and Linux show both menus in the first toolbar row. File contains New project, Open, Import WAV, Save, Save as, Export WAV, and Close project, grouped with separators. Close project is the last item, separated from Export. Use Command on macOS or Ctrl on Windows/Linux: N for New, O for Open, Shift+I for Import, S for Save, Shift+S for Save as, Shift+E for Export, and W for Close project. Closing stops playback, releases the project, and returns to an empty Untitled workspace while the app remains open. Unsaved changes offer Save, Discard, and Cancel. These actions are disabled during background operations or pending confirmation/error dialogs. Export is disabled for an empty timeline. Edit contains Copy and Paste with Command+C/Command+V on macOS or Ctrl+C/Ctrl+V on Windows/Linux. Copy requires a selected clip; Paste requires a copied clip and a remaining track. Clip menu actions are disabled while editing text, dragging, or when the window has no focus.
+The native macOS menu bar contains File and Edit menus. Windows and Linux show both menus in the first toolbar row. File contains New project, Open, Import WAV, Save, Save as, Export, and Close project, grouped with separators. Close project is the last item, separated from Export. Use Command on macOS or Ctrl on Windows/Linux: N for New, O for Open, Shift+I for Import, S for Save, Shift+S for Save as, Shift+E for Export, and W for Close project. Closing stops playback, releases the project, and returns to an empty Untitled workspace while the app remains open. Unsaved changes offer Save, Discard, and Cancel. These actions are disabled during background operations or pending confirmation/error dialogs. Export is disabled for an empty timeline. Edit contains Copy and Paste with Command+C/Command+V on macOS or Ctrl+C/Ctrl+V on Windows/Linux. Copy requires a selected clip; Paste requires a copied clip and a remaining track. Clip menu actions are disabled while editing text, dragging, or when the window has no focus.
 
-Unsaved changes, export replacement, and error messages use one reusable application dialog component. It provides a centered title, consistent padding, bounded width, wrapped message text, and a shared button row. Each caller handles its own actions. File and folder pickers use native dialogs through `rfd`.
+Export options, export status, unsaved changes, export replacement, and error messages use one reusable application dialog component. It provides a centered title, consistent padding, bounded width, wrapped message text, and a shared button row. Each caller handles its own actions. File and folder pickers use native dialogs through `rfd`.
 
 - The playback toolbar's tempo monitor starts at `120bpm` and uses the time monitor's semibold font, fixed-width digit slots, and darker suffix. Drag up to increase tempo or down to decrease it, by 1 BPM per point. Hold Shift for 0.1 BPM per point. Dragging clamps at 0.01 BPM and rounds to hundredths. Double-click to replace it with an input box. Enter commits a positive finite value; Esc cancels. Focus loss cancels the draft, as with track names. Tempo saves with the project. Invalid values retain the previous tempo. Changing tempo does not move or stretch audio clips.
 - Add tracks with the Lucide Plus button at the right of the Tracks header. A flexible spacer separates it from the Tracks label. The Tracks header uses the playback toolbar's 8-point padding on all sides; the ruler matches its 38-point height. Select a track, then use Import WAV to import at the playhead. Dragging a WAV into the timeline shows a translucent preview at the cursor, with its duration and waveform once preparation finishes. Dropping on a track imports at that position; dropping in empty timeline space creates a new track. Red previews indicate unsupported files or overlapping placements. Dragging over the track controls clamps the preview and drop to frame zero on that row, including when the timeline is scrolled. Drops outside the track workspace do not import.
@@ -76,9 +76,11 @@ Unsaved changes, export replacement, and error messages use one reusable applica
 - Use the zoom slider and horizontal timeline scrollbar. Swipe horizontally with two fingers over the timeline, ruler, or scrollbar to scroll left and right. Scrolling stops at the timeline bounds and leaves the track controls fixed. Pinch with two fingers over the timeline, ruler, or scrollbar to zoom around the pointer. Spread to zoom in; pinch inward to zoom out. The point under the pointer stays fixed where timeline bounds permit. Drag the zoom slider left to zoom out or right to zoom in. Clips on one track cannot overlap. There is no undo/redo.
 - Save to a project folder. Source WAV files remain external; moving the project alone does not include them.
 
-Mono/stereo 16-bit and 24-bit PCM WAV and 32-bit float WAV are supported. Import converts to 48 kHz. Export writes stereo 24-bit WAV with deterministic triangular dither.
+Mono/stereo 16-bit and 24-bit PCM WAV and 32-bit float WAV are supported. Import converts to 48 kHz. Export opens a format dialog, then a native destination chooser. Choose WAV with 16-bit PCM, 24-bit PCM (default), or 32-bit IEEE float, or MP3 with MPEG Layer III (LAME) and 128, 192 (default), 256, or 320 kbps constant bitrate. Output is stereo at 48 kHz. Integer WAV uses deterministic triangular dither; float WAV preserves headroom without dither. The app remembers the last accepted options for the current app session. Cancel leaves the project unchanged. MP3 uses a bundled encoder; no separate FFmpeg or LAME installation is needed. Its license and source notices are included in the macOS bundle.
 
-Missing sources show empty clips and warnings. Playback and export use silence for those clips. Solo overrides mute. Final output clamps clipping; lower master gain if the clipping indicator appears.
+Once the destination is chosen and replacement is confirmed if needed, an Export status dialog shows live rendering/encoding progress, file finalization, destination, format, and warnings. It stays open with a completion notice or export error until Close or Esc. Long reports scroll. Export diagnostics appear in this dialog; editing and new file actions stay blocked while it is open. Progress reaches 100% only after the finished file is published.
+
+Missing sources show empty clips and warnings. Playback and export use silence for those clips. Solo overrides mute. Device output, integer WAV, and MP3 clamp clipping; float WAV preserves headroom and reports levels above 0 dBFS. Lower master gain if the clipping indicator appears.
 
 ## Headless commands
 
@@ -86,9 +88,11 @@ Missing sources show empty clips and warnings. Playback and export use silence f
 cargo run -p daw-cli -- validate --project examples/demo
 cargo run -p daw-cli -- render --project examples/demo --output mix.wav
 cargo run -p daw-cli -- render --project examples/demo --output mix.wav --overwrite
+cargo run -p daw-cli -- render --project examples/demo --output mix.wav --codec float32
+cargo run -p daw-cli -- render --project examples/demo --output mix.mp3 --format mp3 --bitrate 320
 ```
 
-The CLI has no graphics or audio-device dependencies. Missing sources are warnings and do not fail export. Invalid projects, unsupported audio, and processing errors return exit status 1; invalid arguments return 2.
+The CLI infers WAV or MP3 from the output extension unless `--format wav|mp3` is supplied. WAV accepts `--codec pcm16|pcm24|float32`; MP3 accepts `--bitrate 128|192|256|320`. Incompatible options and mismatched format extensions are rejected. The CLI has no graphics or audio-device dependencies. Missing sources are warnings and do not fail export. Invalid projects, unsupported audio, and processing errors return exit status 1; invalid arguments return 2.
 
 ## Checks
 

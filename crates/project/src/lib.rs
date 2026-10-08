@@ -1,6 +1,9 @@
 use daw_core::{Asset, Clip, Id, Project, Source};
 use daw_engine::RenderPlan;
-use daw_media::{AudioData, AudioDecoder, AudioEncoder, WavDecoder, WavEncoder};
+use daw_media::{
+    AudioData, AudioDecoder, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec,
+    WavDecoder,
+};
 use std::{
     collections::HashMap,
     fs,
@@ -204,11 +207,30 @@ impl Session {
         Ok(())
     }
     pub fn export(&self, path: &Path, overwrite: bool) -> Result<Vec<String>> {
+        self.export_with_settings(path, overwrite, ExportSettings::default())
+    }
+    pub fn export_with_settings(
+        &self,
+        path: &Path,
+        overwrite: bool,
+        settings: ExportSettings,
+    ) -> Result<Vec<String>> {
+        self.export_with_progress(path, overwrite, settings, |_, _| {})
+    }
+    /// Reports encoded timeline frames; successful return also confirms file finalization.
+    pub fn export_with_progress(
+        &self,
+        path: &Path,
+        overwrite: bool,
+        settings: ExportSettings,
+        mut progress: impl FnMut(u64, u64),
+    ) -> Result<Vec<String>> {
         self.project.validate().map_err(error)?;
         let end = self.project.end();
         if end == 0 {
             return Err(error("Cannot export a project with no clips"));
         }
+        progress(0, end);
         let path = absolute(path)?;
         for asset in &self.project.assets {
             let source = self.source_path(asset)?;
@@ -232,7 +254,7 @@ impl Session {
         let temp = parent.join(format!(".export-{}.tmp", Id::new_v4()));
         let result = (|| {
             let plan = self.plan();
-            let mut encoder = WavEncoder::create(&temp).map_err(error)?;
+            let mut encoder = ExportEncoder::create(&temp, settings).map_err(error)?;
             let mut block = vec![[0.0; 2]; 1024];
             let mut position = 0;
             while position < end {
@@ -240,8 +262,9 @@ impl Session {
                 plan.render(position, &mut block[..count]);
                 encoder.write_frames(&block[..count]).map_err(error)?;
                 position += count as u64;
+                progress(position, end);
             }
-            let clipped = encoder.clipped;
+            let clipped = encoder.clipped();
             encoder.finish().map_err(error)?;
             if !overwrite && path.exists() {
                 return Err(error("Output appeared during export; refusing overwrite"));
@@ -249,8 +272,15 @@ impl Session {
             replace_file(&temp, &path)?;
             let mut warnings = self.warnings.clone();
             if clipped {
-                warnings
-                    .push("Master output clipped; lower master gain to avoid distortion".into());
+                warnings.push(
+                    if settings.format == ExportFormat::Wav
+                        && settings.wav_codec == WavCodec::Float32
+                    {
+                        "Master output exceeds 0 dBFS; floating-point WAV preserves headroom".into()
+                    } else {
+                        "Master output clipped; lower master gain to avoid distortion".into()
+                    },
+                );
             }
             Ok(warnings)
         })();

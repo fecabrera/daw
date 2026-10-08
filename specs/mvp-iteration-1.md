@@ -22,7 +22,7 @@ Use ASD-STE100 principles and Plain Language for specifications, technical docum
 | MVP-06 | Mix tracks with master gain, peak meters, and a clipping indicator. |
 | MVP-07 | Use the default output device and handle initialization errors and disconnection. |
 | MVP-08 | Save and open folder-based projects with external source references. Preserve missing clips. |
-| MVP-10 | Export stereo WAV, including projects with missing sources. |
+| MVP-10 | Export stereo WAV or MP3, including projects with missing sources. |
 | MVP-11 | Use a fixed project sample rate of 48 kHz. |
 | MVP-12 | Apply short linear fades to clip boundaries. |
 | MVP-13 | Validate and export projects through a separate headless executable. |
@@ -39,7 +39,7 @@ Use a Cargo workspace with shared libraries and separate desktop and CLI executa
 | --- | --- | --- |
 | daw-core | Project entities, IDs, sample-time types, editing commands, validation | No UI, graphics, device, or file-dialog dependencies |
 | daw-engine | Transport, clip scheduling, reusable audio processors, mixing, render state | Depends on core; no file decoding or UI |
-| daw-media | Decoder and encoder interfaces, WAV handling, resampling, waveform generation | Supplies PCM assets to the engine |
+| daw-media | Decoder and encoder interfaces, WAV/MP3 export, resampling, waveform generation | Supplies PCM assets to the engine |
 | daw-project | Manifest serialization, path resolution, loading, safe saving | Uses core and media through explicit interfaces |
 | daw-output | CPAL stream, device conversion, callback integration | Desktop device output only |
 | daw-ui | Shared panel foundation, controls, timeline, application presentation | Uses shared application commands and state |
@@ -54,7 +54,7 @@ Use one reusable toolbar component for the window header, playback toolbar, and 
 
 Use a shared row layout with vertical centering for all control rows and toolbars, including track controls, Master, the status bar, and dialog actions. Reserve the tallest item's height before placing the row's items, so later knobs or controls do not shift the center. Keep the existing row heights, spacing, and panel structure.
 
-Use one reusable application dialog component for unsaved changes, export replacement, and errors. The component must share the title presentation, centered position, 8-point content padding and spacing, non-resizable sizing, wrapped message text, and button layout. Dialog titles must use the standard UI body font: 13-point Outfit. Use a default width of 320 points and a maximum width of 560 points. Button rows must wrap when needed. Each caller supplies its title, message, action labels, action values, and enabled state, then handles the selected action. Keep native file and folder pickers in `rfd`.
+Use one reusable application dialog component for export options, export status, unsaved changes, export replacement, and errors. The component must share the title presentation, centered position, 8-point content padding and spacing, non-resizable sizing, wrapped message text, and button layout. Dialog titles must use the standard UI body font: 13-point Outfit. Use a default width of 320 points and a maximum width of 560 points. Button rows must wrap when needed. Each caller supplies its title, message, action labels, action values, and enabled state, then handles the selected action. Keep native file and folder pickers in `rfd`.
 
 ### Libraries and build rules
 
@@ -66,6 +66,7 @@ Use one reusable application dialog component for unsaved changes, export replac
 | Device output | cpal |
 | Decoding | symphonia with WAV and PCM enabled |
 | WAV writing | hound |
+| MP3 writing | mp3lame-encoder with bundled LAME |
 | Resampling | rubato |
 | Callback commands | rtrb and standard atomics |
 | Worker threads | Rust standard library threads and channels |
@@ -178,7 +179,7 @@ Use the following render order: source range, clip fade, pan/balance, track gain
 - If any track is soloed, render only soloed tracks, including tracks that are also muted. Otherwise, render unmuted tracks.
 - Apply 5 ms linear fades at each clip boundary and repeat boundary. At 48 kHz, the nominal fade length is 240 frames. Shorten each fade to half the range duration for ranges shorter than 480 frames. For looped clips, use the lower of the outer clip fade and the fade at the current position within the repeat base. Playback and export must use the same source mapping and fades without duplicating decoded samples.
 - Smooth live gain, pan/balance, mute, and solo transitions. Use 5 ms ramps as the initial implementation default; this adds no user setting.
-- Preserve floating-point headroom inside the mixer. Measure clipping before final clamping. Clamp device output and integer export to their valid ranges. Do not normalize or insert a limiter.
+- Preserve floating-point headroom inside the mixer. Measure clipping before final clamping. Clamp device output, integer WAV export, and MP3 encoder input to their valid ranges. Float WAV preserves headroom. Do not normalize or insert a limiter.
 - Publish left/right master peak values and clipping status without blocking. Provide a visible way to clear the clipping indicator.
 
 Use stable track order for summation. Export must use saved target control values, not a transient live smoothing state. Desktop and CLI export must use the same render and conversion code.
@@ -237,7 +238,7 @@ Use a Lucide Repeat icon button immediately after Stop to toggle looping, with n
 - Place a tempo monitor after the two transport monitors, starting at `120bpm`. Share the time monitor's 13-point semibold Outfit, equal-width digit slots, default digit color, darker suffix and punctuation, 8-point inner padding, and vertical centering. Reserve at least three digit slots, right-align shorter numbers without adding zeros, and expand for longer or fractional values. Keep entered fractional tempos without rounding. Vertical dragging increases tempo upward and decreases it downward, using 1 BPM per point or 0.1 BPM with Shift. Apply incremental pointer motion, including Shift changes during the drag; stationary frames and horizontal motion must not change tempo. Round drag results to hundredths and clamp to a positive minimum of 0.01 BPM. Update the ruler, grid, and monitors immediately and mark the project modified only if the value changes. Double-click replaces the monitor with a centered single-line input of the same width and font, with its numeric value selected. Enter commits a positive finite BPM value; Escape cancels. Both restore the monitor. Focus loss cancels the draft and restores the monitor, as with track names. Invalid input retains the previous tempo, restores the monitor, and reports an error. Mark the project modified only for a changed committed tempo. Disable editing during background operations. Project replacement clears the draft. Save and restore the tempo with the project.
 - Display transport time as `00h00m00.00s` in a fixed-width field. Use bundled Outfit at 13 points. Use semibold weight (600) for all characters. Render digits in the default text color (`#C7C9CC`). Center each digit in an equal-width slot sized for the widest semibold digit. Render `h`, `m`, `s`, and `.` in a slightly darker gray (`#AAAEB3`), with normal character widths. Set the field width to eight digit slots plus the unit and punctuation widths and 8-point padding on each side. Use zero-padded hours, minutes, seconds, and hundredths. Time updates must not move adjacent controls or change digit alignment during playback.
 - Add a bar.beat monitor beside the time monitor, starting at `0001.01`. Use four zero-padded bar digits and two beat digits, increasing the bar width if needed. Count from bar 1, beat 1 in 4/4 at the project tempo. Share the time monitor's 13-point semibold Outfit, equal-width digit slots, default digit color, darker punctuation, normal punctuation width, 8-point inner padding, and vertical centering. Update from the playhead during playback, seek, loop wrap, pause, and Stop. Keep the time monitor and sample-based clip timing.
-- Put New project, Open, Import WAV, Save, Save as, Export WAV, and Close project in a File menu. Use the native macOS menu bar; use the first toolbar row on Windows and Linux. Use separators between New/Open, Import, Save/Save as, Export, and Close project, following the supplied [menu reference](assets/file-menu-reference.png). Remove the individual file-action toolbar buttons. Show working shortcuts beside each action: Command on macOS or Ctrl on Windows/Linux, with N, O, Shift+I, S, Shift+S, Shift+E, and W respectively. Place Close project last. Closing must stop playback, release the current project and meter state, clear selections and timeline scroll, and return to an empty Untitled workspace without closing the app. For unsaved changes, Save must finish successfully before closing, Discard must close without saving, and Cancel must retain the project. Cancelling or failing a save must retain the project. Route native menu commands through the shared application actions. Preserve unsaved-project and overwrite prompts. Disable file actions during background operations or pending confirmation/error dialogs; disable Export for an empty timeline. No recording or undo controls appear in this iteration.
+- Put New project, Open, Import WAV, Save, Save as, Export, and Close project in a File menu. Use the native macOS menu bar; use the first toolbar row on Windows and Linux. Use separators between New/Open, Import, Save/Save as, Export, and Close project, following the supplied [menu reference](assets/file-menu-reference.png). Remove the individual file-action toolbar buttons. Show working shortcuts beside each action: Command on macOS or Ctrl on Windows/Linux, with N, O, Shift+I, S, Shift+S, Shift+E, and W respectively. Place Close project last. Closing must stop playback, release the current project and meter state, clear selections and timeline scroll, and return to an empty Untitled workspace without closing the app. For unsaved changes, Save must finish successfully before closing, Discard must close without saving, and Cancel must retain the project. Cancelling or failing a save must retain the project. Route native menu commands through the shared application actions. Preserve unsaved-project and overwrite prompts. Disable file actions during background operations or pending confirmation/error dialogs; disable Export for an empty timeline. No recording or undo controls appear in this iteration.
 - Show the selection range at the right edge of the bottom status bar, with a Selection label and start/end positions in the bar.beat monitor's format, such as `0002.01–0004.03`. Use the shared transport monitor style: semibold text, fixed-width digit slots, default digit color, and darker periods and dash. Use project tempo and 4/4, counting bars and beats from 1. Update it from the ruler selection and tempo changes. Give each endpoint separate bar and beat drag targets, using the same whole-unit motion, beat carry/borrow, accumulated Shift adjustment, and sample precision as the toolbar monitor. Clamp the start between frame zero and the end, and clamp the end at the start; keep at least one sample between endpoints when Loop is enabled. Preserve the loop toggle and playhead. Mark modified and sync playback only when a selection endpoint changes. Clear drag state on release, focus loss, project replacement, or disabled controls. Disable selection dragging during background operations. Keep the playback toolbar's time display for the playhead.
 - Show progress for long operations and warnings/errors with affected files or actions. Warnings must not block export with missing sources.
 - Reuse panel framing, spacing, styling, visibility, and controls. Panels must submit application commands instead of duplicating project data or accessing the callback.
@@ -287,15 +288,18 @@ Use the supplied reference for a simple clip block:
 
 Export from frame zero to the greatest clip end, including leading silence and missing-source placeholders. Ignore the transport loop. Reject a project with no clips. Render offline using a snapshot of the project so later desktop edits do not change an export already in progress.
 
-Write stereo, 24-bit integer PCM WAV at 48 kHz. Apply triangular probability density function (TPDF) dither without noise shaping once before quantization. Round to the nearest integer and saturate to the valid 24-bit range. Use a deterministic seed and a reproducible random sequence. Do not include variable timestamps in WAV output. Repeated exports and desktop/CLI exports of the same project must produce identical files on the same build and platform.
+Export options must open before the native destination chooser. Offer WAV codecs: 16-bit PCM, 24-bit PCM (default), and 32-bit IEEE float. Offer MP3 with MPEG Layer III (LAME) and CBR 128, 192 (default), 256, or 320 kbps. Use stereo at 48 kHz for both formats. Retain the last accepted settings during the app session; cancel must not modify the project. Disable background editing while export options or replacement confirmation are open. Once export starts, show a shared Export status dialog with frame-based rendering/encoding progress, a finalization stage, destination, settings, warnings, completion notices, and errors. Keep progress below 100% until encoding finishes and the completed file is published. Keep the report visible until Close or Escape after success/failure; do not dismiss a running export. Scroll long paths and diagnostics. Block editing, playback shortcuts, clip actions, and file actions while the report is open. Route export failures, including worker disconnection, to this report instead of a separate error window.
 
-Warn before export when sources are missing, but proceed using silence. Warn when the master signal clips. These conditions do not cause export failure. Existing unsupported sources and write/processing errors do cause failure. Write to a temporary output and publish the completed WAV only on success.
+Apply triangular probability density function (TPDF) dither without noise shaping once before integer WAV quantization. Round to the nearest integer and saturate to the codec's valid range. Float WAV retains headroom without dither or clamping. MP3 clamps its normalized input and writes duration, encoder delay, and padding metadata for gapless decoding. Use a deterministic seed and a reproducible random sequence. Do not include variable timestamps in WAV output. Repeated exports and desktop/CLI exports of the same project must produce identical files on the same build and platform.
+
+Warn before export when sources are missing, but proceed using silence. Warn when the master signal clips or float WAV retains levels above 0 dBFS. These conditions do not cause export failure. Existing unsupported sources and write/processing errors do cause failure. Write to a temporary output and publish the completed audio file only on success.
 
 The executable name daw-cli is an internal working name:
 
 ```text
 daw-cli validate --project <folder>
-daw-cli render --project <folder> --output <file.wav> [--overwrite]
+daw-cli render --project <folder> --output <file.wav|file.mp3> [--overwrite]
+  [--format wav|mp3] [--codec pcm16|pcm24|float32] [--bitrate 128|192|256|320]
 ```
 
 | Condition | CLI behavior |
@@ -305,6 +309,8 @@ daw-cli render --project <folder> --output <file.wav> [--overwrite]
 | Invalid manifest, unsupported audio, or processing failure | Report an error to standard error and return 1. |
 | Invalid command arguments | Return 2. |
 | Output already exists | Fail unless --overwrite is present. Desktop export requires an overwrite confirmation instead. |
+
+Infer format from the output extension when `--format` is absent. Reject a known extension that conflicts with the format. `--codec` applies to WAV; `--bitrate` applies to MP3.
 
 Validation must inspect the manifest and referenced audio, not only JSON syntax. Headless commands must not initialize graphics, dialogs, or audio devices. CLI output must identify missing sources and affected clips. Never overwrite a source file or project manifest as an export destination.
 

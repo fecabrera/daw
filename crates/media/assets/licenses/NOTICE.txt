@@ -1,0 +1,13 @@
+MP3 export uses LAME 3.100 through mp3lame-encoder 0.2.5 and mp3lame-sys 0.1.11.
+The encoder is compiled into the application. License texts are included here.
+
+Source and build information:
+https://github.com/DoumanAsh/mp3lame-encoder
+https://github.com/DoumanAsh/mp3lame-sys
+https://lame.sourceforge.io/
+
+Exact dependency source archives are available from crates.io:
+https://crates.io/api/v1/crates/mp3lame-encoder/0.2.5/download
+https://crates.io/api/v1/crates/mp3lame-sys/0.1.11/download
+The mp3lame-sys archive includes the LAME source.
+Cargo.lock records the exact versions. Build the DAW repository with Cargo to relink the application.

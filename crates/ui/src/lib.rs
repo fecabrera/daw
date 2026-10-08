@@ -1,4 +1,5 @@
 use daw_core::{Clip, Edit, Id, frames, seconds};
+use daw_media::ExportSettings;
 use daw_output::AudioOutput;
 use daw_project::Session;
 use egui::{Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
@@ -10,6 +11,8 @@ use std::{
 };
 
 pub mod dialogs;
+mod export_dialog;
+mod export_status;
 mod file_drop;
 pub mod fonts;
 pub mod icons;
@@ -238,7 +241,7 @@ impl FileAction {
             Self::Import => "Import WAV…",
             Self::Save => "Save",
             Self::SaveAs => "Save as…",
-            Self::Export => "Export WAV…",
+            Self::Export => "Export…",
             Self::CloseProject => "Close project",
         }
     }
@@ -535,6 +538,10 @@ pub struct DawUi {
     pending: Option<Action>,
     unsaved_prompt: bool,
     overwrite: Option<PathBuf>,
+    export_settings: ExportSettings,
+    export_dialog: Option<ExportSettings>,
+    export_status: Option<export_status::ExportStatus>,
+    overwrite_settings: ExportSettings,
     allow_close: bool,
     native_menu: bool,
     window_title: String,
@@ -586,6 +593,10 @@ impl Default for DawUi {
             pending: None,
             unsaved_prompt: false,
             overwrite: None,
+            export_settings: ExportSettings::default(),
+            export_dialog: None,
+            export_status: None,
+            overwrite_settings: ExportSettings::default(),
             allow_close: false,
             native_menu: false,
             window_title: String::new(),
@@ -661,6 +672,9 @@ impl DawUi {
                 self.file_drop_target = None;
                 self.loop_drag = None;
                 self.lane_bounds.clear();
+                self.export_dialog = None;
+                self.export_status = None;
+                self.overwrite = None;
                 self.sync_needed = false;
             }
             Some(Action::Open(p)) => self.open(p),
@@ -763,15 +777,36 @@ impl DawUi {
             None => self.file_hover = None,
         }
     }
-    fn export(&mut self, path: PathBuf, overwrite: bool) {
+    fn export(&mut self, path: PathBuf, overwrite: bool, settings: ExportSettings) {
         let session = self.session.clone();
-        self.notices = session.warnings.clone();
-        self.run_job("Exporting stereo WAV", move || {
-            session
-                .export(&path, overwrite)
-                .map(Job::Exported)
-                .map_err(|e| e.to_string())
-        });
+        let status = export_status::ExportStatus::new(
+            path.clone(),
+            settings,
+            session.project.end(),
+            session.warnings.clone(),
+        );
+        let progress = status.frames.clone();
+        self.export_status = Some(status);
+        self.run_job(
+            &format!("Exporting stereo {}", settings.format.label()),
+            move || {
+                session
+                    .export_with_progress(&path, overwrite, settings, |frames, _| {
+                        progress.store(frames, Ordering::Relaxed);
+                    })
+                    .map(Job::Exported)
+                    .map_err(|e| e.to_string())
+            },
+        );
+    }
+    fn export_to(&mut self, path: PathBuf, settings: ExportSettings) {
+        self.export_settings = settings;
+        if path.exists() {
+            self.overwrite = Some(path);
+            self.overwrite_settings = settings;
+        } else {
+            self.export(path, false, settings);
+        }
     }
     fn poll(&mut self) {
         let message = self.job.as_ref().and_then(|rx| match rx.try_recv() {
@@ -819,11 +854,17 @@ impl DawUi {
                     self.perform_pending();
                 }
                 Ok(Job::Exported(warnings)) => {
-                    self.notices = warnings;
-                    self.notices.push("Export complete".into());
+                    if let Some(status) = &mut self.export_status {
+                        status.warnings = warnings;
+                        status.state = export_status::State::Complete;
+                    }
                 }
                 Err(e) => {
-                    self.fail(e);
+                    if let Some(status) = &mut self.export_status {
+                        status.state = export_status::State::Failed(e);
+                    } else {
+                        self.fail(e);
+                    }
                     self.pending = None;
                     self.unsaved_prompt = false;
                 }
@@ -1166,7 +1207,14 @@ impl DawUi {
         egui::Panel::top("toolbar")
             .frame(egui::Frame::new().fill(theme::PANEL))
             .show_separator_line(true)
-            .show(ui, |ui| self.toolbar(ui));
+            .show(ui, |ui| {
+                ui.add_enabled_ui(
+                    self.export_dialog.is_none()
+                        && self.overwrite.is_none()
+                        && self.export_status.is_none(),
+                    |ui| self.toolbar(ui),
+                );
+            });
         egui::Panel::bottom("status").show(ui, |ui| {
             rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
                 if self.job.is_some() {
@@ -1186,7 +1234,13 @@ impl DawUi {
                     ui.label(&output.description);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_enabled_ui(self.job.is_none(), |ui| self.selection_control(ui));
+                    ui.add_enabled_ui(
+                        self.job.is_none()
+                            && self.export_dialog.is_none()
+                            && self.overwrite.is_none()
+                            && self.export_status.is_none(),
+                        |ui| self.selection_control(ui),
+                    );
                     ui.label("Selection");
                 });
             });
@@ -1200,7 +1254,13 @@ impl DawUi {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::BACKGROUND))
             .show(ui, |ui| {
-                ui.add_enabled_ui(self.job.is_none(), |ui| self.workspace(ui));
+                ui.add_enabled_ui(
+                    self.job.is_none()
+                        && self.export_dialog.is_none()
+                        && self.overwrite.is_none()
+                        && self.export_status.is_none(),
+                    |ui| self.workspace(ui),
+                );
             });
         if self.sync_needed {
             let plan = self.session.plan();
@@ -1214,7 +1274,7 @@ impl DawUi {
         }
         self.dialogs(&ctx);
         self.clip_shortcuts(&ctx);
-        if self.job.is_none() {
+        if self.job.is_none() && self.export_status.is_none() {
             if self.file_action_enabled(FileAction::Import)
                 && let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned())
                 && let Some(target) = self.file_drop_target.take()
@@ -1296,6 +1356,8 @@ impl DawUi {
         self.job.is_none()
             && !self.unsaved_prompt
             && self.overwrite.is_none()
+            && self.export_dialog.is_none()
+            && self.export_status.is_none()
             && self.error.is_none()
             && (action != FileAction::Export || self.session.project.end() > 0)
     }
@@ -1331,18 +1393,7 @@ impl DawUi {
             FileAction::Save => self.save(false),
             FileAction::SaveAs => self.save(true),
             FileAction::Export => {
-                let Some(p) = rfd::FileDialog::new()
-                    .set_file_name("mix.wav")
-                    .add_filter("WAV audio", &["wav"])
-                    .save_file()
-                else {
-                    return;
-                };
-                if p.exists() {
-                    self.overwrite = Some(p);
-                } else {
-                    self.export(p, false);
-                }
+                self.export_dialog = Some(self.export_settings);
             }
         }
     }
@@ -3840,6 +3891,23 @@ impl DawUi {
                 None => {}
             }
         }
+        if let Some(mut settings) = self.export_dialog {
+            match export_dialog::show(ctx, &mut settings) {
+                Some(export_dialog::Action::Cancel) => self.export_dialog = None,
+                Some(export_dialog::Action::Export) => {
+                    self.export_dialog = None;
+                    let format = settings.format;
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_file_name(format!("mix.{}", format.extension()))
+                        .add_filter(format.label(), &[format.extension()])
+                        .save_file()
+                    {
+                        self.export_to(path.with_extension(format.extension()), settings);
+                    }
+                }
+                None => self.export_dialog = Some(settings),
+            }
+        }
         if let Some(path) = self.overwrite.clone() {
             let message = format!("Replace {}?", path.display());
             if let Some(replace) = dialogs::Dialog::new(
@@ -3851,7 +3919,7 @@ impl DawUi {
             {
                 self.overwrite = None;
                 if replace {
-                    self.export(path, true);
+                    self.export(path, true, self.overwrite_settings);
                 }
             }
         }
@@ -3861,6 +3929,11 @@ impl DawUi {
                 .is_some()
         {
             self.error = None;
+        }
+        if let Some(status) = &self.export_status
+            && status.show(ctx)
+        {
+            self.export_status = None;
         }
     }
 }
@@ -6694,6 +6767,299 @@ mod tests {
         assert_eq!(app.scroll, 0.0);
     }
 
+    #[test]
+    fn export_action_opens_options_and_cancellation_keeps_the_project_unchanged() {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let before = format!("{:?}", app.session.project);
+        frame(&mut app, &ctx, vec![shortcut_event(FileAction::Export)]);
+        assert_eq!(app.export_dialog, Some(ExportSettings::default()));
+        assert!(app.job.is_none());
+        assert!(
+            FileAction::ALL
+                .into_iter()
+                .all(|action| !app.file_action_enabled(action))
+        );
+        app.export_dialog.as_mut().unwrap().format = daw_media::ExportFormat::Mp3;
+        let point = Pos2::new(21.0, app.lane_bounds[&track].top() + 47.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        assert!(!app.session.project.tracks[0].muted);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        assert!(app.export_dialog.is_none());
+        assert_eq!(app.export_settings, ExportSettings::default());
+        assert_eq!(format!("{:?}", app.session.project), before);
+        assert!(!app.dirty);
+        assert!(app.job.is_none());
+        app.perform_file_action(FileAction::Export);
+        assert_eq!(app.export_dialog, Some(ExportSettings::default()));
+        app.perform_pending();
+        app.pending = Some(Action::New);
+        app.perform_pending();
+        assert!(app.export_dialog.is_none());
+    }
+    #[test]
+    fn export_jobs_use_selected_settings_and_overwrite_retains_them() {
+        use daw_media::{ExportFormat, Mp3Bitrate, WavCodec};
+        let wav = TestWav::new();
+        let folder = wav.0.parent().unwrap();
+        for settings in [
+            ExportSettings {
+                wav_codec: WavCodec::Pcm16,
+                ..Default::default()
+            },
+            ExportSettings {
+                wav_codec: WavCodec::Float32,
+                ..Default::default()
+            },
+            ExportSettings {
+                format: ExportFormat::Mp3,
+                mp3_bitrate: Mp3Bitrate::Kbps320,
+                ..Default::default()
+            },
+        ] {
+            let (mut app, _) = fixture();
+            let asset = app.session.project.tracks[0].clips[0].asset_id;
+            app.session.project.tracks[0].clips[0].length_frames = 48000;
+            app.session
+                .audio
+                .insert(asset, daw_media::decode_wav(&wav.0).unwrap());
+            let output = folder.join(format!(
+                "export-test-{}.{}",
+                Id::new_v4(),
+                settings.format.extension()
+            ));
+            std::fs::write(&output, b"existing").unwrap();
+            app.export_to(output.clone(), settings);
+            assert_eq!(app.overwrite, Some(output.clone()));
+            assert_eq!(app.overwrite_settings, settings);
+            assert_eq!(app.export_settings, settings);
+            assert!(app.job.is_none());
+            assert_eq!(std::fs::read(&output).unwrap(), b"existing");
+            app.overwrite = None;
+            app.export(output.clone(), true, app.overwrite_settings);
+            assert!(app.job.is_some());
+            assert!(app.busy.contains(settings.format.label()));
+            for _ in 0..400 {
+                app.poll();
+                if app.job.is_none() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert!(app.job.is_none());
+            assert!(app.error.is_none(), "{:?}", app.error);
+            let status = app.export_status.as_ref().unwrap();
+            assert_eq!(status.state, export_status::State::Complete);
+            assert_eq!(status.path, output);
+            assert_eq!(status.settings, settings);
+            assert_eq!(status.frames.load(Ordering::Relaxed), 48000);
+            assert!(status.warnings.is_empty());
+            let bytes = std::fs::read(&output).unwrap();
+            if settings.format == ExportFormat::Mp3 {
+                assert_eq!(bytes[0], 0xff);
+                assert_eq!(bytes[2] >> 4, 14); // 320 kbps.
+            } else {
+                let reader = hound::WavReader::open(&output).unwrap();
+                assert_eq!(reader.duration(), 48000);
+                assert_eq!(
+                    reader.spec().bits_per_sample,
+                    if settings.wav_codec == WavCodec::Pcm16 {
+                        16
+                    } else {
+                        32
+                    }
+                );
+            }
+            assert!(!app.dirty);
+            std::fs::remove_file(output).unwrap();
+        }
+    }
+    #[test]
+    fn export_status_shows_progress_warnings_and_completion_until_closed() {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let original = format!("{:?}", app.session.project);
+        let mut status = export_status::ExportStatus::new(
+            PathBuf::from("/tmp/report.wav"),
+            ExportSettings::default(),
+            10000,
+            vec!["Missing source: missing.wav".into()],
+        );
+        status.frames.store(1000, Ordering::Relaxed);
+        status.state = export_status::State::Running;
+        app.export_status = Some(status);
+        let (tx, rx) = mpsc::channel();
+        app.job = Some(rx);
+        app.busy = "Exporting stereo WAV".into();
+        let has_text = |shapes: &[egui::epaint::ClippedShape], label: &str| {
+            shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == label))
+        };
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        for label in [
+            "Export status",
+            "Rendering and encoding audio…",
+            "10%",
+            "Destination",
+            "/tmp/report.wav",
+            "Warnings",
+            "Missing source: missing.wav",
+        ] {
+            assert!(has_text(&shapes, label), "Missing status item: {label}");
+        }
+        assert!(!has_text(&shapes, "Close"));
+        assert!(
+            FileAction::ALL
+                .into_iter()
+                .all(|action| !app.file_action_enabled(action))
+        );
+        let point = Pos2::new(21.0, app.lane_bounds[&track].top() + 47.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        let escape = egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        };
+        frame(&mut app, &ctx, vec![escape]);
+        assert!(app.export_status.is_some());
+        app.export_status
+            .as_ref()
+            .unwrap()
+            .frames
+            .store(10000, Ordering::Relaxed);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(has_text(&shapes, "Finalizing audio file…"));
+        assert!(has_text(&shapes, "99%"));
+        tx.send(Ok(Job::Exported(vec![
+            "Missing source: missing.wav".into(),
+            "Master output clipped".into(),
+        ])))
+        .unwrap();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(app.job.is_none());
+        assert_eq!(
+            app.export_status.as_ref().unwrap().state,
+            export_status::State::Complete
+        );
+        for label in ["Export complete", "100%", "Master output clipped", "Close"] {
+            assert!(has_text(&shapes, label), "Missing completed item: {label}");
+        }
+        assert!(app.error.is_none());
+        assert!(app.notices.is_empty());
+        assert!(!app.file_action_enabled(FileAction::Export));
+        frame(&mut app, &ctx, vec![shortcut_event(FileAction::New)]);
+        assert_eq!(format!("{:?}", app.session.project), original);
+        // Long paths and diagnostic lists scroll without moving Close out of the window.
+        let status = app.export_status.as_mut().unwrap();
+        status.path = PathBuf::from(format!("/tmp/{}report.wav", "directory/".repeat(100)));
+        status.warnings = (0..100)
+            .map(|index| format!("Missing source: recording-{index}.wav"))
+            .collect();
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let close = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Close" => {
+                    Some(text.pos + text.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)).contains(close));
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(close), button(close, true)],
+        );
+        frame(&mut app, &ctx, vec![button(close, false)]);
+        assert!(app.export_status.is_none());
+        assert!(app.file_action_enabled(FileAction::Export));
+        assert_eq!(format!("{:?}", app.session.project), original);
+        assert!(!app.dirty);
+    }
+    #[test]
+    fn export_errors_and_worker_disconnect_stay_in_the_status_dialog() {
+        for disconnect in [false, true] {
+            let (mut app, _) = fixture();
+            let ctx = context();
+            app.export_status = Some(export_status::ExportStatus::new(
+                PathBuf::from("/tmp/report.mp3"),
+                ExportSettings {
+                    format: daw_media::ExportFormat::Mp3,
+                    ..Default::default()
+                },
+                10000,
+                vec!["Missing source: missing.wav".into()],
+            ));
+            let (tx, rx) = mpsc::channel();
+            app.job = Some(rx);
+            let error = if disconnect {
+                "Background operation stopped unexpectedly"
+            } else {
+                tx.send(Err("Cannot write export destination".into()))
+                    .unwrap();
+                "Cannot write export destination"
+            };
+            drop(tx);
+            frame(&mut app, &ctx, vec![]);
+            let status = app.export_status.as_ref().unwrap();
+            assert_eq!(status.state, export_status::State::Failed(error.into()));
+            assert_eq!(status.warnings, ["Missing source: missing.wav"]);
+            assert!(app.error.is_none());
+            assert!(app.job.is_none());
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            for label in [
+                "Export failed",
+                "Error",
+                error,
+                "Warnings",
+                "Missing source: missing.wav",
+                "Close",
+            ] {
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == label)), "Missing failure item: {label}");
+            }
+            assert!(!app.file_action_enabled(FileAction::Export));
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }],
+            );
+            assert!(app.export_status.is_none());
+            assert!(app.file_action_enabled(FileAction::Export));
+            assert!(!app.dirty);
+        }
+    }
     #[test]
     fn save_as_shortcut_takes_precedence_and_empty_export_is_disabled() {
         let app = DawUi::default();

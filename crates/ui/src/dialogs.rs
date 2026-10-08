@@ -28,6 +28,14 @@ impl<'a, T: Copy> Dialog<'a, T> {
     }
 
     pub fn show(self, ctx: &Context) -> Option<T> {
+        self.show_with_content(ctx, |_| {})
+    }
+
+    pub fn show_with_content(
+        self,
+        ctx: &Context,
+        content: impl FnOnce(&mut egui::Ui),
+    ) -> Option<T> {
         let mut selected = None;
         Window::new(RichText::new(self.title).text_style(TextStyle::Body))
             .collapsible(false)
@@ -38,15 +46,20 @@ impl<'a, T: Copy> Dialog<'a, T> {
             .frame(Frame::window(&ctx.global_style()).inner_margin(PADDING))
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::splat(f32::from(PADDING));
-                ui.add(egui::Label::new(self.message).wrap());
+                if !self.message.is_empty() {
+                    ui.add(egui::Label::new(self.message).wrap());
+                }
                 ui.add_enabled_ui(self.actions_enabled, |ui| {
-                    crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                        for &(label, action) in self.actions {
-                            if ui.button(label).clicked() {
-                                selected = Some(action);
+                    content(ui);
+                    if !self.actions.is_empty() {
+                        crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
+                            for &(label, action) in self.actions {
+                                if ui.button(label).clicked() {
+                                    selected = Some(action);
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                 });
             });
         selected

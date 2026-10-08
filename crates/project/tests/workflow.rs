@@ -48,6 +48,302 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn export_progress_tracks_encoded_frames_without_changing_audio() {
+    use daw_media::{ExportFormat, ExportSettings};
+    let fixture = Fixture::new();
+    let source = fixture.wav("progress-source.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 2400).unwrap();
+    for format in ExportFormat::ALL {
+        let settings = ExportSettings {
+            format,
+            ..Default::default()
+        };
+        let output = fixture.0.join(format!("progress.{}", format.extension()));
+        let mut events = Vec::new();
+        let warnings = session
+            .export_with_progress(&output, false, settings, |frames, total| {
+                events.push((frames, total))
+            })
+            .unwrap();
+        assert!(warnings.is_empty());
+        let total = session.project.end();
+        assert_eq!(events.first(), Some(&(0, total)));
+        assert_eq!(events.last(), Some(&(total, total)));
+        assert!(
+            events
+                .windows(2)
+                .all(|pair| pair[1].0 > pair[0].0 && pair[1].0 - pair[0].0 <= 1024)
+        );
+        assert!(
+            events
+                .iter()
+                .all(|&(frames, end)| frames <= total && end == total)
+        );
+        let plain = fixture.0.join(format!("plain.{}", format.extension()));
+        session
+            .export_with_settings(&plain, false, settings)
+            .unwrap();
+        assert_eq!(fs::read(output).unwrap(), fs::read(plain).unwrap());
+    }
+}
+
+#[test]
+fn export_formats_write_selected_codecs_and_mp3_preserves_gapless_length() {
+    use daw_media::{ExportFormat, ExportSettings, Mp3Bitrate, WavCodec};
+    use symphonia::core::{
+        audio::SampleBuffer, codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,
+        meta::MetadataOptions, probe::Hint,
+    };
+    let fixture = Fixture::new();
+    let source = fixture.wav("formats.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 2400).unwrap();
+    session.project.tracks[0].pan = -0.4;
+    let clip = &mut session.project.tracks[0].clips[0];
+    clip.length_frames = 48001;
+    clip.repeat = Some(ClipLoop {
+        length_frames: 4800,
+        phase_frame: 0,
+    });
+    session.project.transport.r#loop = daw_core::Loop {
+        enabled: true,
+        start_frame: 2400,
+        end_frame: 7200,
+    };
+    let before = serde_json::to_value(&session.project).unwrap();
+    let mut rendered = vec![[0.0; 2]; session.project.end() as usize];
+    session.plan().render(0, &mut rendered);
+    for codec in WavCodec::ALL {
+        let settings = ExportSettings {
+            wav_codec: codec,
+            ..Default::default()
+        };
+        let output = fixture.0.join(format!("{codec:?}.wav"));
+        session
+            .export_with_settings(&output, false, settings)
+            .unwrap();
+        let reader = hound::WavReader::open(&output).unwrap();
+        assert_eq!(reader.spec().channels, 2);
+        assert_eq!(reader.spec().sample_rate, 48000);
+        assert_eq!(reader.duration(), rendered.len() as u32);
+        let (bits, sample_format) = match codec {
+            WavCodec::Pcm16 => (16, hound::SampleFormat::Int),
+            WavCodec::Pcm24 => (24, hound::SampleFormat::Int),
+            WavCodec::Float32 => (32, hound::SampleFormat::Float),
+        };
+        assert_eq!(reader.spec().bits_per_sample, bits);
+        assert_eq!(reader.spec().sample_format, sample_format);
+        let decoded = daw_media::decode_wav(&output).unwrap();
+        let tolerance = if codec == WavCodec::Pcm16 {
+            2.0 / 32768.0
+        } else if codec == WavCodec::Pcm24 {
+            2.0 / 8_388_608.0
+        } else {
+            0.0
+        };
+        for (actual, expected) in decoded.samples.iter().zip(&rendered) {
+            for ch in 0..2 {
+                assert!((actual[ch] - expected[ch]).abs() <= tolerance);
+            }
+        }
+        let again = fixture.0.join(format!("{codec:?}-again.wav"));
+        session
+            .export_with_settings(&again, false, settings)
+            .unwrap();
+        assert_eq!(fs::read(&output).unwrap(), fs::read(again).unwrap());
+        if codec == WavCodec::Pcm24 {
+            let default = fixture.0.join("default.wav");
+            session.export(&default, false).unwrap();
+            assert_eq!(fs::read(default).unwrap(), fs::read(output).unwrap());
+        }
+    }
+    for bitrate in Mp3Bitrate::ALL {
+        let output = fixture.0.join(format!("{}.mp3", bitrate.kbps()));
+        let settings = ExportSettings {
+            format: ExportFormat::Mp3,
+            mp3_bitrate: bitrate,
+            ..Default::default()
+        };
+        session
+            .export_with_settings(&output, false, settings)
+            .unwrap();
+        let bytes = fs::read(&output).unwrap();
+        assert_eq!(bytes[0], 0xff);
+        assert_eq!(bytes[1] & 0xfe, 0xfa); // MPEG-1, Layer III.
+        assert_eq!(bytes[2] & 0x0c, 0x04); // 48 kHz.
+        let bitrate_table = [
+            0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0,
+        ];
+        assert_eq!(bitrate_table[(bytes[2] >> 4) as usize], bitrate.kbps());
+        let mss = MediaSourceStream::new(
+            Box::new(fs::File::open(&output).unwrap()),
+            Default::default(),
+        );
+        let mut hint = Hint::new();
+        hint.with_extension("mp3");
+        let mut format = symphonia::default::get_probe()
+            .format(
+                &hint,
+                mss,
+                &FormatOptions {
+                    enable_gapless: true,
+                    ..Default::default()
+                },
+                &MetadataOptions::default(),
+            )
+            .unwrap()
+            .format;
+        let track = format.default_track().unwrap();
+        assert_eq!(track.codec_params.sample_rate, Some(48000));
+        assert_eq!(track.codec_params.channels.unwrap().count(), 2);
+        let mut decoder = symphonia::default::get_codecs()
+            .make(&track.codec_params, &DecoderOptions::default())
+            .unwrap();
+        let mut samples = Vec::new();
+        loop {
+            let packet = match format.next_packet() {
+                Ok(packet) => packet,
+                Err(symphonia::core::errors::Error::IoError(error))
+                    if error.kind() == std::io::ErrorKind::UnexpectedEof =>
+                {
+                    break;
+                }
+                Err(error) => panic!("{error}"),
+            };
+            let decoded = decoder.decode(&packet).unwrap();
+            let mut buffer = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+            buffer.copy_interleaved_ref(decoded);
+            samples.extend_from_slice(buffer.samples());
+        }
+        assert_eq!(
+            samples.len(),
+            rendered.len() * 2,
+            "{} kbps gapless duration",
+            bitrate.kbps()
+        );
+        let mse: f64 = samples
+            .iter()
+            .zip(rendered.iter().flatten())
+            .map(|(a, b)| f64::from(a - b).powi(2))
+            .sum::<f64>()
+            / samples.len() as f64;
+        assert!(
+            mse.sqrt() < 0.015,
+            "{} kbps RMS error {}",
+            bitrate.kbps(),
+            mse.sqrt()
+        );
+        assert!(samples[..4000].iter().all(|sample| sample.abs() < 0.002));
+        let again = fixture.0.join("repeat.mp3");
+        session
+            .export_with_settings(&again, true, settings)
+            .unwrap();
+        assert_eq!(bytes, fs::read(again).unwrap());
+    }
+    assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+}
+
+#[test]
+fn export_settings_keep_overwrite_protection_and_float_headroom() {
+    use daw_media::{ExportFormat, ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let source = fixture.wav("source.wav", 48000, 2, 16, false);
+    let source_bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    session.project.master.gain_db = 24.0;
+    let project_folder = fixture.0.join("project");
+    session.save(&project_folder).unwrap();
+    let manifest = fs::read(project_folder.join("project.json")).unwrap();
+    for settings in [
+        ExportSettings::default(),
+        ExportSettings {
+            wav_codec: WavCodec::Pcm16,
+            ..Default::default()
+        },
+        ExportSettings {
+            wav_codec: WavCodec::Float32,
+            ..Default::default()
+        },
+        ExportSettings {
+            format: ExportFormat::Mp3,
+            ..Default::default()
+        },
+    ] {
+        let output = fixture.0.join(format!(
+            "{:?}.{}",
+            settings.wav_codec,
+            settings.format.extension()
+        ));
+        fs::write(&output, b"existing output").unwrap();
+        assert!(
+            session
+                .export_with_settings(&output, false, settings)
+                .is_err()
+        );
+        assert_eq!(fs::read(&output).unwrap(), b"existing output");
+        assert!(
+            session
+                .export_with_settings(&source, true, settings)
+                .is_err()
+        );
+        assert!(
+            session
+                .export_with_settings(&project_folder.join("project.json"), true, settings)
+                .is_err()
+        );
+        let warnings = session
+            .export_with_settings(&output, true, settings)
+            .unwrap();
+        if settings.format == ExportFormat::Wav && settings.wav_codec == WavCodec::Float32 {
+            assert!(
+                warnings
+                    .iter()
+                    .any(|warning| warning.contains("preserves headroom"))
+            );
+            assert!(
+                hound::WavReader::open(&output)
+                    .unwrap()
+                    .samples::<f32>()
+                    .any(|sample| sample.unwrap().abs() > 1.0)
+            );
+        } else {
+            assert!(warnings.iter().any(|warning| warning.contains("clipped")));
+        }
+        assert!(
+            Session::default()
+                .export_with_settings(&output, true, settings)
+                .is_err()
+        );
+        let completed = fs::read(&output).unwrap();
+        let mut invalid_audio = session.clone();
+        let audio = invalid_audio.audio.values_mut().next().unwrap();
+        std::sync::Arc::make_mut(&mut audio.samples)[1000][0] = f32::NAN;
+        assert!(
+            invalid_audio
+                .export_with_settings(&output, true, settings)
+                .unwrap_err()
+                .to_string()
+                .contains("non-finite")
+        );
+        assert_eq!(fs::read(&output).unwrap(), completed);
+    }
+    assert_eq!(fs::read(&source).unwrap(), source_bytes);
+    assert_eq!(
+        fs::read(project_folder.join("project.json")).unwrap(),
+        manifest
+    );
+    assert!(!fs::read_dir(&fixture.0).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".export-")
+    }));
+}
+
+#[test]
 fn track_reordering_preserves_data_audio_and_saved_order() {
     let fixture = Fixture::new();
     let source = fixture.wav("reorder.wav", 48000, 2, 16, false);

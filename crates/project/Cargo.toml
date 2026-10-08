@@ -13,3 +13,4 @@ thiserror.workspace = true
 
 [dev-dependencies]
 hound.workspace = true
+symphonia = { workspace = true, features = ["mp3"] }

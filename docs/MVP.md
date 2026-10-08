@@ -18,7 +18,7 @@ Use a combination of ASD-STE100 principles and Plain Language (PL) for project d
 
 ## Objective
 
-Build a small multitrack audio editor for macOS, Linux, and Windows. A user must be able to import recordings, arrange clips, adjust the mix, save and reopen a project, and export a stereo WAV file.
+Build a small multitrack audio editor for macOS, Linux, and Windows. A user must be able to import recordings, arrange clips, adjust the mix, save and reopen a project, and export a stereo WAV or MP3 file.
 
 Use Rust with egui for the desktop interface. Keep the audio engine independent of the interface. Future targets are iPadOS and Android; mobile delivery is outside the MVP.
 
@@ -36,10 +36,10 @@ Provide a headless command-line mode from the start, using the same project mode
 | MVP-06 | Mixing | Mix tracks. Provide a master gain control and peak meters. |
 | MVP-07 | Output | Use the system's default audio output device. Display audio initialization errors. If the device disconnects, stop playback safely and display a clear error. |
 | MVP-08 | Projects | Save and open projects stored as folders containing manifest files and an assets directory. Reference external source audio files during the MVP. Open projects with missing sources normally, show a warning, and display affected clips as empty placeholders. |
-| MVP-10 | Export | Export the arrangement as a stereo WAV file. |
+| MVP-10 | Export | Export the arrangement as a stereo WAV or MP3 file. |
 | MVP-11 | Sample rate | Use a fixed project sample rate of 48 kHz. Convert imported audio to 48 kHz, or reject unsupported rates with a clear message. |
 | MVP-12 | Clip boundaries | Apply short fades at clip boundaries to prevent clicks. |
-| MVP-13 | Headless mode | Load and validate an existing project and export its arrangement as WAV from the command line, without a graphical session or audio output device. |
+| MVP-13 | Headless mode | Load and validate an existing project and export its arrangement as WAV or MP3 from the command line, without a graphical session or audio output device. |
 
 Undo/redo is outside the MVP. Requirement ID MVP-09 is retired; the remaining IDs are unchanged.
 
@@ -107,7 +107,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - Align each track's controls with its corresponding timeline lane. Use a simple outlined block containing the track name, a gain input box in dB, a pan/balance input box, and Mute and Solo buttons. Keep track deletion available through a context menu.
 - Include a Tracks header and an Add track button. Keep Add track enabled regardless of the track count.
 - Place a toolbar above the timeline. Toggle Play to Pause during playback, using the corresponding Lucide icons. Include a separate Stop button.
-- Put New project, Open, Import WAV, Save, Save as, and Export WAV in the File menu. Use the native macOS menu bar and an in-window menu on Windows and Linux. Group these actions with separators and provide keyboard shortcuts.
+- Put New project, Open, Import WAV, Save, Save as, and Export in the File menu. Use the native macOS menu bar and an in-window menu on Windows and Linux. Group these actions with separators and provide keyboard shortcuts.
 - Display a bars-and-beats ruler and grid above the track lanes using project tempo and 4/4. Use the upper ruler band for loop selection, edge resizing, and moving the selection body; use the lower band for playhead clicks and dragging. Keep moved selections the same length and clamp them at frame zero. Show a visible playhead and waveforms within clips. Include a matching bar.beat monitor beside the toolbar time display. Count bars and beats from 1; start the monitor at 0001.01.
 - Keep the track list visible during horizontal timeline scrolling. Keep track rows and timeline lanes aligned during vertical scrolling.
 - Support two-finger pinch zoom over the timeline, ruler, and scrollbar. Use the horizontal zoom slider's 1–3000 pixels-per-second range. Keep the timeline point under the pointer fixed where bounds permit, and update the grid and clips before painting. Ignore gestures outside the timeline, during jobs or dialogs, during clip or loop-selection drags, and while unfocused. Zoom must not change project data or interface font sizes.
@@ -119,7 +119,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 
 ## Headless mode
 
-- Minimum MVP commands: validate an existing project folder and render its arrangement to a WAV destination.
+- Minimum MVP commands: validate an existing project folder and render its arrangement to a WAV or MP3 destination.
 - Reuse project loading, source resolution, decoding, mixing, fades, and export logic from the desktop application.
 - Do not initialize windows, graphics, file dialogs, or audio devices for headless validation/export.
 - Take project and output paths as command-line arguments. Return clear diagnostics and a nonzero exit status on failure; missing or unsupported sources must not be silently skipped.
@@ -137,7 +137,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - If any track is soloed, play all soloed tracks and silence tracks that are not soloed.
 - If no track is soloed, play all tracks that are not muted.
 - Use the same mute/solo rules for playback and export.
-- Retain floating-point headroom within the mixer. Show a clipping indicator when the master signal exceeds the output range; clamp only at the final device output and integer WAV export. Do not apply automatic normalization or a limiter in the MVP.
+- Retain floating-point headroom within the mixer. Show a clipping indicator when the master signal exceeds the output range; clamp only at the final device output, integer WAV export, and MP3 export. Do not apply automatic normalization or a limiter in the MVP.
 - Apply 5 ms linear fades at clip starts and ends, and at repeat boundaries within looped clips. For ranges shorter than 10 ms, shorten each fade to half the range duration so the fades do not overlap.
 - Smooth live gain, pan/balance, mute, and solo transitions to avoid clicks.
 
@@ -231,7 +231,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - Clip ranges use an inclusive start and exclusive end. Require nonnegative integer positions, positive clip lengths, and checked timeline ends. Normal clips require source_offset_frame + length_frames no greater than decoded_frame_count. Looped clips store an optional `repeat` object with positive `length_frames` and `phase_frame` less than that length. The source offset plus repeat length must fit saved decoded bounds; the visible clip length can extend beyond them. Map local frames through the saved repeat phase and length. Missing or null `repeat` fields retain normal clip behavior; omit unset repeats when saving. Moves and splits preserve the repeat base, with splits advancing the right piece's phase.
 - Permit any track count. Require unique IDs, valid asset references, and no same-track clip overlap. Enabled loops require end_frame greater than start_frame.
 - Do not store decoded PCM, waveform caches, output device settings, or active playback state in the manifest. Open projects stopped at the saved playhead position.
-- Keep the fixed MVP pan law, fades, export format, and dither policy in the application's MVP defaults. Add explicit settings when they become configurable.
+- Keep the fixed MVP pan law, fades, default export settings, and dither policy in the application's MVP defaults. Add explicit settings when they become configurable.
 - Do not reject a project based on schema_version. Reject malformed JSON, invalid fields, and unsupported project structures with clear errors. Compatibility with earlier experimental manifests is not guaranteed.
 - Reserve assets/ for project-owned files; its internal layout can be specified when source inclusion is implemented.
 
@@ -275,14 +275,18 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - Import uncompressed WAV files with 16-bit or 24-bit integer PCM, or 32-bit IEEE floating-point samples.
 - Accept mono and stereo sources. Feed mono sources equally to the left and right channels before track gain and pan; preserve stereo channel order. Reject files with more than two channels with a clear error.
 - Decode and mix using 32-bit floating-point PCM at the project's fixed 48 kHz sample rate.
-- Export stereo WAV with 24-bit integer PCM at 48 kHz using fixed settings.
-- Reject unsupported WAV encodings with a clear error. Additional encodings and configurable conversion/export settings follow after the MVP.
+- Export stereo at 48 kHz as WAV (16-bit PCM, default 24-bit PCM, or 32-bit IEEE float) or MP3 (MPEG Layer III through bundled LAME, CBR 128/192/256/320 kbps; default 192).
+- Open the shared application dialog for format, codec, and MP3 bitrate before choosing the native destination. Remember the last accepted options for the app session. Cancel must not modify the project.
+- When export starts, show a status dialog with live progress, finalization state, destination, settings, warnings, completion notices, and errors. Keep the report open until dismissed after completion or failure. Scroll long reports. Block background editing and file actions while it is open. Show 100% only after successful file publication.
+- Use the same settings and encoders for desktop and CLI export. Reject incompatible CLI options.
+- Reject unsupported WAV import encodings with a clear error. Additional import formats and advanced conversion settings follow after the MVP.
 
 ### Export quantization and dither
 
-- Apply triangular (TPDF) dither without noise shaping once, immediately before final conversion to 24-bit integer PCM.
-- Round to the nearest integer sample and clamp the result to the valid 24-bit integer range.
+- Apply triangular (TPDF) dither without noise shaping once, immediately before final conversion to 16-bit or 24-bit integer PCM.
+- Round to the nearest integer sample and clamp the result to the valid integer range.
 - Use a deterministic dither seed and identical export processing in the desktop and headless paths so repeated exports of the same project and settings match.
+- Float WAV does not use dither or clamping and preserves floating-point headroom. MP3 clamps samples to the valid input range without WAV dither. Both report levels above 0 dBFS.
 - Dither does not prevent clipping. Retain the agreed clipping diagnostics and final-output clamping.
 - Keep these settings fixed in the MVP; user-selectable dither modes and an off option follow in the short-term roadmap.
 
@@ -327,7 +331,7 @@ A decoder trait and clear module boundaries are sufficient for the MVP. A runtim
 2. Display their waveforms and move the clips.
 3. Play both tracks together with independent gain and mute controls.
 4. Seek and zoom while playback continues.
-5. Export the mix as a stereo WAV file.
+5. Export the mix as a stereo WAV or MP3 file.
 6. Validate and export the same project through the headless CLI.
 
 After this milestone, implement the remaining MVP features.
@@ -396,7 +400,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 
 - Audio recording.
 - Additional import and export formats.
-- User-configurable export bit depth and sample format, mono/stereo export, channel mapping/downmix rules, and dither modes including an off option.
+- Mono/stereo export, channel mapping/downmix rules, and dither modes including an off option.
 
 #### Musical Timing
 

@@ -10,3 +10,4 @@ symphonia.workspace = true
 hound.workspace = true
 rubato.workspace = true
 thiserror.workspace = true
+mp3lame-encoder = "0.2.5"

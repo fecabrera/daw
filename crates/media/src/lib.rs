@@ -1,6 +1,11 @@
 use daw_core::{SAMPLE_RATE, SourceMetadata};
 use rubato::Resampler;
 use std::{fs::File, path::Path, sync::Arc};
+
+mod export;
+pub use export::{
+    AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, Mp3Bitrate, WavCodec, WavEncoder,
+};
 use symphonia::core::{
     audio::SampleBuffer, codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,
     meta::MetadataOptions, probe::Hint,
@@ -159,60 +164,4 @@ pub fn resample(samples: &[[f32; 2]], input_rate: u32, output_rate: u32) -> Resu
         position += input_size;
     }
     Ok(out[delay..delay + target].to_vec())
-}
-
-pub trait AudioEncoder {
-    fn write_frames(&mut self, frames: &[[f32; 2]]) -> Result<()>;
-    fn finish(self) -> Result<()>;
-}
-pub struct WavEncoder {
-    writer: hound::WavWriter<std::io::BufWriter<File>>,
-    random: [u64; 2],
-    pub clipped: bool,
-}
-impl WavEncoder {
-    pub fn create(path: &Path) -> Result<Self> {
-        let writer = hound::WavWriter::create(
-            path,
-            hound::WavSpec {
-                channels: 2,
-                sample_rate: SAMPLE_RATE,
-                bits_per_sample: 24,
-                sample_format: hound::SampleFormat::Int,
-            },
-        )
-        .map_err(|e| Error(e.to_string()))?;
-        Ok(Self {
-            writer,
-            random: [0x9e3779b97f4a7c15, 0xd1b54a32d192ed03],
-            clipped: false,
-        })
-    }
-    fn noise(&mut self, channel: usize) -> f64 {
-        let x = &mut self.random[channel];
-        *x ^= *x << 13;
-        *x ^= *x >> 7;
-        *x ^= *x << 17;
-        (*x >> 11) as f64 / ((1u64 << 53) as f64)
-    }
-}
-impl AudioEncoder for WavEncoder {
-    fn write_frames(&mut self, frames: &[[f32; 2]]) -> Result<()> {
-        for frame in frames {
-            for (channel, sample) in frame.iter().enumerate() {
-                self.clipped |= sample.abs() > 1.0;
-                let noise = self.noise(channel) - self.noise(channel);
-                let q = (f64::from(*sample) * 8_388_608.0 + noise)
-                    .round()
-                    .clamp(-8_388_608.0, 8_388_607.0) as i32;
-                self.writer
-                    .write_sample(q)
-                    .map_err(|e| Error(e.to_string()))?;
-            }
-        }
-        Ok(())
-    }
-    fn finish(self) -> Result<()> {
-        self.writer.finalize().map_err(|e| Error(e.to_string()))
-    }
 }
