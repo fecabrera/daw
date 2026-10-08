@@ -26,6 +26,8 @@ const TRACK_WIDTH: f32 = 250.0;
 const ROW_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE + 14.0;
 const MASTER_HEIGHT: f32 = ROW_HEIGHT;
 const RULER_HEIGHT: f32 = toolbars::HEIGHT;
+const MIN_ZOOM: f32 = 1.0;
+const MAX_ZOOM: f32 = 3000.0;
 
 fn placement_start(
     project: &daw_core::Project,
@@ -1528,7 +1530,7 @@ impl DawUi {
                         .text_styles
                         .insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
                     let response = ui.add(
-                        egui::Slider::new(&mut self.zoom, 1.0..=3000.0)
+                        egui::Slider::new(&mut self.zoom, MIN_ZOOM..=MAX_ZOOM)
                             .logarithmic(true)
                             .show_value(false)
                             .trailing_fill(false)
@@ -1568,10 +1570,9 @@ impl DawUi {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         let bounds = ui.max_rect();
         let timeline_left = bounds.left() + TRACK_WIDTH;
-        self.timeline_swipe(
-            ui,
-            Rect::from_min_max(Pos2::new(timeline_left, bounds.top()), bounds.max),
-        );
+        let viewport = Rect::from_min_max(Pos2::new(timeline_left, bounds.top()), bounds.max);
+        self.timeline_pinch(ui, viewport);
+        self.timeline_swipe(ui, viewport);
         let painter = ui.painter().clone();
         let track_surface =
             Rect::from_min_max(bounds.min, Pos2::new(timeline_left, bounds.bottom()));
@@ -1738,6 +1739,35 @@ impl DawUi {
     }
     fn timeline_extent(&self) -> f64 {
         seconds(self.session.project.end()).max(60.0) + 30.0
+    }
+    fn timeline_pinch(&mut self, ui: &egui::Ui, viewport: Rect) {
+        if !ui.is_enabled()
+            || !self.file_action_enabled(FileAction::Import)
+            || !ui.input(|input| input.focused)
+            || !ui.rect_contains_pointer(viewport)
+            || self.drag.is_some()
+            || self.loop_drag.is_some()
+        {
+            return;
+        }
+        let (factor, pointer) = ui.input(|input| (input.zoom_delta(), input.pointer.hover_pos()));
+        let Some(pointer) = pointer else {
+            return;
+        };
+        if !factor.is_finite() || factor <= 0.0 || factor == 1.0 {
+            return;
+        }
+        let zoom = (self.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+        if zoom == self.zoom {
+            return;
+        }
+        let offset = f64::from(pointer.x - viewport.left());
+        let anchor = self.scroll + offset / f64::from(self.zoom);
+        let maximum =
+            (self.timeline_extent() - f64::from(viewport.width()) / f64::from(zoom)).max(0.0);
+        self.scroll = (anchor - offset / f64::from(zoom)).clamp(0.0, maximum);
+        self.zoom = zoom;
+        ui.ctx().request_repaint();
     }
     fn timeline_swipe(&mut self, ui: &egui::Ui, viewport: Rect) {
         if !ui.is_enabled()
@@ -4843,6 +4873,143 @@ mod tests {
             },
         ]
     }
+    #[test]
+    fn timeline_pinch_anchors_zoom_and_paints_it_without_editing() {
+        for area in 0..4 {
+            let (mut app, track) = fixture();
+            app.scroll = 2.0;
+            app.session.project.tracks[0].clips[0].start_frame = frames(4.0);
+            let original = app.session.project.tracks[0].clips[0].clone();
+            let before = format!("{:?}", app.session.project);
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let lane = app.lane_bounds[&track];
+            let pointer = if area == 3 {
+                app.scrollbar_bounds.left_center() + Vec2::new(180.0, 0.0)
+            } else {
+                lane.min + Vec2::new(180.0, [-29.0, 30.0, 140.0][area])
+            };
+            let offset = f64::from(pointer.x - lane.left());
+            let anchor = app.scroll + offset / f64::from(app.zoom);
+            let ui_scale = ctx.zoom_factor();
+            for factor in [2.0, 0.5, 1.5] {
+                let expected = app.zoom * factor;
+                let shapes = frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(pointer),
+                        egui::Event::Zoom(factor),
+                    ],
+                    Vec2::new(1280.0, 800.0),
+                );
+                assert_eq!(app.zoom, expected);
+                assert!((app.scroll + offset / f64::from(app.zoom) - anchor).abs() < 0.00001);
+                let block = app.clip_block(lane, &original, original.start_frame);
+                assert!(
+                    shapes
+                        .iter()
+                        .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                    if rect.rect == block && rect.fill == theme::MISSING))
+                );
+                frame(&mut app, &ctx, vec![]);
+                assert_eq!(app.zoom, expected);
+                assert!((app.scroll + offset / f64::from(app.zoom) - anchor).abs() < 0.00001);
+                assert_eq!(ctx.zoom_factor(), ui_scale);
+                assert_eq!(format!("{:?}", app.session.project), before);
+                assert!(!app.dirty);
+                assert!(app.error.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn timeline_pinch_clamps_zoom_and_scroll_and_respects_input_guards() {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let lane = app.lane_bounds[&track];
+        let pointer = lane.min + Vec2::new(180.0, 30.0);
+        for (factor, zoom) in [(1_000_000.0, MAX_ZOOM), (0.000001, MIN_ZOOM)] {
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::Zoom(factor),
+                ],
+            );
+            assert_eq!(app.zoom, zoom);
+            let maximum =
+                (app.timeline_extent() - f64::from(lane.width()) / f64::from(zoom)).max(0.0);
+            assert!((0.0..=maximum).contains(&app.scroll));
+        }
+        assert_eq!(app.scroll, 0.0);
+        app.zoom = 70.0;
+        app.scroll = app.timeline_extent() - f64::from(lane.width()) / f64::from(app.zoom);
+        let right = lane.right_center() - Vec2::new(1.0, 0.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(right), egui::Event::Zoom(0.5)],
+        );
+        let maximum = app.timeline_extent() - f64::from(lane.width()) / f64::from(app.zoom);
+        assert!((app.scroll - maximum).abs() < 0.0001);
+        for factor in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            let zoom = app.zoom;
+            let scroll = app.scroll;
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::Zoom(factor),
+                ],
+            );
+            assert_eq!(app.zoom, zoom);
+            assert!((app.scroll - scroll).abs() < 0.0001);
+        }
+        for blocked in 0..9 {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            let (_sender, receiver) = mpsc::channel();
+            frame(&mut app, &ctx, vec![]);
+            let mut pointer = app.lane_bounds[&track].min + Vec2::new(80.0, 30.0);
+            match blocked {
+                0 => pointer.x = 30.0,
+                1 => pointer.y = 50.0,
+                2 => pointer.y = app.scrollbar_bounds.bottom() + 10.0,
+                3 => app.error = Some("Blocked".into()),
+                4 => app.unsaved_prompt = true,
+                5 => app.overwrite = Some(PathBuf::from("blocked.wav")),
+                6 => app.job = Some(receiver),
+                7 => {
+                    app.drag = Some(Drag {
+                        clip: app.session.project.tracks[0].clips[0].clone(),
+                        track,
+                        mode: ClipDragMode::Move,
+                        origin: pointer,
+                        duplicate: false,
+                    })
+                }
+                _ => {}
+            }
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused: blocked != 8,
+                    events: vec![egui::Event::PointerMoved(pointer), egui::Event::Zoom(2.0)],
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            output.textures_delta.clear();
+            assert_eq!(app.zoom, 70.0, "guard {blocked}");
+            assert_eq!(app.scroll, 0.0);
+            assert!(!app.dirty);
+        }
+    }
+
     #[test]
     fn horizontal_trackpad_swipes_scroll_the_timeline_and_clamp_without_editing() {
         for zoom in [70.0, 140.0] {
