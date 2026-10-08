@@ -101,7 +101,7 @@ Use stable Rust, edition 2024, and Cargo. Select compatible released crate versi
 
 ## Initial desktop UI
 
-Provide an application Settings dialog for the accent color. Place Settings in the app-name menu on macOS and File on Windows/Linux. Offer all 19 Material 500 colors with named options and left-hand preview swatches. Apply the chosen accent immediately through the shared theme, save it as an application preference, and retain it across project changes. Use Purple 500 by default. Keep broader light/dark theme customization on the roadmap.
+Provide an application Settings dialog for theme and accent color. Place Settings in the app-name menu on macOS and File on Windows/Linux. Offer all 19 Material 500 colors with named options and left-hand preview swatches. Apply the chosen accent immediately through the shared theme, save it as an application preference, and retain it across project changes. Use Dark and Purple 500 by default. Offer Light with a `#E9E9E9` timeline and `#F9F9F9` panels, toolbars, menus, and dialogs, plus dark text and matching control/grid colors. Persist the theme with the accent and apply both immediately without modifying the project. Keep broader theme customization on the roadmap.
 
 Use the supplied Audacity 4 screenshots as layout references.
 
@@ -412,7 +412,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 
 #### UI
 
-- Light and dark themes.
+- Further theme customization beyond the built-in Light and Dark palettes.
 - Audio settings interface for device selection, buffer-size controls, project sample rate, and audio-memory budget.
 - Advanced import/export controls for sample format, bit depth, channel conversion, and dither.
 - User-configurable mixing controls after the MVP: pan law, stereo pan/balance modes, clipping protection options, and clip fade lengths and curves.

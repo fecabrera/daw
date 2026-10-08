@@ -78,7 +78,7 @@ The audio callback must remain nonblocking and must not allocate or perform file
 ## UI conventions
 
 - Reuse `theme.rs`, `panels.rs`, `toolbars.rs`, `rows.rs`, and `dialogs.rs`. Reuse shared knobs, meters, icons, fonts, and waveform helpers.
-- Read the current accent through `theme::accent(ctx)` and derive related tints through shared theme helpers. `theme::ACCENT` is the default, not the active preference. Keep application settings separate from project data. Track colors are defaults for their clips, while an optional clip color overrides inheritance. Resolve the same palette for committed clips and previews.
+- Read surface and foreground colors through `theme::palette(ctx)` for custom painting; do not use fixed dark colors in runtime controls. Read the current accent through `theme::accent(ctx)` and derive related tints through shared theme helpers. `theme::ACCENT` is the default, not the active preference. Keep application settings separate from project data. Track colors are defaults for their clips, while an optional clip color overrides inheritance. Resolve the same palette for committed clips and previews.
 - Use bundled Outfit and Lucide assets. Follow existing typography and fixed-width monitor digit slots. Keep rows and toolbar items centered vertically. Keep names and numeric text in their documented styles.
 - Keep track controls aligned with timeline lanes and Master pinned separately. Reuse shared layout constants instead of adding independent padding or row heights.
 - Keep editable drafts separate from committed values. Enter commits track-name and tempo drafts; Escape or focus loss cancels them. Numeric gain/pan controls retain their documented commit rules.

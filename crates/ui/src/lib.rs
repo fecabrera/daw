@@ -59,7 +59,7 @@ fn placement_start(
 fn numeric_input(ui: &mut egui::Ui, text: &mut String, tooltip: &str) -> egui::Response {
     ui.add(
         egui::TextEdit::singleline(text)
-            .text_color(theme::TEXT)
+            .text_color(theme::palette(ui.ctx()).text)
             .font(egui::TextStyle::Small)
             .horizontal_align(egui::Align::Center)
             .desired_width(36.0),
@@ -121,6 +121,7 @@ fn transport_monitor_control(
     sense: Sense,
 ) -> MonitorResponse {
     let font = fonts::semibold(13.0);
+    let colors = theme::palette(ui.ctx());
     // Digits share a fixed advance; unit letters and punctuation keep theirs.
     let digit_count = text.chars().filter(char::is_ascii_digit).count();
     let digit_slots = digit_count.max(minimum_digits);
@@ -135,7 +136,7 @@ fn transport_monitor_control(
             .filter(|character| !character.is_ascii_digit())
             .map(|c| {
                 fonts
-                    .layout(c.to_string(), font.clone(), theme::TIME_UNIT, f32::INFINITY)
+                    .layout(c.to_string(), font.clone(), colors.time_unit, f32::INFINITY)
                     .size()
                     .x
             })
@@ -159,9 +160,9 @@ fn transport_monitor_control(
     for character in text.chars() {
         let is_digit = character.is_ascii_digit();
         let color = if is_digit {
-            theme::TEXT
+            colors.text
         } else {
-            theme::TIME_UNIT
+            colors.time_unit
         };
         let galley = painter.layout_no_wrap(character.to_string(), font.clone(), color);
         let width = if is_digit {
@@ -630,7 +631,7 @@ impl DawUi {
 
     pub fn set_settings(&mut self, ctx: &egui::Context, settings: settings::AppSettings) {
         self.settings = settings;
-        theme::set_accent(ctx, settings.accent.color());
+        theme::apply(ctx, settings);
     }
 
     pub fn settings_shortcut() -> egui::KeyboardShortcut {
@@ -1277,7 +1278,7 @@ impl DawUi {
         }
         self.update_window_title(&ctx);
         egui::Panel::top("toolbar")
-            .frame(egui::Frame::new().fill(theme::PANEL))
+            .frame(egui::Frame::new().fill(theme::palette(ui.ctx()).panel))
             .show_separator_line(true)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
@@ -1322,14 +1323,14 @@ impl DawUi {
                 });
             });
             for notice in &self.notices {
-                ui.colored_label(theme::WARNING, notice);
+                ui.colored_label(theme::palette(ui.ctx()).warning, notice);
             }
             if !self.notices.is_empty() && ui.small_button("Dismiss notices").clicked() {
                 self.notices.clear();
             }
         });
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BACKGROUND))
+            .frame(egui::Frame::new().fill(theme::palette(ui.ctx()).background))
             .show(ui, |ui| {
                 ui.add_enabled_ui(
                     self.job.is_none()
@@ -1497,7 +1498,7 @@ impl DawUi {
             let mut output = egui::TextEdit::singleline(&mut edit.text)
                 .id(ui.make_persistent_id("tempo"))
                 .font(fonts::semibold(13.0))
-                .text_color(theme::TEXT)
+                .text_color(theme::palette(ui.ctx()).text)
                 .horizontal_align(egui::Align::Center)
                 .desired_width(edit.width)
                 .min_size(Vec2::new(edit.width, toolbars::CONTROL_HEIGHT))
@@ -1749,7 +1750,7 @@ impl DawUi {
                 Pos2::new(bounds.left(), divider_y),
                 Pos2::new(bounds.right(), divider_y),
             ],
-            Stroke::new(1.0_f32, theme::BORDER),
+            Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
         );
         toolbars::Toolbar::row(ui, |ui| {
             let playing = self.is_playing();
@@ -1768,7 +1769,15 @@ impl DawUi {
             {
                 self.toggle_playback();
             }
-            if icons::button(ui, icons::Lucide::Square, "Stop", true, theme::TEXT).clicked() {
+            if icons::button(
+                ui,
+                icons::Lucide::Square,
+                "Stop",
+                true,
+                theme::palette(ui.ctx()).text,
+            )
+            .clicked()
+            {
                 self.stop();
             }
             let enabled = self.session.project.transport.r#loop.enabled;
@@ -1824,7 +1833,7 @@ impl DawUi {
                     icons::Lucide::MoveHorizontal
                         .size(16.0)
                         .stroke_width(2.0)
-                        .color(theme::TEXT)
+                        .color(theme::palette(ui.ctx()).text)
                         .image()
                         .alt_text("Horizontal zoom"),
                 )
@@ -1850,10 +1859,10 @@ impl DawUi {
         let painter = ui.painter().clone();
         let track_surface =
             Rect::from_min_max(bounds.min, Pos2::new(timeline_left, bounds.bottom()));
-        painter.rect_filled(track_surface, 0.0, theme::PANEL);
+        painter.rect_filled(track_surface, 0.0, theme::palette(ui.ctx()).panel);
         painter.line_segment(
             [track_surface.right_top(), track_surface.right_bottom()],
-            Stroke::new(1.0_f32, theme::BORDER),
+            Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
         );
 
         let master_rect = Rect::from_min_max(
@@ -1926,8 +1935,16 @@ impl DawUi {
         // One shared border separates the entire header from the track workspace.
         let header_bottom = timeline_rect.top() - 0.5;
         for (left, right, color) in [
-            (bounds.left(), timeline_left, theme::BORDER),
-            (timeline_left, bounds.right(), theme::BORDER),
+            (
+                bounds.left(),
+                timeline_left,
+                theme::palette(ui.ctx()).border,
+            ),
+            (
+                timeline_left,
+                bounds.right(),
+                theme::palette(ui.ctx()).border,
+            ),
         ] {
             painter.line_segment(
                 [
@@ -1956,7 +1973,7 @@ impl DawUi {
             margin: 6,
             ..Default::default()
         }
-        .track_frame()
+        .track_frame(ui.ctx())
         .show(ui, |ui| {
             ui.set_min_width(TRACK_WIDTH - 14.0);
             ui.set_min_height(MASTER_HEIGHT - 14.0);
@@ -2024,7 +2041,7 @@ impl DawUi {
             [rect.right_top(), rect.right_bottom()],
         ] {
             ui.painter()
-                .line_segment(edge, Stroke::new(1.0, theme::BORDER));
+                .line_segment(edge, Stroke::new(1.0, theme::palette(ui.ctx()).border));
         }
     }
     fn timeline_extent(&self) -> f64 {
@@ -2359,8 +2376,14 @@ impl DawUi {
                 toolbars::Toolbar::row(ui, |ui| {
                     ui.label("Tracks");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if icons::button(ui, icons::Lucide::Plus, "Add track", true, theme::TEXT)
-                            .clicked()
+                        if icons::button(
+                            ui,
+                            icons::Lucide::Plus,
+                            "Add track",
+                            true,
+                            theme::palette(ui.ctx()).text,
+                        )
+                        .clicked()
                         {
                             match self.session.project.add_track() {
                                 Ok(id) => {
@@ -2391,8 +2414,8 @@ impl DawUi {
                 );
             self.ruler_interaction(ui, rect, &selection_response, &playhead_response);
             let painter = ui.painter().with_clip_rect(rect);
-            painter.rect_filled(rect, 0.0, theme::BACKGROUND);
-            painter.rect_filled(labels, 0.0, theme::PANEL);
+            painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
+            painter.rect_filled(labels, 0.0, theme::palette(ui.ctx()).panel);
             let l = &self.session.project.transport.r#loop;
             let (x1, x2) = self.loop_pixels(rect);
             if l.end_frame > l.start_frame && x2 > rect.left() && x1 < rect.right() {
@@ -2431,7 +2454,7 @@ impl DawUi {
             }
             painter.line_segment(
                 [ticks.left_top(), ticks.right_top()],
-                Stroke::new(1.0_f32, theme::BORDER),
+                Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
             );
             let timeline = self.musical_timeline();
             for tick in timeline.ticks(rect.width()) {
@@ -2450,7 +2473,7 @@ impl DawUi {
                 };
                 painter.line_segment(
                     [Pos2::new(x, top), Pos2::new(x, ticks.bottom())],
-                    Stroke::new(1.0_f32, theme::SECONDARY),
+                    Stroke::new(1.0_f32, theme::palette(ui.ctx()).secondary),
                 );
                 if let Some(label) = tick.label {
                     let selected = tick.beat >= timeline.beats(l.start_frame)
@@ -2460,10 +2483,10 @@ impl DawUi {
                         egui::Align2::LEFT_CENTER,
                         label,
                         egui::FontId::proportional(11.0),
-                        if selected {
+                        if selected && ui.visuals().dark_mode {
                             theme::CLIP_TEXT
                         } else {
-                            theme::TEXT
+                            theme::palette(ui.ctx()).text
                         },
                     );
                 }
@@ -2505,7 +2528,7 @@ impl DawUi {
             let mut output = egui::TextEdit::singleline(&mut edit.text)
                 .id(ui.make_persistent_id(("track_name", track.id)))
                 .font(egui::FontId::proportional(13.0))
-                .text_color(theme::TEXT)
+                .text_color(theme::palette(ui.ctx()).text)
                 .horizontal_align(egui::Align::Center)
                 .desired_width(width)
                 .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
@@ -2549,7 +2572,7 @@ impl DawUi {
                     egui::Button::new(
                         egui::RichText::new(&track.name)
                             .font(egui::FontId::proportional(13.0))
-                            .color(theme::TEXT),
+                            .color(theme::palette(ui.ctx()).text),
                     )
                     .sense(Sense::click_and_drag())
                     .selected(self.selected_track == Some(track.id))
@@ -2710,7 +2733,7 @@ impl DawUi {
                                 margin: 6,
                                 ..Default::default()
                             }
-                            .track_frame()
+                            .track_frame(ui.ctx())
                             .show(ui, |ui| {
                                 ui.set_min_width(TRACK_WIDTH - 14.0);
                                 ui.set_min_height(ROW_HEIGHT - 14.0);
@@ -2922,19 +2945,20 @@ impl DawUi {
                     if index > 0 {
                         painter.line_segment(
                             [rect.left_top(), rect.right_top()],
-                            Stroke::new(1.0, theme::BORDER),
+                            Stroke::new(1.0, theme::palette(ui.ctx()).border),
                         );
                     }
                     for edge in [
                         [rect.left_top(), rect.left_bottom()],
                         [rect.right_top(), rect.right_bottom()],
                     ] {
-                        painter.line_segment(edge, Stroke::new(1.0, theme::BORDER));
+                        painter
+                            .line_segment(edge, Stroke::new(1.0, theme::palette(ui.ctx()).border));
                     }
                     if index + 1 == count {
                         painter.line_segment(
                             [rect.left_bottom(), rect.right_bottom()],
-                            Stroke::new(1.0, theme::BORDER),
+                            Stroke::new(1.0, theme::palette(ui.ctx()).border),
                         );
                     }
                     if selected {
@@ -2967,11 +2991,11 @@ impl DawUi {
                 continue;
             }
             let color = if tick.bar {
-                theme::BORDER
+                theme::palette(painter.ctx()).border
             } else if tick.whole_beat {
-                theme::GRID
+                theme::palette(painter.ctx()).grid
             } else {
-                theme::GRID_SUBDIVISION
+                theme::palette(painter.ctx()).grid_subdivision
             };
             painter.line_segment(
                 [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
@@ -3541,7 +3565,7 @@ impl DawUi {
                     "Loading waveform…"
                 },
                 egui::FontId::proportional(11.0),
-                theme::TEXT,
+                colors.text,
             );
         }
         painter.rect_stroke(
@@ -3552,7 +3576,7 @@ impl DawUi {
                 if valid {
                     theme::accent(ui.ctx())
                 } else {
-                    theme::ERROR
+                    theme::palette(ui.ctx()).error
                 },
             ),
             StrokeKind::Inside,
@@ -3616,7 +3640,7 @@ impl DawUi {
                     if preview.valid {
                         theme::accent(ui.ctx())
                     } else {
-                        theme::ERROR
+                        theme::palette(ui.ctx()).error
                     },
                 ),
                 StrokeKind::Inside,
@@ -3651,14 +3675,18 @@ impl DawUi {
         painter.rect_filled(
             block,
             2.0,
-            if missing { theme::MISSING } else { colors.body },
+            if missing {
+                theme::palette(painter.ctx()).missing
+            } else {
+                colors.body
+            },
         );
         let header = Rect::from_min_max(block.min, Pos2::new(block.right(), block.top() + 22.0));
         painter.rect_filled(
             header,
             2.0,
             if missing {
-                theme::BORDER
+                theme::palette(painter.ctx()).border
             } else {
                 colors.header
             },
@@ -3669,7 +3697,11 @@ impl DawUi {
             egui::Align2::LEFT_CENTER,
             &clip.name,
             egui::FontId::proportional(11.0),
-            colors.text,
+            if missing {
+                theme::palette(painter.ctx()).text
+            } else {
+                colors.text
+            },
         );
         if missing {
             clip_painter.text(
@@ -3677,7 +3709,7 @@ impl DawUi {
                 egui::Align2::CENTER_CENTER,
                 "Missing source",
                 egui::FontId::proportional(13.0),
-                theme::WARNING,
+                theme::palette(painter.ctx()).warning,
             );
         } else if let Some(audio) = audio {
             let channels = usize::from(audio.metadata.channels);
@@ -3765,7 +3797,7 @@ impl DawUi {
             if selected {
                 theme::selection_outline(painter.ctx())
             } else {
-                Stroke::new(1.0, theme::DIVIDER)
+                Stroke::new(1.0, theme::palette(painter.ctx()).divider)
             },
             StrokeKind::Inside,
         );
@@ -3923,10 +3955,10 @@ impl DawUi {
             ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::hover());
         self.lane_bounds.insert(track_id, rect);
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 0.0, theme::BACKGROUND);
+        painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
         painter.line_segment(
             [rect.left_bottom(), rect.right_bottom()],
-            Stroke::new(1.0_f32, theme::BORDER),
+            Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
         );
         self.paint_grid(&painter, rect);
         for clip in &track.clips {
@@ -4248,6 +4280,88 @@ mod tests {
     }
 
     #[test]
+    fn theme_switches_painted_surfaces_and_text_without_changing_project_or_clip_colors() {
+        let (mut app, track) = fixture();
+        let source = TestWav::new();
+        let audio = daw_media::decode_wav(&source.0).unwrap();
+        let clip = app.session.project.tracks[0].clips[0].clone();
+        app.session.audio.insert(clip.asset_id, audio);
+        app.select_clip(clip.id, track, false);
+        let before = format!("{:?}", app.session.project);
+        let ctx = context();
+        let clip_colors = theme::clip_colors(app.session.project.tracks[0].color, clip.color);
+        let mut initial_lane = None;
+        for color_theme in [
+            settings::ColorTheme::Dark,
+            settings::ColorTheme::Light,
+            settings::ColorTheme::Dark,
+        ] {
+            let settings = settings::AppSettings {
+                theme: color_theme,
+                accent: settings::AccentColor::Teal,
+            };
+            app.set_settings(&ctx, settings);
+            frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let palette = theme::palette(&ctx);
+            let lane = app.lane_bounds[&track];
+            if let Some(initial) = initial_lane {
+                assert_eq!(lane, initial);
+            }
+            initial_lane = Some(lane);
+            for fill in [
+                palette.background,
+                palette.panel,
+                palette.input,
+                clip_colors.body,
+                clip_colors.header,
+            ] {
+                assert!(
+                    shapes
+                        .iter()
+                        .any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == fill)),
+                    "Missing fill {fill:?} in {color_theme:?}"
+                );
+            }
+            for label in ["Track 1", "Master"] {
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t)
+                    if t.galley.text() == label && (t.fallback_color == palette.text
+                        || t.galley.job.sections.iter().all(|section| section.format.color == palette.text)))),
+                    "Missing {label} in {color_theme:?}");
+            }
+
+            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == clip_colors.text)));
+            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment {stroke, ..} if stroke.color == palette.grid)));
+            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment {stroke, ..} if stroke.color == clip_colors.waveform)));
+            assert!(has_preview_outline(
+                &shapes,
+                app.clip_block(lane, &clip, 0),
+                settings.accent.color()
+            ));
+            assert_eq!(format!("{:?}", app.session.project), before);
+            assert!(!app.dirty);
+        }
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: settings::ColorTheme::Light,
+                ..Default::default()
+            },
+        );
+        app.session.audio.clear();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(
+            shapes.iter().any(
+                |s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == theme::LIGHT.missing)
+            )
+        );
+        assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == theme::LIGHT.text)));
+        app.open_settings();
+        assert!(!app.file_action_enabled(FileAction::New));
+        assert_eq!(app.settings().theme, settings::ColorTheme::Light);
+    }
+
+    #[test]
     fn settings_block_project_actions_and_accent_changes_survive_project_replacement() {
         let (mut app, track) = fixture();
         let ctx = context();
@@ -4256,6 +4370,7 @@ mod tests {
         let before = format!("{:?}", app.session.project);
         let settings = settings::AppSettings {
             accent: settings::AccentColor::Teal,
+            ..Default::default()
         };
         app.set_settings(&ctx, settings);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));

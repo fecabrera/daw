@@ -57,7 +57,7 @@ impl ExportStatus {
                         ui.label("Export complete");
                     }
                     State::Failed(_) => {
-                        ui.colored_label(crate::theme::ERROR, "Export failed");
+                        ui.colored_label(crate::theme::palette(ui.ctx()).error, "Export failed");
                     }
                 }
                 if !matches!(self.state, State::Failed(_)) {
@@ -93,11 +93,11 @@ impl ExportStatus {
                         ui.label("Destination");
                         ui.add(egui::Label::new(self.path.display().to_string()).wrap());
                         if let State::Failed(error) = &self.state {
-                            ui.colored_label(crate::theme::ERROR, "Error");
+                            ui.colored_label(crate::theme::palette(ui.ctx()).error, "Error");
                             ui.add(egui::Label::new(error).wrap());
                         }
                         if !self.warnings.is_empty() {
-                            ui.colored_label(crate::theme::WARNING, "Warnings");
+                            ui.colored_label(crate::theme::palette(ui.ctx()).warning, "Warnings");
                             for warning in &self.warnings {
                                 ui.add(egui::Label::new(warning).wrap());
                             }

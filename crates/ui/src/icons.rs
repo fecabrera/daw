@@ -15,9 +15,9 @@ pub fn grip(ui: &mut Ui) -> Response {
         .size(16.0)
         .stroke_width(2.0)
         .color(if ui.is_enabled() {
-            crate::theme::SECONDARY
+            crate::theme::palette(ui.ctx()).secondary
         } else {
-            crate::theme::BORDER
+            crate::theme::palette(ui.ctx()).border
         })
         .image()
         .alt_text("Reorder track")
@@ -60,7 +60,7 @@ pub fn toggle_button(
         if selected {
             crate::theme::accent(ui.ctx())
         } else {
-            crate::theme::TEXT
+            crate::theme::palette(ui.ctx()).text
         },
         Some(selected),
     )

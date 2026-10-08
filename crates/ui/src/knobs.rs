@@ -105,7 +105,7 @@ fn knob(ui: &mut Ui, value: &mut f32, parameter: Parameter) -> Response {
                 .collect();
             painter.add(Shape::line(points, Stroke::new(2.0, color)));
         };
-        arc(0.0, 1.0, theme::BORDER);
+        arc(0.0, 1.0, theme::palette(ui.ctx()).border);
         let origin = match parameter {
             Parameter::Gain => 0.0,
             Parameter::Pan => 0.5,
@@ -120,20 +120,20 @@ fn knob(ui: &mut Ui, value: &mut f32, parameter: Parameter) -> Response {
             Stroke::new(
                 1.0,
                 if response.hovered() || response.has_focus() {
-                    theme::SECONDARY
+                    theme::palette(ui.ctx()).secondary
                 } else {
-                    theme::BORDER
+                    theme::palette(ui.ctx()).border
                 },
             ),
         );
         // The fixed mark identifies unity gain or centered pan independently of the pointer.
         painter.line_segment(
             [point(0.5, radius - 1.0), point(0.5, radius + 2.0)],
-            Stroke::new(1.5, theme::TEXT),
+            Stroke::new(1.5, theme::palette(ui.ctx()).text),
         );
         painter.line_segment(
             [point(normalized, 2.0), point(normalized, radius - 5.0)],
-            Stroke::new(1.5, theme::TEXT),
+            Stroke::new(1.5, theme::palette(ui.ctx()).text),
         );
     }
     let description = match parameter {

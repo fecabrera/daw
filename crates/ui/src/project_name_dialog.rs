@@ -53,7 +53,8 @@ impl ProjectNameDialog {
             if let Err(error) = daw_project::project_folder_name(&self.name) {
                 ui.add(
                     egui::Label::new(
-                        egui::RichText::new(error.to_string()).color(crate::theme::ERROR),
+                        egui::RichText::new(error.to_string())
+                            .color(crate::theme::palette(ui.ctx()).error),
                     )
                     .wrap(),
                 );

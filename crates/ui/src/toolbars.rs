@@ -10,7 +10,7 @@ pub struct Toolbar;
 impl Toolbar {
     pub fn show<R>(ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
         Frame::new()
-            .fill(theme::PANEL)
+            .fill(theme::palette(ui.ctx()).panel)
             .inner_margin(theme::TOOLBAR_PADDING)
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());

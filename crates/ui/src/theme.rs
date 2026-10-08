@@ -8,7 +8,7 @@ pub const DIVIDER: Color32 = Color32::from_rgb(8, 8, 8);
 pub const TEXT: Color32 = Color32::from_rgb(199, 201, 204);
 pub const TIME_UNIT: Color32 = Color32::from_rgb(170, 174, 179);
 pub const SECONDARY: Color32 = Color32::from_rgb(139, 143, 148);
-/// The single source for accent colors across the app, including tinted fills.
+/// Default accent. Runtime colors come from the current context.
 pub const ACCENT: Color32 = crate::settings::AccentColor::Purple.color();
 pub const SELECTION_OUTLINE: Stroke = Stroke {
     width: 2.0,
@@ -29,6 +29,67 @@ pub const WARNING: Color32 = Color32::from_rgb(213, 165, 89);
 pub const ERROR: Color32 = Color32::from_rgb(223, 100, 100);
 pub const METER: Color32 = Color32::from_rgb(92, 179, 80);
 pub const TOOLBAR_PADDING: i8 = 8;
+
+/// Surface and foreground colors for custom painting. Clip palettes are independent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Palette {
+    pub background: Color32,
+    pub panel: Color32,
+    pub input: Color32,
+    pub border: Color32,
+    pub divider: Color32,
+    pub text: Color32,
+    pub time_unit: Color32,
+    pub secondary: Color32,
+    pub grid: Color32,
+    pub grid_subdivision: Color32,
+    pub missing: Color32,
+    pub warning: Color32,
+    pub error: Color32,
+    pub meter: Color32,
+}
+
+pub const DARK: Palette = Palette {
+    background: BACKGROUND,
+    panel: PANEL,
+    input: INPUT,
+    border: BORDER,
+    divider: DIVIDER,
+    text: TEXT,
+    time_unit: TIME_UNIT,
+    secondary: SECONDARY,
+    grid: GRID,
+    grid_subdivision: GRID_SUBDIVISION,
+    missing: MISSING,
+    warning: WARNING,
+    error: ERROR,
+    meter: METER,
+};
+
+pub const LIGHT: Palette = Palette {
+    background: Color32::from_rgb(233, 233, 233),
+    panel: Color32::from_rgb(249, 249, 249),
+    input: Color32::WHITE,
+    border: Color32::from_rgb(190, 193, 197),
+    divider: Color32::from_rgb(130, 134, 139),
+    text: Color32::from_rgb(40, 43, 47),
+    time_unit: Color32::from_rgb(85, 89, 94),
+    secondary: Color32::from_rgb(106, 110, 115),
+    grid: Color32::from_rgb(208, 210, 213),
+    grid_subdivision: Color32::from_rgb(221, 223, 225),
+    missing: Color32::from_rgb(219, 221, 223),
+    warning: Color32::from_rgb(150, 93, 0),
+    error: Color32::from_rgb(179, 38, 30),
+    meter: Color32::from_rgb(56, 142, 60),
+};
+
+pub fn palette(ctx: &Context) -> Palette {
+    if ctx.global_style().visuals.dark_mode {
+        DARK
+    } else {
+        LIGHT
+    }
+}
 
 /// Related clip colors resolved together for clips and their drag previews.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,16 +163,26 @@ pub fn selection_outline(ctx: &Context) -> Stroke {
 
 pub fn ruler_selection(ctx: &Context, enabled: bool) -> Color32 {
     blend(
-        if enabled { BORDER } else { PANEL },
+        if enabled {
+            palette(ctx).border
+        } else {
+            palette(ctx).panel
+        },
         accent(ctx),
         if enabled { 35 } else { 12 },
     )
 }
 
 pub fn set_accent(ctx: &Context, color: Color32) {
-    ctx.style_mut_of(egui::Theme::Dark, |style| {
+    let theme = if ctx.global_style().visuals.dark_mode {
+        egui::Theme::Dark
+    } else {
+        egui::Theme::Light
+    };
+    let panel = palette(ctx).panel;
+    ctx.style_mut_of(theme, |style| {
         let visuals = &mut style.visuals;
-        let selected = blend(PANEL, color, 18);
+        let selected = blend(panel, color, 18);
         visuals.hyperlink_color = color;
         visuals.selection.bg_fill = selected;
         visuals.selection.stroke.color = color;
@@ -123,6 +194,7 @@ pub fn set_accent(ctx: &Context, color: Color32) {
         visuals.widgets.open.bg_fill = selected;
         visuals.widgets.open.weak_bg_fill = selected;
         visuals.widgets.open.bg_stroke.color = color;
+        visuals.widgets.open.fg_stroke.color = color;
     });
     ctx.request_repaint();
 }
@@ -140,42 +212,80 @@ const fn blend(surface: Color32, color: Color32, percent: u8) -> Color32 {
     )
 }
 
+/// Apply application preferences without changing layout or project data.
+pub fn apply(ctx: &Context, settings: crate::settings::AppSettings) {
+    let theme = match settings.theme {
+        crate::settings::ColorTheme::Dark => egui::Theme::Dark,
+        crate::settings::ColorTheme::Light => egui::Theme::Light,
+    };
+    ctx.set_theme(theme);
+    ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(match theme {
+        egui::Theme::Dark => egui::SystemTheme::Dark,
+        egui::Theme::Light => egui::SystemTheme::Light,
+    }));
+    set_accent(ctx, settings.accent.color());
+}
+
 /// Shared visual settings for controls, panels, dialogs, and timeline components.
 pub fn configure(ctx: &Context) {
-    ctx.set_theme(egui::Theme::Dark);
-    ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(egui::SystemTheme::Dark));
-    let mut visuals = Visuals::dark();
-    visuals.panel_fill = PANEL;
-    visuals.window_fill = PANEL;
-    visuals.extreme_bg_color = INPUT;
-    visuals.text_edit_bg_color = Some(INPUT);
-    visuals.faint_bg_color = Color32::from_rgb(34, 34, 34);
-    visuals.weak_text_color = Some(SECONDARY);
+    configure_style(ctx, egui::Theme::Dark, DARK);
+    configure_style(ctx, egui::Theme::Light, LIGHT);
+    apply(ctx, crate::settings::AppSettings::default());
+}
+
+fn configure_style(ctx: &Context, theme: egui::Theme, colors: Palette) {
+    let mut visuals = match theme {
+        egui::Theme::Dark => Visuals::dark(),
+        egui::Theme::Light => Visuals::light(),
+    };
+    visuals.panel_fill = colors.panel;
+    visuals.window_fill = colors.panel;
+    visuals.extreme_bg_color = colors.input;
+    visuals.text_edit_bg_color = Some(colors.input);
+    visuals.faint_bg_color = match theme {
+        egui::Theme::Dark => Color32::from_rgb(34, 34, 34),
+        egui::Theme::Light => blend(colors.panel, colors.text, 3),
+    };
+    visuals.weak_text_color = Some(colors.secondary);
     visuals.hyperlink_color = ACCENT;
-    visuals.warn_fg_color = WARNING;
-    visuals.error_fg_color = ERROR;
-    visuals.window_stroke = Stroke::new(1.0_f32, BORDER);
+    visuals.warn_fg_color = colors.warning;
+    visuals.error_fg_color = colors.error;
+    visuals.window_stroke = Stroke::new(1.0_f32, colors.border);
     visuals.window_corner_radius = CornerRadius::same(2);
     visuals.menu_corner_radius = CornerRadius::same(2);
-    visuals.selection.bg_fill = SELECTED;
+    let selected = blend(colors.panel, ACCENT, 18);
+    visuals.selection.bg_fill = selected;
     visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
     visuals.text_cursor.stroke = Stroke::new(1.0_f32, ACCENT);
-    visuals.widgets.noninteractive.bg_fill = PANEL;
-    visuals.widgets.noninteractive.weak_bg_fill = PANEL;
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER);
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT);
-    visuals.widgets.inactive.bg_fill = Color32::from_rgb(42, 42, 42);
+    visuals.widgets.noninteractive.bg_fill = colors.panel;
+    visuals.widgets.noninteractive.weak_bg_fill = colors.panel;
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, colors.border);
+    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, colors.text);
+    visuals.widgets.inactive.bg_fill = match theme {
+        egui::Theme::Dark => Color32::from_rgb(42, 42, 42),
+        egui::Theme::Light => Color32::from_rgb(238, 239, 240),
+    };
     visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER);
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT);
-    visuals.widgets.hovered.bg_fill = Color32::from_rgb(49, 49, 49);
-    visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(42, 42, 42);
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, SECONDARY);
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, CLIP_TEXT);
-    visuals.widgets.active.bg_fill = SELECTED;
-    visuals.widgets.active.weak_bg_fill = SELECTED;
+    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, colors.border);
+    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, colors.text);
+    visuals.widgets.hovered.bg_fill = match theme {
+        egui::Theme::Dark => Color32::from_rgb(49, 49, 49),
+        egui::Theme::Light => Color32::from_rgb(225, 227, 230),
+    };
+    visuals.widgets.hovered.weak_bg_fill = visuals.widgets.inactive.bg_fill;
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, colors.secondary);
+    visuals.widgets.hovered.fg_stroke = Stroke::new(
+        1.0_f32,
+        match theme {
+            egui::Theme::Dark => CLIP_TEXT,
+            egui::Theme::Light => colors.text,
+        },
+    );
+    visuals.widgets.active.bg_fill = selected;
+    visuals.widgets.active.weak_bg_fill = selected;
     visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT);
     visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, ACCENT);
+    visuals.widgets.open = visuals.widgets.active;
     for widget in [
         &mut visuals.widgets.noninteractive,
         &mut visuals.widgets.inactive,
@@ -186,8 +296,8 @@ pub fn configure(ctx: &Context) {
         widget.corner_radius = CornerRadius::same(2);
         widget.expansion = 0.0;
     }
-    ctx.set_visuals(visuals);
-    ctx.style_mut_of(egui::Theme::Dark, |style| {
+    ctx.style_mut_of(theme, |style| {
+        style.visuals = visuals;
         style.spacing.item_spacing = Vec2::new(8.0, 5.0);
         style.spacing.button_padding = Vec2::new(7.0, 3.0);
         style.spacing.interact_size.y = 22.0;

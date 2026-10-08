@@ -40,17 +40,25 @@ pub fn channel(ui: &mut Ui, label: &str, height: f32, peak: f32, clipped: bool) 
         info
     });
     let painter = ui.painter();
-    painter.rect_filled(rect, 1.0, theme::INPUT);
+    painter.rect_filled(rect, 1.0, theme::palette(ui.ctx()).input);
     if progress > 0.0 {
         let fill = Rect::from_min_max(
             Pos2::new(rect.left(), rect.bottom() - rect.height() * progress),
             rect.max,
         );
-        painter.rect_filled(fill, 1.0, if clipped { theme::ERROR } else { theme::METER });
+        painter.rect_filled(
+            fill,
+            1.0,
+            if clipped {
+                theme::palette(ui.ctx()).error
+            } else {
+                theme::palette(ui.ctx()).meter
+            },
+        );
     }
     if clipped {
         let warning = Rect::from_min_size(rect.min, Vec2::new(rect.width(), 3.0));
-        painter.rect_filled(warning, 1.0, theme::ERROR);
+        painter.rect_filled(warning, 1.0, theme::palette(ui.ctx()).error);
     }
     response.on_hover_text(if clipped {
         format!("{label}: {level}. Clipping detected. Click to clear.")
