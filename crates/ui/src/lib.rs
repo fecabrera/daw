@@ -399,11 +399,20 @@ fn monitor_drag_position(
     }
     Some(destination)
 }
+fn clip_copy_modifier(modifiers: egui::Modifiers) -> bool {
+    if cfg!(target_os = "macos") {
+        modifiers.alt
+    } else {
+        modifiers.ctrl
+    }
+}
+
 struct Drag {
     clip: Clip,
     track: Id,
     mode: ClipDragMode,
     origin: Pos2,
+    duplicate: bool,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClipDragMode {
@@ -912,10 +921,13 @@ impl DawUi {
             return;
         };
         let clip = Clip {
-            id: Id::new_v4(),
             start_frame: project.transport.playhead_frame,
             ..clipboard.clip.clone()
         };
+        self.insert_clip(track_id, clip);
+    }
+    fn insert_clip(&mut self, track_id: Id, mut clip: Clip) {
+        clip.id = Id::new_v4();
         let id = clip.id;
         match self
             .session
@@ -1003,6 +1015,10 @@ impl DawUi {
     pub fn show(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.poll();
+        if let Some(drag) = &mut self.drag {
+            drag.duplicate = drag.mode == ClipDragMode::Move
+                && ctx.input(|input| clip_copy_modifier(input.modifiers));
+        }
         self.update_file_hover(&ctx);
         if !self.native_menu
             && let Some(action) = self.take_file_shortcut(&ctx)
@@ -2411,7 +2427,7 @@ impl DawUi {
             raw,
             drag.clip.length_frames,
             Some(track),
-            Some(drag.clip.id),
+            (!drag.duplicate).then_some(drag.clip.id),
             (!unsnapped).then_some(self.zoom),
         )
     }
@@ -2625,7 +2641,7 @@ impl DawUi {
         }
         let valid = self.placement_valid(
             Some(track),
-            Some(clip.id),
+            (!drag.duplicate).then_some(clip.id),
             clip.start_frame,
             clip.length_frames,
         );
@@ -2848,12 +2864,13 @@ impl DawUi {
             ),
             StrokeKind::Inside,
         );
-        ui.ctx()
-            .set_cursor_icon(if drag.mode == ClipDragMode::Move {
-                egui::CursorIcon::Grabbing
-            } else {
-                egui::CursorIcon::ResizeHorizontal
-            });
+        ui.ctx().set_cursor_icon(if drag.duplicate {
+            egui::CursorIcon::Copy
+        } else if drag.mode == ClipDragMode::Move {
+            egui::CursorIcon::Grabbing
+        } else {
+            egui::CursorIcon::ResizeHorizontal
+        });
     }
     fn paint_clip(
         &self,
@@ -2999,6 +3016,10 @@ impl DawUi {
                 self.clip_drag_preview(&drag, pointer, ui.input(|input| input.modifiers.shift))
             {
                 let c = preview.clip;
+                if drag.duplicate {
+                    self.insert_clip(preview.track, c);
+                    return;
+                }
                 if preview.track == drag.track
                     && (
                         c.start_frame,
@@ -3049,11 +3070,9 @@ impl DawUi {
             );
             let selected = self.selected_clip == Some(clip.id);
             let mut clip_painter = painter.clone();
-            if self
-                .drag
-                .as_ref()
-                .is_some_and(|drag| drag.mode != ClipDragMode::Body && drag.clip.id == clip.id)
-            {
+            if self.drag.as_ref().is_some_and(|drag| {
+                drag.mode != ClipDragMode::Body && !drag.duplicate && drag.clip.id == clip.id
+            }) {
                 clip_painter.multiply_opacity(0.35);
             }
             self.paint_clip(&clip_painter, track.color, block, clip, selected, None);
@@ -3094,7 +3113,11 @@ impl DawUi {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                         response
                             .clone()
-                            .on_hover_text("Drag to move clip. Hold Shift to bypass snapping.");
+                            .on_hover_text(if cfg!(target_os = "macos") {
+                                "Drag to move clip. Hold Option to duplicate. Hold Shift to bypass snapping."
+                            } else {
+                                "Drag to move clip. Hold Ctrl to duplicate. Hold Shift to bypass snapping."
+                            });
                     }
                     ClipDragMode::Body => {}
                 }
@@ -3109,6 +3132,8 @@ impl DawUi {
                     track: track_id,
                     mode,
                     origin,
+                    duplicate: mode == ClipDragMode::Move
+                        && ui.input(|input| clip_copy_modifier(input.modifiers)),
                 });
                 self.selected_clip = Some(clip.id);
             }
@@ -4300,6 +4325,7 @@ mod tests {
             track,
             mode: ClipDragMode::LoopRight,
             origin: Pos2::ZERO,
+            duplicate: false,
         };
         let preview = app
             .clip_drag_preview(&drag, Pos2::new((4.251 - 3.13) * 70.0, 0.0), false)
@@ -5876,6 +5902,259 @@ mod tests {
         })
     }
     #[test]
+    fn modifier_drag_duplicates_snapshot_with_snapping_and_dynamic_modifiers() {
+        for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
+            for across_tracks in [false, true] {
+                for shift in [false, true] {
+                    for duplicate in [false, true] {
+                        let (mut app, first) = fixture();
+                        let second = app.session.project.add_track().unwrap();
+                        let destination = if across_tracks { second } else { first };
+                        app.zoom = zoom;
+                        app.scroll = scroll;
+                        let clip = &mut app.session.project.tracks[0].clips[0];
+                        clip.start_frame = frames(2.0);
+                        clip.source_offset_frame = frames(0.125);
+                        clip.length_frames = frames(0.75);
+                        clip.repeat = Some(daw_core::ClipLoop {
+                            length_frames: frames(0.25),
+                            phase_frame: frames(0.0625),
+                        });
+                        clip.color = Some(daw_core::RgbColor {
+                            r: 20,
+                            g: 80,
+                            b: 160,
+                        });
+                        let original = clip.clone();
+                        let source = TestWav::new();
+                        let audio = daw_media::decode_wav(&source.0).unwrap();
+                        app.session.audio.insert(original.asset_id, audio.clone());
+                        let ctx = context();
+                        frame(&mut app, &ctx, vec![]);
+                        let start = app
+                            .clip_block(app.lane_bounds[&first], &original, original.start_frame)
+                            .min
+                            + Vec2::new(20.0, 12.0);
+                        let end = Pos2::new(
+                            start.x + 1.02 * zoom,
+                            app.lane_bounds[&destination].top() + 12.0,
+                        );
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(start), button(start, true)],
+                        );
+                        // Switch the copy modifier at a stationary pointer; release decides the action.
+                        let initial = egui::Modifiers {
+                            alt: !duplicate && cfg!(target_os = "macos"),
+                            ctrl: !duplicate && !cfg!(target_os = "macos"),
+                            shift,
+                            ..Default::default()
+                        };
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![
+                                egui::Event::ModifiersChanged(initial),
+                                egui::Event::PointerMoved(end),
+                            ],
+                        );
+                        assert_eq!(app.drag.as_ref().unwrap().duplicate, !duplicate);
+                        let modifiers = egui::Modifiers {
+                            alt: duplicate && cfg!(target_os = "macos"),
+                            ctrl: duplicate && !cfg!(target_os = "macos"),
+                            shift,
+                            ..Default::default()
+                        };
+                        let shapes = frame_shapes(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::ModifiersChanged(modifiers)],
+                            Vec2::new(1280.0, 800.0),
+                        );
+                        let preview = app
+                            .clip_drag_preview(app.drag.as_ref().unwrap(), end, shift)
+                            .unwrap();
+                        assert_eq!(app.drag.as_ref().unwrap().duplicate, duplicate);
+                        assert_eq!(preview.track, destination);
+                        assert!(
+                            preview.clip.start_frame.abs_diff(frames(if shift {
+                                3.02
+                            } else {
+                                3.0
+                            })) <= 1
+                        );
+                        assert!(preview.valid);
+                        assert!(has_preview_outline(
+                            &shapes,
+                            app.clip_block(
+                                app.lane_bounds[&destination],
+                                &preview.clip,
+                                preview.clip.start_frame
+                            ),
+                            theme::ACCENT
+                        ));
+                        assert_eq!(
+                            app.session.project.tracks[0].clips[0].start_frame,
+                            original.start_frame
+                        );
+                        assert!(app.session.project.tracks[1].clips.is_empty());
+                        assert!(!app.dirty);
+                        let mut release = button(end, false);
+                        if let egui::Event::PointerButton {
+                            modifiers: value, ..
+                        } = &mut release
+                        {
+                            *value = modifiers;
+                        }
+                        frame(&mut app, &ctx, vec![release]);
+                        let clips = &app.session.project.tracks[usize::from(across_tracks)].clips;
+                        let placed = clips.last().unwrap();
+                        assert_eq!(placed.start_frame, preview.clip.start_frame);
+                        assert_eq!(
+                            (
+                                placed.asset_id,
+                                placed.source_offset_frame,
+                                placed.length_frames,
+                                placed.repeat,
+                                placed.color,
+                                &placed.name
+                            ),
+                            (
+                                original.asset_id,
+                                original.source_offset_frame,
+                                original.length_frames,
+                                original.repeat,
+                                original.color,
+                                &original.name
+                            )
+                        );
+                        if duplicate {
+                            assert_ne!(placed.id, original.id);
+                            assert_eq!(app.session.project.tracks[0].clips[0].id, original.id);
+                            assert_eq!(
+                                app.session.project.tracks[0].clips[0].start_frame,
+                                original.start_frame
+                            );
+                            assert_eq!(app.selected_clip, Some(placed.id));
+                            assert_eq!(app.selected_track, Some(destination));
+                        } else {
+                            assert_eq!(placed.id, original.id);
+                            assert_eq!(
+                                app.session.project.tracks[0].clips.len(),
+                                usize::from(!across_tracks)
+                            );
+                        }
+                        assert_eq!(app.session.project.assets.len(), 1);
+                        assert!(std::sync::Arc::ptr_eq(
+                            &app.session.audio.get(&original.asset_id).unwrap().samples,
+                            &audio.samples
+                        ));
+                        assert!(app.clip_clipboard.is_none());
+                        assert!(app.dirty);
+                        assert!(app.error.is_none());
+                        app.session.project.validate().unwrap();
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn modifier_drag_snaps_to_original_edges_rejects_overlap_and_cancels_on_focus_loss() {
+        let (mut app, track) = fixture();
+        let clip = &mut app.session.project.tracks[0].clips[0];
+        clip.start_frame = frames(2.63);
+        clip.length_frames = frames(0.5);
+        let original = clip.clone();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let origin = app
+            .clip_block(app.lane_bounds[&track], &original, original.start_frame)
+            .min
+            + Vec2::new(20.0, 12.0);
+        let drag = Drag {
+            clip: original.clone(),
+            track,
+            mode: ClipDragMode::Move,
+            origin,
+            duplicate: true,
+        };
+        let preview = app
+            .clip_drag_preview(&drag, origin + Vec2::new(0.51 * app.zoom, 0.0), false)
+            .unwrap();
+        assert_eq!(preview.clip.start_frame, original.end());
+        assert!(preview.valid);
+        for cancel in [false, true] {
+            let (mut app, track) = fixture();
+            let original = app.session.project.tracks[0].clips[0].clone();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let start = app.lane_bounds[&track].min + Vec2::new(20.0, 12.0);
+            let end = start + Vec2::new(70.0, 0.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            let modifiers = egui::Modifiers {
+                alt: cfg!(target_os = "macos"),
+                ctrl: !cfg!(target_os = "macos"),
+                ..Default::default()
+            };
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerMoved(end),
+                ],
+                Vec2::new(1280.0, 800.0),
+            );
+            let preview = app
+                .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
+                .unwrap();
+            assert!(!preview.valid);
+            assert!(has_preview_outline(
+                &shapes,
+                app.clip_block(
+                    app.lane_bounds[&track],
+                    &preview.clip,
+                    preview.clip.start_frame
+                ),
+                theme::ERROR
+            ));
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused: !cancel,
+                    events: vec![egui::Event::PointerButton {
+                        pos: end,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers,
+                    }],
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            output.textures_delta.clear();
+            assert!(app.drag.is_none());
+            assert_eq!(app.session.project.tracks[0].clips.len(), 1);
+            assert_eq!(app.session.project.tracks[0].clips[0].id, original.id);
+            assert_eq!(
+                app.session.project.tracks[0].clips[0].start_frame,
+                original.start_frame
+            );
+            assert!(!app.dirty);
+            assert_eq!(app.error.is_some(), !cancel);
+            if !cancel {
+                assert!(app.error.as_ref().unwrap().contains("overlap"));
+            }
+        }
+    }
+
+    #[test]
     fn clip_move_preview_is_painted_at_the_drop_position_without_editing_the_project() {
         for (zoom, scroll) in [(70.0, 0.0), (140.0, 1.0)] {
             let (mut app, first) = fixture();
@@ -6554,6 +6833,7 @@ mod tests {
                     track,
                     mode: ClipDragMode::LoopRight,
                     origin: end,
+                    duplicate: false,
                 };
                 let resized = app
                     .clip_drag_preview(&again, end + Vec2::new(zoom, 0.0), false)
@@ -6685,6 +6965,7 @@ mod tests {
                 track,
                 mode,
                 origin,
+                duplicate: false,
             });
             let preview = app
                 .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
