@@ -9,7 +9,7 @@ pub const TEXT: Color32 = Color32::from_rgb(199, 201, 204);
 pub const TIME_UNIT: Color32 = Color32::from_rgb(170, 174, 179);
 pub const SECONDARY: Color32 = Color32::from_rgb(139, 143, 148);
 /// The single source for accent colors across the app, including tinted fills.
-pub const ACCENT: Color32 = Color32::from_rgb(117, 54, 160);
+pub const ACCENT: Color32 = crate::settings::AccentColor::Purple.color();
 pub const SELECTION_OUTLINE: Stroke = Stroke {
     width: 2.0,
     color: ACCENT,
@@ -89,6 +89,42 @@ fn contrast_color(color: Color32) -> Color32 {
 /// Blend the shared accent into an opaque surface at the given percentage.
 const fn accent_tint(surface: Color32, percent: u8) -> Color32 {
     blend(surface, ACCENT, percent)
+}
+
+/// The current accent belongs to this UI context, not to a global mutable value.
+pub fn accent(ctx: &Context) -> Color32 {
+    ctx.global_style().visuals.hyperlink_color
+}
+
+pub fn selection_outline(ctx: &Context) -> Stroke {
+    Stroke::new(2.0, accent(ctx))
+}
+
+pub fn ruler_selection(ctx: &Context, enabled: bool) -> Color32 {
+    blend(
+        if enabled { BORDER } else { PANEL },
+        accent(ctx),
+        if enabled { 35 } else { 12 },
+    )
+}
+
+pub fn set_accent(ctx: &Context, color: Color32) {
+    ctx.style_mut_of(egui::Theme::Dark, |style| {
+        let visuals = &mut style.visuals;
+        let selected = blend(PANEL, color, 18);
+        visuals.hyperlink_color = color;
+        visuals.selection.bg_fill = selected;
+        visuals.selection.stroke.color = color;
+        visuals.text_cursor.stroke.color = color;
+        visuals.widgets.active.bg_fill = selected;
+        visuals.widgets.active.weak_bg_fill = selected;
+        visuals.widgets.active.bg_stroke.color = color;
+        visuals.widgets.active.fg_stroke.color = color;
+        visuals.widgets.open.bg_fill = selected;
+        visuals.widgets.open.weak_bg_fill = selected;
+        visuals.widgets.open.bg_stroke.color = color;
+    });
+    ctx.request_repaint();
 }
 
 const fn blend(surface: Color32, color: Color32, percent: u8) -> Color32 {

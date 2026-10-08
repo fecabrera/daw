@@ -101,6 +101,8 @@ Use stable Rust, edition 2024, and Cargo. Select compatible released crate versi
 
 ## Initial desktop UI
 
+Provide an application Settings dialog for the accent color. Place Settings in the app-name menu on macOS and File on Windows/Linux. Offer all 19 Material 500 colors with named options and left-hand preview swatches. Apply the chosen accent immediately through the shared theme, save it as an application preference, and retain it across project changes. Use Purple 500 by default. Keep broader light/dark theme customization on the roadmap.
+
 Use the supplied Audacity 4 screenshots as layout references.
 
 - Place the track list on the left and the timeline to its right.

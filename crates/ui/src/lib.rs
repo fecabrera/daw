@@ -22,6 +22,7 @@ mod musical_time;
 pub mod panels;
 mod project_name_dialog;
 pub mod rows;
+pub mod settings;
 pub mod theme;
 pub mod toolbars;
 mod waveforms;
@@ -507,6 +508,8 @@ struct LoopDrag {
 }
 
 pub struct DawUi {
+    settings: settings::AppSettings,
+    settings_open: bool,
     pub session: Session,
     output: Option<AudioOutput>,
     selected_track: Option<Id>,
@@ -563,6 +566,8 @@ pub struct DawUi {
 impl Default for DawUi {
     fn default() -> Self {
         Self {
+            settings: settings::AppSettings::default(),
+            settings_open: false,
             session: Session::default(),
             output: None,
             selected_track: None,
@@ -619,6 +624,32 @@ impl Default for DawUi {
     }
 }
 impl DawUi {
+    pub fn settings(&self) -> settings::AppSettings {
+        self.settings
+    }
+
+    pub fn set_settings(&mut self, ctx: &egui::Context, settings: settings::AppSettings) {
+        self.settings = settings;
+        theme::set_accent(ctx, settings.accent.color());
+    }
+
+    pub fn settings_shortcut() -> egui::KeyboardShortcut {
+        egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Comma)
+    }
+
+    pub fn settings_enabled(&self) -> bool {
+        self.file_action_enabled(FileAction::Import)
+            && self.drag.is_none()
+            && self.track_drag.is_none()
+            && self.loop_drag.is_none()
+            && self.marquee.is_none()
+    }
+
+    pub fn open_settings(&mut self) {
+        if self.settings_enabled() {
+            self.settings_open = true;
+        }
+    }
     /// Let the desktop adapter provide file menus and their keyboard shortcuts.
     pub fn use_native_menu(&mut self) {
         self.native_menu = true;
@@ -1218,6 +1249,12 @@ impl DawUi {
         {
             self.perform_file_action(action);
         }
+        if !self.native_menu
+            && self.settings_enabled()
+            && ctx.input_mut(|input| input.consume_shortcut(&Self::settings_shortcut()))
+        {
+            self.open_settings();
+        }
         if let Some(output) = &mut self.output {
             output.drain();
             self.session.project.transport.playhead_frame =
@@ -1231,6 +1268,7 @@ impl DawUi {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             if self.job.is_none() {
                 self.project_name_dialog = None;
+                self.settings_open = false;
                 self.request(Action::CloseWindow);
             }
         }
@@ -1247,7 +1285,8 @@ impl DawUi {
                     self.export_dialog.is_none()
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
-                        && self.project_name_dialog.is_none(),
+                        && self.project_name_dialog.is_none()
+                        && !self.settings_open,
                     |ui| self.toolbar(ui),
                 );
             });
@@ -1275,7 +1314,8 @@ impl DawUi {
                             && self.export_dialog.is_none()
                             && self.overwrite.is_none()
                             && self.export_status.is_none()
-                            && self.project_name_dialog.is_none(),
+                            && self.project_name_dialog.is_none()
+                            && !self.settings_open,
                         |ui| self.selection_control(ui),
                     );
                     ui.label("Selection");
@@ -1296,7 +1336,8 @@ impl DawUi {
                         && self.export_dialog.is_none()
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
-                        && self.project_name_dialog.is_none(),
+                        && self.project_name_dialog.is_none()
+                        && !self.settings_open,
                     |ui| self.workspace(ui),
                 );
             });
@@ -1312,7 +1353,10 @@ impl DawUi {
         }
         self.dialogs(&ctx);
         self.clip_shortcuts(&ctx);
-        if self.job.is_none() && self.export_status.is_none() && self.project_name_dialog.is_none()
+        if self.job.is_none()
+            && self.export_status.is_none()
+            && self.project_name_dialog.is_none()
+            && !self.settings_open
         {
             if self.file_action_enabled(FileAction::Import)
                 && let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned())
@@ -1355,6 +1399,15 @@ impl DawUi {
     fn file_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);
         for action in FileAction::ALL {
+            if action == FileAction::CloseProject {
+                ui.separator();
+                let button = egui::Button::new("Settings…")
+                    .shortcut_text(ui.ctx().format_shortcut(&Self::settings_shortcut()));
+                if ui.add_enabled(self.settings_enabled(), button).clicked() {
+                    ui.close();
+                    self.open_settings();
+                }
+            }
             if matches!(
                 action,
                 FileAction::Import
@@ -1398,6 +1451,7 @@ impl DawUi {
             && self.export_dialog.is_none()
             && self.export_status.is_none()
             && self.project_name_dialog.is_none()
+            && !self.settings_open
             && self.error.is_none()
             && (action != FileAction::Export || self.session.project.end() > 0)
     }
@@ -1708,7 +1762,7 @@ impl DawUi {
                 },
                 if playing { "Pause" } else { "Play" },
                 playing || self.session.project.end() > 0,
-                theme::ACCENT,
+                theme::accent(ui.ctx()),
             )
             .clicked()
             {
@@ -1893,7 +1947,7 @@ impl DawUi {
                     Pos2::new(playhead_x, timeline_rect.top()),
                     Pos2::new(playhead_x, timeline_rect.bottom()),
                 ],
-                Stroke::new(1.0_f32, theme::ACCENT),
+                Stroke::new(1.0_f32, theme::accent(ui.ctx())),
             );
         }
     }
@@ -2037,12 +2091,15 @@ impl DawUi {
                 .selected_clip
                 .filter(|id| self.selected_clips.contains(id))
                 .or_else(|| self.selected_clips.iter().copied().next());
-            ui.painter_at(viewport)
-                .rect_filled(rect, 0.0, theme::ACCENT.gamma_multiply(0.15));
+            ui.painter_at(viewport).rect_filled(
+                rect,
+                0.0,
+                theme::accent(ui.ctx()).gamma_multiply(0.15),
+            );
             ui.painter_at(viewport).rect_stroke(
                 rect,
                 0.0,
-                Stroke::new(1.0, theme::ACCENT),
+                Stroke::new(1.0, theme::accent(ui.ctx())),
                 StrokeKind::Inside,
             );
             if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
@@ -2343,15 +2400,7 @@ impl DawUi {
                     Pos2::new(x1.max(rect.left()), labels.top()),
                     Pos2::new(x2.min(rect.right()), labels.bottom()),
                 );
-                painter.rect_filled(
-                    band,
-                    0.0,
-                    if l.enabled {
-                        theme::RULER_SELECTION
-                    } else {
-                        theme::RULER_SELECTION_INACTIVE
-                    },
-                );
+                painter.rect_filled(band, 0.0, theme::ruler_selection(ui.ctx(), l.enabled));
                 // Draw handles at the real endpoints, including when the range is scrolled.
                 for x in [x1, x2] {
                     if (rect.left()..=rect.right()).contains(&x) {
@@ -2361,7 +2410,7 @@ impl DawUi {
                                 Pos2::new(x + 1.5, labels.bottom() - 2.0),
                             ),
                             0.0,
-                            theme::ACCENT,
+                            theme::accent(ui.ctx()),
                         );
                     }
                 }
@@ -2429,7 +2478,7 @@ impl DawUi {
                         Pos2::new(playhead_x, ticks.top()),
                         Pos2::new(playhead_x, rect.bottom()),
                     ],
-                    Stroke::new(1.0_f32, theme::ACCENT),
+                    Stroke::new(1.0_f32, theme::accent(ui.ctx())),
                 );
                 painter.add(egui::Shape::convex_polygon(
                     vec![
@@ -2439,7 +2488,7 @@ impl DawUi {
                         Pos2::new(playhead_x, rect.bottom() - 3.0),
                         Pos2::new(playhead_x - 4.0, rect.bottom() - 7.0),
                     ],
-                    theme::ACCENT,
+                    theme::accent(ui.ctx()),
                     Stroke::NONE,
                 ));
             }
@@ -2595,7 +2644,7 @@ impl DawUi {
                     Pos2::new(viewport.left(), y),
                     Pos2::new(viewport.right(), y),
                 ],
-                Stroke::new(2.0, theme::ACCENT),
+                Stroke::new(2.0, theme::accent(ui.ctx())),
             );
         }
         ui.ctx().set_cursor_icon(if target.is_some() {
@@ -2892,7 +2941,7 @@ impl DawUi {
                         painter.rect_stroke(
                             inner.response.rect,
                             2.0,
-                            theme::SELECTION_OUTLINE,
+                            theme::selection_outline(ui.ctx()),
                             StrokeKind::Inside,
                         );
                     }
@@ -3498,7 +3547,14 @@ impl DawUi {
         painter.rect_stroke(
             block,
             2.0,
-            Stroke::new(2.0, if valid { theme::ACCENT } else { theme::ERROR }),
+            Stroke::new(
+                2.0,
+                if valid {
+                    theme::accent(ui.ctx())
+                } else {
+                    theme::ERROR
+                },
+            ),
             StrokeKind::Inside,
         );
         self.file_drop_target = Some(target);
@@ -3558,7 +3614,7 @@ impl DawUi {
                 Stroke::new(
                     2.0,
                     if preview.valid {
-                        theme::ACCENT
+                        theme::accent(ui.ctx())
                     } else {
                         theme::ERROR
                     },
@@ -3707,7 +3763,7 @@ impl DawUi {
             block,
             2.0,
             if selected {
-                theme::SELECTION_OUTLINE
+                theme::selection_outline(painter.ctx())
             } else {
                 Stroke::new(1.0, theme::DIVIDER)
             },
@@ -4015,11 +4071,14 @@ impl DawUi {
         if x >= rect.left() && x <= rect.right() {
             painter.line_segment(
                 [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-                Stroke::new(1.0_f32, theme::ACCENT),
+                Stroke::new(1.0_f32, theme::accent(ui.ctx())),
             );
         }
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
+        if self.settings_open && settings::show(ctx, &mut self.settings) {
+            self.settings_open = false;
+        }
         #[derive(Clone, Copy)]
         enum UnsavedChoice {
             Save,
@@ -4186,6 +4245,105 @@ mod tests {
         app.session.project.tracks[0].clips.push(b);
         app.session.project.tracks[1].clips.push(c);
         (app, [first, second, third], ids)
+    }
+
+    #[test]
+    fn settings_block_project_actions_and_accent_changes_survive_project_replacement() {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        let clip = app.session.project.tracks[0].clips[0].id;
+        app.select_clip(clip, track, false);
+        let before = format!("{:?}", app.session.project);
+        let settings = settings::AppSettings {
+            accent: settings::AccentColor::Teal,
+        };
+        app.set_settings(&ctx, settings);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let color = settings.accent.color();
+        let block = app.clip_block(
+            app.lane_bounds[&track],
+            &app.session.project.tracks[0].clips[0],
+            0,
+        );
+        assert!(has_preview_outline(&shapes, block, color));
+        assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Path(path) if path.stroke.color == egui::epaint::ColorMode::Solid(color))));
+        assert!(!app.dirty);
+        app.open_settings();
+        assert!(app.settings_open);
+        assert!(!app.file_action_enabled(FileAction::New));
+        assert!(!app.clip_action_enabled(ClipAction::Copy, &ctx));
+        app.perform_file_action(FileAction::New);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Space,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        assert!(app.output.is_none());
+        assert!(app.error.is_none());
+        assert_eq!(format!("{:?}", app.session.project), before);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        assert!(!app.settings_open);
+        app.perform_file_action(FileAction::New);
+        assert!(app.session.project.tracks.is_empty());
+        assert_eq!(app.settings(), settings);
+        assert_eq!(theme::accent(&ctx), color);
+    }
+
+    #[test]
+    fn settings_file_menu_shortcut_and_native_dispatch_use_the_same_guard() {
+        let mut app = DawUi::default();
+        let ctx = context();
+        let shortcut = DawUi::settings_shortcut();
+        let event = || egui::Event::Key {
+            key: shortcut.logical_key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: shortcut.modifiers,
+        };
+        frame(&mut app, &ctx, vec![event()]);
+        assert!(app.settings_open);
+        app.settings_open = false;
+        app.use_native_menu();
+        frame(&mut app, &ctx, vec![event()]);
+        assert!(!app.settings_open);
+        app.open_settings();
+        assert!(app.settings_open);
+        app.settings_open = false;
+        let (_sender, receiver) = mpsc::channel();
+        app.job = Some(receiver);
+        app.open_settings();
+        assert!(!app.settings_open);
+        app.job = None;
+        app.export_dialog = Some(ExportSettings::default());
+        app.open_settings();
+        assert!(!app.settings_open);
+        app.export_dialog = None;
+        let mut shapes = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 700.0))),
+                ..Default::default()
+            },
+            |ui| app.file_menu(ui),
+        );
+        shapes.textures_delta.clear();
+        assert!(shapes.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Settings…")));
     }
 
     #[test]

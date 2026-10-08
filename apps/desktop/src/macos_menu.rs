@@ -11,6 +11,7 @@ struct MenuTargetIvars {
 
 #[derive(Clone, Copy)]
 enum MenuAction {
+    Settings,
     File(FileAction),
     Clip(ClipAction),
 }
@@ -27,6 +28,12 @@ define_class!(
     unsafe impl NSObjectProtocol for DawMenuTarget {}
 
     impl DawMenuTarget {
+        // SAFETY: The selector takes an NSMenuItem sender and returns void.
+        #[unsafe(method(performSettingsAction:))]
+        fn perform_settings_action(&self, _item: &NSMenuItem) {
+            let _ = self.ivars().sender.send(MenuAction::Settings);
+            self.ivars().context.request_repaint();
+        }
         // SAFETY: The selector takes an NSMenuItem sender and returns void.
         #[unsafe(method(performFileAction:))]
         fn perform_file_action(&self, item: &NSMenuItem) {
@@ -74,6 +81,24 @@ impl NativeMenu {
         let file_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("File"));
         file_menu.setAutoenablesItems(false);
         let mut items = Vec::new();
+        // Retain the existing About/Services/Hide/Quit application menu items.
+        if let Some(app_menu) = menubar.itemAtIndex(0).and_then(|item| item.submenu()) {
+            // SAFETY: The selector is defined above with an NSMenuItem argument.
+            let item = unsafe {
+                NSMenuItem::initWithTitle_action_keyEquivalent(
+                    NSMenuItem::alloc(mtm),
+                    ns_string!("Settings…"),
+                    Some(sel!(performSettingsAction:)),
+                    ns_string!(","),
+                )
+            };
+            item.setKeyEquivalentModifierMask(NSEventModifierFlags::Command);
+            // SAFETY: NativeMenu retains the target and detaches it before dropping.
+            unsafe { item.setTarget(Some(&target)) };
+            app_menu.insertItem_atIndex(&item, 2);
+            app_menu.insertItem_atIndex(&NSMenuItem::separatorItem(mtm), 3);
+            items.push((MenuAction::Settings, item));
+        }
         for (index, action) in FileAction::ALL.into_iter().enumerate() {
             if matches!(
                 action,
@@ -146,6 +171,7 @@ impl NativeMenu {
     pub fn dispatch(&self, ui: &mut DawUi, ctx: &egui::Context) {
         for action in self.receiver.try_iter() {
             match action {
+                MenuAction::Settings => ui.open_settings(),
                 MenuAction::File(action) => ui.perform_file_action(action),
                 MenuAction::Clip(action) => ui.perform_clip_action(action, ctx),
             }
@@ -155,6 +181,7 @@ impl NativeMenu {
     pub fn update_enabled(&self, ui: &DawUi, ctx: &egui::Context) {
         for (action, item) in &self.items {
             item.setEnabled(match action {
+                MenuAction::Settings => ui.settings_enabled(),
                 MenuAction::File(action) => ui.file_action_enabled(*action),
                 MenuAction::Clip(action) => ui.clip_action_enabled(*action, ctx),
             });

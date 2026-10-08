@@ -58,7 +58,7 @@ pub fn toggle_button(
         name,
         enabled,
         if selected {
-            crate::theme::ACCENT
+            crate::theme::accent(ui.ctx())
         } else {
             crate::theme::TEXT
         },

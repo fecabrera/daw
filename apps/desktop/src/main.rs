@@ -19,6 +19,13 @@ struct App {
     file_drag_pointer: Option<linux_file_drag::FileDragPointer>,
 }
 impl eframe::App for App {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        storage.set_string(daw_ui::settings::STORAGE_KEY, self.ui.settings().to_json());
+    }
+
+    fn persist_egui_memory(&self) -> bool {
+        false
+    }
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         if let Some(pointer) = &self.file_drag_pointer {
@@ -67,7 +74,14 @@ fn main() -> eframe::Result {
             daw_ui::theme::configure(&cc.egui_ctx);
             daw_ui::fonts::configure(&cc.egui_ctx);
             daw_ui::icons::configure(&cc.egui_ctx);
-            let ui = daw_ui::DawUi::new(project);
+            let mut ui = daw_ui::DawUi::new(project);
+            let stored = cc
+                .storage
+                .and_then(|storage| storage.get_string(daw_ui::settings::STORAGE_KEY));
+            ui.set_settings(
+                &cc.egui_ctx,
+                daw_ui::settings::AppSettings::from_json(stored.as_deref()),
+            );
             #[cfg(target_os = "macos")]
             let (ui, menu) = {
                 let mut ui = ui;

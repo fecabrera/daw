@@ -111,7 +111,7 @@ fn knob(ui: &mut Ui, value: &mut f32, parameter: Parameter) -> Response {
             Parameter::Pan => 0.5,
         };
         if normalized != origin {
-            arc(origin, normalized, theme::ACCENT);
+            arc(origin, normalized, theme::accent(ui.ctx()));
         }
         painter.circle(
             center,

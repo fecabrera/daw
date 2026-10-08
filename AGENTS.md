@@ -78,7 +78,7 @@ The audio callback must remain nonblocking and must not allocate or perform file
 ## UI conventions
 
 - Reuse `theme.rs`, `panels.rs`, `toolbars.rs`, `rows.rs`, and `dialogs.rs`. Reuse shared knobs, meters, icons, fonts, and waveform helpers.
-- Keep the accent in `theme::ACCENT`; derive related tints from it. Track colors are defaults for their clips, while an optional clip color overrides inheritance. Resolve the same palette for committed clips and previews.
+- Read the current accent through `theme::accent(ctx)` and derive related tints through shared theme helpers. `theme::ACCENT` is the default, not the active preference. Keep application settings separate from project data. Track colors are defaults for their clips, while an optional clip color overrides inheritance. Resolve the same palette for committed clips and previews.
 - Use bundled Outfit and Lucide assets. Follow existing typography and fixed-width monitor digit slots. Keep rows and toolbar items centered vertically. Keep names and numeric text in their documented styles.
 - Keep track controls aligned with timeline lanes and Master pinned separately. Reuse shared layout constants instead of adding independent padding or row heights.
 - Keep editable drafts separate from committed values. Enter commits track-name and tempo drafts; Escape or focus loss cancels them. Numeric gain/pan controls retain their documented commit rules.
@@ -137,4 +137,4 @@ cargo test --workspace
 - Keep original source copyright and license notices. The repository's original code has the BSD license in `LICENSE`; bundled third-party code has its own license terms.
 - When adding or changing a bundled dependency, retain its license and source notices and update packaging. Do not remove notices because a library is linked statically.
 - Media notices belong in `crates/media/assets/licenses`. Preserve Rubber Band's GPL v2 text in `RubberBand-GPL.txt`, its source notice, and the Speex and KissFFT notices, including `RubberBand-Speex.txt`. Preserve LAME notices as well.
-- Font/icon notices belong with their assets in `crates/ui/assets`. `tools/package_macos.sh` copies these notices into the bundle; keep equivalent notices with other distributions.
+- Font/icon notices belong with their assets in `crates/ui/assets`; other UI dependency notices belong in `crates/ui/assets/licenses`. `tools/package_macos.sh` copies these notices into the bundle; keep equivalent notices with other distributions.

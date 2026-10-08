@@ -29,7 +29,7 @@ Use ASD-STE100 principles and Plain Language for specifications, technical docum
 
 MVP-09 is retired. Undo/redo is outside this iteration.
 
-The iteration excludes recording, configurable snapping, time signatures, metronome, themes, configurable audio settings, disk audio caches, source inclusion, source manager, track groups, plugins, MIDI, instruments, automation, stem separation, time stretching, and mobile delivery. Keep these features on the roadmap in MVP.md.
+The iteration excludes recording, configurable snapping, time signatures, metronome, broader theme customization, configurable audio settings, disk audio caches, source inclusion, source manager, track groups, plugins, MIDI, instruments, automation, stem separation, time stretching, and mobile delivery. Keep these features on the roadmap in MVP.md. Application accent selection is included as described below.
 
 ## Shared architecture
 
@@ -210,7 +210,9 @@ On output initialization failure, show an error and keep editing and export avai
 
 Use the supplied Audacity 4 layout references. Provide a simple fixed layout with track controls on the left, timeline lanes on the right, and a toolbar above the timeline.
 
-Use the supplied [visual style reference](assets/style-reference.png) for appearance, while retaining this layout. Use neutral charcoal panels, thin borders, compact flat controls, purple selection and control accents (`#7536A0`), and bundled Outfit. Use muted blue audio clips with light waveforms. Keep these settings in a shared UI style module.
+Use the supplied [visual style reference](assets/style-reference.png) for appearance, while retaining this layout. Use neutral charcoal panels, thin borders, compact flat controls, a configurable selection/control accent (Purple 500 by default), and bundled Outfit. Use track/clip colors with contrasting waveforms. Keep these settings in a shared UI style module.
+
+Provide Settings in the app-name menu on macOS and File on Windows/Linux, with Command+, or Ctrl+, respectively. Use the shared application dialog. Offer all 19 Material 500 colors in a dropdown, with a left-hand swatch and color name without the shade number. Apply selections immediately across controls and custom painting. Close retains the selection; Escape closes the popup before the dialog. Persist the accent in desktop application storage separately from project manifests, restore it at launch, and retain it across project replacement. Settings must not mark the project modified. Guard menu/shortcut actions against jobs, active clip/track/loop drags, and other dialogs; disable background editing, file actions, and playback controls while Settings is open.
 
 Give the track section the same charcoal background as the toolbar. Extend it through the full workspace height and separate it from the darker timeline with a vertical border. Extend the timeline grid and playhead through the unused space below the tracks.
 
@@ -218,7 +220,7 @@ Use no outer workspace padding or gaps between sections. Track boxes fill the tr
 
 Extend the ruler's bottom divider across the full workspace width, including below the Tracks header. Show this single 1-point divider even when there are no tracks. Do not stack it with the first track's top border.
 
-Selected tracks and clips share a 2-point purple outline with 2-point corner rounding, drawn inside their bounds. Draw the full selected track outline, including the first track's top edge. Keep the shared header divider neutral and the unselected track dividers 1 point thick.
+Selected tracks and clips share a 2-point accent outline with 2-point corner rounding, drawn inside their bounds. Draw the full selected track outline, including the first track's top edge. Keep the shared header divider neutral and the unselected track dividers 1 point thick.
 
 Show one header label in 13-point Outfit: `[project name] - DAW`. Add ` *` after the project name when the project has unsaved changes. Examples: `Untitled - DAW` and `Untitled * - DAW`. Use the same font size throughout the label. Keep the native window title in sync with this text.
 

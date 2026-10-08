@@ -23,13 +23,13 @@ impl PanelStyle {
             .inner_margin(self.margin + 1)
     }
 
-    pub fn frame(&self, selected: bool) -> Frame {
+    pub fn frame(&self, ctx: &egui::Context, selected: bool) -> Frame {
         Frame::new()
             .fill(crate::theme::PANEL)
             .stroke(Stroke::new(
                 1.0_f32,
                 if selected {
-                    crate::theme::ACCENT
+                    crate::theme::accent(ctx)
                 } else {
                     self.outline
                 },

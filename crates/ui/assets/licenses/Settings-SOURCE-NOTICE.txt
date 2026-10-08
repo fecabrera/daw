@@ -1,0 +1,13 @@
+Settings persistence dependencies
+
+RON 0.12.2: https://github.com/ron-rs/ron
+Source: https://crates.io/crates/ron/0.12.2
+
+typeid 1.0.3: https://github.com/dtolnay/typeid
+Source: https://crates.io/crates/typeid/1.0.3
+
+enumn 0.1.14 (build-time macro): https://github.com/dtolnay/enumn
+Source: https://crates.io/crates/enumn/0.1.14
+
+Each crate is available under MIT OR Apache-2.0.
+The MIT license texts are included in ron-MIT.txt, typeid-MIT.txt, and enumn-MIT.txt.

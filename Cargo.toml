@@ -24,7 +24,7 @@ hound = "3.5"
 rubato = "0.16"
 rtrb = "0.3"
 cpal = "0.16"
-eframe = { version = "0.36.2", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland", "accesskit"] }
+eframe = { version = "0.36.2", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland", "accesskit", "persistence"] }
 egui = "0.36.2"
 rfd = "0.15"
 clap = { version = "4.5", features = ["derive"] }
