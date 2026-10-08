@@ -2377,6 +2377,8 @@ impl DawUi {
                     rect.top()
                 } else if tick.whole_beat {
                     ticks.top()
+                } else if tick.beat.fract() == 0.5 {
+                    ticks.bottom() - 8.0
                 } else {
                     ticks.bottom() - 5.0
                 };
