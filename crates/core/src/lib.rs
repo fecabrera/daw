@@ -1,3 +1,6 @@
+mod trim;
+pub use trim::ClipEdge;
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
