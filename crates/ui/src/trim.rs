@@ -80,8 +80,13 @@ impl DawUi {
                 valid: true,
             });
         }
+        self.validate_clip_previews(&mut previews, valid);
+        previews
+    }
+
+    pub(super) fn validate_clip_previews(&self, previews: &mut [ClipPreview], mut valid: bool) {
         let mut next = self.session.project.clone();
-        for preview in &previews {
+        for preview in previews.iter() {
             if let Some(clip) = next
                 .tracks
                 .iter_mut()
@@ -94,20 +99,23 @@ impl DawUi {
             }
         }
         valid &= next.validate().is_ok();
-        for preview in &mut previews {
+        for preview in previews {
             preview.valid = valid;
         }
-        previews
     }
 
-    pub(super) fn finish_group_trim(&mut self, drag: &Drag, pointer: Pos2, unsnapped: bool) {
-        let previews = self.trim_group_preview(drag, pointer, unsnapped);
+    pub(super) fn finish_group_resize(&mut self, drag: &Drag, pointer: Pos2, unsnapped: bool) {
+        let previews = self.clip_drag_previews(drag, pointer, unsnapped);
         if previews.is_empty() {
             return;
         }
         if previews.iter().any(|preview| !preview.valid) {
             self.fail(
-                "Cannot trim selected clips: a clip would become empty or overlap another clip.",
+                if matches!(drag.mode, ClipDragMode::LoopLeft | ClipDragMode::LoopRight) {
+                    "Cannot loop selected clips: a clip would overlap another clip."
+                } else {
+                    "Cannot trim selected clips: a clip would become empty or overlap another clip."
+                },
             );
             return;
         }

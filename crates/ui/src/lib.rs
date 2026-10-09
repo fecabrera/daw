@@ -1,3 +1,4 @@
+mod looping;
 mod trim;
 use daw_core::{Clip, Edit, Id, frames, seconds};
 use daw_media::ExportSettings;
@@ -3208,6 +3209,10 @@ impl DawUi {
             self.move_group_preview(drag, pointer, unsnapped)
                 .unwrap_or_default()
         } else if drag.clips.len() > 1
+            && matches!(drag.mode, ClipDragMode::LoopLeft | ClipDragMode::LoopRight)
+        {
+            self.loop_group_preview(drag, pointer, unsnapped)
+        } else if drag.clips.len() > 1
             && matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight)
         {
             self.trim_group_preview(drag, pointer, unsnapped)
@@ -3229,6 +3234,14 @@ impl DawUi {
         if drag.mode == ClipDragMode::Move {
             return self
                 .move_group_preview(drag, pointer, unsnapped)?
+                .into_iter()
+                .find(|preview| preview.clip.id == drag.clip.id);
+        }
+        if drag.clips.len() > 1
+            && matches!(drag.mode, ClipDragMode::LoopLeft | ClipDragMode::LoopRight)
+        {
+            return self
+                .loop_group_preview(drag, pointer, unsnapped)
                 .into_iter()
                 .find(|preview| preview.clip.id == drag.clip.id);
         }
@@ -3318,16 +3331,7 @@ impl DawUi {
                     clip.end(),
                     unsnapped,
                 );
-                let delta = i128::from(next) - start;
-                if delta != 0 {
-                    let repeat = clip.repeat.unwrap_or(daw_core::ClipLoop {
-                        length_frames: clip.length_frames,
-                        phase_frame: 0,
-                    });
-                    clip.start_frame = (start + delta) as u64;
-                    clip.length_frames = (length - delta) as u64;
-                    clip.repeat = Some(repeat.shifted(delta));
-                }
+                clip = clip.looped_by(daw_core::ClipEdge::Left, i128::from(next) - start);
             }
             ClipDragMode::LoopRight => {
                 let end = self.clip_edge_frame(
@@ -3337,14 +3341,7 @@ impl DawUi {
                     clip.start_frame,
                     unsnapped,
                 );
-                let new_length = end - clip.start_frame;
-                if new_length != clip.length_frames {
-                    clip.repeat = Some(clip.repeat.unwrap_or(daw_core::ClipLoop {
-                        length_frames: clip.length_frames,
-                        phase_frame: 0,
-                    }));
-                    clip.length_frames = new_length;
-                }
+                clip = clip.looped_by(daw_core::ClipEdge::Right, i128::from(end) - start - length);
             }
             ClipDragMode::StretchLeft | ClipDragMode::StretchRight => {
                 let ratio = clip.stretch.map_or(1.0, |stretch| stretch.ratio());
@@ -3909,9 +3906,15 @@ impl DawUi {
                 return;
             }
             if drag.clips.len() > 1
-                && matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight)
+                && matches!(
+                    drag.mode,
+                    ClipDragMode::TrimLeft
+                        | ClipDragMode::TrimRight
+                        | ClipDragMode::LoopLeft
+                        | ClipDragMode::LoopRight
+                )
             {
-                self.finish_group_trim(&drag, pointer, ui.input(|input| input.modifiers.shift));
+                self.finish_group_resize(&drag, pointer, ui.input(|input| input.modifiers.shift));
                 return;
             }
             if let Some(preview) =
@@ -4058,9 +4061,9 @@ impl DawUi {
                         response
                             .clone()
                             .on_hover_text(if cfg!(target_os = "macos") {
-                                "Drag to loop clip. Hold Option to stretch. Hold Shift to bypass snapping."
+                                "Drag to loop selected clips. Hold Option to stretch. Hold Shift to bypass snapping."
                             } else {
-                                "Drag to loop clip. Hold Ctrl to stretch. Hold Shift to bypass snapping."
+                                "Drag to loop selected clips. Hold Ctrl to stretch. Hold Shift to bypass snapping."
                             });
                     }
                     ClipDragMode::TrimLeft | ClipDragMode::TrimRight => {
@@ -4105,7 +4108,11 @@ impl DawUi {
                 }
                 let clips = if matches!(
                     mode,
-                    ClipDragMode::Move | ClipDragMode::TrimLeft | ClipDragMode::TrimRight
+                    ClipDragMode::Move
+                        | ClipDragMode::TrimLeft
+                        | ClipDragMode::TrimRight
+                        | ClipDragMode::LoopLeft
+                        | ClipDragMode::LoopRight
                 ) {
                     self.selected_clip_snapshots()
                 } else {
@@ -4231,6 +4238,7 @@ impl DawUi {
 
 #[cfg(test)]
 mod tests {
+    mod group_looping;
     use super::*;
 
     fn fixture() -> (DawUi, Id) {
@@ -5539,7 +5547,7 @@ mod tests {
                 clips,
             };
             for delta in [0.0, if left { -20.0 } else { 20.0 }] {
-                app.finish_group_trim(&drag, drag.origin + Vec2::new(delta, 0.0), true);
+                app.finish_group_resize(&drag, drag.origin + Vec2::new(delta, 0.0), true);
                 assert_eq!(format!("{:?}", app.session.project), original);
                 assert!(!app.dirty);
                 assert!(app.error.is_none());

@@ -1,3 +1,4 @@
+mod looping;
 mod trim;
 pub use trim::ClipEdge;
 
