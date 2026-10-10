@@ -1,5 +1,6 @@
 mod looping;
 mod resize;
+mod stretch;
 mod trim;
 use daw_core::{Clip, Edit, Id, frames, seconds};
 use daw_media::ExportSettings;
@@ -3216,7 +3217,12 @@ impl DawUi {
         pointer: Pos2,
         unsnapped: bool,
     ) -> Vec<ClipPreview> {
-        if drag.mode == ClipDragMode::Move {
+        if matches!(
+            drag.mode,
+            ClipDragMode::StretchLeft | ClipDragMode::StretchRight
+        ) {
+            self.stretch_group_preview(drag, pointer, unsnapped)
+        } else if drag.mode == ClipDragMode::Move {
             self.move_group_preview(drag, pointer, unsnapped)
                 .unwrap_or_default()
         } else if drag.clips.len() > 1
@@ -3363,45 +3369,6 @@ impl DawUi {
                     unsnapped,
                 );
                 clip = clip.looped_by(daw_core::ClipEdge::Right, i128::from(end) - start - length);
-            }
-            ClipDragMode::StretchLeft | ClipDragMode::StretchRight => {
-                let ratio = clip.stretch.map_or(1.0, |stretch| stretch.ratio());
-                let minimum = ((length as f64 * 0.125 / ratio).ceil() as u64).max(1);
-                let maximum = (length as f64 * 8.0 / ratio).floor().min(u64::MAX as f64) as u64;
-                let (next_start, next_length) = if drag.mode == ClipDragMode::StretchLeft {
-                    let end = clip.end();
-                    let lower = end.saturating_sub(maximum);
-                    let upper = end.checked_sub(minimum)?;
-                    let next =
-                        self.clip_edge_frame(drag, start + delta, lower..=upper, end, unsnapped);
-                    (next, end - next)
-                } else {
-                    let lower = clip.start_frame.checked_add(minimum)?;
-                    let upper = clip.start_frame.saturating_add(maximum);
-                    let end = self.clip_edge_frame(
-                        drag,
-                        start + length + delta,
-                        lower..=upper,
-                        clip.start_frame,
-                        unsnapped,
-                    );
-                    (clip.start_frame, end - clip.start_frame)
-                };
-                clip = clip.stretched_to(next_start, next_length)?;
-                // Independent offset/base rounding may exceed the scaled asset by one frame.
-                let original = self
-                    .session
-                    .project
-                    .assets
-                    .iter()
-                    .find(|asset| asset.id == clip.asset_id)?
-                    .decoded_frame_count;
-                let available = clip.source_length(original)?;
-                let used = clip
-                    .repeat
-                    .map_or(clip.length_frames, |repeat| repeat.length_frames);
-                clip.source_offset_frame =
-                    clip.source_offset_frame.min(available.checked_sub(used)?);
             }
             _ => return None,
         }
@@ -3954,39 +3921,17 @@ impl DawUi {
                 self.finish_clip_resize(&drag, pointer, ui.input(|input| input.modifiers.shift));
                 return;
             }
+            if matches!(
+                drag.mode,
+                ClipDragMode::StretchLeft | ClipDragMode::StretchRight
+            ) {
+                self.finish_clip_stretch(&drag, pointer, ui.input(|input| input.modifiers.shift));
+                return;
+            }
             if let Some(preview) =
                 self.clip_drag_preview(&drag, pointer, ui.input(|input| input.modifiers.shift))
             {
                 let c = preview.clip;
-                if matches!(
-                    drag.mode,
-                    ClipDragMode::StretchLeft | ClipDragMode::StretchRight
-                ) {
-                    if !preview.valid
-                        || (c.start_frame, c.length_frames)
-                            == (drag.clip.start_frame, drag.clip.length_frames)
-                    {
-                        return;
-                    }
-                    let mut session = self.session.clone();
-                    if let Err(error) = session.project.edit(Edit::Batch(vec![
-                        Edit::DeleteClip(c.id),
-                        Edit::InsertClip {
-                            track_id: preview.track,
-                            clip: c,
-                        },
-                    ])) {
-                        self.fail(error);
-                        return;
-                    }
-                    self.run_job("Stretching clip", move || {
-                        session
-                            .prepare_stretches()
-                            .map_err(|error| error.to_string())?;
-                        Ok(Job::Loaded(session, true))
-                    });
-                    return;
-                }
                 if preview.track == drag.track
                     && (
                         c.start_frame,
@@ -4091,7 +4036,7 @@ impl DawUi {
                 {
                     ClipDragMode::StretchLeft | ClipDragMode::StretchRight => {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                        response.clone().on_hover_text("Drag to stretch clip without changing pitch. Hold Shift to bypass snapping.");
+                        response.clone().on_hover_text("Drag to stretch selected clips without changing pitch. Hold Shift to bypass snapping.");
                     }
                     ClipDragMode::LoopLeft | ClipDragMode::LoopRight => {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -4150,6 +4095,8 @@ impl DawUi {
                         | ClipDragMode::TrimRight
                         | ClipDragMode::LoopLeft
                         | ClipDragMode::LoopRight
+                        | ClipDragMode::StretchLeft
+                        | ClipDragMode::StretchRight
                 ) {
                     self.selected_clip_snapshots()
                 } else {
@@ -4276,6 +4223,7 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     mod group_looping;
+    mod group_stretch;
     mod resize_neighbors;
     use super::*;
 
