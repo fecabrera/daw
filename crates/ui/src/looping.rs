@@ -56,7 +56,7 @@ impl DawUi {
             unsnapped || delta == 0,
         );
         let delta = i128::from(next) - i128::from(original);
-        let mut previews: Vec<_> = drag
+        let previews: Vec<_> = drag
             .clips
             .iter()
             .map(|entry| ClipPreview {
@@ -64,9 +64,9 @@ impl DawUi {
                 track_index: entry.track_index,
                 clip: entry.clip.looped_by(edge, delta),
                 valid: true,
+                removed: false,
             })
             .collect();
-        self.validate_clip_previews(&mut previews, true);
         previews
     }
 }

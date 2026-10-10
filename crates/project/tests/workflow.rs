@@ -48,6 +48,99 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn resize_neighbor_trims_preserve_source_audio_and_survive_save_render_and_reopen() {
+    use daw_core::{Clip, ClipEdge, Id};
+    let fixture = Fixture::new();
+    let source = fixture.wav("source.wav", 48000, 2, 16, false);
+    let source_bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 400).unwrap();
+    let primary = &mut session.project.tracks[0].clips[0];
+    primary.length_frames = 600;
+    let primary = primary.clone();
+    let covered = Clip {
+        id: Id::new_v4(),
+        start_frame: 1050,
+        length_frames: 200,
+        source_offset_frame: 600,
+        ..primary.clone()
+    };
+    let neighbor = Clip {
+        id: Id::new_v4(),
+        start_frame: 1400,
+        length_frames: 600,
+        source_offset_frame: 1200,
+        repeat: Some(ClipLoop {
+            length_frames: 100,
+            phase_frame: 25,
+        }),
+        ..primary.clone()
+    };
+    session.project.tracks[0]
+        .clips
+        .extend([covered.clone(), neighbor.clone()]);
+    session.project.validate().unwrap();
+    let samples = session.audio[&primary.asset_id].samples.clone();
+    session
+        .project
+        .edit(Edit::ResizeClips {
+            clips: vec![primary.looped_by(ClipEdge::Right, 700)],
+            edge: ClipEdge::Right,
+        })
+        .unwrap();
+    assert_eq!(session.project.tracks[0].clips.len(), 2);
+    let remaining = session.project.tracks[0]
+        .clips
+        .iter()
+        .find(|clip| clip.id == neighbor.id)
+        .unwrap();
+    assert_eq!(
+        (remaining.start_frame, remaining.length_frames),
+        (1700, 300)
+    );
+    for local in 0..300 {
+        assert_eq!(
+            remaining.source_frame(local),
+            neighbor.source_frame(local + 300)
+        );
+    }
+    assert!(std::sync::Arc::ptr_eq(
+        &samples,
+        &session.audio[&primary.asset_id].samples
+    ));
+    let mut before = vec![[0.0; 2]; session.project.end() as usize];
+    session.plan().render(0, &mut before);
+    session.save(&fixture.0.join("project")).unwrap();
+    session
+        .export(&fixture.0.join("before.wav"), false)
+        .unwrap();
+    let reopened = Session::open(&fixture.0.join("project")).unwrap();
+    let mut after = vec![[0.0; 2]; before.len()];
+    reopened.plan().render(0, &mut after);
+    assert_eq!(before, after);
+    let remaining = reopened.project.tracks[0]
+        .clips
+        .iter()
+        .find(|clip| clip.id == neighbor.id)
+        .unwrap();
+    assert_eq!(remaining.repeat.unwrap().phase_frame, 25);
+    assert!(
+        !reopened.project.tracks[0]
+            .clips
+            .iter()
+            .any(|clip| clip.id == covered.id)
+    );
+    reopened
+        .export(&fixture.0.join("after.wav"), false)
+        .unwrap();
+    assert_eq!(
+        fs::read(fixture.0.join("before.wav")).unwrap(),
+        fs::read(fixture.0.join("after.wav")).unwrap()
+    );
+    assert_eq!(fs::read(source).unwrap(), source_bytes);
+}
+
+#[test]
 fn named_project_save_and_save_as_create_child_folders_and_keep_sources() {
     let fixture = Fixture::new();
     let source = fixture.wav("source.wav", 48000, 2, 16, false);

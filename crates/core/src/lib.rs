@@ -1,4 +1,5 @@
 mod looping;
+mod resize;
 mod trim;
 pub use trim::ClipEdge;
 
@@ -418,35 +419,7 @@ impl Project {
                 if !ids.insert(c.id) {
                     return Err(invalid("Duplicate clip ID"));
                 }
-                let a = self
-                    .assets
-                    .iter()
-                    .find(|a| a.id == c.asset_id)
-                    .ok_or_else(|| invalid("Clip references a missing asset record"))?;
-                if c.repeat.is_some_and(|repeat| {
-                    repeat.length_frames == 0 || repeat.phase_frame >= repeat.length_frames
-                }) {
-                    return Err(invalid("Invalid clip loop length or phase"));
-                }
-                if c.stretch.is_some_and(|stretch| !stretch.valid()) {
-                    return Err(invalid(
-                        "Clip stretch must be between 1/8 and 8 times the source duration",
-                    ));
-                }
-                let available = c
-                    .source_length(a.decoded_frame_count)
-                    .ok_or_else(|| invalid("Stretched source length exceeds supported bounds"))?;
-                let source_length = c
-                    .repeat
-                    .map_or(c.length_frames, |repeat| repeat.length_frames);
-                if c.length_frames == 0
-                    || c.start_frame.checked_add(c.length_frames).is_none()
-                    || c.source_offset_frame
-                        .checked_add(source_length)
-                        .is_none_or(|end| end > available)
-                {
-                    return Err(invalid("Clip range exceeds saved asset bounds"));
-                }
+                self.validate_clip(c)?;
                 if c.start_frame < previous_end {
                     return Err(invalid("Clips cannot overlap on the same track"));
                 }
@@ -456,6 +429,39 @@ impl Project {
         let l = &self.transport.r#loop;
         if l.enabled && l.end_frame <= l.start_frame {
             return Err(invalid("Loop end must be after its start"));
+        }
+        Ok(())
+    }
+    fn validate_clip(&self, c: &Clip) -> Result<()> {
+        let invalid = |s: &str| Error(s.into());
+        let a = self
+            .assets
+            .iter()
+            .find(|a| a.id == c.asset_id)
+            .ok_or_else(|| invalid("Clip references a missing asset record"))?;
+        if c.repeat.is_some_and(|repeat| {
+            repeat.length_frames == 0 || repeat.phase_frame >= repeat.length_frames
+        }) {
+            return Err(invalid("Invalid clip loop length or phase"));
+        }
+        if c.stretch.is_some_and(|stretch| !stretch.valid()) {
+            return Err(invalid(
+                "Clip stretch must be between 1/8 and 8 times the source duration",
+            ));
+        }
+        let available = c
+            .source_length(a.decoded_frame_count)
+            .ok_or_else(|| invalid("Stretched source length exceeds supported bounds"))?;
+        let source_length = c
+            .repeat
+            .map_or(c.length_frames, |repeat| repeat.length_frames);
+        if c.length_frames == 0
+            || c.start_frame.checked_add(c.length_frames).is_none()
+            || c.source_offset_frame
+                .checked_add(source_length)
+                .is_none_or(|end| end > available)
+        {
+            return Err(invalid("Clip range exceeds saved asset bounds"));
         }
         Ok(())
     }
@@ -488,6 +494,7 @@ impl Project {
                     self.apply_edit(command)?;
                 }
             }
+            Edit::ResizeClips { clips, edge } => self.apply_resizes(&clips, edge)?,
             Edit::SetTempo { bpm } => {
                 if !bpm.is_finite() || bpm <= 0.0 {
                     return Err(Error("Tempo must be a positive finite BPM value".into()));
@@ -622,6 +629,11 @@ impl Project {
 pub enum Edit {
     /// Apply all commands and validate the final state as one transaction.
     Batch(Vec<Edit>),
+    /// Resize existing clips and trim or remove intersecting neighbors atomically.
+    ResizeClips {
+        clips: Vec<Clip>,
+        edge: ClipEdge,
+    },
     /// Retain clip start beat positions, rounding to the nearest sample frame.
     /// Scale loop-selection endpoints too, rounding up as with ruler snapping.
     /// Lengths stay unchanged; final overlap/bounds validation is transactional.

@@ -78,75 +78,12 @@ impl DawUi {
                 track_index: entry.track_index,
                 clip,
                 valid: true,
+                removed: false,
             });
         }
-        self.validate_clip_previews(&mut previews, valid);
-        previews
-    }
-
-    pub(super) fn validate_clip_previews(&self, previews: &mut [ClipPreview], mut valid: bool) {
-        let mut next = self.session.project.clone();
-        for preview in previews.iter() {
-            if let Some(clip) = next
-                .tracks
-                .iter_mut()
-                .flat_map(|track| &mut track.clips)
-                .find(|clip| clip.id == preview.clip.id)
-            {
-                *clip = preview.clip.clone();
-            } else {
-                valid = false;
-            }
-        }
-        valid &= next.validate().is_ok();
-        for preview in previews {
+        for preview in &mut previews {
             preview.valid = valid;
         }
-    }
-
-    pub(super) fn finish_group_resize(&mut self, drag: &Drag, pointer: Pos2, unsnapped: bool) {
-        let previews = self.clip_drag_previews(drag, pointer, unsnapped);
-        if previews.is_empty() {
-            return;
-        }
-        if previews.iter().any(|preview| !preview.valid) {
-            self.fail(
-                if matches!(drag.mode, ClipDragMode::LoopLeft | ClipDragMode::LoopRight) {
-                    "Cannot loop selected clips: a clip would overlap another clip."
-                } else {
-                    "Cannot trim selected clips: a clip would become empty or overlap another clip."
-                },
-            );
-            return;
-        }
-        let changed = previews.iter().zip(&drag.clips).any(|(preview, original)| {
-            let a = &preview.clip;
-            let b = &original.clip;
-            (
-                a.start_frame,
-                a.source_offset_frame,
-                a.length_frames,
-                a.repeat,
-            ) != (
-                b.start_frame,
-                b.source_offset_frame,
-                b.length_frames,
-                b.repeat,
-            )
-        });
-        if changed {
-            self.edit(Edit::Batch(previews.iter().map(trim_edit).collect()));
-        }
-    }
-}
-
-fn trim_edit(preview: &ClipPreview) -> Edit {
-    Edit::Place {
-        clip_id: preview.clip.id,
-        track_id: preview.track,
-        start: preview.clip.start_frame,
-        offset: preview.clip.source_offset_frame,
-        length: preview.clip.length_frames,
-        repeat: preview.clip.repeat,
+        previews
     }
 }

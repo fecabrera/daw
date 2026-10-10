@@ -151,7 +151,7 @@ fn selected_header_edges_loop_every_clip_with_shared_preview_and_repeat_snapping
 }
 
 #[test]
-fn group_loop_overlap_with_selected_or_unselected_clips_rejects_all_changes() {
+fn group_loop_overlap_trims_selected_and_unselected_neighbors() {
     for left in [false, true] {
         for selected_obstacle in [false, true] {
             let (mut app, _, ids) = multi_clip_fixture();
@@ -174,9 +174,12 @@ fn group_loop_overlap_with_selected_or_unselected_clips_rejects_all_changes() {
             let end = start + Vec2::new(if left { -amount } else { amount } * app.zoom, 0.0);
             let shapes = begin_loop(&mut app, &ctx, start, end, true);
             let previews = app.clip_drag_previews(app.drag.as_ref().unwrap(), end, true);
-            assert_eq!(previews.len(), 3);
+            assert_eq!(previews.len(), if selected_obstacle { 3 } else { 4 });
             for preview in &previews {
-                assert!(!preview.valid);
+                assert!(preview.valid);
+                if preview.removed {
+                    continue;
+                }
                 assert!(has_preview_outline(
                     &shapes,
                     app.clip_block(
@@ -184,19 +187,31 @@ fn group_loop_overlap_with_selected_or_unselected_clips_rejects_all_changes() {
                         &preview.clip,
                         preview.clip.start_frame
                     ),
-                    theme::palette(&ctx).error
+                    theme::ACCENT
                 ));
             }
-            release(&mut app, &ctx, end, true);
             assert_eq!(format!("{:?}", app.session.project), original);
             assert!(!app.dirty);
+            release(&mut app, &ctx, end, true);
+            assert_ne!(format!("{:?}", app.session.project), original);
+            assert!(app.dirty);
             assert_eq!(app.selected_clips, HashSet::from(ids));
-            assert!(
-                app.error
-                    .as_ref()
-                    .unwrap()
-                    .contains("Cannot loop selected clips")
-            );
+            assert!(app.error.is_none());
+            app.session.project.validate().unwrap();
+            for preview in &previews {
+                let placed = app.session.project.tracks[preview.track_index]
+                    .clips
+                    .iter()
+                    .find(|clip| clip.id == preview.clip.id);
+                if preview.removed {
+                    assert!(placed.is_none());
+                } else {
+                    assert_eq!(
+                        format!("{:?}", placed.unwrap()),
+                        format!("{:?}", preview.clip)
+                    );
+                }
+            }
         }
     }
 }
@@ -222,7 +237,7 @@ fn group_loop_bounds_no_ops_and_cancellation_preserve_selection() {
             clips: clips.clone(),
         };
         for delta in [0.0, if left { 20.0 } else { -20.0 }] {
-            app.finish_group_resize(&drag, drag.origin + Vec2::new(delta, 0.0), true);
+            app.finish_clip_resize(&drag, drag.origin + Vec2::new(delta, 0.0), true);
             assert_eq!(format!("{:?}", app.session.project), original);
             assert!(!app.dirty);
         }

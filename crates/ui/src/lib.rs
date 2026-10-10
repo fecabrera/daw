@@ -1,4 +1,5 @@
 mod looping;
+mod resize;
 mod trim;
 use daw_core::{Clip, Edit, Id, frames, seconds};
 use daw_media::ExportSettings;
@@ -483,6 +484,7 @@ struct ClipPreview {
     track_index: usize,
     clip: Clip,
     valid: bool,
+    removed: bool,
 }
 struct FileDropTarget {
     track: Option<Id>,
@@ -3181,6 +3183,7 @@ impl DawUi {
                         ..entry.clip.clone()
                     },
                     valid: true,
+                    removed: false,
                 }
             })
             .collect();
@@ -3205,6 +3208,14 @@ impl DawUi {
         Some(previews)
     }
     fn clip_drag_previews(&self, drag: &Drag, pointer: Pos2, unsnapped: bool) -> Vec<ClipPreview> {
+        self.resolve_resize_preview(drag, self.raw_clip_drag_previews(drag, pointer, unsnapped))
+    }
+    fn raw_clip_drag_previews(
+        &self,
+        drag: &Drag,
+        pointer: Pos2,
+        unsnapped: bool,
+    ) -> Vec<ClipPreview> {
         if drag.mode == ClipDragMode::Move {
             self.move_group_preview(drag, pointer, unsnapped)
                 .unwrap_or_default()
@@ -3217,12 +3228,22 @@ impl DawUi {
         {
             self.trim_group_preview(drag, pointer, unsnapped)
         } else {
-            self.clip_drag_preview(drag, pointer, unsnapped)
+            self.raw_clip_drag_preview(drag, pointer, unsnapped)
                 .into_iter()
                 .collect()
         }
     }
     fn clip_drag_preview(
+        &self,
+        drag: &Drag,
+        pointer: Pos2,
+        unsnapped: bool,
+    ) -> Option<ClipPreview> {
+        self.clip_drag_previews(drag, pointer, unsnapped)
+            .into_iter()
+            .find(|preview| preview.clip.id == drag.clip.id)
+    }
+    fn raw_clip_drag_preview(
         &self,
         drag: &Drag,
         pointer: Pos2,
@@ -3395,12 +3416,13 @@ impl DawUi {
         {
             clip.restore_source_range();
         }
-        let valid = self.placement_valid(
-            Some(track),
-            (!drag.duplicate).then_some(clip.id),
-            clip.start_frame,
-            clip.length_frames,
-        );
+        let valid = drag.mode.resize_edge().is_some()
+            || self.placement_valid(
+                Some(track),
+                (!drag.duplicate).then_some(clip.id),
+                clip.start_frame,
+                clip.length_frames,
+            );
         Some(ClipPreview {
             track,
             track_index: self
@@ -3411,6 +3433,7 @@ impl DawUi {
                 .position(|t| t.id == track)?,
             clip,
             valid,
+            removed: false,
         })
     }
     fn placement_valid(
@@ -3622,9 +3645,31 @@ impl DawUi {
         let Some(drag) = self.drag.as_ref() else {
             return;
         };
-        for preview in
-            self.clip_drag_previews(drag, pointer, ui.input(|input| input.modifiers.shift))
-        {
+        let previews =
+            self.clip_drag_previews(drag, pointer, ui.input(|input| input.modifiers.shift));
+        if drag.mode.resize_edge().is_some() && previews.iter().all(|preview| preview.valid) {
+            for preview in &previews {
+                if let Some(lane) = self.preview_lane(preview)
+                    && let Some(original) = self.session.project.tracks[preview.track_index]
+                        .clips
+                        .iter()
+                        .find(|clip| clip.id == preview.clip.id)
+                {
+                    let block = self.clip_block(lane, original, original.start_frame);
+                    let painter = ui.painter_at(viewport.intersect(lane).intersect(block));
+                    painter.rect_filled(block, 0.0, theme::palette(ui.ctx()).background);
+                    self.paint_grid(&painter, lane);
+                    painter.line_segment(
+                        [lane.left_bottom(), lane.right_bottom()],
+                        Stroke::new(1.0, theme::palette(ui.ctx()).border),
+                    );
+                }
+            }
+        }
+        for preview in previews {
+            if preview.removed {
+                continue;
+            }
             let track_color = self
                 .session
                 .project
@@ -3905,16 +3950,8 @@ impl DawUi {
                 }
                 return;
             }
-            if drag.clips.len() > 1
-                && matches!(
-                    drag.mode,
-                    ClipDragMode::TrimLeft
-                        | ClipDragMode::TrimRight
-                        | ClipDragMode::LoopLeft
-                        | ClipDragMode::LoopRight
-                )
-            {
-                self.finish_group_resize(&drag, pointer, ui.input(|input| input.modifiers.shift));
+            if drag.mode.resize_edge().is_some() {
+                self.finish_clip_resize(&drag, pointer, ui.input(|input| input.modifiers.shift));
                 return;
             }
             if let Some(preview) =
@@ -4239,6 +4276,7 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     mod group_looping;
+    mod resize_neighbors;
     use super::*;
 
     fn fixture() -> (DawUi, Id) {
@@ -5333,9 +5371,9 @@ mod tests {
     #[test]
     fn group_waveform_trims_preview_and_commit_or_reject_as_one_edit() {
         // Cover both edges, snapping, source clamps independent of the dragged clip,
-        // an empty shortest clip, group overlap, and cancellation.
+        // an empty shortest clip and cancellation.
         for left in [true, false] {
-            for case in 0..8 {
+            for case in [0, 1, 2, 3, 5, 6] {
                 let (mut app, tracks, ids) = multi_clip_fixture();
                 app.session.project.assets[0].decoded_frame_count = frames(10.0);
                 for track in &mut app.session.project.tracks {
@@ -5345,18 +5383,8 @@ mod tests {
                             frames(if clip.id == ids[0] { 0.1 } else { 1.0 });
                     }
                 }
-                if left && case == 7 {
-                    app.session.project.tracks[0].clips[1].source_offset_frame = frames(4.0);
-                }
                 if !left && case == 1 {
                     app.session.project.tracks[0].clips[0].source_offset_frame = frames(9.4);
-                }
-                if case == 4 {
-                    let mut obstacle = app.session.project.tracks[0].clips[1].clone();
-                    obstacle.id = Id::new_v4();
-                    obstacle.start_frame = frames(if left { 4.5 } else { 6.0 });
-                    obstacle.length_frames = frames(0.1);
-                    app.session.project.tracks[0].clips.push(obstacle);
                 }
                 app.session.project.validate().unwrap();
                 let ctx = context();
@@ -5377,12 +5405,11 @@ mod tests {
                     block.top() + 40.0,
                 );
                 let amount = match case {
-                    1 | 4 => -0.5, // expansion
-                    2 => 0.5,      // equal to the shortest clip: reject
-                    3 => 0.6,      // beyond the shortest clip: reject
-                    7 => -3.0,     // expansion overlaps another selected clip
-                    6 => 0.23,     // Shift bypasses nearby grid
-                    _ => 0.23,     // snaps to 0.25
+                    1 => -0.5, // expansion
+                    2 => 0.5,  // equal to the shortest clip: reject
+                    3 => 0.6,  // beyond the shortest clip: reject
+                    6 => 0.23, // Shift bypasses nearby grid
+                    _ => 0.23, // snaps to 0.25
                 };
                 let end = start + Vec2::new(if left { amount } else { -amount } * app.zoom, 0.0);
                 frame(
@@ -5407,7 +5434,7 @@ mod tests {
                 assert_eq!(drag.clips.len(), 3);
                 let previews = app.clip_drag_previews(drag, end, modifiers.shift);
                 assert_eq!(previews.len(), 3);
-                let valid = !matches!(case, 2..=4 | 7);
+                let valid = !matches!(case, 2 | 3);
                 assert!(
                     previews.iter().all(|preview| preview.valid == valid),
                     "left={left}, case={case}"
@@ -5547,7 +5574,7 @@ mod tests {
                 clips,
             };
             for delta in [0.0, if left { -20.0 } else { 20.0 }] {
-                app.finish_group_resize(&drag, drag.origin + Vec2::new(delta, 0.0), true);
+                app.finish_clip_resize(&drag, drag.origin + Vec2::new(delta, 0.0), true);
                 assert_eq!(format!("{:?}", app.session.project), original);
                 assert!(!app.dirty);
                 assert!(app.error.is_none());
@@ -11278,7 +11305,7 @@ mod tests {
         }
     }
     #[test]
-    fn overlapping_clip_trim_and_loop_previews_are_red_and_retain_the_original() {
+    fn overlapping_clip_trim_and_loop_previews_trim_or_remove_neighbors() {
         for (left, header) in [(true, false), (false, false), (true, true), (false, true)] {
             let (mut app, track) = fixture();
             let clip = &mut app.session.project.tracks[0].clips[0];
@@ -11291,7 +11318,7 @@ mod tests {
             neighbor.start_frame = frames(if left { 0.0 } else { 7.0 });
             neighbor.source_offset_frame = 0;
             neighbor.length_frames = frames(1.0);
-            app.session.project.tracks[0].clips.push(neighbor);
+            app.session.project.tracks[0].clips.push(neighbor.clone());
             let ctx = context();
             frame(&mut app, &ctx, vec![]);
             let lane = app.lane_bounds[&track];
@@ -11327,19 +11354,27 @@ mod tests {
             let preview = app
                 .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                 .unwrap();
-            assert!(!preview.valid);
+            assert!(preview.valid);
             assert!(has_preview_outline(
                 &shapes,
                 app.clip_block(lane, &preview.clip, preview.clip.start_frame),
-                theme::ERROR
+                theme::ACCENT
             ));
             frame(&mut app, &ctx, vec![button(end, false)]);
-            assert!(
-                app.error
-                    .as_ref()
-                    .is_some_and(|error| error.contains("overlap"))
-            );
-            assert!(!app.dirty);
+            assert!(app.error.is_none());
+            assert!(app.dirty);
+            let remaining = app.session.project.tracks[0]
+                .clips
+                .iter()
+                .find(|clip| clip.id == neighbor.id);
+            if left {
+                let remaining = remaining.unwrap();
+                assert_eq!(remaining.start_frame, 0);
+                assert_eq!(remaining.length_frames, frames(0.5));
+                assert_eq!(remaining.source_offset_frame, 0);
+            } else {
+                assert!(remaining.is_none());
+            }
             let clip = app.session.project.tracks[0]
                 .clips
                 .iter()
@@ -11352,12 +11387,12 @@ mod tests {
                     clip.length_frames
                 ),
                 (
-                    original.start_frame,
-                    original.source_offset_frame,
-                    original.length_frames
+                    preview.clip.start_frame,
+                    preview.clip.source_offset_frame,
+                    preview.clip.length_frames
                 )
             );
-            assert_eq!(clip.repeat, original.repeat);
+            assert_eq!(clip.repeat, preview.clip.repeat);
             app.session.project.validate().unwrap();
         }
     }
