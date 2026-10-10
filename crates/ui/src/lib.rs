@@ -908,6 +908,7 @@ impl DawUi {
                     }
                     self.notices = session.warnings.clone();
                     self.session = session;
+                    self.prune_clip_selection();
                     self.selected_track = self
                         .selected_track
                         .filter(|id| self.session.project.tracks.iter().any(|t| t.id == *id))
@@ -3614,7 +3615,9 @@ impl DawUi {
         };
         let previews =
             self.clip_drag_previews(drag, pointer, ui.input(|input| input.modifiers.shift));
-        if drag.mode.resize_edge().is_some() && previews.iter().all(|preview| preview.valid) {
+        if (drag.mode.resize_edge().is_some() || drag.mode.stretch_edge().is_some())
+            && previews.iter().all(|preview| preview.valid)
+        {
             for preview in &previews {
                 if let Some(lane) = self.preview_lane(preview)
                     && let Some(original) = self.session.project.tracks[preview.track_index]
@@ -4612,7 +4615,7 @@ mod tests {
     }
 
     #[test]
-    fn stretch_preview_clamps_start_and_ratio_and_rejects_overlap_without_a_job() {
+    fn stretch_preview_clamps_start_and_ratio_and_trims_overlap_without_a_job() {
         let (mut app, track) = fixture();
         let original = app.session.project.tracks[0].clips[0].clone();
         app.lane_bounds.insert(
@@ -4652,7 +4655,10 @@ mod tests {
         let overlap = app
             .clip_drag_preview(&right, Pos2::new(70.0, 0.0), true)
             .unwrap();
-        assert!(!overlap.valid);
+        assert!(overlap.valid);
+        let previews = app.clip_drag_previews(&right, Pos2::new(70.0, 0.0), true);
+        assert_eq!(previews.len(), 2);
+        assert_eq!(previews[1].clip.start_frame, overlap.clip.end());
         assert!(app.job.is_none());
         assert!(!app.dirty);
     }

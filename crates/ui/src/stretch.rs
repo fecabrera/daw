@@ -60,19 +60,6 @@ fn primary_bounds(primary: &Clip, clips: &[SelectedClip], left: bool) -> Option<
     Some((minimum, maximum))
 }
 
-fn stretch_edits(previews: &[ClipPreview]) -> Edit {
-    Edit::Batch(
-        previews
-            .iter()
-            .map(|preview| Edit::DeleteClip(preview.clip.id))
-            .chain(previews.iter().map(|preview| Edit::InsertClip {
-                track_id: preview.track,
-                clip: preview.clip.clone(),
-            }))
-            .collect(),
-    )
-}
-
 impl DawUi {
     pub(super) fn stretch_group_preview(
         &self,
@@ -159,8 +146,6 @@ impl DawUi {
                 }
             })
             .collect();
-        let mut project = self.session.project.clone();
-        valid &= project.edit(stretch_edits(&previews)).is_ok();
         previews
             .into_iter()
             .map(|mut preview| {
@@ -171,6 +156,9 @@ impl DawUi {
     }
 
     pub(super) fn finish_clip_stretch(&mut self, drag: &Drag, pointer: Pos2, unsnapped: bool) {
+        let Some(edge) = drag.mode.stretch_edge() else {
+            return;
+        };
         let previews = self.stretch_group_preview(drag, pointer, unsnapped);
         if previews.is_empty() || previews.iter().any(|preview| !preview.valid) {
             return;
@@ -186,11 +174,16 @@ impl DawUi {
         }) {
             return;
         }
+        let clips: Vec<_> = previews.into_iter().map(|preview| preview.clip).collect();
+        let next = match self.session.project.stretched_clips(&clips, edge) {
+            Ok(next) => next,
+            Err(error) => {
+                self.fail(error);
+                return;
+            }
+        };
         let mut session = self.session.clone();
-        if let Err(error) = session.project.edit(stretch_edits(&previews)) {
-            self.fail(error);
-            return;
-        }
+        session.project = next;
         self.run_job("Stretching clips", move || {
             session
                 .prepare_stretches()

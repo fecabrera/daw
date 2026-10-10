@@ -495,6 +495,7 @@ impl Project {
                 }
             }
             Edit::ResizeClips { clips, edge } => self.apply_resizes(&clips, edge)?,
+            Edit::StretchClips { clips, edge } => self.apply_stretches(&clips, edge)?,
             Edit::SetTempo { bpm } => {
                 if !bpm.is_finite() || bpm <= 0.0 {
                     return Err(Error("Tempo must be a positive finite BPM value".into()));
@@ -631,6 +632,11 @@ pub enum Edit {
     Batch(Vec<Edit>),
     /// Resize existing clips and trim or remove intersecting neighbors atomically.
     ResizeClips {
+        clips: Vec<Clip>,
+        edge: ClipEdge,
+    },
+    /// Apply stretch metadata and trim/remove intersecting neighbors atomically.
+    StretchClips {
         clips: Vec<Clip>,
         edge: ClipEdge,
     },

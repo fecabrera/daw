@@ -1832,3 +1832,111 @@ fn stretched_clips_keep_sources_and_caches_through_trim_loop_split_copy_save_and
             .all(|clip| clip.stretch.is_none())
     );
 }
+
+#[test]
+fn stretch_overwrite_preserves_neighbor_audio_and_survives_save_render_and_reopen() {
+    use daw_core::{Clip, ClipEdge, ClipStretch, Id};
+    for edge in [ClipEdge::Left, ClipEdge::Right] {
+        let fixture = Fixture::new();
+        let source = fixture.wav("source.wav", 48000, 2, 16, false);
+        let source_bytes = fs::read(&source).unwrap();
+        let mut session = Session::default();
+        session
+            .import(
+                &source,
+                None,
+                if edge == ClipEdge::Right { 400 } else { 1400 },
+            )
+            .unwrap();
+        let primary = &mut session.project.tracks[0].clips[0];
+        primary.length_frames = 600;
+        let primary = primary.clone();
+        let covered = Clip {
+            id: Id::new_v4(),
+            start_frame: 1050,
+            length_frames: 200,
+            source_offset_frame: 600,
+            ..primary.clone()
+        };
+        let neighbor = Clip {
+            id: Id::new_v4(),
+            start_frame: if edge == ClipEdge::Right { 1400 } else { 400 },
+            length_frames: 600,
+            source_offset_frame: 1200,
+            repeat: Some(ClipLoop {
+                length_frames: 100,
+                phase_frame: 25,
+            }),
+            stretch: ClipStretch::new(1, 2),
+            ..primary.clone()
+        };
+        session.project.tracks[0]
+            .clips
+            .extend([covered.clone(), neighbor.clone()]);
+        session.prepare_stretches().unwrap();
+        let originals = session.audio[&primary.asset_id].samples.clone();
+        let cached_neighbor = session.audio_for_clip(&neighbor).unwrap().samples.clone();
+        let candidate = primary
+            .stretched_to(if edge == ClipEdge::Right { 400 } else { 700 }, 1300)
+            .unwrap();
+        let preview = session
+            .project
+            .stretched_clips(std::slice::from_ref(&candidate), edge)
+            .unwrap();
+        session
+            .project
+            .edit(Edit::StretchClips {
+                clips: vec![candidate],
+                edge,
+            })
+            .unwrap();
+        assert_eq!(format!("{:?}", session.project), format!("{preview:?}"));
+        session.prepare_stretches().unwrap();
+        assert_eq!(session.project.tracks[0].clips.len(), 2);
+        let retained = session.project.tracks[0]
+            .clips
+            .iter()
+            .find(|clip| clip.id == neighbor.id)
+            .unwrap();
+        assert_eq!(retained.length_frames, 300);
+        assert_eq!(retained.stretch, neighbor.stretch);
+        for local in 0..300 {
+            assert_eq!(
+                retained.source_frame(local),
+                neighbor.source_frame(local + retained.start_frame - neighbor.start_frame)
+            );
+        }
+        assert!(std::sync::Arc::ptr_eq(
+            &cached_neighbor,
+            &session.audio_for_clip(retained).unwrap().samples
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &originals,
+            &session.audio[&primary.asset_id].samples
+        ));
+        let mut before = vec![[0.0; 2]; session.project.end() as usize];
+        session.plan().render(0, &mut before);
+        session.save(&fixture.0.join("project")).unwrap();
+        session
+            .export(&fixture.0.join("before.wav"), false)
+            .unwrap();
+        let reopened = Session::open(&fixture.0.join("project")).unwrap();
+        let mut after = vec![[0.0; 2]; before.len()];
+        reopened.plan().render(0, &mut after);
+        assert_eq!(before, after);
+        assert!(
+            !reopened.project.tracks[0]
+                .clips
+                .iter()
+                .any(|clip| clip.id == covered.id)
+        );
+        reopened
+            .export(&fixture.0.join("after.wav"), false)
+            .unwrap();
+        assert_eq!(
+            fs::read(fixture.0.join("before.wav")).unwrap(),
+            fs::read(fixture.0.join("after.wav")).unwrap()
+        );
+        assert_eq!(fs::read(&source).unwrap(), source_bytes);
+    }
+}

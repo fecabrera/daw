@@ -221,7 +221,7 @@ fn group_stretch_clamps_shared_ratio_at_each_members_limits() {
 }
 
 #[test]
-fn group_stretch_overlap_rejects_selected_and_unselected_neighbors() {
+fn group_stretch_overlap_trims_selected_and_unselected_neighbors_atomically() {
     for selected_neighbor in [false, true] {
         let (mut app, _, ids) = fixture_with_audio();
         // Expansion of A to one second would cover this touching neighbor.
@@ -235,12 +235,37 @@ fn group_stretch_overlap_rejects_selected_and_unselected_neighbors() {
         let before = format!("{:?}", app.session.project);
         let (end, _) = begin(&mut app, &ctx, false, false, true, 0.5);
         let previews = app.clip_drag_previews(app.drag.as_ref().unwrap(), end, true);
-        assert!(previews.iter().all(|preview| !preview.valid));
+        assert!(previews.iter().all(|preview| preview.valid));
+        let neighbor = previews
+            .iter()
+            .find(|preview| preview.clip.id == ids[1])
+            .unwrap();
+        assert!(!neighbor.removed);
+        assert_eq!(neighbor.clip.start_frame, frames(3.0));
+        assert_eq!(
+            neighbor.clip.length_frames,
+            frames(if selected_neighbor { 1.25 } else { 0.5 })
+        );
         assert_eq!(format!("{:?}", app.session.project), before);
         frame(&mut app, &ctx, vec![pointer_button(end, false, true)]);
-        assert!(app.job.is_none());
+        assert!(app.job.is_some());
         assert!(!app.dirty);
         assert_eq!(format!("{:?}", app.session.project), before);
+        wait_for_save(&mut app);
+        assert!(app.error.is_none());
+        assert!(app.dirty);
+        for preview in previews {
+            let placed = app
+                .session
+                .project
+                .tracks
+                .iter()
+                .flat_map(|track| &track.clips)
+                .find(|clip| clip.id == preview.clip.id)
+                .unwrap();
+            assert_eq!(format!("{placed:?}"), format!("{:?}", preview.clip));
+        }
+        app.session.project.validate().unwrap();
     }
 }
 
@@ -392,4 +417,230 @@ fn group_stretch_rounds_unequal_lengths_without_timeline_overflow() {
     assert!(stationary.iter().all(|preview| preview.valid));
     assert_eq!(stationary[0].clip.length_frames, 13);
     assert_eq!(format!("{:?}", app.session.project), before);
+}
+
+fn neighbor_fixture(left: bool) -> (DawUi, Id, Clip, Clip, Clip) {
+    let (mut app, tracks, _) = fixture_with_audio();
+    let mut primary = app.session.project.tracks[0].clips[0].clone();
+    primary.start_frame = frames(3.0);
+    primary.length_frames = frames(1.0);
+    primary.source_offset_frame = frames(0.125);
+    let partial = Clip {
+        id: Id::new_v4(),
+        start_frame: frames(if left { 0.0 } else { 6.0 }),
+        length_frames: frames(2.0),
+        source_offset_frame: frames(0.25),
+        repeat: Some(daw_core::ClipLoop {
+            length_frames: frames(0.5),
+            phase_frame: frames(0.125),
+        }),
+        stretch: daw_core::ClipStretch::new(1, 2),
+        ..primary.clone()
+    };
+    let covered = Clip {
+        id: Id::new_v4(),
+        start_frame: frames(if left { 2.5 } else { 5.0 }),
+        length_frames: frames(0.25),
+        source_offset_frame: 0,
+        ..primary.clone()
+    };
+    app.session.project.tracks[0].clips = vec![primary.clone(), partial.clone(), covered.clone()];
+    app.session.project.validate().unwrap();
+    app.session.prepare_stretches().unwrap();
+    (app, tracks[0], primary, partial, covered)
+}
+
+#[test]
+fn stretch_neighbor_previews_commit_trims_and_removals_after_release_and_processing() {
+    for left in [false, true] {
+        for header in [false, true] {
+            let (mut app, track, primary, partial, covered) = neighbor_fixture(left);
+            let ctx = context();
+            select_group(&mut app, &ctx, [primary.id]);
+            let original = format!("{:?}", app.session.project);
+            let (end, shapes) = begin(
+                &mut app,
+                &ctx,
+                left,
+                header,
+                true,
+                if left { -1.5 } else { 3.0 },
+            );
+            let previews = app.clip_drag_previews(app.drag.as_ref().unwrap(), end, true);
+            assert_eq!(previews.len(), 3);
+            assert!(previews.iter().all(|preview| preview.valid));
+            let trimmed = previews
+                .iter()
+                .find(|preview| preview.clip.id == partial.id)
+                .unwrap();
+            assert!(!trimmed.removed);
+            assert_eq!(trimmed.clip.stretch, partial.stretch);
+            assert_eq!(
+                trimmed.clip.length_frames,
+                frames(if left { 1.5 } else { 1.0 })
+            );
+            let advance = trimmed.clip.start_frame - partial.start_frame;
+            for local in 0..trimmed.clip.length_frames {
+                assert_eq!(
+                    trimmed.clip.source_frame(local),
+                    partial.source_frame(local + advance)
+                );
+            }
+            assert!(has_preview_outline(
+                &shapes,
+                app.clip_block(
+                    app.lane_bounds[&track],
+                    &trimmed.clip,
+                    trimmed.clip.start_frame
+                ),
+                theme::ACCENT
+            ));
+            assert!(
+                previews
+                    .iter()
+                    .find(|preview| preview.clip.id == covered.id)
+                    .unwrap()
+                    .removed
+            );
+            assert_eq!(format!("{:?}", app.session.project), original);
+            let origin = app.drag.as_ref().unwrap().origin;
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(origin)]);
+            assert!(
+                app.clip_drag_previews(app.drag.as_ref().unwrap(), origin, true)
+                    .iter()
+                    .all(|preview| !preview.removed)
+            );
+            assert_eq!(format!("{:?}", app.session.project), original);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            frame(&mut app, &ctx, vec![pointer_button(end, false, true)]);
+            assert!(app.job.is_some());
+            assert_eq!(format!("{:?}", app.session.project), original);
+            assert!(!app.dirty);
+            wait_for_save(&mut app);
+            assert!(app.error.is_none());
+            for preview in previews {
+                let result = app.session.project.tracks[0]
+                    .clips
+                    .iter()
+                    .find(|clip| clip.id == preview.clip.id);
+                if preview.removed {
+                    assert!(result.is_none());
+                } else {
+                    assert_eq!(
+                        format!("{:?}", result.unwrap()),
+                        format!("{:?}", preview.clip)
+                    );
+                }
+            }
+            assert_eq!(app.selected_clips, HashSet::from([primary.id]));
+            assert!(app.dirty);
+            app.session.project.validate().unwrap();
+        }
+    }
+}
+
+#[test]
+fn stretch_neighbor_cancellation_and_worker_failure_leave_the_whole_project_unchanged() {
+    for left in [false, true] {
+        for action in ["escape", "focus", "failure"] {
+            let (mut app, _, primary, _, covered) = neighbor_fixture(left);
+            if action == "failure" {
+                let audio = app.session.audio.get_mut(&primary.asset_id).unwrap();
+                audio.samples = std::sync::Arc::new(vec![[f32::NAN; 2]; frames(2.0) as usize]);
+            }
+            let ctx = context();
+            select_group(&mut app, &ctx, [primary.id]);
+            let before = format!("{:?}", app.session.project);
+            let cache = app.session.stretched_audio.clone();
+            let (end, _) = begin(
+                &mut app,
+                &ctx,
+                left,
+                false,
+                true,
+                if left { -1.5 } else { 3.0 },
+            );
+            assert!(
+                app.clip_drag_previews(app.drag.as_ref().unwrap(), end, true)
+                    .iter()
+                    .find(|preview| preview.clip.id == covered.id)
+                    .unwrap()
+                    .removed
+            );
+            if action == "escape" {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: modifiers(true),
+                    }],
+                );
+            } else if action == "focus" {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        focused: false,
+                        events: vec![egui::Event::WindowFocused(false)],
+                        ..Default::default()
+                    },
+                    |ui| app.show(ui),
+                );
+                output.textures_delta.clear();
+            }
+            frame(&mut app, &ctx, vec![pointer_button(end, false, true)]);
+            if action == "failure" {
+                assert!(app.job.is_some());
+                wait_for_save(&mut app);
+                assert!(app.error.as_ref().unwrap().contains("invalid samples"));
+            } else {
+                assert!(app.job.is_none());
+            }
+            assert_eq!(format!("{:?}", app.session.project), before);
+            assert!(!app.dirty);
+            assert_eq!(app.session.stretched_audio.len(), cache.len());
+            for (key, audio) in cache {
+                assert!(std::sync::Arc::ptr_eq(
+                    &audio.samples,
+                    &app.session.stretched_audio[&key].samples
+                ));
+            }
+        }
+    }
+}
+
+#[test]
+fn group_stretch_removes_fully_covered_selected_clips_and_prunes_selection() {
+    let (mut app, _, ids) = fixture_with_audio();
+    app.session.project.tracks[0].clips[1].start_frame = frames(2.75);
+    app.session.project.tracks[0].clips[1].length_frames = frames(0.125);
+    let ctx = context();
+    select_group(&mut app, &ctx, ids);
+    let before = format!("{:?}", app.session.project);
+    let (end, _) = begin(&mut app, &ctx, false, true, true, 1.0);
+    let previews = app.clip_drag_previews(app.drag.as_ref().unwrap(), end, true);
+    assert!(
+        previews
+            .iter()
+            .find(|preview| preview.clip.id == ids[1])
+            .unwrap()
+            .removed
+    );
+    assert_eq!(app.selected_clips, HashSet::from(ids));
+    assert_eq!(format!("{:?}", app.session.project), before);
+    frame(&mut app, &ctx, vec![pointer_button(end, false, true)]);
+    assert_eq!(app.selected_clips, HashSet::from(ids));
+    assert_eq!(format!("{:?}", app.session.project), before);
+    wait_for_save(&mut app);
+    assert!(app.error.is_none());
+    assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[2]]));
+    assert!(
+        !app.session.project.tracks[0]
+            .clips
+            .iter()
+            .any(|clip| clip.id == ids[1])
+    );
+    app.session.project.validate().unwrap();
 }

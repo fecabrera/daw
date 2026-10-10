@@ -2,6 +2,14 @@ use super::*;
 use daw_core::ClipEdge;
 
 impl ClipDragMode {
+    pub(super) fn stretch_edge(self) -> Option<ClipEdge> {
+        match self {
+            Self::StretchLeft => Some(ClipEdge::Left),
+            Self::StretchRight => Some(ClipEdge::Right),
+            _ => None,
+        }
+    }
+
     pub(super) fn resize_edge(self) -> Option<ClipEdge> {
         match self {
             Self::TrimLeft | Self::LoopLeft => Some(ClipEdge::Left),
@@ -26,14 +34,19 @@ impl DawUi {
         drag: &Drag,
         mut raw: Vec<ClipPreview>,
     ) -> Vec<ClipPreview> {
-        let Some(edge) = drag.mode.resize_edge() else {
+        let Some(edge) = drag.mode.resize_edge().or_else(|| drag.mode.stretch_edge()) else {
             return raw;
         };
         if raw.is_empty() || raw.iter().any(|preview| !preview.valid) {
             return raw;
         }
         let clips: Vec<_> = raw.iter().map(|preview| preview.clip.clone()).collect();
-        let Ok(next) = self.session.project.resized_clips(&clips, edge) else {
+        let result = if drag.mode.stretch_edge().is_some() {
+            self.session.project.stretched_clips(&clips, edge)
+        } else {
+            self.session.project.resized_clips(&clips, edge)
+        };
+        let Ok(next) = result else {
             for preview in &mut raw {
                 preview.valid = false;
             }

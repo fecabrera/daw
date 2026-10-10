@@ -33,7 +33,28 @@ impl Project {
         Ok(next)
     }
 
+    /// Calculate stretches and their neighbor trims/removals as one complete result.
+    pub fn stretched_clips(&self, clips: &[Clip], edge: ClipEdge) -> Result<Self> {
+        let mut next = self.clone();
+        next.apply_stretches(clips, edge)?;
+        next.validate()?;
+        Ok(next)
+    }
+
     pub(crate) fn apply_resizes(&mut self, clips: &[Clip], edge: ClipEdge) -> Result<()> {
+        self.apply_boundary_resizes(clips, edge, false)
+    }
+
+    pub(crate) fn apply_stretches(&mut self, clips: &[Clip], edge: ClipEdge) -> Result<()> {
+        self.apply_boundary_resizes(clips, edge, true)
+    }
+
+    fn apply_boundary_resizes(
+        &mut self,
+        clips: &[Clip],
+        edge: ClipEdge,
+        update_stretch: bool,
+    ) -> Result<()> {
         let mut ids = HashSet::new();
         let mut order = Vec::new();
         for candidate in clips {
@@ -51,6 +72,9 @@ impl Project {
             clip.source_offset_frame = candidate.source_offset_frame;
             clip.length_frames = candidate.length_frames;
             clip.repeat = candidate.repeat;
+            if update_stretch {
+                clip.stretch = candidate.stretch;
+            }
             self.validate_clip(&clip)?;
             if match edge {
                 ClipEdge::Left => clip.end() != original.end(),
@@ -116,7 +140,7 @@ mod tests {
     use super::*;
     use crate::{Asset, ClipLoop, ClipStretch, Edit, SAMPLE_RATE, Source, SourceMetadata};
 
-    fn fixture() -> Project {
+    pub(super) fn fixture() -> Project {
         let mut project = Project::default();
         project.add_track().unwrap();
         let asset = Id::new_v4();
@@ -318,5 +342,151 @@ mod tests {
                 .is_err()
         );
         assert_eq!(format!("{project:?}"), before);
+    }
+}
+
+#[cfg(test)]
+mod stretch_tests {
+    use super::*;
+    use crate::{ClipLoop, ClipStretch, Edit};
+
+    #[test]
+    fn stretches_keep_new_ratios_and_preserve_neighbor_samples_in_both_directions() {
+        for edge in [ClipEdge::Left, ClipEdge::Right] {
+            let mut project = super::tests::fixture();
+            let originals = project.tracks[0].clips.clone();
+            let (primary, neighbor, covered, start, length) = match edge {
+                ClipEdge::Right => (
+                    originals[0].clone(),
+                    originals[3].clone(),
+                    originals[1].id,
+                    100,
+                    260,
+                ),
+                ClipEdge::Left => (
+                    originals[3].clone(),
+                    originals[0].clone(),
+                    originals[2].id,
+                    130,
+                    270,
+                ),
+            };
+            let neighbor_in_project = project.tracks[0]
+                .clips
+                .iter_mut()
+                .find(|clip| clip.id == neighbor.id)
+                .unwrap();
+            neighbor_in_project.repeat = Some(ClipLoop {
+                length_frames: 40,
+                phase_frame: 10,
+            });
+            neighbor_in_project.stretch = ClipStretch::new(1, 2);
+            let neighbor = neighbor_in_project.clone();
+            let candidate = primary.stretched_to(start, length).unwrap();
+            let preview = project
+                .stretched_clips(std::slice::from_ref(&candidate), edge)
+                .unwrap();
+            project
+                .edit(Edit::StretchClips {
+                    clips: vec![candidate.clone()],
+                    edge,
+                })
+                .unwrap();
+            assert_eq!(format!("{project:?}"), format!("{preview:?}"));
+            let placed = project.tracks[0]
+                .clips
+                .iter()
+                .find(|clip| clip.id == primary.id)
+                .unwrap();
+            assert_eq!(format!("{placed:?}"), format!("{candidate:?}"));
+            assert!(
+                !project.tracks[0]
+                    .clips
+                    .iter()
+                    .any(|clip| clip.id == covered)
+            );
+            let retained = project.tracks[0]
+                .clips
+                .iter()
+                .find(|clip| clip.id == neighbor.id)
+                .unwrap();
+            assert_eq!(retained.stretch, neighbor.stretch);
+            assert_eq!(retained.asset_id, neighbor.asset_id);
+            assert_eq!(retained.color, neighbor.color);
+            assert!(retained.length_frames < neighbor.length_frames);
+            for local in 0..retained.length_frames {
+                assert_eq!(
+                    retained.source_frame(local),
+                    neighbor.source_frame(local + retained.start_frame - neighbor.start_frame)
+                );
+            }
+            project.validate().unwrap();
+        }
+    }
+
+    #[test]
+    fn selected_stretches_trim_each_other_in_direction_order() {
+        for edge in [ClipEdge::Left, ClipEdge::Right] {
+            let project = super::tests::fixture();
+            let original = &project.tracks[0].clips;
+            let mut candidates = original[..2]
+                .iter()
+                .map(|clip| {
+                    let length = clip.length_frames * 3;
+                    clip.stretched_to(
+                        if edge == ClipEdge::Left {
+                            clip.end() - length
+                        } else {
+                            clip.start_frame
+                        },
+                        length,
+                    )
+                    .unwrap()
+                })
+                .collect::<Vec<_>>();
+            let result = project.stretched_clips(&candidates, edge).unwrap();
+            candidates.reverse();
+            let reversed = project.stretched_clips(&candidates, edge).unwrap();
+            assert_eq!(format!("{result:?}"), format!("{reversed:?}"));
+            let victim_id = original[usize::from(edge == ClipEdge::Right)].id;
+            let victim = result.tracks[0]
+                .clips
+                .iter()
+                .find(|clip| clip.id == victim_id)
+                .unwrap();
+            let proposed = candidates.iter().find(|clip| clip.id == victim_id).unwrap();
+            assert!(victim.length_frames < proposed.length_frames);
+            assert_eq!(victim.stretch, proposed.stretch);
+            for local in 0..victim.length_frames {
+                assert_eq!(
+                    victim.source_frame(local),
+                    proposed.source_frame(local + victim.start_frame - proposed.start_frame)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_stretch_rolls_back_all_neighbor_trims_and_removals() {
+        let mut project = super::tests::fixture();
+        let original = format!("{project:?}");
+        let candidate = project.tracks[0].clips[0].stretched_to(100, 400).unwrap();
+        let mut invalid = project.tracks[0].clips[1].clone();
+        invalid.stretch = ClipStretch::new(1, 9);
+        assert!(
+            project
+                .edit(Edit::StretchClips {
+                    clips: vec![candidate.clone(), invalid],
+                    edge: ClipEdge::Right
+                })
+                .is_err()
+        );
+        assert_eq!(format!("{project:?}"), original);
+        assert!(
+            project
+                .stretched_clips(&[candidate.clone(), candidate], ClipEdge::Right)
+                .is_err()
+        );
+        assert_eq!(format!("{project:?}"), original);
     }
 }
