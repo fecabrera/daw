@@ -234,6 +234,7 @@ fn group_loop_bounds_no_ops_and_cancellation_preserve_selection() {
             },
             origin: Pos2::new(500.0, 100.0),
             duplicate: false,
+            linked_boundary: false,
             clips: clips.clone(),
         };
         for delta in [0.0, if left { 20.0 } else { -20.0 }] {

@@ -53,6 +53,14 @@ impl DawUi {
             return raw;
         };
         let requested: HashSet<_> = clips.iter().map(|clip| clip.id).collect();
+        self.resize_result_previews(&next, &requested)
+    }
+
+    pub(super) fn resize_result_previews(
+        &self,
+        next: &daw_core::Project,
+        requested: &HashSet<Id>,
+    ) -> Vec<ClipPreview> {
         let mut previews = Vec::new();
         for (track_index, track) in self.session.project.tracks.iter().enumerate() {
             let mut originals: Vec<_> = track.clips.iter().collect();
@@ -82,6 +90,13 @@ impl DawUi {
         let Some(edge) = drag.mode.resize_edge() else {
             return;
         };
+        if let Some(result) = self.linked_trim_result(drag, pointer, unsnapped) {
+            match result {
+                Ok(next) => self.publish_resize(next),
+                Err(error) => self.fail(error),
+            }
+            return;
+        }
         let raw = self.raw_clip_drag_previews(drag, pointer, unsnapped);
         if raw.is_empty() {
             return;
@@ -92,29 +107,30 @@ impl DawUi {
         }
         let clips: Vec<_> = raw.iter().map(|preview| preview.clip.clone()).collect();
         match self.session.project.resized_clips(&clips, edge) {
-            Ok(next) => {
-                let changed =
-                    self.session
-                        .project
-                        .tracks
-                        .iter()
-                        .zip(&next.tracks)
-                        .any(|(old, new)| {
-                            old.clips.len() != new.clips.len()
-                                || old.clips.iter().any(|clip| {
-                                    new.clips
-                                        .iter()
-                                        .find(|other| other.id == clip.id)
-                                        .is_none_or(|other| range(other) != range(clip))
-                                })
-                        });
-                if changed {
-                    self.session.project = next;
-                    self.prune_clip_selection();
-                    self.changed();
-                }
-            }
+            Ok(next) => self.publish_resize(next),
             Err(error) => self.fail(error),
+        }
+    }
+    fn publish_resize(&mut self, next: daw_core::Project) {
+        let changed = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .zip(&next.tracks)
+            .any(|(old, new)| {
+                old.clips.len() != new.clips.len()
+                    || old.clips.iter().any(|clip| {
+                        new.clips
+                            .iter()
+                            .find(|other| other.id == clip.id)
+                            .is_none_or(|other| range(other) != range(clip))
+                    })
+            });
+        if changed {
+            self.session.project = next;
+            self.prune_clip_selection();
+            self.changed();
         }
     }
 }

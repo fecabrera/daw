@@ -1,3 +1,4 @@
+mod boundary;
 mod looping;
 mod placement;
 mod resize;
@@ -498,6 +499,14 @@ impl Project {
             }
             Edit::OverwriteClips(clips) => self.apply_placements(&clips)?,
             Edit::ResizeClips { clips, edge } => self.apply_resizes(&clips, edge)?,
+            Edit::TrimBoundary {
+                clip_id,
+                selected,
+                edge,
+                delta,
+            } => {
+                self.apply_trim_boundary(clip_id, &selected, edge, delta)?;
+            }
             Edit::StretchClips { clips, edge } => self.apply_stretches(&clips, edge)?,
             Edit::SetTempo { bpm } => {
                 if !bpm.is_finite() || bpm <= 0.0 {
@@ -639,6 +648,13 @@ pub enum Edit {
     ResizeClips {
         clips: Vec<Clip>,
         edge: ClipEdge,
+    },
+    /// Move a touching waveform boundary and trim the remaining selected clips.
+    TrimBoundary {
+        clip_id: Id,
+        selected: Vec<Id>,
+        edge: ClipEdge,
+        delta: i128,
     },
     /// Apply stretch metadata and trim/remove intersecting neighbors atomically.
     StretchClips {

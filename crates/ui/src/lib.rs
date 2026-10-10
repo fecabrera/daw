@@ -426,6 +426,7 @@ struct Drag {
     mode: ClipDragMode,
     origin: Pos2,
     duplicate: bool,
+    linked_boundary: bool,
     clips: Vec<SelectedClip>,
 }
 #[derive(Clone)]
@@ -3218,6 +3219,29 @@ impl DawUi {
         Some(previews)
     }
     fn clip_drag_previews(&self, drag: &Drag, pointer: Pos2, unsnapped: bool) -> Vec<ClipPreview> {
+        if let Some(result) = self.linked_trim_result(drag, pointer, unsnapped) {
+            return match result {
+                Ok(next) => {
+                    let mut requested: HashSet<_> =
+                        drag.clips.iter().map(|entry| entry.clip.id).collect();
+                    requested.insert(drag.clip.id);
+                    if let Some(edge) = drag.mode.resize_edge()
+                        && let Some(neighbor) =
+                            self.session.project.trim_neighbor(drag.clip.id, edge)
+                    {
+                        requested.insert(neighbor.id);
+                    }
+                    self.resize_result_previews(&next, &requested)
+                }
+                Err(_) => {
+                    let mut raw = self.raw_clip_drag_previews(drag, pointer, unsnapped);
+                    for preview in &mut raw {
+                        preview.valid = false;
+                    }
+                    raw
+                }
+            };
+        }
         let raw = self.raw_clip_drag_previews(drag, pointer, unsnapped);
         if drag.mode == ClipDragMode::Move && !drag.duplicate {
             self.resolve_move_preview(raw)
@@ -4014,7 +4038,9 @@ impl DawUi {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
                         response
                             .clone()
-                            .on_hover_text(if cfg!(target_os = "macos") {
+                            .on_hover_text(if self.at_trim_boundary(clip, ClipDragMode::at(block, pos), block, pos) {
+                                "Drag the dividing line to trim one clip and extend the other. Hold Shift to bypass snapping."
+                            } else if cfg!(target_os = "macos") {
                                 "Drag to trim selected clips. Hold Option to stretch. Hold Shift to bypass snapping."
                             } else {
                                 "Drag to trim selected clips. Hold Ctrl to stretch. Hold Shift to bypass snapping."
@@ -4070,6 +4096,7 @@ impl DawUi {
                     track: track_id,
                     mode,
                     origin,
+                    linked_boundary: self.at_trim_boundary(clip, mode, block, origin),
                     duplicate: mode == ClipDragMode::Move
                         && ui.input(|input| clip_copy_modifier(input.modifiers)),
                 });
@@ -4188,6 +4215,7 @@ mod tests {
     mod group_stretch;
     mod placement_overwrite;
     mod resize_neighbors;
+    mod trim_boundary;
     use super::*;
 
     fn fixture() -> (DawUi, Id) {
@@ -4561,6 +4589,7 @@ mod tests {
                     origin: end,
                     track,
                     duplicate: false,
+                    linked_boundary: false,
                     clips: vec![],
                 };
                 let restored = app
@@ -4588,6 +4617,7 @@ mod tests {
             origin: Pos2::ZERO,
             track,
             duplicate: false,
+            linked_boundary: false,
             clips: vec![],
         };
         let left = app
@@ -5485,6 +5515,7 @@ mod tests {
                 },
                 origin: Pos2::new(500.0, 100.0),
                 duplicate: false,
+                linked_boundary: false,
                 clips,
             };
             for delta in [0.0, if left { -20.0 } else { 20.0 }] {
@@ -7489,6 +7520,7 @@ mod tests {
             mode: ClipDragMode::LoopRight,
             origin: Pos2::ZERO,
             duplicate: false,
+            linked_boundary: false,
             clips: Vec::new(),
         };
         let preview = app
@@ -8629,6 +8661,7 @@ mod tests {
                         mode: ClipDragMode::Move,
                         origin: pointer,
                         duplicate: false,
+                        linked_boundary: false,
                         clips: Vec::new(),
                     })
                 }
@@ -9908,6 +9941,7 @@ mod tests {
             mode: ClipDragMode::Move,
             origin,
             duplicate: true,
+            linked_boundary: false,
             clips: Vec::new(),
         };
         let preview = app
@@ -10667,6 +10701,7 @@ mod tests {
                     mode: ClipDragMode::LoopRight,
                     origin: end,
                     duplicate: false,
+                    linked_boundary: false,
                     clips: Vec::new(),
                 };
                 let resized = app
@@ -10800,6 +10835,7 @@ mod tests {
                 mode,
                 origin,
                 duplicate: false,
+                linked_boundary: false,
                 clips: Vec::new(),
             });
             let preview = app

@@ -192,6 +192,7 @@ fn group_stretch_clamps_shared_ratio_at_each_members_limits() {
         mode: ClipDragMode::StretchRight,
         origin: Pos2::ZERO,
         duplicate: false,
+        linked_boundary: false,
         clips: entries.clone(),
     };
     let large = app.clip_drag_previews(&drag, Pos2::new(1e7, 0.0), true);
@@ -402,6 +403,7 @@ fn group_stretch_rounds_unequal_lengths_without_timeline_overflow() {
         mode: ClipDragMode::StretchRight,
         origin: Pos2::ZERO,
         duplicate: false,
+        linked_boundary: false,
         clips: entries,
     };
     let previews = app.clip_drag_previews(&drag, Pos2::new(1e7, 0.0), true);
