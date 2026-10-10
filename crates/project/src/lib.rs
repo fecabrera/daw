@@ -189,6 +189,28 @@ impl Session {
         track: Option<Id>,
         start: u64,
     ) -> Result<Id> {
+        self.import_decoded_mode(path, data, track, start, false)
+    }
+
+    /// File drops take priority over existing clips, retaining uncovered source ranges.
+    pub fn import_decoded_overwrite(
+        &mut self,
+        path: &Path,
+        data: AudioData,
+        track: Option<Id>,
+        start: u64,
+    ) -> Result<Id> {
+        self.import_decoded_mode(path, data, track, start, true)
+    }
+
+    fn import_decoded_mode(
+        &mut self,
+        path: &Path,
+        data: AudioData,
+        track: Option<Id>,
+        start: u64,
+        overwrite: bool,
+    ) -> Result<Id> {
         let path = absolute(path)?;
         let name = path
             .file_name()
@@ -202,12 +224,7 @@ impl Session {
             Some(id) => id,
             None => next.add_track().map_err(error)?,
         };
-        let t = next
-            .tracks
-            .iter_mut()
-            .find(|t| t.id == track_id)
-            .ok_or_else(|| error("Select a track for import"))?;
-        t.clips.push(Clip {
+        let clip = Clip {
             stretch: None,
             id: clip_id,
             asset_id,
@@ -217,7 +234,7 @@ impl Session {
             source_offset_frame: 0,
             length_frames: data.samples.len() as u64,
             repeat: None,
-        });
+        };
         next.assets.push(Asset {
             id: asset_id,
             name,
@@ -229,7 +246,16 @@ impl Session {
             source_metadata: data.metadata.clone(),
             decoded_frame_count: data.samples.len() as u64,
         });
-        next.validate().map_err(error)?;
+        if overwrite {
+            next.edit(daw_core::Edit::OverwriteClips(vec![
+                daw_core::ClipPlacement { track_id, clip },
+            ]))
+            .map_err(error)?;
+        } else {
+            next.edit(daw_core::Edit::InsertClip { track_id, clip })
+                .map_err(error)?;
+        }
+
         self.project = next;
         self.audio.insert(asset_id, data);
         Ok(clip_id)

@@ -2,8 +2,27 @@ use crate::{Clip, ClipEdge, Error, Id, Project, Result};
 use std::collections::HashSet;
 
 impl Clip {
+    /// Remove a covered range, retaining both sides when the coverage is internal.
+    pub(crate) fn uncovered_ranges(&self, start: u64, end: u64) -> Vec<Self> {
+        if self.end() <= start || self.start_frame >= end {
+            return vec![self.clone()];
+        }
+        let mut pieces = Vec::with_capacity(2);
+        if self.start_frame < start {
+            pieces.push(self.retained_range(self.start_frame, start));
+        }
+        if self.end() > end {
+            let mut right = self.retained_range(end, self.end());
+            if !pieces.is_empty() {
+                right.id = Id::new_v4();
+            }
+            pieces.push(right);
+        }
+        pieces
+    }
+
     /// Keep a nonempty subrange without changing the remaining samples' mapping.
-    fn retained_range(&self, start: u64, end: u64) -> Self {
+    pub(crate) fn retained_range(&self, start: u64, end: u64) -> Self {
         let advance = start - self.start_frame;
         let mut clip = self.clone();
         clip.start_frame = start;
@@ -113,23 +132,16 @@ impl Project {
                 .cloned()
                 .ok_or_else(|| Error("Clip not found".into()))?;
             processed.insert(id);
-            track.clips.retain_mut(|clip| {
-                if processed.contains(&clip.id)
-                    || clip.end() <= winner.start_frame
-                    || clip.start_frame >= winner.end()
-                {
-                    return true;
-                }
-                let (start, end) = match edge {
-                    ClipEdge::Right => (winner.end(), clip.end()),
-                    ClipEdge::Left => (clip.start_frame, winner.start_frame),
-                };
-                if end <= start {
-                    return false;
-                }
-                *clip = clip.retained_range(start, end);
-                true
-            });
+            track.clips = std::mem::take(&mut track.clips)
+                .into_iter()
+                .flat_map(|clip| {
+                    if processed.contains(&clip.id) {
+                        vec![clip]
+                    } else {
+                        clip.uncovered_ranges(winner.start_frame, winner.end())
+                    }
+                })
+                .collect();
         }
         Ok(())
     }

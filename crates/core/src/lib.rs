@@ -1,5 +1,7 @@
 mod looping;
+mod placement;
 mod resize;
+pub use placement::ClipPlacement;
 mod trim;
 pub use trim::ClipEdge;
 
@@ -494,6 +496,7 @@ impl Project {
                     self.apply_edit(command)?;
                 }
             }
+            Edit::OverwriteClips(clips) => self.apply_placements(&clips)?,
             Edit::ResizeClips { clips, edge } => self.apply_resizes(&clips, edge)?,
             Edit::StretchClips { clips, edge } => self.apply_stretches(&clips, edge)?,
             Edit::SetTempo { bpm } => {
@@ -630,6 +633,8 @@ impl Project {
 pub enum Edit {
     /// Apply all commands and validate the final state as one transaction.
     Batch(Vec<Edit>),
+    /// Place clips with priority over existing ranges, trimming/splitting neighbors.
+    OverwriteClips(Vec<ClipPlacement>),
     /// Resize existing clips and trim or remove intersecting neighbors atomically.
     ResizeClips {
         clips: Vec<Clip>,

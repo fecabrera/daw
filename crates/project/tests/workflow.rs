@@ -1940,3 +1940,142 @@ fn stretch_overwrite_preserves_neighbor_audio_and_survives_save_render_and_reope
         assert_eq!(fs::read(&source).unwrap(), source_bytes);
     }
 }
+
+#[test]
+fn move_and_drop_middle_splits_preserve_audio_sources_caches_and_saved_results() {
+    use daw_core::{Clip, ClipPlacement, ClipStretch, Id};
+    for dropped in [false, true] {
+        let fixture = Fixture::new();
+        let source = fixture.wav("source.wav", 48000, 2, 16, false);
+        let source_bytes = fs::read(&source).unwrap();
+        let mut session = Session::default();
+        session.import(&source, None, 0).unwrap();
+        let neighbor = &mut session.project.tracks[0].clips[0];
+        neighbor.length_frames = 12000;
+        neighbor.source_offset_frame = 240;
+        neighbor.repeat = Some(ClipLoop {
+            length_frames: 600,
+            phase_frame: 125,
+        });
+        neighbor.stretch = ClipStretch::new(1, 2);
+        let neighbor = neighbor.clone();
+        session.prepare_stretches().unwrap();
+        let samples = session.audio[&neighbor.asset_id].samples.clone();
+        let prepared = session.audio_for_clip(&neighbor).unwrap().samples.clone();
+        let incoming_id = if dropped {
+            let data = daw_media::decode_wav(&source).unwrap();
+            session
+                .import_decoded_overwrite(&source, data, Some(session.project.tracks[0].id), 3000)
+                .unwrap()
+        } else {
+            let track = session.project.add_track().unwrap();
+            let moving = Clip {
+                id: Id::new_v4(),
+                name: "Moved".into(),
+                start_frame: 1000,
+                source_offset_frame: 600,
+                length_frames: 4800,
+                repeat: None,
+                ..neighbor.clone()
+            };
+            session
+                .project
+                .edit(Edit::InsertClip {
+                    track_id: track,
+                    clip: moving.clone(),
+                })
+                .unwrap();
+            session
+                .project
+                .edit(Edit::OverwriteClips(vec![ClipPlacement {
+                    track_id: session.project.tracks[0].id,
+                    clip: Clip {
+                        start_frame: 3000,
+                        ..moving.clone()
+                    },
+                }]))
+                .unwrap();
+            assert!(session.project.tracks[1].clips.is_empty());
+            moving.id
+        };
+        let pieces: Vec<_> = session.project.tracks[0]
+            .clips
+            .iter()
+            .filter(|clip| clip.id != incoming_id)
+            .collect();
+        assert_eq!(pieces.len(), 2);
+        assert_eq!(pieces[0].id, neighbor.id);
+        assert_ne!(pieces[1].id, neighbor.id);
+        assert_eq!((pieces[0].start_frame, pieces[0].end()), (0, 3000));
+        assert_eq!((pieces[1].start_frame, pieces[1].end()), (7800, 12000));
+        for piece in pieces {
+            for local in 0..piece.length_frames {
+                assert_eq!(
+                    piece.source_frame(local),
+                    neighbor.source_frame(local + piece.start_frame)
+                );
+            }
+            assert!(std::sync::Arc::ptr_eq(
+                &prepared,
+                &session.audio_for_clip(piece).unwrap().samples
+            ));
+        }
+        assert!(std::sync::Arc::ptr_eq(
+            &samples,
+            &session.audio[&neighbor.asset_id].samples
+        ));
+        let mut before = vec![[0.0; 2]; session.project.end() as usize];
+        session.plan().render(0, &mut before);
+        session.save(&fixture.0.join("project")).unwrap();
+        session
+            .export(&fixture.0.join("before.wav"), false)
+            .unwrap();
+        let reopened = Session::open(&fixture.0.join("project")).unwrap();
+        let mut after = vec![[0.0; 2]; before.len()];
+        reopened.plan().render(0, &mut after);
+        assert_eq!(before, after);
+        assert_eq!(
+            reopened.project.tracks[0]
+                .clips
+                .iter()
+                .map(|clip| clip.id)
+                .collect::<Vec<_>>(),
+            session.project.tracks[0]
+                .clips
+                .iter()
+                .map(|clip| clip.id)
+                .collect::<Vec<_>>()
+        );
+        reopened
+            .export(&fixture.0.join("after.wav"), false)
+            .unwrap();
+        assert_eq!(
+            fs::read(fixture.0.join("before.wav")).unwrap(),
+            fs::read(fixture.0.join("after.wav")).unwrap()
+        );
+        assert_eq!(fs::read(&source).unwrap(), source_bytes);
+    }
+}
+
+#[test]
+fn invalid_overwrite_import_retains_assets_clips_and_decoded_audio() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("source.wav", 48000, 1, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let before = format!("{:?}", session.project);
+    let audio_count = session.audio.len();
+    let data = daw_media::decode_wav(&source).unwrap();
+    assert!(
+        session
+            .import_decoded_overwrite(&source, data.clone(), Some(daw_core::Id::new_v4()), 20)
+            .is_err()
+    );
+    assert!(
+        session
+            .import_decoded_overwrite(&source, data, None, u64::MAX - 10)
+            .is_err()
+    );
+    assert_eq!(format!("{:?}", session.project), before);
+    assert_eq!(session.audio.len(), audio_count);
+}
