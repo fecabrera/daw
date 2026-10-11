@@ -658,3 +658,10 @@ All 228 workspace tests pass, including 27 core tests and 158 UI tests. New chec
 - Passed `cargo fmt --all --check`, `cargo clippy --offline --workspace --all-targets -- -D warnings`, `cargo test --offline --workspace` (235 tests), and `git diff --check`, with the local Cargo cache. Logs: `work/project-settings-workspace.log` and `work/project-settings-clippy.log`.
 - Rebuilt `target/debug/DAW.app` with `sh tools/package_macos.sh debug`. Native macOS checks verified the File menu item, dialog layout, selected current name, unchanged title while typing, disabled background controls, Enter commit, and the updated title/unsaved marker. Discarded the temporary rename and restored the empty Untitled workspace.
 - Windows/Linux builds and native interactions were not run. Native file-saving checks and rename interaction during active playback remain unverified; Save/reopen is covered by an automated temporary-folder test.
+
+## Track header Mute/Solo controls (2026-10-11)
+
+- Moved M and S to the far right of the track header, immediately left of the full-height stereo meters. Retained the left grip, centered track name, button sizes, tooltips, accessible toggle states, and individual-track actions. Gain and pan knobs/inputs occupy the second row.
+- Updated existing interaction checks for the new header and lower-row positions. Alignment checks cover centered names and M/S alignment/order. Track-panel selection, button toggles, gain/pan inputs, grip/name reordering, and shortcuts pass.
+- Passed `cargo fmt --all --check`, `cargo clippy --offline --workspace --all-targets -- -D warnings`, `cargo test --offline --workspace` (235 tests), and `git diff --check`, with the local Cargo cache. Logs: `work/track-header-controls-workspace.log` and `work/track-header-controls-clippy.log`.
+- Rebuilt `target/debug/DAW.app`. Native macOS checks verified the header layout and Mute/Solo toggles on a temporary empty track. Removed the temporary track and restored the empty Untitled workspace. Windows/Linux native UI and live audio checks were not run.

@@ -2894,37 +2894,31 @@ impl DawUi {
                                 });
                                 let cleared =
                                     meters::stereo_panel(ui, ROW_HEIGHT - 14.0, levels, |ui| {
+                                        let mut mute = track.muted;
+                                        let mut solo = track.soloed;
                                         rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                                            let handle_width = toolbars::CONTROL_HEIGHT;
+                                            let buttons_width =
+                                                2.0 * 28.0 + ui.spacing().item_spacing.x;
                                             let name_width = (ui.available_width()
                                                 - 2.0
-                                                    * (handle_width + ui.spacing().item_spacing.x))
+                                                    * (buttons_width
+                                                        + ui.spacing().item_spacing.x))
                                                 .max(1.0);
-                                            let grip = icons::grip(ui);
-                                            self.start_track_drag(ui, &grip, track.id);
+                                            // Balance the right-hand buttons so the name stays centered.
+                                            ui.allocate_ui_with_layout(
+                                                Vec2::new(buttons_width, toolbars::CONTROL_HEIGHT),
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                    ui.set_min_width(buttons_width);
+                                                    let grip = icons::grip(ui);
+                                                    self.start_track_drag(ui, &grip, track.id);
+                                                },
+                                            );
                                             ui.allocate_ui_with_layout(
                                                 Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
                                                 egui::Layout::left_to_right(egui::Align::Center),
                                                 |ui| self.track_name(ui, &track),
                                             );
-                                            // Balance the handle so the name remains centered.
-                                            ui.allocate_exact_size(
-                                                Vec2::new(handle_width, toolbars::CONTROL_HEIGHT),
-                                                Sense::hover(),
-                                            );
-                                        });
-                                        let inputs =
-                                            self.inputs.entry(track.id).or_insert_with(|| Inputs {
-                                                gain: format!("{:.1}", track.gain_db),
-                                                pan: format!("{:.2}", track.pan),
-                                            });
-                                        let mut gain = None;
-                                        let mut pan = None;
-                                        let mut input_error = None;
-                                        let mut mute = track.muted;
-                                        let mut solo = track.soloed;
-                                        rows::centered(ui, knobs::SIZE, |ui| {
-                                            ui.spacing_mut().item_spacing.x = 4.0;
                                             let mute_button = ui
                                                 .add(
                                                     egui::Button::new("M")
@@ -2961,7 +2955,17 @@ impl DawUi {
                                             if solo_button.clicked() {
                                                 solo = !solo;
                                             }
-
+                                        });
+                                        let inputs =
+                                            self.inputs.entry(track.id).or_insert_with(|| Inputs {
+                                                gain: format!("{:.1}", track.gain_db),
+                                                pan: format!("{:.2}", track.pan),
+                                            });
+                                        let mut gain = None;
+                                        let mut pan = None;
+                                        let mut input_error = None;
+                                        rows::centered(ui, knobs::SIZE, |ui| {
+                                            ui.spacing_mut().item_spacing.x = 4.0;
                                             let mut value = track.gain_db;
                                             if knobs::gain(ui, &mut value).changed() {
                                                 gain = Some(value);
@@ -6852,6 +6856,23 @@ mod tests {
             let lane = app.lane_bounds[&tracks[0]];
             // The name stays centered in the content column, before the meter rail.
             assert!((name.x - (lane.left() - TRACK_WIDTH + 112.0)).abs() < 1.0);
+            let button_center = |label: &str| {
+                shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == label => {
+                            Some(text.pos + text.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .unwrap()
+            };
+            let mute = button_center("M");
+            let solo = button_center("S");
+            assert!((mute.y - name.y).abs() < 1.0);
+            assert!((solo.y - name.y).abs() < 1.0);
+            assert!(name.x < mute.x && mute.x < solo.x);
+            assert!((solo.x - (lane.left() - TRACK_WIDTH + 203.0)).abs() < 1.0);
             let grip = Pos2::new(lane.left() - TRACK_WIDTH + 18.0, lane.top() + 18.0);
             let destination = Pos2::new(grip.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
             frame(
@@ -7169,12 +7190,12 @@ mod tests {
             ("bottom padding", Vec2::new(30.0, 66.0)),
             ("between rows", Vec2::new(60.0, 31.0)),
             ("name", Vec2::new(110.0, 18.0)),
-            ("mute", Vec2::new(21.0, 47.0)),
-            ("solo", Vec2::new(53.0, 47.0)),
-            ("gain knob", Vec2::new(85.0, 47.0)),
-            ("gain input", Vec2::new(120.0, 47.0)),
-            ("pan knob", Vec2::new(157.0, 47.0)),
-            ("pan input", Vec2::new(193.0, 47.0)),
+            ("mute", Vec2::new(169.0, 18.0)),
+            ("solo", Vec2::new(203.0, 18.0)),
+            ("gain knob", Vec2::new(21.0, 47.0)),
+            ("gain input", Vec2::new(56.0, 47.0)),
+            ("pan knob", Vec2::new(93.0, 47.0)),
+            ("pan input", Vec2::new(129.0, 47.0)),
             ("left meter", Vec2::new(226.0, 20.0)),
             ("right meter", Vec2::new(238.0, 20.0)),
         ] {

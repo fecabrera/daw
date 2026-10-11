@@ -230,7 +230,7 @@ fn track_keys_do_not_change_the_project_during_text_editing_or_blocked_interacti
                 })
             }
             "gain" => {
-                let point = panel(&app, tracks[0]).min + Vec2::new(120.0, 47.0);
+                let point = panel(&app, tracks[0]).min + Vec2::new(56.0, 47.0);
                 frame(
                     &mut app,
                     &ctx,
