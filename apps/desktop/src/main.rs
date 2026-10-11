@@ -4,10 +4,14 @@ mod linux_file_drag;
 mod macos_file_drag;
 #[cfg(target_os = "macos")]
 mod macos_menu;
+#[cfg(target_os = "macos")]
+mod macos_titlebar;
 #[cfg(target_os = "windows")]
 mod windows_file_drag;
 
 struct App {
+    #[cfg(target_os = "macos")]
+    titlebar: Option<macos_titlebar::Titlebar>,
     ui: daw_ui::DawUi,
     #[cfg(target_os = "macos")]
     menu: macos_menu::NativeMenu,
@@ -35,6 +39,10 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         #[cfg(target_os = "macos")]
         self.menu.dispatch(&mut self.ui, ui.ctx());
+        #[cfg(target_os = "macos")]
+        if let Some(titlebar) = &mut self.titlebar {
+            titlebar.update(self.ui.settings().titlebar);
+        }
         self.ui.show(ui);
         #[cfg(target_os = "macos")]
         self.menu.update_enabled(&self.ui, ui.ctx());
@@ -90,7 +98,11 @@ fn main() -> eframe::Result {
                 menu.update_enabled(&ui, &cc.egui_ctx);
                 (ui, menu)
             };
+            #[cfg(target_os = "macos")]
+            let titlebar = macos_titlebar::Titlebar::new(cc, ui.settings().titlebar);
             Ok(Box::new(App {
+                #[cfg(target_os = "macos")]
+                titlebar,
                 ui,
                 #[cfg(target_os = "macos")]
                 menu,

@@ -119,11 +119,30 @@ impl ColorTheme {
     }
 }
 
+/// macOS window presentation. Other platforms retain their existing titlebars.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TitlebarStyle {
+    #[default]
+    Custom,
+    Native,
+}
+
+impl TitlebarStyle {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Custom => "Custom",
+            Self::Native => "Native",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
     pub accent: AccentColor,
     pub theme: ColorTheme,
+    pub titlebar: TitlebarStyle,
 }
 
 impl AppSettings {
@@ -153,6 +172,18 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
     let popup_was_open = egui::Popup::is_any_open(ctx);
     let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
         .show_with_content(ctx, |ui| {
+            #[cfg(target_os = "macos")]
+            crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
+                ui.label("Titlebar");
+                egui::ComboBox::from_id_salt("titlebar_style")
+                    .selected_text(settings.titlebar.name())
+                    .width(165.0)
+                    .show_ui(ui, |ui| {
+                        for style in [TitlebarStyle::Custom, TitlebarStyle::Native] {
+                            ui.selectable_value(&mut settings.titlebar, style, style.name());
+                        }
+                    });
+            });
             crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
                 ui.label("Theme");
                 egui::ComboBox::from_id_salt("color_theme")
@@ -270,8 +301,14 @@ mod tests {
     fn preferences_round_trip_all_colors_and_recover_from_missing_or_invalid_data() {
         for accent in AccentColor::ALL {
             for theme in [ColorTheme::Dark, ColorTheme::Light] {
-                let settings = AppSettings { accent, theme };
-                assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
+                for titlebar in [TitlebarStyle::Custom, TitlebarStyle::Native] {
+                    let settings = AppSettings {
+                        accent,
+                        theme,
+                        titlebar,
+                    };
+                    assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
+                }
             }
             assert!(!accent.name().contains("500"));
         }
@@ -287,6 +324,37 @@ mod tests {
         let settings = AppSettings::from_json(Some(r#"{"accent":"blue_grey","future":true}"#));
         assert_eq!(settings.accent, AccentColor::BlueGrey);
         assert_eq!(settings.theme, ColorTheme::Dark);
+        assert_eq!(settings.titlebar, TitlebarStyle::Custom);
+        let legacy = AppSettings::from_json(Some(r#"{"accent":"teal","theme":"light"}"#));
+        assert_eq!(legacy.accent, AccentColor::Teal);
+        assert_eq!(legacy.theme, ColorTheme::Light);
+        assert_eq!(legacy.titlebar, TitlebarStyle::Custom);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn titlebar_dropdown_switches_without_changing_theme_or_accent() {
+        let ctx = Context::default();
+        crate::theme::configure(&ctx);
+        let mut settings = AppSettings {
+            accent: AccentColor::Teal,
+            theme: ColorTheme::Light,
+            ..Default::default()
+        };
+        crate::theme::apply(&ctx, settings);
+        frame(&ctx, &mut settings, vec![]);
+        click(&ctx, &mut settings, "Custom");
+        click(&ctx, &mut settings, "Native");
+        assert_eq!(settings.titlebar, TitlebarStyle::Native);
+        assert_eq!(crate::theme::palette(&ctx), crate::theme::LIGHT);
+        assert_eq!(crate::theme::accent(&ctx), AccentColor::Teal.color());
+        assert!(click(&ctx, &mut settings, "Close"));
+        assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
+        click(&ctx, &mut settings, "Native");
+        click(&ctx, &mut settings, "Custom");
+        assert_eq!(settings.titlebar, TitlebarStyle::Custom);
+        assert_eq!(settings.theme, ColorTheme::Light);
+        assert_eq!(settings.accent, AccentColor::Teal);
     }
 
     #[test]
@@ -296,11 +364,25 @@ mod tests {
                 for label in [theme.name(), accent.name()] {
                     let ctx = Context::default();
                     crate::theme::configure(&ctx);
-                    let mut settings = AppSettings { accent, theme };
+                    let mut settings = AppSettings {
+                        accent,
+                        theme,
+                        ..Default::default()
+                    };
                     crate::theme::apply(&ctx, settings);
                     for _ in 0..12 {
                         frame(&ctx, &mut settings, vec![]);
                     }
+                    let button_pos = frame(&ctx, &mut settings, vec![])
+                        .1
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text) if text.galley.text() == label => {
+                                Some(text.pos)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
                     click(&ctx, &mut settings, label);
                     assert!(egui::Popup::is_any_open(&ctx));
                     for _ in 0..12 {
@@ -308,7 +390,7 @@ mod tests {
                     }
                     for events in [vec![], vec![egui::Event::PointerMoved(Pos2::ZERO)]] {
                         let shapes = frame(&ctx, &mut settings, events).1;
-                        // The dropdown button is above the matching popup option.
+                        // Locate the button even when the popup opens above it.
                         let text = shapes
                             .iter()
                             .filter_map(|shape| match &shape.shape {
@@ -317,7 +399,11 @@ mod tests {
                                 }
                                 _ => None,
                             })
-                            .min_by(|a, b| a.pos.y.total_cmp(&b.pos.y))
+                            .min_by(|a, b| {
+                                a.pos
+                                    .distance_sq(button_pos)
+                                    .total_cmp(&b.pos.distance_sq(button_pos))
+                            })
                             .unwrap();
                         assert_eq!(text.fallback_color, accent.color(), "{theme:?} / {label}");
                     }
@@ -325,7 +411,14 @@ mod tests {
                         ctx.global_style().visuals.widgets.open.fg_stroke.color,
                         accent.color()
                     );
-                    assert_eq!(settings, AppSettings { accent, theme });
+                    assert_eq!(
+                        settings,
+                        AppSettings {
+                            accent,
+                            theme,
+                            ..Default::default()
+                        }
+                    );
                 }
             }
         }

@@ -1787,34 +1787,41 @@ impl DawUi {
     }
     fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 0.0;
-        toolbars::Toolbar::row(ui, |ui| {
-            egui::MenuBar::new().ui(ui, |ui| {
-                // Keep the native macOS window buttons clear of application controls.
-                #[cfg(target_os = "macos")]
-                ui.add_space(78.0);
-                if !self.native_menu {
-                    ui.menu_button("File", |ui| self.file_menu(ui));
-                    ui.menu_button("Edit", |ui| self.edit_menu(ui));
-                    ui.menu_button("Track", |ui| self.track_menu(ui));
+        let custom_titlebar =
+            cfg!(target_os = "macos") && self.settings.titlebar == settings::TitlebarStyle::Custom;
+        if !cfg!(target_os = "macos") || custom_titlebar || !self.native_menu {
+            toolbars::Toolbar::row(ui, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
+                    if custom_titlebar {
+                        // Keep the native macOS window buttons clear of controls.
+                        ui.add_space(78.0);
+                    }
+                    if !self.native_menu {
+                        ui.menu_button("File", |ui| self.file_menu(ui));
+                        ui.menu_button("Edit", |ui| self.edit_menu(ui));
+                        ui.menu_button("Track", |ui| self.track_menu(ui));
+                        #[cfg(not(target_os = "windows"))]
+                        ui.separator();
+                    }
                     #[cfg(not(target_os = "windows"))]
-                    ui.separator();
-                }
-                #[cfg(not(target_os = "windows"))]
-                let title = ui.label(&self.window_title);
-                #[cfg(target_os = "macos")]
-                Self::drag_window(title.interact(Sense::drag()));
-                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-                let _ = title;
-                #[cfg(target_os = "macos")]
-                {
-                    let (_, response) = ui.allocate_exact_size(
-                        Vec2::new(ui.available_width().max(0.0), ui.spacing().interact_size.y),
-                        Sense::drag(),
-                    );
-                    Self::drag_window(response);
-                }
+                    if !cfg!(target_os = "macos") || custom_titlebar {
+                        let title = ui.label(&self.window_title);
+                        #[cfg(target_os = "macos")]
+                        Self::drag_window(title.interact(Sense::drag()));
+                        #[cfg(not(target_os = "macos"))]
+                        let _ = title;
+                    }
+                    #[cfg(target_os = "macos")]
+                    if custom_titlebar {
+                        let (_, response) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width().max(0.0), ui.spacing().interact_size.y),
+                            Sense::drag(),
+                        );
+                        Self::drag_window(response);
+                    }
+                });
             });
-        });
+        }
         let (divider, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
         let divider_y = divider.center().y;
@@ -4401,6 +4408,7 @@ mod tests {
             let settings = settings::AppSettings {
                 theme: color_theme,
                 accent: settings::AccentColor::Teal,
+                ..Default::default()
             };
             app.set_settings(&ctx, settings);
             frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
@@ -5917,6 +5925,47 @@ mod tests {
         icons::configure(&ctx);
         ctx
     }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_titlebar_removes_custom_header_and_keeps_project_title_in_sync() {
+        let mut app = DawUi::default();
+        app.use_native_menu();
+        app.session.project.name = "Titlebar project".into();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let custom_shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let custom_time_top = app.time_bounds[0].top();
+        let has_title = |shapes: &[egui::epaint::ClippedShape], title: &str| {
+            shapes.iter().any(|shape| {
+                matches!(&shape.shape,
+                egui::Shape::Text(text) if text.galley.text() == title)
+            })
+        };
+        assert!(has_title(&custom_shapes, "Titlebar project - DAW"));
+        let project_before = format!("{:?}", app.session.project);
+        app.settings.titlebar = settings::TitlebarStyle::Native;
+        frame(&mut app, &ctx, vec![]);
+        let native_shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(!has_title(&native_shapes, "Titlebar project - DAW"));
+        assert!(app.time_bounds[0].top() < custom_time_top);
+        assert!(!app.dirty);
+        assert_eq!(format!("{:?}", app.session.project), project_before);
+        app.session.project.name = "Renamed".into();
+        app.dirty = true;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.show(ui));
+        output.textures_delta.clear();
+        assert!(
+            output.viewport_output[&egui::ViewportId::ROOT]
+                .commands
+                .contains(&egui::ViewportCommand::Title("Renamed * - DAW".into()))
+        );
+        app.settings.titlebar = settings::TitlebarStyle::Custom;
+        frame(&mut app, &ctx, vec![]);
+        let restored = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(has_title(&restored, "Renamed * - DAW"));
+        assert_eq!(app.time_bounds[0].top(), custom_time_top);
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn windows_native_title_updates_without_repeating_in_the_menu_row() {

@@ -230,7 +230,7 @@ Selected tracks and clips share a 2-point accent outline with 2-point corner rou
 
 Show one header label in 13-point Outfit: `[project name] - DAW`. Add ` *` after the project name when the project has unsaved changes. Examples: `Untitled - DAW` and `Untitled * - DAW`. Use the same font size throughout the label. Keep the native window title in sync with this text.
 
-On macOS, combine the first toolbar row with the native title bar. Keep the native close, minimize, and full-screen buttons visible and reserve space for them at the left. Allow window dragging from the combined title and unused first-row space. Keep the standard native title bar on Windows and Linux.
+On macOS, offer a Titlebar dropdown in Settings with Custom (default) and Native. Save it with the application settings, restore it at launch, and apply changes immediately without recreating the window or modifying the project. Native shows the system titlebar with the project title and unsaved marker, omits the custom header row, and places playback controls directly below the titlebar. Custom combines the first toolbar row with the native title bar. Keep the native close, minimize, and full-screen buttons visible and reserve space for them at the left. Allow window dragging from the combined title and unused first-row space. Keep the standard native title bar on Windows and Linux.
 
 Separate the window header from the playback toolbar with a thin horizontal border across the full window width. Give the header and playback row separate, uniform 8-point padding on all four sides. Keep 8-point horizontal spacing between controls. Do not add separators or dividers between playback toolbar items.
 
