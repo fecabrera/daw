@@ -535,6 +535,20 @@ impl Project {
                     self.tempo_bpm = bpm;
                 }
             }
+            Edit::SetTrackMuted { track_id, muted } => {
+                self.tracks
+                    .iter_mut()
+                    .find(|track| track.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?
+                    .muted = muted;
+            }
+            Edit::SetTrackSoloed { track_id, soloed } => {
+                self.tracks
+                    .iter_mut()
+                    .find(|track| track.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?
+                    .soloed = soloed;
+            }
             Edit::SetTrackColor { track_id, color } => {
                 self.tracks
                     .iter_mut()
@@ -551,6 +565,20 @@ impl Project {
                     .color = color;
             }
             Edit::DeleteTrack(id) => self.tracks.retain(|t| t.id != id),
+            Edit::DuplicateTrack {
+                track_id,
+                new_track_id,
+            } => {
+                let index = self
+                    .tracks
+                    .iter()
+                    .position(|track| track.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?;
+                let mut copy = self.tracks[index].clone();
+                copy.id = new_track_id;
+                copy.clips.clear();
+                self.tracks.insert(index + 1, copy);
+            }
             Edit::ReorderTrack { track_id, index } => {
                 if index >= self.tracks.len() {
                     return Err(Error("Track position is out of bounds".into()));
@@ -667,6 +695,14 @@ pub enum Edit {
     SetTempo {
         bpm: f32,
     },
+    SetTrackMuted {
+        track_id: Id,
+        muted: bool,
+    },
+    SetTrackSoloed {
+        track_id: Id,
+        soloed: bool,
+    },
     SetTrackColor {
         track_id: Id,
         color: RgbColor,
@@ -676,6 +712,11 @@ pub enum Edit {
         color: Option<RgbColor>,
     },
     DeleteTrack(Id),
+    /// Insert an empty copy after the original, retaining all track settings.
+    DuplicateTrack {
+        track_id: Id,
+        new_track_id: Id,
+    },
     /// Move a whole track to a zero-based position in the resulting track order.
     ReorderTrack {
         track_id: Id,
@@ -703,6 +744,119 @@ pub enum Edit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn track_duplication_preserves_settings_and_order_and_rolls_back_invalid_groups() {
+        let mut project = Project::default();
+        let first = project.add_track().unwrap();
+        let second = project.add_track().unwrap();
+        let third = project.add_track().unwrap();
+        project.tracks[0].name = "Bass".into();
+        project.tracks[0].color = RgbColor { r: 3, g: 4, b: 5 };
+        project.tracks[0].gain_db = -7.5;
+        project.tracks[0].pan = -0.25;
+        project.tracks[0].muted = true;
+        project.tracks[2].soloed = true;
+        let originals = project.tracks.clone();
+        let copies = [Id::new_v4(), Id::new_v4()];
+        project
+            .edit(Edit::Batch(vec![
+                Edit::DuplicateTrack {
+                    track_id: third,
+                    new_track_id: copies[1],
+                },
+                Edit::DuplicateTrack {
+                    track_id: first,
+                    new_track_id: copies[0],
+                },
+            ]))
+            .unwrap();
+        assert_eq!(
+            project
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            [first, copies[0], second, third, copies[1]]
+        );
+        for (source, copy) in [(0, 1), (2, 4)] {
+            let mut expected = originals[source].clone();
+            expected.id = project.tracks[copy].id;
+            expected.clips.clear();
+            assert_eq!(
+                format!("{:?}", project.tracks[copy]),
+                format!("{expected:?}")
+            );
+        }
+        let before = format!("{project:?}");
+        for (track_id, new_track_id) in [
+            (Id::new_v4(), Id::new_v4()),
+            (third, first),
+            (third, project.project_id),
+        ] {
+            assert!(
+                project
+                    .edit(Edit::Batch(vec![
+                        Edit::DuplicateTrack {
+                            track_id: first,
+                            new_track_id: Id::new_v4()
+                        },
+                        Edit::DuplicateTrack {
+                            track_id,
+                            new_track_id
+                        },
+                    ]))
+                    .is_err()
+            );
+            assert_eq!(format!("{project:?}"), before);
+        }
+    }
+    #[test]
+    fn mute_and_solo_group_commands_are_atomic() {
+        let mut project = Project::default();
+        let first = project.add_track().unwrap();
+        let second = project.add_track().unwrap();
+        project
+            .edit(Edit::Batch(vec![
+                Edit::SetTrackMuted {
+                    track_id: first,
+                    muted: true,
+                },
+                Edit::SetTrackSoloed {
+                    track_id: second,
+                    soloed: true,
+                },
+            ]))
+            .unwrap();
+        assert!(project.tracks[0].muted);
+        assert!(project.tracks[1].soloed);
+        assert!(!project.tracks[0].soloed && !project.tracks[1].muted);
+        let before = format!("{project:?}");
+        for invalid_solo in [false, true] {
+            let invalid = if invalid_solo {
+                Edit::SetTrackSoloed {
+                    track_id: Id::new_v4(),
+                    soloed: true,
+                }
+            } else {
+                Edit::SetTrackMuted {
+                    track_id: Id::new_v4(),
+                    muted: true,
+                }
+            };
+            assert!(
+                project
+                    .edit(Edit::Batch(vec![
+                        Edit::SetTrackMuted {
+                            track_id: first,
+                            muted: false
+                        },
+                        invalid
+                    ]))
+                    .is_err()
+            );
+            assert_eq!(format!("{project:?}"), before);
+        }
+    }
     #[test]
     fn stretch_scales_offsets_and_repeats_and_can_return_to_original_duration() {
         let clip = Clip {

@@ -590,3 +590,55 @@ Date: 2026-10-10.
 The shared boundary gesture now accepts the initial press within 3 logical points on either side of the dividing line, for a total width of 6 points. This supersedes the one-physical-pixel hit area recorded above. The size stays consistent across display scales. The remainder of the ordinary 8-point waveform edge area still trims the individual clip. Hover feedback and gesture capture use the same threshold; header looping, modifier stretching, snapping, previews, source clamps, and release transactions retain their behavior.
 
 All 212 workspace tests pass. Updated pointer checks cover both sides within and outside the wider area at two display scales and confirm ordinary trimming remains available. Formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. The macOS debug bundle is rebuilt at `target/debug/DAW.app`. Physical desktop interaction and Windows/Linux builds remain unverified.
+
+## Track multi-selection and mute/solo shortcuts
+
+Date: 2026-10-10.
+
+Press M to toggle mute or S to toggle solo on every selected audio track. Each track reverses its own state, including mixed selections. Apply the group through one validated `Edit::Batch` and sync playback. A plain panel click selects one track; Shift-click or platform Command/Ctrl-click adds or removes a track. Highlight the complete selection without changing clip selection or project data. Preserve selection through saves and reordering, prune deleted tracks, and reset it when opening or closing a project. Master is excluded.
+
+Ignore key repeat and Command/Ctrl/Alt-modified keys. Block shortcuts during text editing, pointer or monitor drags, file dragging, jobs, dialogs, disabled UI, and loss of focus. Track-panel padding near the timeline boundary no longer triggers the timeline's expanded pointer hit area or moves the playhead.
+
+All 217 workspace tests pass, including 26 core tests and 148 UI tests. New checks cover single and multiple selections, mixed mute/solo states, unchanged unselected tracks, modifier selection, immediate outlines, empty selection, key repeat, modified shortcuts, text input, blocked interactions, selection cleanup, save/reorder retention, project replacement, and atomic rollback for invalid track commands. `cargo fmt --all --check`, strict workspace Clippy, and `git diff --check` pass. Cargo checks use the local cache in offline mode. The macOS debug bundle is rebuilt at `target/debug/DAW.app`. Physical keyboard interaction, real-device playback, and Windows/Linux builds remain unverified.
+
+## Track menu
+
+Date: 2026-10-10.
+
+Add Track after Edit in the native macOS menu bar and the in-window Windows/Linux menu. Its Mute and Solo items show M and S and toggle each selected track's own state. Menu clicks, native callbacks, and keyboard shortcuts share guarded `TrackAction` dispatch and validated group edits. Disable both items without a selected track or during text editing, drags, jobs, dialogs, or loss of focus. The macOS adapter ignores native key repeat and consumes matching forwarded key events to prevent duplicate toggles.
+
+All 219 workspace tests pass, including 150 UI tests. New menu checks cover mouse activation on release, mixed group states, unchanged unselected tracks, retained selection, shortcut labels, empty selection, disabled UI, and shared callback guards. Existing keyboard checks also pass. Formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. The macOS desktop compiles and the debug bundle is rebuilt at `target/debug/DAW.app`. Native menu interaction, physical keyboard routing, and Windows/Linux builds remain unverified.
+
+## Add track in the Track menu
+
+Date: 2026-10-10.
+
+Add track is the first item in both Track menus, followed by a separator, then Mute and Solo. It has no shortcut and works without a selected track. Menu callbacks and the Tracks header Plus button share the guarded Add action. Append an empty track with its default color, select it, retain clip selection, mark the project modified, and sync playback.
+
+All 220 workspace tests pass, including 151 UI tests. The new menu check covers item order, separator placement, mouse activation on release, adding without selection, preserved existing tracks and clip selection, default color and control states, and selection of the new track. Existing guard and mute/solo checks pass. Formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. The macOS debug bundle is rebuilt at `target/debug/DAW.app`. Native menu interaction and Windows/Linux builds remain unverified.
+
+## Track context-menu group deletion
+
+Date: 2026-10-10.
+
+Secondary-click anywhere in a track panel to open a context menu. Clicking a selected track preserves the group; clicking an unselected track selects only that track. Show Delete track for one track or Delete selected tracks for a group. Opening or dismissing the menu leaves project data unchanged. Menu-item release removes the selected tracks and their clips through one validated batch. Prune deleted track/clip selections and numeric input state after the panels finish painting, mark the project modified, and sync playback. Retain source files and asset records. Menu opening and deletion respect jobs, dialogs, and focus; deletion also respects text editing and active drags.
+
+All 223 workspace tests pass, including 154 UI tests. New pointer checks cover names, padding, Mute controls, and meters, group preservation, selecting an unselected target, deletion on release, unchanged surviving tracks/assets, retained surviving clip selection, deleted selection/control cleanup, Escape dismissal, blocked jobs, and deleting all tracks with playback sync. Formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. The macOS debug bundle is rebuilt at `target/debug/DAW.app`. Physical secondary-click interaction, real-device playback, and Windows/Linux builds remain unverified.
+
+## Delete tracks from the menu bar
+
+Date: 2026-10-10.
+
+Add Delete track after Solo, separated by a divider, in both Track menus. Change its label to Delete selected tracks for a group, including the native macOS item. It has no shortcut and requires a selected track. Native callbacks, in-window menu clicks, and context-menu deletion share guarded `TrackAction::Delete` dispatch and the same validated batch, source preservation, and selection/control cleanup.
+
+All 224 workspace tests pass, including 155 UI tests. New checks cover single/group menu labels, item placement and separator, deletion on mouse release, preserved surviving tracks/assets, selection cleanup, dirty state, and playback sync. Existing empty-selection, disabled-UI, text-editing, drag, job, dialog, focus, and context-menu checks also pass. Formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. The macOS debug bundle is rebuilt at `target/debug/DAW.app`. Native menu interaction and Windows/Linux builds remain unverified.
+
+## Duplicate empty tracks from menus and the header
+
+Date: 2026-10-10.
+
+Add Duplicate track or Duplicate selected tracks before Delete in the context menu and Track menu bar. Add an icon-only Lucide Copy Plus button immediately after the header Plus button. All three controls share guarded `TrackAction::Duplicate` dispatch; disable duplication without selection and during blocked interactions. The button uses the shared styling and single/group tooltip and accessibility label. Duplication has no keyboard shortcut.
+
+Apply a batch of `Edit::DuplicateTrack` commands. Each copy gets a new ID, the same name, color, gain, pan, mute, and solo settings, and no clips. Insert each directly after its original in project order. Select the copies with the first as primary, retain clip selection, mark the project modified, and sync playback. Keep original tracks, clips, and assets unchanged. Context-menu actions publish only on item release after panel painting. Failed validation retains the project and selection.
+
+All 228 workspace tests pass, including 27 core tests and 158 UI tests. New checks cover both menus with single/group selections, empty copies with exact settings, adjacent insertion and noncontiguous source order, distinct IDs on repeated duplication, unchanged originals and assets, retained clip selection, copy selection, release-only changes, disabled header clicks, group header duplication, missing-track/duplicate-ID rollback, and UI failure rollback. Existing guard checks include duplication, and the Add button still works beyond four tracks at its new header position. Formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. The macOS debug bundle is rebuilt at `target/debug/DAW.app`. Native menu/button interaction, real-device playback, and Windows/Linux builds remain unverified.

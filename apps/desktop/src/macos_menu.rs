@@ -1,6 +1,6 @@
-use daw_ui::{ClipAction, DawUi, FileAction};
+use daw_ui::{ClipAction, DawUi, FileAction, TrackAction};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, rc::Retained, sel};
-use objc2_app_kit::{NSApplication, NSEventModifierFlags, NSMenu, NSMenuItem};
+use objc2_app_kit::{NSApplication, NSEventModifierFlags, NSEventType, NSMenu, NSMenuItem};
 use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, NSString, ns_string};
 use std::sync::mpsc;
 
@@ -14,6 +14,7 @@ enum MenuAction {
     Settings,
     File(FileAction),
     Clip(ClipAction),
+    Track(TrackAction),
 }
 
 define_class!(
@@ -52,6 +53,23 @@ define_class!(
                 && let Some(action) = ClipAction::ALL.get(index)
             {
                 let _ = self.ivars().sender.send(MenuAction::Clip(*action));
+                self.ivars().context.request_repaint();
+            }
+        }
+
+        // SAFETY: The selector takes an NSMenuItem sender and returns void.
+        #[unsafe(method(performTrackAction:))]
+        fn perform_track_action(&self, item: &NSMenuItem) {
+            let mtm = MainThreadMarker::from(self);
+            if NSApplication::sharedApplication(mtm).currentEvent().is_some_and(|event| {
+                event.r#type() == NSEventType::KeyDown && event.isARepeat()
+            }) {
+                return;
+            }
+            if let Ok(index) = usize::try_from(item.tag())
+                && let Some(action) = TrackAction::ALL.get(index)
+            {
+                let _ = self.ivars().sender.send(MenuAction::Track(*action));
                 self.ivars().context.request_repaint();
             }
         }
@@ -159,6 +177,36 @@ impl NativeMenu {
         edit_item.setTitle(ns_string!("Edit"));
         edit_item.setSubmenu(Some(&edit_menu));
         menubar.addItem(&edit_item);
+        let track_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Track"));
+        track_menu.setAutoenablesItems(false);
+        for (index, action) in TrackAction::ALL.into_iter().enumerate() {
+            if matches!(action, TrackAction::Mute | TrackAction::Duplicate) {
+                track_menu.addItem(&NSMenuItem::separatorItem(mtm));
+            }
+            let key = action
+                .shortcut()
+                .map(|shortcut| shortcut.logical_key.name().to_lowercase())
+                .unwrap_or_default();
+            // SAFETY: The selector is defined above with an NSMenuItem argument.
+            let item = unsafe {
+                NSMenuItem::initWithTitle_action_keyEquivalent(
+                    NSMenuItem::alloc(mtm),
+                    &NSString::from_str(action.label()),
+                    Some(sel!(performTrackAction:)),
+                    &NSString::from_str(&key),
+                )
+            };
+            item.setKeyEquivalentModifierMask(NSEventModifierFlags::empty());
+            item.setTag(index as isize);
+            // SAFETY: NativeMenu retains the target and detaches it before dropping.
+            unsafe { item.setTarget(Some(&target)) };
+            track_menu.addItem(&item);
+            items.push((MenuAction::Track(action), item));
+        }
+        let track_item = NSMenuItem::new(mtm);
+        track_item.setTitle(ns_string!("Track"));
+        track_item.setSubmenu(Some(&track_menu));
+        menubar.addItem(&track_item);
         app.setMainMenu(Some(&menubar));
 
         Self {
@@ -174,16 +222,36 @@ impl NativeMenu {
                 MenuAction::Settings => ui.open_settings(),
                 MenuAction::File(action) => ui.perform_file_action(action),
                 MenuAction::Clip(action) => ui.perform_clip_action(action, ctx),
+                MenuAction::Track(action) => {
+                    ui.perform_track_action(action, ctx);
+                    // The native key equivalent owns this press if winit also forwards it.
+                    if let Some(shortcut) = action.shortcut() {
+                        ctx.input_mut(|input| {
+                            input.events.retain(|event| {
+                                !matches!(event,
+                                    egui::Event::Key { key, pressed: true, modifiers, .. }
+                                    if *key == shortcut.logical_key
+                                        && !modifiers.command && !modifiers.ctrl
+                                        && !modifiers.alt && !modifiers.mac_cmd
+                                )
+                            })
+                        });
+                    }
+                }
             }
         }
     }
 
     pub fn update_enabled(&self, ui: &DawUi, ctx: &egui::Context) {
         for (action, item) in &self.items {
+            if let MenuAction::Track(action) = action {
+                item.setTitle(&NSString::from_str(ui.track_action_label(*action)));
+            }
             item.setEnabled(match action {
                 MenuAction::Settings => ui.settings_enabled(),
                 MenuAction::File(action) => ui.file_action_enabled(*action),
                 MenuAction::Clip(action) => ui.clip_action_enabled(*action, ctx),
+                MenuAction::Track(action) => ui.track_action_enabled(*action, ctx),
             });
         }
     }

@@ -2,6 +2,7 @@ mod looping;
 mod placement;
 mod resize;
 mod stretch;
+mod track_selection;
 mod trim;
 use daw_core::{Clip, Edit, Id, frames, seconds};
 use daw_media::ExportSettings;
@@ -300,6 +301,45 @@ impl ClipAction {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrackAction {
+    Add,
+    Mute,
+    Solo,
+    Duplicate,
+    Delete,
+}
+impl TrackAction {
+    pub const ALL: [Self; 5] = [
+        Self::Add,
+        Self::Mute,
+        Self::Solo,
+        Self::Duplicate,
+        Self::Delete,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Add => "Add track",
+            Self::Mute => "Mute",
+            Self::Solo => "Solo",
+            Self::Duplicate => "Duplicate track",
+            Self::Delete => "Delete track",
+        }
+    }
+
+    pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
+        Some(egui::KeyboardShortcut::new(
+            egui::Modifiers::NONE,
+            match self {
+                Self::Add | Self::Duplicate | Self::Delete => return None,
+                Self::Mute => egui::Key::M,
+                Self::Solo => egui::Key::S,
+            },
+        ))
+    }
+}
+
 struct Inputs {
     gain: String,
     pan: String,
@@ -521,6 +561,7 @@ pub struct DawUi {
     pub session: Session,
     output: Option<AudioOutput>,
     selected_track: Option<Id>,
+    selected_tracks: HashSet<Id>,
     selected_clip: Option<Id>,
     selected_clips: HashSet<Id>,
     clip_clipboard: Option<ClipClipboard>,
@@ -579,6 +620,7 @@ impl Default for DawUi {
             session: Session::default(),
             output: None,
             selected_track: None,
+            selected_tracks: HashSet::new(),
             selected_clip: None,
             selected_clips: HashSet::new(),
             clip_clipboard: None,
@@ -714,6 +756,7 @@ impl DawUi {
                 self.time_drag = None;
                 self.selection_drag = [None, None];
                 self.selected_track = None;
+                self.selected_tracks.clear();
                 self.selected_clip = None;
                 self.selected_clips.clear();
                 self.marquee = None;
@@ -898,6 +941,8 @@ impl DawUi {
                     self.loop_drag = None;
                     self.track_drag = None;
                     if !dirty {
+                        self.selected_track = None;
+                        self.selected_tracks.clear();
                         self.project_name_dialog = None;
                         self.selected_clip = None;
                         self.selected_clips.clear();
@@ -920,6 +965,7 @@ impl DawUi {
                         .selected_track
                         .filter(|id| self.session.project.tracks.iter().any(|t| t.id == *id))
                         .or_else(|| self.session.project.tracks.first().map(|t| t.id));
+                    self.prune_track_selection();
                     self.dirty = dirty;
                     self.sync_needed = true;
                 }
@@ -1020,6 +1066,7 @@ impl DawUi {
                     self.track_name_edit = None;
                 }
                 self.prune_clip_selection();
+                self.prune_track_selection();
                 self.changed();
             }
             Err(e) => self.fail(e),
@@ -1068,7 +1115,7 @@ impl DawUi {
             self.selected_clips.insert(id);
             self.selected_clip = Some(id);
         }
-        self.selected_track = Some(track);
+        self.select_track(track, false);
     }
     fn prune_clip_selection(&mut self) {
         let ids: HashSet<_> = self
@@ -1170,7 +1217,7 @@ impl DawUi {
         match project.edit(Edit::Batch(edits)) {
             Ok(()) => {
                 self.session.project = project;
-                self.selected_track = Some(clips[primary].track);
+                self.select_track(clips[primary].track, false);
                 self.selected_clip = Some(clips[primary].clip.id);
                 self.selected_clips = clips.iter().map(|entry| entry.clip.id).collect();
                 self.changed();
@@ -1367,6 +1414,9 @@ impl DawUi {
         }
         self.dialogs(&ctx);
         self.clip_shortcuts(&ctx);
+        if ui.is_enabled() {
+            self.track_shortcuts(&ctx);
+        }
         if self.job.is_none()
             && self.export_status.is_none()
             && self.project_name_dialog.is_none()
@@ -1379,6 +1429,10 @@ impl DawUi {
                 let path = dropped.path().to_path_buf();
                 let prepared = self.file_hover.take().filter(|hover| hover.path == path);
                 self.selected_track = target.track;
+                self.selected_tracks.clear();
+                if let Some(track) = target.track {
+                    self.select_track(track, false);
+                }
                 self.import_at(
                     path,
                     target.track,
@@ -1741,6 +1795,7 @@ impl DawUi {
                 if !self.native_menu {
                     ui.menu_button("File", |ui| self.file_menu(ui));
                     ui.menu_button("Edit", |ui| self.edit_menu(ui));
+                    ui.menu_button("Track", |ui| self.track_menu(ui));
                     #[cfg(not(target_os = "windows"))]
                     ui.separator();
                 }
@@ -2086,6 +2141,7 @@ impl DawUi {
         }
         if response.drag_started()
             && let Some(origin) = ui.input(|input| input.pointer.press_origin())
+            && viewport.contains(origin)
         {
             let mut previous = self.selected_clips.clone();
             if let Some(primary) = self.selected_clip {
@@ -2143,11 +2199,12 @@ impl DawUi {
             }
         } else if response.clicked()
             && let Some(pointer) = response.interact_pointer_pos()
+            && viewport.contains(pointer)
         {
             if !ui.input(|input| input.modifiers.shift || input.modifiers.command) {
                 self.selected_clip = None;
                 self.selected_clips.clear();
-                self.selected_track = self
+                if let Some(track) = self
                     .session
                     .project
                     .tracks
@@ -2158,7 +2215,9 @@ impl DawUi {
                             .is_some_and(|lane| lane.contains(pointer))
                     })
                     .map(|track| track.id)
-                    .or(self.selected_track);
+                {
+                    self.select_track(track, false);
+                }
             }
             let at = self.selection_frame(
                 i128::from(self.ruler_frame(viewport, pointer)),
@@ -2397,20 +2456,25 @@ impl DawUi {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if icons::button(
                             ui,
-                            icons::Lucide::Plus,
-                            "Add track",
-                            true,
+                            icons::Lucide::CopyPlus,
+                            self.track_action_label(TrackAction::Duplicate),
+                            self.track_action_enabled(TrackAction::Duplicate, ui.ctx()),
                             theme::palette(ui.ctx()).text,
                         )
                         .clicked()
                         {
-                            match self.session.project.add_track() {
-                                Ok(id) => {
-                                    self.selected_track = Some(id);
-                                    self.changed();
-                                }
-                                Err(e) => self.fail(e),
-                            }
+                            self.perform_track_action(TrackAction::Duplicate, ui.ctx());
+                        }
+                        if icons::button(
+                            ui,
+                            icons::Lucide::Plus,
+                            "Add track",
+                            self.track_action_enabled(TrackAction::Add, ui.ctx()),
+                            theme::palette(ui.ctx()).text,
+                        )
+                        .clicked()
+                        {
+                            self.perform_track_action(TrackAction::Add, ui.ctx());
                         }
                     });
                 });
@@ -2594,7 +2658,7 @@ impl DawUi {
                             .color(theme::palette(ui.ctx()).text),
                     )
                     .sense(Sense::click_and_drag())
-                    .selected(self.selected_track == Some(track.id))
+                    .selected(self.track_selected(track.id))
                     .frame(false)
                     .truncate(),
                 )
@@ -2603,9 +2667,6 @@ impl DawUi {
                     track.name
                 ))
                 .on_hover_cursor(egui::CursorIcon::Grab);
-            if response.clicked() {
-                self.selected_track = Some(track.id);
-            }
             if response.double_clicked() && self.track_name_edit.is_none() {
                 self.track_name_edit = Some(TrackNameEdit {
                     track: track.id,
@@ -2625,7 +2686,11 @@ impl DawUi {
             && self.loop_drag.is_none()
         {
             self.track_drag = Some(track);
-            self.selected_track = Some(track);
+            if self.track_selected(track) {
+                self.selected_track = Some(track);
+            } else {
+                self.select_track(track, false);
+            }
         }
     }
     fn track_reorder(&mut self, ui: &egui::Ui, viewport: Rect) {
@@ -2741,6 +2806,8 @@ impl DawUi {
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             let count = tracks.len();
+            let mut outlines = Vec::with_capacity(count);
+            let mut context_action = None;
             for (index, track) in tracks.into_iter().enumerate() {
                 rows::centered_with_id(ui, track.id, ROW_HEIGHT, |ui| {
                     let inner = ui.allocate_ui_with_layout(
@@ -2808,7 +2875,7 @@ impl DawUi {
                                                         .selected(mute)
                                                         .min_size(Vec2::new(28.0, 22.0)),
                                                 )
-                                                .on_hover_text("Mute");
+                                                .on_hover_text("Mute (M toggles selected tracks)");
                                             mute_button.widget_info(|| {
                                                 egui::WidgetInfo::selected(
                                                     egui::WidgetType::Button,
@@ -2826,7 +2893,7 @@ impl DawUi {
                                                         .selected(solo)
                                                         .min_size(Vec2::new(28.0, 22.0)),
                                                 )
-                                                .on_hover_text("Solo");
+                                                .on_hover_text("Solo (S toggles selected tracks)");
                                             solo_button.widget_info(|| {
                                                 egui::WidgetInfo::selected(
                                                     egui::WidgetType::Button,
@@ -2956,10 +3023,20 @@ impl DawUi {
                                     || input.pointer.button_pressed(egui::PointerButton::Secondary))
                         })
                     {
-                        self.selected_track = Some(track.id);
+                        if ui.input(|input| {
+                            input.pointer.button_pressed(egui::PointerButton::Secondary)
+                        }) {
+                            if !self.track_selected(track.id) {
+                                self.select_track(track.id, false);
+                            }
+                        } else {
+                            let toggle =
+                                ui.input(|input| input.modifiers.shift || input.modifiers.command);
+                            self.select_track(track.id, toggle);
+                        }
                     }
                     let rect = inner.response.rect.shrink(0.5);
-                    let selected = self.selected_track == Some(track.id);
+                    outlines.push((track.id, inner.response.rect));
                     let painter = ui.painter();
                     if index > 0 {
                         painter.line_segment(
@@ -2980,23 +3057,36 @@ impl DawUi {
                             Stroke::new(1.0, theme::palette(ui.ctx()).border),
                         );
                     }
-                    if selected {
-                        painter.rect_stroke(
-                            inner.response.rect,
-                            2.0,
-                            theme::selection_outline(ui.ctx()),
-                            StrokeKind::Inside,
-                        );
+                    let context_click = ui.is_enabled()
+                        && self.file_action_enabled(FileAction::Import)
+                        && ui.rect_contains_pointer(inner.response.rect)
+                        && ui.input(|input| {
+                            input.focused
+                                && input.pointer.button_clicked(egui::PointerButton::Secondary)
+                        });
+                    if let Some(action) = egui::Popup::context_menu(&inner.response)
+                        .open_memory(context_click.then_some(egui::SetOpenCommand::Bool(true)))
+                        .show(|ui| self.track_context_menu(ui))
+                        .and_then(|response| response.inner)
+                    {
+                        context_action = Some(action);
                     }
-                    inner.response.context_menu(|ui| {
-                        if ui.button("Delete track").clicked() {
-                            self.edit(Edit::DeleteTrack(track.id));
-                            self.inputs.remove(&track.id);
-                            ui.close();
-                        }
-                    });
                     self.lane(ui, &track);
                 });
+            }
+            for (id, rect) in outlines {
+                if self.track_selected(id) {
+                    ui.painter().rect_stroke(
+                        rect,
+                        2.0,
+                        theme::selection_outline(ui.ctx()),
+                        StrokeKind::Inside,
+                    );
+                }
+            }
+            if let Some(action) = context_action {
+                // Finish painting before changing the tracks and their control state.
+                self.perform_track_action(action, ui.ctx());
             }
         });
     }
@@ -4215,6 +4305,7 @@ mod tests {
     mod group_stretch;
     mod placement_overwrite;
     mod resize_neighbors;
+    mod track_shortcuts;
     mod trim_boundary;
     use super::*;
 
@@ -8823,7 +8914,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let add = Pos2::new(
-            TRACK_WIDTH - 19.0,
+            TRACK_WIDTH - 19.0 - 28.0 - f32::from(theme::TOOLBAR_PADDING),
             app.lane_bounds[&track].top() - RULER_HEIGHT / 2.0,
         );
         for expected in 2..=8 {

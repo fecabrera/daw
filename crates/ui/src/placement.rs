@@ -144,10 +144,11 @@ impl DawUi {
         }
         match self.move_project(&previews) {
             Ok(next) => {
-                self.selected_track = Some(next.tracks[previews[primary].track_index].id);
+                let track = next.tracks[previews[primary].track_index].id;
                 self.selected_clip = Some(drag.clip.id);
                 self.selected_clips = previews.iter().map(|preview| preview.clip.id).collect();
                 self.session.project = next;
+                self.select_track(track, false);
                 self.prune_clip_selection();
                 self.changed();
             }
