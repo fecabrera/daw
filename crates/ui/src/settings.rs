@@ -119,12 +119,13 @@ impl ColorTheme {
     }
 }
 
-/// macOS window presentation. Other platforms retain their existing titlebars.
+/// Window presentation on macOS and Windows. Linux retains its native titlebar.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TitlebarStyle {
-    #[default]
+    #[cfg_attr(target_os = "macos", default)]
     Custom,
+    #[cfg_attr(not(target_os = "macos"), default)]
     Native,
 }
 
@@ -172,7 +173,7 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
     let popup_was_open = egui::Popup::is_any_open(ctx);
     let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
         .show_with_content(ctx, |ui| {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
                 ui.label("Titlebar");
                 egui::ComboBox::from_id_salt("titlebar_style")
@@ -324,14 +325,14 @@ mod tests {
         let settings = AppSettings::from_json(Some(r#"{"accent":"blue_grey","future":true}"#));
         assert_eq!(settings.accent, AccentColor::BlueGrey);
         assert_eq!(settings.theme, ColorTheme::Dark);
-        assert_eq!(settings.titlebar, TitlebarStyle::Custom);
+        assert_eq!(settings.titlebar, TitlebarStyle::default());
         let legacy = AppSettings::from_json(Some(r#"{"accent":"teal","theme":"light"}"#));
         assert_eq!(legacy.accent, AccentColor::Teal);
         assert_eq!(legacy.theme, ColorTheme::Light);
-        assert_eq!(legacy.titlebar, TitlebarStyle::Custom);
+        assert_eq!(legacy.titlebar, TitlebarStyle::default());
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn titlebar_dropdown_switches_without_changing_theme_or_accent() {
         let ctx = Context::default();
@@ -339,7 +340,7 @@ mod tests {
         let mut settings = AppSettings {
             accent: AccentColor::Teal,
             theme: ColorTheme::Light,
-            ..Default::default()
+            titlebar: TitlebarStyle::Custom,
         };
         crate::theme::apply(&ctx, settings);
         frame(&ctx, &mut settings, vec![]);

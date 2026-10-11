@@ -18,6 +18,8 @@ use std::{
     time::Duration,
 };
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+mod application_menu;
 pub mod dialogs;
 mod export_dialog;
 mod export_status;
@@ -36,6 +38,8 @@ mod project_settings;
 pub mod rows;
 pub mod settings;
 pub mod theme;
+#[cfg(target_os = "windows")]
+pub mod titlebar;
 pub mod toolbars;
 mod waveforms;
 
@@ -648,6 +652,10 @@ pub struct DawUi {
     allow_close: bool,
     native_menu: bool,
     window_title: String,
+    #[cfg(target_os = "windows")]
+    caption_metrics: titlebar::CaptionMetrics,
+    #[cfg(target_os = "windows")]
+    header_layout: titlebar::HeaderLayout,
 }
 impl Default for DawUi {
     fn default() -> Self {
@@ -713,6 +721,10 @@ impl Default for DawUi {
             allow_close: false,
             native_menu: false,
             window_title: String::new(),
+            #[cfg(target_os = "windows")]
+            caption_metrics: titlebar::CaptionMetrics::default(),
+            #[cfg(target_os = "windows")]
+            header_layout: titlebar::HeaderLayout::default(),
         }
     }
 }
@@ -1466,7 +1478,15 @@ impl DawUi {
         }
         self.update_window_title(&ctx);
         egui::Panel::top("toolbar")
-            .frame(egui::Frame::new().fill(theme::palette(ui.ctx()).panel))
+            .frame(egui::Frame::new().fill(
+                if cfg!(target_os = "windows")
+                    && self.settings.titlebar == settings::TitlebarStyle::Custom
+                {
+                    egui::Color32::TRANSPARENT
+                } else {
+                    theme::palette(ui.ctx()).panel
+                },
+            ))
             .show_separator_line(self.view_mode != mixer::ViewMode::Mixer)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
@@ -1958,7 +1978,23 @@ impl DawUi {
         let custom_titlebar =
             cfg!(target_os = "macos") && self.settings.titlebar == settings::TitlebarStyle::Custom;
         let inline_views = custom_titlebar || cfg!(any(target_os = "windows", target_os = "linux"));
-        if !cfg!(target_os = "macos") || custom_titlebar || !self.native_menu {
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        let windows_custom = cfg!(target_os = "windows")
+            && self.settings.titlebar == settings::TitlebarStyle::Custom;
+        #[cfg(target_os = "windows")]
+        {
+            self.header_layout = titlebar::HeaderLayout::default();
+            if windows_custom {
+                self.windows_header(ui);
+            }
+        }
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        if !windows_custom {
+            self.menu_view_toolbar(ui);
+        }
+        if !cfg!(any(target_os = "windows", target_os = "linux"))
+            && (!cfg!(target_os = "macos") || custom_titlebar || !self.native_menu)
+        {
             toolbars::Toolbar::row(ui, |ui| {
                 egui::MenuBar::new().ui(ui, |ui| {
                     if custom_titlebar {
@@ -4604,6 +4640,8 @@ mod tests {
     mod track_header;
     mod track_shortcuts;
     mod trim_boundary;
+    #[cfg(target_os = "windows")]
+    mod windows_titlebar;
     use super::*;
 
     fn fixture() -> (DawUi, Id) {
@@ -6282,10 +6320,10 @@ mod tests {
         assert!(!shapes.iter().any(|shape| {
             matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == app.window_title)
         }));
-        let file = text_rect("File");
-        let edit = text_rect("Edit");
-        assert!((file.center().y - edit.center().y).abs() < 0.1);
-        assert!(file.bottom() < app.time_bounds[0].top());
+        let timeline = text_rect("Timeline");
+        let mixer = text_rect("Mixer");
+        assert!((timeline.center().y - mixer.center().y).abs() < 0.1);
+        assert!(timeline.bottom() < app.time_bounds[0].top());
         assert_eq!(app.window_title, "Windows project * - DAW");
         app.dirty = false;
         app.session.project.name = "Renamed".into();

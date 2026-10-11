@@ -30,35 +30,40 @@ fn menu_and_view_buttons_share_one_row_with_a_separator() {
                         })
                         .unwrap_or_else(|| panic!("Missing label: {label}"))
                 };
-                let labels = ["File", "Edit", "Track", "View", "Timeline", "Mixer"];
-                let rects = labels.map(label_rect);
+                let rects = ["Timeline", "Mixer"].map(label_rect);
                 for pair in rects.windows(2) {
                     assert!(pair[0].right() < pair[1].left());
                     assert!((pair[0].center().y - pair[1].center().y).abs() < 0.1);
                 }
-                assert!(rects[5].right() < width);
+                assert!(rects.last().unwrap().right() < width);
                 assert!(rects[0].bottom() < app.time_bounds[0].top());
                 assert!(!shapes.iter().any(|shape| {
                     matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == app.window_title)
                 }));
+                assert!(!shapes.iter().any(|shape| {
+                    matches!(&shape.shape, egui::Shape::Text(text)
+                        if ["File", "Edit", "Track", "View"].contains(&text.galley.text()))
+                }));
+                let timeline_index = rects.len() - 2;
+                let menus_right = f32::from(theme::TOOLBAR_PADDING) + 28.0;
                 let separators = shapes
                     .iter()
                     .filter(|shape| {
                         matches!(&shape.shape, egui::Shape::LineSegment { points, .. }
                         if (points[0].x - points[1].x).abs() < 0.1
-                            && points[0].x > rects[3].right()
-                            && points[0].x < rects[4].left()
-                            && points[0].y < rects[3].center().y
-                            && points[1].y > rects[3].center().y)
+                            && points[0].x > menus_right
+                            && points[0].x < rects[timeline_index].left()
+                            && points[0].y < rects[timeline_index].center().y
+                            && points[1].y > rects[timeline_index].center().y)
                     })
                     .count();
                 assert_eq!(separators, 1);
 
                 let project = format!("{:?}", app.session.project);
                 let (target, index) = if mode == ViewMode::Timeline {
-                    (ViewMode::Mixer, 5)
+                    (ViewMode::Mixer, timeline_index + 1)
                 } else {
-                    (ViewMode::Timeline, 4)
+                    (ViewMode::Timeline, timeline_index)
                 };
                 let point = rects[index].center();
                 frame_sized(
@@ -74,6 +79,38 @@ fn menu_and_view_buttons_share_one_row_with_a_separator() {
                 assert!(!app.dirty);
             }
         }
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[test]
+fn native_toolbar_burger_opens_menus_and_settings_without_project_changes() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let mut app = DawUi::default();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                titlebar: settings::TitlebarStyle::Native,
+                ..Default::default()
+            },
+        );
+        let project = format!("{:?}", app.session.project);
+        let timeline = label_point(&mut app, &ctx, "Timeline", None);
+        let burger = Pos2::new(f32::from(theme::TOOLBAR_PADDING) + 14.0, timeline.y);
+        click(&mut app, &ctx, burger);
+        assert!(egui::Popup::is_any_open(&ctx));
+        for label in ["File", "Edit", "Track", "View"] {
+            label_point(&mut app, &ctx, label, None);
+        }
+        let file = label_point(&mut app, &ctx, "File", None);
+        click(&mut app, &ctx, file);
+        let settings = label_point(&mut app, &ctx, "Settings…", None);
+        click(&mut app, &ctx, settings);
+        assert!(app.settings_open);
+        assert_eq!(format!("{:?}", app.session.project), project);
+        assert!(!app.dirty);
     }
 }
 
@@ -331,9 +368,12 @@ fn view_menu_checks_one_mode_and_switches_on_release_without_project_changes() {
         app.select_clip(clip, track, false);
         let project = format!("{:?}", app.session.project);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::Text(text) if text.galley.text() == "View"
-        )));
+        assert_eq!(
+            shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Text(text) if text.galley.text() == "View"
+            )),
+            !cfg!(any(target_os = "windows", target_os = "linux"))
+        );
         for mode in [ViewMode::Mixer, ViewMode::Timeline, ViewMode::Timeline] {
             let output = menu_frame(&mut app, &ctx, vec![]);
             let checks: Vec<_> = output

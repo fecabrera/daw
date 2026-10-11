@@ -8,8 +8,12 @@ mod macos_menu;
 mod macos_titlebar;
 #[cfg(target_os = "windows")]
 mod windows_file_drag;
+#[cfg(target_os = "windows")]
+mod windows_titlebar;
 
 struct App {
+    #[cfg(target_os = "windows")]
+    titlebar: Option<windows_titlebar::Titlebar>,
     #[cfg(target_os = "macos")]
     titlebar: Option<macos_titlebar::Titlebar>,
     ui: daw_ui::DawUi,
@@ -23,6 +27,11 @@ struct App {
     file_drag_pointer: Option<linux_file_drag::FileDragPointer>,
 }
 impl eframe::App for App {
+    #[cfg(target_os = "windows")]
+    fn clear_color(&self, _: &egui::Visuals) -> [f32; 4] {
+        // DWM paints native caption buttons through the unpainted header region.
+        [0.0; 4]
+    }
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         storage.set_string(daw_ui::settings::STORAGE_KEY, self.ui.settings().to_json());
     }
@@ -35,8 +44,16 @@ impl eframe::App for App {
         if let Some(pointer) = &self.file_drag_pointer {
             pointer.update(ctx, input);
         }
+        #[cfg(target_os = "windows")]
+        if let Some(titlebar) = &self.titlebar {
+            titlebar.pointer_input(input);
+        }
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        #[cfg(target_os = "windows")]
+        if let Some(titlebar) = &mut self.titlebar {
+            titlebar.prepare(&mut self.ui, ui.ctx());
+        }
         #[cfg(target_os = "macos")]
         self.menu.dispatch(&mut self.ui, ui.ctx());
         #[cfg(target_os = "macos")]
@@ -44,6 +61,10 @@ impl eframe::App for App {
             titlebar.update(self.ui.settings().titlebar);
         }
         self.ui.show(ui);
+        #[cfg(target_os = "windows")]
+        if let Some(titlebar) = &mut self.titlebar {
+            titlebar.finish(&self.ui, ui.ctx());
+        }
         #[cfg(target_os = "macos")]
         self.menu.update_enabled(&self.ui, ui.ctx());
     }
@@ -64,7 +85,7 @@ fn main() -> eframe::Result {
         .with_inner_size([1280.0, 800.0])
         .with_min_inner_size([900.0, 600.0]);
     #[cfg(target_os = "windows")]
-    let viewport = viewport.with_decorations(true);
+    let viewport = viewport.with_decorations(true).with_transparent(true);
     #[cfg(target_os = "macos")]
     let viewport = viewport
         .with_fullsize_content_view(true)
@@ -74,6 +95,13 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport,
         ..Default::default()
+    };
+    #[cfg(target_os = "windows")]
+    let options = eframe::NativeOptions {
+        // The OpenGL framebuffer retains alpha for DWM's native caption area.
+        // An opaque DXGI surface would cover the OS-drawn buttons.
+        renderer: eframe::Renderer::Glow,
+        ..options
     };
     eframe::run_native(
         "DAW",
@@ -100,8 +128,18 @@ fn main() -> eframe::Result {
             };
             #[cfg(target_os = "macos")]
             let titlebar = macos_titlebar::Titlebar::new(cc, ui.settings().titlebar);
+            #[cfg(target_os = "windows")]
+            let titlebar = windows_titlebar::Titlebar::new(cc);
+            #[cfg(target_os = "windows")]
+            if titlebar.is_none() {
+                let mut settings = ui.settings();
+                settings.titlebar = daw_ui::settings::TitlebarStyle::Native;
+                ui.set_settings(&cc.egui_ctx, settings);
+            }
             Ok(Box::new(App {
                 #[cfg(target_os = "macos")]
+                titlebar,
+                #[cfg(target_os = "windows")]
                 titlebar,
                 ui,
                 #[cfg(target_os = "macos")]

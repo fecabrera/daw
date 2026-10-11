@@ -1,0 +1,20 @@
+Windows OpenGL renderer dependencies
+
+egui_glow 0.36.2: https://github.com/emilk/egui/tree/0.36.2/crates/egui_glow
+Source: https://crates.io/crates/egui_glow/0.36.2
+Available under MIT OR Apache-2.0; MIT terms are in Egui-Glow-MIT.txt.
+
+glutin 0.32.3: https://github.com/rust-windowing/glutin
+Source: https://crates.io/crates/glutin/0.32.3
+Apache-2.0 terms and copyright notice are in Glutin-APACHE.txt.
+
+glutin_egl_sys 0.7.1 and glutin_wgl_sys 0.6.1 use the same Glutin license text.
+Sources: https://crates.io/crates/glutin_egl_sys/0.7.1
+         https://crates.io/crates/glutin_wgl_sys/0.6.1
+
+glutin-winit 0.5.0: https://github.com/rust-windowing/glutin
+Source: https://crates.io/crates/glutin-winit/0.5.0
+MIT terms and copyright notice are in Glutin-Winit-MIT.txt.
+
+These dependencies use eframe's existing Glow integration on Windows.
+Distributions must include these notices with the application.
