@@ -37,7 +37,7 @@ Provide a headless command-line mode from the start, using the same project mode
 | MVP-07 | Output | Use the system's default audio output device. Display audio initialization errors. If the device disconnects, stop playback safely and display a clear error. |
 | MVP-08 | Projects | Save and open projects stored as folders containing manifest files and an assets directory. Reference external source audio files during the MVP. Open projects with missing sources normally, show a warning, and display affected clips as empty placeholders. |
 | MVP-10 | Export | Export the arrangement as a stereo WAV or MP3 file. |
-| MVP-11 | Sample rate | Use a fixed project sample rate of 48 kHz. Convert imported audio to 48 kHz, or reject unsupported rates with a clear message. |
+| MVP-11 | Sample rate | Use a selectable project processing rate (44.1, 48, 88.2, 96, 176.4, or 192 kHz; default 48 kHz). Convert imports to that rate. |
 | MVP-12 | Clip boundaries | Apply short fades at clip boundaries to prevent clicks. |
 | MVP-13 | Headless mode | Load and validate an existing project and export its arrangement as WAV or MP3 from the command line, without a graphical session or audio output device. |
 
@@ -56,7 +56,7 @@ Use stable Rust, edition 2024, and Cargo. Select compatible released crate versi
 | Audio engine | Application code in Rust | Sample-based transport, clip scheduling, gain/pan, mute/solo, fades, metering, and mixing. Reuse the rendering logic for live playback and offline export. |
 | Audio decoding | [symphonia](https://github.com/pdeljanov/Symphonia) | Enable WAV and PCM support for the MVP. Wrap it behind the decoder interface; enable more formats after the MVP. |
 | WAV export | [hound](https://docs.rs/hound/latest/hound/) | Write WAV exports behind the encoder interface. |
-| Sample-rate conversion | [rubato](https://github.com/HEnquist/rubato) | Convert imported audio to 48 kHz on a background worker. |
+| Sample-rate conversion | [rubato](https://github.com/HEnquist/rubato) | Convert imported audio to the project processing rate on a background worker. |
 | Engine communication | [rtrb](https://docs.rs/rtrb/latest/rtrb/) and standard atomics | Preallocated single-producer/single-consumer command queues; atomic meter values and status counters. |
 | Background work | Rust standard library threads and channels | Import, waveform generation, project I/O, and export. Keep blocking channels outside the audio callback. |
 | Project manifests | [serde](https://serde.rs/) and [serde_json](https://docs.rs/serde_json/latest/serde_json/) | Experimental JSON manifests for project state and asset references. |
@@ -70,7 +70,7 @@ Use stable Rust, edition 2024, and Cargo. Select compatible released crate versi
 - macOS: CoreAudio through CPAL.
 - Windows: WASAPI through CPAL, using shared output for the MVP.
 - Linux: ALSA through CPAL, using the system default device and its PipeWire/PulseAudio bridge where configured. Linux builds require ALSA development libraries.
-- Keep the project and mixer at 48 kHz. Prefer a 48 kHz device stream. If the default device requires another rate, use a preallocated Rubato output conversion stage; the project sample rate stays unchanged.
+- Keep the project and mixer at the selected processing rate. Prefer a device stream at that rate. If the default device requires another rate, use a preallocated Rubato output conversion stage; the project sample rate stays unchanged.
 - Keep audio backend details behind an output interface so additional backends can be added later.
 
 ### Module boundaries and real-time rules
@@ -101,7 +101,9 @@ Use stable Rust, edition 2024, and Cargo. Select compatible released crate versi
 
 ## Initial desktop UI
 
-Provide Project Settings in File on every desktop platform, separate from application Settings. For now, it edits only the project name with Apply/Enter and Cancel/Escape. Keep a draft until confirmation, reject blank names/control characters, and mark a changed name as modified. Save the name in the project manifest through the existing Save flow; retain its folder and arrangement. Disable background actions while the dialog is open and guard it against jobs, other dialogs, and active editing gestures.
+Provide Project Settings in File on every desktop platform, separate from application Settings. It edits the project name, processing sample rate, and buffer size with Apply/Enter and Cancel/Escape. Keep a draft until confirmation, reject blank names/control characters, and mark a changed name as modified. Save the name in the project manifest through the existing Save flow; retain its folder and arrangement. Disable background actions while the dialog is open and guard it against jobs, other dialogs, and active editing gestures.
+
+Project Settings also selects the processing sample rate (44.1, 48, 88.2, 96, 176.4, or 192 kHz) and buffer size (32, 64, 128, 256, 512, 1024, 2048, or 4096 samples). Defaults are 48 kHz and 512 samples; older manifests without a buffer value use 512. Apply prepares audio on a worker and commits the name, rate, buffer, and frame coordinates together after success. Rate changes preserve clip, source-offset, repeat, loop-selection, and playhead times to sample precision, retain stretch ratios, and rebuild waveforms and stretch buffers. Original files remain unchanged. Invalid ranges, empty clips, overflow, or processing errors retain the original session. A successful audio change stops playback; press Play to create the output with the new settings. Rate changes clear copied clips to avoid pasting old frame coordinates. Cancel discards all draft settings. The buffer duration shown is not total output latency. The device may use a supported buffer size or its default; its negotiated rate and requested buffer configuration appear in the status bar.
 
 Provide an application Settings dialog for theme and accent color. Place Settings in the app-name menu on macOS and File on Windows/Linux. Offer all 19 Material 500 colors with named options and left-hand preview swatches. Apply the chosen accent immediately through the shared theme, save it as an application preference, and retain it across project changes. Use Dark and Purple 500 by default. Offer Light with a `#E9E9E9` timeline and `#F9F9F9` panels, toolbars, menus, and dialogs, plus dark text and matching control/grid colors. Persist the theme with the accent and apply both immediately without modifying the project. On macOS, offer Custom (default) and Native titlebars in Settings. Apply the choice immediately without recreating the window, persist it separately from projects, and omit the custom header when Native is active. Keep native caption controls and the project title in both modes. Keep broader theme customization on the roadmap.
 
@@ -174,6 +176,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
   "project_id": "c2e1c40e-e9bd-444e-88c0-a195f18b1b2e",
   "name": "My project",
   "sample_rate_hz": 48000,
+  "buffer_size_frames": 512,
   "tempo_bpm": 120.0,
   "master": {
     "gain_db": 0.0
@@ -232,7 +235,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - Use UUIDs for project, asset, track, and clip identities. Track array order defines display order.
 - Every track stores a `color` object with integer `r`, `g`, and `b` channels from 0 to 255. New tracks use Material Design 400 shades by position, repeating after 16 tracks: Deep Orange, Orange, Amber, Yellow, Lime, Light Green, Green, Teal, Cyan, Light Blue, Blue, Indigo, Deep Purple, Purple, Pink, Red. Load older tracks without this field using the same sequence by display position; preserve saved colors. Track colors cannot be null. Adding or deleting tracks retains the colors of existing tracks. Track color is the default for its clips; its panel background remains neutral. Omitted or null clip colors inherit the containing track's color. Clip RGB overrides take precedence; omit unset clip colors when saving. Resolve headers, channel fills, text, and waveform colors from the effective color for rendering and all drag previews, including the next track's color for drops that create a track. Saved legacy blue retains its existing palette. Moving an inheriting clip adopts the destination track's color; explicit overrides survive move, trim, and split operations. Color edits do not affect audio. A color picker is deferred.
 - The time monitor supports separate vertical drags for hours, minutes, and seconds, with carry and borrow across units, preserved fractional seconds, Shift for tenfold slower adjustment, and clamping at frame zero. The toolbar bar.beat monitor and both selection endpoints support separate vertical drags on bars and beats, in whole units. Selection endpoints stay ordered and retain a nonzero duration when Loop is enabled. Beats carry and borrow across bars; Shift slows adjustment tenfold, and backward movement clamps at frame zero. Store tempo_bpm as a positive finite BPM value. Default to 120.0 for new projects and manifests without this field. Drag the playback toolbar's tempo monitor vertically to adjust it: up increases, down decreases, and Shift reduces the step tenfold. Dragging clamps at 0.01 BPM. Double-click for numeric entry. Show `120bpm` with the time monitor's styling and three fixed-width digit slots. Enter commits; Esc or focus loss cancels the draft and restores the monitor. Move clip starts to retain their beat positions, rounded to the nearest sample frame. Preserve lengths, source ranges, repeats, and stretch ratios. Apply typed and dragged tempo changes transactionally, rejecting same-track overlaps and timeline overflow without changing the tempo or clips. Scale both loop-selection endpoints with tempo, including when Loop is disabled, rounding up to sample frames as with ruler snapping. Reject invalid selection bounds with the entire tempo change. Keep the playhead frame unchanged.
-- All frame positions, offsets, and lengths use the project's 48 kHz timeline, including source offsets after resampling. One frame contains one sample per channel; five minutes equals 14,400,000 frames.
+- All frame positions, offsets, and lengths use the project's selected-rate timeline, including source offsets after resampling. One frame contains one sample per channel; at 48 kHz, five minutes equals 14,400,000 frames.
 - Source metadata describes the original file. decoded_frame_count describes its length after conversion to the project sample rate. Use pcm_int or ieee_float for sample_format.
 - pan ranges from -1.0 (left) to 1.0 (right); 0.0 is center. Gain values are finite decibel values; mute is a separate boolean.
 - source.kind is external for the MVP. Reserve an included variant for future project-owned sources. path_kind distinguishes relative and absolute paths; resolve relative paths from the project folder.
@@ -290,8 +293,8 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 
 - Import uncompressed WAV files with 16-bit or 24-bit integer PCM, or 32-bit IEEE floating-point samples.
 - Accept mono and stereo sources. Feed mono sources equally to the left and right channels before track gain and pan; preserve stereo channel order. Reject files with more than two channels with a clear error.
-- Decode and mix using 32-bit floating-point PCM at the project's fixed 48 kHz sample rate.
-- Export stereo at 48 kHz as WAV (16-bit PCM, default 24-bit PCM, or 32-bit IEEE float) or MP3 (MPEG Layer III through bundled LAME, CBR 128/192/256/320 kbps; default 192).
+- Decode and mix using 32-bit floating-point PCM at the project's selected sample rate.
+- Export stereo at the project rate as WAV (16-bit PCM, default 24-bit PCM, or 32-bit IEEE float) or MP3 (MPEG Layer III through bundled LAME, CBR 128/192/256/320 kbps; default 192; MP3 converts rates above 48 kHz to 48 kHz).
 - Open the shared application dialog for format, codec, and MP3 bitrate before choosing the native destination. Remember the last accepted options for the app session. Cancel must not modify the project.
 - When export starts, show a status dialog with live progress, finalization state, destination, settings, warnings, completion notices, and errors. Keep the report open until dismissed after completion or failure. Scroll long reports. Block background editing and file actions while it is open. Show 100% only after successful file publication.
 - Use the same settings and encoders for desktop and CLI export. Reject incompatible CLI options.
@@ -333,13 +336,13 @@ A decoder trait and clear module boundaries are sufficient for the MVP. A runtim
 
 ## Output buffer and latency
 
-- Request an output buffer of 512 frames at 48 kHz.
+- Request the selected project buffer size; default 512 frames.
 - If that size is unsupported, request the nearest supported size. Use the host default if fixed-size requests fail.
 - Handle variable callback sizes; the requested size is not guaranteed by the audio backend.
 - A 512-frame buffer at 48 kHz contains approximately 10.67 ms of audio. This is not total output latency; OS buffering, drivers, and hardware add delay.
 - Target no more than 50 ms from play/seek command submission to audible change on reference hardware.
 - Target no audible dropouts during the agreed test workload. Prioritize stable playback over smaller buffers.
-- Add user-selectable buffer sizes and recording/monitoring latency targets with the short-term audio settings.
+- Recording/monitoring latency targets remain a short-term goal.
 
 ## First prototype milestone
 
@@ -426,7 +429,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 #### UI
 
 - Further theme customization beyond the built-in Light and Dark palettes.
-- Audio settings interface for device selection, buffer-size controls, project sample rate, and audio-memory budget.
+- Audio settings interface for device selection and audio-memory budget. Project sample rate and buffer-size controls are available in Project Settings.
 - Advanced import/export controls for sample format, bit depth, channel conversion, and dither.
 - User-configurable mixing controls after the MVP: pan law, stereo pan/balance modes, clipping protection options, and clip fade lengths and curves.
 

@@ -1,9 +1,6 @@
 use daw_core::{Asset, Clip, ClipStretch, Id, Project, Source};
 use daw_engine::RenderPlan;
-use daw_media::{
-    AudioData, AudioDecoder, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec,
-    WavDecoder,
-};
+use daw_media::{AudioData, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec};
 use std::{
     collections::HashMap,
     fs,
@@ -64,6 +61,42 @@ pub struct Session {
     pub warnings: Vec<String>,
 }
 impl Session {
+    /// Prepare an atomic project-rate change on a worker. Source files stay untouched.
+    pub fn with_audio_settings(
+        &self,
+        sample_rate_hz: u32,
+        buffer_size_frames: u32,
+    ) -> Result<Self> {
+        let project = self
+            .project
+            .with_audio_settings(sample_rate_hz, buffer_size_frames)
+            .map_err(error)?;
+        let mut next = self.clone();
+        next.project = project;
+        if sample_rate_hz == self.project.sample_rate_hz {
+            return Ok(next);
+        }
+        for asset in &self.project.assets {
+            let Some(cached) = self.audio.get(&asset.id) else {
+                continue;
+            };
+            let path = self.source_path(asset)?;
+            let audio = if path.exists() {
+                daw_media::decode_wav_at_rate(&path, sample_rate_hz).map_err(error)?
+            } else {
+                next.warnings.push(format!(
+                    "{}: source unavailable; converted cached audio",
+                    asset.name
+                ));
+                cached.at_sample_rate(sample_rate_hz).map_err(error)?
+            };
+            next.audio.insert(asset.id, audio);
+        }
+        next.stretched_audio.clear();
+        next.prepare_stretches()?;
+        Ok(next)
+    }
+
     pub fn plan(&self) -> RenderPlan {
         RenderPlan {
             project: self.project.clone(),
@@ -136,7 +169,8 @@ impl Session {
                 Err(e) => return Err(error(format!("{}: {e}", path.display()))),
                 _ => {}
             }
-            let data = WavDecoder.decode(&path).map_err(error)?;
+            let data = daw_media::decode_wav_at_rate(&path, session.project.sample_rate_hz)
+                .map_err(error)?;
             if (data.samples.len() as u64) < asset.decoded_frame_count {
                 session.warnings.push(format!("Source {} is shorter than saved metadata; unavailable ranges render as silence",path.display()));
             } else if data.metadata.sample_rate_hz != asset.source_metadata.sample_rate_hz
@@ -178,7 +212,8 @@ impl Session {
     }
     pub fn import(&mut self, path: &Path, track: Option<Id>, start: u64) -> Result<Id> {
         let path = absolute(path)?;
-        let data = WavDecoder.decode(&path).map_err(error)?;
+        let data =
+            daw_media::decode_wav_at_rate(&path, self.project.sample_rate_hz).map_err(error)?;
         self.import_decoded(&path, data, track, start)
     }
     /// Import audio prepared by the file-drag preview worker without decoding it again.
@@ -211,6 +246,9 @@ impl Session {
         start: u64,
         overwrite: bool,
     ) -> Result<Id> {
+        let data = data
+            .at_sample_rate(self.project.sample_rate_hz)
+            .map_err(error)?;
         let path = absolute(path)?;
         let name = path
             .file_name()
@@ -377,11 +415,14 @@ impl Session {
             let mut snapshot = self.clone();
             snapshot.prepare_stretches()?;
             let plan = snapshot.plan();
-            let mut encoder = ExportEncoder::create(&temp, settings).map_err(error)?;
-            let mut block = vec![[0.0; 2]; 1024];
+            let mut encoder =
+                ExportEncoder::at_sample_rate(&temp, settings, self.project.sample_rate_hz)
+                    .map_err(error)?;
+            let block_size = self.project.buffer_size_frames as usize;
+            let mut block = vec![[0.0; 2]; block_size];
             let mut position = 0;
             while position < end {
-                let count = (end - position).min(1024) as usize;
+                let count = (end - position).min(block_size as u64) as usize;
                 plan.render(position, &mut block[..count]);
                 encoder.write_frames(&block[..count]).map_err(error)?;
                 position += count as u64;

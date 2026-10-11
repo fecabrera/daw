@@ -1,3 +1,4 @@
+mod audio_settings;
 mod boundary;
 mod looping;
 mod placement;
@@ -11,6 +12,12 @@ use uuid::Uuid;
 
 pub use uuid::Uuid as Id;
 pub const SAMPLE_RATE: u32 = 48_000;
+pub const SAMPLE_RATES: [u32; 6] = [44_100, 48_000, 88_200, 96_000, 176_400, 192_000];
+pub const BUFFER_SIZES: [u32; 8] = [32, 64, 128, 256, 512, 1024, 2048, 4096];
+
+fn default_buffer_size() -> u32 {
+    512
+}
 pub const DEFAULT_TEMPO_BPM: f32 = 120.0;
 
 fn default_tempo_bpm() -> f32 {
@@ -110,6 +117,8 @@ pub struct Project {
     pub project_id: Id,
     pub name: String,
     pub sample_rate_hz: u32,
+    #[serde(default = "default_buffer_size")]
+    pub buffer_size_frames: u32,
     #[serde(default = "default_tempo_bpm")]
     pub tempo_bpm: f32,
     pub master: Master,
@@ -270,6 +279,7 @@ impl Default for Project {
             project_id: Id::new_v4(),
             name: "Untitled".into(),
             sample_rate_hz: SAMPLE_RATE,
+            buffer_size_frames: default_buffer_size(),
             tempo_bpm: DEFAULT_TEMPO_BPM,
             master: Master { gain_db: 0.0 },
             assets: vec![],
@@ -353,6 +363,14 @@ pub fn seconds(frames: u64) -> f64 {
 }
 
 impl Project {
+    pub fn frames(&self, seconds: f64) -> u64 {
+        (seconds.max(0.0) * f64::from(self.sample_rate_hz)).round() as u64
+    }
+
+    pub fn seconds(&self, frames: u64) -> f64 {
+        frames as f64 / f64::from(self.sample_rate_hz)
+    }
+
     pub fn end(&self) -> u64 {
         self.tracks
             .iter()
@@ -370,8 +388,11 @@ impl Project {
     }
     pub fn validate(&self) -> Result<()> {
         let invalid = |text: &str| Error(text.into());
-        if self.sample_rate_hz != SAMPLE_RATE {
-            return Err(invalid("Project sample rate must be 48 kHz"));
+        if !SAMPLE_RATES.contains(&self.sample_rate_hz) {
+            return Err(invalid("Unsupported project sample rate"));
+        }
+        if !BUFFER_SIZES.contains(&self.buffer_size_frames) {
+            return Err(invalid("Unsupported project buffer size"));
         }
         if !self.tempo_bpm.is_finite() || self.tempo_bpm <= 0.0 {
             return Err(invalid("Tempo must be a positive finite BPM value"));

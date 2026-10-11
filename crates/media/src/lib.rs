@@ -20,6 +20,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone)]
 pub struct AudioData {
+    /// Rate of the prepared samples; metadata retains the original source rate.
+    pub sample_rate_hz: u32,
     pub samples: Arc<Vec<[f32; 2]>>,
     pub metadata: SourceMetadata,
     pub peaks: Arc<Vec<[[f32; 2]; 2]>>,
@@ -35,6 +37,13 @@ impl AudioDecoder for WavDecoder {
 }
 
 pub fn decode_wav(path: &Path) -> Result<AudioData> {
+    decode_wav_at_rate(path, SAMPLE_RATE)
+}
+
+pub fn decode_wav_at_rate(path: &Path, sample_rate_hz: u32) -> Result<AudioData> {
+    if !daw_core::SAMPLE_RATES.contains(&sample_rate_hz) {
+        return Err(Error("Unsupported processing sample rate".into()));
+    }
     let err = |e: &dyn std::fmt::Display| Error(format!("{}: {e}", path.display()));
     let reader = hound::WavReader::open(path).map_err(|e| err(&e))?;
     let spec = reader.spec();
@@ -117,8 +126,8 @@ pub fn decode_wav(path: &Path) -> Result<AudioData> {
             path.display()
         )));
     }
-    if spec.sample_rate != SAMPLE_RATE {
-        samples = resample(&samples, spec.sample_rate, SAMPLE_RATE)?;
+    if spec.sample_rate != sample_rate_hz {
+        samples = resample(&samples, spec.sample_rate, sample_rate_hz)?;
     }
     let peaks = samples
         .chunks(256)
@@ -134,6 +143,7 @@ pub fn decode_wav(path: &Path) -> Result<AudioData> {
         })
         .collect();
     Ok(AudioData {
+        sample_rate_hz,
         samples: Arc::new(samples),
         metadata,
         peaks: Arc::new(peaks),
@@ -141,6 +151,12 @@ pub fn decode_wav(path: &Path) -> Result<AudioData> {
 }
 
 pub fn resample(samples: &[[f32; 2]], input_rate: u32, output_rate: u32) -> Result<Vec<[f32; 2]>> {
+    if input_rate == 0 || output_rate == 0 || samples.iter().flatten().any(|s| !s.is_finite()) {
+        return Err(Error("Invalid resampling input".into()));
+    }
+    if input_rate == output_rate {
+        return Ok(samples.to_vec());
+    }
     let mut converter =
         rubato::FftFixedIn::<f32>::new(input_rate as usize, output_rate as usize, 1024, 2, 2)
             .map_err(|e| Error(e.to_string()))?;
@@ -166,4 +182,32 @@ pub fn resample(samples: &[[f32; 2]], input_rate: u32, output_rate: u32) -> Resu
         position += input_size;
     }
     Ok(out[delay..delay + target].to_vec())
+}
+
+impl AudioData {
+    pub fn at_sample_rate(&self, sample_rate_hz: u32) -> Result<Self> {
+        if self.sample_rate_hz == sample_rate_hz {
+            return Ok(self.clone());
+        }
+        let samples = resample(&self.samples, self.sample_rate_hz, sample_rate_hz)?;
+        let peaks = samples
+            .chunks(256)
+            .map(|chunk| {
+                let mut peak = [[f32::INFINITY, f32::NEG_INFINITY]; 2];
+                for sample in chunk {
+                    for ch in 0..2 {
+                        peak[ch][0] = peak[ch][0].min(sample[ch]);
+                        peak[ch][1] = peak[ch][1].max(sample[ch]);
+                    }
+                }
+                peak
+            })
+            .collect();
+        Ok(Self {
+            sample_rate_hz,
+            samples: Arc::new(samples),
+            metadata: self.metadata.clone(),
+            peaks: Arc::new(peaks),
+        })
+    }
 }

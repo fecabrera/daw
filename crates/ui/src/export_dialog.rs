@@ -6,10 +6,18 @@ pub enum Action {
     Cancel,
 }
 
-pub fn show(ctx: &egui::Context, settings: &mut ExportSettings) -> Option<Action> {
+pub fn show(
+    ctx: &egui::Context,
+    settings: &mut ExportSettings,
+    project_rate_hz: u32,
+) -> Option<Action> {
+    let description = format!(
+        "Stereo · {} kHz",
+        settings.output_sample_rate(project_rate_hz) as f32 / 1000.0
+    );
     let action = crate::dialogs::Dialog::new(
         "Export audio",
-        "Stereo · 48 kHz",
+        &description,
         &[("Export…", Action::Export), ("Cancel", Action::Cancel)],
     )
     .show_with_content(ctx, |ui| {
@@ -90,7 +98,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| action = show(ui.ctx(), settings),
+            |ui| action = show(ui.ctx(), settings, daw_core::SAMPLE_RATE),
         );
         output.textures_delta.clear();
         (action, output.shapes)

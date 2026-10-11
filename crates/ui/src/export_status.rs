@@ -17,6 +17,7 @@ pub enum State {
 pub struct ExportStatus {
     pub path: PathBuf,
     pub settings: ExportSettings,
+    pub sample_rate_hz: u32,
     pub frames: Arc<AtomicU64>,
     pub total: u64,
     pub state: State,
@@ -24,10 +25,17 @@ pub struct ExportStatus {
 }
 
 impl ExportStatus {
-    pub fn new(path: PathBuf, settings: ExportSettings, total: u64, warnings: Vec<String>) -> Self {
+    pub fn new(
+        path: PathBuf,
+        settings: ExportSettings,
+        project_rate_hz: u32,
+        total: u64,
+        warnings: Vec<String>,
+    ) -> Self {
         Self {
             path,
             settings,
+            sample_rate_hz: settings.output_sample_rate(project_rate_hz),
             frames: Arc::new(AtomicU64::new(0)),
             total,
             state: State::Running,
@@ -85,8 +93,9 @@ impl ExportStatus {
                         };
                         ui.add(
                             egui::Label::new(format!(
-                                "{} · {codec} · Stereo · 48 kHz",
-                                self.settings.format.label()
+                                "{} · {codec} · Stereo · {} kHz",
+                                self.settings.format.label(),
+                                self.sample_rate_hz as f32 / 1000.0
                             ))
                             .wrap(),
                         );

@@ -10,7 +10,7 @@ pub struct FileHover {
 }
 
 impl FileHover {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn at_sample_rate(path: PathBuf, sample_rate_hz: u32) -> Self {
         let name = path
             .file_name()
             .unwrap_or_default()
@@ -19,7 +19,10 @@ impl FileHover {
         let (sender, receiver) = mpsc::channel();
         let source = path.clone();
         std::thread::spawn(move || {
-            let _ = sender.send(daw_media::decode_wav(&source).map_err(|error| error.to_string()));
+            let _ = sender.send(
+                daw_media::decode_wav_at_rate(&source, sample_rate_hz)
+                    .map_err(|error| error.to_string()),
+            );
         });
         Self {
             path,

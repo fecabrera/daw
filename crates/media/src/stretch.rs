@@ -1,5 +1,7 @@
 use crate::{AudioData, Error, Result};
-use daw_core::{ClipStretch, SAMPLE_RATE};
+use daw_core::ClipStretch;
+#[cfg(test)]
+use daw_core::SAMPLE_RATE;
 use rubberband::{Options, Stretcher};
 use std::sync::Arc;
 
@@ -25,7 +27,7 @@ pub fn stretch_audio(audio: &AudioData, ratio: ClipStretch) -> Result<AudioData>
         .map_err(|e| Error(e.to_string()))?;
     if !audio.samples.is_empty() {
         let mut processor = Stretcher::new(
-            SAMPLE_RATE,
+            audio.sample_rate_hz,
             2,
             Options::PROCESS_OFFLINE
                 | Options::ENGINE_FINER
@@ -111,6 +113,7 @@ pub fn stretch_audio(audio: &AudioData, ratio: ClipStretch) -> Result<AudioData>
         })
         .collect();
     Ok(AudioData {
+        sample_rate_hz: audio.sample_rate_hz,
         samples: Arc::new(samples),
         peaks: Arc::new(peaks),
         metadata: audio.metadata.clone(),
@@ -123,6 +126,7 @@ mod tests {
     #[test]
     fn r3_changes_duration_without_changing_pitch_or_stereo_relationship() {
         let audio = AudioData {
+            sample_rate_hz: daw_core::SAMPLE_RATE,
             samples: Arc::new(
                 (0..SAMPLE_RATE * 2)
                     .map(|frame| {

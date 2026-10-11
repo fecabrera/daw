@@ -4,7 +4,9 @@ mod resize;
 mod stretch;
 mod track_selection;
 mod trim;
-use daw_core::{Clip, Edit, Id, frames, seconds};
+use daw_core::{Clip, Edit, Id};
+#[cfg(test)]
+use daw_core::{frames, seconds};
 use daw_media::ExportSettings;
 use daw_output::AudioOutput;
 use daw_project::Session;
@@ -63,7 +65,8 @@ fn placement_start(
         .flat_map(|track| &track.clips)
         .filter(|clip| Some(clip.id) != ignore)
         .flat_map(|clip| [clip.start_frame, clip.end()]);
-    musical_time::Timeline::new(project.tempo_bpm, zoom, 0.0).snap_range(start, length, anchors)
+    musical_time::Timeline::at_sample_rate(project.tempo_bpm, zoom, 0.0, project.sample_rate_hz)
+        .snap_range(start, length, anchors)
 }
 
 fn numeric_input(ui: &mut egui::Ui, text: &mut String, tooltip: &str) -> egui::Response {
@@ -108,8 +111,13 @@ fn inline_edit_action(ui: &mut egui::Ui, response: &egui::Response) -> Option<In
     None
 }
 
+#[cfg(test)]
 fn transport_time(frame: u64) -> String {
-    let rate = u64::from(daw_core::SAMPLE_RATE);
+    transport_time_at_rate(frame, daw_core::SAMPLE_RATE)
+}
+
+fn transport_time_at_rate(frame: u64, sample_rate_hz: u32) -> String {
+    let rate = u64::from(sample_rate_hz);
     let total_seconds = frame / rate;
     let hours = total_seconds / 3600;
     let minutes = total_seconds / 60 % 60;
@@ -214,6 +222,7 @@ fn transport_monitor_control(
 }
 
 enum Job {
+    AudioSettings(Session),
     Loaded(Session, bool),
     Saved(Session),
     Exported(Vec<String>),
@@ -362,29 +371,45 @@ struct TempoEdit {
 }
 #[derive(Clone, Copy)]
 enum PositionStep {
-    Beats { count: i64, tempo: f32 },
+    Beats {
+        count: i64,
+        tempo: f32,
+        sample_rate_hz: u32,
+    },
     Frames(u64),
 }
 
 impl PositionStep {
     fn shift(self, frame: u64, steps: i64) -> u64 {
         match self {
-            Self::Beats { count, tempo } => {
-                musical_time::shift(frame, tempo, steps.saturating_mul(count))
-            }
+            Self::Beats {
+                count,
+                tempo,
+                sample_rate_hz,
+            } => musical_time::shift_at_rate(
+                frame,
+                tempo,
+                steps.saturating_mul(count),
+                sample_rate_hz,
+            ),
             Self::Frames(count) => (i128::from(frame) + i128::from(steps) * i128::from(count))
                 .clamp(0, i128::from(u64::MAX)) as u64,
         }
     }
 }
 
-fn musical_steps(tempo: f32) -> [PositionStep; 2] {
+fn musical_steps(tempo: f32, sample_rate_hz: u32) -> [PositionStep; 2] {
     [
         PositionStep::Beats {
             count: musical_time::BEATS_PER_BAR as i64,
             tempo,
+            sample_rate_hz,
         },
-        PositionStep::Beats { count: 1, tempo },
+        PositionStep::Beats {
+            count: 1,
+            tempo,
+            sample_rate_hz,
+        },
     ]
 }
 
@@ -730,7 +755,7 @@ impl DawUi {
     pub fn open_project_settings(&mut self) {
         if self.project_settings_enabled() {
             self.project_settings = Some(project_settings::ProjectSettings::new(
-                self.session.project.name.clone(),
+                &self.session.project,
             ));
         }
     }
@@ -743,6 +768,24 @@ impl DawUi {
             // Naming is project metadata; it does not change the audio render plan.
             self.dirty = true;
         }
+    }
+
+    fn apply_project_settings(&mut self, values: project_settings::Values) {
+        let project = &self.session.project;
+        if values.sample_rate_hz == project.sample_rate_hz
+            && values.buffer_size_frames == project.buffer_size_frames
+        {
+            self.rename_project(values.name);
+            return;
+        }
+        let session = self.session.clone();
+        self.run_job("Preparing project audio settings", move || {
+            let mut next = session
+                .with_audio_settings(values.sample_rate_hz, values.buffer_size_frames)
+                .map_err(|error| error.to_string())?;
+            next.project.name = project_settings::valid_name(&values.name)?.to_owned();
+            Ok(Job::AudioSettings(next))
+        });
     }
 
     /// Let the desktop adapter provide file menus and their keyboard shortcuts.
@@ -885,7 +928,8 @@ impl DawUi {
         self.run_job("Importing WAV and building waveform", move || {
             let audio = match prepared {
                 Some(prepared) => prepared.into_audio()?,
-                None => daw_media::decode_wav(&path).map_err(|error| error.to_string())?,
+                None => daw_media::decode_wav_at_rate(&path, session.project.sample_rate_hz)
+                    .map_err(|error| error.to_string())?,
             };
             // A drop can arrive before decoding finishes. Use the actual duration
             // and the release frame's snapping setting on the import worker.
@@ -933,7 +977,10 @@ impl DawUi {
                     .as_ref()
                     .is_none_or(|hover| hover.path != path)
                 {
-                    self.file_hover = Some(file_drop::FileHover::new(path));
+                    self.file_hover = Some(file_drop::FileHover::at_sample_rate(
+                        path,
+                        self.session.project.sample_rate_hz,
+                    ));
                 }
                 self.file_hover.as_mut().unwrap().poll();
             }
@@ -945,6 +992,7 @@ impl DawUi {
         let status = export_status::ExportStatus::new(
             path.clone(),
             settings,
+            session.project.sample_rate_hz,
             session.project.end(),
             session.warnings.clone(),
         );
@@ -983,6 +1031,26 @@ impl DawUi {
             self.job = None;
             self.busy.clear();
             match message {
+                Ok(Job::AudioSettings(mut session)) => {
+                    let old_rate = self.session.project.sample_rate_hz;
+                    let playhead = self
+                        .output
+                        .as_ref()
+                        .map_or(self.session.project.transport.playhead_frame, |output| {
+                            output.status.playhead.load(Ordering::Relaxed)
+                        });
+                    session.project.transport.playhead_frame = session
+                        .project
+                        .frames(playhead as f64 / f64::from(old_rate));
+                    self.output = None;
+                    if old_rate != session.project.sample_rate_hz {
+                        self.clip_clipboard = None;
+                    }
+                    self.notices = session.warnings.clone();
+                    self.session = session;
+                    self.dirty = true;
+                    self.sync_needed = false;
+                }
                 Ok(Job::Loaded(session, dirty)) => {
                     self.loop_drag = None;
                     self.track_drag = None;
@@ -1427,7 +1495,11 @@ impl DawUi {
                         });
                     }
                     ui.separator();
-                    ui.label("48 kHz · WAV");
+                    ui.label(format!(
+                        "{} kHz · {} samples · WAV",
+                        self.session.project.sample_rate_hz as f32 / 1000.0,
+                        self.session.project.buffer_size_frames
+                    ));
                     if let Some(output) = &self.output {
                         ui.separator();
                         ui.label(&output.description);
@@ -1739,8 +1811,13 @@ impl DawUi {
     }
     fn time_control(&mut self, ui: &mut egui::Ui) {
         let frame = self.session.project.transport.playhead_frame;
-        let monitor =
-            transport_monitor_control(ui, &transport_time(frame), "Time", 0, Sense::hover());
+        let monitor = transport_monitor_control(
+            ui,
+            &transport_time_at_rate(frame, self.session.project.sample_rate_hz),
+            "Time",
+            0,
+            Sense::hover(),
+        );
         let responses: [egui::Response; 3] = std::array::from_fn(|index| {
             // Seconds include the decimal fraction; each unit includes its suffix.
             let right = if index < 2 {
@@ -1763,8 +1840,9 @@ impl DawUi {
         {
             self.time_bounds = responses.each_ref().map(|response| response.rect);
         }
-        let steps = [3600, 60, 1]
-            .map(|seconds| PositionStep::Frames(seconds * u64::from(daw_core::SAMPLE_RATE)));
+        let steps = [3600, 60, 1].map(|seconds| {
+            PositionStep::Frames(seconds * u64::from(self.session.project.sample_rate_hz))
+        });
         if let Some(destination) = monitor_drag_position(
             ui,
             &responses,
@@ -1782,7 +1860,7 @@ impl DawUi {
         let tempo = self.session.project.tempo_bpm;
         let monitor = transport_monitor_control(
             ui,
-            &musical_time::monitor(frame, tempo),
+            &musical_time::monitor_at_rate(frame, tempo, self.session.project.sample_rate_hz),
             "Bars and beats (4/4)",
             0,
             Sense::hover(),
@@ -1797,7 +1875,7 @@ impl DawUi {
             &responses,
             &mut self.musical_drag,
             frame,
-            &musical_steps(tempo),
+            &musical_steps(tempo, self.session.project.sample_rate_hz),
             0..=u64::MAX,
         ) && destination != frame
         {
@@ -1809,8 +1887,16 @@ impl DawUi {
         let region = &self.session.project.transport.r#loop;
         let text = format!(
             "{}–{}",
-            musical_time::monitor(region.start_frame, tempo),
-            musical_time::monitor(region.end_frame, tempo),
+            musical_time::monitor_at_rate(
+                region.start_frame,
+                tempo,
+                self.session.project.sample_rate_hz
+            ),
+            musical_time::monitor_at_rate(
+                region.end_frame,
+                tempo,
+                self.session.project.sample_rate_hz
+            ),
         );
         let monitor = transport_monitor_control(
             ui,
@@ -1842,7 +1928,7 @@ impl DawUi {
                 &responses,
                 &mut self.selection_drag[endpoint],
                 frame,
-                &musical_steps(tempo),
+                &musical_steps(tempo, self.session.project.sample_rate_hz),
                 limits,
             ) && destination != frame
             {
@@ -2130,7 +2216,11 @@ impl DawUi {
         }
 
         let playhead_x = timeline_rect.left()
-            + ((seconds(self.session.project.transport.playhead_frame) - self.scroll) as f32)
+            + ((self
+                .session
+                .project
+                .seconds(self.session.project.transport.playhead_frame)
+                - self.scroll) as f32)
                 * self.zoom;
         if (timeline_rect.left()..=timeline_rect.right()).contains(&playhead_x) {
             painter.line_segment(
@@ -2219,7 +2309,11 @@ impl DawUi {
         }
     }
     fn timeline_extent(&self) -> f64 {
-        seconds(self.session.project.end()).max(60.0) + 30.0
+        self.session
+            .project
+            .seconds(self.session.project.end())
+            .max(60.0)
+            + 30.0
     }
     fn timeline_selection(
         &mut self,
@@ -2418,7 +2512,9 @@ impl DawUi {
     }
     fn loop_pixels(&self, rect: Rect) -> (f32, f32) {
         let region = &self.session.project.transport.r#loop;
-        let pixel = |frame| rect.left() + ((seconds(frame) - self.scroll) as f32) * self.zoom;
+        let pixel = |frame| {
+            rect.left() + ((self.session.project.seconds(frame) - self.scroll) as f32) * self.zoom
+        };
         (pixel(region.start_frame), pixel(region.end_frame))
     }
     fn loop_drag_mode(&self, rect: Rect, pointer: Pos2) -> LoopDragMode {
@@ -2442,7 +2538,9 @@ impl DawUi {
         }
     }
     fn ruler_frame(&self, rect: Rect, pointer: Pos2) -> u64 {
-        frames(self.scroll + f64::from((pointer.x - rect.left()) / self.zoom))
+        self.session
+            .project
+            .frames(self.scroll + f64::from((pointer.x - rect.left()) / self.zoom))
     }
     fn ruler_interaction(
         &mut self,
@@ -2505,7 +2603,7 @@ impl DawUi {
                 LoopDragMode::Move => {
                     let length = original.end_frame - original.start_frame;
                     let delta = (f64::from(pointer.x - drag.origin.x) / f64::from(self.zoom)
-                        * f64::from(daw_core::SAMPLE_RATE))
+                        * f64::from(self.session.project.sample_rate_hz))
                     .round() as i128;
                     let start = self.selection_frame(
                         i128::from(original.start_frame) + delta,
@@ -2675,7 +2773,11 @@ impl DawUi {
                 }
             }
             let playhead_x = rect.left()
-                + ((seconds(self.session.project.transport.playhead_frame) - self.scroll) as f32)
+                + ((self
+                    .session
+                    .project
+                    .seconds(self.session.project.transport.playhead_frame)
+                    - self.scroll) as f32)
                     * self.zoom;
             if (rect.left()..=rect.right()).contains(&playhead_x) {
                 let painter = painter.with_clip_rect(rect);
@@ -3254,7 +3356,12 @@ impl DawUi {
         });
     }
     fn musical_timeline(&self) -> musical_time::Timeline {
-        musical_time::Timeline::new(self.session.project.tempo_bpm, self.zoom, self.scroll)
+        musical_time::Timeline::at_sample_rate(
+            self.session.project.tempo_bpm,
+            self.zoom,
+            self.scroll,
+            self.session.project.sample_rate_hz,
+        )
     }
     fn paint_grid(&self, painter: &egui::Painter, rect: Rect) {
         for tick in self.musical_timeline().ticks(rect.width()) {
@@ -3276,8 +3383,9 @@ impl DawUi {
         }
     }
     fn clip_block(&self, lane: Rect, clip: &Clip, start: u64) -> Rect {
-        let left = lane.left() + ((seconds(start) - self.scroll) as f32) * self.zoom;
-        let right = left + seconds(clip.length_frames) as f32 * self.zoom;
+        let left =
+            lane.left() + ((self.session.project.seconds(start) - self.scroll) as f32) * self.zoom;
+        let right = left + self.session.project.seconds(clip.length_frames) as f32 * self.zoom;
         Rect::from_min_max(
             Pos2::new(left, lane.top()),
             Pos2::new(right.max(left + 2.0), lane.bottom()),
@@ -3285,7 +3393,7 @@ impl DawUi {
     }
     fn drag_delta(&self, drag: &Drag, pointer: Pos2) -> i64 {
         (f64::from(pointer.x - drag.origin.x) / f64::from(self.zoom)
-            * f64::from(daw_core::SAMPLE_RATE))
+            * f64::from(self.session.project.sample_rate_hz))
         .round() as i64
     }
     fn drag_destination(&self, drag: &Drag, pointer: Pos2) -> Id {
@@ -3736,7 +3844,9 @@ impl DawUi {
         let start = if pointer.x < viewport.left() {
             0
         } else {
-            frames((self.scroll + f64::from((pointer.x - viewport.left()) / self.zoom)).max(0.0))
+            self.session.project.frames(
+                (self.scroll + f64::from((pointer.x - viewport.left()) / self.zoom)).max(0.0),
+            )
         };
         let snap_zoom = (!unsnapped && pointer.x >= viewport.left()).then_some(self.zoom);
         if let Some(track) = self.session.project.tracks.iter().find(|track| {
@@ -3807,7 +3917,7 @@ impl DawUi {
             start_frame: target.start,
             source_offset_frame: 0,
             length_frames: audio.map_or_else(
-                || frames(120.0 / f64::from(self.zoom)),
+                || self.session.project.frames(120.0 / f64::from(self.zoom)),
                 |audio| audio.samples.len() as u64,
             ),
             repeat: None,
@@ -4066,9 +4176,10 @@ impl DawUi {
                 let right = body.right().min(lane.right());
                 for pixel in (left as i32)..=(right as i32) {
                     let local = ((pixel as f32 - body.left()) / self.zoom
-                        * f64::from(daw_core::SAMPLE_RATE) as f32)
+                        * f64::from(self.session.project.sample_rate_hz) as f32)
                         .max(0.0) as u64;
-                    let samples_per_pixel = f64::from(daw_core::SAMPLE_RATE) / f64::from(self.zoom);
+                    let samples_per_pixel =
+                        f64::from(self.session.project.sample_rate_hz) / f64::from(self.zoom);
                     let [min, max] = if cached.is_none() && clip.stretch.is_some() {
                         waveforms::preview_extrema(
                             audio,
@@ -4098,14 +4209,17 @@ impl DawUi {
             }
         }
         if let Some(repeat) = clip.repeat {
-            let step = seconds(repeat.length_frames) as f32 * self.zoom;
+            let step = self.session.project.seconds(repeat.length_frames) as f32 * self.zoom;
             if step >= 4.0 {
                 let first = repeat.length_frames - repeat.phase_frame;
-                let visible = frames(f64::from((lane.left() - block.left()).max(0.0) / self.zoom));
+                let visible = self
+                    .session
+                    .project
+                    .frames(f64::from((lane.left() - block.left()).max(0.0) / self.zoom));
                 let skipped = visible.saturating_sub(first) / repeat.length_frames;
                 let mut local = first.saturating_add(skipped.saturating_mul(repeat.length_frames));
                 while local < clip.length_frames {
-                    let x = block.left() + seconds(local) as f32 * self.zoom;
+                    let x = block.left() + self.session.project.seconds(local) as f32 * self.zoom;
                     if x > lane.right() {
                         break;
                     }
@@ -4357,7 +4471,11 @@ impl DawUi {
             }
         }
         let x = rect.left()
-            + ((seconds(self.session.project.transport.playhead_frame) - self.scroll) as f32)
+            + ((self
+                .session
+                .project
+                .seconds(self.session.project.transport.playhead_frame)
+                - self.scroll) as f32)
                 * self.zoom;
         if x >= rect.left() && x <= rect.right() {
             painter.line_segment(
@@ -4369,7 +4487,9 @@ impl DawUi {
     fn dialogs(&mut self, ctx: &egui::Context) {
         if let Some(mut draft) = self.project_settings.take() {
             match draft.show(ctx) {
-                Some(project_settings::Action::Apply(name)) => self.rename_project(name),
+                Some(project_settings::Action::Apply(values)) => {
+                    self.apply_project_settings(values)
+                }
                 Some(project_settings::Action::Cancel) => {}
                 None => self.project_settings = Some(draft),
             }
@@ -4423,7 +4543,7 @@ impl DawUi {
             }
         }
         if let Some(mut settings) = self.export_dialog {
-            match export_dialog::show(ctx, &mut settings) {
+            match export_dialog::show(ctx, &mut settings, self.session.project.sample_rate_hz) {
                 Some(export_dialog::Action::Cancel) => self.export_dialog = None,
                 Some(export_dialog::Action::Export) => {
                     self.export_dialog = None;
@@ -4753,6 +4873,7 @@ mod tests {
                 app.session.audio.insert(
                     clip.asset_id,
                     daw_media::AudioData {
+                        sample_rate_hz: daw_core::SAMPLE_RATE,
                         samples: samples.clone(),
                         peaks: std::sync::Arc::new(vec![[[-0.2, 0.2]; 2]; 375]),
                         metadata: app.session.project.assets[0].source_metadata.clone(),
@@ -4929,6 +5050,7 @@ mod tests {
             app.session.audio.insert(
                 clip.asset_id,
                 daw_media::AudioData {
+                    sample_rate_hz: daw_core::SAMPLE_RATE,
                     samples: std::sync::Arc::new(vec![[f32::NAN; 2]; 24000]),
                     peaks: std::sync::Arc::new(vec![]),
                     metadata: app.session.project.assets[0].source_metadata.clone(),
@@ -8655,6 +8777,7 @@ mod tests {
         let mut status = export_status::ExportStatus::new(
             PathBuf::from("/tmp/report.wav"),
             ExportSettings::default(),
+            48_000,
             10000,
             vec!["Missing source: missing.wav".into()],
         );
@@ -8769,6 +8892,7 @@ mod tests {
                     format: daw_media::ExportFormat::Mp3,
                     ..Default::default()
                 },
+                48_000,
                 10000,
                 vec!["Missing source: missing.wav".into()],
             ));

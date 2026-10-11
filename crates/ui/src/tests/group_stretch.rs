@@ -6,6 +6,7 @@ fn fixture_with_audio() -> (DawUi, [Id; 3], [Id; 3]) {
     app.session.audio.insert(
         app.session.project.assets[0].id,
         daw_media::AudioData {
+            sample_rate_hz: daw_core::SAMPLE_RATE,
             samples: std::sync::Arc::new(vec![[0.2, -0.2]; frames(2.0) as usize]),
             peaks: std::sync::Arc::new(vec![[[-0.2, 0.2]; 2]; 375]),
             metadata: app.session.project.assets[0].source_metadata.clone(),

@@ -190,3 +190,68 @@ fn renamed_project_saves_in_its_existing_folder_and_reopens_with_new_name() {
     );
     std::fs::remove_dir_all(folder).unwrap();
 }
+
+#[test]
+fn audio_dropdowns_stage_cancel_and_apply_as_one_worker_transaction() {
+    let (mut app, track) = fixture();
+    app.select_track(track, false);
+    let before = format!("{:?}", app.session.project);
+    let ctx = context();
+    app.open_project_settings();
+    frame(&mut app, &ctx, vec![]);
+    click_dialog(&mut app, &ctx, "48000 Hz");
+    click_dialog(&mut app, &ctx, "96000 Hz");
+    click_dialog(&mut app, &ctx, "512 samples");
+    click_dialog(&mut app, &ctx, "128 samples");
+    assert_eq!(
+        app.project_settings.as_ref().unwrap().sample_rate_hz,
+        96_000
+    );
+    assert_eq!(
+        app.project_settings.as_ref().unwrap().buffer_size_frames,
+        128
+    );
+    assert_eq!(format!("{:?}", app.session.project), before);
+    click_dialog(&mut app, &ctx, "Cancel");
+    assert_eq!(format!("{:?}", app.session.project), before);
+    assert!(!app.dirty);
+    app.open_project_settings();
+    let draft = app.project_settings.as_mut().unwrap();
+    assert_eq!(draft.sample_rate_hz, 48_000);
+    assert_eq!(draft.buffer_size_frames, 512);
+    draft.name = "Audio settings".into();
+    draft.sample_rate_hz = 96_000;
+    draft.buffer_size_frames = 128;
+    click_dialog(&mut app, &ctx, "Apply");
+    // The worker cannot publish its result until the next poll.
+    assert!(app.job.is_some());
+    assert_eq!(format!("{:?}", app.session.project), before);
+    wait_for_save(&mut app);
+    assert!(app.error.is_none());
+    assert_eq!(app.session.project.sample_rate_hz, 96_000);
+    assert_eq!(app.session.project.buffer_size_frames, 128);
+    assert_eq!(app.session.project.name, "Audio settings");
+    assert!(app.dirty);
+    assert_eq!(app.selected_track, Some(track));
+    assert!(!app.sync_needed);
+}
+
+#[test]
+fn failed_audio_settings_retain_name_timing_and_modified_state() {
+    let (mut app, _) = fixture();
+    app.session.project.sample_rate_hz = 192_000;
+    app.session.project.tracks[0].clips[0].length_frames = 1;
+    let before = format!("{:?}", app.session.project);
+    let ctx = context();
+    app.open_project_settings();
+    let draft = app.project_settings.as_mut().unwrap();
+    draft.name = "Must not commit".into();
+    draft.sample_rate_hz = 44_100;
+    draft.buffer_size_frames = 64;
+    frame(&mut app, &ctx, vec![]);
+    click_dialog(&mut app, &ctx, "Apply");
+    wait_for_save(&mut app);
+    assert!(app.error.is_some());
+    assert_eq!(format!("{:?}", app.session.project), before);
+    assert!(!app.dirty);
+}

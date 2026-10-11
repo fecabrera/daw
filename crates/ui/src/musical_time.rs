@@ -1,22 +1,36 @@
-use daw_core::seconds;
-
 pub const BEATS_PER_BAR: u64 = 4;
 
+#[cfg(test)]
 pub fn position(frame: u64, tempo_bpm: f32) -> (u64, u64) {
-    let beat = (seconds(frame) * (f64::from(tempo_bpm) / 60.0)).floor() as u64;
+    position_at_rate(frame, tempo_bpm, daw_core::SAMPLE_RATE)
+}
+
+pub fn position_at_rate(frame: u64, tempo_bpm: f32, sample_rate_hz: u32) -> (u64, u64) {
+    let beat =
+        ((frame as f64 / f64::from(sample_rate_hz)) * (f64::from(tempo_bpm) / 60.0)).floor() as u64;
     (beat / BEATS_PER_BAR + 1, beat % BEATS_PER_BAR + 1)
 }
 
+#[cfg(test)]
 pub fn monitor(frame: u64, tempo_bpm: f32) -> String {
-    let (bar, beat) = position(frame, tempo_bpm);
+    monitor_at_rate(frame, tempo_bpm, daw_core::SAMPLE_RATE)
+}
+
+pub fn monitor_at_rate(frame: u64, tempo_bpm: f32, sample_rate_hz: u32) -> String {
+    let (bar, beat) = position_at_rate(frame, tempo_bpm, sample_rate_hz);
     format!("{bar:04}.{beat:02}")
 }
 
+#[cfg(test)]
 pub fn shift(frame: u64, tempo_bpm: f32, beats: i64) -> u64 {
+    shift_at_rate(frame, tempo_bpm, beats, daw_core::SAMPLE_RATE)
+}
+
+pub fn shift_at_rate(frame: u64, tempo_bpm: f32, beats: i64, sample_rate_hz: u32) -> u64 {
     if beats == 0 {
         return frame;
     }
-    let frames_per_beat = f64::from(daw_core::SAMPLE_RATE) * 60.0 / f64::from(tempo_bpm);
+    let frames_per_beat = f64::from(sample_rate_hz) * 60.0 / f64::from(tempo_bpm);
     // The next sample must not fall just before a fractional beat boundary.
     (frame as f64 + beats as f64 * frames_per_beat)
         .max(0.0)
@@ -32,6 +46,7 @@ pub fn size_boundaries(frame: u64, anchor: u64, length: u64) -> impl Iterator<It
 }
 
 pub struct Timeline {
+    sample_rate_hz: u32,
     beats_per_second: f64,
     pixels_per_beat: f64,
     scroll_beats: f64,
@@ -46,9 +61,25 @@ pub struct Tick {
 }
 
 impl Timeline {
+    #[cfg(test)]
     pub fn new(tempo_bpm: f32, pixels_per_second: f32, scroll_seconds: f64) -> Self {
+        Self::at_sample_rate(
+            tempo_bpm,
+            pixels_per_second,
+            scroll_seconds,
+            daw_core::SAMPLE_RATE,
+        )
+    }
+
+    pub fn at_sample_rate(
+        tempo_bpm: f32,
+        pixels_per_second: f32,
+        scroll_seconds: f64,
+        sample_rate_hz: u32,
+    ) -> Self {
         let beats_per_second = f64::from(tempo_bpm) / 60.0;
         Self {
+            sample_rate_hz,
             beats_per_second,
             pixels_per_beat: f64::from(pixels_per_second) / beats_per_second,
             scroll_beats: scroll_seconds * beats_per_second,
@@ -56,7 +87,7 @@ impl Timeline {
     }
 
     pub fn beats(&self, frame: u64) -> f64 {
-        seconds(frame) * self.beats_per_second
+        (frame as f64 / f64::from(self.sample_rate_hz)) * self.beats_per_second
     }
 
     fn visible_step(&self) -> f64 {
@@ -66,7 +97,7 @@ impl Timeline {
     }
 
     fn snap_radius(&self) -> f64 {
-        6.0 / self.pixels_per_beat / self.beats_per_second * f64::from(daw_core::SAMPLE_RATE)
+        6.0 / self.pixels_per_beat / self.beats_per_second * f64::from(self.sample_rate_hz)
     }
 
     fn grid_spacings(&self) -> [f64; 3] {
@@ -89,7 +120,7 @@ impl Timeline {
                 .filter(|index| *index >= 0.0)
                 // Ceil prevents fractional beat boundaries landing in the previous beat.
                 .map(|index| {
-                    (index * spacing / self.beats_per_second * f64::from(daw_core::SAMPLE_RATE))
+                    (index * spacing / self.beats_per_second * f64::from(self.sample_rate_hz))
                         .ceil() as u64
                 }),
         )
@@ -236,6 +267,24 @@ impl Timeline {
 mod tests {
     use super::*;
     use daw_core::frames;
+
+    #[test]
+    fn selected_processing_rate_preserves_musical_positions_and_snap_geometry() {
+        for rate in daw_core::SAMPLE_RATES {
+            let frame = |seconds: f64| (seconds * f64::from(rate)).round() as u64;
+            let timeline = Timeline::at_sample_rate(120.0, 70.0, 0.0, rate);
+            assert_eq!(monitor_at_rate(frame(2.0), 120.0, rate), "0002.01");
+            assert_eq!(shift_at_rate(0, 120.0, 4, rate), frame(2.0));
+            assert_eq!(timeline.beats(frame(2.0)), 4.0);
+            for (raw, expected) in [(2.03, 2.0), (2.53, 2.5), (2.28, 2.25)] {
+                assert_eq!(timeline.snap(frame(raw), 0..=u64::MAX, []), frame(expected));
+            }
+            assert_eq!(
+                timeline.snap_range(frame(1.49), frame(0.51), []),
+                frame(1.49)
+            );
+        }
+    }
 
     #[test]
     fn monitor_counts_beats_and_bars_from_one_at_the_project_tempo() {

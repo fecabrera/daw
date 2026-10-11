@@ -77,6 +77,15 @@ pub struct ExportSettings {
     pub wav_codec: WavCodec,
     pub mp3_bitrate: Mp3Bitrate,
 }
+impl ExportSettings {
+    pub fn output_sample_rate(self, project_rate_hz: u32) -> u32 {
+        match self.format {
+            ExportFormat::Wav => project_rate_hz,
+            ExportFormat::Mp3 => project_rate_hz.min(SAMPLE_RATE),
+        }
+    }
+}
+
 pub trait AudioEncoder {
     fn write_frames(&mut self, frames: &[[f32; 2]]) -> Result<()>;
     fn finish(self) -> Result<()>;
@@ -102,6 +111,9 @@ impl WavEncoder {
         Self::with_codec(path, WavCodec::Pcm24)
     }
     pub fn with_codec(path: &Path, codec: WavCodec) -> Result<Self> {
+        Self::at_sample_rate(path, codec, SAMPLE_RATE)
+    }
+    pub fn at_sample_rate(path: &Path, codec: WavCodec, sample_rate_hz: u32) -> Result<Self> {
         let (bits_per_sample, sample_format) = match codec {
             WavCodec::Pcm16 => (16, hound::SampleFormat::Int),
             WavCodec::Pcm24 => (24, hound::SampleFormat::Int),
@@ -111,7 +123,7 @@ impl WavEncoder {
             path,
             hound::WavSpec {
                 channels: 2,
-                sample_rate: SAMPLE_RATE,
+                sample_rate: sample_rate_hz,
                 bits_per_sample,
                 sample_format,
             },
@@ -168,13 +180,13 @@ pub struct Mp3Encoder {
     clipped: bool,
 }
 impl Mp3Encoder {
-    fn create(path: &Path, bitrate: Mp3Bitrate) -> Result<Self> {
+    fn create(path: &Path, bitrate: Mp3Bitrate, sample_rate_hz: u32) -> Result<Self> {
         let mut builder = mp3lame_encoder::Builder::new()
             .ok_or_else(|| Error("Cannot initialize MP3 encoder".into()))?;
         builder.set_num_channels(2).map_err(error)?;
-        builder.set_sample_rate(SAMPLE_RATE).map_err(error)?;
+        builder.set_sample_rate(sample_rate_hz).map_err(error)?;
         builder
-            .set_output_sample_rate(std::num::NonZeroU32::new(SAMPLE_RATE))
+            .set_output_sample_rate(std::num::NonZeroU32::new(sample_rate_hz.min(SAMPLE_RATE)))
             .map_err(error)?;
         builder.set_brate(bitrate.lame()).map_err(error)?;
         builder
@@ -240,9 +252,20 @@ pub enum ExportEncoder {
 }
 impl ExportEncoder {
     pub fn create(path: &Path, settings: ExportSettings) -> Result<Self> {
+        Self::at_sample_rate(path, settings, SAMPLE_RATE)
+    }
+    pub fn at_sample_rate(
+        path: &Path,
+        settings: ExportSettings,
+        sample_rate_hz: u32,
+    ) -> Result<Self> {
         match settings.format {
-            ExportFormat::Wav => WavEncoder::with_codec(path, settings.wav_codec).map(Self::Wav),
-            ExportFormat::Mp3 => Mp3Encoder::create(path, settings.mp3_bitrate).map(Self::Mp3),
+            ExportFormat::Wav => {
+                WavEncoder::at_sample_rate(path, settings.wav_codec, sample_rate_hz).map(Self::Wav)
+            }
+            ExportFormat::Mp3 => {
+                Mp3Encoder::create(path, settings.mp3_bitrate, sample_rate_hz).map(Self::Mp3)
+            }
         }
     }
     pub fn clipped(&self) -> bool {

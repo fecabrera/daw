@@ -48,6 +48,113 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn processing_rate_and_buffer_survive_save_reopen_import_stretch_and_render() {
+    let f = Fixture::new();
+    let source = f.wav("high-rate.wav", 96_000, 2, 24, false);
+    let source_bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 48_000).unwrap();
+    let clip = &mut session.project.tracks[0].clips[0];
+    clip.source_offset_frame = 240;
+    clip.length_frames = 2400;
+    clip.repeat = Some(ClipLoop {
+        length_frames: 960,
+        phase_frame: 240,
+    });
+    clip.stretch = daw_core::ClipStretch::new(2, 3);
+    session.prepare_stretches().unwrap();
+    let clip = session.project.tracks[0].clips[0].clone();
+    let before = session.project.clone();
+    let mut changed = session.with_audio_settings(96_000, 128).unwrap();
+    let audio = &changed.audio[&clip.asset_id];
+    assert_eq!(audio.sample_rate_hz, 96_000);
+    assert_eq!(audio.samples.len(), 9600);
+    assert_eq!(
+        *audio.samples,
+        *daw_media::decode_wav_at_rate(&source, 96_000)
+            .unwrap()
+            .samples
+    );
+    assert_eq!(
+        changed.stretched_audio[&(clip.asset_id, clip.stretch.unwrap())]
+            .samples
+            .len(),
+        14_400
+    );
+    let next_clip = &changed.project.tracks[0].clips[0];
+    assert_eq!(next_clip.start_frame, clip.start_frame * 2);
+    assert_eq!(next_clip.source_offset_frame, clip.source_offset_frame * 2);
+    assert_eq!(next_clip.length_frames, clip.length_frames * 2);
+    assert_eq!(
+        next_clip.repeat.unwrap().phase_frame,
+        clip.repeat.unwrap().phase_frame * 2
+    );
+    assert_eq!(next_clip.stretch, clip.stretch);
+    assert_eq!(
+        changed.project.assets[0].source_metadata.sample_rate_hz,
+        96_000
+    );
+    changed.save(&f.0.join("project")).unwrap();
+    let loaded = Session::open(&f.0.join("project")).unwrap();
+    assert_eq!(loaded.project.sample_rate_hz, 96_000);
+    assert_eq!(loaded.project.buffer_size_frames, 128);
+    assert_eq!(loaded.audio[&clip.asset_id].sample_rate_hz, 96_000);
+    assert_eq!(
+        loaded.stretched_audio[&(clip.asset_id, clip.stretch.unwrap())].sample_rate_hz,
+        96_000
+    );
+    let output = f.0.join("high-rate-mix.wav");
+    loaded.export(&output, false).unwrap();
+    let reader = hound::WavReader::open(&output).unwrap();
+    assert_eq!(reader.spec().sample_rate, 96_000);
+    assert_eq!(u64::from(reader.duration()), loaded.project.end());
+    let mut imported = loaded.clone();
+    imported
+        .import(&source, None, imported.project.frames(2.0))
+        .unwrap();
+    assert_eq!(
+        imported.project.assets.last().unwrap().decoded_frame_count,
+        9600
+    );
+    assert_eq!(fs::read(&source).unwrap(), source_bytes);
+    assert_eq!(format!("{:?}", session.project), format!("{before:?}"));
+}
+
+#[test]
+fn legacy_projects_default_buffer_and_failed_audio_changes_retain_session() {
+    let f = Fixture::new();
+    let mut json = serde_json::to_value(Project::default()).unwrap();
+    json.as_object_mut().unwrap().remove("buffer_size_frames");
+    fs::write(f.0.join("project.json"), serde_json::to_vec(&json).unwrap()).unwrap();
+    let legacy = Session::open(&f.0).unwrap();
+    assert_eq!(legacy.project.sample_rate_hz, 48_000);
+    assert_eq!(legacy.project.buffer_size_frames, 512);
+    let source = f.wav("source.wav", 48_000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let before = format!("{:?}", session.project);
+    let asset = session.project.assets[0].id;
+    let samples = session.audio[&asset].samples.clone();
+    fs::write(&source, b"broken").unwrap();
+    assert!(session.with_audio_settings(44_100, 256).is_err());
+    assert_eq!(format!("{:?}", session.project), before);
+    assert!(std::sync::Arc::ptr_eq(
+        &samples,
+        &session.audio[&asset].samples
+    ));
+    let buffer_only = session.with_audio_settings(48_000, 64).unwrap();
+    assert_eq!(buffer_only.project.buffer_size_frames, 64);
+    assert!(std::sync::Arc::ptr_eq(
+        &samples,
+        &buffer_only.audio[&asset].samples
+    ));
+    fs::remove_file(source).unwrap();
+    let cached = session.with_audio_settings(44_100, 256).unwrap();
+    assert_eq!(cached.audio[&asset].samples.len(), 4410);
+    assert!(cached.warnings.last().unwrap().contains("cached audio"));
+}
+
+#[test]
 fn resize_neighbor_trims_preserve_source_audio_and_survive_save_render_and_reopen() {
     use daw_core::{Clip, ClipEdge, Id};
     let fixture = Fixture::new();
@@ -1612,7 +1719,7 @@ fn schema_version_is_ignored_and_invalid_structure_is_rejected() {
     .unwrap();
     let s = Session::open(&f.0).unwrap();
     assert!(s.export(&f.0.join("empty.wav"), false).is_err());
-    value["sample_rate_hz"] = serde_json::json!(44100);
+    value["sample_rate_hz"] = serde_json::json!(22050);
     fs::write(
         f.0.join("project.json"),
         serde_json::to_vec(&value).unwrap(),
@@ -2078,4 +2185,69 @@ fn invalid_overwrite_import_retains_assets_clips_and_decoded_audio() {
     );
     assert_eq!(format!("{:?}", session.project), before);
     assert_eq!(session.audio.len(), audio_count);
+}
+
+#[test]
+fn mp3_export_converts_high_processing_rates_with_correct_duration() {
+    use daw_media::{ExportFormat, ExportSettings};
+    use symphonia::core::{
+        codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,
+        meta::MetadataOptions, probe::Hint,
+    };
+    let fixture = Fixture::new();
+    let source = fixture.wav("rates.wav", 96_000, 2, 16, false);
+    let mut original = Session::default();
+    original.import(&source, None, 0).unwrap();
+    for rate in daw_core::SAMPLE_RATES {
+        let session = original.with_audio_settings(rate, 64).unwrap();
+        let output = fixture.0.join(format!("{rate}.mp3"));
+        session
+            .export_with_settings(
+                &output,
+                false,
+                ExportSettings {
+                    format: ExportFormat::Mp3,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let mss = MediaSourceStream::new(
+            Box::new(fs::File::open(output).unwrap()),
+            Default::default(),
+        );
+        let mut hint = Hint::new();
+        hint.with_extension("mp3");
+        let mut format = symphonia::default::get_probe()
+            .format(
+                &hint,
+                mss,
+                &FormatOptions {
+                    enable_gapless: true,
+                    ..Default::default()
+                },
+                &MetadataOptions::default(),
+            )
+            .unwrap()
+            .format;
+        let track = format.default_track().unwrap();
+        let output_rate = rate.min(48_000);
+        assert_eq!(track.codec_params.sample_rate, Some(output_rate));
+        let mut decoder = symphonia::default::get_codecs()
+            .make(&track.codec_params, &DecoderOptions::default())
+            .unwrap();
+        let mut frames = 0;
+        loop {
+            let packet = match format.next_packet() {
+                Ok(packet) => packet,
+                Err(symphonia::core::errors::Error::IoError(error))
+                    if error.kind() == std::io::ErrorKind::UnexpectedEof =>
+                {
+                    break;
+                }
+                Err(error) => panic!("{error}"),
+            };
+            frames += decoder.decode(&packet).unwrap().frames();
+        }
+        assert_eq!(frames, output_rate as usize / 10, "processing rate {rate}");
+    }
 }

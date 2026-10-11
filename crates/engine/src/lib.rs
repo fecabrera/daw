@@ -35,7 +35,7 @@ impl RenderPlan {
                 let Some(source) = audio.samples.get(source_frame as usize) else {
                     continue;
                 };
-                let fade = sample_fade(c, local, source_frame);
+                let fade = sample_fade(c, local, source_frame, self.project.sample_rate_hz);
                 let coefficients = pan_coefficients(t.pan, audio.metadata.channels == 1);
                 for ch in 0..2 {
                     mix[ch] += source[ch] * gain * fade * coefficients[ch];
@@ -51,18 +51,23 @@ impl RenderPlan {
         }
     }
 }
-fn sample_fade(clip: &daw_core::Clip, local: u64, source_frame: u64) -> f32 {
-    let outer = clip_fade(local, clip.length_frames);
+fn sample_fade(clip: &daw_core::Clip, local: u64, source_frame: u64, sample_rate_hz: u32) -> f32 {
+    let outer = clip_fade_at_rate(local, clip.length_frames, sample_rate_hz);
     clip.repeat.map_or(outer, |repeat| {
-        outer.min(clip_fade(
+        outer.min(clip_fade_at_rate(
             source_frame - clip.source_offset_frame,
             repeat.length_frames,
+            sample_rate_hz,
         ))
     })
 }
 
 pub fn clip_fade(position: u64, length: u64) -> f32 {
-    let fade = 240.min(length / 2);
+    clip_fade_at_rate(position, length, daw_core::SAMPLE_RATE)
+}
+
+pub fn clip_fade_at_rate(position: u64, length: u64, sample_rate_hz: u32) -> f32 {
+    let fade = (u64::from(sample_rate_hz) / 200).max(1).min(length / 2);
     if fade == 0 {
         return 0.0;
     }
@@ -148,29 +153,30 @@ impl Renderer {
         }
     }
     pub fn inherit(&mut self, old: &Self) {
+        let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
         self.playhead = old.playhead;
         self.playing = old.playing;
         self.paused = old.paused;
         self.playback_start = old.playback_start;
         self.ramp = old.ramp;
         self.master = old.master;
-        self.master_remaining = 240;
+        self.master_remaining = fade_frames;
         self.previous = old.previous;
         self.transition_from = old.previous;
-        self.transition = 240;
+        self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
         for g in &mut self.gains {
             if let Some(o) = old.gains.iter().find(|o| o.id == g.id) {
                 g.value = o.value;
             } else {
                 g.value = [0.0; 4];
             }
-            g.remaining = 240;
+            g.remaining = fade_frames;
         }
     }
     pub fn seek(&mut self, frame: u64) {
         self.playhead = frame;
         self.transition_from = self.previous;
-        self.transition = 240;
+        self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
     }
     pub fn play(&mut self) {
         if self.plan.project.end() > 0 {
@@ -205,11 +211,12 @@ impl Renderer {
         self.gains.iter().map(|g| g.peak)
     }
     pub fn next_sample(&mut self) -> [f32; 2] {
+        let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1) as f32;
         let target = if self.playing { 1.0 } else { 0.0 };
         self.ramp = if self.ramp < target {
-            (self.ramp + 1.0 / 240.0).min(target)
+            (self.ramp + 1.0 / fade_frames).min(target)
         } else {
-            (self.ramp - 1.0 / 240.0).max(target)
+            (self.ramp - 1.0 / fade_frames).max(target)
         };
         let mut mix = [0.0; 2];
         if self.playing || self.ramp > 0.0 {
@@ -220,7 +227,7 @@ impl Renderer {
             {
                 self.playhead = l.start_frame;
                 self.transition_from = self.previous;
-                self.transition = 240;
+                self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
             }
             if self.playing && !l.enabled && self.playhead >= self.plan.project.end() {
                 self.playing = false;
@@ -244,7 +251,8 @@ impl Renderer {
                     let source_frame = c.source_frame(local);
                     if let Some(s) = audio.samples.get(source_frame as usize) {
                         let base = if audio.metadata.channels == 1 { 0 } else { 2 };
-                        let fade = sample_fade(c, local, source_frame);
+                        let fade =
+                            sample_fade(c, local, source_frame, self.plan.project.sample_rate_hz);
                         for ch in 0..2 {
                             let sample = s[ch] * g.value[base + ch] * fade;
                             mix[ch] += sample;
@@ -265,7 +273,7 @@ impl Renderer {
             *x *= self.master * self.ramp;
         }
         if self.transition > 0 {
-            let progress = 1.0 - self.transition as f32 / 240.0;
+            let progress = 1.0 - self.transition as f32 / fade_frames;
             for (ch, value) in mix.iter_mut().enumerate() {
                 *value = self.transition_from[ch] * (1.0 - progress) + *value * progress;
             }
@@ -333,6 +341,7 @@ mod tests {
             audio: HashMap::from([(
                 id,
                 AudioData {
+                    sample_rate_hz: daw_core::SAMPLE_RATE,
                     samples: Arc::new(vec![[0.25, -0.25]; 2000]),
                     metadata,
                     peaks: Arc::new(vec![]),
@@ -340,6 +349,30 @@ mod tests {
             )]),
         }
     }
+    #[test]
+    fn processing_rate_keeps_fades_and_live_offline_samples_consistent() {
+        for rate in daw_core::SAMPLE_RATES {
+            let mut plan = plan();
+            plan.project = plan.project.with_audio_settings(rate, 64).unwrap();
+            let id = plan.project.assets[0].id;
+            plan.audio
+                .insert(id, plan.audio[&id].at_sample_rate(rate).unwrap());
+            let mut renderer = Renderer::new(plan.clone());
+            renderer.play();
+            let nominal_fade = u64::from(rate / 200);
+            assert_eq!(clip_fade_at_rate(nominal_fade, u64::from(rate), rate), 1.0);
+            assert!(
+                (clip_fade_at_rate(nominal_fade / 2, u64::from(rate), rate) - 0.5).abs() < 0.01
+            );
+            for frame in 0..plan.project.end() {
+                let sample = renderer.next_sample();
+                if frame >= nominal_fade {
+                    assert_eq!(sample, plan.sample_at(frame));
+                }
+            }
+        }
+    }
+
     #[test]
     fn repeated_clip_playback_and_render_share_the_trimmed_source_and_fades() {
         let mut plan = plan();

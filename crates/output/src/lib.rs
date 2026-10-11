@@ -101,6 +101,8 @@ type BuiltStream = (
     Consumer<Box<PreparedRenderer>>,
 );
 pub struct AudioOutput {
+    project_rate_hz: u32,
+    buffer_size_frames: u32,
     _stream: cpal::Stream,
     commands: Producer<Command>,
     retired: Consumer<Box<PreparedRenderer>>,
@@ -110,6 +112,8 @@ pub struct AudioOutput {
 }
 impl AudioOutput {
     pub fn new(plan: RenderPlan) -> Result<Self, String> {
+        let project_rate_hz = plan.project.sample_rate_hz;
+        let buffer_size_frames = plan.project.buffer_size_frames;
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -121,17 +125,18 @@ impl AudioOutput {
             .find(|c| {
                 c.channels() == default.channels()
                     && c.sample_format() == default.sample_format()
-                    && c.min_sample_rate().0 <= 48_000
-                    && c.max_sample_rate().0 >= 48_000
+                    && c.min_sample_rate().0 <= project_rate_hz
+                    && c.max_sample_rate().0 >= project_rate_hz
             })
-            .map(|c| c.with_sample_rate(cpal::SampleRate(48_000)))
+            .map(|c| c.with_sample_rate(cpal::SampleRate(project_rate_hz)))
             .unwrap_or(default);
         let format = config.sample_format();
         let rate = config.sample_rate().0;
         let mut stream_config: cpal::StreamConfig = config.clone().into();
-        if let cpal::SupportedBufferSize::Range { min, max } = config.buffer_size() {
-            stream_config.buffer_size = cpal::BufferSize::Fixed(512.clamp(*min, *max));
-        }
+        stream_config.buffer_size = cpal::BufferSize::Fixed(match config.buffer_size() {
+            cpal::SupportedBufferSize::Range { min, max } => buffer_size_frames.clamp(*min, *max),
+            cpal::SupportedBufferSize::Unknown => buffer_size_frames,
+        });
         let status = Arc::new(Status::default());
         let meters = track_meters(&plan, &HashMap::new());
         // Retried stream construction happens before playback; each attempt receives fresh queues.
@@ -178,12 +183,15 @@ impl AudioOutput {
         };
         stream.play().map_err(|e| e.to_string())?;
         let description = format!(
-            "{} · {} Hz · {:?}",
+            "{} · {} Hz · {:?} (requested {} samples)",
             device.name().unwrap_or_else(|_| "Default output".into()),
             rate,
-            stream_config.buffer_size
+            stream_config.buffer_size,
+            buffer_size_frames
         );
         Ok(Self {
+            project_rate_hz,
+            buffer_size_frames,
             _stream: stream,
             commands,
             retired,
@@ -199,6 +207,11 @@ impl AudioOutput {
             .map_err(|_| "Audio command queue is full; try again".into())
     }
     pub fn sync(&mut self, plan: RenderPlan) -> Result<(), String> {
+        if plan.project.sample_rate_hz != self.project_rate_hz
+            || plan.project.buffer_size_frames != self.buffer_size_frames
+        {
+            return Err("Recreate output after changing project audio settings".into());
+        }
         let meters = track_meters(&plan, &self.track_meters);
         self.send(Command::Plan(Box::new(PreparedRenderer::new(
             plan, &meters,
@@ -249,10 +262,18 @@ impl Callback {
         status: Arc<Status>,
         rate: u32,
     ) -> Result<Self, String> {
-        let converter = if rate != 48_000 {
+        let project_rate_hz = plan.project.sample_rate_hz;
+        let buffer_size_frames = plan.project.buffer_size_frames as usize;
+        let converter = if rate != project_rate_hz {
             Some(
-                rubato::FftFixedIn::new(48_000, rate as usize, 512, 2, 2)
-                    .map_err(|e| e.to_string())?,
+                rubato::FftFixedIn::new(
+                    project_rate_hz as usize,
+                    rate as usize,
+                    buffer_size_frames,
+                    2,
+                    2,
+                )
+                .map_err(|e| e.to_string())?,
             )
         } else {
             None
@@ -460,11 +481,57 @@ mod tests {
             audio: HashMap::from([(
                 id,
                 daw_media::AudioData {
+                    sample_rate_hz: daw_core::SAMPLE_RATE,
                     samples: Arc::new(vec![[0.25, -0.25]; 48_000]),
                     metadata,
                     peaks: Arc::new(vec![]),
                 },
             )]),
+        }
+    }
+
+    #[test]
+    fn variable_project_rates_and_buffers_render_at_device_rate() {
+        for project_rate in daw_core::SAMPLE_RATES {
+            for buffer in daw_core::BUFFER_SIZES {
+                let mut plan = transport_plan();
+                plan.project = plan
+                    .project
+                    .with_audio_settings(project_rate, buffer)
+                    .unwrap();
+                let id = plan.project.assets[0].id;
+                plan.audio
+                    .insert(id, plan.audio[&id].at_sample_rate(project_rate).unwrap());
+                let meters = track_meters(&plan, &HashMap::new());
+                let (mut producer, consumer) = RingBuffer::new(32);
+                let (retire, _retired) = RingBuffer::new(64);
+                let status = Arc::new(Status::default());
+                let start = plan.project.transport.playhead_frame;
+                let mut callback =
+                    Callback::new(plan, &meters, consumer, retire, status.clone(), 48_000).unwrap();
+                producer.push(Command::Play).unwrap();
+                callback.update();
+                let mut audible = false;
+                for _ in 0..4_800 {
+                    let sample = callback.next();
+                    assert!(sample.iter().all(|value| value.is_finite()));
+                    audible |= sample[0].abs() > 0.1;
+                }
+                assert!(audible);
+                let consumed = callback.renderer.playhead - start;
+                let expected = u64::from(project_rate) / 10;
+                let quantum = callback
+                    .converter
+                    .as_ref()
+                    .map_or(1, |converter| converter.input_frames_next())
+                    as u64;
+                assert!(
+                    // FFT conversion can prefetch two input blocks.
+                    consumed.abs_diff(expected) <= quantum * 2,
+                    "rate {project_rate}, buffer {buffer}: {consumed}"
+                );
+                assert!(!status.failed.load(Ordering::Relaxed));
+            }
         }
     }
 

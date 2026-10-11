@@ -88,6 +88,7 @@ mod tests {
             })
             .collect();
         AudioData {
+            sample_rate_hz: daw_core::SAMPLE_RATE,
             samples: Arc::new(samples),
             peaks: Arc::new(peaks),
             metadata: SourceMetadata {
