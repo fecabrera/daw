@@ -325,6 +325,35 @@ fn mixer_faders_and_buttons_change_shared_values_and_preserve_group_selection() 
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let first_rect = app.mixer_bounds[&track];
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    for label in ["M", "S"] {
+        let center = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    assert!(text.galley.job.sections.iter().all(|section| {
+                        section.format.font_id == egui::FontId::proportional(11.0)
+                    }));
+                    let center = text.pos + text.galley.size() * 0.5;
+                    first_rect.contains(center).then_some(center)
+                }
+                _ => None,
+            })
+            .unwrap();
+        let rect = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(rect)
+                    if rect.rect.contains(center) && rect.rect.width() < 30.0 =>
+                {
+                    Some(rect.rect)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(rect.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
+        assert!(first_rect.contains_rect(rect));
+    }
     click(&mut app, &ctx, first_rect.center());
     let second_rect = app.mixer_bounds[&second];
     let point = second_rect.center();

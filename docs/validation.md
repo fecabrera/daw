@@ -780,3 +780,10 @@ All 228 workspace tests pass, including 27 core tests and 158 UI tests. New chec
 - Added rendered-glyph checks at 13 and 18 points with 1×, 1.5×, and 2× display scales. Command matches R's height within 1.5 logical points and its bottom alignment within 1 point; standalone Outfit letters retain identical glyphs and layout. Extended menu paint coverage to check the font family across all menus, both themes, and enabled/disabled states.
 - All 254 workspace tests pass with `CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace --offline`. Formatting, strict workspace Clippy, and diff checks pass. Rebuilt the macOS debug app with `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh debug`. Logs: `work/menu-command-size-targeted.log`, `work/menu-command-size-tests.log`, `work/menu-command-size-clippy.log`, and `work/menu-command-size-package.log`.
 - Native appearance was not checked. The running app and its open project were left intact; the rebuilt bundle is on disk.
+
+## Square Mute/Solo buttons and smaller labels — 2026-10-11
+
+- Timeline and Mixer now share 22 × 22-point square Mute/Solo buttons with 11-point Outfit labels. Timeline reserves the narrower pair's width in its header; Mixer keeps the pair centered. Tooltips, accessible names/states, selected styling, and toggle actions remain intact.
+- Extended existing Timeline and Mixer paint/input tests to check square bounds and label font size. Updated Timeline click coordinates for the narrower controls. Name alignment, reordering, header selection, and shared mute/solo behavior pass.
+- All 254 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/square-track-toggles-tests.log`, `work/square-track-toggles-clippy.log`, and `work/square-track-toggles-package.log`.
+- Native appearance was not checked; the running app and open project were left intact.

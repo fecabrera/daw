@@ -2983,8 +2983,8 @@ impl DawUi {
                                         let mut solo = track.soloed;
                                         let header =
                                             rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                                                let buttons_width =
-                                                    2.0 * 28.0 + ui.spacing().item_spacing.x;
+                                                let buttons_width = 2.0 * toolbars::CONTROL_HEIGHT
+                                                    + ui.spacing().item_spacing.x;
                                                 let name_width = (ui.available_width()
                                                     - toolbars::CONTROL_HEIGHT
                                                     - buttons_width
@@ -3000,15 +3000,11 @@ impl DawUi {
                                                     .with_main_align(egui::Align::Min),
                                                     |ui| self.track_name(ui, &track),
                                                 );
-                                                let mute_button = ui
-                                                    .add(
-                                                        egui::Button::new("M")
-                                                            .selected(mute)
-                                                            .min_size(Vec2::new(28.0, 22.0)),
-                                                    )
-                                                    .on_hover_text(
-                                                        "Mute (M toggles selected tracks)",
-                                                    );
+                                                let mute_button =
+                                                    toolbars::square_toggle(ui, "M", mute)
+                                                        .on_hover_text(
+                                                            "Mute (M toggles selected tracks)",
+                                                        );
                                                 mute_button.widget_info(|| {
                                                     egui::WidgetInfo::selected(
                                                         egui::WidgetType::Button,
@@ -3020,15 +3016,11 @@ impl DawUi {
                                                 if mute_button.clicked() {
                                                     mute = !mute;
                                                 }
-                                                let solo_button = ui
-                                                    .add(
-                                                        egui::Button::new("S")
-                                                            .selected(solo)
-                                                            .min_size(Vec2::new(28.0, 22.0)),
-                                                    )
-                                                    .on_hover_text(
-                                                        "Solo (S toggles selected tracks)",
-                                                    );
+                                                let solo_button =
+                                                    toolbars::square_toggle(ui, "S", solo)
+                                                        .on_hover_text(
+                                                            "Solo (S toggles selected tracks)",
+                                                        );
                                                 solo_button.widget_info(|| {
                                                     egui::WidgetInfo::selected(
                                                         egui::WidgetType::Button,
@@ -6978,6 +6970,9 @@ mod tests {
                     .iter()
                     .find_map(|shape| match &shape.shape {
                         egui::Shape::Text(text) if text.galley.text() == label => {
+                            assert!(text.galley.job.sections.iter().all(|section| {
+                                section.format.font_id == egui::FontId::proportional(11.0)
+                            }));
                             Some(text.pos + text.galley.size() * 0.5)
                         }
                         _ => None,
@@ -6986,10 +6981,24 @@ mod tests {
             };
             let mute = button_center("M");
             let solo = button_center("S");
+            for center in [mute, solo] {
+                let rect = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Rect(rect)
+                            if rect.rect.contains(center) && rect.rect.width() < 30.0 =>
+                        {
+                            Some(rect.rect)
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(rect.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
+            }
             assert!((mute.y - name.y).abs() < 1.0);
             assert!((solo.y - name.y).abs() < 1.0);
             assert!(name.x < mute.x && mute.x < solo.x);
-            assert!((solo.x - (lane.left() - TRACK_WIDTH + 203.0)).abs() < 1.0);
+            assert!((solo.x - (lane.left() - TRACK_WIDTH + 206.0)).abs() < 1.0);
             let grip = Pos2::new(lane.left() - TRACK_WIDTH + 18.0, lane.top() + 18.0);
             let destination = Pos2::new(grip.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
             frame(
@@ -7307,8 +7316,8 @@ mod tests {
             ("bottom padding", Vec2::new(30.0, 66.0)),
             ("between rows", Vec2::new(60.0, 31.0)),
             ("name", Vec2::new(110.0, 18.0)),
-            ("mute", Vec2::new(169.0, 18.0)),
-            ("solo", Vec2::new(203.0, 18.0)),
+            ("mute", Vec2::new(178.0, 18.0)),
+            ("solo", Vec2::new(206.0, 18.0)),
             ("gain knob", Vec2::new(21.0, 47.0)),
             ("gain input", Vec2::new(56.0, 47.0)),
             ("pan knob", Vec2::new(93.0, 47.0)),

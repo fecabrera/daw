@@ -78,7 +78,7 @@ fn header_spacing_selects_clips_but_names_and_controls_keep_their_actions() {
     double_click(&mut app, &ctx, Pos2::new(32.0, y)); // Gap after the grip.
     assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[1]]));
     app.select_clip(ids[2], tracks[1], false);
-    double_click(&mut app, &ctx, Pos2::new(169.0, y)); // Mute button.
+    double_click(&mut app, &ctx, Pos2::new(178.0, y)); // Mute button.
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
     assert!(!app.session.project.tracks[0].muted);
     double_click(&mut app, &ctx, Pos2::new(50.0, y)); // Visible name text.
