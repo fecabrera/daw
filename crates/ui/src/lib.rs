@@ -19,11 +19,13 @@ use std::{
 pub mod dialogs;
 mod export_dialog;
 mod export_status;
+pub mod faders;
 mod file_drop;
 pub mod fonts;
 pub mod icons;
 pub mod knobs;
 pub mod meters;
+mod mixer;
 mod musical_time;
 pub mod panels;
 mod project_name_dialog;
@@ -557,6 +559,11 @@ struct LoopDrag {
 }
 
 pub struct DawUi {
+    view_mode: mixer::ViewMode,
+    #[cfg(test)]
+    mixer_bounds: HashMap<Id, Rect>,
+    #[cfg(test)]
+    mixer_faders: HashMap<Option<Id>, Rect>,
     settings: settings::AppSettings,
     settings_open: bool,
     project_settings: Option<project_settings::ProjectSettings>,
@@ -617,6 +624,11 @@ pub struct DawUi {
 impl Default for DawUi {
     fn default() -> Self {
         Self {
+            view_mode: mixer::ViewMode::default(),
+            #[cfg(test)]
+            mixer_bounds: HashMap::new(),
+            #[cfg(test)]
+            mixer_faders: HashMap::new(),
             settings: settings::AppSettings::default(),
             settings_open: false,
             project_settings: None,
@@ -1372,7 +1384,7 @@ impl DawUi {
         self.update_window_title(&ctx);
         egui::Panel::top("toolbar")
             .frame(egui::Frame::new().fill(theme::palette(ui.ctx()).panel))
-            .show_separator_line(true)
+            .show_separator_line(self.view_mode != mixer::ViewMode::Mixer)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.add_enabled_ui(
@@ -1385,45 +1397,47 @@ impl DawUi {
                     |ui| self.toolbar(ui),
                 );
             });
-        egui::Panel::bottom("status").show(ui, |ui| {
-            rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                if self.job.is_some() {
-                    ui.spinner();
-                    ui.label(&self.busy);
-                } else {
-                    ui.label(if self.dirty {
-                        "Unsaved changes"
+        egui::Panel::bottom("status")
+            .show_separator_line(self.view_mode != mixer::ViewMode::Mixer)
+            .show(ui, |ui| {
+                rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
+                    if self.job.is_some() {
+                        ui.spinner();
+                        ui.label(&self.busy);
                     } else {
-                        "Ready"
-                    });
-                }
-                ui.separator();
-                ui.label("48 kHz · WAV");
-                if let Some(output) = &self.output {
+                        ui.label(if self.dirty {
+                            "Unsaved changes"
+                        } else {
+                            "Ready"
+                        });
+                    }
                     ui.separator();
-                    ui.label(&output.description);
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_enabled_ui(
-                        self.job.is_none()
-                            && self.export_dialog.is_none()
-                            && self.overwrite.is_none()
-                            && self.export_status.is_none()
-                            && self.project_name_dialog.is_none()
-                            && self.project_settings.is_none()
-                            && !self.settings_open,
-                        |ui| self.selection_control(ui),
-                    );
-                    ui.label("Selection");
+                    ui.label("48 kHz · WAV");
+                    if let Some(output) = &self.output {
+                        ui.separator();
+                        ui.label(&output.description);
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_enabled_ui(
+                            self.job.is_none()
+                                && self.export_dialog.is_none()
+                                && self.overwrite.is_none()
+                                && self.export_status.is_none()
+                                && self.project_name_dialog.is_none()
+                                && self.project_settings.is_none()
+                                && !self.settings_open,
+                            |ui| self.selection_control(ui),
+                        );
+                        ui.label("Selection");
+                    });
                 });
+                for notice in &self.notices {
+                    ui.colored_label(theme::palette(ui.ctx()).warning, notice);
+                }
+                if !self.notices.is_empty() && ui.small_button("Dismiss notices").clicked() {
+                    self.notices.clear();
+                }
             });
-            for notice in &self.notices {
-                ui.colored_label(theme::palette(ui.ctx()).warning, notice);
-            }
-            if !self.notices.is_empty() && ui.small_button("Dismiss notices").clicked() {
-                self.notices.clear();
-            }
-        });
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::palette(ui.ctx()).background))
             .show(ui, |ui| {
@@ -1435,7 +1449,10 @@ impl DawUi {
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
                         && !self.settings_open,
-                    |ui| self.workspace(ui),
+                    |ui| match self.view_mode {
+                        mixer::ViewMode::Timeline => self.workspace(ui),
+                        mixer::ViewMode::Mixer => self.mixer(ui),
+                    },
                 );
             });
         if self.sync_needed {
@@ -1860,6 +1877,10 @@ impl DawUi {
                         #[cfg(not(target_os = "macos"))]
                         let _ = title;
                     }
+                    if custom_titlebar {
+                        ui.separator();
+                        self.view_controls(ui);
+                    }
                     #[cfg(target_os = "macos")]
                     if custom_titlebar {
                         let (_, response) = ui.allocate_exact_size(
@@ -1870,6 +1891,9 @@ impl DawUi {
                     }
                 });
             });
+        }
+        if !custom_titlebar {
+            toolbars::Toolbar::row(ui, |ui| self.view_controls(ui));
         }
         let (divider, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
@@ -1934,41 +1958,44 @@ impl DawUi {
             ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.scope(|ui| {
-                    ui.spacing_mut().slider_width = 56.0;
-                    ui.spacing_mut().slider_rail_height = 4.0;
-                    ui.spacing_mut().interact_size.y = 14.0;
-                    ui.style_mut()
-                        .text_styles
-                        .insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
-                    let response = ui.add(
-                        egui::Slider::new(&mut self.zoom, MIN_ZOOM..=MAX_ZOOM)
-                            .logarithmic(true)
-                            .show_value(false)
-                            .trailing_fill(false)
-                            .handle_shape(egui::style::HandleShape::Circle),
-                    );
-                    response.widget_info(|| {
-                        egui::WidgetInfo::slider(
-                            ui.is_enabled(),
-                            f64::from(self.zoom),
-                            "Horizontal zoom",
-                        )
+            if self.view_mode == mixer::ViewMode::Timeline {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.scope(|ui| {
+                        ui.spacing_mut().slider_width = 56.0;
+                        ui.spacing_mut().slider_rail_height = 4.0;
+                        ui.spacing_mut().interact_size.y = 14.0;
+                        ui.style_mut()
+                            .text_styles
+                            .insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
+                        let response = ui.add(
+                            egui::Slider::new(&mut self.zoom, MIN_ZOOM..=MAX_ZOOM)
+                                .logarithmic(true)
+                                .show_value(false)
+                                .trailing_fill(false)
+                                .handle_shape(egui::style::HandleShape::Circle),
+                        );
+                        response.widget_info(|| {
+                            egui::WidgetInfo::slider(
+                                ui.is_enabled(),
+                                f64::from(self.zoom),
+                                "Horizontal zoom",
+                            )
+                        });
+                        response.on_hover_text(
+                            "Horizontal zoom: drag left to zoom out, right to zoom in",
+                        );
                     });
-                    response
-                        .on_hover_text("Horizontal zoom: drag left to zoom out, right to zoom in");
+                    ui.add(
+                        icons::Lucide::MoveHorizontal
+                            .size(16.0)
+                            .stroke_width(2.0)
+                            .color(theme::palette(ui.ctx()).text)
+                            .image()
+                            .alt_text("Horizontal zoom"),
+                    )
+                    .on_hover_text("Horizontal zoom");
                 });
-                ui.add(
-                    icons::Lucide::MoveHorizontal
-                        .size(16.0)
-                        .stroke_width(2.0)
-                        .color(theme::palette(ui.ctx()).text)
-                        .image()
-                        .alt_text("Horizontal zoom"),
-                )
-                .on_hover_text("Horizontal zoom");
-            });
+            }
         });
     }
     #[cfg(target_os = "macos")]
@@ -2658,6 +2685,11 @@ impl DawUi {
     }
     fn track_name(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
         let width = ui.available_width();
+        let font_size = if self.view_mode == mixer::ViewMode::Mixer {
+            mixer::HEADER_FONT_SIZE
+        } else {
+            13.0
+        };
         if self
             .track_name_edit
             .as_ref()
@@ -2666,7 +2698,7 @@ impl DawUi {
             let mut edit = self.track_name_edit.take().unwrap();
             let mut output = egui::TextEdit::singleline(&mut edit.text)
                 .id(ui.make_persistent_id(("track_name", track.id)))
-                .font(egui::FontId::proportional(13.0))
+                .font(egui::FontId::proportional(font_size))
                 .text_color(theme::palette(ui.ctx()).text)
                 .horizontal_align(egui::Align::Center)
                 .desired_width(width)
@@ -2705,24 +2737,34 @@ impl DawUi {
                 self.track_name_edit = Some(edit);
             }
         } else {
+            let mixer_colors = (self.view_mode == mixer::ViewMode::Mixer)
+                .then(|| theme::clip_colors(track.color, None));
+            let mut button = egui::Button::new(
+                egui::RichText::new(&track.name)
+                    .font(egui::FontId::proportional(font_size))
+                    .color(
+                        mixer_colors.map_or(theme::palette(ui.ctx()).text, |colors| colors.text),
+                    ),
+            )
+            .sense(Sense::click_and_drag())
+            .selected(self.track_selected(track.id))
+            .frame(false)
+            .truncate();
+            if let Some(colors) = mixer_colors {
+                button = button.fill(colors.header).stroke(Stroke::NONE);
+            }
             let response = ui
-                .add_sized(
-                    [width, toolbars::CONTROL_HEIGHT],
-                    egui::Button::new(
-                        egui::RichText::new(&track.name)
-                            .font(egui::FontId::proportional(13.0))
-                            .color(theme::palette(ui.ctx()).text),
-                    )
-                    .sense(Sense::click_and_drag())
-                    .selected(self.track_selected(track.id))
-                    .frame(false)
-                    .truncate(),
-                )
-                .on_hover_text(format!(
-                    "{}\nDrag to reorder. Double-click to edit.",
-                    track.name
-                ))
-                .on_hover_cursor(egui::CursorIcon::Grab);
+                .add_sized([width, toolbars::CONTROL_HEIGHT], button)
+                .on_hover_text(if self.view_mode == mixer::ViewMode::Timeline {
+                    format!("{}\nDrag to reorder. Double-click to edit.", track.name)
+                } else {
+                    format!("{}\nDouble-click to edit.", track.name)
+                })
+                .on_hover_cursor(if self.view_mode == mixer::ViewMode::Timeline {
+                    egui::CursorIcon::Grab
+                } else {
+                    egui::CursorIcon::PointingHand
+                });
             if response.double_clicked() && self.track_name_edit.is_none() {
                 self.track_name_edit = Some(TrackNameEdit {
                     track: track.id,
@@ -2730,7 +2772,9 @@ impl DawUi {
                     focus: true,
                 });
             }
-            self.start_track_drag(ui, &response, track.id);
+            if self.view_mode == mixer::ViewMode::Timeline {
+                self.start_track_drag(ui, &response, track.id);
+            }
         }
     }
     fn start_track_drag(&mut self, ui: &egui::Ui, response: &egui::Response, track: Id) {
@@ -4370,6 +4414,7 @@ impl DawUi {
 mod tests {
     mod group_looping;
     mod group_stretch;
+    mod mixer;
     mod placement_overwrite;
     mod project_settings;
     mod resize_neighbors;
@@ -6008,7 +6053,8 @@ mod tests {
         frame(&mut app, &ctx, vec![]);
         let native_shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(!has_title(&native_shapes, "Titlebar project - DAW"));
-        assert!(app.time_bounds[0].top() < custom_time_top);
+        // Native mode replaces the custom header with the view toolbar.
+        assert_eq!(app.time_bounds[0].top(), custom_time_top);
         assert!(!app.dirty);
         assert_eq!(format!("{:?}", app.session.project), project_before);
         app.session.project.name = "Renamed".into();

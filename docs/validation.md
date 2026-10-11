@@ -665,3 +665,83 @@ All 228 workspace tests pass, including 27 core tests and 158 UI tests. New chec
 - Updated existing interaction checks for the new header and lower-row positions. Alignment checks cover centered names and M/S alignment/order. Track-panel selection, button toggles, gain/pan inputs, grip/name reordering, and shortcuts pass.
 - Passed `cargo fmt --all --check`, `cargo clippy --offline --workspace --all-targets -- -D warnings`, `cargo test --offline --workspace` (235 tests), and `git diff --check`, with the local Cargo cache. Logs: `work/track-header-controls-workspace.log` and `work/track-header-controls-clippy.log`.
 - Rebuilt `target/debug/DAW.app`. Native macOS checks verified the header layout and Mute/Solo toggles on a temporary empty track. Removed the temporary track and restored the empty Untitled workspace. Windows/Linux native UI and live audio checks were not run.
+
+## Timeline and Mixer views — 2026-10-11
+
+- Added Timeline (default) and Mixer modes over the same session. Mixer shows track names at the top, pan and gain controls at the bottom, vertical gain faders with dB scales, stereo meters, and Mute/Solo buttons. Audio strips follow project order and scroll horizontally; Master remains fixed at the right edge.
+- Mixer pan uses the existing `knobs.rs` design. `faders.rs` provides the standard gain fader component with themed surfaces, numeric accessibility values, a -60 to +12 dB drag range, and double-click reset. Both views share track/master values, selection, context actions, name editing, and playback sync. View changes retain timeline zoom/scroll and cancel text drafts without changing project data. Hidden timeline geometry cannot accept a file drop in Mixer.
+- Six egui interaction tests cover view changes and retained project/selection/viewport state; ordered strips, horizontal scrolling, and pinned/aligned Master during resizing; mute/solo and group shortcuts; shared track/master gain controls; numeric commit/cancel/invalid input and centered readouts; name editing; preserved gain values outside the fader range; modal guards; and titlebar placement.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo fmt --all --check`, `cargo test --workspace --offline` (241 tests), and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. The macOS debug bundle was rebuilt with `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh debug`.
+- Native macOS checks confirmed the mixer layout, shared pan knob, bottom controls, Master at the right edge, mute toggling, and a fader change to -9 dB reflected in Timeline. View controls appeared beside the project title with Custom and in a separate toolbar below the titlebar with Native. Restored the original Custom preference and cleared the temporary unsaved test tracks. Native scrolling/resizing, audible mixer changes, and Windows/Linux native layout remain unverified; scrolling/resizing are covered by egui tests.
+- This supersedes the earlier requirement that Native macOS places playback controls directly below the titlebar: the view toolbar now occupies that position. Timeline keeps its existing compact track rows and bottom-pinned Master.
+
+## Fine gain fader adjustment — 2026-10-11
+
+- The shared track/Master gain fader now applies tenfold slower vertical adjustment while Shift is held. Pressing or releasing Shift during a drag retains the current value without a jump. Idle frames and mouse release retain it as well; movement remains within -60 to +12 dB. The tooltip documents Shift.
+- Two pointer-input tests cover sensitivity, incremental motion, modifier changes during a drag, idle/release stability, and range limits. The existing mixer interaction test now explicitly releases Shift after group selection before testing ordinary fader clicks.
+- Workspace tests pass (243), formatting and strict workspace Clippy pass, and the macOS debug bundle was rebuilt. Commands used the local `work/cargo-home` cache; Cargo checks used `--offline`. Native Shift-drag and Windows/Linux gestures remain unverified.
+
+## Mixer header colors and strip borders — 2026-10-11
+
+- Audio strip name headers use the track's inherited clip header background and contrasting text. Selection does not change these colors; individual clip overrides do not change the strip header. Audio and Master strips retain thin 1-point outer borders, including the top and bottom. Selected audio strips use an inset outline to keep those borders visible.
+- The egui paint test covers light/dark themes, selected/unselected strips, light/dark track colors, the legacy clip palette, clip overrides, text contrast, full-width header fills, and retained outer borders on audio/Master strips.
+- Passed `CARGO_HOME="$PWD/work/cargo-home" cargo fmt --all --check`, `cargo test --workspace --offline` (244 tests), `cargo clippy --workspace --all-targets --offline -- -D warnings`, and `git diff --check`. Rebuilt the macOS debug bundle with `sh tools/package_macos.sh debug`. Logs: `work/mixer-header-tests.log`, `work/mixer-header-clippy.log`, and `work/mixer-header-package.log`.
+- Native macOS checks confirmed the full colored name header and thin strip borders in the rebuilt app. Cleared the temporary empty test track and restored the clean Untitled Timeline view. Windows/Linux native appearance was not checked.
+
+## Compact mixer headers — 2026-10-11
+
+- Reduced mixer name headers from 36 to 24 points high and name text from 13 to 11 points. Names remain centered. Master and track-name inputs use the smaller text; Timeline retains its existing text size. Clip-derived colors, thin strip borders, and bottom control alignment remain intact.
+- Updated the existing egui paint check to verify compact header height, text size, horizontal/vertical name centering, and existing theme/selection colors and borders. Existing mixer name-editing and layout checks also pass.
+- Passed `CARGO_HOME="$PWD/work/cargo-home" cargo fmt --all --check`, `cargo test --workspace --offline` (244 tests), `cargo clippy --workspace --all-targets --offline -- -D warnings`, and `git diff --check`. Rebuilt the macOS debug bundle with `sh tools/package_macos.sh debug`. Logs: `work/mixer-compact-header-tests.log`, `work/mixer-compact-header-clippy.log`, and `work/mixer-compact-header-package.log`.
+- This size change was checked through egui tests; native platform appearance was not checked again.
+
+## Shared mixer/status border — 2026-10-11
+
+- Audio strips and Master now meet the status bar with one shared 1-point line and no gap. Their top/side borders remain; selection uses the top and sides rather than stacking another bottom outline. Timeline retains its existing separator.
+- Existing egui checks verify flush audio/Master boundaries and exactly one full-width separator during resizing and horizontal scrolling. Header/theme/selection tests retain checks for thin top/side borders. All 244 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Logs: `work/mixer-bottom-tests.log`, `work/mixer-bottom-clippy.log`, and `work/mixer-bottom-package.log`.
+- Rebuilt the macOS debug app and verified the thin bottom line beneath a selected strip and Master. The smaller centered headers from the previous change were also visible. Removed the temporary empty track and restored the clean Untitled Timeline view. Windows/Linux native appearance remains unverified.
+- This supersedes the separate bottom strip and status outlines described in the earlier mixer border record.
+
+## Selected mixer bottom outline — 2026-10-11
+
+- Restored the bottom accent edge for selected strips. It paints over the existing shared separator at the same position and 1-point width, retaining a flush boundary without an extra line or gap. Master retains the neutral separator. Selection painting stays clipped to the scrolling track area.
+- The existing paint check now verifies the bottom accent line only when selected, in both themes and with multiple track colors. All 244 workspace tests, formatting, strict workspace Clippy, and diff checks pass. The macOS debug bundle was rebuilt. Logs: `work/mixer-selected-bottom-tests.log`, `work/mixer-selected-bottom-clippy.log`, and `work/mixer-selected-bottom-package.log`.
+- Native macOS appearance confirms the restored bottom outline and flush status boundary. Cleared the temporary test strip and restored the clean Untitled Timeline view. Windows/Linux native appearance remains unverified. This supersedes the previous record's top-and-sides-only selection outline.
+
+## Equal mixer selection outline widths — 2026-10-11
+
+- The selected strip's bottom edge now uses the shared selection stroke, matching the top and side widths. Its center is inset by half that width so the complete stroke stays inside the strip, flush with the status bar. Master and unselected borders retain their thin neutral line.
+- Updated the existing selected/unselected paint check to verify the shared bottom stroke and inside position in both themes. All 244 workspace tests, formatting, strict workspace Clippy, and diff checks pass. Rebuilt the macOS debug app. Logs: `work/mixer-outline-width-tests.log`, `work/mixer-outline-width-clippy.log`, and `work/mixer-outline-width-package.log`.
+- Native appearance was not checked again; the open Example project was retained. This supersedes the previous record's 1-point selected bottom edge.
+
+## Single dividers between mixer strips — 2026-10-11
+
+- Adjacent strips now share one 1-point neutral divider. Each strip draws its left divider; only the last exposed audio edge and the outer Master edge also draw a right border. The thicker selected outline, equal bottom stroke, and flush status boundary are retained.
+- Updated existing egui paint checks for thin top/left borders and verified exactly one neutral divider at visible adjacent boundaries after horizontal scrolling and window resizing. Selected outlines remain covered in both themes. All 244 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode.
+- Rebuilt the macOS debug app. Logs: `work/mixer-divider-tests.log`, `work/mixer-divider-clippy.log`, and `work/mixer-divider-package.log`. Native appearance was not checked again; Windows/Linux native checks remain unverified.
+
+## Shared mixer top border — 2026-10-11
+
+- Tracks and Master now share one 1-point top line beneath the playback toolbar. Mixer omits the separate toolbar separator and individual strip top borders. The colored headers meet the toolbar without a gap; thicker selected outlines remain intact. Timeline retains its existing separator.
+- Existing egui paint checks verify a flush toolbar/header boundary and exactly one thin top line, covering selected/unselected strips in both themes. All 244 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode.
+- Rebuilt the macOS debug app. Logs: `work/mixer-top-border-tests.log`, `work/mixer-top-border-clippy.log`, and `work/mixer-top-border-package.log`. Native appearance was not checked again; Windows/Linux native checks remain unverified.
+
+## Consistent Timeline/Mixer view buttons — 2026-10-11
+
+- View buttons now use the same font, padding, height, radius, and borderless design in the custom titlebar and separate view toolbar. Selected views retain the runtime accent-tinted background with contrasting text; unselected views use secondary text and a transparent background. Hover/press keeps colors and dimensions stable. Selection accessibility and existing view-switch guards remain.
+- The new egui paint/input test covers both titlebar layouts, Timeline/Mixer selection, dark/light themes, Deep Orange/Yellow accents, and idle/hover/press/release. It checks matching sizes, retained selected fills, contrasting/secondary text, no button stroke, and clean no-op clicks on the selected view. Existing switching and modal-guard tests pass.
+- All 245 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/view-buttons-tests.log`, `work/view-buttons-clippy.log`, and `work/view-buttons-package.log`.
+- Native appearance was not checked again; Windows/Linux native checks remain unverified.
+
+## View-button hover text — 2026-10-11
+
+- Hovered Timeline/Mixer buttons now use the same contrasting text as the selected view. Unselected text returns to secondary when the pointer moves away. Background fills, button dimensions, titlebar consistency, selected states, and action guards remain intact. The style uses local egui foreground states so the rest of the UI is unaffected.
+- Extended the existing view-button test to hover the unselected view and move away in both titlebar layouts, dark/light themes, both view modes, and Deep Orange/Yellow accents. It checks rendered text colors, no selected fill on unselected hover, retained backgrounds, and stable geometry.
+- All 245 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/view-hover-tests.log`, `work/view-hover-clippy.log`, and `work/view-hover-package.log`.
+- Native hover was not checked again; Windows/Linux native checks remain unverified. This supersedes the earlier requirement that unselected view text remains secondary on hover.
+
+## Flush selected mixer right outline — 2026-10-11
+
+- Removed the 1-point gap between a selected strip's right outline and the next strip. The right stroke now reaches the strip boundary; the shared selection width and other edges retain their positions. Painting remains clipped to the scrolling track area.
+- Extended the existing header paint test with an adjacent track and checked that the right stroke meets its left boundary in dark/light themes and across track colors. All 245 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/mixer-right-outline-targeted.log`, `work/mixer-right-outline-tests.log`, `work/mixer-right-outline-clippy.log`, and `work/mixer-right-outline-package.log`.
+- Native appearance was not checked again; Windows/Linux native checks remain unverified.

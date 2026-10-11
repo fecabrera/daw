@@ -137,7 +137,7 @@ const fn display_color(color: daw_core::RgbColor) -> Color32 {
     Color32::from_rgb(color.r, color.g, color.b)
 }
 
-fn contrast_color(color: Color32) -> Color32 {
+pub(crate) fn contrast_color(color: Color32) -> Color32 {
     let brightness =
         299 * u32::from(color.r()) + 587 * u32::from(color.g()) + 114 * u32::from(color.b());
     if brightness >= 128_000 {
