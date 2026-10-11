@@ -101,6 +101,8 @@ Use stable Rust, edition 2024, and Cargo. Select compatible released crate versi
 
 ## Initial desktop UI
 
+Provide Project Settings in File on every desktop platform, separate from application Settings. For now, it edits only the project name with Apply/Enter and Cancel/Escape. Keep a draft until confirmation, reject blank names/control characters, and mark a changed name as modified. Save the name in the project manifest through the existing Save flow; retain its folder and arrangement. Disable background actions while the dialog is open and guard it against jobs, other dialogs, and active editing gestures.
+
 Provide an application Settings dialog for theme and accent color. Place Settings in the app-name menu on macOS and File on Windows/Linux. Offer all 19 Material 500 colors with named options and left-hand preview swatches. Apply the chosen accent immediately through the shared theme, save it as an application preference, and retain it across project changes. Use Dark and Purple 500 by default. Offer Light with a `#E9E9E9` timeline and `#F9F9F9` panels, toolbars, menus, and dialogs, plus dark text and matching control/grid colors. Persist the theme with the accent and apply both immediately without modifying the project. On macOS, offer Custom (default) and Native titlebars in Settings. Apply the choice immediately without recreating the window, persist it separately from projects, and omit the custom header when Native is active. Keep native caption controls and the project title in both modes. Keep broader theme customization on the roadmap.
 
 Use the supplied Audacity 4 screenshots as layout references.

@@ -27,6 +27,7 @@ pub mod meters;
 mod musical_time;
 pub mod panels;
 mod project_name_dialog;
+mod project_settings;
 pub mod rows;
 pub mod settings;
 pub mod theme;
@@ -558,6 +559,7 @@ struct LoopDrag {
 pub struct DawUi {
     settings: settings::AppSettings,
     settings_open: bool,
+    project_settings: Option<project_settings::ProjectSettings>,
     pub session: Session,
     output: Option<AudioOutput>,
     selected_track: Option<Id>,
@@ -617,6 +619,7 @@ impl Default for DawUi {
         Self {
             settings: settings::AppSettings::default(),
             settings_open: false,
+            project_settings: None,
             session: Session::default(),
             output: None,
             selected_track: None,
@@ -700,6 +703,33 @@ impl DawUi {
             self.settings_open = true;
         }
     }
+    pub fn project_settings_enabled(&self) -> bool {
+        self.settings_enabled()
+            && self.track_name_edit.is_none()
+            && self.tempo_edit.is_none()
+            && self.time_drag.is_none()
+            && self.musical_drag.is_none()
+            && self.selection_drag.iter().all(Option::is_none)
+    }
+
+    pub fn open_project_settings(&mut self) {
+        if self.project_settings_enabled() {
+            self.project_settings = Some(project_settings::ProjectSettings::new(
+                self.session.project.name.clone(),
+            ));
+        }
+    }
+
+    fn rename_project(&mut self, name: String) {
+        if let Ok(name) = project_settings::valid_name(&name)
+            && self.session.project.name != name
+        {
+            self.session.project.name = name.to_owned();
+            // Naming is project metadata; it does not change the audio render plan.
+            self.dirty = true;
+        }
+    }
+
     /// Let the desktop adapter provide file menus and their keyboard shortcuts.
     pub fn use_native_menu(&mut self) {
         self.native_menu = true;
@@ -772,6 +802,7 @@ impl DawUi {
                 self.export_dialog = None;
                 self.export_status = None;
                 self.project_name_dialog = None;
+                self.project_settings = None;
                 self.overwrite = None;
                 self.sync_needed = false;
             }
@@ -944,6 +975,7 @@ impl DawUi {
                         self.selected_track = None;
                         self.selected_tracks.clear();
                         self.project_name_dialog = None;
+                        self.project_settings = None;
                         self.selected_clip = None;
                         self.selected_clips.clear();
                         self.marquee = None;
@@ -1330,6 +1362,7 @@ impl DawUi {
             if self.job.is_none() {
                 self.project_name_dialog = None;
                 self.settings_open = false;
+                self.project_settings = None;
                 self.request(Action::CloseWindow);
             }
         }
@@ -1347,6 +1380,7 @@ impl DawUi {
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
                         && self.project_name_dialog.is_none()
+                        && self.project_settings.is_none()
                         && !self.settings_open,
                     |ui| self.toolbar(ui),
                 );
@@ -1376,6 +1410,7 @@ impl DawUi {
                             && self.overwrite.is_none()
                             && self.export_status.is_none()
                             && self.project_name_dialog.is_none()
+                            && self.project_settings.is_none()
                             && !self.settings_open,
                         |ui| self.selection_control(ui),
                     );
@@ -1398,6 +1433,7 @@ impl DawUi {
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
                         && self.project_name_dialog.is_none()
+                        && self.project_settings.is_none()
                         && !self.settings_open,
                     |ui| self.workspace(ui),
                 );
@@ -1420,6 +1456,7 @@ impl DawUi {
         if self.job.is_none()
             && self.export_status.is_none()
             && self.project_name_dialog.is_none()
+            && self.project_settings.is_none()
             && !self.settings_open
         {
             if self.file_action_enabled(FileAction::Import)
@@ -1469,6 +1506,17 @@ impl DawUi {
         ui.set_min_width(220.0);
         for action in FileAction::ALL {
             if action == FileAction::CloseProject {
+                ui.separator();
+                if ui
+                    .add_enabled(
+                        self.project_settings_enabled(),
+                        egui::Button::new("Project Settings…"),
+                    )
+                    .clicked()
+                {
+                    ui.close();
+                    self.open_project_settings();
+                }
                 ui.separator();
                 let button = egui::Button::new("Settings…")
                     .shortcut_text(ui.ctx().format_shortcut(&Self::settings_shortcut()));
@@ -1520,6 +1568,7 @@ impl DawUi {
             && self.export_dialog.is_none()
             && self.export_status.is_none()
             && self.project_name_dialog.is_none()
+            && self.project_settings.is_none()
             && !self.settings_open
             && self.error.is_none()
             && (action != FileAction::Export || self.session.project.end() > 0)
@@ -4211,6 +4260,13 @@ impl DawUi {
         }
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
+        if let Some(mut draft) = self.project_settings.take() {
+            match draft.show(ctx) {
+                Some(project_settings::Action::Apply(name)) => self.rename_project(name),
+                Some(project_settings::Action::Cancel) => {}
+                None => self.project_settings = Some(draft),
+            }
+        }
         if self.settings_open && settings::show(ctx, &mut self.settings) {
             self.settings_open = false;
         }
@@ -4311,6 +4367,7 @@ mod tests {
     mod group_looping;
     mod group_stretch;
     mod placement_overwrite;
+    mod project_settings;
     mod resize_neighbors;
     mod track_shortcuts;
     mod trim_boundary;

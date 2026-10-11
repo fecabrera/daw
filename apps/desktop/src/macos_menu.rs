@@ -12,6 +12,7 @@ struct MenuTargetIvars {
 #[derive(Clone, Copy)]
 enum MenuAction {
     Settings,
+    ProjectSettings,
     File(FileAction),
     Clip(ClipAction),
     Track(TrackAction),
@@ -33,6 +34,12 @@ define_class!(
         #[unsafe(method(performSettingsAction:))]
         fn perform_settings_action(&self, _item: &NSMenuItem) {
             let _ = self.ivars().sender.send(MenuAction::Settings);
+            self.ivars().context.request_repaint();
+        }
+        // SAFETY: The selector takes an NSMenuItem sender and returns void.
+        #[unsafe(method(performProjectSettingsAction:))]
+        fn perform_project_settings_action(&self, _item: &NSMenuItem) {
+            let _ = self.ivars().sender.send(MenuAction::ProjectSettings);
             self.ivars().context.request_repaint();
         }
         // SAFETY: The selector takes an NSMenuItem sender and returns void.
@@ -118,6 +125,22 @@ impl NativeMenu {
             items.push((MenuAction::Settings, item));
         }
         for (index, action) in FileAction::ALL.into_iter().enumerate() {
+            if action == FileAction::CloseProject {
+                file_menu.addItem(&NSMenuItem::separatorItem(mtm));
+                // SAFETY: The selector is defined above, with an NSMenuItem argument.
+                let item = unsafe {
+                    NSMenuItem::initWithTitle_action_keyEquivalent(
+                        NSMenuItem::alloc(mtm),
+                        ns_string!("Project Settings…"),
+                        Some(sel!(performProjectSettingsAction:)),
+                        ns_string!(""),
+                    )
+                };
+                // SAFETY: NativeMenu retains the target and detaches it before dropping.
+                unsafe { item.setTarget(Some(&target)) };
+                file_menu.addItem(&item);
+                items.push((MenuAction::ProjectSettings, item));
+            }
             if matches!(
                 action,
                 FileAction::Import
@@ -220,6 +243,7 @@ impl NativeMenu {
         for action in self.receiver.try_iter() {
             match action {
                 MenuAction::Settings => ui.open_settings(),
+                MenuAction::ProjectSettings => ui.open_project_settings(),
                 MenuAction::File(action) => ui.perform_file_action(action),
                 MenuAction::Clip(action) => ui.perform_clip_action(action, ctx),
                 MenuAction::Track(action) => {
@@ -249,6 +273,7 @@ impl NativeMenu {
             }
             item.setEnabled(match action {
                 MenuAction::Settings => ui.settings_enabled(),
+                MenuAction::ProjectSettings => ui.project_settings_enabled(),
                 MenuAction::File(action) => ui.file_action_enabled(*action),
                 MenuAction::Clip(action) => ui.clip_action_enabled(*action, ctx),
                 MenuAction::Track(action) => ui.track_action_enabled(*action, ctx),
