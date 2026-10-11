@@ -221,6 +221,127 @@ fn switches_views_without_changing_the_project_or_timeline_position() {
 }
 
 #[test]
+fn view_menu_checks_one_mode_and_switches_on_release_without_project_changes() {
+    fn menu_frame(
+        app: &mut DawUi,
+        ctx: &egui::Context,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 400.0))),
+                events,
+                ..Default::default()
+            },
+            |ui| app.view_menu(ui),
+        );
+        output.textures_delta.clear();
+        output
+    }
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.zoom = 123.0;
+        app.scroll = 7.0;
+        let clip = app.session.project.tracks[0].clips[0].id;
+        app.select_clip(clip, track, false);
+        let project = format!("{:?}", app.session.project);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == "View"
+        )));
+        for mode in [ViewMode::Mixer, ViewMode::Timeline, ViewMode::Timeline] {
+            let output = menu_frame(&mut app, &ctx, vec![]);
+            let checks: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Path(path) if path.points.len() == 3 => Some(path),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(checks.len(), 1);
+            let point = |label: &str| {
+                output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == label => {
+                            Some(text.pos + text.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .unwrap()
+            };
+            let checked = point(app.view_mode().label());
+            let check_rect = Rect::from_points(&checks[0].points);
+            assert!((check_rect.center().y - checked.y).abs() < 1.0);
+            assert!(check_rect.right() < checked.x);
+            let destination = point(mode.label());
+            let before = app.view_mode();
+            menu_frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(destination),
+                    button(destination, true),
+                ],
+            );
+            assert_eq!(app.view_mode(), before);
+            menu_frame(&mut app, &ctx, vec![button(destination, false)]);
+            assert_eq!(app.view_mode(), mode);
+            assert_eq!(format!("{:?}", app.session.project), project);
+            assert_eq!((app.zoom, app.scroll), (123.0, 7.0));
+            assert_eq!(app.selected_clips, HashSet::from([clip]));
+            assert!(app.track_selected(track));
+            assert!(!app.dirty && !app.sync_needed);
+        }
+    }
+}
+
+#[test]
+fn menu_and_native_view_dispatch_share_guards_and_draft_cleanup() {
+    for busy in [false, true] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.settings_open = !busy;
+        let (_sender, receiver) = mpsc::channel();
+        if busy {
+            app.job = Some(receiver);
+        }
+        assert!(!app.view_switch_enabled());
+        app.set_view_mode(ViewMode::Mixer, &ctx);
+        assert_eq!(app.view_mode(), ViewMode::Timeline);
+        app.settings_open = false;
+        app.job = None;
+        app.track_name_edit = Some(TrackNameEdit {
+            track,
+            text: "Uncommitted".into(),
+            focus: true,
+        });
+        app.inputs.insert(
+            track,
+            Inputs {
+                gain: "-12".into(),
+                pan: "0.5".into(),
+            },
+        );
+        assert!(app.view_switch_enabled());
+        app.set_view_mode(ViewMode::Mixer, &ctx);
+        assert_eq!(app.view_mode(), ViewMode::Mixer);
+        assert!(app.track_name_edit.is_none() && app.inputs.is_empty());
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
 fn strips_scroll_in_project_order_with_master_pinned_during_resize() {
     let mut app = DawUi::default();
     let tracks: Vec<_> = (0..20)

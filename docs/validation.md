@@ -787,3 +787,10 @@ All 228 workspace tests pass, including 27 core tests and 158 UI tests. New chec
 - Extended existing Timeline and Mixer paint/input tests to check square bounds and label font size. Updated Timeline click coordinates for the narrower controls. Name alignment, reordering, header selection, and shared mute/solo behavior pass.
 - All 254 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/square-track-toggles-tests.log`, `work/square-track-toggles-clippy.log`, and `work/square-track-toggles-package.log`.
 - Native appearance was not checked; the running app and open project were left intact.
+
+## View menu — 2026-10-11
+
+- Added View after Track in native macOS and egui menu bars, with Timeline and Mixer items. Only the active view is checked. Native item states update after both menu and toolbar changes. Enabled states and dispatch use the same guarded view-switching methods as the existing buttons; switching preserves project data, selection, timeline scroll/zoom, and cancels text drafts. Selecting the active view is a no-op.
+- Added egui paint/input tests for both themes, one correctly positioned check, release-only switching, active-item selection, and unchanged project/selection/scroll/zoom. Shared dispatch tests cover jobs, Settings, and draft cleanup. Existing view-button appearance and interaction tests pass. Enabled AppKit's NSCell feature to use native menu state APIs.
+- All 256 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. The macOS desktop check and debug packaging pass. Logs: `work/view-menu-targeted.log`, `work/view-menu-check.log`, `work/view-menu-tests.log`, `work/view-menu-clippy.log`, and `work/view-menu-package.log`.
+- Native menu interaction and Windows/Linux native checks remain unverified. The running app and open project were left intact.

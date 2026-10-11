@@ -26,6 +26,7 @@ pub mod icons;
 pub mod knobs;
 pub mod meters;
 mod mixer;
+pub use mixer::ViewMode;
 mod musical_time;
 pub mod panels;
 mod project_name_dialog;
@@ -1881,6 +1882,7 @@ impl DawUi {
                         ui.menu_button("File", |ui| self.file_menu(ui));
                         ui.menu_button("Edit", |ui| self.edit_menu(ui));
                         ui.menu_button("Track", |ui| self.track_menu(ui));
+                        ui.menu_button("View", |ui| self.view_menu(ui));
                         #[cfg(not(target_os = "windows"))]
                         ui.separator();
                     }

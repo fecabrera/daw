@@ -20,19 +20,69 @@ fn strip_edges(ui: &egui::Ui, rect: Rect, stroke: Stroke) {
     );
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub(super) enum ViewMode {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ViewMode {
     #[default]
     Timeline,
     Mixer,
 }
 
+impl ViewMode {
+    pub const ALL: [Self; 2] = [Self::Timeline, Self::Mixer];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Timeline => "Timeline",
+            Self::Mixer => "Mixer",
+        }
+    }
+}
+
 impl DawUi {
-    pub(super) fn view_controls(&mut self, ui: &mut egui::Ui) {
-        let enabled = self.settings_enabled()
+    pub fn view_mode(&self) -> ViewMode {
+        self.view_mode
+    }
+
+    pub fn view_switch_enabled(&self) -> bool {
+        self.settings_enabled()
             && self.time_drag.is_none()
             && self.musical_drag.is_none()
-            && self.selection_drag.iter().all(Option::is_none);
+            && self.selection_drag.iter().all(Option::is_none)
+    }
+
+    pub fn set_view_mode(&mut self, mode: ViewMode, ctx: &egui::Context) {
+        if !self.view_switch_enabled() || self.view_mode == mode {
+            return;
+        }
+        self.view_mode = mode;
+        self.track_name_edit = None;
+        self.tempo_edit = None;
+        self.inputs.clear();
+        self.master_gain_input = format!("{:.1}", self.session.project.master.gain_db);
+        if let Some(id) = ctx.memory(|memory| memory.focused()) {
+            ctx.memory_mut(|memory| memory.surrender_focus(id));
+        }
+        ctx.request_repaint();
+    }
+
+    pub(super) fn view_menu(&mut self, ui: &mut egui::Ui) {
+        for mode in ViewMode::ALL {
+            let mut selected = self.view_mode == mode;
+            if ui
+                .add_enabled(
+                    self.view_switch_enabled(),
+                    egui::Checkbox::new(&mut selected, mode.label()),
+                )
+                .clicked()
+            {
+                self.set_view_mode(mode, ui.ctx());
+                ui.close();
+            }
+        }
+    }
+
+    pub(super) fn view_controls(&mut self, ui: &mut egui::Ui) {
+        let enabled = self.view_switch_enabled();
         ui.scope(|ui| {
             // Menu bars change padding; use the same control style in every titlebar layout.
             let style = ui.ctx().global_style();
@@ -55,7 +105,8 @@ impl DawUi {
             widgets.inactive.fg_stroke.color = secondary_text;
             widgets.noninteractive.fg_stroke.color = secondary_text;
             ui.visuals_mut().selection.stroke.color = bright_text;
-            for (mode, label) in [(ViewMode::Timeline, "Timeline"), (ViewMode::Mixer, "Mixer")] {
+            for mode in ViewMode::ALL {
+                let label = mode.label();
                 let selected = self.view_mode == mode;
                 if ui
                     .add_enabled(
@@ -78,16 +129,8 @@ impl DawUi {
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .on_hover_text(format!("Show {label} view"))
                     .clicked()
-                    && self.view_mode != mode
                 {
-                    self.view_mode = mode;
-                    self.track_name_edit = None;
-                    self.tempo_edit = None;
-                    self.inputs.clear();
-                    self.master_gain_input = format!("{:.1}", self.session.project.master.gain_db);
-                    if let Some(id) = ui.ctx().memory(|memory| memory.focused()) {
-                        ui.ctx().memory_mut(|memory| memory.surrender_focus(id));
-                    }
+                    self.set_view_mode(mode, ui.ctx());
                 }
             }
         });
