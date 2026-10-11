@@ -1957,6 +1957,7 @@ impl DawUi {
         ui.spacing_mut().item_spacing.y = 0.0;
         let custom_titlebar =
             cfg!(target_os = "macos") && self.settings.titlebar == settings::TitlebarStyle::Custom;
+        let inline_views = custom_titlebar || cfg!(any(target_os = "windows", target_os = "linux"));
         if !cfg!(target_os = "macos") || custom_titlebar || !self.native_menu {
             toolbars::Toolbar::row(ui, |ui| {
                 egui::MenuBar::new().ui(ui, |ui| {
@@ -1969,10 +1970,10 @@ impl DawUi {
                         ui.menu_button("Edit", |ui| self.edit_menu(ui));
                         ui.menu_button("Track", |ui| self.track_menu(ui));
                         ui.menu_button("View", |ui| self.view_menu(ui));
-                        #[cfg(not(target_os = "windows"))]
+                        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
                         ui.separator();
                     }
-                    #[cfg(not(target_os = "windows"))]
+                    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
                     if !cfg!(target_os = "macos") || custom_titlebar {
                         let title = ui.label(&self.window_title);
                         #[cfg(target_os = "macos")]
@@ -1980,8 +1981,10 @@ impl DawUi {
                         #[cfg(not(target_os = "macos"))]
                         let _ = title;
                     }
-                    if custom_titlebar {
-                        ui.separator();
+                    if inline_views {
+                        if custom_titlebar || !self.native_menu {
+                            ui.separator();
+                        }
                         self.view_controls(ui);
                     }
                     #[cfg(target_os = "macos")]
@@ -1995,7 +1998,7 @@ impl DawUi {
                 });
             });
         }
-        if !custom_titlebar {
+        if !inline_views {
             toolbars::Toolbar::row(ui, |ui| self.view_controls(ui));
         }
         let (divider, _) =

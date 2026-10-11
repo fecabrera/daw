@@ -1,5 +1,82 @@
 use super::*;
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[test]
+fn menu_and_view_buttons_share_one_row_with_a_separator() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for mode in ViewMode::ALL {
+            for width in [900.0, 1280.0] {
+                let mut app = DawUi::default();
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                app.view_mode = mode;
+                let size = Vec2::new(width, 800.0);
+                frame_sized(&mut app, &ctx, vec![], size);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+                let label_rect = |label: &str| {
+                    shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text) if text.galley.text() == label => {
+                                Some(Rect::from_min_size(text.pos, text.galley.size()))
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| panic!("Missing label: {label}"))
+                };
+                let labels = ["File", "Edit", "Track", "View", "Timeline", "Mixer"];
+                let rects = labels.map(label_rect);
+                for pair in rects.windows(2) {
+                    assert!(pair[0].right() < pair[1].left());
+                    assert!((pair[0].center().y - pair[1].center().y).abs() < 0.1);
+                }
+                assert!(rects[5].right() < width);
+                assert!(rects[0].bottom() < app.time_bounds[0].top());
+                assert!(!shapes.iter().any(|shape| {
+                    matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == app.window_title)
+                }));
+                let separators = shapes
+                    .iter()
+                    .filter(|shape| {
+                        matches!(&shape.shape, egui::Shape::LineSegment { points, .. }
+                        if (points[0].x - points[1].x).abs() < 0.1
+                            && points[0].x > rects[3].right()
+                            && points[0].x < rects[4].left()
+                            && points[0].y < rects[3].center().y
+                            && points[1].y > rects[3].center().y)
+                    })
+                    .count();
+                assert_eq!(separators, 1);
+
+                let project = format!("{:?}", app.session.project);
+                let (target, index) = if mode == ViewMode::Timeline {
+                    (ViewMode::Mixer, 5)
+                } else {
+                    (ViewMode::Timeline, 4)
+                };
+                let point = rects[index].center();
+                frame_sized(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                    size,
+                );
+                assert_eq!(app.view_mode, mode);
+                frame_sized(&mut app, &ctx, vec![button(point, false)], size);
+                assert_eq!(app.view_mode, target);
+                assert_eq!(format!("{:?}", app.session.project), project);
+                assert!(!app.dirty);
+            }
+        }
+    }
+}
+
 #[test]
 fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_states() {
     let (mut app, track) = fixture();
