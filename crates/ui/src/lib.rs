@@ -309,14 +309,16 @@ pub enum TrackAction {
     Add,
     Mute,
     Solo,
+    Rename,
     Duplicate,
     Delete,
 }
 impl TrackAction {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Add,
         Self::Mute,
         Self::Solo,
+        Self::Rename,
         Self::Duplicate,
         Self::Delete,
     ];
@@ -326,20 +328,20 @@ impl TrackAction {
             Self::Add => "Add track",
             Self::Mute => "Mute",
             Self::Solo => "Solo",
+            Self::Rename => "Rename track",
             Self::Duplicate => "Duplicate track",
             Self::Delete => "Delete track",
         }
     }
 
     pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
-        Some(egui::KeyboardShortcut::new(
-            egui::Modifiers::NONE,
-            match self {
-                Self::Add | Self::Duplicate | Self::Delete => return None,
-                Self::Mute => egui::Key::M,
-                Self::Solo => egui::Key::S,
-            },
-        ))
+        let (modifiers, key) = match self {
+            Self::Add | Self::Duplicate | Self::Delete => return None,
+            Self::Mute => (egui::Modifiers::NONE, egui::Key::M),
+            Self::Solo => (egui::Modifiers::NONE, egui::Key::S),
+            Self::Rename => (egui::Modifiers::COMMAND, egui::Key::R),
+        };
+        Some(egui::KeyboardShortcut::new(modifiers, key))
     }
 }
 
@@ -1161,6 +1163,18 @@ impl DawUi {
         }
         self.select_track(track, false);
     }
+    fn select_track_clips(&mut self, track: Id) {
+        let Some(track_data) = self.session.project.tracks.iter().find(|t| t.id == track) else {
+            return;
+        };
+        self.selected_clips = track_data.clips.iter().map(|clip| clip.id).collect();
+        self.selected_clip = track_data
+            .clips
+            .iter()
+            .min_by_key(|clip| clip.start_frame)
+            .map(|clip| clip.id);
+        self.select_track(track, false);
+    }
     fn prune_clip_selection(&mut self) {
         let ids: HashSet<_> = self
             .session
@@ -1535,8 +1549,9 @@ impl DawUi {
                     self.open_project_settings();
                 }
                 ui.separator();
-                let button = egui::Button::new("Settings…")
-                    .shortcut_text(ui.ctx().format_shortcut(&Self::settings_shortcut()));
+                let button = egui::Button::new("Settings…").shortcut_text(
+                    toolbars::menu_shortcut_text(ui.ctx(), &Self::settings_shortcut()),
+                );
                 if ui.add_enabled(self.settings_enabled(), button).clicked() {
                     ui.close();
                     self.open_settings();
@@ -1552,7 +1567,7 @@ impl DawUi {
                 ui.separator();
             }
             let button = egui::Button::new(action.label())
-                .shortcut_text(ui.ctx().format_shortcut(&action.shortcut()));
+                .shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &action.shortcut()));
             if ui
                 .add_enabled(self.file_action_enabled(action), button)
                 .clicked()
@@ -1567,7 +1582,7 @@ impl DawUi {
         ui.set_min_width(220.0);
         for action in ClipAction::ALL {
             let button = egui::Button::new(action.label())
-                .shortcut_text(ui.ctx().format_shortcut(&action.shortcut()));
+                .shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &action.shortcut()));
             if ui
                 .add_enabled(self.clip_action_enabled(action, ui.ctx()), button)
                 .clicked()
@@ -2690,6 +2705,11 @@ impl DawUi {
         } else {
             13.0
         };
+        let name_align = if self.view_mode == mixer::ViewMode::Mixer {
+            egui::Align::Center
+        } else {
+            egui::Align::Min
+        };
         if self
             .track_name_edit
             .as_ref()
@@ -2700,7 +2720,7 @@ impl DawUi {
                 .id(ui.make_persistent_id(("track_name", track.id)))
                 .font(egui::FontId::proportional(font_size))
                 .text_color(theme::palette(ui.ctx()).text)
-                .horizontal_align(egui::Align::Center)
+                .horizontal_align(name_align)
                 .desired_width(width)
                 .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
                 .show(ui);
@@ -2737,14 +2757,15 @@ impl DawUi {
                 self.track_name_edit = Some(edit);
             }
         } else {
+            use egui::AtomExt as _;
             let mixer_colors = (self.view_mode == mixer::ViewMode::Mixer)
                 .then(|| theme::clip_colors(track.color, None));
+            let text_id = ui.make_persistent_id(("track_name_text", track.id));
             let mut button = egui::Button::new(
                 egui::RichText::new(&track.name)
                     .font(egui::FontId::proportional(font_size))
-                    .color(
-                        mixer_colors.map_or(theme::palette(ui.ctx()).text, |colors| colors.text),
-                    ),
+                    .color(mixer_colors.map_or(theme::palette(ui.ctx()).text, |colors| colors.text))
+                    .atom_id(text_id),
             )
             .sense(Sense::click_and_drag())
             .selected(self.track_selected(track.id))
@@ -2753,12 +2774,25 @@ impl DawUi {
             if let Some(colors) = mixer_colors {
                 button = button.fill(colors.header).stroke(Stroke::NONE);
             }
-            let response = ui
-                .add_sized([width, toolbars::CONTROL_HEIGHT], button)
+            let output = if self.view_mode == mixer::ViewMode::Timeline {
+                button
+                    .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
+                    .atom_ui(ui)
+            } else {
+                ui.allocate_ui_with_layout(
+                    Vec2::new(width, toolbars::CONTROL_HEIGHT),
+                    egui::Layout::centered_and_justified(ui.layout().main_dir()),
+                    |ui| button.atom_ui(ui),
+                )
+                .inner
+            };
+            let text_rect = output.rect(text_id);
+            let response = output
+                .response
                 .on_hover_text(if self.view_mode == mixer::ViewMode::Timeline {
-                    format!("{}\nDrag to reorder. Double-click to edit.", track.name)
+                    format!("{}\nDrag to reorder. Double-click the name to edit or empty space to select all clips.", track.name)
                 } else {
-                    format!("{}\nDouble-click to edit.", track.name)
+                    format!("{}\nDouble-click the name to edit or empty space to select all clips.", track.name)
                 })
                 .on_hover_cursor(if self.view_mode == mixer::ViewMode::Timeline {
                     egui::CursorIcon::Grab
@@ -2766,11 +2800,18 @@ impl DawUi {
                     egui::CursorIcon::PointingHand
                 });
             if response.double_clicked() && self.track_name_edit.is_none() {
-                self.track_name_edit = Some(TrackNameEdit {
-                    track: track.id,
-                    text: track.name.clone(),
-                    focus: true,
-                });
+                let on_text = response
+                    .interact_pointer_pos()
+                    .is_some_and(|pos| text_rect.is_some_and(|rect| rect.contains(pos)));
+                if on_text {
+                    self.track_name_edit = Some(TrackNameEdit {
+                        track: track.id,
+                        text: track.name.clone(),
+                        focus: true,
+                    });
+                } else if self.clip_actions_available(ui.ctx()) {
+                    self.select_track_clips(track.id);
+                }
             }
             if self.view_mode == mixer::ViewMode::Timeline {
                 self.start_track_drag(ui, &response, track.id);
@@ -2940,66 +2981,90 @@ impl DawUi {
                                     meters::stereo_panel(ui, ROW_HEIGHT - 14.0, levels, |ui| {
                                         let mut mute = track.muted;
                                         let mut solo = track.soloed;
-                                        rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                                            let buttons_width =
-                                                2.0 * 28.0 + ui.spacing().item_spacing.x;
-                                            let name_width = (ui.available_width()
-                                                - 2.0
-                                                    * (buttons_width
-                                                        + ui.spacing().item_spacing.x))
-                                                .max(1.0);
-                                            // Balance the right-hand buttons so the name stays centered.
-                                            ui.allocate_ui_with_layout(
-                                                Vec2::new(buttons_width, toolbars::CONTROL_HEIGHT),
-                                                egui::Layout::left_to_right(egui::Align::Center),
-                                                |ui| {
-                                                    ui.set_min_width(buttons_width);
-                                                    let grip = icons::grip(ui);
-                                                    self.start_track_drag(ui, &grip, track.id);
-                                                },
-                                            );
-                                            ui.allocate_ui_with_layout(
-                                                Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
-                                                egui::Layout::left_to_right(egui::Align::Center),
-                                                |ui| self.track_name(ui, &track),
-                                            );
-                                            let mute_button = ui
-                                                .add(
-                                                    egui::Button::new("M")
-                                                        .selected(mute)
-                                                        .min_size(Vec2::new(28.0, 22.0)),
-                                                )
-                                                .on_hover_text("Mute (M toggles selected tracks)");
-                                            mute_button.widget_info(|| {
-                                                egui::WidgetInfo::selected(
-                                                    egui::WidgetType::Button,
-                                                    ui.is_enabled(),
-                                                    mute,
-                                                    "Mute",
-                                                )
+                                        let header =
+                                            rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
+                                                let buttons_width =
+                                                    2.0 * 28.0 + ui.spacing().item_spacing.x;
+                                                let name_width = (ui.available_width()
+                                                    - toolbars::CONTROL_HEIGHT
+                                                    - buttons_width
+                                                    - 2.0 * ui.spacing().item_spacing.x)
+                                                    .max(1.0);
+                                                let grip = icons::grip(ui);
+                                                self.start_track_drag(ui, &grip, track.id);
+                                                let name = ui.allocate_ui_with_layout(
+                                                    Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
+                                                    egui::Layout::left_to_right(
+                                                        egui::Align::Center,
+                                                    )
+                                                    .with_main_align(egui::Align::Min),
+                                                    |ui| self.track_name(ui, &track),
+                                                );
+                                                let mute_button = ui
+                                                    .add(
+                                                        egui::Button::new("M")
+                                                            .selected(mute)
+                                                            .min_size(Vec2::new(28.0, 22.0)),
+                                                    )
+                                                    .on_hover_text(
+                                                        "Mute (M toggles selected tracks)",
+                                                    );
+                                                mute_button.widget_info(|| {
+                                                    egui::WidgetInfo::selected(
+                                                        egui::WidgetType::Button,
+                                                        ui.is_enabled(),
+                                                        mute,
+                                                        "Mute",
+                                                    )
+                                                });
+                                                if mute_button.clicked() {
+                                                    mute = !mute;
+                                                }
+                                                let solo_button = ui
+                                                    .add(
+                                                        egui::Button::new("S")
+                                                            .selected(solo)
+                                                            .min_size(Vec2::new(28.0, 22.0)),
+                                                    )
+                                                    .on_hover_text(
+                                                        "Solo (S toggles selected tracks)",
+                                                    );
+                                                solo_button.widget_info(|| {
+                                                    egui::WidgetInfo::selected(
+                                                        egui::WidgetType::Button,
+                                                        ui.is_enabled(),
+                                                        solo,
+                                                        "Solo",
+                                                    )
+                                                });
+                                                if solo_button.clicked() {
+                                                    solo = !solo;
+                                                }
+                                                [
+                                                    grip.rect,
+                                                    name.response.rect,
+                                                    mute_button.rect,
+                                                    solo_button.rect,
+                                                ]
                                             });
-                                            if mute_button.clicked() {
-                                                mute = !mute;
-                                            }
-                                            let solo_button = ui
-                                                .add(
-                                                    egui::Button::new("S")
-                                                        .selected(solo)
-                                                        .min_size(Vec2::new(28.0, 22.0)),
+                                        if ui.is_enabled()
+                                            && self.clip_actions_available(ui.ctx())
+                                            && ui.rect_contains_pointer(header.response.rect)
+                                            && ui.input(|input| {
+                                                input.pointer.button_double_clicked(
+                                                    egui::PointerButton::Primary,
+                                                ) && input.pointer.interact_pos().is_some_and(
+                                                    |pos| {
+                                                        header
+                                                            .inner
+                                                            .iter()
+                                                            .all(|rect| !rect.contains(pos))
+                                                    },
                                                 )
-                                                .on_hover_text("Solo (S toggles selected tracks)");
-                                            solo_button.widget_info(|| {
-                                                egui::WidgetInfo::selected(
-                                                    egui::WidgetType::Button,
-                                                    ui.is_enabled(),
-                                                    solo,
-                                                    "Solo",
-                                                )
-                                            });
-                                            if solo_button.clicked() {
-                                                solo = !solo;
-                                            }
-                                        });
+                                            })
+                                        {
+                                            self.select_track_clips(track.id);
+                                        }
                                         let inputs =
                                             self.inputs.entry(track.id).or_insert_with(|| Inputs {
                                                 gain: format!("{:.1}", track.gain_db),
@@ -4414,10 +4479,12 @@ impl DawUi {
 mod tests {
     mod group_looping;
     mod group_stretch;
+    mod menu_shortcuts;
     mod mixer;
     mod placement_overwrite;
     mod project_settings;
     mod resize_neighbors;
+    mod track_header;
     mod track_shortcuts;
     mod trim_boundary;
     use super::*;
@@ -6888,20 +6955,24 @@ mod tests {
             select_group(&mut app, &ctx, [ids[0], ids[2]]);
             let before = format!("{:?}", app.session.project);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let name = shapes
+            let name_bounds = shapes
                 .iter()
                 .find_map(|shape| match &shape.shape {
                     egui::Shape::Text(text)
                         if text.galley.text() == app.session.project.tracks[0].name =>
                     {
-                        Some(text.pos + text.galley.size() * 0.5)
+                        Some(text.galley.rect.translate(text.pos.to_vec2()))
                     }
                     _ => None,
                 })
                 .unwrap();
             let lane = app.lane_bounds[&tracks[0]];
-            // The name stays centered in the content column, before the meter rail.
-            assert!((name.x - (lane.left() - TRACK_WIDTH + 112.0)).abs() < 1.0);
+            let name = name_bounds.center();
+            // The name starts after the 22-point grip and the 6-point row spacing.
+            assert!(
+                (name_bounds.left() - (lane.left() - TRACK_WIDTH + 35.0)).abs() < 1.0,
+                "name {name_bounds:?}, lane {lane:?}"
+            );
             let button_center = |label: &str| {
                 shapes
                     .iter()
@@ -7370,7 +7441,7 @@ mod tests {
         let (mut app, track) = fixture();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
-        let name = Pos2::new(110.0, app.lane_bounds[&track].top() + 18.0);
+        let name = Pos2::new(60.0, app.lane_bounds[&track].top() + 18.0);
         let key = |key| egui::Event::Key {
             key,
             physical_key: None,

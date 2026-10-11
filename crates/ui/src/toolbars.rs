@@ -1,8 +1,38 @@
-use crate::theme;
-use egui::{Frame, InnerResponse, Ui, Vec2};
+use crate::{fonts, theme};
+use egui::{Frame, InnerResponse, RichText, Ui, Vec2};
 
 pub const CONTROL_HEIGHT: f32 = 22.0;
 pub const HEIGHT: f32 = CONTROL_HEIGHT + 2.0 * theme::TOOLBAR_PADDING as f32;
+
+/// Menu shortcuts use Command's symbol on macOS even when other modifier glyphs are absent.
+pub fn format_menu_shortcut(ctx: &egui::Context, shortcut: &egui::KeyboardShortcut) -> String {
+    if ctx.os().is_mac() {
+        shortcut.format(
+            &egui::ModifierNames {
+                is_short: true,
+                mac_cmd: "⌘",
+                ctrl: "Ctrl+",
+                shift: "Shift+",
+                alt: "Alt+",
+                mac_alt: "Option+",
+                concat: "",
+            },
+            true,
+        )
+    } else {
+        ctx.format_shortcut(shortcut)
+    }
+}
+
+/// Keep shortcut letters in Outfit and size Command's fallback glyph to match them.
+pub fn menu_shortcut_text(ctx: &egui::Context, shortcut: &egui::KeyboardShortcut) -> RichText {
+    let text = RichText::new(format_menu_shortcut(ctx, shortcut));
+    if ctx.os().is_mac() {
+        text.family(fonts::menu_shortcut_family())
+    } else {
+        text
+    }
+}
 
 /// Shared toolbar frame and control spacing. Callers supply their controls.
 pub struct Toolbar;

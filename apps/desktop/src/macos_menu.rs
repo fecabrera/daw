@@ -203,7 +203,7 @@ impl NativeMenu {
         let track_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Track"));
         track_menu.setAutoenablesItems(false);
         for (index, action) in TrackAction::ALL.into_iter().enumerate() {
-            if matches!(action, TrackAction::Mute | TrackAction::Duplicate) {
+            if matches!(action, TrackAction::Mute | TrackAction::Rename) {
                 track_menu.addItem(&NSMenuItem::separatorItem(mtm));
             }
             let key = action
@@ -219,7 +219,11 @@ impl NativeMenu {
                     &NSString::from_str(&key),
                 )
             };
-            item.setKeyEquivalentModifierMask(NSEventModifierFlags::empty());
+            item.setKeyEquivalentModifierMask(if action == TrackAction::Rename {
+                NSEventModifierFlags::Command
+            } else {
+                NSEventModifierFlags::empty()
+            });
             item.setTag(index as isize);
             // SAFETY: NativeMenu retains the target and detaches it before dropping.
             unsafe { item.setTarget(Some(&target)) };
@@ -255,8 +259,12 @@ impl NativeMenu {
                                 !matches!(event,
                                     egui::Event::Key { key, pressed: true, modifiers, .. }
                                     if *key == shortcut.logical_key
-                                        && !modifiers.command && !modifiers.ctrl
-                                        && !modifiers.alt && !modifiers.mac_cmd
+                                        && (if action == TrackAction::Rename {
+                                            modifiers.matches_exact(shortcut.modifiers)
+                                        } else {
+                                            !modifiers.command && !modifiers.ctrl
+                                                && !modifiers.alt && !modifiers.mac_cmd
+                                        })
                                 )
                             })
                         });

@@ -67,6 +67,15 @@ impl DawUi {
             && self.musical_drag.is_none()
             && self.selection_drag.iter().all(Option::is_none)
             && self.file_hover.is_none()
+            && (action != TrackAction::Rename
+                || self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .filter(|track| self.track_selected(track.id))
+                    .count()
+                    == 1)
             && (action == TrackAction::Add
                 || self
                     .session
@@ -78,6 +87,22 @@ impl DawUi {
 
     pub fn perform_track_action(&mut self, action: TrackAction, ctx: &egui::Context) {
         if !self.track_action_enabled(action, ctx) {
+            return;
+        }
+        if action == TrackAction::Rename {
+            if let Some(track) = self
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|track| self.track_selected(track.id))
+            {
+                self.track_name_edit = Some(TrackNameEdit {
+                    track: track.id,
+                    text: track.name.clone(),
+                    focus: true,
+                });
+            }
             return;
         }
         if action == TrackAction::Delete {
@@ -124,17 +149,15 @@ impl DawUi {
     pub(super) fn track_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);
         for action in TrackAction::ALL {
-            if matches!(action, TrackAction::Mute | TrackAction::Duplicate) {
+            if matches!(action, TrackAction::Mute | TrackAction::Rename) {
                 ui.separator();
             }
             let mut button = egui::Button::new(self.track_action_label(action));
             if let Some(shortcut) = action.shortcut() {
-                button = button.shortcut_text(ui.ctx().format_shortcut(&shortcut));
+                button = button.shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &shortcut));
             }
-            if ui
-                .add_enabled(self.track_action_enabled(action, ui.ctx()), button)
-                .clicked()
-            {
+            let response = ui.add_enabled(self.track_action_enabled(action, ui.ctx()), button);
+            if response.clicked() {
                 self.perform_track_action(action, ui.ctx());
                 ui.close();
             }
@@ -147,9 +170,10 @@ impl DawUi {
         {
             return;
         }
-        let (mute, solo) = ctx.input_mut(|input| {
+        let (mute, solo, rename) = ctx.input_mut(|input| {
             let mut mute = false;
             let mut solo = false;
+            let mut rename = false;
             input.events.retain(|event| {
                 if let egui::Event::Key {
                     key,
@@ -158,11 +182,14 @@ impl DawUi {
                     modifiers,
                     ..
                 } = event
-                    && !modifiers.command
-                    && !modifiers.ctrl
-                    && !modifiers.alt
-                    && !modifiers.mac_cmd
                 {
+                    if *key == egui::Key::R && modifiers.matches_exact(egui::Modifiers::COMMAND) {
+                        rename = true;
+                        return false;
+                    }
+                    if modifiers.command || modifiers.ctrl || modifiers.alt || modifiers.mac_cmd {
+                        return true;
+                    }
                     match key {
                         egui::Key::M => {
                             mute = true;
@@ -177,13 +204,16 @@ impl DawUi {
                 }
                 true
             });
-            (mute, solo)
+            (mute, solo, rename)
         });
         if mute {
             self.perform_track_action(TrackAction::Mute, ctx);
         }
         if solo {
             self.perform_track_action(TrackAction::Solo, ctx);
+        }
+        if rename {
+            self.perform_track_action(TrackAction::Rename, ctx);
         }
     }
 
@@ -260,14 +290,17 @@ impl DawUi {
     }
 
     pub(super) fn track_context_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
-        for action in [TrackAction::Duplicate, TrackAction::Delete] {
-            if ui
-                .add_enabled(
-                    self.track_action_enabled(action, ui.ctx()),
-                    egui::Button::new(self.track_action_label(action)),
-                )
-                .clicked()
-            {
+        for action in [
+            TrackAction::Rename,
+            TrackAction::Duplicate,
+            TrackAction::Delete,
+        ] {
+            let mut button = egui::Button::new(self.track_action_label(action));
+            if let Some(shortcut) = action.shortcut() {
+                button = button.shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &shortcut));
+            }
+            let response = ui.add_enabled(self.track_action_enabled(action, ui.ctx()), button);
+            if response.clicked() {
                 ui.close();
                 return Some(action);
             }

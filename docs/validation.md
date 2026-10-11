@@ -745,3 +745,38 @@ All 228 workspace tests pass, including 27 core tests and 158 UI tests. New chec
 - Removed the 1-point gap between a selected strip's right outline and the next strip. The right stroke now reaches the strip boundary; the shared selection width and other edges retain their positions. Painting remains clipped to the scrolling track area.
 - Extended the existing header paint test with an adjacent track and checked that the right stroke meets its left boundary in dark/light themes and across track colors. All 245 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/mixer-right-outline-targeted.log`, `work/mixer-right-outline-tests.log`, `work/mixer-right-outline-clippy.log`, and `work/mixer-right-outline-package.log`.
 - Native appearance was not checked again; Windows/Linux native checks remain unverified.
+
+## Left-aligned Timeline track names — 2026-10-11
+
+- Timeline track names now start directly after the grip, using the normal row spacing. The name field fills the remaining space before Mute/Solo, which retain their right-side positions. Rename inputs use the same left alignment; Mixer headers retain their centered names.
+- Updated the existing grip/reorder test to check the name's left position and unchanged Mute/Solo alignment, including reorder release and cancellation. All 245 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/track-name-left-targeted.log`, `work/track-name-left-tests.log`, `work/track-name-left-clippy.log`, and `work/track-name-left-package.log`.
+- Native appearance was not checked; Windows/Linux native checks remain unverified. This supersedes the earlier centered Timeline name requirement.
+
+## Select track clips from empty header space — 2026-10-11
+
+- Double-clicking blank name-field space in Timeline or Mixer selects all clips on that track, replaces the previous clip selection, and makes the earliest clip primary. An empty track clears clip selection. Timeline header gaps use the same selection behavior. Visible name text retains renaming; grip and control actions remain separate. Selection uses the existing action guards and does not modify project data.
+- Added egui input tests for both views, replacement of another track's clip selection, single-click preservation, empty tracks, group copy, header spacing, name editing, control isolation, jobs, and settings dialogs. Updated the rename test to click visible name text rather than blank field space.
+- All 248 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/track-header-double-click-targeted.log`, `work/track-header-double-click-tests.log`, `work/track-header-double-click-clippy.log`, and `work/track-header-double-click-package.log`.
+- Native interaction was not checked; Windows/Linux native checks remain unverified.
+
+## Rename track menus and shortcut — 2026-10-11
+
+- Added Rename track before Duplicate in the Track menu and first in track context menus. Both display Command+R on macOS or Ctrl+R on Windows/Linux and share guarded `TrackAction::Rename` dispatch. Rename requires exactly one selected audio track and opens the existing focused name draft with its text selected. Opening preserves selection and project data; Enter commits, while Escape/focus loss cancels.
+- The macOS native item uses the Command modifier and consumes forwarded matching key events. UI shortcuts ignore repeat and extra modifiers and retain the existing text-input, focus, pointer, gesture, job, and dialog guards.
+- Added egui tests for shortcut editing and Enter/Escape in Timeline/Mixer, both menus' release actions and shortcut labels, single-selection requirements, repeat, and extra modifiers. Extended blocked-action tests to send Command+R and verify draft isolation. Existing name focus-loss and track action tests pass.
+- All 251 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/track-rename-targeted.log`, `work/track-rename-tests.log`, `work/track-rename-clippy.log`, and `work/track-rename-package.log`.
+- Native menu and shortcut interaction was not checked; Windows/Linux native checks remain unverified.
+
+## Command symbol in menu shortcut labels — 2026-10-11
+
+- All egui menus now use the shared `toolbars::format_menu_shortcut` formatter. macOS labels show Command as ⌘, such as ⌘R, ⌘S, and Shift+⌘S, without requiring unrelated modifier glyphs. Other modifier names remain text. Windows/Linux retain Ctrl labels. Native macOS menus retain the system's Command symbol. Key bindings and action guards are unchanged.
+- Added a font check for the Command glyph and menu paint coverage for File, Edit, Track, and track context menus across macOS/Windows/Linux formatting, both themes, and enabled/disabled states. Existing rename-menu input tests use the shared formatter and pass.
+- All 253 workspace tests, formatting, strict workspace Clippy, and diff checks pass using the local Cargo cache in offline mode. Rebuilt the macOS debug app. Logs: `work/menu-command-symbol-glyph.log`, `work/menu-command-symbol-targeted.log`, `work/menu-command-symbol-tests.log`, `work/menu-command-symbol-clippy.log`, and `work/menu-command-symbol-package.log`.
+- Native appearance was not checked; Windows/Linux native checks remain unverified.
+
+## Command glyph size in menu shortcuts — 2026-10-11
+
+- Added a menu-specific font family that retains Outfit letters and reduces the Command fallback glyph by 20%. All egui menu shortcut labels use `toolbars::menu_shortcut_text`, which retains standard weak-text and disabled styling. Other UI fonts, Windows/Linux labels, native macOS menus, and key bindings remain unchanged.
+- Added rendered-glyph checks at 13 and 18 points with 1×, 1.5×, and 2× display scales. Command matches R's height within 1.5 logical points and its bottom alignment within 1 point; standalone Outfit letters retain identical glyphs and layout. Extended menu paint coverage to check the font family across all menus, both themes, and enabled/disabled states.
+- All 254 workspace tests pass with `CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace --offline`. Formatting, strict workspace Clippy, and diff checks pass. Rebuilt the macOS debug app with `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh debug`. Logs: `work/menu-command-size-targeted.log`, `work/menu-command-size-tests.log`, `work/menu-command-size-clippy.log`, and `work/menu-command-size-package.log`.
+- Native appearance was not checked. The running app and its open project were left intact; the rebuilt bundle is on disk.

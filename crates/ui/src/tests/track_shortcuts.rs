@@ -254,6 +254,7 @@ fn track_keys_do_not_change_the_project_during_text_editing_or_blocked_interacti
         let mut events = vec![
             key_event(egui::Key::M, Default::default(), false, true),
             key_event(egui::Key::S, Default::default(), false, true),
+            key_event(egui::Key::R, egui::Modifiers::COMMAND, false, true),
         ];
         if blocked == "drag" {
             let point = app.lane_bounds[&tracks[0]].center();
@@ -280,6 +281,10 @@ fn track_keys_do_not_change_the_project_during_text_editing_or_blocked_interacti
         output.textures_delta.clear();
         assert_eq!(format!("{:?}", app.session.project), before, "{blocked}");
         assert!(!app.dirty, "{blocked}");
+        assert!(
+            blocked == "name" || app.track_name_edit.is_none(),
+            "{blocked}"
+        );
         drop(sender);
     }
 }
@@ -357,6 +362,7 @@ fn track_menu_disables_items_without_selection_or_when_ui_is_disabled() {
     for action in [
         TrackAction::Mute,
         TrackAction::Solo,
+        TrackAction::Rename,
         TrackAction::Duplicate,
         TrackAction::Delete,
     ] {
@@ -387,6 +393,180 @@ fn track_menu_disables_items_without_selection_or_when_ui_is_disabled() {
     }
     assert!(!app.dirty);
     assert!(!app.session.project.tracks[0].muted && !app.session.project.tracks[0].soloed);
+}
+
+#[test]
+fn rename_shortcut_uses_the_existing_editor_in_both_views() {
+    for mode in [
+        crate::mixer::ViewMode::Timeline,
+        crate::mixer::ViewMode::Mixer,
+    ] {
+        for commit in [false, true] {
+            let (mut app, tracks, clips) = multi_clip_fixture();
+            let ctx = context();
+            app.view_mode = mode;
+            app.select_clip(clips[0], tracks[0], false);
+            let before = format!("{:?}", app.session.project);
+            frame(&mut app, &ctx, vec![]);
+            frame(
+                &mut app,
+                &ctx,
+                vec![key_event(
+                    egui::Key::R,
+                    egui::Modifiers::COMMAND,
+                    false,
+                    true,
+                )],
+            );
+            let draft = app.track_name_edit.as_ref().unwrap();
+            assert_eq!(draft.track, tracks[0]);
+            assert_eq!(draft.text, "Track 1");
+            assert!(draft.focus);
+            assert!(!app.dirty);
+            frame(&mut app, &ctx, vec![]);
+            assert!(ctx.egui_wants_keyboard_input());
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Text("Renamed track".into())],
+            );
+            assert_eq!(app.track_name_edit.as_ref().unwrap().text, "Renamed track");
+            frame(
+                &mut app,
+                &ctx,
+                vec![key_event(
+                    if commit {
+                        egui::Key::Enter
+                    } else {
+                        egui::Key::Escape
+                    },
+                    Default::default(),
+                    false,
+                    true,
+                )],
+            );
+            assert!(app.track_name_edit.is_none());
+            assert_eq!(app.selected_clips, HashSet::from([clips[0]]));
+            assert_eq!(app.selected_tracks, HashSet::from([tracks[0]]));
+            assert_eq!(app.dirty, commit);
+            if commit {
+                assert_eq!(app.session.project.tracks[0].name, "Renamed track");
+            } else {
+                assert_eq!(format!("{:?}", app.session.project), before);
+            }
+        }
+    }
+}
+
+#[test]
+fn rename_requires_one_track_and_ignores_repeat_and_other_modifiers() {
+    for (modifiers, repeat) in [
+        (egui::Modifiers::COMMAND, true),
+        (egui::Modifiers::NONE, false),
+        (egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, false),
+        (egui::Modifiers::COMMAND | egui::Modifiers::ALT, false),
+    ] {
+        let (mut app, tracks, _) = multi_clip_fixture();
+        let ctx = context();
+        app.select_track(tracks[0], false);
+        frame(&mut app, &ctx, vec![]);
+        if repeat {
+            frame(
+                &mut app,
+                &ctx,
+                vec![key_event(egui::Key::R, egui::Modifiers::NONE, false, true)],
+            );
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![key_event(egui::Key::R, modifiers, repeat, true)],
+        );
+        assert!(app.track_name_edit.is_none());
+        assert!(!app.dirty);
+    }
+    let (mut app, tracks, _) = multi_clip_fixture();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.track_action_enabled(TrackAction::Rename, &ctx));
+    app.perform_track_action(TrackAction::Rename, &ctx);
+    app.select_track(tracks[0], false);
+    app.select_track(tracks[1], true);
+    assert!(!app.track_action_enabled(TrackAction::Rename, &ctx));
+    frame(
+        &mut app,
+        &ctx,
+        vec![key_event(
+            egui::Key::R,
+            egui::Modifiers::COMMAND,
+            false,
+            true,
+        )],
+    );
+    app.perform_track_action(TrackAction::Rename, &ctx);
+    assert!(app.track_name_edit.is_none());
+    assert!(!app.dirty);
+}
+
+#[test]
+fn both_track_menus_open_rename_on_release_and_show_its_shortcut() {
+    for mode in [
+        crate::mixer::ViewMode::Timeline,
+        crate::mixer::ViewMode::Mixer,
+    ] {
+        for contextual in [false, true] {
+            let (mut app, tracks, clips) = multi_clip_fixture();
+            let ctx = context();
+            app.view_mode = mode;
+            app.select_clip(clips[0], tracks[0], false);
+            frame(&mut app, &ctx, vec![]);
+            let shapes = if contextual {
+                let point = if mode == crate::mixer::ViewMode::Mixer {
+                    app.mixer_bounds[&tracks[0]].center()
+                } else {
+                    panel(&app, tracks[0]).min + Vec2::new(110.0, 18.0)
+                };
+                secondary_click(&mut app, &ctx, point)
+            } else {
+                menu_frame(&mut app, &ctx, vec![], true).shapes
+            };
+            let point = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == "Rename track" => {
+                        Some(text.pos + text.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let shortcut =
+                toolbars::format_menu_shortcut(&ctx, &TrackAction::Rename.shortcut().unwrap());
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Text(text) if text.galley.text() == shortcut
+            )));
+            let press = vec![egui::Event::PointerMoved(point), button(point, true)];
+            if contextual {
+                frame(&mut app, &ctx, press);
+            } else {
+                menu_frame(&mut app, &ctx, press, true);
+            }
+            assert!(app.track_name_edit.is_none());
+            let release = vec![button(point, false)];
+            if contextual {
+                frame(&mut app, &ctx, release);
+            } else {
+                menu_frame(&mut app, &ctx, release, true);
+            }
+            assert!(
+                app.track_name_edit.is_some(),
+                "contextual {contextual}, mixer {}",
+                mode == crate::mixer::ViewMode::Mixer
+            );
+            assert_eq!(app.track_name_edit.as_ref().unwrap().track, tracks[0]);
+            assert_eq!(app.selected_clips, HashSet::from([clips[0]]));
+            assert!(!app.dirty);
+        }
+    }
 }
 
 #[test]
