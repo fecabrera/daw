@@ -4,6 +4,7 @@ use std::{f32::consts::PI, ops::RangeInclusive};
 
 pub const SIZE: f32 = 28.0;
 pub const CHOICE_SIZE: f32 = 52.0;
+const DIAGRAM_SIZE: Vec2 = Vec2::new(10.0, 6.0);
 
 #[derive(Clone, Copy)]
 struct ParameterScale {
@@ -30,7 +31,6 @@ pub struct KnobSpec {
     bipolar: bool,
     cyclic: bool,
     diagram: Option<fn(f32) -> Vec<Vec2>>,
-    diagram_size: Vec2,
     format: fn(f32) -> String,
 }
 
@@ -58,7 +58,6 @@ impl KnobSpec {
             bipolar: false,
             cyclic: false,
             diagram: None,
-            diagram_size: Vec2::new(10.0, 6.0),
             format: |value| value.to_string(),
         }
     }
@@ -122,11 +121,6 @@ impl KnobSpec {
     /// Draw normalized paths at the choice positions of a stepped range, instead of tick marks.
     pub fn diagrams(mut self, diagram: fn(f32) -> Vec<Vec2>) -> Self {
         self.diagram = Some(diagram);
-        self
-    }
-    /// Set the painted size of normalized choice diagrams in logical points.
-    pub fn diagram_size(mut self, size: Vec2) -> Self {
-        self.diagram_size = size;
         self
     }
     pub fn format(mut self, format: fn(f32) -> String) -> Self {
@@ -421,7 +415,6 @@ pub fn curve_shape(
             } else {
                 rising_curve_diagram
             })
-            .diagram_size(Vec2::splat(10.0))
             .format(|value| daw_core::CurveShape::ALL[value as usize].label().into()),
     ));
     if response.changed() {
@@ -603,7 +596,7 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
                 let center = point(spec.normalized(choice), 20.0);
                 let points = diagram(choice)
                     .into_iter()
-                    .map(|p| center + p * spec.diagram_size)
+                    .map(|p| center + p * DIAGRAM_SIZE)
                     .collect();
                 let color = if choice == *value {
                     theme::accent(ui.ctx())

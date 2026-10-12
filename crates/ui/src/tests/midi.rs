@@ -101,6 +101,14 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let oscillator = app.midi_editor.oscillator_panel_bounds;
             let envelope = app.midi_editor.envelope_panel_bounds;
+            let waveform_size = shapes.iter().find_map(|shape| match &shape.shape {
+                egui::Shape::Path(path) if (path.stroke.width - 1.25).abs() < 0.01 => {
+                    let bounds = Rect::from_points(&path.points);
+                    oscillator.contains_rect(bounds).then_some(bounds.size())
+                }
+                _ => None,
+            });
+            assert_eq!(waveform_size.is_some(), count > 0);
             assert_eq!(oscillator.top(), envelope.top());
             assert_eq!(oscillator.bottom(), envelope.bottom());
             assert!((envelope.left() - oscillator.right() + 1.0).abs() < 0.01);
@@ -174,7 +182,10 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
                         for (choice, diagram) in diagrams.iter().enumerate() {
                             let bounds = Rect::from_points(&diagram.points);
                             assert!((bounds.width() - 10.0).abs() < 0.01);
-                            assert!((bounds.height() - 10.0).abs() < 0.01);
+                            assert!((bounds.height() - 6.0).abs() < 0.01);
+                            if let Some(size) = waveform_size {
+                                assert!((bounds.size() - size).length() < 0.01);
+                            }
                             let start = diagram.points[0];
                             let end = *diagram.points.last().unwrap();
                             let deviation = diagram
@@ -188,7 +199,7 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
                             if choice == 0 {
                                 assert!(deviation < 0.01, "Linear stays straight");
                             } else {
-                                assert!(deviation > 0.85, "Curve symbol must have a visible bend");
+                                assert!(deviation > 0.5, "Curve symbol must have a visible bend");
                             }
                         }
                     }
