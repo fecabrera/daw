@@ -1,4 +1,5 @@
 use daw_core::{Clip, Id, Project, Track, TrackKind, linear_gain};
+use daw_envelope::Envelope;
 use daw_oscillator::Oscillator;
 use daw_unit_core::{ProcessingContext, SourceUnit};
 
@@ -15,11 +16,10 @@ struct PatternClip {
 struct Voice {
     sources: Vec<OscillatorVoice>,
     current: Option<Id>,
-    envelope: f32,
-    target: f32,
+    envelope: Envelope,
     velocity: f32,
     pitch: u8,
-    step: f32,
+    reconstructed_at: u64,
     previous: f32,
     transition_from: f32,
     transition: u32,
@@ -40,8 +40,7 @@ impl Voice {
         self.transition_from = self.previous;
         self.transition = self.fade_frames;
         self.current = Some(id);
-        self.envelope = 0.0;
-        self.target = 1.0;
+        self.envelope.note_on();
         self.velocity = f32::from(velocity) / 127.0;
         self.pitch = pitch;
         for oscillator in &mut self.sources {
@@ -54,11 +53,12 @@ impl Voice {
     }
     fn end_note(&mut self) {
         self.current = None;
-        self.target = 0.0;
+        self.envelope.note_off();
     }
     fn reset(&mut self) {
         self.end_note();
-        self.envelope = 0.0;
+        self.envelope.reset();
+        self.reconstructed_at = 0;
         self.previous = 0.0;
         self.transition = 0;
         for oscillator in &mut self.sources {
@@ -66,15 +66,11 @@ impl Voice {
         }
     }
     fn sample(&mut self) -> f32 {
-        if self.envelope == 0.0 && self.target == 0.0 && self.transition == 0 {
+        if self.envelope.is_idle() && self.transition == 0 {
             self.previous = 0.0;
             return 0.0;
         }
-        if self.envelope < self.target {
-            self.envelope = (self.envelope + self.step).min(self.target);
-        } else {
-            self.envelope = (self.envelope - self.step).max(self.target);
-        }
+        let envelope = self.envelope.next_sample();
         let sources = self
             .sources
             .iter_mut()
@@ -92,7 +88,7 @@ impl Voice {
                 s.source.next_sample() * s.gain
             })
             .sum::<f32>();
-        let mut sample = sources * self.envelope * self.velocity;
+        let mut sample = sources * envelope * self.velocity;
         if self.transition > 0 {
             let progress = 1.0 - self.transition as f32 / self.fade_frames as f32;
             sample = self.transition_from * (1.0 - progress) + sample * progress;
@@ -149,7 +145,15 @@ impl MidiTrackRuntime {
                         .iter()
                         .position(|until| *until <= start)
                         .unwrap_or(free_at.len());
-                    let available = end.saturating_add(u64::from(fade_frames));
+                    // Reserve the supported release range so live release edits never
+                    // change slot assignments, steal tails, or allocate in the callback.
+                    let release_frames = (f64::from(daw_core::MAX_ENVELOPE_TIME_MS)
+                        * f64::from(project.sample_rate_hz)
+                        / 1000.0) as u64;
+                    let release_source_frames = clip.stretch.map_or(release_frames, |stretch| {
+                        stretch.original_frame(release_frames).saturating_add(1)
+                    });
+                    let available = end.saturating_add(release_source_frames);
                     if slot == free_at.len() {
                         free_at.push(available);
                     } else {
@@ -228,11 +232,16 @@ impl MidiTrackRuntime {
                         })
                         .collect(),
                     current: None,
-                    envelope: 0.0,
-                    target: 0.0,
+                    envelope: Envelope::new(
+                        instrument.envelope,
+                        ProcessingContext {
+                            sample_rate_hz: project.sample_rate_hz,
+                            max_block_frames: project.buffer_size_frames,
+                        },
+                    ),
                     velocity: 0.0,
                     pitch: 69,
-                    step: 1.0 / (project.sample_rate_hz / 200).max(1) as f32,
+                    reconstructed_at: 0,
                     previous: 0.0,
                     transition_from: 0.0,
                     transition: 0,
@@ -257,6 +266,7 @@ impl MidiTrackRuntime {
     pub fn retarget_controls(&mut self, prepared: &Self) {
         let fade_frames = (self.sample_rate_hz / 200).max(1);
         for (voice, next) in self.voices.iter_mut().zip(&prepared.voices) {
+            voice.envelope.set_settings(next.envelope.settings());
             for (source, target) in voice.sources.iter_mut().zip(&next.sources) {
                 if source.transpose != target.transpose {
                     source.transpose = target.transpose;
@@ -310,11 +320,26 @@ impl MidiTrackRuntime {
                 // Slots and release-tail capacity were assigned before publication.
                 for event in &prepared.events[..self.next_event] {
                     let voice = &mut self.voices[event.slot];
+                    let event_frame = clip.stretch.map_or(event.frame, |stretch| {
+                        // Events fire when the floor-mapped source clock reaches their frame.
+                        (u128::from(event.frame) * u128::from(stretch.output_frames))
+                            .div_ceil(u128::from(stretch.source_frames))
+                            .min(u128::from(u64::MAX)) as u64
+                    });
+                    voice
+                        .envelope
+                        .advance(event_frame.saturating_sub(voice.reconstructed_at));
                     if let Some((pitch, velocity)) = event.on {
                         voice.note_on(event.note, pitch, velocity);
                     } else if voice.current == Some(event.note) {
                         voice.end_note();
                     }
+                    voice.reconstructed_at = event_frame;
+                }
+                for voice in &mut self.voices {
+                    voice
+                        .envelope
+                        .advance(position.saturating_sub(voice.reconstructed_at));
                 }
             } else {
                 while let Some(event) = prepared
@@ -406,9 +431,68 @@ mod tests {
             runtime.sample(frame);
         }
         assert!(runtime.voices.iter().all(|v| v.current.is_none()));
-        for frame in 48_001..48_300 {
+        for frame in 48_001..60_300 {
             runtime.sample(frame);
         }
         assert_eq!(runtime.held_sample(), 0.0);
+    }
+
+    #[test]
+    fn seeks_reconstruct_adsr_in_project_time_for_stretched_and_trimmed_clips() {
+        for stretch in [
+            None,
+            daw_core::ClipStretch::new(2, 3),
+            daw_core::ClipStretch::new(8, 1),
+        ] {
+            let mut project = Project::default();
+            let track = project.add_midi_track().unwrap();
+            let clip = project.add_midi_pattern(track, 0).unwrap();
+            let note = Id::new_v4();
+            project
+                .edit(Edit::ReplaceMidiPattern {
+                    clip_id: clip,
+                    pattern: MidiPattern {
+                        length_ticks: 3840,
+                        notes: vec![MidiNote {
+                            id: note,
+                            start_tick: 0,
+                            length_ticks: 1920,
+                            pitch: 60,
+                            velocity: 127,
+                        }],
+                    },
+                })
+                .unwrap();
+            let instrument = project.tracks[0].instrument.as_mut().unwrap();
+            instrument.envelope.attack.time_ms = 200.0;
+            instrument.envelope.release.time_ms = 500.0;
+            project.tracks[0].clips[0].stretch = stretch;
+            project.tracks[0].clips[0].length_frames =
+                stretch.map_or(96_000, |s| s.scale(96_000).unwrap());
+            for frame in [1000, 4000, 8000] {
+                let mut played = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+                for position in 0..=frame {
+                    played.sample(position);
+                }
+                let mut sought = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+                sought.sample(frame);
+                let played = played.voices.iter().find(|v| v.pitch == 60).unwrap();
+                let sought = sought.voices.iter().find(|v| v.pitch == 60).unwrap();
+                assert_eq!(sought.envelope.stage(), played.envelope.stage());
+                assert!((sought.envelope.level() - played.envelope.level()).abs() < 1e-6);
+            }
+            // Trimming starts inside the source; a seek reconstructs its existing envelope.
+            let clip = &mut project.tracks[0].clips[0];
+            clip.source_offset_frame = 1000;
+            clip.length_frames -= 1000;
+            let mut trimmed = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+            trimmed.sample(0);
+            let voice = trimmed
+                .voices
+                .iter()
+                .find(|v| v.current == Some(note))
+                .unwrap();
+            assert!(voice.envelope.level() > 0.0);
+        }
     }
 }

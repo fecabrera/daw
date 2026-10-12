@@ -3,7 +3,8 @@ use daw_core::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, TrackKind};
 
 const KEY_WIDTH: f32 = 52.0;
 const NOTE_HEIGHT: f32 = 18.0;
-pub(super) const OSCILLATOR_STRIP_WIDTH: f32 = 90.0;
+pub(super) const UNIT_STRIP_WIDTH: f32 = 90.0;
+pub(super) const OSCILLATOR_STRIP_WIDTH: f32 = UNIT_STRIP_WIDTH;
 #[derive(Clone, Copy)]
 enum NoteDragMode {
     Move,
@@ -105,6 +106,12 @@ pub(super) struct MidiEditor {
     pub(crate) add_oscillator_bounds: Rect,
     #[cfg(test)]
     pub(crate) add_oscillator_strip_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) oscillator_panel_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) envelope_panel_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) envelope_stage_bounds: [Rect; 4],
 }
 impl Default for MidiEditor {
     fn default() -> Self {
@@ -148,6 +155,12 @@ impl Default for MidiEditor {
             add_oscillator_bounds: Rect::NOTHING,
             #[cfg(test)]
             add_oscillator_strip_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            oscillator_panel_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            envelope_panel_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            envelope_stage_bounds: [Rect::NOTHING; 4],
         }
     }
 }
@@ -321,25 +334,25 @@ impl DawUi {
         }
         let panel = panels::PanelStyle::default();
         let strip_margin = panel.margin;
-        panels::PanelStyle { margin: 0, ..panel }.unit(ui, "Oscillator", |ui| {
-            let Some(mut settings) = track.instrument.clone() else {
-                ui.label("No instrument assigned");
-                return;
-            };
-            let mut remove = None;
-            let mut add = false;
-            let spacing = f32::from(theme::TOOLBAR_PADDING);
-            let strip_height = 3.0 * knobs::CHOICE_SIZE + 3.0 * spacing + icons::COMPACT_BUTTON_SIZE;
-            let strip_width = OSCILLATOR_STRIP_WIDTH - 2.0 * f32::from(strip_margin);
+        let Some(mut settings) = track.instrument.clone() else {
+            ui.label("No instrument assigned");
+            return;
+        };
+        let mut remove = None;
+        let mut add = false;
+        let strip_height = crate::envelope_panel::control_height();
+        let strip_width = OSCILLATOR_STRIP_WIDTH - 2.0 * f32::from(strip_margin);
+        egui::ScrollArea::horizontal().id_salt(("instrument-units", track.id)).show(ui, |ui| {
+            ui.horizontal_top(|ui| {
+                // Overlap adjacent unit outlines by one point so they share a divider.
+                ui.spacing_mut().item_spacing.x = -1.0;
+                let oscillator_panel = panels::PanelStyle { margin: 0, ..panel }.unit(ui, "Oscillator", |ui| {
             #[cfg(test)]
             {
                 self.midi_editor.oscillator_bounds.clear();
                 self.midi_editor.oscillator_strip_bounds.clear();
                 self.midi_editor.oscillator_power_bounds.clear();
             }
-            egui::ScrollArea::horizontal()
-                .id_salt(("oscillators", track.id))
-                .show(ui, |ui| {
                     ui.horizontal_top(|ui| {
                         ui.spacing_mut().item_spacing =
                             Vec2::new(0.0, theme::TOOLBAR_PADDING as f32);
@@ -389,8 +402,17 @@ impl DawUi {
                                                             ui,
                                                             icons::COMPACT_BUTTON_SIZE,
                                                             |ui| {
-                                                                ui.add_space(((ui.available_width() - icons::COMPACT_BUTTON_SIZE) * 0.5).max(0.0));
                                                                 let on = !oscillator.muted;
+                                                                let palette = theme::palette(ui.ctx());
+                                                                let label = ui.painter().layout_no_wrap(
+                                                                    format!("Osc {}", index + 1),
+                                                                    egui::FontId::proportional(panels::HEADER_FONT_SIZE),
+                                                                    if on { palette.text } else { palette.secondary },
+                                                                );
+                                                                let gap = f32::from(theme::TOOLBAR_PADDING);
+                                                                let pair_width = icons::COMPACT_BUTTON_SIZE + gap + label.size().x;
+                                                                ui.spacing_mut().item_spacing.x = gap;
+                                                                ui.add_space(((ui.available_width() - pair_width) * 0.5).max(0.0).round());
                                                                 let response =
                                                                     icons::circular_button(
                                                                         ui,
@@ -402,6 +424,7 @@ impl DawUi {
                                                                         Some(on),
                                                                         icons::COMPACT_BUTTON_SIZE,
                                                                     );
+                                                                ui.add(egui::Label::new(label).selectable(false));
                                                                 if response.clicked() {
                                                                     oscillator.muted =
                                                                         !oscillator.muted;
@@ -422,11 +445,8 @@ impl DawUi {
                             );
                             let column = strip.inner.inner;
                             if let Some(previous) = previous_column {
-                                ui.painter().vline(
-                                    strip.response.rect.left(),
-                                    previous.top()..=strip.response.rect.bottom(),
-                                    Stroke::new(1.0, theme::unit_separator(ui.ctx())),
-                                );
+                                panels::unit_divider(ui, strip.response.rect.left(),
+                                    previous.top()..=strip.response.rect.bottom());
                             }
                             previous_column = Some(strip.response.rect);
                             #[cfg(test)]
@@ -466,11 +486,8 @@ impl DawUi {
                             )
                         });
                         if let Some(previous) = previous_column {
-                            ui.painter().vline(
-                                add_strip.response.rect.left(),
-                                previous.top()..=add_strip.response.rect.bottom(),
-                                Stroke::new(1.0, theme::unit_separator(ui.ctx())),
-                            );
+                            panels::unit_divider(ui, add_strip.response.rect.left(),
+                                previous.top()..=add_strip.response.rect.bottom());
                         }
                         #[cfg(test)]
                         {
@@ -480,20 +497,32 @@ impl DawUi {
                         add = add_strip.inner.clicked();
                     });
                 });
-            // Mutate only after painting: removal must not invalidate iteration or widget IDs.
-            if let Some(index) = remove {
-                settings.oscillators.remove(index);
-            }
-            if add {
-                settings.oscillators.push(Default::default());
-            }
-            if Some(&settings) != track.instrument.as_ref() {
-                self.edit(Edit::SetInstrument {
-                    track_id: track.id,
-                    instrument: Some(settings),
+                let envelope_panel = panels::PanelStyle { margin: 0, ..panel }.unit(ui, "Envelope", |ui| {
+                    crate::envelope_panel::body(ui, &mut settings.envelope, strip_margin)
                 });
-            }
+                ui.painter().vline(oscillator_panel.response.rect.right() - 0.5,
+                    oscillator_panel.response.rect.top()..=envelope_panel.response.rect.bottom(),
+                    panel.frame(ui.ctx(), false).stroke);
+                #[cfg(test)] {
+                    self.midi_editor.oscillator_panel_bounds = oscillator_panel.response.rect;
+                    self.midi_editor.envelope_panel_bounds = envelope_panel.response.rect;
+                    self.midi_editor.envelope_stage_bounds = envelope_panel.inner;
+                }
+            });
         });
+        // Mutate only after painting: removal must not invalidate iteration or widget IDs.
+        if let Some(index) = remove {
+            settings.oscillators.remove(index);
+        }
+        if add {
+            settings.oscillators.push(Default::default());
+        }
+        if Some(&settings) != track.instrument.as_ref() {
+            self.edit(Edit::SetInstrument {
+                track_id: track.id,
+                instrument: Some(settings),
+            });
+        }
     }
     fn editor_ruler(&mut self, ui: &mut egui::Ui) {
         let row = rows::centered(ui, RULER_HEIGHT, |ui| {

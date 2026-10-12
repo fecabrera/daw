@@ -1,5 +1,6 @@
 mod midi;
 pub use daw_unit_core::{
+    CurveShape, EnvelopeSettings, EnvelopeStageSettings, MAX_ENVELOPE_TIME_MS,
     OscillatorInstrumentSettings, OscillatorSettings, SILENT_GAIN_DB, Waveform,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, TrackKind};

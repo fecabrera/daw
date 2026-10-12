@@ -30,6 +30,7 @@ pub struct KnobSpec {
     bipolar: bool,
     cyclic: bool,
     diagram: Option<fn(f32) -> Vec<Vec2>>,
+    diagram_size: Vec2,
     format: fn(f32) -> String,
 }
 
@@ -57,6 +58,7 @@ impl KnobSpec {
             bipolar: false,
             cyclic: false,
             diagram: None,
+            diagram_size: Vec2::new(10.0, 6.0),
             format: |value| value.to_string(),
         }
     }
@@ -97,7 +99,7 @@ impl KnobSpec {
         self.reference_values = Some(values);
         self
     }
-    /// Show the current value above the reference mark using a compact formatter.
+    /// Show the current value centered above the knob using a compact formatter.
     pub fn value_label(mut self, format: fn(f32) -> String) -> Self {
         self.value_label = Some(format);
         self
@@ -120,6 +122,11 @@ impl KnobSpec {
     /// Draw normalized paths at the choice positions of a stepped range, instead of tick marks.
     pub fn diagrams(mut self, diagram: fn(f32) -> Vec<Vec2>) -> Self {
         self.diagram = Some(diagram);
+        self
+    }
+    /// Set the painted size of normalized choice diagrams in logical points.
+    pub fn diagram_size(mut self, size: Vec2) -> Self {
+        self.diagram_size = size;
         self
     }
     pub fn format(mut self, format: fn(f32) -> String) -> Self {
@@ -343,6 +350,109 @@ fn waveform_diagram(value: f32) -> Vec<Vec2> {
     }
 }
 
+fn time_position(value: f32) -> f32 {
+    value.ln_1p() / daw_core::MAX_ENVELOPE_TIME_MS.ln_1p()
+}
+fn time_at_position(position: f32) -> f32 {
+    (position * daw_core::MAX_ENVELOPE_TIME_MS.ln_1p()).exp_m1()
+}
+pub fn format_time(value: f32) -> String {
+    if value < 1000.0 {
+        format!("{value:.1} ms")
+    } else {
+        format!("{:.2} s", value / 1000.0)
+    }
+}
+fn format_percent(value: f32) -> String {
+    format!("{:.0}%", value * 100.0)
+}
+
+pub fn envelope_time(ui: &mut Ui, value: &mut f32, name: &'static str, reset: f32) -> Response {
+    ui.add(Knob::new(
+        value,
+        KnobSpec::new(name, 0.0..=daw_core::MAX_ENVELOPE_TIME_MS, reset, 1.0)
+            .scale(time_position, time_at_position, |value, delta| {
+                value + delta
+            })
+            .value_label(format_time)
+            .endpoint_labels("0 ms", "10 s")
+            .format(format_time),
+    ))
+}
+pub fn sustain(ui: &mut Ui, value: &mut f32) -> Response {
+    ui.add(Knob::new(
+        value,
+        KnobSpec::new("Sustain level", 0.0..=1.0, 0.8, 0.01)
+            .value_label(format_percent)
+            .endpoint_labels("0%", "100%")
+            .format(format_percent),
+    ))
+}
+pub fn curve_amount(ui: &mut Ui, value: &mut f32) -> Response {
+    ui.add(Knob::new(
+        value,
+        KnobSpec::new("Curve amount", 0.0..=1.0, 0.5, 0.01)
+            .value_label(format_percent)
+            .endpoint_labels("0%", "100%")
+            .format(format_percent),
+    ))
+}
+pub fn curve_shape(
+    ui: &mut Ui,
+    value: &mut daw_core::CurveShape,
+    reset: daw_core::CurveShape,
+    falling: bool,
+) -> Response {
+    let mut scalar = daw_core::CurveShape::ALL
+        .iter()
+        .position(|shape| shape == value)
+        .unwrap() as f32;
+    let reset = daw_core::CurveShape::ALL
+        .iter()
+        .position(|shape| *shape == reset)
+        .unwrap() as f32;
+    let response = ui.add(Knob::new(
+        &mut scalar,
+        KnobSpec::new("Curve shape", 0.0..=3.0, reset, 1.0)
+            .stepped(1.0)
+            .cyclic()
+            .diagrams(if falling {
+                falling_curve_diagram
+            } else {
+                rising_curve_diagram
+            })
+            .diagram_size(Vec2::splat(10.0))
+            .format(|value| daw_core::CurveShape::ALL[value as usize].label().into()),
+    ));
+    if response.changed() {
+        *value = daw_core::CurveShape::ALL[scalar as usize];
+    }
+    response
+}
+fn curve_diagram(value: f32, falling: bool) -> Vec<Vec2> {
+    let shape = daw_core::CurveShape::ALL[value as usize];
+    (0..=24)
+        .map(|i| {
+            let t = i as f32 / 24.0;
+            let progress = shape.progress(t, 1.0, falling);
+            Vec2::new(
+                t - 0.5,
+                if falling {
+                    progress - 0.5
+                } else {
+                    0.5 - progress
+                },
+            )
+        })
+        .collect()
+}
+fn rising_curve_diagram(value: f32) -> Vec<Vec2> {
+    curve_diagram(value, false)
+}
+fn falling_curve_diagram(value: f32) -> Vec<Vec2> {
+    curve_diagram(value, true)
+}
+
 /// Common compact unit row with an aligned standard knob.
 pub fn row<T>(
     ui: &mut Ui,
@@ -493,7 +603,7 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
                 let center = point(spec.normalized(choice), 20.0);
                 let points = diagram(choice)
                     .into_iter()
-                    .map(|p| center + p * Vec2::new(10.0, 6.0))
+                    .map(|p| center + p * spec.diagram_size)
                     .collect();
                 let color = if choice == *value {
                     theme::accent(ui.ctx())
@@ -525,7 +635,7 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
         }
         if let Some(format) = spec.value_label {
             painter.text(
-                point(spec.normalized(spec.reset), radius + 3.0),
+                center - Vec2::new(0.0, radius + 3.0),
                 egui::Align2::CENTER_BOTTOM,
                 format(*value),
                 crate::fonts::numeric(9.0),

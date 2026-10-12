@@ -1,0 +1,108 @@
+use crate::{icons, knobs, midi_editor::UNIT_STRIP_WIDTH, panels, rows, theme};
+use daw_core::{CurveShape, EnvelopeSettings, EnvelopeStageSettings};
+use egui::{Rect, Sense, Ui, Vec2};
+
+pub(super) fn control_height() -> f32 {
+    3.0 * knobs::CHOICE_SIZE + 3.0 * f32::from(theme::TOOLBAR_PADDING) + icons::COMPACT_BUTTON_SIZE
+}
+
+/// Four stage containers share the oscillator's row, footer, and padding geometry.
+pub(super) fn body(ui: &mut Ui, settings: &mut EnvelopeSettings, margin: i8) -> [Rect; 4] {
+    let defaults = EnvelopeSettings::default();
+    let mut bounds = [Rect::NOTHING; 4];
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+        for (index, name) in ["Attack", "Decay", "Sustain", "Release"]
+            .into_iter()
+            .enumerate()
+        {
+            let strip = ui.push_id(("envelope-stage", index), |ui| {
+                egui::Frame::new().inner_margin(margin).show(ui, |ui| {
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
+                        ui.set_min_height(control_height());
+                        match index {
+                            0 => stage_controls(
+                                ui,
+                                &mut settings.attack,
+                                defaults.attack,
+                                "Attack time",
+                                false,
+                            ),
+                            1 => stage_controls(
+                                ui,
+                                &mut settings.decay,
+                                defaults.decay,
+                                "Decay time",
+                                true,
+                            ),
+                            3 => stage_controls(
+                                ui,
+                                &mut settings.release,
+                                defaults.release,
+                                "Release time",
+                                true,
+                            ),
+                            _ => {
+                                knobs::row(
+                                    ui,
+                                    &mut settings.sustain,
+                                    knobs::CHOICE_SIZE,
+                                    knobs::sustain,
+                                );
+                                for _ in 0..2 {
+                                    ui.allocate_exact_size(
+                                        Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
+                                        Sense::hover(),
+                                    );
+                                }
+                            }
+                        }
+                        rows::centered(ui, icons::COMPACT_BUTTON_SIZE, |ui| {
+                            ui.add_sized(
+                                Vec2::new(ui.available_width(), icons::COMPACT_BUTTON_SIZE),
+                                egui::Label::new(
+                                    egui::RichText::new(name).size(panels::HEADER_FONT_SIZE),
+                                )
+                                .halign(egui::Align::Center),
+                            );
+                        });
+                    })
+                    .inner
+                })
+            });
+            bounds[index] = strip.response.rect;
+            if index > 0 {
+                panels::unit_divider(
+                    ui,
+                    strip.response.rect.left(),
+                    bounds[index - 1].top()..=strip.response.rect.bottom(),
+                );
+            }
+        }
+    });
+    bounds
+}
+
+fn stage_controls(
+    ui: &mut Ui,
+    stage: &mut EnvelopeStageSettings,
+    reset: EnvelopeStageSettings,
+    name: &'static str,
+    falling: bool,
+) {
+    knobs::row(ui, &mut stage.time_ms, knobs::CHOICE_SIZE, |ui, value| {
+        knobs::envelope_time(ui, value, name, reset.time_ms)
+    });
+    knobs::row(ui, &mut stage.shape, knobs::CHOICE_SIZE, |ui, value| {
+        knobs::curve_shape(ui, value, reset.shape, falling)
+    });
+    ui.add_enabled_ui(stage.shape != CurveShape::Linear, |ui| {
+        knobs::row(
+            ui,
+            &mut stage.amount,
+            knobs::CHOICE_SIZE,
+            knobs::curve_amount,
+        );
+    });
+}

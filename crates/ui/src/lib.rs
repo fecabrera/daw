@@ -22,6 +22,7 @@ use std::{
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 mod application_menu;
 pub mod dialogs;
+mod envelope_panel;
 mod export_dialog;
 mod export_status;
 pub mod faders;

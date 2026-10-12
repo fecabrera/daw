@@ -2285,6 +2285,22 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
                 ..Default::default()
             },
         ]);
+    // Persist independent curve choices and retained amounts, including Linear's amount.
+    let envelope = &mut session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .envelope;
+    envelope.attack.time_ms = 37.0;
+    envelope.attack.shape = daw_core::CurveShape::Logarithmic;
+    envelope.attack.amount = 0.7;
+    envelope.decay.time_ms = 83.0;
+    envelope.decay.shape = daw_core::CurveShape::SCurve;
+    envelope.decay.amount = 0.3;
+    envelope.sustain = 0.62;
+    envelope.release.time_ms = 310.0;
+    envelope.release.shape = daw_core::CurveShape::Linear;
+    envelope.release.amount = 0.9;
     let clip = session.project.add_midi_pattern(track, 0).unwrap();
     session
         .project

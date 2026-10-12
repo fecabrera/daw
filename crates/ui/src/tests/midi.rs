@@ -66,6 +66,359 @@ fn pattern(app: &DawUi) -> &MidiPattern {
 }
 
 #[test]
+fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track, _, _) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.set_view_mode(ViewMode::Units, &ctx);
+        for count in [0, 1, 3] {
+            let mut settings = app.session.project.tracks[0].instrument.clone().unwrap();
+            settings
+                .oscillators
+                .resize(count, daw_core::OscillatorSettings::default());
+            (settings.envelope.attack.time_ms, settings.envelope.sustain) = match count {
+                0 => (5.0, 0.8),
+                1 => (1200.0, 0.2),
+                _ => (10_000.0, 0.99),
+            };
+            let readouts = [
+                knobs::format_time(settings.envelope.attack.time_ms),
+                knobs::format_time(settings.envelope.decay.time_ms),
+                format!("{:.0}%", settings.envelope.sustain * 100.0),
+                knobs::format_time(settings.envelope.release.time_ms),
+            ];
+            app.edit(Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(settings),
+            });
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let oscillator = app.midi_editor.oscillator_panel_bounds;
+            let envelope = app.midi_editor.envelope_panel_bounds;
+            assert_eq!(oscillator.top(), envelope.top());
+            assert_eq!(oscillator.bottom(), envelope.bottom());
+            assert!((envelope.left() - oscillator.right() + 1.0).abs() < 0.01);
+            let divider_x = oscillator.right() - 0.5;
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::LineSegment { points, stroke }
+                    if points[0] == Pos2::new(divider_x, oscillator.top())
+                        && points[1] == Pos2::new(divider_x, envelope.bottom())
+                        && stroke.width == 1.0 && stroke.color == theme::palette(&ctx).border)));
+            for panel in [oscillator, envelope] {
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Rect(frame) if frame.rect == panel
+                        && frame.stroke == egui::Stroke::new(1.0, theme::palette(&ctx).border))));
+            }
+            for (index, label) in ["Attack", "Decay", "Sustain", "Release"]
+                .into_iter()
+                .enumerate()
+            {
+                let strip = app.midi_editor.envelope_stage_bounds[index];
+                assert!((strip.width() - midi_editor::UNIT_STRIP_WIDTH).abs() < 0.01);
+                assert!((strip.top() - envelope.top() - panels::HEADER_HEIGHT - 1.0).abs() < 0.01);
+                assert!((envelope.bottom() - strip.bottom() - 1.0).abs() < 0.01);
+                if index > 0 {
+                    assert_eq!(
+                        strip.left(),
+                        app.midi_editor.envelope_stage_bounds[index - 1].right()
+                    );
+                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::LineSegment { points, stroke }
+                            if points[0] == strip.left_top() && points[1] == strip.left_bottom()
+                                && stroke.width == 1.0 && stroke.color == theme::unit_separator(&ctx))));
+                }
+                let mut centers: Vec<_> = shapes
+                    .iter()
+                    .filter_map(|shape| match &shape.shape {
+                        egui::Shape::Circle(circle)
+                            if (circle.radius - 9.0).abs() < 0.01
+                                && strip.contains(circle.center) =>
+                        {
+                            Some(circle.center)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                centers.sort_by(|a, b| a.y.total_cmp(&b.y));
+                assert_eq!(centers.len(), if index == 2 { 1 } else { 3 });
+                for (row, center) in centers.iter().enumerate() {
+                    assert!((center.x - strip.center().x).abs() < 0.01);
+                    let expected_y = strip.top()
+                        + 10.0
+                        + knobs::CHOICE_SIZE * 0.5
+                        + row as f32 * (knobs::CHOICE_SIZE + f32::from(theme::TOOLBAR_PADDING));
+                    assert!((center.y - expected_y).abs() < 0.01);
+                    if row == 1 {
+                        let row_bounds =
+                            Rect::from_center_size(*center, Vec2::splat(knobs::CHOICE_SIZE));
+                        let diagrams: Vec<_> = shapes
+                            .iter()
+                            .filter_map(|shape| match &shape.shape {
+                                egui::Shape::Path(path)
+                                    if (path.stroke.width - 1.25).abs() < 0.01
+                                        && row_bounds
+                                            .contains_rect(Rect::from_points(&path.points)) =>
+                                {
+                                    Some(path)
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        assert_eq!(diagrams.len(), 4);
+                        for (choice, diagram) in diagrams.iter().enumerate() {
+                            let bounds = Rect::from_points(&diagram.points);
+                            assert!((bounds.width() - 10.0).abs() < 0.01);
+                            assert!((bounds.height() - 10.0).abs() < 0.01);
+                            let start = diagram.points[0];
+                            let end = *diagram.points.last().unwrap();
+                            let deviation = diagram
+                                .points
+                                .iter()
+                                .map(|point| {
+                                    let t = (point.x - start.x) / (end.x - start.x);
+                                    (point.y - (start.y + t * (end.y - start.y))).abs()
+                                })
+                                .fold(0.0_f32, f32::max);
+                            if choice == 0 {
+                                assert!(deviation < 0.01, "Linear stays straight");
+                            } else {
+                                assert!(deviation > 0.85, "Curve symbol must have a visible bend");
+                            }
+                        }
+                    }
+                    if row != 1 {
+                        let endpoints = if index == 2 || row == 2 {
+                            ["0%", "100%"]
+                        } else {
+                            ["0 ms", "10 s"]
+                        };
+                        let mut endpoint_bounds = Vec::new();
+                        for endpoint in endpoints {
+                            let text = shapes
+                                .iter()
+                                .find_map(|shape| match &shape.shape {
+                                    egui::Shape::Text(text)
+                                        if text.galley.text() == endpoint
+                                            && strip.contains(text.pos)
+                                            && text.pos.y > center.y
+                                            && text.pos.y < center.y + knobs::CHOICE_SIZE * 0.5 =>
+                                    {
+                                        Some(text)
+                                    }
+                                    _ => None,
+                                })
+                                .unwrap();
+                            let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                            assert!(bounds.top() > center.y);
+                            assert!(bounds.bottom() <= center.y + knobs::CHOICE_SIZE * 0.5);
+                            assert!(strip.contains_rect(bounds));
+                            endpoint_bounds.push(bounds);
+                        }
+                        assert!(endpoint_bounds[0].center().x < center.x);
+                        assert!(endpoint_bounds[1].center().x > center.x);
+                        assert!(endpoint_bounds[0].right() < endpoint_bounds[1].left());
+                    }
+                }
+                let readout = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text)
+                            if text.galley.text() == readouts[index]
+                                && strip.contains(text.pos) =>
+                        {
+                            Some(text)
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+                let readout_bounds = readout.galley.rect.translate(readout.pos.to_vec2());
+                assert!(
+                    (readout_bounds.center().x - centers[0].x).abs() < 0.51,
+                    "{label} value {readout_bounds:?}, knob {:?}",
+                    centers[0]
+                );
+                assert!((readout_bounds.bottom() - (centers[0].y - 15.0)).abs() < 0.51);
+                assert!(readout_bounds.top() >= centers[0].y - knobs::CHOICE_SIZE * 0.5);
+                let text = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == label => Some(text),
+                        _ => None,
+                    })
+                    .unwrap();
+                let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                assert!(
+                    (bounds.center().x - strip.center().x).abs() < 0.51,
+                    "{label} label {bounds:?}, strip {strip:?}"
+                );
+                assert!(
+                    (bounds.center().y
+                        - (strip.bottom() - 10.0 - icons::COMPACT_BUTTON_SIZE * 0.5))
+                        .abs()
+                        < 0.51
+                );
+                if count > 0 {
+                    assert!(
+                        (bounds.center().y - app.midi_editor.oscillator_power_bounds[0].center().y)
+                            .abs()
+                            < 0.51
+                    );
+                }
+            }
+            let header = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == "Envelope" => Some(text),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(
+                header.galley.job.sections[0].format.color,
+                theme::unit_header_text(theme::accent(&ctx))
+            );
+        }
+    }
+}
+
+#[test]
+fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount() {
+    use daw_core::CurveShape;
+    let (mut app, _, _, _) = fixture();
+    let ctx = context();
+    let assets = serde_json::to_value(&app.session.project.assets).unwrap();
+    let sources = app.session.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .oscillators
+        .clone();
+    app.set_view_mode(ViewMode::Units, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let point = |app: &DawUi, stage: usize, row: usize| {
+        let strip = app.midi_editor.envelope_stage_bounds[stage];
+        Pos2::new(
+            strip.center().x,
+            strip.top()
+                + 10.0
+                + knobs::CHOICE_SIZE * 0.5
+                + row as f32 * (knobs::CHOICE_SIZE + f32::from(theme::TOOLBAR_PADDING)),
+        )
+    };
+    let arrow = |app: &mut DawUi, key| {
+        for pressed in [true, false] {
+            frame(
+                app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }],
+            );
+        }
+    };
+    let disabled = point(&app, 0, 2);
+    click_note_or_lane(&mut app, &ctx, disabled);
+    arrow(&mut app, egui::Key::ArrowUp);
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .envelope
+            .attack
+            .amount,
+        0.5
+    );
+    let shape = point(&app, 0, 1);
+    click_note_or_lane(&mut app, &ctx, shape);
+    arrow(&mut app, egui::Key::ArrowUp);
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .envelope
+            .attack
+            .shape,
+        CurveShape::Exponential
+    );
+    let amount = point(&app, 0, 2);
+    click_note_or_lane(&mut app, &ctx, amount);
+    arrow(&mut app, egui::Key::ArrowUp);
+    assert!(
+        (app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .envelope
+            .attack
+            .amount
+            - 0.51)
+            .abs()
+            < 1e-6
+    );
+    let time = point(&app, 0, 0);
+    click_note_or_lane(&mut app, &ctx, time);
+    arrow(&mut app, egui::Key::ArrowUp);
+    assert!(
+        (app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .envelope
+            .attack
+            .time_ms
+            - 6.0)
+            .abs()
+            < 1e-5
+    );
+    let sustain = point(&app, 2, 0);
+    click_note_or_lane(&mut app, &ctx, sustain);
+    arrow(&mut app, egui::Key::ArrowDown);
+    assert!(
+        (app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .envelope
+            .sustain
+            - 0.79)
+            .abs()
+            < 1e-6
+    );
+    click_note_or_lane(&mut app, &ctx, shape);
+    arrow(&mut app, egui::Key::ArrowDown);
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .envelope
+            .attack
+            .shape,
+        CurveShape::Linear
+    );
+    click_note_or_lane(&mut app, &ctx, disabled);
+    arrow(&mut app, egui::Key::ArrowUp);
+    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+    assert!((instrument.envelope.attack.amount - 0.51).abs() < 1e-6);
+    assert_eq!(instrument.oscillators, sources);
+    assert_eq!(
+        serde_json::to_value(&app.session.project.assets).unwrap(),
+        assets
+    );
+}
+
+#[test]
 fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_its_menu() {
     for dark in [true, false] {
         let (mut app, track, _, _) = fixture();
@@ -241,7 +594,7 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
 }
 
 #[test]
-fn oscillator_strips_have_centered_power_toggles_and_a_clickable_add_strip() {
+fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip() {
     for dark in [true, false] {
         let (mut app, track, _, _) = fixture();
         app.session.project.tracks[0]
@@ -267,12 +620,41 @@ fn oscillator_strips_have_centered_power_toggles_and_a_clickable_add_strip() {
             .zip(&app.midi_editor.oscillator_power_bounds)
         {
             assert_eq!(button.size(), Vec2::splat(icons::COMPACT_BUTTON_SIZE));
-            assert!((column.center().x - button.center().x).abs() < 0.1);
+            assert!(button.center().x < column.center().x);
             assert!((column.bottom() - button.bottom()).abs() < 0.1);
             assert!(button.top() > column.top() + 3.0 * knobs::CHOICE_SIZE);
         }
         assert_eq!(app.midi_editor.oscillator_power_bounds.len(), 2);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        for (index, (column, button)) in app
+            .midi_editor
+            .oscillator_bounds
+            .iter()
+            .zip(&app.midi_editor.oscillator_power_bounds)
+            .enumerate()
+        {
+            let name = format!("Osc {}", index + 1);
+            let label = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == name => Some(text),
+                    _ => None,
+                })
+                .unwrap();
+            let bounds = label.galley.rect.translate(label.pos.to_vec2());
+            assert!((button.union(bounds).center().x - column.center().x).abs() < 0.51);
+            assert!((bounds.center().y - button.center().y).abs() < 0.51);
+            assert!((bounds.left() - button.right() - 8.0).abs() < 0.51);
+            assert!(column.contains_rect(bounds));
+            assert_eq!(
+                label.galley.job.sections[0].format.font_id.size,
+                panels::HEADER_FONT_SIZE
+            );
+            assert_eq!(
+                label.galley.job.sections[0].format.color,
+                theme::palette(&ctx).text
+            );
+        }
         let columns = &app.midi_editor.oscillator_strip_bounds;
         let margin = f32::from(panels::PanelStyle::default().margin);
         for (strip, controls) in columns.iter().zip(&app.midi_editor.oscillator_bounds) {
@@ -467,6 +849,9 @@ fn oscillator_strips_have_centered_power_toggles_and_a_clickable_add_strip() {
             if c.center == point && c.fill == theme::toggle_colors(&ctx, false).0
             && c.stroke == egui::Stroke::new(1.0, theme::palette(&ctx).secondary)))
         );
+        assert!(muted_shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == "Osc 2"
+                && text.galley.job.sections[0].format.color == theme::palette(&ctx).secondary)));
         click_note_or_lane(&mut app, &ctx, point);
         assert_eq!(
             app.session.project.tracks[0].instrument.as_ref().unwrap(),
@@ -3208,11 +3593,24 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
         );
         app.set_view_mode(ViewMode::Units, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let shapes: Vec<_> = shapes
+            .into_iter()
+            .filter(|shape| {
+                shape
+                    .shape
+                    .visual_bounding_rect()
+                    .intersects(app.midi_editor.oscillator_panel_bounds)
+            })
+            .collect();
         let mut centers: Vec<_> = shapes
             .iter()
             .filter_map(|shape| match &shape.shape {
                 egui::Shape::Circle(circle)
                     if (circle.radius - (knobs::SIZE / 2.0 - 5.0)).abs() < 0.01
+                        && app
+                            .midi_editor
+                            .oscillator_panel_bounds
+                            .contains(circle.center)
                         && !app
                             .midi_editor
                             .oscillator_power_bounds

@@ -91,6 +91,90 @@ fn oscillator_collections_migrate_legacy_state_and_validate_atomically() {
         .unwrap();
     restored.validate().unwrap();
 }
+
+#[test]
+fn envelope_settings_round_trip_and_missing_envelopes_preserve_legacy_sound() {
+    let mut instrument = OscillatorInstrumentSettings::default();
+    assert_eq!(instrument.envelope, EnvelopeSettings::default());
+    for shape in CurveShape::ALL {
+        instrument.envelope.attack.shape = shape;
+        instrument.envelope.decay.shape = shape;
+        instrument.envelope.release.shape = shape;
+        instrument.envelope.attack.amount = 0.0;
+        instrument.envelope.decay.amount = 1.0;
+        instrument.envelope.release.time_ms = MAX_ENVELOPE_TIME_MS;
+        let saved = serde_json::to_value(&instrument).unwrap();
+        let restored: OscillatorInstrumentSettings = serde_json::from_value(saved).unwrap();
+        assert_eq!(restored, instrument);
+        assert!(restored.valid());
+    }
+    let mut saved = serde_json::to_value(&instrument).unwrap();
+    saved.as_object_mut().unwrap().remove("envelope");
+    let restored: OscillatorInstrumentSettings = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(restored.envelope, EnvelopeSettings::legacy());
+    saved["envelope"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<OscillatorInstrumentSettings>(saved).is_err());
+    let restored: OscillatorInstrumentSettings =
+        serde_json::from_value(serde_json::to_value(OscillatorSettings::default()).unwrap())
+            .unwrap();
+    assert_eq!(restored.envelope, EnvelopeSettings::legacy());
+}
+
+#[test]
+fn invalid_envelope_edits_reject_the_entire_transaction() {
+    let (mut project, track, _) = fixture();
+    let before = serde_json::to_value(&project).unwrap();
+    let mut invalid = Vec::new();
+    for value in [-0.1, MAX_ENVELOPE_TIME_MS + 0.1, f32::NAN, f32::INFINITY] {
+        for stage in 0..3 {
+            let mut envelope = EnvelopeSettings::default();
+            match stage {
+                0 => envelope.attack.time_ms = value,
+                1 => envelope.decay.time_ms = value,
+                _ => envelope.release.time_ms = value,
+            }
+            invalid.push(envelope);
+        }
+    }
+    for value in [-0.1, 1.1, f32::NAN, f32::INFINITY] {
+        invalid.push(EnvelopeSettings {
+            sustain: value,
+            ..Default::default()
+        });
+        for stage in 0..3 {
+            let mut envelope = EnvelopeSettings::default();
+            match stage {
+                0 => envelope.attack.amount = value,
+                1 => envelope.decay.amount = value,
+                _ => envelope.release.amount = value,
+            }
+            invalid.push(envelope);
+        }
+    }
+    invalid.push(EnvelopeSettings {
+        version: 2,
+        ..Default::default()
+    });
+    for envelope in invalid {
+        let mut instrument = project.tracks[0].instrument.clone().unwrap();
+        instrument.envelope = envelope;
+        assert!(
+            project
+                .edit(Edit::Batch(vec![
+                    Edit::SetInstrument {
+                        track_id: track,
+                        instrument: Some(instrument)
+                    },
+                    Edit::SetTrackMuted {
+                        track_id: track,
+                        muted: true
+                    },
+                ]))
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&project).unwrap(), before);
+    }
+}
 #[test]
 fn copies_share_patterns_until_an_edit_and_clip_ranges_leave_content_unchanged() {
     let (mut project, track, clip) = fixture();

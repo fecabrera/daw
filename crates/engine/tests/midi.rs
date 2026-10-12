@@ -36,6 +36,8 @@ fn plan(waveform: Waveform, rate: u32) -> RenderPlan {
     };
     let track = project.add_midi_track().unwrap();
     project.tracks[0].instrument.as_mut().unwrap().oscillators[0].waveform = waveform;
+    // Existing oscillator tests isolate source/mixer behavior using the legacy gate.
+    project.tracks[0].instrument.as_mut().unwrap().envelope = EnvelopeSettings::legacy();
     let clip = project.add_midi_pattern(track, 0).unwrap();
     project
         .edit(Edit::ReplaceMidiPattern {
@@ -176,6 +178,7 @@ fn callbacks_note_events_seek_loop_and_renderer_replacement_do_not_allocate() {
             .unwrap()
             .oscillators[0]
             .transpose = 12;
+        plan.project.tracks[0].instrument.as_mut().unwrap().envelope = EnvelopeSettings::default();
         let mut updated = Renderer::new(plan);
         ALLOCATIONS.with(|count| count.set(0));
         TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
@@ -197,6 +200,173 @@ fn callbacks_note_events_seek_loop_and_renderer_replacement_do_not_allocate() {
         TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
         assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     }
+}
+
+#[test]
+fn adsr_playback_matches_export_and_block_sizes_at_all_project_rates() {
+    for rate in SAMPLE_RATES {
+        let mut plan = plan(Waveform::Sine, rate);
+        let envelope = &mut plan.project.tracks[0].instrument.as_mut().unwrap().envelope;
+        *envelope = EnvelopeSettings::default();
+        envelope.attack.shape = CurveShape::Logarithmic;
+        envelope.attack.time_ms = 35.0;
+        envelope.decay.shape = CurveShape::SCurve;
+        envelope.sustain = 0.4;
+        envelope.release.time_ms = 300.0;
+        let mut expected = vec![[0.0; 2]; rate as usize];
+        Renderer::new(plan.clone()).render_offline(&mut expected);
+        for size in BUFFER_SIZES {
+            let mut renderer = Renderer::new(plan.clone());
+            let mut actual = vec![[0.0; 2]; expected.len()];
+            for block in actual.chunks_mut(size as usize) {
+                renderer.render_offline(block);
+            }
+            assert_eq!(actual, expected);
+        }
+        let mut live = Renderer::new(plan);
+        live.play();
+        for (frame, expected) in expected.iter().enumerate() {
+            let actual = live.next_sample();
+            if frame >= (rate / 200) as usize {
+                assert_eq!(actual, *expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn live_envelope_edits_preserve_oscillator_phase_and_current_envelope_progress() {
+    use daw_envelope::Envelope;
+    use daw_oscillator::Oscillator;
+    use daw_unit_core::{ProcessingContext, SourceUnit};
+    let mut plan = plan(Waveform::Sine, 48_000);
+    plan.project
+        .assets
+        .last_mut()
+        .unwrap()
+        .midi_pattern
+        .as_mut()
+        .unwrap()
+        .notes
+        .truncate(1);
+    let mut settings = EnvelopeSettings::default();
+    settings.attack.time_ms = 200.0;
+    plan.project.tracks[0].instrument.as_mut().unwrap().envelope = settings;
+    let context = ProcessingContext {
+        sample_rate_hz: 48_000,
+        max_block_frames: 512,
+    };
+    let mut source = Oscillator::new(Waveform::Sine, context);
+    source.reset();
+    source.set_frequency(440.0);
+    let mut envelope = Envelope::new(settings, context);
+    envelope.note_on();
+    let mut live = Renderer::new(plan.clone());
+    live.play();
+    for _ in 0..3000 {
+        live.next_sample();
+        source.next_sample();
+        envelope.next_sample();
+    }
+    let gain = linear_gain(-12.0);
+    let pan = daw_engine::pan_coefficients(0.0, true);
+    for stage in 0..4 {
+        match stage {
+            0 => {
+                settings.attack.time_ms = 100.0;
+                settings.attack.shape = CurveShape::Exponential;
+            }
+            1 => {
+                settings.attack.amount = 0.9;
+                settings.decay.shape = CurveShape::SCurve;
+            }
+            2 => {
+                settings.sustain = 0.25;
+            }
+            _ => {
+                settings.release.time_ms = 1500.0;
+            }
+        }
+        plan.project.tracks[0].instrument.as_mut().unwrap().envelope = settings;
+        let mut next = Renderer::new(plan.clone());
+        next.inherit(&mut live);
+        live = next;
+        envelope.set_settings(settings);
+        for _ in 0..2000 {
+            let expected = source.next_sample() * envelope.next_sample() * gain;
+            let actual = live.next_sample();
+            for ch in 0..2 {
+                assert!((actual[ch] - expected * pan[ch]).abs() < 2e-6);
+            }
+        }
+    }
+}
+
+#[test]
+fn overlapping_release_tails_have_independent_note_envelopes() {
+    let mut combined = plan(Waveform::Sine, 48_000);
+    combined.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .envelope = EnvelopeSettings::default();
+    let clip = combined.project.tracks[0].clips[0].id;
+    let notes: Vec<_> = [0, 120, 240]
+        .into_iter()
+        .enumerate()
+        .map(|(index, start_tick)| MidiNote {
+            id: Id::from_u128(index as u128 + 50),
+            start_tick,
+            length_ticks: 60,
+            pitch: 60 + index as u8 * 4,
+            velocity: 100,
+        })
+        .collect();
+    combined
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: MidiPattern {
+                length_ticks: 3840,
+                notes: notes.clone(),
+            },
+        })
+        .unwrap();
+    let mut actual = vec![[0.0; 2]; 20_000];
+    Renderer::new(combined.clone()).render_offline(&mut actual);
+    let mut expected = vec![[0.0; 2]; actual.len()];
+    for note in notes {
+        let mut single = combined.clone();
+        single
+            .project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: MidiPattern {
+                    length_ticks: 3840,
+                    notes: vec![note],
+                },
+            })
+            .unwrap();
+        let mut samples = vec![[0.0; 2]; expected.len()];
+        Renderer::new(single).render_offline(&mut samples);
+        for (sum, sample) in expected.iter_mut().zip(samples) {
+            for ch in 0..2 {
+                sum[ch] += sample[ch];
+            }
+        }
+    }
+    assert!(
+        actual
+            .iter()
+            .zip(expected)
+            .all(|(a, b)| (0..2).all(|ch| (a[ch] - b[ch]).abs() < 1e-6))
+    );
+    assert!(
+        actual[10_000..12_000]
+            .iter()
+            .any(|sample| sample[0].abs() > 1e-4)
+    );
+    assert!(actual[18_000..].iter().all(|sample| *sample == [0.0; 2]));
 }
 
 #[test]
@@ -405,7 +575,11 @@ fn multiple_oscillators_sum_independent_sources_for_each_note_and_empty_is_silen
         let mut expected = vec![[0.0; 2]; 36_000];
         for oscillator in &settings {
             let mut single = combined.clone();
-            single.project.tracks[0].instrument = Some(oscillator.clone().into());
+            single.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .oscillators = vec![oscillator.clone()];
             let mut renderer = Renderer::new(single);
             renderer.seek(start);
             let mut samples = vec![[0.0; 2]; expected.len()];
@@ -479,7 +653,11 @@ fn oscillator_mute_silences_only_its_source_and_unmute_restores_saved_gain() {
             },
         ]);
     let mut reference = original.clone();
-    reference.project.tracks[0].instrument = Some(active.into());
+    reference.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .oscillators = vec![active];
     let mut expected = vec![[0.0; 2]; 48_000];
     Renderer::new(reference).render_offline(&mut expected);
     let mut actual = vec![[0.0; 2]; expected.len()];

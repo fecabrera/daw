@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/unit-core", "crates/oscillator", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
+members = ["crates/unit-core", "crates/oscillator", "crates/envelope", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
 default-members = ["apps/desktop", "apps/cli"]
 
 [workspace.package]
@@ -11,6 +11,7 @@ rust-version = "1.95"
 [workspace.dependencies]
 daw-unit-core = { path = "crates/unit-core", version = "0.1.0" }
 daw-oscillator = { path = "crates/oscillator" }
+daw-envelope = { path = "crates/envelope" }
 fundsp = { version = "0.23", default-features = false, features = ["std"] }
 daw-core = { path = "crates/core" }
 daw-media = { path = "crates/media" }

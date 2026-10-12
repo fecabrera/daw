@@ -3,6 +3,15 @@ use egui::{Color32, Frame, InnerResponse, Rect, Stroke, Ui, Vec2};
 pub(super) const HEADER_HEIGHT: f32 = crate::toolbars::CONTROL_HEIGHT + 2.0;
 pub(super) const HEADER_FONT_SIZE: f32 = 11.0;
 
+/// Shared muted full-height separator for internally padded unit strips.
+pub(super) fn unit_divider(ui: &Ui, x: f32, range: std::ops::RangeInclusive<f32>) {
+    ui.painter().vline(
+        x,
+        range,
+        Stroke::new(1.0, crate::theme::unit_separator(ui.ctx())),
+    );
+}
+
 /// Shared framing for outlined information panels. Content and commands stay with each panel.
 pub struct PanelStyle {
     pub outline: Option<Color32>,
@@ -28,30 +37,33 @@ impl PanelStyle {
         content: impl FnOnce(&mut Ui) -> R,
     ) -> InnerResponse<R> {
         self.frame(ui.ctx(), false).inner_margin(0).show(ui, |ui| {
-            let spacing = ui.spacing().item_spacing.y;
-            ui.spacing_mut().item_spacing.y = 0.0;
-            let (header, _) =
-                ui.allocate_exact_size(Vec2::new(0.0, HEADER_HEIGHT), egui::Sense::hover());
-            let body = Frame::new().inner_margin(self.margin).show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = spacing;
-                content(ui)
-            });
-            let header = Rect::from_min_size(
-                header.min,
-                Vec2::new(body.response.rect.width(), HEADER_HEIGHT),
-            );
-            let accent = crate::theme::accent(ui.ctx());
-            ui.painter().rect_filled(header, 0.0, accent);
-            ui.put(
-                header,
-                egui::Label::new(
-                    egui::RichText::new(name)
-                        .size(HEADER_FONT_SIZE)
-                        .color(crate::theme::unit_header_text(accent)),
-                )
-                .truncate(),
-            );
-            body.inner
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                let spacing = ui.spacing().item_spacing.y;
+                ui.spacing_mut().item_spacing.y = 0.0;
+                let (header, _) =
+                    ui.allocate_exact_size(Vec2::new(0.0, HEADER_HEIGHT), egui::Sense::hover());
+                let body = Frame::new().inner_margin(self.margin).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = spacing;
+                    content(ui)
+                });
+                let header = Rect::from_min_size(
+                    header.min,
+                    Vec2::new(body.response.rect.width(), HEADER_HEIGHT),
+                );
+                let accent = crate::theme::accent(ui.ctx());
+                ui.painter().rect_filled(header, 0.0, accent);
+                ui.put(
+                    header,
+                    egui::Label::new(
+                        egui::RichText::new(name)
+                            .size(HEADER_FONT_SIZE)
+                            .color(crate::theme::unit_header_text(accent)),
+                    )
+                    .truncate(),
+                );
+                body.inner
+            })
+            .inner
         })
     }
 

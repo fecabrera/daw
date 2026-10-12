@@ -1172,3 +1172,55 @@ All 228 workspace tests pass, including 27 core tests and 158 UI tests. New chec
 - All 356 workspace tests, including 253 UI tests, pass. Two new audio regressions cover all six processing rates and four waveforms: rapid gain edits match continuously running reference sources without affecting another oscillator; pitch edits match a continuously running oscillator during unfinished ramps and after reaching the −48/+48/zero targets. Gain coverage includes exact silence and mute/unmute. Extended the callback allocation check to include source gain, pitch, and mute updates. Log: `work/pitch-gain-tests.log`.
 - Strict workspace/all-target Clippy, formatting, 62 local documentation links/anchors, and `git diff --check` pass. CLI build and `python3 tools/check_cli.py` pass for WAV/MP3 codecs/bitrates, repeatability, missing sources, eight-track projects, overwrite behavior, and exit codes. Rebuilt `target/debug/DAW.app`. Logs: `work/pitch-gain-clippy.log`, `work/pitch-gain-cli-build.log`, `work/pitch-gain-cli-smoke.log`, and `work/pitch-gain-package.log`.
 - Native appearance, real-device audio, and Windows/Linux native UI were not checked. The regressions verify rendered samples and allocation behavior; they do not establish a listening result on an audio device.
+
+
+## ADSR Envelope unit — 2026-10-12
+
+- Added Envelope immediately to the right of Oscillator. Both use the shared unit shell, equal total height, aligned accent headers, three control rows, and matching footer alignment. Four 90-point stage strips have equal internal padding, full-height separators, and bottom Attack/Decay/Sustain/Release labels. Panels share one full-height 1-point muted divider and one horizontal scroll area. Sustain reserves its two unused rows; timed stages use time, stepped curve-diagram, and curve-amount controls from the shared knob base. Linear disables amount without discarding it.
+- Added versioned portable envelope settings and the reusable `daw-envelope` crate. Each note has an independent 0–1 ADSR signal applied to its combined oscillator output. New defaults are 5 ms Attack, 100 ms Decay, 80% Sustain, and 200 ms Release, with Linear Attack and Exponential Decay/Release. Missing envelopes in legacy flat or collection instruments preserve the previous 5 ms gate. Core rejects malformed versions, times, levels, and amounts atomically. Saving persists curve choices and retained amounts; save/reopen, Save As, processing-rate changes, and WAV/MP3 exports share the configuration.
+- Live envelope changes preserve oscillator phase, current stage/progress, and current envelope level. Sustain changes ramp over 5 ms. Release starts at the current level after early note-off. Zero-duration stages advance immediately. Voice slots reserve the supported release range before publication, with clip-stretch conversion, so release edits retain schedules without callback allocation. Seek reconstructs envelope progress in project time, including stretched and trimmed clips. Existing clip/repeat boundary fades and arranged export duration still bound source releases; effect/graph tail work remains pending.
+- All 371 workspace tests, including 255 UI tests, pass (`CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace --offline`). New checks cover six-rate stage timing, exact endpoints, curve monotonicity and zero amount, early note-off, zero stages, live edits, fast reconstruction, legacy migration, invalid-edit rollback, two-theme panel/row/footer geometry and separators, disabled amount retention, independent release tails, all-rate/buffer playback/export agreement, and phase continuity. Extended callback allocation and persisted mixed-audio/oscillator export workflows. Log: `work/envelope-tests.log`.
+- Strict workspace/all-target Clippy, formatting, 64 local documentation links/anchors, and `git diff --check` pass. CLI build and `python3 tools/check_cli.py` pass for codecs/bitrates, deterministic exports, missing sources, eight-track projects, overwrite handling, and exit codes. Rebuilt `target/debug/DAW.app`. Logs: `work/envelope-clippy.log`, `work/envelope-cli-build.log`, `work/envelope-cli-smoke.log`, and `work/envelope-package.log`.
+- Native appearance, real-device listening, Windows/Linux native UI, and large-workload CPU/memory performance were not checked. Automated geometry and rendered-sample tests do not establish native/device behavior.
+
+
+## Centered Envelope value labels — 2026-10-12
+
+- Fixed Attack and Sustain current-value labels, which followed their reset marks around the arc. The shared knob base now centers value labels directly above the knob, independent of reset position. Tick marks and bottom stage labels retain their positions.
+- All 371 workspace tests, including 255 UI tests, pass (`CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace --offline`). Extended the existing two-theme Envelope geometry check to verify centered readouts, top placement, and fit within the control row at default and changed Attack/Sustain values, including second-format times. Logs: `work/envelope-readout-focused.log` and `work/envelope-readout-tests.log`.
+- Strict workspace/all-target Clippy, formatting, and `git diff --check` pass. Rebuilt `target/debug/DAW.app`. Logs: `work/envelope-readout-clippy.log` and `work/envelope-readout-package.log`. Native appearance and Windows/Linux native UI were not checked.
+
+
+## Envelope knob endpoint labels — 2026-10-12
+
+- Time knobs now show 0 ms and 10 s below the range endpoints. Sustain level and curve amount (strength) show 0% and 100%. All use the shared knob endpoint-label implementation, matching Pitch and Gain. Current-value labels remain centered above the knobs; Linear retains visible endpoint labels on its disabled amount control.
+- All 371 workspace tests, including 255 UI tests, pass (`CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace --offline`). Extended the two-theme Envelope geometry check to verify every numeric knob's endpoint labels sit below the face, remain inside its row/strip, and do not overlap. Logs: `work/envelope-endpoint-focused.log` and `work/envelope-endpoint-tests.log`.
+- Strict workspace/all-target Clippy, formatting, and `git diff --check` pass. Rebuilt `target/debug/DAW.app`. Logs: `work/envelope-endpoint-clippy.log` and `work/envelope-endpoint-package.log`. Native appearance and Windows/Linux native UI were not checked.
+
+
+## More pronounced Envelope curve symbols — 2026-10-12
+
+- Curve-choice diagrams now use full-strength previews in a 10-by-10-point area instead of 70% previews in a 10-by-6-point area. This makes the bends more visible while preserving the shared knob layout. Diagram size is supplied through the shared knob specification; waveform diagrams retain their existing size. This changes the symbols only; saved curve amounts and envelope processing retain their behavior.
+- All 371 workspace tests, including 255 UI tests, pass (`CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace --offline`). Extended the existing two-theme Envelope geometry check to verify four diagrams remain inside each shape-knob row, Linear stays straight, and all nonlinear symbols have visible curvature in rising and falling stages. Logs: `work/envelope-symbol-focused.log` and `work/envelope-symbol-tests.log`.
+- Strict workspace/all-target Clippy, formatting, and `git diff --check` pass. Rebuilt `target/debug/DAW.app`. Logs: `work/envelope-symbol-clippy.log` and `work/envelope-symbol-package.log`. Native appearance and Windows/Linux native UI were not checked.
+
+
+## Centered Oscillator Power-label pairs — 2026-10-12
+
+- Added an 11-point “Osc N” label to the right of each 18-point Power button with a 4-point gap. Center the pair in the fixed 90-point strip, with primary text when on and secondary text when muted. Retain the numbered tooltip/accessibility name and existing independent toggle behavior. This supersedes the earlier unlabeled, individually centered Power button requirement.
+- All 371 workspace tests, including 255 UI tests, pass (`CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace --offline`). Updated the two-theme Oscillator check to verify pair centering, label position/size, active and muted text colors, retained strip padding, equal Add/Power painted dimensions, and release-based source toggling. Logs: `work/oscillator-label-focused.log` and `work/oscillator-label-tests.log`.
+- Strict workspace/all-target Clippy, formatting, and `git diff --check` pass. Rebuilt `target/debug/DAW.app`. Logs: `work/oscillator-label-clippy.log` and `work/oscillator-label-package.log`. Native appearance and Windows/Linux native UI were not checked.
+
+
+## Panel-border color for the Oscillator–Envelope divider — 2026-10-12
+
+- The full-height 1-point divider between Oscillator and Envelope now uses the shared panel frame's border stroke, matching the bottom and other outer panel borders. This supersedes the earlier muted inter-panel divider color; internal oscillator/stage separators retain their lower contrast.
+- All 371 workspace tests, including 255 UI tests, pass (`CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace --offline`). Extended the existing two-theme Envelope geometry check to verify the full-height divider color and both actual painted panel-border strokes match. Existing checks retain equal panel height, shared boundary, and muted internal separators. Logs: `work/unit-border-divider-focused.log` and `work/unit-border-divider-tests.log`.
+- Strict workspace/all-target Clippy, formatting, and `git diff --check` pass. Rebuilt `target/debug/DAW.app`. Logs: `work/unit-border-divider-clippy.log` and `work/unit-border-divider-package.log`. Native appearance and Windows/Linux native UI were not checked.
+
+
+## Increased Oscillator Power-label spacing — 2026-10-12
+
+- Increased the gap between each Power button and its “Osc N” label from 4 to 8 points, using the shared toolbar spacing. The pair remains centered in the fixed 90-point strip. This supersedes the previous 4-point gap.
+- All 371 workspace tests, including 255 UI tests, pass (`CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace --offline`). Updated the existing two-theme Oscillator layout check for the 8-point gap; pair centering, vertical alignment, internal padding, label colors, shared Add/Power geometry, and independent source toggling pass. Logs: `work/oscillator-label-gap-focused.log` and `work/oscillator-label-gap-tests.log`.
+- Strict workspace/all-target Clippy, formatting, and `git diff --check` pass. Rebuilt `target/debug/DAW.app`. Logs: `work/oscillator-label-gap-clippy.log` and `work/oscillator-label-gap-package.log`. Native appearance and Windows/Linux native UI were not checked.

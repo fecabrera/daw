@@ -7,5 +7,6 @@ rust-version.workspace = true
 [dependencies]
 daw-unit-core.workspace = true
 daw-oscillator.workspace = true
+daw-envelope.workspace = true
 daw-core.workspace = true
 daw-media.workspace = true

@@ -5,7 +5,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 ## Current features
 
 - **Timeline:** arrange audio clips, trim, loop, stretch, move, copy, and duplicate selections. Placement and resizing make room by trimming, splitting, or removing covered clips. Edits preview before committing, with grid snapping and Shift to bypass it.
-- **MIDI:** create MIDI tracks and patterns. Edit notes in a piano roll and add sine, saw, square, or triangle oscillators to one instrument in Units. Each oscillator has its own pitch and gain. Patterns support playback, clip editing, and export.
+- **MIDI:** create MIDI tracks and patterns. Edit notes in a piano roll and add sine, saw, square, or triangle oscillators to one instrument in Units. Each oscillator has its own pitch and gain. Shape each note with an ADSR Envelope unit, including per-stage curves and curve strength. Patterns support playback, clip editing, and export.
 - **Mixer:** adjust track gain, pan, mute, and solo, plus master gain. Timeline and Mixer share controls, values, and selection.
 - **Playback:** tempo-based ruler, loop selection, stereo meters, and trackpad scrolling and zoom.
 - **Projects:** folder-based saves, project naming, and configurable processing sample rate and buffer size. Source recordings remain external and unchanged.

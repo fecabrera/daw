@@ -1,5 +1,7 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
 use serde::{Deserialize, Serialize};
+mod envelope;
+pub use envelope::{CurveShape, EnvelopeSettings, EnvelopeStageSettings, MAX_ENVELOPE_TIME_MS};
 
 pub const OSCILLATOR_TYPE_ID: &str = "daw.oscillator";
 pub const UNIT_STATE_VERSION: u32 = 1;
@@ -63,6 +65,7 @@ impl OscillatorSettings {
 pub struct OscillatorInstrumentSettings {
     pub version: u32,
     pub oscillators: Vec<OscillatorSettings>,
+    pub envelope: EnvelopeSettings,
 }
 impl Default for OscillatorInstrumentSettings {
     fn default() -> Self {
@@ -74,12 +77,15 @@ impl From<OscillatorSettings> for OscillatorInstrumentSettings {
         Self {
             version: UNIT_STATE_VERSION,
             oscillators: vec![oscillator],
+            envelope: EnvelopeSettings::default(),
         }
     }
 }
 impl OscillatorInstrumentSettings {
     pub fn valid(&self) -> bool {
-        self.version == UNIT_STATE_VERSION && self.oscillators.iter().all(OscillatorSettings::valid)
+        self.version == UNIT_STATE_VERSION
+            && self.oscillators.iter().all(OscillatorSettings::valid)
+            && self.envelope.valid()
     }
 }
 impl<'de> Deserialize<'de> for OscillatorInstrumentSettings {
@@ -96,6 +102,8 @@ impl<'de> Deserialize<'de> for OscillatorInstrumentSettings {
             gain_db: Option<f32>,
             #[serde(default)]
             muted: bool,
+            #[serde(default = "EnvelopeSettings::legacy")]
+            envelope: EnvelopeSettings,
         }
         fn collection<'de, D: serde::Deserializer<'de>>(
             deserializer: D,
@@ -107,9 +115,10 @@ impl<'de> Deserialize<'de> for OscillatorInstrumentSettings {
             Ok(Self {
                 version: saved.version,
                 oscillators,
+                envelope: saved.envelope,
             })
         } else {
-            Ok(OscillatorSettings {
+            let mut instrument: Self = OscillatorSettings {
                 version: saved.version,
                 waveform: saved
                     .waveform
@@ -122,7 +131,9 @@ impl<'de> Deserialize<'de> for OscillatorInstrumentSettings {
                     .ok_or_else(|| serde::de::Error::missing_field("gain_db"))?,
                 muted: saved.muted,
             }
-            .into())
+            .into();
+            instrument.envelope = saved.envelope;
+            Ok(instrument)
         }
     }
 }

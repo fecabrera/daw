@@ -1037,8 +1037,16 @@ name = "daw-engine"
 version = "0.1.0"
 dependencies = [
  "daw-core",
+ "daw-envelope",
  "daw-media",
  "daw-oscillator",
+ "daw-unit-core",
+]
+
+[[package]]
+name = "daw-envelope"
+version = "0.1.0"
+dependencies = [
  "daw-unit-core",
 ]
 
