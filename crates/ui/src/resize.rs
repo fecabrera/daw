@@ -29,6 +29,24 @@ fn range(clip: &Clip) -> (u64, u64, u64, Option<daw_core::ClipLoop>) {
 }
 
 impl DawUi {
+    pub(super) fn clip_trim_preview_project(&self, ui: &egui::Ui) -> Option<daw_core::Project> {
+        let drag = self.drag.as_ref()?;
+        if drag.linked_boundary
+            || !matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight)
+        {
+            return None;
+        }
+        let pointer = ui.input(|i| i.pointer.latest_pos())?;
+        let raw = self.raw_clip_drag_previews(drag, pointer, musical_time::snap_bypassed(ui));
+        if raw.is_empty() || raw.iter().any(|p| !p.valid) {
+            return None;
+        }
+        let clips: Vec<_> = raw.into_iter().map(|p| p.clip).collect();
+        self.session
+            .project
+            .trimmed_clips(&clips, drag.mode.resize_edge()?)
+            .ok()
+    }
     pub(super) fn resolve_resize_preview(
         &self,
         drag: &Drag,
@@ -43,6 +61,8 @@ impl DawUi {
         let clips: Vec<_> = raw.iter().map(|preview| preview.clip.clone()).collect();
         let result = if drag.mode.stretch_edge().is_some() {
             self.session.project.stretched_clips(&clips, edge)
+        } else if matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight) {
+            self.session.project.trimmed_clips(&clips, edge)
         } else {
             self.session.project.resized_clips(&clips, edge)
         };
@@ -106,7 +126,12 @@ impl DawUi {
             return;
         }
         let clips: Vec<_> = raw.iter().map(|preview| preview.clip.clone()).collect();
-        match self.session.project.resized_clips(&clips, edge) {
+        let result = if matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight) {
+            self.session.project.trimmed_clips(&clips, edge)
+        } else {
+            self.session.project.resized_clips(&clips, edge)
+        };
+        match result {
             Ok(next) => self.publish_resize(next),
             Err(error) => self.fail(error),
         }
@@ -124,7 +149,9 @@ impl DawUi {
                         new.clips
                             .iter()
                             .find(|other| other.id == clip.id)
-                            .is_none_or(|other| range(other) != range(clip))
+                            .is_none_or(|other| {
+                                range(other) != range(clip) || other.asset_id != clip.asset_id
+                            })
                     })
             });
         if changed {

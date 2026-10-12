@@ -1,3 +1,4 @@
+mod clip_lane;
 mod looping;
 mod midi_editor;
 mod placement;
@@ -583,6 +584,11 @@ struct ClipPreview {
     clip: Clip,
     valid: bool,
     removed: bool,
+}
+#[derive(Clone, Copy)]
+enum PreparedClipSource<'a> {
+    Audio(&'a daw_media::AudioData),
+    Midi(&'a daw_core::MidiPattern),
 }
 struct FileDropTarget {
     track: Option<Id>,
@@ -1415,7 +1421,7 @@ impl DawUi {
                 ClipAction::Paste => self.clip_clipboard.as_ref().is_some_and(|clipboard| {
                     clipboard.project == self.session.project.project_id
                         && !self.session.project.tracks.is_empty()
-                        && (self.view_mode == ViewMode::Timeline
+                        && (matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
                             || !clipboard.clips.iter().any(|entry| {
                                 self.session.project.assets.iter().any(|asset| {
                                     asset.id == entry.clip.asset_id && asset.midi_pattern.is_some()
@@ -1725,8 +1731,15 @@ impl DawUi {
     }
 
     pub fn file_action_enabled(&self, action: FileAction) -> bool {
-        !self.midi_editor.dragging()
-            && self.job.is_none()
+        self.drag.is_none()
+            && !self.midi_editor.dragging()
+            && self.edit_environment_available()
+            && (action != FileAction::Export || self.session.project.end() > 0)
+    }
+
+    // Active gestures must check the environment without rejecting their own drag.
+    fn edit_environment_available(&self) -> bool {
+        self.job.is_none()
             && !self.unsaved_prompt
             && self.overwrite.is_none()
             && self.export_dialog.is_none()
@@ -1735,7 +1748,6 @@ impl DawUi {
             && self.project_settings.is_none()
             && !self.settings_open
             && self.error.is_none()
-            && (action != FileAction::Export || self.session.project.end() > 0)
     }
 
     fn take_file_shortcut(&self, ctx: &egui::Context) -> Option<FileAction> {
@@ -3529,16 +3541,18 @@ impl DawUi {
         }
     }
     fn clip_block(&self, lane: Rect, clip: &Clip, start: u64) -> Rect {
-        let left =
-            lane.left() + ((self.session.project.seconds(start) - self.scroll) as f32) * self.zoom;
-        let right = left + self.session.project.seconds(clip.length_frames) as f32 * self.zoom;
+        let left = lane.left()
+            + ((self.session.project.seconds(start) - self.view_scroll()) as f32)
+                * self.view_zoom();
+        let right =
+            left + self.session.project.seconds(clip.length_frames) as f32 * self.view_zoom();
         Rect::from_min_max(
             Pos2::new(left, lane.top()),
             Pos2::new(right.max(left + 2.0), lane.bottom()),
         )
     }
     fn drag_delta(&self, drag: &Drag, pointer: Pos2) -> i64 {
-        (f64::from(pointer.x - drag.origin.x) / f64::from(self.zoom)
+        (f64::from(pointer.x - drag.origin.x) / f64::from(self.view_zoom())
             * f64::from(self.session.project.sample_rate_hz))
         .round() as i64
     }
@@ -3646,14 +3660,18 @@ impl DawUi {
             && self
                 .file_target(pointer, self.timeline_bounds, true)
                 .is_some_and(|target| target.track.is_none());
-        let track_delta = if new_tracks {
-            // Place the whole group below the last track, preserving track gaps.
-            (tracks.len() - first_track) as i128
+        let track_delta = if self.view_mode == ViewMode::Edit {
+            0
         } else {
-            (target_track as i128 - anchor_track as i128).clamp(
-                -(first_track as i128),
-                (tracks.len() - 1 - last_track) as i128,
-            )
+            if new_tracks {
+                // Place the whole group below the last track, preserving track gaps.
+                (tracks.len() - first_track) as i128
+            } else {
+                (target_track as i128 - anchor_track as i128).clamp(
+                    -(first_track as i128),
+                    (tracks.len() - 1 - last_track) as i128,
+                )
+            }
         };
         let ignored: HashSet<_> = if drag.duplicate {
             HashSet::new()
@@ -3806,6 +3824,37 @@ impl DawUi {
         let track = drag.track;
         self.lane_bounds.get(&track)?;
         let mut clip = drag.clip.clone();
+        if let Some(edge) = drag.mode.resize_edge()
+            && matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight)
+            && let Ok(bounds) = self.session.project.midi_pattern_bounds(&clip, edge)
+        {
+            let delta = i128::from(self.drag_delta(drag, pointer));
+            let target = self.musical_timeline().snap_bounded(
+                i128::from(bounds.edge_frame()) + delta,
+                bounds.frame_limits(),
+                std::iter::empty(),
+                unsnapped || delta == 0,
+            );
+            match edge {
+                daw_core::ClipEdge::Left => {
+                    clip.start_frame = target;
+                    clip.length_frames = drag.clip.end() - target;
+                }
+                daw_core::ClipEdge::Right => clip.length_frames = target - clip.start_frame,
+            }
+            return Some(ClipPreview {
+                track,
+                track_index: self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .position(|t| t.id == track)?,
+                clip,
+                valid: true,
+                removed: false,
+            });
+        }
         if matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight) {
             // Also restore trimming for clips saved with an unnecessary loop flag.
             clip.restore_source_range();
@@ -4087,7 +4136,14 @@ impl DawUi {
             );
         let colors = theme::clip_colors(track_color, clip.color);
         if let Some(audio) = audio {
-            self.paint_clip(&ghost, track_color, block, &clip, false, Some(audio));
+            self.paint_clip(
+                &ghost,
+                track_color,
+                block,
+                &clip,
+                false,
+                Some(PreparedClipSource::Audio(audio)),
+            );
         } else {
             ghost.rect_filled(block, 2.0, colors.body);
             let header =
@@ -4152,7 +4208,18 @@ impl DawUi {
         let Some(drag) = self.drag.as_ref() else {
             return;
         };
-        let previews = self.clip_drag_previews(drag, pointer, musical_time::snap_bypassed(ui));
+        let preview_project = self.clip_trim_preview_project(ui);
+        let previews = if let Some(project) = &preview_project {
+            let requested = drag
+                .clips
+                .iter()
+                .map(|e| e.clip.id)
+                .chain(std::iter::once(drag.clip.id))
+                .collect();
+            self.resize_result_previews(project, &requested)
+        } else {
+            self.clip_drag_previews(drag, pointer, musical_time::snap_bypassed(ui))
+        };
         let incoming_count = if drag.mode == ClipDragMode::Move {
             self.move_group_preview(drag, pointer, musical_time::snap_bypassed(ui))
                 .map_or(0, |raw| raw.len())
@@ -4166,7 +4233,7 @@ impl DawUi {
         {
             self.mask_neighbor_previews(ui, viewport, &previews[incoming_count..]);
         }
-        self.paint_preview_clips(ui, viewport, &previews);
+        self.paint_preview_clips_from_project(ui, viewport, &previews, preview_project.as_ref());
         ui.ctx().set_cursor_icon(if drag.duplicate {
             egui::CursorIcon::Copy
         } else if drag.mode == ClipDragMode::Move {
@@ -4176,6 +4243,15 @@ impl DawUi {
         });
     }
     fn paint_preview_clips(&self, ui: &egui::Ui, viewport: Rect, previews: &[ClipPreview]) {
+        self.paint_preview_clips_from_project(ui, viewport, previews, None);
+    }
+    fn paint_preview_clips_from_project(
+        &self,
+        ui: &egui::Ui,
+        viewport: Rect,
+        previews: &[ClipPreview],
+        project: Option<&daw_core::Project>,
+    ) {
         for preview in previews {
             if preview.removed {
                 continue;
@@ -4201,7 +4277,11 @@ impl DawUi {
             let painter = ui.painter_at(viewport.intersect(lane));
             let mut ghost = painter.clone();
             ghost.multiply_opacity(0.75);
-            self.paint_clip(&ghost, track_color, block, &preview.clip, false, None);
+            let source = project
+                .and_then(|p| p.assets.iter().find(|a| a.id == preview.clip.asset_id))
+                .and_then(|a| a.midi_pattern.as_ref())
+                .map(PreparedClipSource::Midi);
+            self.paint_clip(&ghost, track_color, block, &preview.clip, false, source);
             painter.rect_stroke(
                 block,
                 2.0,
@@ -4224,17 +4304,28 @@ impl DawUi {
         block: Rect,
         clip: &Clip,
         selected: bool,
-        prepared: Option<&daw_media::AudioData>,
+        prepared: Option<PreparedClipSource<'_>>,
     ) {
-        let cached = prepared.or_else(|| self.session.audio_for_clip(clip));
+        let cached = prepared
+            .and_then(|source| match source {
+                PreparedClipSource::Audio(audio) => Some(audio),
+                _ => None,
+            })
+            .or_else(|| self.session.audio_for_clip(clip));
         let audio = cached.or_else(|| self.session.audio.get(&clip.asset_id));
-        let pattern = self
-            .session
-            .project
-            .assets
-            .iter()
-            .find(|a| a.id == clip.asset_id)
-            .and_then(|a| a.midi_pattern.as_ref());
+        let pattern = prepared
+            .and_then(|source| match source {
+                PreparedClipSource::Midi(pattern) => Some(pattern),
+                _ => None,
+            })
+            .or_else(|| {
+                self.session
+                    .project
+                    .assets
+                    .iter()
+                    .find(|a| a.id == clip.asset_id)
+                    .and_then(|a| a.midi_pattern.as_ref())
+            });
         let missing = audio.is_none() && pattern.is_none();
         let lane = painter.clip_rect();
         let colors = if missing {
@@ -4306,11 +4397,11 @@ impl DawUi {
                 let left = body.left().max(lane.left());
                 let right = body.right().min(lane.right());
                 for pixel in (left as i32)..=(right as i32) {
-                    let local = ((pixel as f32 - body.left()) / self.zoom
+                    let local = ((pixel as f32 - body.left()) / self.view_zoom()
                         * f64::from(self.session.project.sample_rate_hz) as f32)
                         .max(0.0) as u64;
-                    let samples_per_pixel =
-                        f64::from(self.session.project.sample_rate_hz) / f64::from(self.zoom);
+                    let samples_per_pixel = f64::from(self.session.project.sample_rate_hz)
+                        / f64::from(self.view_zoom());
                     let [min, max] = if cached.is_none() && clip.stretch.is_some() {
                         waveforms::preview_extrema(
                             audio,
@@ -4340,17 +4431,17 @@ impl DawUi {
             }
         }
         if let Some(repeat) = clip.repeat {
-            let step = self.session.project.seconds(repeat.length_frames) as f32 * self.zoom;
+            let step = self.session.project.seconds(repeat.length_frames) as f32 * self.view_zoom();
             if step >= 4.0 {
                 let first = repeat.length_frames - repeat.phase_frame;
-                let visible = self
-                    .session
-                    .project
-                    .frames(f64::from((lane.left() - block.left()).max(0.0) / self.zoom));
+                let visible = self.session.project.frames(f64::from(
+                    (lane.left() - block.left()).max(0.0) / self.view_zoom(),
+                ));
                 let skipped = visible.saturating_sub(first) / repeat.length_frames;
                 let mut local = first.saturating_add(skipped.saturating_mul(repeat.length_frames));
                 while local < clip.length_frames {
-                    let x = block.left() + self.session.project.seconds(local) as f32 * self.zoom;
+                    let x = block.left()
+                        + self.session.project.seconds(local) as f32 * self.view_zoom();
                     if x > lane.right() {
                         break;
                     }
@@ -4380,7 +4471,7 @@ impl DawUi {
     }
     fn finish_clip_drag(&mut self, ui: &mut egui::Ui) {
         if !ui.is_enabled()
-            || !self.file_action_enabled(FileAction::Import)
+            || !self.edit_environment_available()
             || !ui.input(|input| input.focused)
             || ui.input(|input| input.key_pressed(egui::Key::Escape))
         {
@@ -4446,26 +4537,7 @@ impl DawUi {
         let track_id = track.id;
         let (rect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::hover());
-        if track.kind == daw_core::TrackKind::Midi
-            && ui.rect_contains_pointer(rect)
-            && ui.input(|i| {
-                i.pointer
-                    .button_double_clicked(egui::PointerButton::Primary)
-            })
-            && let Some(pointer) = ui.input(|i| i.pointer.interact_pos())
-        {
-            let start = self.selection_frame(
-                i128::from(self.ruler_frame(rect, pointer)),
-                0..=u64::MAX,
-                ui.input(|i| i.modifiers.shift),
-            );
-            if !track.clips.iter().any(|clip| {
-                self.clip_block(rect, clip, clip.start_frame)
-                    .contains(pointer)
-            }) {
-                self.add_midi_pattern(track_id, start, ui.ctx());
-            }
-        }
+        self.create_midi_pattern_in_empty_lane(ui, track, rect);
         self.lane_bounds.insert(track_id, rect);
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
@@ -4479,11 +4551,6 @@ impl DawUi {
             if !block.intersects(rect) {
                 continue;
             }
-            let response = ui.interact(
-                block.intersect(rect),
-                egui::Id::new(clip.id),
-                Sense::click_and_drag(),
-            );
             let selected = self.clip_selected(clip.id);
             let mut clip_painter = painter.clone();
             if self.drag.as_ref().is_some_and(|drag| {
@@ -4495,138 +4562,7 @@ impl DawUi {
                 clip_painter.multiply_opacity(0.35);
             }
             self.paint_clip(&clip_painter, track.color, block, clip, selected, None);
-            response.context_menu(|ui| {
-                if ui.button("Edit clip").clicked() {
-                    self.open_clip_editor(clip.id, track_id, ui.ctx());
-                    ui.close();
-                }
-                if ui.button("Split at playhead").clicked() {
-                    self.edit(Edit::Split {
-                        clip_id: clip.id,
-                        at: self.session.project.transport.playhead_frame,
-                    });
-                    ui.close();
-                }
-                let group = self.selected_clip_snapshots();
-                if ui
-                    .button(if selected && group.len() > 1 {
-                        "Delete selected clips"
-                    } else {
-                        "Delete clip"
-                    })
-                    .clicked()
-                {
-                    if selected {
-                        self.edit(Edit::Batch(
-                            group
-                                .into_iter()
-                                .map(|entry| Edit::DeleteClip(entry.clip.id))
-                                .collect(),
-                        ));
-                    } else {
-                        self.edit(Edit::DeleteClip(clip.id));
-                    }
-                    ui.close();
-                }
-            });
-            if response.double_clicked() {
-                self.open_clip_editor(clip.id, track_id, ui.ctx());
-            }
-            if response.clicked() {
-                self.select_clip(
-                    clip.id,
-                    track_id,
-                    ui.input(|input| input.modifiers.shift || input.modifiers.command),
-                );
-            }
-            if response.hovered()
-                && let Some(pos) = response.hover_pos()
-            {
-                match ClipDragMode::at(block, pos)
-                    .with_stretch_modifier(ui.input(|input| clip_copy_modifier(input.modifiers)))
-                {
-                    ClipDragMode::StretchLeft | ClipDragMode::StretchRight => {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                        response.clone().on_hover_text("Drag to stretch selected clips without changing pitch. Hold Shift to bypass snapping.");
-                    }
-                    ClipDragMode::LoopLeft | ClipDragMode::LoopRight => {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                        response
-                            .clone()
-                            .on_hover_text(if cfg!(target_os = "macos") {
-                                "Drag to loop selected clips. Hold Option to stretch. Hold Shift to bypass snapping."
-                            } else {
-                                "Drag to loop selected clips. Hold Ctrl to stretch. Hold Shift to bypass snapping."
-                            });
-                    }
-                    ClipDragMode::TrimLeft | ClipDragMode::TrimRight => {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                        response
-                            .clone()
-                            .on_hover_text(if self.at_trim_boundary(clip, ClipDragMode::at(block, pos), block, pos) {
-                                "Drag the dividing line to trim one clip and extend the other. Hold Shift to bypass snapping."
-                            } else if cfg!(target_os = "macos") {
-                                "Drag to trim selected clips. Hold Option to stretch. Hold Shift to bypass snapping."
-                            } else {
-                                "Drag to trim selected clips. Hold Ctrl to stretch. Hold Shift to bypass snapping."
-                            });
-                    }
-                    ClipDragMode::Move => {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                        response
-                            .clone()
-                            .on_hover_text(if cfg!(target_os = "macos") {
-                                "Drag to move clip. Hold Option to duplicate. Hold Shift to bypass snapping."
-                            } else {
-                                "Drag to move clip. Hold Ctrl to duplicate. Hold Shift to bypass snapping."
-                            });
-                    }
-                    ClipDragMode::Body => {}
-                }
-            }
-            if response.drag_started()
-                && let Some(pos) = response.interact_pointer_pos()
-            {
-                let origin = ui.input(|i| i.pointer.press_origin()).unwrap_or(pos);
-                let mode = ClipDragMode::at(block, origin)
-                    .with_stretch_modifier(ui.input(|input| clip_copy_modifier(input.modifiers)));
-                if !self.clip_selected(clip.id) {
-                    let additive = ui.input(|input| {
-                        input.modifiers.shift
-                            || (input.modifiers.command && !clip_copy_modifier(input.modifiers))
-                    });
-                    if additive {
-                        self.select_clip(clip.id, track_id, true);
-                    } else {
-                        self.select_clip(clip.id, track_id, false);
-                    }
-                }
-                let clips = if matches!(
-                    mode,
-                    ClipDragMode::Move
-                        | ClipDragMode::TrimLeft
-                        | ClipDragMode::TrimRight
-                        | ClipDragMode::LoopLeft
-                        | ClipDragMode::LoopRight
-                        | ClipDragMode::StretchLeft
-                        | ClipDragMode::StretchRight
-                ) {
-                    self.selected_clip_snapshots()
-                } else {
-                    Vec::new()
-                };
-                self.drag = Some(Drag {
-                    clips,
-                    clip: clip.clone(),
-                    track: track_id,
-                    mode,
-                    origin,
-                    linked_boundary: self.at_trim_boundary(clip, mode, block, origin),
-                    duplicate: mode == ClipDragMode::Move
-                        && ui.input(|input| clip_copy_modifier(input.modifiers)),
-                });
-                self.selected_clip = Some(clip.id);
-            }
+            self.clip_lane_interaction(ui, track_id, clip, block, rect);
         }
         let x = rect.left()
             + ((self

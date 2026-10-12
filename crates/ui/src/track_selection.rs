@@ -60,9 +60,10 @@ impl DawUi {
     }
 
     pub fn track_action_enabled(&self, action: TrackAction, ctx: &egui::Context) -> bool {
-        (action != TrackAction::AddMidi || self.view_mode == ViewMode::Timeline)
+        (action != TrackAction::AddMidi
+            || matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit))
             && (action != TrackAction::Duplicate
-                || self.view_mode == ViewMode::Timeline
+                || matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
                 || !self.session.project.tracks.iter().any(|track| {
                     self.track_selected(track.id) && track.kind == daw_core::TrackKind::Midi
                 }))

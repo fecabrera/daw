@@ -51,28 +51,12 @@ struct NoteSelection {
     previous_note: Option<Id>,
     toggle: bool,
 }
-struct PatternDrag {
-    clip: Id,
-    origin: Pos2,
-    edge: daw_core::ClipEdge,
-    edge_frame: u64,
-    original_length: u32,
-    min_start: i64,
-    max_start: i64,
-    min_end: i64,
-    beat_width: f32,
-    start: i64,
-    end: i64,
-    preview: Option<daw_core::Project>,
-    error: Option<String>,
-}
 pub(super) struct MidiEditor {
     selected_note: Option<Id>,
     selected_notes: HashSet<(Id, Id)>,
     selection: Option<NoteSelection>,
     note_regions: Vec<((Id, Id), Rect)>,
     drag: Option<NoteDrag>,
-    pattern_drag: Option<PatternDrag>,
     draw: Option<NoteDraw>,
     pub(super) zoom: f32,
     pub(super) scroll: f64,
@@ -121,7 +105,6 @@ impl Default for MidiEditor {
             selection: None,
             note_regions: Vec::new(),
             drag: None,
-            pattern_drag: None,
             draw: None,
             zoom: 240.0,
             scroll: 0.0,
@@ -166,14 +149,10 @@ impl Default for MidiEditor {
 }
 impl MidiEditor {
     pub fn dragging(&self) -> bool {
-        self.drag.is_some()
-            || self.pattern_drag.is_some()
-            || self.draw.is_some()
-            || self.selection.is_some()
+        self.drag.is_some() || self.draw.is_some() || self.selection.is_some()
     }
     pub fn cancel(&mut self) {
         self.drag = None;
-        self.pattern_drag = None;
         self.draw = None;
         self.selection = None;
         self.clear_note_selection();
@@ -196,7 +175,7 @@ impl MidiEditor {
     }
 }
 
-fn primary_press(ui: &egui::Ui) -> Option<(Pos2, egui::Modifiers)> {
+pub(super) fn primary_press(ui: &egui::Ui) -> Option<(Pos2, egui::Modifiers)> {
     ui.input(|i| {
         i.events.iter().find_map(|event| match event {
             egui::Event::PointerButton {
@@ -238,7 +217,9 @@ fn black_key(pitch: u8) -> bool {
 
 impl DawUi {
     pub(super) fn add_midi_pattern(&mut self, track: Id, start: u64, ctx: &egui::Context) {
-        if self.view_mode != ViewMode::Timeline || !self.clip_actions_available(ctx) {
+        if !matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
+            || !self.clip_actions_available(ctx)
+        {
             return;
         }
         match self.session.project.add_midi_pattern(track, start) {
@@ -248,6 +229,43 @@ impl DawUi {
             }
             Err(error) => self.fail(error),
         }
+    }
+    pub(super) fn create_midi_pattern_in_empty_lane(
+        &mut self,
+        ui: &egui::Ui,
+        track: &daw_core::Track,
+        lane: Rect,
+    ) {
+        if track.kind != TrackKind::Midi
+            || !ui.is_enabled()
+            || !self.clip_actions_available(ui.ctx())
+            || !ui.rect_contains_pointer(lane)
+            || !ui.input(|i| {
+                i.pointer
+                    .button_double_clicked(egui::PointerButton::Primary)
+            })
+        {
+            return;
+        }
+        let Some(pointer) = ui.input(|i| i.pointer.interact_pos()) else {
+            return;
+        };
+        if track.clips.iter().any(|clip| {
+            let block = if self.view_mode == ViewMode::Edit {
+                self.editor_clip_rect(lane, clip)
+            } else {
+                self.clip_block(lane, clip, clip.start_frame)
+            };
+            block.contains(pointer)
+        }) {
+            return;
+        }
+        let start = self.selection_frame(
+            i128::from(self.ruler_frame(lane, pointer)),
+            0..=u64::MAX,
+            musical_time::snap_bypassed(ui),
+        );
+        self.add_midi_pattern(track.id, start, ui.ctx());
     }
     pub(super) fn open_clip_editor(&mut self, clip: Id, track: Id, ctx: &egui::Context) {
         self.select_clip(clip, track, false);
@@ -560,20 +578,14 @@ impl DawUi {
                 self.midi_editor.selected_notes = drag.previous_selection;
                 self.midi_editor.selected_note = drag.previous_note;
             }
-            self.midi_editor.pattern_drag = None;
             if self.midi_editor.draw.take().is_some() {
                 self.midi_editor.clear_note_selection();
             }
         }
-        self.update_pattern_resize(ui);
         self.update_midi_notes(ui);
         let previous_track = self.midi_editor.active_track;
-        let project = self
-            .midi_editor
-            .pattern_drag
-            .as_ref()
-            .and_then(|d| d.preview.as_ref())
-            .unwrap_or(&self.session.project);
+        let resize_preview = self.clip_trim_preview_project(ui);
+        let project = resize_preview.as_ref().unwrap_or(&self.session.project);
         let track = project
             .tracks
             .iter()
@@ -625,7 +637,7 @@ impl DawUi {
             return;
         };
         self.editor_track_strip(ui, &track, &assets);
-        self.update_pattern_resize(ui);
+        self.finish_clip_drag(ui);
         if track.kind != TrackKind::Midi {
             ui.label("The audio editor is not available yet.");
             return;
@@ -730,19 +742,6 @@ impl DawUi {
             });
         }
         if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
-            && let Some(drag) = self.midi_editor.pattern_drag.take()
-        {
-            if let Some(error) = drag.error {
-                self.fail(error);
-            } else if drag.start != 0 || drag.end != i64::from(drag.original_length) {
-                self.edit(Edit::ResizeMidiPattern {
-                    clip_id: drag.clip,
-                    start_tick: drag.start,
-                    end_tick: drag.end,
-                });
-            }
-        }
-        if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
             && let Some(drag) = self.midi_editor.drag.take()
         {
             let commands: Vec<_> = drag
@@ -761,6 +760,7 @@ impl DawUi {
     }
     fn editor_note_selection(&mut self, ui: &egui::Ui, viewport: Rect) {
         if !self.midi_editor.dragging()
+            && self.drag.is_none()
             && ui.is_enabled()
             && ui.input(|i| i.focused)
             && !egui::Popup::is_any_open(ui.ctx())
@@ -911,6 +911,10 @@ impl DawUi {
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 56.0), Sense::hover());
         let lane = Rect::from_min_max(Pos2::new(band.left() + KEY_WIDTH, band.top()), band.max);
         self.midi_editor.timeline_left = lane.left();
+        self.lane_bounds.clear();
+        self.lane_bounds.insert(track.id, lane);
+        self.timeline_bounds = lane;
+        self.create_midi_pattern_in_empty_lane(ui, track, lane);
         let palette = theme::palette(ui.ctx());
         ui.painter().rect_filled(band, 0.0, palette.background);
         ui.painter()
@@ -937,7 +941,7 @@ impl DawUi {
             {
                 self.midi_editor.clip_bounds.insert(clip.id, block);
                 if Some(clip.id) == self.selected_clip {
-                    self.midi_editor.pattern_bounds = header;
+                    self.midi_editor.pattern_bounds = block;
                 }
             }
             if !block.intersects(lane) {
@@ -976,141 +980,9 @@ impl DawUi {
                 },
                 StrokeKind::Inside,
             );
-            let header_response = ui
-                .interact(
-                    block.intersect(lane),
-                    egui::Id::new(("editor-track-clip", clip.id)),
-                    Sense::click(),
-                )
-                .on_hover_text("Select pattern. Drag either edge to resize it.");
-            if header_response.clicked() && !self.midi_editor.dragging() {
-                self.editor_select_clip(clip.id, track.id);
-            }
-            let Some(pattern) = pattern else {
-                continue;
-            };
-            if Some(clip.id) == self.selected_clip {
-                header_response.context_menu(|ui| {
-                    if let Some(note) = pattern
-                        .notes
-                        .iter()
-                        .find(|n| Some(n.id) == self.midi_editor.selected_note)
-                    {
-                        let mut velocity = note.velocity;
-                        ui.label("Velocity");
-                        if ui
-                            .add_enabled(
-                                !self.midi_editor.dragging(),
-                                egui::DragValue::new(&mut velocity).range(1..=127),
-                            )
-                            .changed()
-                        {
-                            let mut next = pattern.clone();
-                            next.notes
-                                .iter_mut()
-                                .find(|n| n.id == note.id)
-                                .unwrap()
-                                .velocity = velocity;
-                            self.edit(Edit::ReplaceMidiPattern {
-                                clip_id: clip.id,
-                                pattern: next,
-                            });
-                        }
-                        if ui
-                            .add_enabled(
-                                !self.midi_editor.dragging(),
-                                egui::Button::new("Delete note"),
-                            )
-                            .clicked()
-                        {
-                            self.delete_midi_note(clip.id, pattern);
-                        }
-                    } else {
-                        ui.label("Select a note to edit its velocity.");
-                    }
-                });
-            }
-            for (edge, x) in [
-                (daw_core::ClipEdge::Left, block.left()),
-                (daw_core::ClipEdge::Right, block.right()),
-            ] {
-                // Keep adjacent patterns' handles on their own side of the boundary.
-                let (left, right) = if edge == daw_core::ClipEdge::Left {
-                    (x, x + 4.0)
-                } else {
-                    (x - 4.0, x)
-                };
-                let handle = Rect::from_min_max(
-                    Pos2::new(left, band.top()),
-                    Pos2::new(right, band.bottom()),
-                )
-                .intersect(lane);
-                if !handle.is_positive() {
-                    continue;
-                }
-                let response = ui
-                    .interact(
-                        handle,
-                        egui::Id::new(("pattern-edge", clip.id, edge == daw_core::ClipEdge::Left)),
-                        Sense::drag(),
-                    )
-                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
-                    .on_hover_text("Resize pattern. Shift bypasses snapping; Escape cancels.");
-                response.widget_info(|| {
-                    egui::WidgetInfo::labeled(
-                        egui::WidgetType::Other,
-                        ui.is_enabled(),
-                        if edge == daw_core::ClipEdge::Left {
-                            "Pattern start"
-                        } else {
-                            "Pattern end"
-                        },
-                    )
-                });
-                if self.midi_editor.drag.is_none()
-                    && self.midi_editor.draw.is_none()
-                    && ui.is_enabled()
-                    && ui.input(|i| i.focused)
-                    && response.drag_started()
-                    && let Some(origin) = ui.input(|i| i.pointer.press_origin())
-                {
-                    self.editor_select_clip(clip.id, track.id);
-                    let beat_width = self.editor_beat_width(clip);
-                    let min_start = -(self.session.project.seconds(clip.start_frame)
-                        * f64::from(self.midi_editor.zoom)
-                        / f64::from(beat_width)
-                        * f64::from(MIDI_TICKS_PER_BEAT))
-                    .floor() as i64;
-                    let visible_ticks = (self.session.project.seconds(clip.length_frames)
-                        * f64::from(self.midi_editor.zoom)
-                        / f64::from(beat_width)
-                        * f64::from(MIDI_TICKS_PER_BEAT))
-                    .floor()
-                    .max(1.0) as i64;
-                    let max_start = (i64::from(pattern.length_ticks) - 1).min(visible_ticks - 1);
-                    let min_end = (i64::from(pattern.length_ticks) - visible_ticks + 1).max(1);
-                    self.midi_editor.pattern_drag = Some(PatternDrag {
-                        clip: clip.id,
-                        origin,
-                        edge,
-                        edge_frame: if edge == daw_core::ClipEdge::Left {
-                            clip.start_frame
-                        } else {
-                            clip.end()
-                        },
-                        original_length: pattern.length_ticks,
-                        min_start,
-                        max_start,
-                        min_end,
-                        beat_width,
-                        start: 0,
-                        end: i64::from(pattern.length_ticks),
-                        preview: None,
-                        error: None,
-                    });
-                }
-            }
+            self.clip_lane_interaction(ui, track.id, clip, block, lane);
         }
+        self.paint_drag_preview(ui, lane);
         ui.painter().line_segment(
             [band.left_bottom(), band.right_bottom()],
             Stroke::new(1.0, palette.border),
@@ -1127,68 +999,58 @@ impl DawUi {
             Stroke::new(1.0, theme::accent(ui.ctx())),
         );
     }
-    fn update_pattern_resize(&mut self, ui: &egui::Ui) {
-        let timeline = self.musical_timeline();
-        let bypass = musical_time::snap_bypassed(ui);
-        if let Some(drag) = &mut self.midi_editor.pattern_drag
-            && let Some(pointer) = ui.input(|i| i.pointer.latest_pos())
-            && ui.input(|i| {
-                i.pointer.primary_down() || i.pointer.button_released(egui::PointerButton::Primary)
-            })
+    pub(super) fn midi_clip_note_menu(&mut self, ui: &mut egui::Ui, clip: &Clip) {
+        if Some(clip.id) != self.selected_clip {
+            return;
+        }
+        let Some(pattern) = self
+            .session
+            .project
+            .assets
+            .iter()
+            .find(|a| a.id == clip.asset_id)
+            .and_then(|a| a.midi_pattern.as_ref())
+            .cloned()
+        else {
+            return;
+        };
+        let Some(note) = pattern
+            .notes
+            .iter()
+            .find(|n| Some(n.id) == self.midi_editor.selected_note)
+        else {
+            return;
+        };
+        ui.separator();
+        ui.label("Velocity");
+        let mut velocity = note.velocity;
+        if ui
+            .add_enabled(
+                !self.midi_editor.dragging(),
+                egui::DragValue::new(&mut velocity).range(1..=127),
+            )
+            .changed()
         {
-            let movement = f64::from(pointer.x - drag.origin.x);
-            let requested = i128::from(drag.edge_frame) + timeline.frame_delta(movement);
-            let (min_delta, max_delta) = match drag.edge {
-                daw_core::ClipEdge::Left => (
-                    (i64::from(drag.original_length) - i64::from(u32::MAX)).max(drag.min_start),
-                    drag.max_start,
-                ),
-                daw_core::ClipEdge::Right => (
-                    drag.min_end - i64::from(drag.original_length),
-                    i64::from(u32::MAX) - i64::from(drag.original_length),
-                ),
-            };
-            let at = |ticks: i64| {
-                (i128::from(drag.edge_frame)
-                    + timeline.frame_delta(
-                        ticks as f64 * f64::from(drag.beat_width) / f64::from(MIDI_TICKS_PER_BEAT),
-                    ))
-                .clamp(0, i128::from(u64::MAX)) as u64
-            };
-            // Snap the project edge, then convert its displacement to source ticks.
-            let target = timeline.snap_bounded(
-                requested,
-                at(min_delta)..=at(max_delta),
-                std::iter::empty(),
-                bypass || movement == 0.0,
-            );
-            let delta = (timeline
-                .pixels_for_frames(i128::from(target) - i128::from(drag.edge_frame))
-                / f64::from(drag.beat_width)
-                * f64::from(MIDI_TICKS_PER_BEAT))
-            .round() as i64;
-            match drag.edge {
-                daw_core::ClipEdge::Left => drag.start = delta.clamp(min_delta, max_delta),
-                daw_core::ClipEdge::Right => {
-                    drag.end = i64::from(drag.original_length)
-                        .saturating_add(delta)
-                        .clamp(drag.min_end, i64::from(u32::MAX))
-                }
-            }
-            match self
-                .session
-                .project
-                .resized_midi_pattern(drag.clip, drag.start, drag.end)
-            {
-                Ok(preview) => {
-                    drag.preview = Some(preview);
-                    drag.error = None;
-                }
-                Err(error) => {
-                    drag.preview = None;
-                    drag.error = Some(error.to_string());
-                }
-            }
+            let mut next = pattern.clone();
+            next.notes
+                .iter_mut()
+                .find(|n| n.id == note.id)
+                .unwrap()
+                .velocity = velocity;
+            self.edit(Edit::ReplaceMidiPattern {
+                clip_id: clip.id,
+                pattern: next,
+            });
+        }
+        if ui
+            .add_enabled(
+                !self.midi_editor.dragging(),
+                egui::Button::new("Delete note"),
+            )
+            .clicked()
+        {
+            self.delete_midi_note(clip.id, &pattern);
+            ui.close();
         }
     }
     fn editor_clip_notes(
@@ -1307,7 +1169,7 @@ impl DawUi {
             }
             let note_painter = ui.painter_at(note_viewport);
             let mut note_ui = ui.new_child(egui::UiBuilder::new());
-            if self.midi_editor.pattern_drag.is_some()
+            if self.drag.is_some()
                 || self.midi_editor.drag.is_some()
                 || self.midi_editor.draw.is_some()
                 || self.midi_editor.selection.is_some()
@@ -1455,7 +1317,7 @@ impl DawUi {
                 if (response.drag_started() || fast_origin.is_some())
                     && ui.input(|i| i.focused)
                     && self.midi_editor.drag.is_none()
-                    && self.midi_editor.pattern_drag.is_none()
+                    && self.drag.is_none()
                     && self.midi_editor.draw.is_none()
                     && self.midi_editor.selection.is_none()
                     && let Some(origin) = ui.input(|i| i.pointer.press_origin()).or(fast_origin)

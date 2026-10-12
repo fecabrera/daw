@@ -898,7 +898,7 @@ fn midi_tracks_units_editor_and_clip_copy_use_shared_actions() {
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.view_mode, ViewMode::Edit);
     app.perform_clip_action(ClipAction::Copy, &ctx);
-    assert!(!app.clip_action_enabled(ClipAction::Paste, &ctx));
+    assert!(app.clip_action_enabled(ClipAction::Paste, &ctx));
     app.set_view_mode(ViewMode::Timeline, &ctx);
     app.session.project.transport.playhead_frame = 96_000;
     app.perform_clip_action(ClipAction::Paste, &ctx);
@@ -1304,7 +1304,7 @@ fn click_note_or_lane(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
 }
 
 #[test]
-fn empty_midi_lane_double_click_creates_one_beat_only_in_timeline() {
+fn empty_midi_lane_double_click_creates_one_beat_without_switching_views() {
     let mut app = DawUi::default();
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
@@ -1322,7 +1322,7 @@ fn empty_midi_lane_double_click_creates_one_beat_only_in_timeline() {
     assert_eq!(clip.length_frames, 24_000);
     assert_eq!(pattern(&app).length_ticks, 960);
     assert_eq!(app.selected_clip, Some(clip.id));
-    for view in [ViewMode::Units, ViewMode::Edit, ViewMode::Mixer] {
+    for view in [ViewMode::Units, ViewMode::Mixer] {
         app.set_view_mode(view, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(
@@ -1427,7 +1427,7 @@ fn pattern_edge_resize_previews_commits_and_cancels_preserving_note_timing() {
         vec![egui::Event::PointerMoved(start), button(start, true)],
     );
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-    assert!(app.midi_editor.dragging());
+    assert!(app.drag.is_some());
     assert_eq!(format!("{:?}", app.session.project), original);
     assert!(!app.view_switch_enabled());
     assert!(!app.file_action_enabled(FileAction::Save));
@@ -1475,7 +1475,7 @@ fn pattern_edge_resize_previews_commits_and_cancels_preserving_note_timing() {
         }],
     );
     frame(&mut app, &ctx, vec![button(end, false)]);
-    assert!(!app.midi_editor.dragging());
+    assert!(app.drag.is_none());
     assert_eq!(format!("{:?}", app.session.project), before);
 }
 
@@ -1535,7 +1535,7 @@ fn shift_pattern_resize_is_free_and_focus_loss_cancels_the_pending_edit() {
         vec![egui::Event::PointerMoved(start), button(start, true)],
     );
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-    assert!(app.midi_editor.dragging());
+    assert!(app.drag.is_some());
     let mut output = ctx.run_ui(
         egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
@@ -1547,7 +1547,7 @@ fn shift_pattern_resize_is_free_and_focus_loss_cancels_the_pending_edit() {
     );
     output.textures_delta.clear();
     frame(&mut app, &ctx, vec![button(end, false)]);
-    assert!(!app.midi_editor.dragging());
+    assert!(app.drag.is_none());
     assert_eq!(format!("{:?}", app.session.project), before);
 }
 
@@ -1932,7 +1932,7 @@ fn left_pattern_extension_moves_the_border_keeps_notes_fixed_and_clamps_at_proje
     let original = format!("{:?}", app.session.project);
     let note_x = app.midi_editor.track_note_bounds[&(clip, note)][0].left();
     let block = app.midi_editor.clip_bounds[&clip];
-    let start = Pos2::new(block.left() + 1.0, block.top() + 10.0);
+    let start = Pos2::new(block.left() + 1.0, block.top() + 30.0);
     let end = start - Vec2::new(120.0, 0.0);
     frame(
         &mut app,
@@ -1952,7 +1952,7 @@ fn left_pattern_extension_moves_the_border_keeps_notes_fixed_and_clamps_at_proje
     assert_eq!(pattern(&app).notes[0].start_tick, 1920);
     frame(&mut app, &ctx, vec![]);
     let rect = app.midi_editor.clip_bounds[&clip];
-    let start = Pos2::new(rect.left() + 1.0, rect.top() + 10.0);
+    let start = Pos2::new(rect.left() + 1.0, rect.top() + 30.0);
     let end = start - Vec2::new(240.0, 0.0);
     frame(
         &mut app,
@@ -3421,7 +3421,7 @@ fn off_grid_pattern_edges_snap_to_project_grid_after_scroll_and_stretch() {
                     } else {
                         block.right() - 1.0
                     },
-                    block.top() + 11.0,
+                    block.top() + 30.0,
                 );
                 // Request a position two pixels past the line, inside the ruler's snap radius.
                 let end = origin
@@ -3829,5 +3829,301 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
         assert_eq!(format!("{:?}", app.session.project.assets), assets);
         assert_eq!(app.selected_track, Some(track));
         assert!(app.dirty);
+    }
+}
+
+// Run identical arrangement actions through both view adapters. Keep these tests
+// when changing clip_lane, snapping, resize, placement, or menu dispatch.
+fn arrangement_frame(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    mut events: Vec<egui::Event>,
+    copy: bool,
+) {
+    let modifiers = egui::Modifiers {
+        shift: true,
+        alt: copy && cfg!(target_os = "macos"),
+        ctrl: copy && !cfg!(target_os = "macos"),
+        ..Default::default()
+    };
+    for event in &mut events {
+        if let egui::Event::PointerButton {
+            modifiers: value, ..
+        } = event
+        {
+            *value = modifiers;
+        }
+    }
+    events.insert(0, egui::Event::ModifiersChanged(modifiers));
+    frame(app, ctx, events);
+}
+
+#[test]
+fn midi_clip_gestures_keep_timeline_editor_parity_and_cancel_without_changes() {
+    for mode in [
+        ClipDragMode::Move,
+        ClipDragMode::TrimLeft,
+        ClipDragMode::TrimRight,
+        ClipDragMode::LoopLeft,
+        ClipDragMode::LoopRight,
+        ClipDragMode::StretchRight,
+    ] {
+        for copy in [false, true] {
+            if copy && mode != ClipDragMode::Move {
+                continue;
+            }
+            let mut outcomes = Vec::new();
+            for view in [ViewMode::Timeline, ViewMode::Edit] {
+                for cancel in [false, true] {
+                    let (mut app, track, clip, _) = fixture();
+                    app.session.project.tracks[0].clips[0].start_frame = 48_000;
+                    let original = app.session.project.tracks[0].clips[0].clone();
+                    let ctx = context();
+                    if view == ViewMode::Edit {
+                        app.open_clip_editor(clip, track, &ctx);
+                    }
+                    frame(&mut app, &ctx, vec![]);
+                    if view == ViewMode::Edit {
+                        app.midi_editor.zoom = 120.0;
+                        app.midi_editor.scroll = 0.0;
+                    } else {
+                        app.zoom = 120.0;
+                        app.scroll = 0.0;
+                    }
+                    frame(&mut app, &ctx, vec![]);
+                    let lane = app.lane_bounds[&track];
+                    let block = if view == ViewMode::Edit {
+                        app.midi_editor.clip_bounds[&clip]
+                    } else {
+                        app.clip_block(lane, &original, original.start_frame)
+                    };
+                    let origin = match mode {
+                        ClipDragMode::Move => block.min + Vec2::new(20.0, 10.0),
+                        ClipDragMode::TrimLeft => block.min + Vec2::new(1.0, 30.0),
+                        ClipDragMode::LoopLeft => block.min + Vec2::new(1.0, 10.0),
+                        ClipDragMode::TrimRight => {
+                            Pos2::new(block.right() - 1.0, block.top() + 30.0)
+                        }
+                        _ => Pos2::new(block.right() - 1.0, block.top() + 10.0),
+                    };
+                    let delta = if mode == ClipDragMode::Move {
+                        300.0
+                    } else if matches!(mode, ClipDragMode::TrimLeft | ClipDragMode::LoopLeft) {
+                        -60.0
+                    } else {
+                        60.0
+                    };
+                    let end = origin + Vec2::new(delta, 0.0);
+                    let before = format!("{:?}", app.session.project);
+                    let modifier = copy || mode == ClipDragMode::StretchRight;
+                    arrangement_frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(origin), button(origin, true)],
+                        modifier,
+                    );
+                    arrangement_frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(end)],
+                        modifier,
+                    );
+                    assert_eq!(app.drag.as_ref().map(|d| d.mode), Some(mode), "{view:?}");
+                    assert_eq!(format!("{:?}", app.session.project), before);
+                    assert!(!app.file_action_enabled(FileAction::Save));
+                    if cancel {
+                        arrangement_frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::Key {
+                                key: egui::Key::Escape,
+                                physical_key: None,
+                                pressed: true,
+                                repeat: false,
+                                modifiers: Default::default(),
+                            }],
+                            modifier,
+                        );
+                    }
+                    arrangement_frame(&mut app, &ctx, vec![button(end, false)], modifier);
+                    finish_import(&mut app, &ctx);
+                    assert!(app.drag.is_none());
+                    assert!(app.error.is_none(), "{view:?}/{mode:?}: {:?}", app.error);
+                    if cancel {
+                        assert_eq!(format!("{:?}", app.session.project), before);
+                        continue;
+                    }
+                    assert!(app.dirty, "{view:?}/{mode:?}/copy={copy}");
+                    app.session.project.validate().unwrap();
+                    let clips = &app.session.project.tracks[0].clips;
+                    assert_eq!(clips.len(), if copy { 2 } else { 1 });
+                    if copy {
+                        assert_eq!(format!("{:?}", clips[0]), format!("{original:?}"));
+                        assert_ne!(clips[1].id, original.id);
+                    }
+                    let result = clips.iter().max_by_key(|c| c.start_frame).unwrap();
+                    let source = app
+                        .session
+                        .project
+                        .assets
+                        .iter()
+                        .find(|a| a.id == result.asset_id)
+                        .unwrap()
+                        .midi_pattern
+                        .as_ref()
+                        .unwrap();
+                    outcomes.push((
+                        result.start_frame,
+                        result.length_frames,
+                        result.source_offset_frame,
+                        result.repeat,
+                        result.stretch,
+                        source.length_ticks,
+                        source.notes[0].start_tick,
+                    ));
+                    if mode == ClipDragMode::TrimLeft {
+                        assert_eq!(result.start_frame, 24_000);
+                        assert_eq!(result.end(), original.end());
+                        assert_eq!(
+                            result.start_frame
+                                + app.session.project.midi_frame(source.notes[0].start_tick),
+                            72_000
+                        );
+                    }
+                    if mode == ClipDragMode::TrimRight {
+                        assert_eq!(source.length_ticks, 4800);
+                    }
+                    if mode == ClipDragMode::Move {
+                        assert_eq!(result.start_frame, 168_000);
+                        assert_eq!(source.length_ticks, 3840);
+                    }
+                    let clip_count = clips.len();
+                    let other = if view == ViewMode::Timeline {
+                        ViewMode::Edit
+                    } else {
+                        ViewMode::Timeline
+                    };
+                    app.set_view_mode(other, &ctx);
+                    frame(&mut app, &ctx, vec![]);
+                    assert_eq!(app.session.project.tracks[0].clips.len(), clip_count);
+                }
+            }
+            assert_eq!(outcomes[0], outcomes[1], "{mode:?}/copy={copy}");
+        }
+    }
+}
+
+#[test]
+fn empty_midi_editor_lane_creation_and_cross_view_clipboard_use_shared_actions() {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
+        let mut app = DawUi::default();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        app.perform_track_action(TrackAction::AddMidi, &ctx);
+        let track = app.selected_track.unwrap();
+        app.set_view_mode(view, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        if view == ViewMode::Edit {
+            app.midi_editor.zoom = 120.0;
+            app.midi_editor.scroll = 0.5;
+        } else {
+            app.zoom = 120.0;
+            app.scroll = 0.5;
+        }
+        frame(&mut app, &ctx, vec![]);
+        let lane = app.lane_bounds[&track];
+        let point = Pos2::new(lane.left() + 120.0, lane.center().y);
+        click_note_or_lane(&mut app, &ctx, point);
+        assert!(app.session.project.tracks[0].clips.is_empty());
+        click_note_or_lane(&mut app, &ctx, point);
+        assert_eq!(app.view_mode, view);
+        let clip = app.session.project.tracks[0].clips[0].clone();
+        assert_eq!((clip.start_frame, clip.length_frames), (72_000, 24_000));
+        assert_eq!(app.selected_clip, Some(clip.id));
+        assert!(app.clip_action_enabled(ClipAction::Copy, &ctx));
+        app.perform_clip_action(ClipAction::Copy, &ctx);
+        let other = if view == ViewMode::Timeline {
+            ViewMode::Edit
+        } else {
+            ViewMode::Timeline
+        };
+        app.set_view_mode(other, &ctx);
+        app.session.project.transport.playhead_frame = 144_000;
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.clip_action_enabled(ClipAction::Paste, &ctx));
+        app.perform_clip_action(ClipAction::Paste, &ctx);
+        assert_eq!(app.session.project.tracks[0].clips.len(), 2);
+        let pasted = &app.session.project.tracks[0].clips[1];
+        assert_ne!(pasted.id, clip.id);
+        assert_eq!(
+            (pasted.start_frame, pasted.asset_id),
+            (144_000, clip.asset_id)
+        );
+        app.perform_track_action(TrackAction::Duplicate, &ctx);
+        assert_eq!(app.session.project.tracks.len(), 2);
+        assert!(app.session.project.tracks[1].clips.is_empty());
+        assert_eq!(
+            app.session.project.tracks[0].instrument,
+            app.session.project.tracks[1].instrument
+        );
+    }
+}
+
+#[test]
+fn midi_clip_context_menus_split_and_delete_in_both_views() {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
+        let (mut app, track, clip, _) = fixture();
+        let ctx = context();
+        if view == ViewMode::Edit {
+            app.open_clip_editor(clip, track, &ctx);
+        }
+        frame(&mut app, &ctx, vec![]);
+        app.session.project.transport.playhead_frame = 48_000;
+        let asset = app.session.project.tracks[0].clips[0].asset_id;
+        for label in ["Split at playhead", "Delete clip"] {
+            frame(&mut app, &ctx, vec![]);
+            let current = app.session.project.tracks[0].clips.last().unwrap().clone();
+            let lane = app.lane_bounds[&track];
+            let block = if view == ViewMode::Edit {
+                app.midi_editor.clip_bounds[&current.id]
+            } else {
+                app.clip_block(lane, &current, current.start_frame)
+            };
+            let point = block.center();
+            for pressed in [true, false] {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(point),
+                        egui::Event::PointerButton {
+                            pos: point,
+                            button: egui::PointerButton::Secondary,
+                            pressed,
+                            modifiers: Default::default(),
+                        },
+                    ],
+                );
+            }
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let item = shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == label => {
+                        Some(t.pos + t.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .expect("shared clip context action");
+            click_note_or_lane(&mut app, &ctx, item);
+            assert!(app.error.is_none(), "{:?}", app.error);
+        }
+        let clips = &app.session.project.tracks[0].clips;
+        assert_eq!(clips.len(), 1);
+        assert_eq!(
+            (clips[0].id, clips[0].length_frames, clips[0].asset_id),
+            (clip, 48_000, asset)
+        );
+        assert_eq!(app.view_mode, view);
     }
 }

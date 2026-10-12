@@ -5,7 +5,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 ## Current features
 
 - **Timeline:** arrange audio clips, trim, loop, stretch, move, copy, and duplicate selections. Placement and resizing make room by trimming, splitting, or removing covered clips. Edits preview before committing, with grid snapping and Shift to bypass it.
-- **MIDI:** create MIDI tracks and patterns. Edit notes in a piano roll and add sine, saw, square, or triangle oscillators to one instrument in Units. Each oscillator has its own pitch and gain. Shape each note with an ADSR Envelope unit, including per-stage curves and curve strength. Patterns support playback, clip editing, and export.
+- **MIDI:** create MIDI tracks and patterns. Edit notes in a piano roll and add sine, saw, square, or triangle oscillators to one instrument in Units. Each oscillator has its own pitch and gain. Shape each note with an ADSR Envelope unit, including per-stage curves and curve strength. Patterns support playback, shared clip actions in Timeline and Editor, and export.
 - **Mixer:** adjust track gain, pan, mute, and solo, plus master gain. Timeline and Mixer share controls, values, and selection.
 - **Playback:** tempo-based ruler, loop selection, stereo meters, and trackpad scrolling and zoom.
 - **Projects:** folder-based saves, project naming, and configurable processing sample rate and buffer size. Source recordings remain external and unchanged.
@@ -18,7 +18,7 @@ The project format is experimental. Tracks support external audio files and embe
 
 The views are **Timeline**, **Units**, **Editor**, and **Mixer**. Units currently configures the MIDI oscillator instrument. Editor provides a basic MIDI piano roll. Audio and beat editors, beat tracks, effect chains, and instrument graphs are planned.
 
-MIDI patterns are immutable clip sources: trimming and looping preserve the source, while pattern edits create a new source without changing other clips. MIDI tracks play overlapping pitches with multiple voices of their configured instrument. Beat patterns will follow the same source model.
+MIDI patterns are immutable clip sources: body-edge trims crop or pad a new source for the edited clip, while header-edge looping preserves the source. Other clips retain their previous source. MIDI tracks play overlapping pitches with multiple voices of their configured instrument. Beat patterns will follow the same source model.
 
 ## Build and run
 

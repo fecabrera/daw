@@ -11,6 +11,15 @@ impl DawUi {
         block: Rect,
         pointer: Pos2,
     ) -> bool {
+        // MIDI edges crop/pad the pattern and resolve covered neighbors like Editor.
+        if self
+            .session
+            .project
+            .midi_pattern_bounds(clip, ClipEdge::Left)
+            .is_ok()
+        {
+            return false;
+        }
         let edge = match mode {
             ClipDragMode::TrimLeft => ClipEdge::Left,
             ClipDragMode::TrimRight => ClipEdge::Right,
@@ -78,7 +87,12 @@ impl DawUi {
         if !unsnapped && delta != 0 && (0..=i128::from(u64::MAX)).contains(&raw) {
             let mut anchors = anchors;
             anchors.extend([drag.clip.start_frame, drag.clip.end()]);
-            if let Some(source) = source_length(&drag.clip)
+            if self
+                .session
+                .project
+                .midi_pattern_bounds(&drag.clip, edge)
+                .is_err()
+                && let Some(source) = source_length(&drag.clip)
                 && let Some(expanded) = drag.clip.trimmed_by(
                     edge,
                     match edge {
@@ -126,25 +140,50 @@ impl DawUi {
             let Some(source) = source_length(&entry.clip) else {
                 return Vec::new();
             };
-            let clip = entry
-                .clip
-                .trimmed_by(edge, delta, source)
-                .unwrap_or_else(|| {
+            let clip = if let Ok(bounds) =
+                self.session.project.midi_pattern_bounds(&entry.clip, edge)
+            {
+                let original = bounds.edge_frame();
+                let requested = i128::from(original) + delta;
+                let limits = bounds.frame_limits();
+                if match edge {
+                    ClipEdge::Left => requested > i128::from(*limits.end()),
+                    ClipEdge::Right => requested < i128::from(*limits.start()),
+                } {
                     valid = false;
-                    // Keep rejected previews drawable without producing an empty clip.
-                    let inward = i128::from(entry.clip.length_frames.saturating_sub(1));
-                    entry
-                        .clip
-                        .trimmed_by(
-                            edge,
-                            match edge {
-                                ClipEdge::Left => inward,
-                                ClipEdge::Right => -inward,
-                            },
-                            source,
-                        )
-                        .unwrap_or_else(|| entry.clip.clone())
-                });
+                }
+                let target =
+                    requested.clamp(i128::from(*limits.start()), i128::from(*limits.end())) as u64;
+                let mut clip = entry.clip.clone();
+                match edge {
+                    ClipEdge::Left => {
+                        clip.start_frame = target;
+                        clip.length_frames = entry.clip.end() - target;
+                    }
+                    ClipEdge::Right => clip.length_frames = target - clip.start_frame,
+                }
+                clip
+            } else {
+                entry
+                    .clip
+                    .trimmed_by(edge, delta, source)
+                    .unwrap_or_else(|| {
+                        valid = false;
+                        // Keep rejected previews drawable without producing an empty clip.
+                        let inward = i128::from(entry.clip.length_frames.saturating_sub(1));
+                        entry
+                            .clip
+                            .trimmed_by(
+                                edge,
+                                match edge {
+                                    ClipEdge::Left => inward,
+                                    ClipEdge::Right => -inward,
+                                },
+                                source,
+                            )
+                            .unwrap_or_else(|| entry.clip.clone())
+                    })
+            };
             previews.push(ClipPreview {
                 track: entry.track,
                 track_index: entry.track_index,

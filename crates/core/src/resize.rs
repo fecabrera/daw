@@ -61,11 +61,15 @@ impl Project {
     }
 
     pub(crate) fn apply_resizes(&mut self, clips: &[Clip], edge: ClipEdge) -> Result<()> {
-        self.apply_boundary_resizes(clips, edge, false)
+        self.apply_boundary_resizes(clips, edge, false, false)
     }
 
     pub(crate) fn apply_stretches(&mut self, clips: &[Clip], edge: ClipEdge) -> Result<()> {
-        self.apply_boundary_resizes(clips, edge, true)
+        self.apply_boundary_resizes(clips, edge, true, false)
+    }
+
+    pub(crate) fn apply_pattern_resizes(&mut self, clips: &[Clip], edge: ClipEdge) -> Result<()> {
+        self.apply_boundary_resizes(clips, edge, false, true)
     }
 
     fn apply_boundary_resizes(
@@ -73,6 +77,7 @@ impl Project {
         clips: &[Clip],
         edge: ClipEdge,
         update_stretch: bool,
+        midi_rounding: bool,
     ) -> Result<()> {
         let mut ids = HashSet::new();
         let mut order = Vec::new();
@@ -95,10 +100,24 @@ impl Project {
                 clip.stretch = candidate.stretch;
             }
             self.validate_clip(&clip)?;
-            if match edge {
-                ClipEdge::Left => clip.end() != original.end(),
-                ClipEdge::Right => clip.start_frame != original.start_frame,
-            } {
+            // Source ticks, source frames, and stretched frames round separately.
+            // Only a source resize may move its fixed endpoint by that rounding.
+            let tolerance = if midi_rounding
+                && self
+                    .assets
+                    .iter()
+                    .any(|a| a.id == clip.asset_id && a.midi_pattern.is_some())
+            {
+                clip.stretch
+                    .map_or(1, |s| s.output_frames.div_ceil(s.source_frames) + 1)
+            } else {
+                0
+            };
+            let fixed_difference = match edge {
+                ClipEdge::Left => clip.end().abs_diff(original.end()),
+                ClipEdge::Right => clip.start_frame.abs_diff(original.start_frame),
+            };
+            if fixed_difference > tolerance {
                 return Err(Error("Resize must keep the opposite endpoint fixed".into()));
             }
             order.push((original.start_frame, candidate.id, clip));

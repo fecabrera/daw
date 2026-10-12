@@ -640,3 +640,182 @@ fn source_edges_resize_trimmed_ranges_and_keep_looped_arrangement_end() {
     assert_eq!(current.repeat.unwrap().length_frames, 60_000);
     assert_eq!(current.repeat.unwrap().phase_frame, 6_000);
 }
+
+#[test]
+fn shared_body_trim_pads_both_edges_preserves_notes_and_isolates_copies() {
+    let (mut project, track, _) = fixture();
+    let original = project.tracks[0].clips[0].clone();
+    let copy = Clip {
+        id: Id::new_v4(),
+        start_frame: 240_000,
+        ..original.clone()
+    };
+    project
+        .edit(Edit::InsertClip {
+            track_id: track,
+            clip: copy.clone(),
+        })
+        .unwrap();
+    let before = serde_json::to_value(&project).unwrap();
+    for edge in [ClipEdge::Left, ClipEdge::Right] {
+        let mut candidate = original.clone();
+        candidate.length_frames += 24_000;
+        if edge == ClipEdge::Left {
+            candidate.start_frame -= 24_000;
+        }
+        let next = project.trimmed_clips(&[candidate], edge).unwrap();
+        let edited = &next.tracks[0].clips[0];
+        let source = next
+            .assets
+            .iter()
+            .find(|a| a.id == edited.asset_id)
+            .unwrap()
+            .midi_pattern
+            .as_ref()
+            .unwrap();
+        assert_eq!(source.length_ticks, 4800);
+        let source_note = &source.notes[0];
+        assert_eq!(
+            source_note.id,
+            project
+                .assets
+                .last()
+                .unwrap()
+                .midi_pattern
+                .as_ref()
+                .unwrap()
+                .notes[0]
+                .id
+        );
+        assert_eq!(
+            edited.start_frame + next.midi_frame(source_note.start_tick),
+            original.start_frame + project.midi_frame(240)
+        );
+        assert_ne!(edited.asset_id, original.asset_id);
+        assert_eq!(
+            serde_json::to_value(&next.tracks[0].clips[1]).unwrap(),
+            serde_json::to_value(&copy).unwrap()
+        );
+        next.validate().unwrap();
+    }
+    assert_eq!(serde_json::to_value(&project).unwrap(), before);
+    let no_op = project
+        .trimmed_clips(std::slice::from_ref(&original), ClipEdge::Right)
+        .unwrap();
+    assert_eq!(serde_json::to_value(no_op).unwrap(), before);
+    assert!(
+        project
+            .trimmed_clips(&[original.clone(), original], ClipEdge::Right)
+            .is_err()
+    );
+}
+
+#[test]
+fn shared_body_trim_retains_timing_at_fractional_tempos_rates_and_stretch() {
+    for rate in SAMPLE_RATES {
+        for bpm in [93.7, 127.0] {
+            for stretch in [None, ClipStretch::new(2, 3)] {
+                let (mut project, _, _) = fixture();
+                project.edit(Edit::SetTempo { bpm }).unwrap();
+                project = project.with_audio_settings(rate, 512).unwrap();
+                let clip = &mut project.tracks[0].clips[0];
+                clip.stretch = stretch;
+                clip.start_frame = u64::from(rate) * 2;
+                clip.length_frames = clip
+                    .source_length(project.assets.last().unwrap().decoded_frame_count)
+                    .unwrap();
+                let original = project.tracks[0].clips[0].clone();
+                for edge in [ClipEdge::Left, ClipEdge::Right] {
+                    let mut candidate = original.clone();
+                    let extension = stretch.map_or(project.midi_frame(317), |s| {
+                        s.scale(project.midi_frame(317)).unwrap()
+                    });
+                    candidate.length_frames += extension;
+                    if edge == ClipEdge::Left {
+                        candidate.start_frame -= extension;
+                    }
+                    let next = project
+                        .trimmed_clips(&[candidate], edge)
+                        .unwrap_or_else(|e| panic!("{rate}/{bpm}/{stretch:?}/{edge:?}: {e}"));
+                    let result = &next.tracks[0].clips[0];
+                    let note = &next
+                        .assets
+                        .last()
+                        .unwrap()
+                        .midi_pattern
+                        .as_ref()
+                        .unwrap()
+                        .notes[0];
+                    let mapped = |p: &Project, tick| {
+                        stretch.map_or(p.midi_frame(tick), |s| s.scale(p.midi_frame(tick)).unwrap())
+                    };
+                    assert!(
+                        (result.start_frame + mapped(&next, note.start_tick))
+                            .abs_diff(original.start_frame + mapped(&project, 240))
+                            <= 2
+                    );
+                    if edge == ClipEdge::Left {
+                        assert!(result.end().abs_diff(original.end()) <= 2);
+                    } else {
+                        assert_eq!(result.start_frame, original.start_frame);
+                    }
+                    next.validate().unwrap();
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn shared_body_trim_resolves_selected_source_neighbors_once_in_direction_order() {
+    for edge in [ClipEdge::Left, ClipEdge::Right] {
+        let (mut project, track, _) = fixture();
+        let original = project.tracks[0].clips[0].clone();
+        let second = Clip {
+            id: Id::new_v4(),
+            start_frame: original.end(),
+            ..original.clone()
+        };
+        project
+            .edit(Edit::InsertClip {
+                track_id: track,
+                clip: second.clone(),
+            })
+            .unwrap();
+        let mut candidates = vec![original.clone(), second.clone()];
+        for c in &mut candidates {
+            c.length_frames += 24_000;
+            if edge == ClipEdge::Left {
+                c.start_frame -= 24_000;
+            }
+        }
+        // Payload order must not decide which selected clip owns the overlap.
+        candidates.reverse();
+        let next = project.trimmed_clips(&candidates, edge).unwrap();
+        let clips = &next.tracks[0].clips;
+        assert_eq!(clips.len(), 2);
+        assert_eq!(clips[0].end(), clips[1].start_frame);
+        if edge == ClipEdge::Right {
+            assert_eq!(clips[0].end(), 144_000);
+        } else {
+            assert_eq!(clips[1].start_frame, 96_000);
+        }
+        for clip in clips {
+            assert_ne!(clip.asset_id, original.asset_id);
+            assert_eq!(
+                next.assets
+                    .iter()
+                    .find(|a| a.id == clip.asset_id)
+                    .unwrap()
+                    .midi_pattern
+                    .as_ref()
+                    .unwrap()
+                    .length_ticks,
+                4800
+            );
+        }
+        assert_ne!(clips[0].asset_id, clips[1].asset_id);
+        next.validate().unwrap();
+        assert_eq!(project.tracks[0].clips[0].asset_id, original.asset_id);
+    }
+}

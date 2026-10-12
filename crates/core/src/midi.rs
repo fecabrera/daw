@@ -1,7 +1,42 @@
-use crate::{Asset, Clip, Edit, Error, Id, Project, Result, Source, SourceMetadata};
+use crate::{Asset, Clip, ClipEdge, Edit, Error, Id, Project, Result, Source, SourceMetadata};
 use serde::{Deserialize, Serialize};
 
 pub const MIDI_TICKS_PER_BEAT: u32 = 960;
+
+/// Map a visible MIDI clip edge to source ticks without limiting expansion to its source.
+pub struct MidiPatternBounds {
+    edge: ClipEdge,
+    edge_frame: u64,
+    length_ticks: u32,
+    frames_per_tick: f64,
+    min_delta: i64,
+    max_delta: i64,
+}
+impl MidiPatternBounds {
+    pub fn edge_frame(&self) -> u64 {
+        self.edge_frame
+    }
+    pub fn length_ticks(&self) -> u32 {
+        self.length_ticks
+    }
+    fn frame_at_delta(&self, delta: i64) -> u64 {
+        (i128::from(self.edge_frame) + (delta as f64 * self.frames_per_tick).round() as i128)
+            .clamp(0, i128::from(u64::MAX)) as u64
+    }
+    pub fn frame_limits(&self) -> std::ops::RangeInclusive<u64> {
+        self.frame_at_delta(self.min_delta)..=self.frame_at_delta(self.max_delta)
+    }
+    pub fn ticks_at_frame(&self, frame: u64) -> (i64, i64) {
+        let delta = ((i128::from(frame) - i128::from(self.edge_frame)) as f64
+            / self.frames_per_tick)
+            .round() as i64;
+        let delta = delta.clamp(self.min_delta, self.max_delta);
+        match self.edge {
+            ClipEdge::Left => (delta, i64::from(self.length_ticks)),
+            ClipEdge::Right => (0, i64::from(self.length_ticks) + delta),
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TrackKind {
@@ -96,6 +131,114 @@ impl MidiPattern {
     }
 }
 impl Project {
+    pub fn midi_pattern_bounds(&self, clip: &Clip, edge: ClipEdge) -> Result<MidiPatternBounds> {
+        let pattern = self
+            .assets
+            .iter()
+            .find(|a| a.id == clip.asset_id)
+            .and_then(|a| a.midi_pattern.as_ref())
+            .ok_or_else(|| Error("Clip is not a MIDI pattern".into()))?;
+        let stretch = clip
+            .stretch
+            .map_or(1.0, |s| s.output_frames as f64 / s.source_frames as f64);
+        let frames_per_tick = f64::from(self.sample_rate_hz) * 60.0
+            / (f64::from(self.tempo_bpm) * f64::from(MIDI_TICKS_PER_BEAT))
+            * stretch;
+        let visible_ticks = (clip.length_frames as f64 / frames_per_tick)
+            .floor()
+            .max(1.0) as i64;
+        let length = i64::from(pattern.length_ticks);
+        let inward = (length - 1).min(visible_ticks - 1);
+        let edge_frame = match edge {
+            ClipEdge::Left => clip.start_frame,
+            ClipEdge::Right => clip.end(),
+        };
+        let (min_delta, max_delta) = match edge {
+            ClipEdge::Left => (
+                (length - i64::from(u32::MAX))
+                    .max(-((clip.start_frame as f64 / frames_per_tick).floor() as i64)),
+                inward,
+            ),
+            ClipEdge::Right => (
+                -inward,
+                (i64::from(u32::MAX) - length)
+                    .min(((u64::MAX - edge_frame) as f64 / frames_per_tick).floor() as i64),
+            ),
+        };
+        Ok(MidiPatternBounds {
+            edge,
+            edge_frame,
+            length_ticks: pattern.length_ticks,
+            frames_per_tick,
+            min_delta,
+            max_delta,
+        })
+    }
+
+    /// Body trims resize MIDI content while audio retains ordinary source-bound trimming.
+    /// Prepare each selected source from the original project, then resolve neighbors once.
+    pub fn trimmed_clips(&self, clips: &[Clip], edge: ClipEdge) -> Result<Self> {
+        let mut next = self.clone();
+        let mut resized = Vec::with_capacity(clips.len());
+        for candidate in clips {
+            let original = self
+                .tracks
+                .iter()
+                .flat_map(|t| &t.clips)
+                .find(|c| c.id == candidate.id)
+                .ok_or_else(|| Error("Clip not found".into()))?;
+            if match edge {
+                ClipEdge::Left => candidate.end() != original.end(),
+                ClipEdge::Right => candidate.start_frame != original.start_frame,
+            } {
+                return Err(Error("Resize must keep the opposite endpoint fixed".into()));
+            }
+            if self
+                .assets
+                .iter()
+                .find(|a| a.id == original.asset_id)
+                .is_some_and(|a| a.midi_pattern.is_some())
+            {
+                let bounds = self.midi_pattern_bounds(original, edge)?;
+                let target = match edge {
+                    ClipEdge::Left => candidate.start_frame,
+                    ClipEdge::Right => candidate.end(),
+                };
+                let (start, end) = bounds.ticks_at_frame(target);
+                let source = self.resized_midi_pattern(original.id, start, end)?;
+                let clip = source
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.clips)
+                    .find(|c| c.id == original.id)
+                    .unwrap()
+                    .clone();
+                if clip.asset_id != original.asset_id {
+                    next.assets.push(
+                        source
+                            .assets
+                            .iter()
+                            .find(|a| a.id == clip.asset_id)
+                            .unwrap()
+                            .clone(),
+                    );
+                    next.tracks
+                        .iter_mut()
+                        .flat_map(|t| &mut t.clips)
+                        .find(|c| c.id == clip.id)
+                        .unwrap()
+                        .asset_id = clip.asset_id;
+                }
+                resized.push(clip);
+            } else {
+                resized.push(candidate.clone());
+            }
+        }
+        next.apply_pattern_resizes(&resized, edge)?;
+        next.validate()?;
+        Ok(next)
+    }
+
     /// Resize the edited source and its clip as one transaction. Other source users stay intact.
     pub fn resized_midi_pattern(
         &self,
