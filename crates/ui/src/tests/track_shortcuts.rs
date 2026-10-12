@@ -1062,3 +1062,129 @@ fn copy_plus_header_button_is_disabled_without_selection_and_duplicates_the_grou
     assert_eq!(app.selected_clips, HashSet::from([clips[0]]));
     assert!(app.dirty && app.error.is_none());
 }
+
+fn empty_tracks_point(app: &DawUi) -> Pos2 {
+    let top = app
+        .lane_bounds
+        .values()
+        .map(Rect::bottom)
+        .fold(app.timeline_bounds.top(), f32::max);
+    Pos2::new(
+        app.master_bounds.center().x,
+        (top + app.master_bounds.top()) * 0.5,
+    )
+}
+
+#[test]
+fn empty_tracks_context_menu_adds_audio_or_midi_on_release() {
+    for empty in [true, false] {
+        for action in [TrackAction::Add, TrackAction::AddMidi] {
+            let (mut app, tracks, clips) = multi_clip_fixture();
+            let ctx = context();
+            app.use_native_menu();
+            if empty {
+                app.session.project.tracks.clear();
+            } else {
+                app.select_clip(clips[0], tracks[0], false);
+                app.select_track(tracks[1], true);
+            }
+            frame(&mut app, &ctx, vec![]);
+            let original = app.session.project.clone();
+            let selection = app.selected_tracks.clone();
+            let clip_selection = app.selected_clips.clone();
+            let point = empty_tracks_point(&app);
+            let shapes = secondary_click(&mut app, &ctx, point);
+            assert!(egui::Popup::is_any_open(&ctx));
+            assert_eq!(
+                format!("{:?}", app.session.project),
+                format!("{original:?}")
+            );
+            assert_eq!(app.selected_tracks, selection);
+            assert_eq!(app.selected_clips, clip_selection);
+            assert!(!app.dirty);
+            let mut target = None;
+            for item in [TrackAction::Add, TrackAction::AddMidi] {
+                let point = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == item.label() => {
+                            Some(text.pos + text.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .expect("add-track context item");
+                if item == action {
+                    target = Some(point);
+                }
+            }
+            let target = target.unwrap();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+            );
+            assert_eq!(
+                format!("{:?}", app.session.project),
+                format!("{original:?}")
+            );
+            frame(&mut app, &ctx, vec![button(target, false)]);
+            assert_eq!(app.session.project.tracks.len(), original.tracks.len() + 1);
+            assert_eq!(
+                format!("{:?}", &app.session.project.tracks[..original.tracks.len()]),
+                format!("{:?}", original.tracks)
+            );
+            let added = app.session.project.tracks.last().unwrap();
+            assert_eq!(
+                added.kind,
+                if action == TrackAction::AddMidi {
+                    daw_core::TrackKind::Midi
+                } else {
+                    daw_core::TrackKind::Audio
+                }
+            );
+            assert!(added.clips.is_empty());
+            assert_eq!(app.selected_tracks, HashSet::from([added.id]));
+            assert_eq!(app.selected_clips, clip_selection);
+            assert!(app.dirty);
+            assert!(!egui::Popup::is_any_open(&ctx));
+        }
+    }
+}
+
+#[test]
+fn empty_tracks_context_menu_dismissal_and_guards_preserve_the_project() {
+    let (mut app, tracks, _) = multi_clip_fixture();
+    let ctx = context();
+    app.use_native_menu();
+    app.select_track(tracks[0], false);
+    frame(&mut app, &ctx, vec![]);
+    let original = app.session.project.clone();
+    let point = empty_tracks_point(&app);
+    secondary_click(&mut app, &ctx, point);
+    press(&mut app, &ctx, egui::Key::Escape);
+    assert!(!egui::Popup::is_any_open(&ctx));
+    assert_eq!(
+        format!("{:?}", app.session.project),
+        format!("{original:?}")
+    );
+    assert_eq!(app.selected_tracks, HashSet::from([tracks[0]]));
+    assert!(!app.dirty);
+    // The neighboring timeline and pinned Master are outside the empty track-list target.
+    for outside in [
+        Pos2::new(app.timeline_bounds.left() + 100.0, point.y),
+        app.master_bounds.center(),
+    ] {
+        secondary_click(&mut app, &ctx, outside);
+        assert!(!egui::Popup::is_any_open(&ctx));
+    }
+    let (sender, receiver) = mpsc::channel();
+    app.job = Some(receiver);
+    secondary_click(&mut app, &ctx, point);
+    assert!(!egui::Popup::is_any_open(&ctx));
+    assert_eq!(
+        format!("{:?}", app.session.project),
+        format!("{original:?}")
+    );
+    assert!(!app.dirty);
+    drop(sender);
+}

@@ -2261,6 +2261,7 @@ impl DawUi {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 self.tracks(ui);
+                self.empty_tracks_context_menu(ui);
                 self.scroll_track_drag(ui);
             });
         self.timeline_bounds = timeline_rect;

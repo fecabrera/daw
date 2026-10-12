@@ -300,6 +300,41 @@ impl DawUi {
         }
     }
 
+    pub(super) fn empty_tracks_context_menu(&mut self, ui: &mut egui::Ui) {
+        if !ui.is_enabled() || !self.track_action_enabled(TrackAction::Add, ui.ctx()) {
+            return;
+        }
+        let rect = egui::Rect::from_min_max(
+            egui::Pos2::new(ui.min_rect().left(), ui.cursor().top()),
+            egui::Pos2::new(ui.min_rect().left() + TRACK_WIDTH, ui.clip_rect().bottom()),
+        )
+        .intersect(ui.clip_rect());
+        if !rect.is_positive() {
+            return;
+        }
+        let response = ui.interact(rect, ui.id().with("empty-tracks"), egui::Sense::click());
+        let action = egui::Popup::context_menu(&response)
+            .show(|ui| {
+                for action in [TrackAction::Add, TrackAction::AddMidi] {
+                    if ui
+                        .add_enabled(
+                            self.track_action_enabled(action, ui.ctx()),
+                            egui::Button::new(action.label()),
+                        )
+                        .clicked()
+                    {
+                        ui.close();
+                        return Some(action);
+                    }
+                }
+                None
+            })
+            .and_then(|response| response.inner);
+        if let Some(action) = action {
+            self.perform_track_action(action, ui.ctx());
+        }
+    }
+
     pub(super) fn track_context_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
         for action in [
             TrackAction::Rename,
