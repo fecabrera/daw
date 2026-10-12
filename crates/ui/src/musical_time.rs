@@ -1,5 +1,9 @@
 pub const BEATS_PER_BAR: u64 = 4;
 
+pub(super) fn snap_bypassed(ui: &egui::Ui) -> bool {
+    ui.input(|input| input.modifiers.shift)
+}
+
 #[cfg(test)]
 pub fn position(frame: u64, tempo_bpm: f32) -> (u64, u64) {
     position_at_rate(frame, tempo_bpm, daw_core::SAMPLE_RATE)
@@ -88,6 +92,43 @@ impl Timeline {
 
     pub fn beats(&self, frame: u64) -> f64 {
         (frame as f64 / f64::from(self.sample_rate_hz)) * self.beats_per_second
+    }
+
+    pub fn frame_delta(&self, pixels: f64) -> i128 {
+        (pixels / self.pixels_per_beat / self.beats_per_second * f64::from(self.sample_rate_hz))
+            .round() as i128
+    }
+
+    pub fn frame_at_pixel(&self, pixel: f64) -> i128 {
+        ((pixel / self.pixels_per_beat + self.scroll_beats) / self.beats_per_second
+            * f64::from(self.sample_rate_hz))
+        .round() as i128
+    }
+
+    pub fn pixels_for_frames(&self, frames: i128) -> f64 {
+        frames as f64 / f64::from(self.sample_rate_hz)
+            * self.beats_per_second
+            * self.pixels_per_beat
+    }
+
+    pub fn pixel_at_frame(&self, frame: u64) -> f64 {
+        (self.beats(frame) - self.scroll_beats) * self.pixels_per_beat
+    }
+
+    /// Clamp first. Shift and a clamped request retain the bounded position.
+    pub fn snap_bounded(
+        &self,
+        raw: i128,
+        limits: std::ops::RangeInclusive<u64>,
+        anchors: impl IntoIterator<Item = u64>,
+        bypass: bool,
+    ) -> u64 {
+        let frame = raw.clamp(i128::from(*limits.start()), i128::from(*limits.end())) as u64;
+        if bypass || raw != i128::from(frame) {
+            frame
+        } else {
+            self.snap(frame, limits, anchors)
+        }
     }
 
     pub(super) fn visible_step(&self) -> f64 {
@@ -267,6 +308,39 @@ impl Timeline {
 mod tests {
     use super::*;
     use daw_core::frames;
+
+    #[test]
+    fn bounded_grid_snap_shares_bypass_radius_and_scrolled_pixel_coordinates() {
+        for rate in [44_100, 48_000, 96_000] {
+            let timeline = Timeline::at_sample_rate(120.0, 240.0, 0.25, rate);
+            let frame = |seconds: f64| (seconds * f64::from(rate)).round() as u64;
+            let raw = frame(0.515);
+            assert_eq!(
+                timeline.snap_bounded(i128::from(raw), 0..=u64::MAX, [], false),
+                frame(0.5)
+            );
+            assert_eq!(
+                timeline.snap_bounded(i128::from(raw), 0..=u64::MAX, [], true),
+                raw
+            );
+            // Between visible lines, movement stays free outside the six-point radius.
+            let between = frame(0.53125);
+            assert_eq!(
+                timeline.snap_bounded(i128::from(between), 0..=u64::MAX, [], false),
+                between
+            );
+            let limit = frame(0.514);
+            assert_eq!(
+                timeline.snap_bounded(i128::from(raw), 0..=limit, [], false),
+                limit
+            );
+            assert_eq!(timeline.snap_bounded(-10, 0..=u64::MAX, [], false), 0);
+            let pixel = timeline.pixel_at_frame(raw);
+            assert_eq!(timeline.frame_at_pixel(pixel), i128::from(raw));
+            let delta = timeline.frame_delta(17.0);
+            assert!((timeline.pixels_for_frames(delta) - 17.0).abs() < 0.01);
+        }
+    }
 
     #[test]
     fn selected_processing_rate_preserves_musical_positions_and_snap_geometry() {

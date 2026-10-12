@@ -2502,7 +2502,7 @@ impl DawUi {
             let at = self.selection_frame(
                 i128::from(self.ruler_frame(viewport, pointer)),
                 0..=u64::MAX,
-                ui.input(|input| input.modifiers.shift),
+                musical_time::snap_bypassed(ui),
             );
             self.seek(at);
         }
@@ -2670,7 +2670,7 @@ impl DawUi {
         {
             let at = self.ruler_frame(rect, pointer);
             let original = &drag.original;
-            let unsnapped = ui.input(|input| input.modifiers.shift);
+            let unsnapped = musical_time::snap_bypassed(ui);
             let (start, end) = match drag.mode {
                 LoopDragMode::Create => {
                     let origin = self.selection_frame(
@@ -2735,7 +2735,7 @@ impl DawUi {
             let at = self.selection_frame(
                 i128::from(self.ruler_frame(rect, pointer)),
                 0..=u64::MAX,
-                ui.input(|input| input.modifiers.shift),
+                musical_time::snap_bypassed(ui),
             );
             if at != self.session.project.transport.playhead_frame {
                 self.seek(at);
@@ -3550,11 +3550,8 @@ impl DawUi {
         anchors: impl IntoIterator<Item = u64>,
         unsnapped: bool,
     ) -> u64 {
-        let frame = raw.clamp(i128::from(*limits.start()), i128::from(*limits.end())) as u64;
-        if unsnapped || raw != i128::from(frame) {
-            return frame;
-        }
-        self.musical_timeline().snap(frame, limits, anchors)
+        self.musical_timeline()
+            .snap_bounded(raw, limits, anchors, unsnapped)
     }
     fn clip_edge_frame(
         &self,
@@ -4007,8 +4004,7 @@ impl DawUi {
         let Some(pointer) = ui.input(|input| input.pointer.latest_pos()) else {
             return;
         };
-        let Some(mut target) =
-            self.file_target(pointer, viewport, ui.input(|input| input.modifiers.shift))
+        let Some(mut target) = self.file_target(pointer, viewport, musical_time::snap_bypassed(ui))
         else {
             return;
         };
@@ -4145,10 +4141,9 @@ impl DawUi {
         let Some(drag) = self.drag.as_ref() else {
             return;
         };
-        let previews =
-            self.clip_drag_previews(drag, pointer, ui.input(|input| input.modifiers.shift));
+        let previews = self.clip_drag_previews(drag, pointer, musical_time::snap_bypassed(ui));
         let incoming_count = if drag.mode == ClipDragMode::Move {
-            self.move_group_preview(drag, pointer, ui.input(|input| input.modifiers.shift))
+            self.move_group_preview(drag, pointer, musical_time::snap_bypassed(ui))
                 .map_or(0, |raw| raw.len())
         } else {
             0
@@ -4390,24 +4385,24 @@ impl DawUi {
                 .unwrap_or(drag.origin);
             if drag.mode == ClipDragMode::Move {
                 let previews = self
-                    .move_group_preview(&drag, pointer, ui.input(|input| input.modifiers.shift))
+                    .move_group_preview(&drag, pointer, musical_time::snap_bypassed(ui))
                     .unwrap_or_default();
                 self.finish_clip_move(&drag, previews);
                 return;
             }
             if drag.mode.resize_edge().is_some() {
-                self.finish_clip_resize(&drag, pointer, ui.input(|input| input.modifiers.shift));
+                self.finish_clip_resize(&drag, pointer, musical_time::snap_bypassed(ui));
                 return;
             }
             if matches!(
                 drag.mode,
                 ClipDragMode::StretchLeft | ClipDragMode::StretchRight
             ) {
-                self.finish_clip_stretch(&drag, pointer, ui.input(|input| input.modifiers.shift));
+                self.finish_clip_stretch(&drag, pointer, musical_time::snap_bypassed(ui));
                 return;
             }
             if let Some(preview) =
-                self.clip_drag_preview(&drag, pointer, ui.input(|input| input.modifiers.shift))
+                self.clip_drag_preview(&drag, pointer, musical_time::snap_bypassed(ui))
             {
                 let c = preview.clip;
                 if preview.track == drag.track

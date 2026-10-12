@@ -2568,3 +2568,202 @@ fn group_note_resize_with_shift_and_copy_modifier_cancels_and_never_duplicates()
         }
     }
 }
+
+#[test]
+fn off_grid_pattern_edges_snap_to_project_grid_after_scroll_and_stretch() {
+    for zoom in [120.0, 240.0] {
+        for stretched in [false, true] {
+            for (edge, expand) in [
+                (daw_core::ClipEdge::Left, false),
+                (daw_core::ClipEdge::Left, true),
+                (daw_core::ClipEdge::Right, false),
+                (daw_core::ClipEdge::Right, true),
+            ] {
+                let (mut app, track, clip, _) = fixture();
+                let current = &mut app.session.project.tracks[0].clips[0];
+                current.start_frame = 10_200;
+                if stretched {
+                    current.stretch = daw_core::ClipStretch::new(2, 3);
+                    current.length_frames = 144_000;
+                }
+                app.session.project.validate().unwrap();
+                let original_clip = app.session.project.tracks[0].clips[0].clone();
+                let ctx = context();
+                app.open_clip_editor(clip, track, &ctx);
+                app.midi_editor.zoom = zoom;
+                app.midi_editor.scroll = 0.025;
+                frame(&mut app, &ctx, vec![]);
+                let original = format!("{:?}", app.session.project);
+                let block = app.midi_editor.clip_bounds[&clip];
+                let edge_frame = if edge == daw_core::ClipEdge::Left {
+                    original_clip.start_frame
+                } else {
+                    original_clip.end()
+                };
+                let spacing = if zoom == 120.0 { 6000 } else { 3000 };
+                let increasing = (edge == daw_core::ClipEdge::Right) == expand;
+                let target = (edge_frame / spacing + if increasing { 2 } else { 0 }) * spacing
+                    - if increasing { 0 } else { spacing };
+                let origin = Pos2::new(
+                    if edge == daw_core::ClipEdge::Left {
+                        block.left() + 1.0
+                    } else {
+                        block.right() - 1.0
+                    },
+                    block.top() + 11.0,
+                );
+                // Request a position two pixels past the line, inside the ruler's snap radius.
+                let end = origin
+                    + Vec2::new(
+                        (target as f64 - edge_frame as f64) as f32 / 48_000.0 * zoom + 2.0,
+                        0.0,
+                    );
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(origin), button(origin, true)],
+                );
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                assert_eq!(format!("{:?}", app.session.project), original);
+                let preview = app.midi_editor.clip_bounds[&clip];
+                let preview_edge_x = if edge == daw_core::ClipEdge::Left {
+                    preview.left()
+                } else {
+                    preview.right()
+                };
+                let target_x = app.midi_editor.track_bounds.left()
+                    + (target as f64 / 48_000.0 - app.midi_editor.scroll) as f32 * zoom;
+                assert!(
+                    (preview_edge_x - target_x).abs() < 0.2,
+                    "{preview_edge_x} != {target_x}"
+                );
+                frame(&mut app, &ctx, vec![button(end, false)]);
+                assert!(app.error.is_none(), "{:?}", app.error);
+                let result = &app.session.project.tracks[0].clips[0];
+                let result_edge = if edge == daw_core::ClipEdge::Left {
+                    result.start_frame
+                } else {
+                    result.end()
+                };
+                assert!(
+                    result_edge.abs_diff(target) <= 19,
+                    "{result_edge} != {target}"
+                );
+                assert_eq!(result.stretch, original_clip.stretch);
+                if edge == daw_core::ClipEdge::Left {
+                    assert!(result.end().abs_diff(original_clip.end()) <= 19);
+                } else {
+                    assert_eq!(result.start_frame, original_clip.start_frame);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn off_grid_notes_draw_move_and_resize_using_the_project_ruler_grid() {
+    for stretched in [false, true] {
+        for gesture in ["draw", "move", "start", "end"] {
+            let (mut app, track, clip, note_id) = fixture();
+            let source = app.session.project.tracks[0].clips[0].asset_id;
+            let content = app
+                .session
+                .project
+                .assets
+                .iter_mut()
+                .find(|a| a.id == source)
+                .unwrap()
+                .midi_pattern
+                .as_mut()
+                .unwrap();
+            content.notes[0].start_tick = 1000;
+            content.notes[0].length_ticks = 900;
+            let current = &mut app.session.project.tracks[0].clips[0];
+            current.start_frame = 10_200;
+            if stretched {
+                current.stretch = daw_core::ClipStretch::new(2, 3);
+                current.length_frames = 144_000;
+            }
+            let original_clip = current.clone();
+            let original_note = pattern(&app).notes[0].clone();
+            let ctx = context();
+            app.open_clip_editor(clip, track, &ctx);
+            app.midi_editor.scroll = 0.025;
+            frame(&mut app, &ctx, vec![]);
+            let before = format!("{:?}", app.session.project);
+            let note = app.midi_editor.note_bounds[&note_id];
+            let target = match gesture {
+                "end" => 90_000,
+                "start" => 30_000,
+                "move" => 60_000,
+                _ => 48_000,
+            };
+            let target_x = app.midi_editor.track_bounds.left()
+                + (target as f64 / 48_000.0 - app.midi_editor.scroll) as f32 * app.midi_editor.zoom;
+            if gesture == "draw" {
+                let point = Pos2::new(target_x + 2.0, note.center().y - 18.0);
+                draw_frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                );
+                assert_eq!(format!("{:?}", app.session.project), before);
+                draw_frame(&mut app, &ctx, vec![button(point, false)]);
+            } else {
+                let origin = match gesture {
+                    "start" => Pos2::new(note.left() + 1.0, note.center().y),
+                    "end" => Pos2::new(note.right() - 1.0, note.center().y),
+                    _ => note.center(),
+                };
+                let edge_x = if gesture == "end" {
+                    note.right()
+                } else {
+                    note.left()
+                };
+                let end = origin + Vec2::new(target_x + 2.0 - edge_x, 0.0);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(origin), button(origin, true)],
+                );
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                assert_eq!(format!("{:?}", app.session.project), before);
+                frame(&mut app, &ctx, vec![button(end, false)]);
+            }
+            let result = pattern(&app)
+                .notes
+                .iter()
+                .find(|n| {
+                    if gesture == "draw" {
+                        n.pitch == original_note.pitch + 1
+                    } else {
+                        n.id == note_id
+                    }
+                })
+                .unwrap();
+            let ticks = if gesture == "end" {
+                result.start_tick + result.length_ticks
+            } else {
+                result.start_tick
+            };
+            let source_frame = app.session.project.midi_frame(ticks);
+            let edge = original_clip.start_frame
+                + original_clip
+                    .stretch
+                    .map_or(source_frame, |s| s.scale(source_frame).unwrap());
+            assert!(
+                edge.abs_diff(target) <= 19,
+                "{gesture} / {stretched}: {edge} != {target}"
+            );
+            if gesture == "draw" {
+                let length = app.session.project.midi_frame(result.length_ticks);
+                assert_eq!(
+                    original_clip
+                        .stretch
+                        .map_or(length, |s| s.scale(length).unwrap()),
+                    3000
+                );
+            }
+        }
+    }
+}

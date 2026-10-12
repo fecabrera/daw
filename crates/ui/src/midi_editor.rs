@@ -25,8 +25,7 @@ struct NoteDrag {
     patterns: Vec<NoteDragPattern>,
     mode: NoteDragMode,
     origin: Pos2,
-    beat_width: f32,
-    step: u32,
+    anchor_frame: i128,
     previous_selection: HashSet<(Id, Id)>,
     previous_note: Option<Id>,
 }
@@ -54,12 +53,12 @@ struct PatternDrag {
     clip: Id,
     origin: Pos2,
     edge: daw_core::ClipEdge,
+    edge_frame: u64,
     original_length: u32,
     min_start: i64,
     max_start: i64,
     min_end: i64,
     beat_width: f32,
-    step: u32,
     start: i64,
     end: i64,
     preview: Option<daw_core::Project>,
@@ -76,6 +75,7 @@ pub(super) struct MidiEditor {
     pub(super) zoom: f32,
     pub(super) scroll: f64,
     pub(super) source_origin: f64,
+    timeline_left: f32,
     active_clip: Option<Id>,
     active_track: Option<Id>,
     #[cfg(test)]
@@ -108,6 +108,7 @@ impl Default for MidiEditor {
             zoom: 240.0,
             scroll: 0.0,
             source_origin: 0.0,
+            timeline_left: 0.0,
             active_clip: None,
             active_track: None,
             #[cfg(test)]
@@ -717,17 +718,12 @@ impl DawUi {
             * clip.stretch.map_or(1.0, |s| s.ratio() as f32)
     }
     fn editor_step(&self, clip: &Clip) -> u32 {
-        (musical_time::Timeline::at_sample_rate(
-            self.session.project.tempo_bpm,
-            self.midi_editor.zoom * clip.stretch.map_or(1.0, |s| s.ratio() as f32),
-            0.0,
-            self.session.project.sample_rate_hz,
-        )
-        .visible_step()
+        (self.musical_timeline().visible_step() / clip.stretch.map_or(1.0, |s| s.ratio())
             * f64::from(MIDI_TICKS_PER_BEAT))
         .round()
         .max(1.0) as u32
     }
+
     fn editor_clip_rect(&self, band: Rect, clip: &Clip) -> Rect {
         let left = band.left()
             + (self.session.project.seconds(clip.start_frame) - self.midi_editor.scroll) as f32
@@ -749,6 +745,7 @@ impl DawUi {
         let (band, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 56.0), Sense::hover());
         let lane = Rect::from_min_max(Pos2::new(band.left() + KEY_WIDTH, band.top()), band.max);
+        self.midi_editor.timeline_left = lane.left();
         let palette = theme::palette(ui.ctx());
         ui.painter().rect_filled(band, 0.0, palette.background);
         ui.painter()
@@ -931,12 +928,16 @@ impl DawUi {
                         clip: clip.id,
                         origin,
                         edge,
+                        edge_frame: if edge == daw_core::ClipEdge::Left {
+                            clip.start_frame
+                        } else {
+                            clip.end()
+                        },
                         original_length: pattern.length_ticks,
                         min_start,
                         max_start,
                         min_end,
                         beat_width,
-                        step: self.editor_step(clip),
                         start: 0,
                         end: i64::from(pattern.length_ticks),
                         preview: None,
@@ -962,29 +963,47 @@ impl DawUi {
         );
     }
     fn update_pattern_resize(&mut self, ui: &egui::Ui) {
+        let timeline = self.musical_timeline();
+        let bypass = musical_time::snap_bypassed(ui);
         if let Some(drag) = &mut self.midi_editor.pattern_drag
             && let Some(pointer) = ui.input(|i| i.pointer.latest_pos())
             && ui.input(|i| {
                 i.pointer.primary_down() || i.pointer.button_released(egui::PointerButton::Primary)
             })
         {
-            let quantum = if ui.input(|i| i.modifiers.shift) {
-                1
-            } else {
-                drag.step
+            let movement = f64::from(pointer.x - drag.origin.x);
+            let requested = i128::from(drag.edge_frame) + timeline.frame_delta(movement);
+            let (min_delta, max_delta) = match drag.edge {
+                daw_core::ClipEdge::Left => (
+                    (i64::from(drag.original_length) - i64::from(u32::MAX)).max(drag.min_start),
+                    drag.max_start,
+                ),
+                daw_core::ClipEdge::Right => (
+                    drag.min_end - i64::from(drag.original_length),
+                    i64::from(u32::MAX) - i64::from(drag.original_length),
+                ),
             };
-            let delta = (((pointer.x - drag.origin.x) / drag.beat_width
-                * MIDI_TICKS_PER_BEAT as f32
-                / quantum as f32)
-                .round() as i64)
-                .saturating_mul(i64::from(quantum));
+            let at = |ticks: i64| {
+                (i128::from(drag.edge_frame)
+                    + timeline.frame_delta(
+                        ticks as f64 * f64::from(drag.beat_width) / f64::from(MIDI_TICKS_PER_BEAT),
+                    ))
+                .clamp(0, i128::from(u64::MAX)) as u64
+            };
+            // Snap the project edge, then convert its displacement to source ticks.
+            let target = timeline.snap_bounded(
+                requested,
+                at(min_delta)..=at(max_delta),
+                std::iter::empty(),
+                bypass || movement == 0.0,
+            );
+            let delta = (timeline
+                .pixels_for_frames(i128::from(target) - i128::from(drag.edge_frame))
+                / f64::from(drag.beat_width)
+                * f64::from(MIDI_TICKS_PER_BEAT))
+            .round() as i64;
             match drag.edge {
-                daw_core::ClipEdge::Left => {
-                    drag.start = delta.clamp(
-                        (i64::from(drag.original_length) - i64::from(u32::MAX)).max(drag.min_start),
-                        drag.max_start,
-                    )
-                }
+                daw_core::ClipEdge::Left => drag.start = delta.clamp(min_delta, max_delta),
                 daw_core::ClipEdge::Right => {
                     drag.end = i64::from(drag.original_length)
                         .saturating_add(delta)
@@ -1283,7 +1302,18 @@ impl DawUi {
                     } else {
                         NoteDragMode::Move
                     };
-                    self.start_midi_note_drag(track, clip, note.id, mode, origin);
+                    self.start_midi_note_drag(
+                        track,
+                        clip,
+                        note.id,
+                        mode,
+                        origin,
+                        if matches!(mode, NoteDragMode::End) {
+                            rect.right()
+                        } else {
+                            rect.left()
+                        },
+                    );
                 }
             }
             if !self.midi_editor.dragging()
@@ -1299,17 +1329,6 @@ impl DawUi {
                     .iter()
                     .any(|n| note_rect(grid, n, beat_width).contains(pointer))
             {
-                let quantum = if ui.input(|i| i.modifiers.shift) {
-                    1
-                } else {
-                    step
-                };
-                let start_tick = ((((pointer.x - grid.left()) / beat_width
-                    * MIDI_TICKS_PER_BEAT as f32
-                    / quantum as f32)
-                    .floor() as u32)
-                    .saturating_mul(quantum))
-                .min(pattern.length_ticks - 1);
                 let pitch = (127 - ((pointer.y - grid.top()) / NOTE_HEIGHT).floor() as i16)
                     .clamp(0, 127) as u8;
                 self.editor_select_clip(clip.id, track.id);
@@ -1324,6 +1343,15 @@ impl DawUi {
                     .max(1.0) as u32)
                     .min(pattern.length_ticks)
                     .max(min_tick + 1);
+                let start_tick = snapped_note_tick(
+                    &self.musical_timeline(),
+                    f64::from(pointer.x - lane.left()),
+                    f64::from(grid.left() - lane.left()),
+                    beat_width,
+                    min_tick..=max_tick - 1,
+                    musical_time::snap_bypassed(ui),
+                )
+                .min(pattern.length_ticks - 1);
                 let note = Id::new_v4();
                 self.midi_editor.draw = Some(NoteDraw {
                     clip: clip.id,
@@ -1356,9 +1384,11 @@ impl DawUi {
         note: Id,
         mode: NoteDragMode,
         origin: Pos2,
+        anchor_x: f32,
     ) {
-        let beat_width = self.editor_beat_width(clip);
-        let step = self.editor_step(clip);
+        let anchor_frame = self
+            .musical_timeline()
+            .frame_at_pixel(f64::from(anchor_x - self.midi_editor.timeline_left));
         let clip = clip.id;
         let previous_selection = self.midi_editor.selected_notes.clone();
         let previous_note = self.midi_editor.selected_note;
@@ -1407,32 +1437,23 @@ impl DawUi {
             patterns,
             mode,
             origin,
-            beat_width,
-            step,
+            anchor_frame,
             previous_selection,
             previous_note,
         });
     }
     fn update_midi_notes(&mut self, ui: &egui::Ui) {
+        let timeline = self.musical_timeline();
+        let timeline_left = self.midi_editor.timeline_left;
+        let bypass = musical_time::snap_bypassed(ui);
         if let Some(drag) = &mut self.midi_editor.drag
             && ui.input(|i| {
                 i.pointer.primary_down() || i.pointer.button_released(egui::PointerButton::Primary)
             })
             && let Some(pointer) = ui.input(|i| i.pointer.latest_pos())
         {
-            let quantum = if ui.input(|i| i.modifiers.shift) {
-                1
-            } else {
-                drag.step
-            };
-            let delta = ((pointer.x - drag.origin.x) * MIDI_TICKS_PER_BEAT as f32
-                / drag.beat_width
-                / quantum as f32)
-                .round() as i64
-                * i64::from(quantum);
-            // Use one project-space displacement so stretched patterns keep group spacing.
-            let mut pixels =
-                delta as f64 * f64::from(drag.beat_width) / f64::from(MIDI_TICKS_PER_BEAT);
+            let movement = f64::from(pointer.x - drag.origin.x);
+            let mut pixels = movement;
             let mut pitch_delta = ((pointer.y - drag.origin.y) / NOTE_HEIGHT).round() as i16;
             {
                 let mut min_pixels = f64::NEG_INFINITY;
@@ -1462,6 +1483,19 @@ impl DawUi {
                         min_pitch_delta = min_pitch_delta.max(i16::from(n.pitch) - 127);
                         max_pitch_delta = max_pitch_delta.min(i16::from(n.pitch));
                     }
+                }
+                if movement != 0.0 {
+                    let at = |pixels| {
+                        (drag.anchor_frame + timeline.frame_delta(pixels))
+                            .clamp(0, i128::from(u64::MAX)) as u64
+                    };
+                    let target = timeline.snap_bounded(
+                        drag.anchor_frame + timeline.frame_delta(movement),
+                        at(min_pixels)..=at(max_pixels),
+                        std::iter::empty(),
+                        bypass,
+                    );
+                    pixels = timeline.pixels_for_frames(i128::from(target) - drag.anchor_frame);
                 }
                 pixels = pixels.clamp(min_pixels, max_pixels);
                 pitch_delta = pitch_delta.clamp(min_pitch_delta, max_pitch_delta);
@@ -1530,21 +1564,19 @@ impl DawUi {
         if let Some(draw) = &mut self.midi_editor.draw
             && let Some(pointer) = ui.input(|i| i.pointer.latest_pos())
         {
-            let quantum = if ui.input(|i| i.modifiers.shift) {
-                1
-            } else {
-                draw.step
-            };
             let end = if (pointer.x - draw.origin.x).abs() < 0.001 {
                 draw.start_tick
                     .saturating_add(draw.step)
                     .clamp(draw.min_tick, draw.max_tick)
             } else {
-                ((((pointer.x - draw.grid_left) / draw.beat_width * MIDI_TICKS_PER_BEAT as f32
-                    / quantum as f32)
-                    .round()
-                    .max(0.0) as u32)
-                    .saturating_mul(quantum))
+                snapped_note_tick(
+                    &timeline,
+                    f64::from(pointer.x - timeline_left),
+                    f64::from(draw.grid_left - timeline_left),
+                    draw.beat_width,
+                    draw.min_tick..=draw.max_tick,
+                    bypass,
+                )
                 .clamp(draw.min_tick, draw.max_tick)
             };
             let start = draw
@@ -1660,4 +1692,33 @@ impl DawUi {
             }
         }
     }
+}
+
+/// Adapt the shared project grid to a source's tick coordinates, including repeats/stretch.
+fn snapped_note_tick(
+    timeline: &musical_time::Timeline,
+    pixel: f64,
+    source_pixel: f64,
+    beat_width: f32,
+    limits: std::ops::RangeInclusive<u32>,
+    bypass: bool,
+) -> u32 {
+    let at = |tick: u32| {
+        timeline
+            .frame_at_pixel(
+                source_pixel
+                    + f64::from(tick) * f64::from(beat_width) / f64::from(MIDI_TICKS_PER_BEAT),
+            )
+            .clamp(0, i128::from(u64::MAX)) as u64
+    };
+    let frame = timeline.snap_bounded(
+        timeline.frame_at_pixel(pixel),
+        at(*limits.start())..=at(*limits.end()),
+        std::iter::empty(),
+        bypass,
+    );
+    ((timeline.pixel_at_frame(frame) - source_pixel) / f64::from(beat_width)
+        * f64::from(MIDI_TICKS_PER_BEAT))
+    .round()
+    .max(0.0) as u32
 }
