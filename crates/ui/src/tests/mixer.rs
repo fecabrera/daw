@@ -818,3 +818,272 @@ fn mode_toolbar_uses_platform_titlebar_placement_and_modal_guards() {
         assert!(app.view_mode == crate::mixer::ViewMode::Timeline);
     }
 }
+
+#[test]
+fn fader_scales_fit_the_strips_and_silence_survives_view_changes() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.set_view_mode(ViewMode::Mixer, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        for id in [Some(track), None] {
+            let rect = app.mixer_faders[&id];
+            let strip = id.map_or(app.master_bounds, |id| app.mixer_bounds[&id]);
+            let inset = rect.width() / 5.0;
+            let mut labels = Vec::new();
+            for (db, label) in [
+                (0.0, "0"),
+                (-3.0, "-3"),
+                (-6.0, "-6"),
+                (-10.0, "-10"),
+                (-15.0, "-15"),
+                (-20.0, "-20"),
+                (-30.0, "-30"),
+                (-40.0, "-40"),
+                (daw_core::SILENT_GAIN_DB, "−∞"),
+                (3.0, "+3"),
+                (6.0, "+6"),
+                (9.0, "+9"),
+                (12.0, "+12"),
+            ] {
+                let y = egui::lerp(
+                    (rect.bottom() - inset)..=(rect.top() + inset),
+                    faders::position_for_gain(db),
+                );
+                let bounds = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == label => {
+                            let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                            ((bounds.center().y - y).abs() < 0.6
+                                && bounds.right() < rect.left()
+                                && bounds.left() >= rect.left() - faders::SCALE_WIDTH - 0.1)
+                                .then_some(bounds)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("Missing fader label {label} on {id:?}"));
+                assert!(
+                    strip.contains_rect(bounds),
+                    "{label}: {bounds:?}, strip: {strip:?}"
+                );
+                labels.push(bounds);
+            }
+            labels.sort_by(|a, b| a.top().total_cmp(&b.top()));
+            for pair in labels.windows(2) {
+                assert!(pair[0].bottom() < pair[1].top());
+            }
+            let subdivisions = shapes
+                .iter()
+                .filter(|shape| {
+                    matches!(&shape.shape,
+                        egui::Shape::LineSegment { points, .. } if
+                            (points[1].x - points[0].x - 3.0).abs() < 0.1
+                            && (points[1].x - (rect.left() - 3.0)).abs() < 0.1
+                            && points[0].y >= rect.top() && points[0].y <= rect.bottom()
+                    )
+                })
+                .count();
+            assert!(subdivisions >= 10);
+            for db in [1.0, 2.0, 4.0, 5.0, 7.0, 8.0, 10.0, 11.0] {
+                let y = egui::lerp(
+                    (rect.bottom() - inset)..=(rect.top() + inset),
+                    faders::position_for_gain(db),
+                );
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::LineSegment { points, .. } if
+                        (points[1].x - points[0].x - 3.0).abs() < 0.1
+                        && (points[1].x - (rect.left() - 3.0)).abs() < 0.1
+                        && (points[0].y - y).abs() < 0.1
+                )));
+            }
+            let rails: Vec<_> = shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(shape)
+                        if shape.fill == theme::palette(&ctx).input
+                            && (shape.rect.width() - 8.0).abs() < 0.1
+                            && (shape.rect.height() - (rect.height() - 10.0)).abs() < 0.1
+                            && strip.contains_rect(shape.rect) =>
+                    {
+                        Some(shape.rect)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(rails.len(), 2);
+            let rail = rails[0];
+            for db in [
+                0, -3, -6, -9, -12, -15, -18, -21, -24, -30, -35, -40, -45, -50, -60,
+            ] {
+                let y = egui::lerp(rail.bottom()..=rail.top(), (db as f32 + 60.0) / 60.0);
+                assert!(
+                    shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Text(text) if text.galley.text() == db.to_string() && {
+                            let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                            strip.contains_rect(bounds)
+                                && bounds.left() > rect.right()
+                                && bounds.right() < rail.left()
+                                && (bounds.center().y - y).abs() < 0.6
+                        }
+                    )),
+                    "Missing meter label {db} on {id:?}"
+                );
+            }
+            click(&mut app, &ctx, Pos2::new(rect.center().x, rect.bottom()));
+            let db = id.map_or(app.session.project.master.gain_db, |_| {
+                app.session.project.tracks[0].gain_db
+            });
+            assert_eq!(db, daw_core::SILENT_GAIN_DB);
+            assert_eq!(daw_core::linear_gain(db), 0.0);
+        }
+        assert!(!app.session.project.tracks[0].muted);
+        assert!(!app.session.project.tracks[0].soloed);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let lane = app.lane_bounds[&track];
+        let track_panel = Rect::from_min_size(
+            Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
+            Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+        );
+        for panel in [track_panel, app.master_bounds] {
+            let rails: Vec<_> = shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(shape)
+                        if shape.fill == theme::palette(&ctx).input
+                            && (shape.rect.width() - 8.0).abs() < 0.1
+                            && shape.rect.height() > 30.0
+                            && panel.contains_rect(shape.rect) =>
+                    {
+                        Some(shape.rect)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(rails.len(), 2);
+            assert!((rails[1].right() - rails[0].left() - 20.0).abs() < 0.1);
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Text(text) if ["0", "-15", "-30", "-45", "-60"].contains(&text.galley.text())
+                    && panel.contains_rect(text.galley.rect.translate(text.pos.to_vec2()))
+            )));
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::LineSegment { points, .. } if panel.contains(points[0])
+                    && (points[1].x - (rails[0].left() - 2.0)).abs() < 0.1
+                    && (points[0].y - points[1].y).abs() < 0.1
+                    && (points[1].x - points[0].x).abs() <= 8.0
+            )));
+        }
+        assert_eq!(app.inputs[&track].gain, "−∞");
+        assert_eq!(app.master_gain_input, "−∞");
+        assert!(app.error.is_none());
+    }
+}
+
+#[test]
+fn gain_and_peak_fields_align_with_marked_columns_in_tracks_and_master() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.set_view_mode(ViewMode::Mixer, &ctx);
+        let project = format!("{:?}", app.session.project);
+        for size in [
+            Vec2::new(1280.0, 800.0),
+            Vec2::new(700.0, 420.0),
+            Vec2::new(500.0, 300.0),
+        ] {
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+            for id in [Some(track), None] {
+                let fader = app.mixer_faders[&id];
+                let strip = id.map_or(app.master_bounds, |id| app.mixer_bounds[&id]);
+                assert!((strip.width() - 120.0).abs() < 0.1);
+                let rails: Vec<_> = shapes
+                    .iter()
+                    .filter_map(|shape| match &shape.shape {
+                        egui::Shape::Rect(shape)
+                            if shape.fill == theme::palette(&ctx).input
+                                && (shape.rect.width() - 8.0).abs() < 0.1
+                                && (shape.rect.height() - fader.height() + 10.0).abs() < 0.1
+                                && strip.contains_rect(shape.rect) =>
+                        {
+                            Some(shape.rect)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(rails.len(), 2);
+                assert!((rails[0].top() - fader.top() - 5.0).abs() < 0.1);
+                let fader_center = (fader.left() - faders::SCALE_WIDTH + fader.right()) / 2.0;
+                let meter_center = (rails[0].left() - meters::SCALE_WIDTH + rails[1].right()) / 2.0;
+                let field_bounds = |label: &str, x: f32| {
+                    shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text) if text.galley.text() == label => {
+                                let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                                (strip.contains_rect(bounds)
+                                    && bounds.bottom() < fader.top()
+                                    && fader.top() - bounds.bottom() < 15.0
+                                    && (bounds.center().x - x).abs() < 0.6)
+                                    .then_some(bounds)
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| panic!("Missing {label} above {id:?} at {size:?}"))
+                };
+                let gain = field_bounds("0.0", fader_center);
+                let peak = field_bounds("−∞", meter_center);
+                assert!((gain.center().y - peak.center().y).abs() < 0.1);
+                assert!(gain.right() < peak.left());
+                for bounds in [gain, peak] {
+                    let field = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(shape)
+                                if shape.rect.contains_rect(bounds)
+                                    && shape.rect.width() < 50.0 =>
+                            {
+                                Some(shape.rect)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert!(strip.contains_rect(field));
+                    assert!((field.width() - NUMERIC_WIDTH).abs() < 0.1);
+                }
+                frame_sized(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(peak.center()),
+                        button(peak.center(), true),
+                    ],
+                    size,
+                );
+                frame_sized(
+                    &mut app,
+                    &ctx,
+                    vec![button(peak.center(), false), egui::Event::Text("20".into())],
+                    size,
+                );
+                assert!(!ctx.egui_wants_keyboard_input());
+                assert_eq!(format!("{:?}", app.session.project), project);
+                assert!(!app.dirty);
+            }
+        }
+    }
+}

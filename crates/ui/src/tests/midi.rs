@@ -2767,3 +2767,226 @@ fn off_grid_notes_draw_move_and_resize_using_the_project_ruler_grid() {
         }
     }
 }
+
+#[test]
+fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track, _, _) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.set_view_mode(ViewMode::Units, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let mut centers: Vec<_> = shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Circle(circle)
+                    if (circle.radius - (knobs::SIZE / 2.0 - 5.0)).abs() < 0.01 =>
+                {
+                    Some(circle.center)
+                }
+                _ => None,
+            })
+            .collect();
+        centers.sort_by(|a, b| a.y.total_cmp(&b.y));
+        assert_eq!(centers.len(), 3);
+        for (index, label) in [(1, "0"), (2, "0 dB")] {
+            let reference = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                        ((bounds.center().x - centers[index].x).abs() < 0.1)
+                            .then_some((bounds, text))
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("Missing reference label: {label}"));
+            assert!(reference.0.bottom() <= centers[index].y - 15.0 + 0.01);
+            assert!(
+                Rect::from_center_size(centers[index], Vec2::splat(knobs::CHOICE_SIZE))
+                    .contains_rect(reference.0),
+                "Label: {:?}, center: {:?}",
+                reference.0,
+                centers[index]
+            );
+            assert_eq!(reference.1.fallback_color, theme::palette(&ctx).text);
+        }
+        let endpoints: Vec<_> = ["−48", "+48"]
+            .into_iter()
+            .map(|label| {
+                let text = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == label => Some(text),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("Missing transpose endpoint label: {label}"));
+                let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                assert!(
+                    Rect::from_center_size(centers[1], Vec2::splat(knobs::CHOICE_SIZE))
+                        .contains_rect(bounds)
+                );
+                assert!(bounds.top() > centers[1].y + 10.0);
+                assert_eq!(text.fallback_color, theme::palette(&ctx).text);
+                bounds
+            })
+            .collect();
+        assert!(endpoints[0].right() < centers[1].x);
+        assert!(endpoints[1].left() > centers[1].x);
+        assert!((endpoints[0].top() - endpoints[1].top()).abs() < 0.1);
+        // Octave marks follow the transpose scale, independently of its one-semitone steps.
+        let octave_marks: Vec<_> = shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::LineSegment { points, stroke }
+                    if ((points[0] - centers[1]).length() >= 10.9
+                        && ((points[1] - centers[1]).length() - 14.0).abs() < 0.01) =>
+                {
+                    Some((points, stroke))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(octave_marks.len(), 9);
+        let gain_marks: Vec<_> = shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::LineSegment { points, stroke }
+                    if ((points[0] - centers[2]).length() >= 10.9
+                        && ((points[1] - centers[2]).length() - 14.0).abs() < 0.01) =>
+                {
+                    Some((points, stroke))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            gain_marks.len(),
+            13,
+            "enable the optional gain scale in Oscillator"
+        );
+        let unity: Vec<_> = gain_marks
+            .iter()
+            .filter(|(points, _)| (points[1] - (centers[2] - Vec2::new(0.0, 14.0))).length() < 0.01)
+            .collect();
+        assert_eq!(unity.len(), 1);
+        assert_eq!(unity[0].1.width, 1.5);
+        assert_eq!(unity[0].1.color, theme::palette(&ctx).text);
+        assert_eq!(
+            gain_marks
+                .iter()
+                .filter(|(_, stroke)| stroke.width == 1.0
+                    && stroke.color == theme::palette(&ctx).secondary)
+                .count(),
+            12
+        );
+        for (index, (points, stroke)) in octave_marks.iter().enumerate() {
+            let angle = std::f32::consts::PI * (0.75 + index as f32 / 8.0 * 1.5);
+            let expected = centers[1] + Vec2::angled(angle) * 14.0;
+            assert!((points[1] - expected).length() < 0.01);
+            let zero = index == 4;
+            assert_eq!(stroke.width, if zero { 1.5 } else { 1.0 });
+            assert_eq!(
+                stroke.color,
+                if zero {
+                    theme::palette(&ctx).text
+                } else {
+                    theme::palette(&ctx).secondary
+                }
+            );
+        }
+        let diagrams: Vec<_> = shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Path(path) if (path.stroke.width - 1.25).abs() < 0.01 => Some(path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(diagrams.len(), 4, "show one diagram for each waveform");
+        for (index, diagram) in diagrams.iter().enumerate() {
+            let bounds = Rect::from_points(&diagram.points);
+            assert!(
+                Rect::from_center_size(centers[0], Vec2::splat(knobs::CHOICE_SIZE))
+                    .contains_rect(bounds)
+            );
+            let color = if index == 0 {
+                theme::accent(&ctx)
+            } else {
+                theme::palette(&ctx).secondary
+            };
+            assert_eq!(diagram.stroke.color, egui::epaint::ColorMode::Solid(color));
+        }
+        assert_ne!(diagrams[1].points, diagrams[3].points);
+        for center in &centers {
+            assert!((center.x - centers[0].x).abs() < 0.1);
+        }
+        assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Text(text) if matches!(text.galley.text(), "Waveform" | "Transpose" | "Gain" | "Sine" | " semitones" | "-12.0" | " dB")
+        )), "Oscillator has no parameter-name labels or separate value column");
+        for label in ["−∞", "+12"] {
+            let bounds = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        Some(text.galley.rect.translate(text.pos.to_vec2()))
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert!(
+                Rect::from_center_size(centers[2], Vec2::splat(knobs::CHOICE_SIZE))
+                    .contains_rect(bounds)
+            );
+            assert!(bounds.top() > centers[2].y + 10.0);
+        }
+        assert!(
+            (centers[1].y - centers[0].y - knobs::CHOICE_SIZE - theme::TOOLBAR_PADDING as f32)
+                .abs()
+                < 0.1
+        );
+        assert!(
+            (centers[2].y - centers[1].y - knobs::CHOICE_SIZE - theme::TOOLBAR_PADDING as f32)
+                .abs()
+                < 0.1
+        );
+        let assets = format!("{:?}", app.session.project.assets);
+        for point in centers {
+            click_note_or_lane(&mut app, &ctx, point);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::ArrowUp,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }],
+            );
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::ArrowUp,
+                    physical_key: None,
+                    pressed: false,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }],
+            );
+        }
+        let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+        assert_eq!(instrument.waveform, Waveform::Saw);
+        assert_eq!(instrument.transpose, 1);
+        assert!((instrument.gain_db + 11.9).abs() < 0.001);
+        assert_eq!(format!("{:?}", app.session.project.assets), assets);
+        assert_eq!(app.selected_track, Some(track));
+        assert!(app.dirty);
+    }
+}

@@ -2357,3 +2357,158 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
         .export_with_settings(&fixture.0.join("pattern.mp3"), false, mp3)
         .unwrap();
 }
+
+#[test]
+fn silent_fader_gain_survives_save_reopen_playback_and_float_export() {
+    use daw_core::SILENT_GAIN_DB;
+    use daw_media::{ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let source = fixture.wav("silence-source.wav", 48_000, 2, 16, false);
+    let bytes = fs::read(&source).unwrap();
+    let mut original = Session::default();
+    original.import(&source, None, 0).unwrap();
+    assert_ne!(original.plan().sample_at(1000), [0.0; 2]);
+    for master in [false, true] {
+        let mut session = original.clone();
+        if master {
+            session.project.master.gain_db = SILENT_GAIN_DB;
+        } else {
+            session.project.tracks[0].gain_db = SILENT_GAIN_DB;
+        }
+        session.project.validate().unwrap();
+        let folder = fixture.0.join(if master {
+            "master-silent"
+        } else {
+            "track-silent"
+        });
+        session.save(&folder).unwrap();
+        let loaded = Session::open(&folder).unwrap();
+        assert_eq!(
+            loaded.project.master.gain_db,
+            session.project.master.gain_db
+        );
+        assert_eq!(
+            loaded.project.tracks[0].gain_db,
+            session.project.tracks[0].gain_db
+        );
+        assert!(!loaded.project.tracks[0].muted && !loaded.project.tracks[0].soloed);
+        let plan = loaded.plan();
+        assert_eq!(plan.sample_at(1000), [0.0; 2]);
+        let mut renderer = daw_engine::Renderer::new(plan);
+        renderer.play();
+        for _ in 0..loaded.project.end() {
+            assert_eq!(renderer.next_sample(), [0.0; 2]);
+        }
+        let output = fixture
+            .0
+            .join(if master { "master.wav" } else { "track.wav" });
+        loaded
+            .export_with_settings(
+                &output,
+                false,
+                ExportSettings {
+                    wav_codec: WavCodec::Float32,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let mut reader = hound::WavReader::open(output).unwrap();
+        assert!(reader.samples::<f32>().all(|sample| sample.unwrap() == 0.0));
+    }
+    assert_eq!(fs::read(source).unwrap(), bytes);
+}
+
+#[test]
+fn silent_oscillator_survives_save_reopen_playback_and_float_export() {
+    use daw_core::{MidiNote, MidiPattern, SILENT_GAIN_DB};
+    use daw_media::{ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let clip = session.project.add_midi_pattern(track, 0).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: MidiPattern {
+                length_ticks: 960,
+                notes: vec![MidiNote {
+                    id: daw_core::Id::new_v4(),
+                    start_tick: 0,
+                    length_ticks: 960,
+                    pitch: 69,
+                    velocity: 100,
+                }],
+            },
+        })
+        .unwrap();
+    let assets = serde_json::to_value(&session.project.assets).unwrap();
+    let mut instrument = session.project.tracks[0].instrument.clone().unwrap();
+    instrument.gain_db = SILENT_GAIN_DB;
+    session
+        .project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        })
+        .unwrap();
+    let folder = fixture.0.join("silent-oscillator");
+    session.save(&folder).unwrap();
+    let mut loaded = Session::open(&folder).unwrap();
+    assert!(loaded.warnings.is_empty());
+    assert_eq!(
+        loaded.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .gain_db,
+        SILENT_GAIN_DB
+    );
+    assert_eq!(
+        serde_json::to_value(&loaded.project.assets).unwrap(),
+        assets
+    );
+    let mut renderer = daw_engine::Renderer::new(loaded.plan());
+    renderer.play();
+    for _ in 0..loaded.project.end() {
+        assert_eq!(renderer.next_sample(), [0.0; 2]);
+    }
+    let output = fixture.0.join("silent-oscillator.wav");
+    loaded
+        .export_with_settings(
+            &output,
+            false,
+            ExportSettings {
+                wav_codec: WavCodec::Float32,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        hound::WavReader::open(output)
+            .unwrap()
+            .samples::<f32>()
+            .all(|sample| sample.unwrap() == 0.0)
+    );
+    let mut instrument = loaded.project.tracks[0].instrument.clone().unwrap();
+    instrument.gain_db = 0.0;
+    loaded
+        .project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        })
+        .unwrap();
+    let mut renderer = daw_engine::Renderer::new(loaded.plan());
+    renderer.play();
+    assert!((0..loaded.project.end()).any(|_| {
+        renderer
+            .next_sample()
+            .iter()
+            .any(|sample| sample.abs() > 0.02)
+    }));
+    assert_eq!(
+        serde_json::to_value(&loaded.project.assets).unwrap(),
+        assets
+    );
+}

@@ -74,15 +74,29 @@ fn placement_start(
         .snap_range(start, length, anchors)
 }
 
-fn numeric_input(ui: &mut egui::Ui, text: &mut String, tooltip: &str) -> egui::Response {
+const NUMERIC_WIDTH: f32 = 36.0;
+
+fn numeric_field(
+    ui: &mut egui::Ui,
+    text: &mut String,
+    tooltip: &str,
+    editable: bool,
+) -> egui::Response {
     ui.add(
         egui::TextEdit::singleline(text)
             .text_color(theme::palette(ui.ctx()).text)
-            .font(egui::TextStyle::Small)
+            .font(fonts::numeric(
+                egui::TextStyle::Small.resolve(ui.style()).size,
+            ))
             .horizontal_align(egui::Align::Center)
-            .desired_width(36.0),
+            .desired_width(NUMERIC_WIDTH)
+            .interactive(editable),
     )
     .on_hover_text(tooltip)
+}
+
+fn numeric_input(ui: &mut egui::Ui, text: &mut String, tooltip: &str) -> egui::Response {
+    numeric_field(ui, text, tooltip, true)
 }
 
 #[derive(PartialEq, Eq)]
@@ -858,7 +872,7 @@ impl DawUi {
                 self.dirty = false;
                 self.inputs.clear();
                 self.track_name_edit = None;
-                self.master_gain_input = format!("{:.1}", self.session.project.master.gain_db);
+                self.master_gain_input = faders::format_gain(self.session.project.master.gain_db);
                 self.tempo_edit = None;
                 self.musical_drag = None;
                 self.time_drag = None;
@@ -1086,7 +1100,8 @@ impl DawUi {
                         self.output = None;
                         self.inputs.clear();
                         self.track_name_edit = None;
-                        self.master_gain_input = format!("{:.1}", session.project.master.gain_db);
+                        self.master_gain_input =
+                            faders::format_gain(session.project.master.gain_db);
                         self.tempo_edit = None;
                         self.musical_drag = None;
                         self.time_drag = None;
@@ -2351,26 +2366,26 @@ impl DawUi {
                     let knob = knobs::gain(ui, &mut self.session.project.master.gain_db);
                     if knob.changed() {
                         self.master_gain_input =
-                            format!("{:.1}", self.session.project.master.gain_db);
+                            faders::format_gain(self.session.project.master.gain_db);
                     }
                     let gain = numeric_input(ui, &mut self.master_gain_input, "Gain (dB)");
                     let cancel = (gain.has_focus() || gain.lost_focus())
                         && ui.input(|i| i.key_pressed(egui::Key::Escape));
                     if cancel {
                         self.master_gain_input =
-                            format!("{:.1}", self.session.project.master.gain_db);
+                            faders::format_gain(self.session.project.master.gain_db);
                         gain.surrender_focus();
                     } else if gain.lost_focus()
                         || (gain.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
                     {
-                        match self.master_gain_input.parse::<f32>() {
-                            Ok(value) if value.is_finite() => {
-                                self.session.project.master.gain_db = value.clamp(-60.0, 12.0);
+                        match faders::parse_gain(&self.master_gain_input) {
+                            Some(value) => {
+                                self.session.project.master.gain_db = faders::clamp_gain(value);
                             }
-                            _ => self.fail("Gain must be a finite number"),
+                            _ => self.fail("Gain must be a finite number or −∞"),
                         }
                         self.master_gain_input =
-                            format!("{:.1}", self.session.project.master.gain_db);
+                            faders::format_gain(self.session.project.master.gain_db);
                     }
                     if self.session.project.master.gain_db != previous {
                         self.changed();
@@ -3263,7 +3278,7 @@ impl DawUi {
                                         }
                                         let inputs =
                                             self.inputs.entry(track.id).or_insert_with(|| Inputs {
-                                                gain: format!("{:.1}", track.gain_db),
+                                                gain: faders::format_gain(track.gain_db),
                                                 pan: format!("{:.2}", track.pan),
                                             });
                                         let mut gain = None;
@@ -3274,7 +3289,7 @@ impl DawUi {
                                             let mut value = track.gain_db;
                                             if knobs::gain(ui, &mut value).changed() {
                                                 gain = Some(value);
-                                                inputs.gain = format!("{value:.1}");
+                                                inputs.gain = faders::format_gain(value);
                                             }
                                             let r =
                                                 numeric_input(ui, &mut inputs.gain, "Gain (dB)");
@@ -3283,26 +3298,21 @@ impl DawUi {
                                                     && ui
                                                         .input(|i| i.key_pressed(egui::Key::Enter)))
                                             {
-                                                match inputs.gain.parse::<f32>() {
-                                                    Ok(v)
-                                                        if v.is_finite()
-                                                            && daw_core::linear_gain(v)
-                                                                .is_finite() =>
-                                                    {
-                                                        gain = Some(v)
-                                                    }
+                                                match faders::parse_gain(&inputs.gain) {
+                                                    Some(v) => gain = Some(v),
                                                     _ => {
                                                         inputs.gain =
-                                                            format!("{:.1}", track.gain_db);
-                                                        input_error =
-                                                            Some("Gain must be a finite number");
+                                                            faders::format_gain(track.gain_db);
+                                                        input_error = Some(
+                                                            "Gain must be a finite number or −∞",
+                                                        );
                                                     }
                                                 }
                                             }
                                             if r.has_focus()
                                                 && ui.input(|i| i.key_pressed(egui::Key::Escape))
                                             {
-                                                inputs.gain = format!("{:.1}", track.gain_db);
+                                                inputs.gain = faders::format_gain(track.gain_db);
                                                 r.surrender_focus();
                                             }
                                             let mut value = track.pan;
@@ -7895,6 +7905,9 @@ mod tests {
         for (text, action, expected) in [
             ("-6.0", egui::Key::Enter, -6.0),
             ("-3.0", egui::Key::Escape, -6.0),
+            ("-inf", egui::Key::Enter, daw_core::SILENT_GAIN_DB),
+            ("-4.0", egui::Key::Escape, daw_core::SILENT_GAIN_DB),
+            ("-4.0", egui::Key::Enter, -4.0),
             ("99", egui::Key::Enter, 12.0),
             ("NaN", egui::Key::Enter, 12.0),
         ] {
@@ -7907,7 +7920,7 @@ mod tests {
             app.master_gain_input = text.into();
             frame(&mut app, &ctx, vec![key(action)]);
             assert_eq!(app.session.project.master.gain_db, expected);
-            assert_eq!(app.master_gain_input, format!("{expected:.1}"));
+            assert_eq!(app.master_gain_input, faders::format_gain(expected));
         }
         assert!(app.error.is_some());
         app.pending = Some(Action::CloseProject);

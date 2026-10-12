@@ -303,54 +303,27 @@ impl DawUi {
                 ui.label("No instrument assigned");
                 return;
             };
-            egui::Grid::new(("oscillator-settings", track.id))
-                .spacing(Vec2::new(12.0, 8.0))
-                .show(ui, |ui| {
-                    ui.label("Waveform");
-                    let waveform = egui::ComboBox::from_id_salt("oscillator-waveform")
-                        .selected_text(settings.waveform.label())
-                        .show_ui(ui, |ui| {
-                            for waveform in daw_core::Waveform::ALL {
-                                ui.selectable_value(
-                                    &mut settings.waveform,
-                                    waveform,
-                                    waveform.label(),
-                                );
-                            }
-                        });
-                    let width = waveform.response.rect.width();
-                    ui.end_row();
-                    ui.label("Transpose");
-                    ui.scope(|ui| {
-                        ui.spacing_mut().interact_size.x = width;
-                        ui.add_sized(
-                            Vec2::new(width, toolbars::CONTROL_HEIGHT),
-                            egui::DragValue::new(&mut settings.transpose)
-                                .range(-48..=48)
-                                .suffix(" semitones"),
-                        );
-                    });
-                    ui.end_row();
-                    ui.label("Gain");
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(width, knobs::SIZE),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            ui.spacing_mut().item_spacing.x = theme::TOOLBAR_PADDING as f32;
-                            knobs::gain(ui, &mut settings.gain_db);
-                            let width = ui.available_width();
-                            ui.spacing_mut().interact_size.x = width;
-                            ui.add_sized(
-                                Vec2::new(width, toolbars::CONTROL_HEIGHT),
-                                egui::DragValue::new(&mut settings.gain_db)
-                                    .range(-60.0..=12.0)
-                                    .speed(0.1)
-                                    .suffix(" dB"),
-                            );
-                        },
-                    );
-                    ui.end_row();
-                });
+            ui.push_id(("oscillator-settings", track.id), |ui| {
+                ui.spacing_mut().item_spacing.y = theme::TOOLBAR_PADDING as f32;
+                knobs::row(
+                    ui,
+                    &mut settings.waveform,
+                    knobs::CHOICE_SIZE,
+                    knobs::waveform,
+                );
+                knobs::row(
+                    ui,
+                    &mut settings.transpose,
+                    knobs::CHOICE_SIZE,
+                    knobs::transpose,
+                );
+                knobs::row(
+                    ui,
+                    &mut settings.gain_db,
+                    knobs::CHOICE_SIZE,
+                    knobs::gain_with_markers,
+                );
+            });
             if Some(&settings) != track.instrument.as_ref() {
                 self.edit(Edit::SetInstrument {
                     track_id: track.id,

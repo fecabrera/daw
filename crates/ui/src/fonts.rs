@@ -11,6 +11,10 @@ pub fn menu_shortcut_family() -> FontFamily {
     FontFamily::Name("Menu Shortcut".into())
 }
 
+pub fn numeric(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name("Numeric".into()))
+}
+
 /// Set the shared UI font. Keep egui's fallbacks for symbols absent from Outfit.
 pub fn configure(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
@@ -28,6 +32,18 @@ pub fn configure(ctx: &Context) {
         .entry(FontFamily::Proportional)
         .or_default()
         .insert(0, "Outfit".into());
+    // Outfit lacks infinity. Enlarge its Ubuntu fallback in numeric controls only;
+    // egui centers fallback glyphs within the primary font's unchanged line height.
+    let mut infinity_font = (*fonts.font_data["Ubuntu-Light"]).clone();
+    infinity_font.tweak.scale = 1.8;
+    fonts
+        .font_data
+        .insert("Numeric Symbols".into(), infinity_font.into());
+    let mut numeric_family = fonts.families[&FontFamily::Proportional].clone();
+    numeric_family[1] = "Numeric Symbols".into();
+    fonts
+        .families
+        .insert(FontFamily::Name("Numeric".into()), numeric_family);
     fonts.font_data.insert(
         "Outfit Semibold".into(),
         FontData::from_static(include_bytes!("../assets/fonts/Outfit.ttf"))
@@ -64,6 +80,49 @@ pub fn configure(ctx: &Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numeric_infinity_matches_digits_without_changing_numbers() {
+        for pixels_per_point in [1.0, 1.5, 2.0] {
+            let ctx = Context::default();
+            configure(&ctx);
+            ctx.set_pixels_per_point(pixels_per_point);
+            let mut output = ctx.run_ui(Default::default(), |ui| {
+                for size in [8.0, 11.0] {
+                    let layout = |text: &str, font| {
+                        ui.painter()
+                            .layout_no_wrap(text.into(), font, egui::Color32::WHITE)
+                    };
+                    let normal = layout("0−∞", FontId::proportional(size));
+                    let adjusted = layout("0−∞", numeric(size));
+                    let ink = |glyph: &egui::epaint::text::Glyph| {
+                        egui::Rect::from_min_size(
+                            glyph.pos + glyph.uv_rect.offset,
+                            glyph.uv_rect.size,
+                        )
+                    };
+                    let glyphs = &adjusted.rows[0].glyphs;
+                    let digit = ink(&glyphs[0]);
+                    let minus = ink(&glyphs[1]);
+                    let infinity = ink(&glyphs[2]);
+                    assert!(infinity.height() > ink(&normal.rows[0].glyphs[2]).height());
+                    assert!(infinity.height() >= digit.height() * 0.5);
+                    assert!(infinity.height() <= digit.height());
+                    assert!(
+                        (infinity.center().y - minus.center().y).abs() <= 1.0,
+                        "size={size} scale={pixels_per_point}: {minus:?} {infinity:?}"
+                    );
+                    assert_eq!(normal.size().y, adjusted.size().y);
+                    let numbers = "−12.0 +6.0";
+                    let normal = layout(numbers, FontId::proportional(size));
+                    let adjusted = layout(numbers, numeric(size));
+                    assert_eq!(normal.rows[0].glyphs, adjusted.rows[0].glyphs);
+                    assert_eq!(normal.size(), adjusted.size());
+                }
+            });
+            output.textures_delta.clear();
+        }
+    }
 
     #[test]
     fn menu_font_supports_command_symbol() {

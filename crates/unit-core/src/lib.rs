@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 
 pub const OSCILLATOR_TYPE_ID: &str = "daw.oscillator";
 pub const UNIT_STATE_VERSION: u32 = 1;
+/// Finite saved dB value whose f32 amplitude is exactly zero.
+pub const SILENT_GAIN_DB: f32 = -1000.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,7 +50,7 @@ impl OscillatorSettings {
         self.version == UNIT_STATE_VERSION
             && (-48..=48).contains(&self.transpose)
             && self.gain_db.is_finite()
-            && (-60.0..=12.0).contains(&self.gain_db)
+            && (SILENT_GAIN_DB..=12.0).contains(&self.gain_db)
     }
 }
 
@@ -80,4 +82,37 @@ pub trait SourceUnit: Send {
     fn reset(&mut self);
     fn set_frequency(&mut self, hz: f32);
     fn next_sample(&mut self) -> f32;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oscillator_gain_accepts_finite_silence_and_rejects_invalid_limits() {
+        for gain_db in [SILENT_GAIN_DB, -90.0, -60.0, 0.0, 12.0] {
+            assert!(
+                OscillatorSettings {
+                    gain_db,
+                    ..Default::default()
+                }
+                .valid()
+            );
+        }
+        for gain_db in [
+            SILENT_GAIN_DB - 1.0,
+            12.1,
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+        ] {
+            assert!(
+                !OscillatorSettings {
+                    gain_db,
+                    ..Default::default()
+                }
+                .valid()
+            );
+        }
+    }
 }

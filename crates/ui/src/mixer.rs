@@ -1,9 +1,10 @@
 use super::*;
 use crate::panels::{HEADER_FONT_SIZE, HEADER_HEIGHT};
 
-const STRIP_WIDTH: f32 = 108.0;
-const STRIP_MARGIN: f32 = 7.0;
+const STRIP_WIDTH: f32 = 120.0;
+const STRIP_PADDING: Vec2 = Vec2::new(4.0, 7.0);
 const CONTROL_SPACING: f32 = 6.0;
+const METER_COLUMN_SPACING: f32 = 1.0;
 
 // Leave the bottom edge to the single mixer/status separator.
 fn strip_edges(ui: &egui::Ui, rect: Rect, stroke: Stroke) {
@@ -63,7 +64,7 @@ impl DawUi {
         self.track_name_edit = None;
         self.tempo_edit = None;
         self.inputs.clear();
-        self.master_gain_input = format!("{:.1}", self.session.project.master.gain_db);
+        self.master_gain_input = faders::format_gain(self.session.project.master.gain_db);
         if let Some(id) = ctx.memory(|memory| memory.focused()) {
             ctx.memory_mut(|memory| memory.surrender_focus(id));
         }
@@ -284,7 +285,7 @@ impl DawUi {
             ui.painter()
                 .vline(rect.right() - 0.5, rect.y_range(), border);
         }
-        let inner = rect.shrink(STRIP_MARGIN);
+        let inner = rect.shrink2(STRIP_PADDING);
         let content_rect = Rect::from_min_max(
             Pos2::new(
                 inner.left(),
@@ -324,7 +325,7 @@ impl DawUi {
             },
             |track| {
                 self.inputs.remove(&track.id).unwrap_or_else(|| Inputs {
-                    gain: format!("{gain:.1}"),
+                    gain: faders::format_gain(gain),
                     pan: format!("{pan:.2}"),
                 })
             },
@@ -342,15 +343,6 @@ impl DawUi {
                 1.0,
                 knobs::SIZE + toolbars::CONTROL_HEIGHT + CONTROL_SPACING,
             ));
-        }
-        if let Err(error) = mixer_numeric(
-            &mut content,
-            &mut inputs.gain,
-            &mut gain,
-            true,
-            track.is_none(),
-        ) {
-            self.fail(error);
         }
         let levels: [(f32, bool); 2] = std::array::from_fn(|ch| {
             if let Some(track) = track {
@@ -371,26 +363,65 @@ impl DawUi {
             }
         });
         let mut cleared = [false; 2];
+        let column_widths = [
+            faders::SCALE_WIDTH + faders::rail_width(&content),
+            meters::STEREO_WIDTH,
+        ];
+        let column_height = toolbars::CONTROL_HEIGHT + CONTROL_SPACING + fader_height;
         content.allocate_ui_with_layout(
-            Vec2::new(50.0, fader_height),
-            egui::Layout::left_to_right(egui::Align::Center),
+            Vec2::new(
+                column_widths.iter().sum::<f32>() + METER_COLUMN_SPACING,
+                column_height,
+            ),
+            egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
-                let fader = faders::gain(ui, &mut gain, fader_height);
-                #[cfg(test)]
-                self.mixer_faders.insert(track.map(|t| t.id), fader.rect);
-                if fader.changed() {
-                    inputs.gain = format!("{gain:.1}");
-                }
-                for ch in 0..2 {
-                    cleared[ch] = meters::channel(
-                        ui,
-                        if ch == 0 { "L" } else { "R" },
-                        fader_height,
-                        levels[ch].0,
-                        levels[ch].1,
-                    )
-                    .clicked();
-                }
+                ui.spacing_mut().item_spacing.x = METER_COLUMN_SPACING;
+                ui.allocate_ui_with_layout(
+                    Vec2::new(column_widths[0], column_height),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            ui.add_space((column_widths[0] - NUMERIC_WIDTH) / 2.0);
+                            if let Err(error) = mixer_numeric(
+                                ui,
+                                &mut inputs.gain,
+                                &mut gain,
+                                true,
+                                track.is_none(),
+                            ) {
+                                self.fail(error);
+                            }
+                        });
+                        let fader = faders::gain(ui, &mut gain, fader_height);
+                        #[cfg(test)]
+                        self.mixer_faders.insert(track.map(|t| t.id), fader.rect);
+                        if fader.changed() {
+                            inputs.gain = faders::format_gain(gain);
+                        }
+                    },
+                );
+                ui.allocate_ui_with_layout(
+                    Vec2::new(column_widths[1], column_height),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            ui.add_space((column_widths[1] - NUMERIC_WIDTH) / 2.0);
+                            let idle_peak = std::sync::atomic::AtomicU32::new(0);
+                            let held_peak = self.output.as_ref().map_or(&idle_peak, |output| {
+                                track.map_or(&output.status.held_peak, |track| {
+                                    output
+                                        .track_meter(track.id)
+                                        .map_or(&idle_peak, |meter| &meter.held_peak)
+                                })
+                            });
+                            meters::peak_level(ui, held_peak);
+                        });
+                        cleared = meters::stereo(ui, fader_height, levels)
+                            .map(|response| response.clicked());
+                    },
+                );
             },
         );
         if track.is_some() {
@@ -470,7 +501,7 @@ fn mixer_numeric(
 ) -> Result<(), &'static str> {
     let response = ui
         .allocate_ui_with_layout(
-            Vec2::new(36.0, toolbars::CONTROL_HEIGHT),
+            Vec2::new(NUMERIC_WIDTH, toolbars::CONTROL_HEIGHT),
             egui::Layout::left_to_right(egui::Align::Center),
             |ui| {
                 ui.set_min_height(toolbars::CONTROL_HEIGHT);
@@ -488,7 +519,7 @@ fn mixer_numeric(
         .inner;
     let format = |v: f32| {
         if gain {
-            format!("{v:.1}")
+            faders::format_gain(v)
         } else {
             format!("{v:.2}")
         }
@@ -501,17 +532,16 @@ fn mixer_numeric(
     } else if response.lost_focus()
         || (response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
     {
-        let parsed = text.parse::<f32>().ok().filter(|v| {
-            v.is_finite()
-                && if gain {
-                    daw_core::linear_gain(*v).is_finite()
-                } else {
-                    (-1.0..=1.0).contains(v)
-                }
-        });
+        let parsed = if gain {
+            faders::parse_gain(text)
+        } else {
+            text.parse::<f32>()
+                .ok()
+                .filter(|v| v.is_finite() && (-1.0..=1.0).contains(v))
+        };
         if let Some(parsed) = parsed {
             *value = if gain && clamp {
-                parsed.clamp(-60.0, 12.0)
+                faders::clamp_gain(parsed)
             } else {
                 parsed
             };
@@ -519,7 +549,7 @@ fn mixer_numeric(
         } else {
             *text = format(*value);
             return Err(if gain {
-                "Gain must be a finite number"
+                "Gain must be a finite number or −∞"
             } else {
                 "Pan must be between -1 and 1"
             });
