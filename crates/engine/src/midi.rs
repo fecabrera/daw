@@ -13,18 +13,27 @@ struct PatternClip {
     events: Vec<NoteEvent>,
 }
 struct Voice {
-    source: Oscillator,
+    sources: Vec<OscillatorVoice>,
     current: Option<Id>,
     envelope: f32,
     target: f32,
     velocity: f32,
+    pitch: u8,
     step: f32,
-    gain: f32,
-    transpose: i8,
     previous: f32,
     transition_from: f32,
     transition: u32,
     fade_frames: u32,
+}
+struct OscillatorVoice {
+    source: Oscillator,
+    gain: f32,
+    gain_target: f32,
+    gain_remaining: u32,
+    transpose: i8,
+    frequency: f32,
+    frequency_target: f32,
+    frequency_remaining: u32,
 }
 impl Voice {
     fn note_on(&mut self, id: Id, pitch: u8, velocity: u8) {
@@ -34,10 +43,14 @@ impl Voice {
         self.envelope = 0.0;
         self.target = 1.0;
         self.velocity = f32::from(velocity) / 127.0;
-        self.source.reset();
-        self.source.set_frequency(
-            440.0 * 2.0_f32.powf((f32::from(pitch) + f32::from(self.transpose) - 69.0) / 12.0),
-        );
+        self.pitch = pitch;
+        for oscillator in &mut self.sources {
+            oscillator.source.reset();
+            oscillator.frequency = note_frequency(pitch, oscillator.transpose);
+            oscillator.frequency_target = oscillator.frequency;
+            oscillator.frequency_remaining = 0;
+            oscillator.source.set_frequency(oscillator.frequency);
+        }
     }
     fn end_note(&mut self) {
         self.current = None;
@@ -48,7 +61,9 @@ impl Voice {
         self.envelope = 0.0;
         self.previous = 0.0;
         self.transition = 0;
-        self.source.reset();
+        for oscillator in &mut self.sources {
+            oscillator.source.reset();
+        }
     }
     fn sample(&mut self) -> f32 {
         if self.envelope == 0.0 && self.target == 0.0 && self.transition == 0 {
@@ -60,7 +75,24 @@ impl Voice {
         } else {
             self.envelope = (self.envelope - self.step).max(self.target);
         }
-        let mut sample = self.source.next_sample() * self.envelope * self.velocity * self.gain;
+        let sources = self
+            .sources
+            .iter_mut()
+            .map(|s| {
+                if s.frequency_remaining > 0 {
+                    s.frequency +=
+                        (s.frequency_target - s.frequency) / s.frequency_remaining as f32;
+                    s.frequency_remaining -= 1;
+                    s.source.set_frequency(s.frequency);
+                }
+                if s.gain_remaining > 0 {
+                    s.gain += (s.gain_target - s.gain) / s.gain_remaining as f32;
+                    s.gain_remaining -= 1;
+                }
+                s.source.next_sample() * s.gain
+            })
+            .sum::<f32>();
+        let mut sample = sources * self.envelope * self.velocity;
         if self.transition > 0 {
             let progress = 1.0 - self.transition as f32 / self.fade_frames as f32;
             sample = self.transition_from * (1.0 - progress) + sample * progress;
@@ -69,6 +101,10 @@ impl Voice {
         self.previous = sample;
         sample
     }
+}
+
+fn note_frequency(pitch: u8, transpose: i8) -> f32 {
+    440.0 * 2.0_f32.powf((f32::from(pitch) + f32::from(transpose) - 69.0) / 12.0)
 }
 
 pub(crate) struct MidiTrackRuntime {
@@ -143,7 +179,13 @@ impl MidiTrackRuntime {
             .collect();
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
-        format!("{:?}{:?}", track.clips, track.instrument).hash(&mut hash);
+        format!("{:?}", track.clips).hash(&mut hash);
+        instrument.version.hash(&mut hash);
+        instrument.oscillators.len().hash(&mut hash);
+        // Gain, pitch, and mute can change without replacing phase or note schedules.
+        for settings in &instrument.oscillators {
+            format!("{:?}", settings.waveform).hash(&mut hash);
+        }
         project.tempo_bpm.to_bits().hash(&mut hash);
         project.sample_rate_hz.hash(&mut hash);
         for clip in &track.clips {
@@ -156,20 +198,41 @@ impl MidiTrackRuntime {
             held_sample: 0.0,
             voices: (0..voice_count)
                 .map(|_| Voice {
-                    source: Oscillator::new(
-                        instrument.waveform,
-                        ProcessingContext {
-                            sample_rate_hz: project.sample_rate_hz,
-                            max_block_frames: project.buffer_size_frames,
-                        },
-                    ),
+                    sources: instrument
+                        .oscillators
+                        .iter()
+                        .map(|settings| OscillatorVoice {
+                            source: Oscillator::new(
+                                settings.waveform,
+                                ProcessingContext {
+                                    sample_rate_hz: project.sample_rate_hz,
+                                    max_block_frames: project.buffer_size_frames,
+                                },
+                            ),
+                            // Muted sources still advance; retain their saved gain for unmuting.
+                            gain: if settings.muted {
+                                0.0
+                            } else {
+                                linear_gain(settings.gain_db)
+                            },
+                            gain_target: if settings.muted {
+                                0.0
+                            } else {
+                                linear_gain(settings.gain_db)
+                            },
+                            gain_remaining: 0,
+                            transpose: settings.transpose,
+                            frequency: 440.0,
+                            frequency_target: 440.0,
+                            frequency_remaining: 0,
+                        })
+                        .collect(),
                     current: None,
                     envelope: 0.0,
                     target: 0.0,
                     velocity: 0.0,
+                    pitch: 69,
                     step: 1.0 / (project.sample_rate_hz / 200).max(1) as f32,
-                    gain: linear_gain(instrument.gain_db),
-                    transpose: instrument.transpose,
                     previous: 0.0,
                     transition_from: 0.0,
                     transition: 0,
@@ -185,6 +248,27 @@ impl MidiTrackRuntime {
     }
     pub fn compatible(&self, other: &Self) -> bool {
         self.fingerprint == other.fingerprint
+    }
+    pub fn fingerprint(&self) -> u64 {
+        self.fingerprint
+    }
+    /// Retarget compatible voices before swapping them into the new renderer.
+    /// All storage stays owned by the two prepared renderers; no DSP state is dropped here.
+    pub fn retarget_controls(&mut self, prepared: &Self) {
+        let fade_frames = (self.sample_rate_hz / 200).max(1);
+        for (voice, next) in self.voices.iter_mut().zip(&prepared.voices) {
+            for (source, target) in voice.sources.iter_mut().zip(&next.sources) {
+                if source.transpose != target.transpose {
+                    source.transpose = target.transpose;
+                    source.frequency_target = note_frequency(voice.pitch, source.transpose);
+                    source.frequency_remaining = fade_frames;
+                }
+                if source.gain_target != target.gain_target {
+                    source.gain_target = target.gain_target;
+                    source.gain_remaining = fade_frames;
+                }
+            }
+        }
     }
     pub fn held_sample(&self) -> f32 {
         self.held_sample

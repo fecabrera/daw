@@ -35,7 +35,7 @@ fn plan(waveform: Waveform, rate: u32) -> RenderPlan {
         ..Project::default()
     };
     let track = project.add_midi_track().unwrap();
-    project.tracks[0].instrument.as_mut().unwrap().waveform = waveform;
+    project.tracks[0].instrument.as_mut().unwrap().oscillators[0].waveform = waveform;
     let clip = project.add_midi_pattern(track, 0).unwrap();
     project
         .edit(Edit::ReplaceMidiPattern {
@@ -132,12 +132,50 @@ fn playback_matches_export_after_start_ramp_and_pause_preserves_voice_state() {
 fn callbacks_note_events_seek_loop_and_renderer_replacement_do_not_allocate() {
     for waveform in Waveform::ALL {
         let mut plan = plan(waveform, 48_000);
+        plan.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .oscillators
+            .extend([
+                OscillatorSettings {
+                    waveform: Waveform::Triangle,
+                    transpose: -12,
+                    gain_db: -6.0,
+                    muted: true,
+                    ..Default::default()
+                },
+                OscillatorSettings {
+                    waveform: Waveform::Saw,
+                    transpose: 12,
+                    gain_db: -18.0,
+                    ..Default::default()
+                },
+            ]);
         plan.project.transport.r#loop = Loop {
             enabled: true,
             start_frame: 0,
             end_frame: 48_000,
         };
         let mut renderer = Renderer::new(plan.clone());
+        plan.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .oscillators[0]
+            .gain_db = -3.0;
+        plan.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .oscillators[1]
+            .muted = false;
+        plan.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .oscillators[0]
+            .transpose = 12;
         let mut updated = Renderer::new(plan);
         ALLOCATIONS.with(|count| count.set(0));
         TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
@@ -159,6 +197,311 @@ fn callbacks_note_events_seek_loop_and_renderer_replacement_do_not_allocate() {
         TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
         assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     }
+}
+
+#[test]
+fn live_pitch_edits_follow_a_continuous_source_without_restarting_notes() {
+    use daw_oscillator::Oscillator;
+    use daw_unit_core::{ProcessingContext, SourceUnit};
+    for rate in SAMPLE_RATES {
+        for waveform in Waveform::ALL {
+            let mut edited = plan(waveform, rate);
+            let gain = linear_gain(-12.0);
+            let pan = daw_engine::pan_coefficients(0.0, true);
+            let mut source = Oscillator::new(
+                waveform,
+                ProcessingContext {
+                    sample_rate_hz: rate,
+                    max_block_frames: edited.project.buffer_size_frames,
+                },
+            );
+            source.reset();
+            source.set_frequency(440.0);
+            let mut live = Renderer::new(edited.clone());
+            live.play();
+            for _ in 0..4096 {
+                live.next_sample();
+                source.next_sample();
+            }
+            let mut frequency = 440.0;
+            for pitch in [12, 24, -12, -48, 48, 0] {
+                edited.project.tracks[0]
+                    .instrument
+                    .as_mut()
+                    .unwrap()
+                    .oscillators[0]
+                    .transpose = pitch;
+                let mut next = Renderer::new(edited.clone());
+                next.inherit(&mut live);
+                live = next;
+                let target = 440.0 * 2.0_f32.powf(f32::from(pitch) / 12.0);
+                // Retarget an unfinished ramp, as a fast knob drag does.
+                let ramp_frames = rate / 200;
+                let frames = if pitch == -48 || pitch == 48 || pitch == 0 {
+                    ramp_frames + 128
+                } else {
+                    53
+                };
+                for frame in 0..frames {
+                    if frame < ramp_frames {
+                        frequency += (target - frequency) / (ramp_frames - frame) as f32;
+                    }
+                    source.set_frequency(frequency);
+                    let expected = source.next_sample() * gain;
+                    let actual = live.next_sample();
+                    for ch in 0..2 {
+                        assert!(
+                            (actual[ch] - expected * pan[ch]).abs() < 2e-6,
+                            "{rate} Hz, {waveform:?}, pitch {pitch}: {} != {}",
+                            actual[ch],
+                            expected * pan[ch]
+                        );
+                    }
+                }
+                if frames >= ramp_frames {
+                    assert_eq!(frequency, target);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn repeated_source_gain_edits_preserve_pitch_phase_and_other_sources() {
+    for rate in SAMPLE_RATES {
+        for waveform in Waveform::ALL {
+            let mut edited = plan(waveform, rate);
+            edited.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .oscillators
+                .push(OscillatorSettings {
+                    waveform: Waveform::Triangle,
+                    transpose: 12,
+                    gain_db: -18.0,
+                    ..Default::default()
+                });
+            let mut first = edited.clone();
+            first.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .oscillators[1]
+                .muted = true;
+            let mut second = edited.clone();
+            second.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .oscillators[0]
+                .muted = true;
+            let mut first = Renderer::new(first);
+            let mut second = Renderer::new(second);
+            let mut live = Renderer::new(edited.clone());
+            live.play();
+            first.play();
+            second.play();
+            for _ in 0..4096 {
+                live.next_sample();
+                first.next_sample();
+                second.next_sample();
+            }
+            let initial_gain = linear_gain(-12.0);
+            let mut gain = initial_gain;
+            let mut target = gain;
+            let mut remaining = 0;
+            let ramp_frames = rate / 200;
+            // Changes arrive before earlier ramps finish, then include silence and unmute.
+            for (db, muted) in [
+                (-6.0, false),
+                (-3.0, false),
+                (-9.0, false),
+                (-18.0, false),
+                (SILENT_GAIN_DB, false),
+                (0.0, false),
+                (0.0, true),
+                (-12.0, false),
+            ] {
+                let source = &mut edited.project.tracks[0]
+                    .instrument
+                    .as_mut()
+                    .unwrap()
+                    .oscillators[0];
+                source.gain_db = db;
+                source.muted = muted;
+                let next_target = if muted { 0.0 } else { linear_gain(db) };
+                if next_target != target {
+                    target = next_target;
+                    remaining = ramp_frames;
+                }
+                let mut next = Renderer::new(edited.clone());
+                next.inherit(&mut live);
+                live = next;
+                let frames = if db == SILENT_GAIN_DB || muted {
+                    ramp_frames + 53
+                } else {
+                    53
+                };
+                for _ in 0..frames {
+                    if remaining > 0 {
+                        gain += (target - gain) / remaining as f32;
+                        remaining -= 1;
+                    }
+                    let a = first.next_sample();
+                    let b = second.next_sample();
+                    let actual = live.next_sample();
+                    for ch in 0..2 {
+                        let expected = a[ch] * (gain / initial_gain) + b[ch];
+                        assert!(
+                            (actual[ch] - expected).abs() < 2e-6,
+                            "{rate} Hz, {waveform:?}, {db} dB, mute {muted}: {} != {expected}",
+                            actual[ch]
+                        );
+                    }
+                }
+            }
+            for _ in 0..ramp_frames {
+                if remaining > 0 {
+                    gain += (target - gain) / remaining as f32;
+                    remaining -= 1;
+                }
+                let actual = live.next_sample();
+                let a = first.next_sample();
+                let b = second.next_sample();
+                for ch in 0..2 {
+                    assert!((actual[ch] - a[ch] * (gain / initial_gain) - b[ch]).abs() < 2e-6);
+                }
+            }
+            assert_eq!(gain, initial_gain);
+        }
+    }
+}
+
+#[test]
+fn multiple_oscillators_sum_independent_sources_for_each_note_and_empty_is_silent() {
+    let mut combined = plan(Waveform::Sine, 48_000);
+    let settings = vec![
+        OscillatorSettings::default(),
+        OscillatorSettings {
+            waveform: Waveform::Triangle,
+            transpose: -12,
+            gain_db: -6.0,
+            ..Default::default()
+        },
+        OscillatorSettings {
+            waveform: Waveform::Saw,
+            transpose: 12,
+            gain_db: -18.0,
+            ..Default::default()
+        },
+    ];
+    combined.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .oscillators = settings.clone();
+    for start in [0, 18_000] {
+        let mut expected = vec![[0.0; 2]; 36_000];
+        for oscillator in &settings {
+            let mut single = combined.clone();
+            single.project.tracks[0].instrument = Some(oscillator.clone().into());
+            let mut renderer = Renderer::new(single);
+            renderer.seek(start);
+            let mut samples = vec![[0.0; 2]; expected.len()];
+            renderer.render_offline(&mut samples);
+            for (sum, sample) in expected.iter_mut().zip(samples) {
+                for ch in 0..2 {
+                    sum[ch] += sample[ch];
+                }
+            }
+        }
+        let mut renderer = Renderer::new(combined.clone());
+        renderer.seek(start);
+        let mut actual = vec![[0.0; 2]; expected.len()];
+        for block in actual.chunks_mut(128) {
+            renderer.render_offline(block);
+        }
+        assert!(
+            actual
+                .iter()
+                .zip(&expected)
+                .all(|(a, e)| (0..2).all(|ch| (a[ch] - e[ch]).abs() < 1e-6))
+        );
+        let mut live = Renderer::new(combined.clone());
+        live.seek(start);
+        live.play();
+        for (index, expected) in actual.iter().enumerate() {
+            let sample = live.next_sample();
+            if index >= 240 {
+                assert_eq!(sample, *expected);
+            }
+        }
+    }
+    combined.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .oscillators
+        .clear();
+    let mut samples = vec![[1.0; 2]; 48_000];
+    Renderer::new(combined).render_offline(&mut samples);
+    assert!(samples.iter().all(|s| *s == [0.0; 2]));
+}
+
+#[test]
+fn oscillator_mute_silences_only_its_source_and_unmute_restores_saved_gain() {
+    let mut original = plan(Waveform::Sine, 48_000);
+    let active = original.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .oscillators[0]
+        .clone();
+    original.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .oscillators
+        .extend([
+            OscillatorSettings {
+                waveform: Waveform::Saw,
+                gain_db: 6.0,
+                muted: true,
+                ..Default::default()
+            },
+            OscillatorSettings {
+                waveform: Waveform::Square,
+                transpose: -12,
+                gain_db: 0.0,
+                muted: true,
+                ..Default::default()
+            },
+        ]);
+    let mut reference = original.clone();
+    reference.project.tracks[0].instrument = Some(active.into());
+    let mut expected = vec![[0.0; 2]; 48_000];
+    Renderer::new(reference).render_offline(&mut expected);
+    let mut actual = vec![[0.0; 2]; expected.len()];
+    Renderer::new(original.clone()).render_offline(&mut actual);
+    assert_eq!(actual, expected);
+    let mut live = Renderer::new(original.clone());
+    live.play();
+    for (index, expected) in expected.iter().enumerate() {
+        let sample = live.next_sample();
+        if index >= 240 {
+            assert_eq!(sample, *expected);
+        }
+    }
+    let instrument = original.project.tracks[0].instrument.as_mut().unwrap();
+    instrument.oscillators[0].muted = true;
+    Renderer::new(original.clone()).render_offline(&mut actual);
+    assert!(actual.iter().all(|s| *s == [0.0; 2]));
+    let instrument = original.project.tracks[0].instrument.as_mut().unwrap();
+    instrument.oscillators[0].muted = false;
+    assert_eq!(instrument.oscillators[1].gain_db, 6.0);
+    Renderer::new(original).render_offline(&mut actual);
+    assert_eq!(actual, expected);
 }
 
 #[test]

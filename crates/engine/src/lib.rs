@@ -99,6 +99,7 @@ pub struct Renderer {
     transition: u32,
     transition_from: [f32; 2],
     previous: [f32; 2],
+    source_fingerprint: u64,
 }
 struct TrackGains {
     id: Id,
@@ -138,12 +139,34 @@ impl Renderer {
             .collect();
         let master = linear_gain(plan.project.master.gain_db);
         let playhead = plan.project.transport.playhead_frame;
-        let midi = plan
+        let midi: Vec<_> = plan
             .project
             .tracks
             .iter()
             .map(|track| midi::MidiTrackRuntime::new(&plan.project, track))
             .collect();
+        // Prepare source identity off the callback. Mixer/source control changes need only
+        // parameter ramps; restarting the output transition would modulate a held sample.
+        use std::hash::{Hash, Hasher};
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        plan.project.sample_rate_hz.hash(&mut hash);
+        for (track, runtime) in plan.project.tracks.iter().zip(&midi) {
+            track.id.hash(&mut hash);
+            if let Some(runtime) = runtime {
+                Some(runtime.fingerprint()).hash(&mut hash);
+            } else {
+                None::<u64>.hash(&mut hash);
+                format!("{:?}", track.clips).hash(&mut hash);
+                for clip in &track.clips {
+                    if let Some(audio) = plan.audio_for_clip(clip) {
+                        std::sync::Arc::as_ptr(&audio.samples).hash(&mut hash);
+                        audio.sample_rate_hz.hash(&mut hash);
+                        audio.metadata.channels.hash(&mut hash);
+                    }
+                }
+            }
+        }
+        let source_fingerprint = hash.finish();
         Self {
             midi,
             plan,
@@ -159,6 +182,7 @@ impl Renderer {
             transition: 0,
             transition_from: [0.0; 2],
             previous: [0.0; 2],
+            source_fingerprint,
         }
     }
     pub fn inherit(&mut self, old: &mut Self) {
@@ -171,8 +195,13 @@ impl Renderer {
         self.master = old.master;
         self.master_remaining = fade_frames;
         self.previous = old.previous;
-        self.transition_from = old.previous;
-        self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
+        if self.source_fingerprint == old.source_fingerprint {
+            self.transition_from = old.transition_from;
+            self.transition = old.transition;
+        } else {
+            self.transition_from = old.previous;
+            self.transition = fade_frames;
+        }
         for (index, runtime) in self.midi.iter_mut().enumerate() {
             let id = self.plan.project.tracks[index].id;
             if let Some(previous) = old
@@ -186,6 +215,9 @@ impl Renderer {
                     .zip(old.midi[previous].as_ref())
                     .is_some_and(|(a, b)| a.compatible(b))
             {
+                if let Some((next, previous)) = runtime.as_ref().zip(old.midi[previous].as_mut()) {
+                    previous.retarget_controls(next);
+                }
                 std::mem::swap(runtime, &mut old.midi[previous]);
             }
         }

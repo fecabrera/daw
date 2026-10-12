@@ -3,6 +3,7 @@ use daw_core::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, TrackKind};
 
 const KEY_WIDTH: f32 = 52.0;
 const NOTE_HEIGHT: f32 = 18.0;
+pub(super) const OSCILLATOR_STRIP_WIDTH: f32 = 90.0;
 #[derive(Clone, Copy)]
 enum NoteDragMode {
     Move,
@@ -94,6 +95,16 @@ pub(super) struct MidiEditor {
     pub(crate) pattern_bounds: Rect,
     #[cfg(test)]
     pub(crate) note_bounds: HashMap<Id, Rect>,
+    #[cfg(test)]
+    pub(crate) oscillator_bounds: Vec<Rect>,
+    #[cfg(test)]
+    pub(crate) oscillator_strip_bounds: Vec<Rect>,
+    #[cfg(test)]
+    pub(crate) oscillator_power_bounds: Vec<Rect>,
+    #[cfg(test)]
+    pub(crate) add_oscillator_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) add_oscillator_strip_bounds: Rect,
 }
 impl Default for MidiEditor {
     fn default() -> Self {
@@ -127,6 +138,16 @@ impl Default for MidiEditor {
             pattern_bounds: Rect::NOTHING,
             #[cfg(test)]
             note_bounds: HashMap::new(),
+            #[cfg(test)]
+            oscillator_bounds: Vec::new(),
+            #[cfg(test)]
+            oscillator_strip_bounds: Vec::new(),
+            #[cfg(test)]
+            oscillator_power_bounds: Vec::new(),
+            #[cfg(test)]
+            add_oscillator_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            add_oscillator_strip_bounds: Rect::NOTHING,
         }
     }
 }
@@ -298,32 +319,174 @@ impl DawUi {
             ui.label("Audio tracks accept effects. Effects are not available yet.");
             return;
         }
-        panels::PanelStyle::default().unit(ui, "Oscillator", |ui| {
+        let panel = panels::PanelStyle::default();
+        let strip_margin = panel.margin;
+        panels::PanelStyle { margin: 0, ..panel }.unit(ui, "Oscillator", |ui| {
             let Some(mut settings) = track.instrument.clone() else {
                 ui.label("No instrument assigned");
                 return;
             };
-            ui.push_id(("oscillator-settings", track.id), |ui| {
-                ui.spacing_mut().item_spacing.y = theme::TOOLBAR_PADDING as f32;
-                knobs::row(
-                    ui,
-                    &mut settings.waveform,
-                    knobs::CHOICE_SIZE,
-                    knobs::waveform,
-                );
-                knobs::row(
-                    ui,
-                    &mut settings.transpose,
-                    knobs::CHOICE_SIZE,
-                    knobs::transpose,
-                );
-                knobs::row(
-                    ui,
-                    &mut settings.gain_db,
-                    knobs::CHOICE_SIZE,
-                    knobs::gain_with_markers,
-                );
-            });
+            let mut remove = None;
+            let mut add = false;
+            let spacing = f32::from(theme::TOOLBAR_PADDING);
+            let strip_height = 3.0 * knobs::CHOICE_SIZE + 3.0 * spacing + icons::COMPACT_BUTTON_SIZE;
+            let strip_width = OSCILLATOR_STRIP_WIDTH - 2.0 * f32::from(strip_margin);
+            #[cfg(test)]
+            {
+                self.midi_editor.oscillator_bounds.clear();
+                self.midi_editor.oscillator_strip_bounds.clear();
+                self.midi_editor.oscillator_power_bounds.clear();
+            }
+            egui::ScrollArea::horizontal()
+                .id_salt(("oscillators", track.id))
+                .show(ui, |ui| {
+                    ui.horizontal_top(|ui| {
+                        ui.spacing_mut().item_spacing =
+                            Vec2::new(0.0, theme::TOOLBAR_PADDING as f32);
+                        let mut previous_column: Option<Rect> = None;
+                        for (index, oscillator) in settings.oscillators.iter_mut().enumerate() {
+                            let strip = ui.scope_builder(
+                                egui::UiBuilder::new()
+                                    .id_salt(("oscillator-strip", track.id, index))
+                                    .sense(Sense::click()),
+                                |ui| {
+                                    egui::Frame::new()
+                                        .inner_margin(strip_margin)
+                                        .show(ui, |ui| {
+                                            ui.scope_builder(
+                                                egui::UiBuilder::new()
+                                                    .id_salt((
+                                                        "oscillator-settings",
+                                                        track.id,
+                                                        index,
+                                                    ))
+                                                    .layout(egui::Layout::top_down(
+                                                        egui::Align::Min,
+                                                    ))
+                                                    .sense(Sense::click()),
+                                                |ui| {
+                                                    ui.set_width(strip_width);
+                                                    [
+                                                        knobs::row(
+                                                            ui,
+                                                            &mut oscillator.waveform,
+                                                            knobs::CHOICE_SIZE,
+                                                            knobs::waveform,
+                                                        ),
+                                                        knobs::row(
+                                                            ui,
+                                                            &mut oscillator.transpose,
+                                                            knobs::CHOICE_SIZE,
+                                                            knobs::pitch,
+                                                        ),
+                                                        knobs::row(
+                                                            ui,
+                                                            &mut oscillator.gain_db,
+                                                            knobs::CHOICE_SIZE,
+                                                            knobs::gain_with_markers,
+                                                        ),
+                                                        crate::rows::centered(
+                                                            ui,
+                                                            icons::COMPACT_BUTTON_SIZE,
+                                                            |ui| {
+                                                                ui.add_space(((ui.available_width() - icons::COMPACT_BUTTON_SIZE) * 0.5).max(0.0));
+                                                                let on = !oscillator.muted;
+                                                                let response =
+                                                                    icons::circular_button(
+                                                                        ui,
+                                                                        icons::Lucide::Power,
+                                                                        &format!(
+                                                                            "Toggle oscillator {}",
+                                                                            index + 1
+                                                                        ),
+                                                                        Some(on),
+                                                                        icons::COMPACT_BUTTON_SIZE,
+                                                                    );
+                                                                if response.clicked() {
+                                                                    oscillator.muted =
+                                                                        !oscillator.muted;
+                                                                }
+                                                                #[cfg(test)]
+                                                                self.midi_editor
+                                                                    .oscillator_power_bounds
+                                                                    .push(response.rect);
+                                                                response
+                                                            },
+                                                        )
+                                                        .inner,
+                                                    ]
+                                                },
+                                            )
+                                        })
+                                },
+                            );
+                            let column = strip.inner.inner;
+                            if let Some(previous) = previous_column {
+                                ui.painter().vline(
+                                    strip.response.rect.left(),
+                                    previous.top()..=strip.response.rect.bottom(),
+                                    Stroke::new(1.0, theme::unit_separator(ui.ctx())),
+                                );
+                            }
+                            previous_column = Some(strip.response.rect);
+                            #[cfg(test)]
+                            {
+                                self.midi_editor
+                                    .oscillator_bounds
+                                    .push(column.response.rect);
+                                self.midi_editor
+                                    .oscillator_strip_bounds
+                                    .push(strip.response.rect);
+                            }
+                            // The column covers gaps; knob responses cover their interactive faces.
+                            for response in column
+                                .inner
+                                .iter()
+                                .chain([&column.response, &strip.response])
+                            {
+                                response.context_menu(|ui| {
+                                    if ui
+                                        .add_enabled(
+                                            response.enabled(),
+                                            egui::Button::new("Remove oscillator"),
+                                        )
+                                        .clicked()
+                                    {
+                                        remove = Some(index);
+                                        ui.close();
+                                    }
+                                });
+                            }
+                        }
+                        let add_strip = ui.scope(|ui| {
+                            icons::circular_strip_button(
+                                ui, icons::Lucide::Plus, "Add oscillator",
+                                Vec2::new(icons::COMPACT_BUTTON_SIZE, strip_height) + Vec2::splat(2.0 * f32::from(strip_margin)),
+                                icons::COMPACT_BUTTON_SIZE,
+                            )
+                        });
+                        if let Some(previous) = previous_column {
+                            ui.painter().vline(
+                                add_strip.response.rect.left(),
+                                previous.top()..=add_strip.response.rect.bottom(),
+                                Stroke::new(1.0, theme::unit_separator(ui.ctx())),
+                            );
+                        }
+                        #[cfg(test)]
+                        {
+                            self.midi_editor.add_oscillator_bounds = add_strip.inner.rect;
+                            self.midi_editor.add_oscillator_strip_bounds = add_strip.response.rect;
+                        }
+                        add = add_strip.inner.clicked();
+                    });
+                });
+            // Mutate only after painting: removal must not invalidate iteration or widget IDs.
+            if let Some(index) = remove {
+                settings.oscillators.remove(index);
+            }
+            if add {
+                settings.oscillators.push(Default::default());
+            }
             if Some(&settings) != track.instrument.as_ref() {
                 self.edit(Edit::SetInstrument {
                     track_id: track.id,

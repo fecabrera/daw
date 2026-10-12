@@ -64,6 +64,422 @@ fn pattern(app: &DawUi) -> &MidiPattern {
         .as_ref()
         .unwrap()
 }
+
+#[test]
+fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_its_menu() {
+    for dark in [true, false] {
+        let (mut app, track, _, _) = fixture();
+        let assets = serde_json::to_value(&app.session.project.assets).unwrap();
+        let ctx = context();
+        if dark {
+            ctx.set_visuals(egui::Visuals::dark());
+        } else {
+            ctx.set_visuals(egui::Visuals::light());
+        }
+        app.set_view_mode(ViewMode::Units, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        for count in 1..=2 {
+            for strip in &app.midi_editor.oscillator_strip_bounds {
+                assert!(
+                    (strip.width() - midi_editor::OSCILLATOR_STRIP_WIDTH).abs() < 0.1,
+                    "strip width must not change when the source count changes"
+                );
+            }
+            let button = app.midi_editor.add_oscillator_bounds;
+            assert!(button.left() > app.midi_editor.oscillator_bounds[count - 1].right());
+            let before = app.session.project.tracks[0].instrument.clone();
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(button.left_top() + Vec2::splat(3.0)),
+                    super::button(button.left_top() + Vec2::splat(3.0), true),
+                ],
+            );
+            assert_eq!(
+                app.session.project.tracks[0].instrument, before,
+                "commit addition on release"
+            );
+            frame(
+                &mut app,
+                &ctx,
+                vec![super::button(button.left_top() + Vec2::splat(3.0), false)],
+            );
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(
+                app.session.project.tracks[0]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .oscillators
+                    .len(),
+                count + 1
+            );
+        }
+        let mut settings = app.session.project.tracks[0].instrument.clone().unwrap();
+        settings.oscillators[0].waveform = Waveform::Saw;
+        settings.oscillators[1].waveform = Waveform::Square;
+        settings.oscillators[2].waveform = Waveform::Triangle;
+        app.edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(settings),
+        });
+        frame(&mut app, &ctx, vec![]);
+        let second = app.midi_editor.oscillator_bounds[1];
+        let transpose = Pos2::new(
+            second.center().x,
+            second.top() + knobs::CHOICE_SIZE * 1.5 + theme::TOOLBAR_PADDING as f32,
+        );
+        click_note_or_lane(&mut app, &ctx, transpose);
+        for pressed in [true, false] {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::ArrowUp,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }],
+            );
+        }
+        let settings = app.session.project.tracks[0].instrument.as_ref().unwrap();
+        assert_eq!(
+            settings
+                .oscillators
+                .iter()
+                .map(|s| s.transpose)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 0]
+        );
+        for index in [1, 0, 0] {
+            for strip in &app.midi_editor.oscillator_strip_bounds {
+                assert!((strip.width() - midi_editor::OSCILLATOR_STRIP_WIDTH).abs() < 0.1);
+            }
+            let bounds = app.midi_editor.oscillator_bounds[index];
+            // Cover strip padding as well as interactive knob faces.
+            let point = if index == 1 {
+                let strip = app.midi_editor.oscillator_strip_bounds[index];
+                Pos2::new(strip.left() + 3.0, strip.center().y)
+            } else {
+                Pos2::new(bounds.center().x, bounds.top() + knobs::CHOICE_SIZE * 0.5)
+            };
+            let before = app.session.project.tracks[0].instrument.clone().unwrap();
+            for pressed in [true, false] {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(point),
+                        egui::Event::PointerButton {
+                            pos: point,
+                            button: egui::PointerButton::Secondary,
+                            pressed,
+                            modifiers: Default::default(),
+                        },
+                    ],
+                );
+            }
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let menu = shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "Remove oscillator" => {
+                        Some(t.pos + t.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .expect("oscillator context menu");
+            assert_eq!(
+                app.session.project.tracks[0].instrument.as_ref().unwrap(),
+                &before
+            );
+            click_note_or_lane(&mut app, &ctx, menu);
+            frame(&mut app, &ctx, vec![]);
+            let mut expected = before;
+            expected.oscillators.remove(index);
+            assert_eq!(
+                app.session.project.tracks[0].instrument.as_ref().unwrap(),
+                &expected
+            );
+        }
+        assert!(app.midi_editor.oscillator_bounds.is_empty());
+        let add = app.midi_editor.add_oscillator_bounds.center();
+        click_note_or_lane(&mut app, &ctx, add);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .oscillators,
+            vec![Default::default()]
+        );
+        assert_eq!(
+            serde_json::to_value(&app.session.project.assets).unwrap(),
+            assets
+        );
+        assert_eq!(app.selected_track, Some(track));
+        assert!(app.dirty);
+        let mut settings = app.session.project.tracks[0].instrument.clone().unwrap();
+        settings.oscillators[0].transpose = -24;
+        settings.oscillators[0].gain_db = daw_core::SILENT_GAIN_DB;
+        app.edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(settings),
+        });
+        let readouts = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        for value in ["-24", "−∞ dB"] {
+            assert!(
+                readouts
+                    .iter()
+                    .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == value))
+            );
+        }
+    }
+}
+
+#[test]
+fn oscillator_strips_have_centered_power_toggles_and_a_clickable_add_strip() {
+    for dark in [true, false] {
+        let (mut app, track, _, _) = fixture();
+        app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .oscillators
+            .push(Default::default());
+        let ctx = context();
+        ctx.set_visuals(if dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        });
+        app.set_view_mode(ViewMode::Units, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.tracks[0].instrument.clone().unwrap();
+        let assets = serde_json::to_value(&app.session.project.assets).unwrap();
+        for (column, button) in app
+            .midi_editor
+            .oscillator_bounds
+            .iter()
+            .zip(&app.midi_editor.oscillator_power_bounds)
+        {
+            assert_eq!(button.size(), Vec2::splat(icons::COMPACT_BUTTON_SIZE));
+            assert!((column.center().x - button.center().x).abs() < 0.1);
+            assert!((column.bottom() - button.bottom()).abs() < 0.1);
+            assert!(button.top() > column.top() + 3.0 * knobs::CHOICE_SIZE);
+        }
+        assert_eq!(app.midi_editor.oscillator_power_bounds.len(), 2);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let columns = &app.midi_editor.oscillator_strip_bounds;
+        let margin = f32::from(panels::PanelStyle::default().margin);
+        for (strip, controls) in columns.iter().zip(&app.midi_editor.oscillator_bounds) {
+            for padding in [
+                controls.left() - strip.left(),
+                strip.right() - controls.right(),
+                controls.top() - strip.top(),
+                strip.bottom() - controls.bottom(),
+            ] {
+                assert!(
+                    (padding - margin).abs() < 0.1,
+                    "equal padding on every strip side: {padding}"
+                );
+            }
+        }
+        assert!(
+            (columns[0].right() - columns[1].left()).abs() < 0.1,
+            "strips share one boundary"
+        );
+        let add_strip = app.midi_editor.add_oscillator_strip_bounds;
+        assert_eq!(
+            app.midi_editor.add_oscillator_bounds, add_strip,
+            "the whole strip is clickable"
+        );
+        let add_button = Rect::from_center_size(
+            add_strip.center(),
+            app.midi_editor.oscillator_power_bounds[0].size(),
+        );
+        assert!(add_strip.contains_rect(add_button) && add_strip.height() > add_button.height());
+        let add_circle = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Circle(c) if c.center == add_button.center() => Some(c),
+                _ => None,
+            })
+            .expect("circular Add control");
+        assert_eq!(
+            add_circle.radius * 2.0 + add_circle.stroke.width,
+            icons::COMPACT_BUTTON_SIZE
+        );
+        assert_eq!(
+            add_circle.stroke,
+            egui::Stroke::new(1.0, theme::palette(&ctx).secondary)
+        );
+        for power in &app.midi_editor.oscillator_power_bounds {
+            let power_circle = shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Circle(c) if c.center == power.center() => Some(c),
+                    _ => None,
+                })
+                .expect("circular Power control");
+            assert_eq!(add_circle.radius, power_circle.radius);
+            assert_eq!(add_circle.stroke.width, power_circle.stroke.width);
+        }
+        assert!((add_strip.width() - icons::COMPACT_BUTTON_SIZE - 2.0 * margin).abs() < 0.1);
+        let add_icon = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(image)
+                    if image.brush.is_some() && add_strip.contains(image.rect.center()) =>
+                {
+                    Some(image.rect)
+                }
+                _ => None,
+            })
+            .expect("painted Plus icon in the add button");
+        assert!(
+            (add_icon.center() - add_strip.center()).length() < 0.1,
+            "the actual icon must be centered on both axes"
+        );
+        let power_icon = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(image)
+                    if image.brush.is_some()
+                        && app.midi_editor.oscillator_power_bounds[0]
+                            .contains(image.rect.center()) =>
+                {
+                    Some(image.rect)
+                }
+                _ => None,
+            })
+            .expect("painted Power icon");
+        assert_eq!(add_icon.size(), power_icon.size());
+        assert!((columns[1].right() - add_strip.left()).abs() < 0.1);
+        assert!((columns[1].top() - add_strip.top()).abs() < 0.1);
+        assert!((columns[1].bottom() - add_strip.bottom()).abs() < 0.1);
+        for next in [columns[1], add_strip] {
+            let separators = shapes
+                .iter()
+                .filter(|s| {
+                    matches!(&s.shape,
+                        egui::Shape::LineSegment { points, stroke, .. }
+                            if (points[0].x - next.left()).abs() < 0.1 && points[0].x == points[1].x
+                            && (points[0].y - columns[0].top()).abs() < 0.1
+                            && (points[1].y - next.bottom()).abs() < 0.1
+                            && stroke.width == 1.0 && stroke.color == theme::unit_separator(&ctx)
+                    )
+                })
+                .count();
+            assert_eq!(
+                separators, 1,
+                "separator before every subsequent strip, including Add"
+            );
+        }
+        assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text().starts_with("Oscillator "))));
+        for power in &app.midi_editor.oscillator_power_bounds {
+            assert!(
+                shapes
+                    .iter()
+                    .any(|s| matches!(&s.shape, egui::Shape::Circle(c)
+                if c.center == power.center() && c.fill == theme::toggle_colors(&ctx, true).0
+                && c.stroke == egui::Stroke::new(1.0, theme::accent(&ctx))))
+            );
+        }
+        let hover_shapes = frame_shapes(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(
+                add_strip.left_top() + Vec2::splat(3.0),
+            )],
+            Vec2::new(1280.0, 800.0),
+        );
+        assert!(
+            hover_shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Circle(c)
+            if c.center == add_button.center() && c.radius * 2.0 + c.stroke.width == icons::COMPACT_BUTTON_SIZE
+            && c.fill == ctx.global_style().visuals.widgets.hovered.weak_bg_fill))
+        );
+        assert!(
+            hover_shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+            if r.rect == add_strip && r.stroke == egui::Stroke::NONE
+            && r.fill == ctx.global_style().visuals.widgets.hovered.weak_bg_fill))
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(Pos2::new(1000.0, 700.0))],
+        );
+        let idle_shapes = frame_shapes(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(Pos2::new(1000.0, 700.0))],
+            Vec2::new(1280.0, 800.0),
+        );
+        assert!(!idle_shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == add_strip && r.fill != egui::Color32::TRANSPARENT)));
+        let palette = theme::palette(&ctx);
+        let separator = theme::unit_separator(&ctx);
+        for channel in 0..3 {
+            let contrast =
+                separator.to_array()[channel].abs_diff(palette.panel.to_array()[channel]);
+            let border_contrast =
+                palette.border.to_array()[channel].abs_diff(palette.panel.to_array()[channel]);
+            assert!(
+                contrast >= 8 && contrast < border_contrast,
+                "separator must remain visible below border contrast in both themes"
+            );
+        }
+        let point = app.midi_editor.oscillator_power_bounds[1].center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        assert_eq!(
+            app.session.project.tracks[0].instrument.as_ref().unwrap(),
+            &before
+        );
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        frame(&mut app, &ctx, vec![]);
+        let mut expected = before.clone();
+        expected.oscillators[1].muted = true;
+        assert_eq!(
+            app.session.project.tracks[0].instrument.as_ref().unwrap(),
+            &expected
+        );
+        assert!(!app.session.project.tracks[0].muted);
+        let muted_shapes = frame_shapes(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(Pos2::new(1000.0, 700.0))],
+            Vec2::new(1280.0, 800.0),
+        );
+        assert!(
+            muted_shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Circle(c)
+            if c.center == point && c.fill == theme::toggle_colors(&ctx, false).0
+            && c.stroke == egui::Stroke::new(1.0, theme::palette(&ctx).secondary)))
+        );
+        click_note_or_lane(&mut app, &ctx, point);
+        assert_eq!(
+            app.session.project.tracks[0].instrument.as_ref().unwrap(),
+            &before
+        );
+        assert_eq!(
+            serde_json::to_value(&app.session.project.assets).unwrap(),
+            assets
+        );
+        assert_eq!(app.selected_track, Some(track));
+        assert!(app.dirty);
+    }
+}
 #[test]
 fn midi_tracks_units_editor_and_clip_copy_use_shared_actions() {
     let (mut app, track, clip, _) = fixture();
@@ -73,16 +489,20 @@ fn midi_tracks_units_editor_and_clip_copy_use_shared_actions() {
     frame(&mut app, &ctx, vec![]);
     app.edit(Edit::SetInstrument {
         track_id: track,
-        instrument: Some(daw_core::OscillatorSettings {
-            waveform: Waveform::Saw,
-            ..Default::default()
-        }),
+        instrument: Some(
+            daw_core::OscillatorSettings {
+                waveform: Waveform::Saw,
+                ..Default::default()
+            }
+            .into(),
+        ),
     });
     assert_eq!(
         app.session.project.tracks[0]
             .instrument
             .as_ref()
             .unwrap()
+            .oscillators[0]
             .waveform,
         Waveform::Saw
     );
@@ -133,10 +553,13 @@ fn toolbar_track_dropdown_switches_units_and_edit_without_changing_the_project()
         .project
         .edit(Edit::SetInstrument {
             track_id: second,
-            instrument: Some(daw_core::OscillatorSettings {
-                waveform: Waveform::Square,
-                ..Default::default()
-            }),
+            instrument: Some(
+                daw_core::OscillatorSettings {
+                    waveform: Waveform::Square,
+                    ..Default::default()
+                }
+                .into(),
+            ),
         })
         .unwrap();
     let original = format!("{:?}", app.session.project);
@@ -423,10 +846,13 @@ fn new_destination_tracks_preserve_each_midi_instrument_and_track_gaps() {
             .project
             .edit(Edit::SetInstrument {
                 track_id: second,
-                instrument: Some(daw_core::OscillatorSettings {
-                    waveform: Waveform::Square,
-                    ..Default::default()
-                }),
+                instrument: Some(
+                    daw_core::OscillatorSettings {
+                        waveform: Waveform::Square,
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
             })
             .unwrap();
         let before = format!("{:?}", app.session.project);
@@ -468,13 +894,13 @@ fn new_destination_tracks_preserve_each_midi_instrument_and_track_gaps() {
         assert!(app.error.is_none(), "{:?}", app.error);
         let tracks = &app.session.project.tracks;
         assert_eq!(
-            tracks[2].instrument.as_ref().unwrap().waveform,
+            tracks[2].instrument.as_ref().unwrap().oscillators[0].waveform,
             Waveform::Sine
         );
         assert_eq!(tracks[3].kind, TrackKind::Audio);
         assert!(tracks[3].clips.is_empty());
         assert_eq!(
-            tracks[4].instrument.as_ref().unwrap().waveform,
+            tracks[4].instrument.as_ref().unwrap().oscillators[0].waveform,
             Waveform::Square
         );
         assert_eq!(tracks[0].clips.len(), usize::from(duplicate));
@@ -2786,7 +3212,16 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
             .iter()
             .filter_map(|shape| match &shape.shape {
                 egui::Shape::Circle(circle)
-                    if (circle.radius - (knobs::SIZE / 2.0 - 5.0)).abs() < 0.01 =>
+                    if (circle.radius - (knobs::SIZE / 2.0 - 5.0)).abs() < 0.01
+                        && !app
+                            .midi_editor
+                            .oscillator_power_bounds
+                            .iter()
+                            .any(|rect| rect.contains(circle.center))
+                        && !app
+                            .midi_editor
+                            .add_oscillator_bounds
+                            .contains(circle.center) =>
                 {
                     Some(circle.center)
                 }
@@ -2795,7 +3230,7 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
             .collect();
         centers.sort_by(|a, b| a.y.total_cmp(&b.y));
         assert_eq!(centers.len(), 3);
-        for (index, label) in [(1, "0"), (2, "0 dB")] {
+        for (index, label) in [(1, "0"), (2, "-12.0 dB")] {
             let reference = shapes
                 .iter()
                 .find_map(|shape| match &shape.shape {
@@ -2927,7 +3362,7 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
             assert!((center.x - centers[0].x).abs() < 0.1);
         }
         assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::Text(text) if matches!(text.galley.text(), "Waveform" | "Transpose" | "Gain" | "Sine" | " semitones" | "-12.0" | " dB")
+            egui::Shape::Text(text) if matches!(text.galley.text(), "Waveform" | "Pitch" | "Gain" | "Sine" | " semitones" | "-12.0" | " dB")
         )), "Oscillator has no parameter-name labels or separate value column");
         for label in ["−∞", "+12"] {
             let bounds = shapes
@@ -2982,9 +3417,17 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
             );
         }
         let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-        assert_eq!(instrument.waveform, Waveform::Saw);
-        assert_eq!(instrument.transpose, 1);
-        assert!((instrument.gain_db + 11.9).abs() < 0.001);
+        assert_eq!(instrument.oscillators[0].waveform, Waveform::Saw);
+        assert_eq!(instrument.oscillators[0].transpose, 1);
+        assert!((instrument.oscillators[0].gain_db + 11.9).abs() < 0.001);
+        let updated = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        for label in ["+1", "-11.9 dB"] {
+            assert!(
+                updated
+                    .iter()
+                    .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == label))
+            );
+        }
         assert_eq!(format!("{:?}", app.session.project.assets), assets);
         assert_eq!(app.selected_track, Some(track));
         assert!(app.dirty);

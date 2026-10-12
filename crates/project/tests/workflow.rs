@@ -2263,7 +2263,28 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
         .instrument
         .as_mut()
         .unwrap()
+        .oscillators[0]
         .waveform = Waveform::Triangle;
+    session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .oscillators
+        .extend([
+            daw_core::OscillatorSettings {
+                waveform: Waveform::Square,
+                transpose: -12,
+                gain_db: -18.0,
+                muted: true,
+                ..Default::default()
+            },
+            daw_core::OscillatorSettings {
+                waveform: Waveform::Saw,
+                transpose: 12,
+                gain_db: -24.0,
+                ..Default::default()
+            },
+        ]);
     let clip = session.project.add_midi_pattern(track, 0).unwrap();
     session
         .project
@@ -2444,7 +2465,7 @@ fn silent_oscillator_survives_save_reopen_playback_and_float_export() {
         .unwrap();
     let assets = serde_json::to_value(&session.project.assets).unwrap();
     let mut instrument = session.project.tracks[0].instrument.clone().unwrap();
-    instrument.gain_db = SILENT_GAIN_DB;
+    instrument.oscillators[0].gain_db = SILENT_GAIN_DB;
     session
         .project
         .edit(Edit::SetInstrument {
@@ -2461,6 +2482,7 @@ fn silent_oscillator_survives_save_reopen_playback_and_float_export() {
             .instrument
             .as_ref()
             .unwrap()
+            .oscillators[0]
             .gain_db,
         SILENT_GAIN_DB
     );
@@ -2491,7 +2513,7 @@ fn silent_oscillator_survives_save_reopen_playback_and_float_export() {
             .all(|sample| sample.unwrap() == 0.0)
     );
     let mut instrument = loaded.project.tracks[0].instrument.clone().unwrap();
-    instrument.gain_db = 0.0;
+    instrument.oscillators[0].gain_db = 0.0;
     loaded
         .project
         .edit(Edit::SetInstrument {

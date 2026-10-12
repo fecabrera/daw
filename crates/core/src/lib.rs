@@ -1,5 +1,7 @@
 mod midi;
-pub use daw_unit_core::{OscillatorSettings, SILENT_GAIN_DB, Waveform};
+pub use daw_unit_core::{
+    OscillatorInstrumentSettings, OscillatorSettings, SILENT_GAIN_DB, Waveform,
+};
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, TrackKind};
 mod audio_settings;
 mod boundary;
@@ -163,7 +165,7 @@ pub struct Track {
     #[serde(default)]
     pub kind: TrackKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub instrument: Option<OscillatorSettings>,
+    pub instrument: Option<OscillatorInstrumentSettings>,
     pub id: Id,
     pub name: String,
     /// Default color for this track's clips; older projects assign it by track position.
@@ -788,7 +790,7 @@ pub enum Edit {
     },
     SetInstrument {
         track_id: Id,
-        instrument: Option<OscillatorSettings>,
+        instrument: Option<OscillatorInstrumentSettings>,
     },
     /// Apply all commands and validate the final state as one transaction.
     Batch(Vec<Edit>),

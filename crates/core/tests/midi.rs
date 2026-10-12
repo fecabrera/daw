@@ -23,6 +23,74 @@ fn fixture() -> (Project, Id, Id) {
     project.tracks[0].clips[0].length_frames = 96_000;
     (project, track, clip)
 }
+
+#[test]
+fn oscillator_collections_migrate_legacy_state_and_validate_atomically() {
+    let legacy = OscillatorSettings {
+        waveform: Waveform::Square,
+        transpose: -12,
+        gain_db: -6.0,
+        ..Default::default()
+    };
+    let mut saved = serde_json::to_value(&legacy).unwrap();
+    saved.as_object_mut().unwrap().remove("muted");
+    let migrated: OscillatorInstrumentSettings = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(migrated.oscillators, vec![legacy]);
+    let older_collection: OscillatorInstrumentSettings =
+        serde_json::from_value(serde_json::json!({
+            "version": 1, "oscillators": [saved.clone()]
+        }))
+        .unwrap();
+    assert_eq!(older_collection, migrated);
+    let mut malformed = saved;
+    malformed["oscillators"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<OscillatorInstrumentSettings>(malformed).is_err());
+    let (mut project, track, _) = fixture();
+    let mut settings = migrated;
+    settings.oscillators.push(OscillatorSettings {
+        transpose: 12,
+        ..Default::default()
+    });
+    project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(settings.clone()),
+        })
+        .unwrap();
+    let before = serde_json::to_value(&project).unwrap();
+    settings.oscillators[1].transpose = 49;
+    assert!(
+        project
+            .edit(Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(settings)
+            })
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(&project).unwrap(), before);
+    let mut restored: Project = serde_json::from_value(before).unwrap();
+    restored.validate().unwrap();
+    assert_eq!(
+        restored.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .oscillators
+            .len(),
+        2
+    );
+    let empty = OscillatorInstrumentSettings {
+        oscillators: vec![],
+        ..Default::default()
+    };
+    restored
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(empty),
+        })
+        .unwrap();
+    restored.validate().unwrap();
+}
 #[test]
 fn copies_share_patterns_until_an_edit_and_clip_ranges_leave_content_unchanged() {
     let (mut project, track, clip) = fixture();

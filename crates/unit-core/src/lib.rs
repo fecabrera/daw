@@ -34,6 +34,8 @@ pub struct OscillatorSettings {
     /// Semitone transposition. Host MIDI pitch remains separate from source state.
     pub transpose: i8,
     pub gain_db: f32,
+    #[serde(default)]
+    pub muted: bool,
 }
 impl Default for OscillatorSettings {
     fn default() -> Self {
@@ -42,6 +44,7 @@ impl Default for OscillatorSettings {
             waveform: Waveform::Sine,
             transpose: 0,
             gain_db: -12.0,
+            muted: false,
         }
     }
 }
@@ -51,6 +54,76 @@ impl OscillatorSettings {
             && (-48..=48).contains(&self.transpose)
             && self.gain_db.is_finite()
             && (SILENT_GAIN_DB..=12.0).contains(&self.gain_db)
+    }
+}
+
+/// One track instrument containing independently configured oscillator sources.
+/// Empty instruments render silence; hosts may add sources again without replacing the instrument.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct OscillatorInstrumentSettings {
+    pub version: u32,
+    pub oscillators: Vec<OscillatorSettings>,
+}
+impl Default for OscillatorInstrumentSettings {
+    fn default() -> Self {
+        OscillatorSettings::default().into()
+    }
+}
+impl From<OscillatorSettings> for OscillatorInstrumentSettings {
+    fn from(oscillator: OscillatorSettings) -> Self {
+        Self {
+            version: UNIT_STATE_VERSION,
+            oscillators: vec![oscillator],
+        }
+    }
+}
+impl OscillatorInstrumentSettings {
+    pub fn valid(&self) -> bool {
+        self.version == UNIT_STATE_VERSION && self.oscillators.iter().all(OscillatorSettings::valid)
+    }
+}
+impl<'de> Deserialize<'de> for OscillatorInstrumentSettings {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Select by presence of the collection. A malformed new instrument must not
+        // fall back to a legacy oscillator and silently discard its source settings.
+        #[derive(Deserialize)]
+        struct Saved {
+            version: u32,
+            #[serde(default, deserialize_with = "collection")]
+            oscillators: Option<Vec<OscillatorSettings>>,
+            waveform: Option<Waveform>,
+            transpose: Option<i8>,
+            gain_db: Option<f32>,
+            #[serde(default)]
+            muted: bool,
+        }
+        fn collection<'de, D: serde::Deserializer<'de>>(
+            deserializer: D,
+        ) -> Result<Option<Vec<OscillatorSettings>>, D::Error> {
+            Vec::deserialize(deserializer).map(Some)
+        }
+        let saved = Saved::deserialize(deserializer)?;
+        if let Some(oscillators) = saved.oscillators {
+            Ok(Self {
+                version: saved.version,
+                oscillators,
+            })
+        } else {
+            Ok(OscillatorSettings {
+                version: saved.version,
+                waveform: saved
+                    .waveform
+                    .ok_or_else(|| serde::de::Error::missing_field("waveform"))?,
+                transpose: saved
+                    .transpose
+                    .ok_or_else(|| serde::de::Error::missing_field("transpose"))?,
+                gain_db: saved
+                    .gain_db
+                    .ok_or_else(|| serde::de::Error::missing_field("gain_db"))?,
+                muted: saved.muted,
+            }
+            .into())
+        }
     }
 }
 

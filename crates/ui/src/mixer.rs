@@ -93,9 +93,8 @@ impl DawUi {
             // Menu bars change padding; use the same control style in every titlebar layout.
             let style = ui.ctx().global_style();
             ui.spacing_mut().button_padding = style.spacing.button_padding;
-            let selected_fill = style.visuals.selection.bg_fill;
-            let bright_text = theme::contrast_color(selected_fill);
-            let secondary_text = theme::palette(ui.ctx()).secondary;
+            let (selected_fill, bright_text) = theme::toggle_colors(ui.ctx(), true);
+            let (_, secondary_text) = theme::toggle_colors(ui.ctx(), false);
             let widgets = &mut ui.visuals_mut().widgets;
             for widget in [
                 &mut widgets.inactive,

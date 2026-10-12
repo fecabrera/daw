@@ -91,6 +91,22 @@ pub fn palette(ctx: &Context) -> Palette {
     }
 }
 
+/// Subdued unit dividers must contrast with the panel in either theme.
+pub fn unit_separator(ctx: &Context) -> Color32 {
+    let colors = palette(ctx);
+    blend(colors.panel, colors.border, 50)
+}
+
+/// Shared on/off colors for view controls and unit toggles.
+pub fn toggle_colors(ctx: &Context, selected: bool) -> (Color32, Color32) {
+    if selected {
+        let fill = ctx.global_style().visuals.selection.bg_fill;
+        (fill, contrast_color(fill))
+    } else {
+        (Color32::TRANSPARENT, palette(ctx).secondary)
+    }
+}
+
 /// Related clip colors resolved together for clips and their drag previews.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClipColors {

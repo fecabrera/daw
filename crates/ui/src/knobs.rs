@@ -23,7 +23,7 @@ pub struct KnobSpec {
     discrete_step: Option<f32>,
     reference_step: Option<f32>,
     reference_values: Option<&'static [f32]>,
-    reference_label: Option<&'static str>,
+    value_label: Option<fn(f32) -> String>,
     endpoint_labels: Option<[&'static str; 2]>,
     center: Option<f32>,
     scale: Option<ParameterScale>,
@@ -50,7 +50,7 @@ impl KnobSpec {
             discrete_step: None,
             reference_step: None,
             reference_values: None,
-            reference_label: None,
+            value_label: None,
             endpoint_labels: None,
             center: None,
             scale: None,
@@ -97,9 +97,9 @@ impl KnobSpec {
         self.reference_values = Some(values);
         self
     }
-    /// Label the reset mark, reserving space above the standard knob face.
-    pub fn reference_label(mut self, label: &'static str) -> Self {
-        self.reference_label = Some(label);
+    /// Show the current value above the reference mark using a compact formatter.
+    pub fn value_label(mut self, format: fn(f32) -> String) -> Self {
+        self.value_label = Some(format);
         self
     }
     /// Label both range endpoints below their marks, independently of the current value.
@@ -251,11 +251,11 @@ pub fn gain(ui: &mut Ui, value: &mut f32) -> Response {
 fn marked_gain_spec() -> KnobSpec {
     gain_spec()
         .reference_values(&crate::faders::GAIN_MARKS)
-        .reference_label("0 dB")
+        .value_label(|value| format!("{} dB", crate::faders::format_gain(value)))
         .endpoint_labels("−∞", "+12")
 }
 
-/// Optional gain scale marks and unity label, painted by the shared knob base.
+/// Optional gain scale marks and current-value label, painted by the shared knob base.
 pub fn gain_with_markers(ui: &mut Ui, value: &mut f32) -> Response {
     ui.add(Knob::new(value, marked_gain_spec()))
 }
@@ -263,14 +263,20 @@ pub fn gain_with_markers(ui: &mut Ui, value: &mut f32) -> Response {
 pub fn pan(ui: &mut Ui, value: &mut f32) -> Response {
     ui.add(Knob::new(value, pan_spec()))
 }
-pub fn transpose(ui: &mut Ui, value: &mut i8) -> Response {
+pub fn pitch(ui: &mut Ui, value: &mut i8) -> Response {
     let mut scalar = f32::from(*value);
     let response = ui.add(Knob::new(
         &mut scalar,
-        KnobSpec::new("Transpose", -48.0..=48.0, 0.0, 1.0)
+        KnobSpec::new("Pitch", -48.0..=48.0, 0.0, 1.0)
             .stepped(1.0)
             .reference_step(12.0)
-            .reference_label("0")
+            .value_label(|value| {
+                if value > 0.0 {
+                    format!("+{value:.0}")
+                } else {
+                    format!("{value:.0}")
+                }
+            })
             .endpoint_labels("−48", "+48")
             .bipolar()
             .format(|value| format!("{value:.0} semitones")),
@@ -343,28 +349,29 @@ pub fn row<T>(
     value: &mut T,
     height: f32,
     knob: impl FnOnce(&mut Ui, &mut T) -> Response,
-) {
+) -> Response {
     crate::rows::centered(ui, height, |ui| {
+        ui.add_space(((ui.available_width() - CHOICE_SIZE) * 0.5).max(0.0));
         ui.allocate_ui_with_layout(
             Vec2::new(CHOICE_SIZE, height),
             egui::Layout::top_down(egui::Align::Center),
             |ui| {
                 ui.set_min_width(CHOICE_SIZE);
-                knob(ui, value);
+                knob(ui, value)
             },
-        );
-    });
+        )
+        .inner
+    })
+    .inner
 }
 
 fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
-    let size = if spec.diagram.is_some()
-        || spec.reference_label.is_some()
-        || spec.endpoint_labels.is_some()
-    {
-        CHOICE_SIZE
-    } else {
-        SIZE
-    };
+    let size =
+        if spec.diagram.is_some() || spec.value_label.is_some() || spec.endpoint_labels.is_some() {
+            CHOICE_SIZE
+        } else {
+            SIZE
+        };
     let (rect, mut response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
     let previous = *value;
     let drag_id = response.id.with("knob-drag");
@@ -516,12 +523,12 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
         } else {
             mark(spec.normalized(spec.reset), false);
         }
-        if let Some(label) = spec.reference_label {
+        if let Some(format) = spec.value_label {
             painter.text(
                 point(spec.normalized(spec.reset), radius + 3.0),
                 egui::Align2::CENTER_BOTTOM,
-                label,
-                egui::FontId::proportional(9.0),
+                format(*value),
+                crate::fonts::numeric(9.0),
                 theme::palette(ui.ctx()).text,
             );
         }
@@ -856,7 +863,7 @@ mod tests {
     fn stepped_keyboard_values_clamp_reset_and_ignore_disabled_input() {
         for spec in [
             KnobSpec::new("Waveform", 0.0..=3.0, 0.0, 1.0).stepped(1.0),
-            KnobSpec::new("Transpose", -48.0..=48.0, 0.0, 1.0)
+            KnobSpec::new("Pitch", -48.0..=48.0, 0.0, 1.0)
                 .stepped(1.0)
                 .bipolar(),
         ] {

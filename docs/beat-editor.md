@@ -1,6 +1,6 @@
 # Beat pattern editor design and decisions
 
-Status: design baseline; implementation pending. Last updated: 2026-10-11.
+Status: design baseline; implementation pending. Last updated: 2026-10-12.
 
 The beat pattern editor in the future Editor view will let users create beats through lanes of step toggles. Editor will choose an editor by clip type: audio editor for audio clips, MIDI pattern editor for MIDI clips, and beat pattern editor for beat clips. Each lane will be an audio lane or a MIDI lane, with its own sources and effects. The user will set pattern length and step resolution for all lanes together. The Units view will control lane sources, effects, and modulators. Mixer will control each beat track as a whole. Beat tracks will join audio and MIDI tracks as the third track type. Beat and MIDI patterns will be clip sources, with clip editing separate from source editing. The accepted MVP scope below defines the initial controls, playback, navigation, and routing.
 
@@ -33,6 +33,7 @@ The beat pattern editor in the future Editor view will let users create beats th
 | B23 | Units provides lane gain, pan, mute, solo, and serial effects. Sum lanes through serial track-level effects. | Defer parallel audio paths, shared-effect sends, and audio sidechains. |
 | B24 | Default to one bar at 1/16 resolution. Offer 1–16 bars and 1/4, 1/8, 1/16, or 1/32 resolution. | Apply one grid to every lane in the pattern. |
 | B25 | Place the beat pattern editor inside the shared Editor view, alongside audio and MIDI pattern editors chosen by clip type. | Replace the earlier standalone Beat view; preserve the accepted beat-editing and processing rules. |
+| B26 | Give each beat track one beat instrument containing all its lanes. | Each lane retains its own source or MIDI instrument, controls, effects, and voice state. Combine lanes into one output bus before parent-track effects and gain/pan. |
 
 Audio tracks accept effects only. MIDI tracks accept sources and effects. These shared rules and the unit architecture are defined in [Modular audio units design and decisions](modular-audio-units.md). Beat tracks support effects on each lane and on the parent track.
 
@@ -50,9 +51,9 @@ BQ05's Mixer and beat-editing responsibilities were resolved on 2026-10-11 throu
 
 ### Instruments and voices
 
-A beat track contains audio or MIDI lanes, each with one instrument. Different lanes can use different instruments, such as a kick sample player, a snare sample player, and a synth. A voice is the processing state for one active note or triggered hit. Initially each MIDI track and each beat lane has at most one active instrument voice. Several beat lanes can sound together because the limit applies separately to each lane.
+A beat track owns one beat instrument containing audio or MIDI lanes. Each lane has one sample source or MIDI instrument. Different lanes can use different instruments, such as a kick sample player, a snare sample player, and a synth. A voice is the processing state for one active note or triggered hit. Initially each beat lane has at most one active instrument voice. Several beat lanes can sound together because the limit applies separately to each lane.
 
-An instrument can contain multiple source units, effects, and modulators. These units form one lane instrument. MIDI tracks and MIDI beat lanes can gain polyphony later. B18's initial scope was confirmed on 2026-10-11. The Beat MVP replaces the active voice on a new trigger, as specified in B20. General MIDI-track latest-note behavior is accepted in the [Units MVP scope](modular-audio-units.md#accepted-units-mvp-scope). Future polyphony remains deferred.
+An instrument can contain multiple reusable source units, effects, and modulators. These units form one lane instrument. B18's initial scope was confirmed on 2026-10-11; D29 later enabled polyphony for general MIDI tracks. The Beat MVP retains one voice per lane and replaces the active voice on a new trigger, as specified in B20. Polyphonic MIDI beat lanes remain deferred. B26 follows the shared [source-container architecture](modular-audio-units.md#one-source-container-per-track); one parent container does not impose one shared voice across all lanes.
 
 ## Accepted Beat MVP scope
 
@@ -133,7 +134,7 @@ The Beat MVP scope was accepted on 2026-10-11. Preserve the question IDs as deci
 | BQ06 | Resolved for MVP. | Editor chooses the editor by clip type; clip/lane context is retained between views; lane type is fixed: B22 and B25. |
 | BQ07 | Resolved for MVP. | Lane controls, both effect levels, and serial routing: B12–B13 and B23. Advanced audio routing is deferred. |
 
-Remaining implementation details are the velocity range/default and default MIDI pitch; event handling when an existing grid shrinks or changes resolution; exact stop-fade duration and conflicting or cyclic stop links; the interaction of lane/track mute and solo; and selection fallback when the active clip or lane is removed. Shared Editor navigation, including opening gestures and no-clip/multiple-clip behavior, remains to be specified in the [clip editor model](modular-audio-units.md#clip-editors). General MIDI-track note priority and gain/pan placement are resolved in the [Units MVP scope](modular-audio-units.md#accepted-units-mvp-scope); MIDI polyphony is deferred. These details must preserve the accepted MVP behavior.
+Remaining implementation details are the velocity range/default and default MIDI pitch; event handling when an existing grid shrinks or changes resolution; exact stop-fade duration and conflicting or cyclic stop links; the interaction of lane/track mute and solo; and selection fallback when the active clip or lane is removed. Shared Editor navigation, including opening gestures and no-clip/multiple-clip behavior, remains to be specified in the [clip editor model](modular-audio-units.md#clip-editors). General MIDI-track voice behavior and gain/pan placement are resolved in the [Units MVP scope](modular-audio-units.md#accepted-units-mvp-scope); polyphonic MIDI beat lanes remain deferred. These details must preserve the accepted MVP behavior.
 
 ## Proposed implementation sequence
 
@@ -145,6 +146,8 @@ Remaining implementation details are the velocity range/default and default MIDI
 The delivery horizon remains proposed on the [MVP roadmap](MVP.md#future-features). Beat tracks, Editor, and its beat pattern editor are not implemented in the current iteration.
 
 ## Validation criteria
+
+Verify that a beat track owns one beat instrument and exposes one output bus after lane processing. Lane source settings, controls, voices, and stop connections must remain independent. Parent effects and gain/pan process the combined output. Verify that pattern edits preserve source isolation and do not change the instrument setup.
 
 Check on/off step scheduling, independent lane sources/effects, mixed audio/MIDI lanes, tempo changes, loop boundaries, pattern save/reopen, and playback/export consistency. Verify one instrument and at most one active voice per lane, different instruments across lanes, and simultaneous playback of separate lanes. Verify that Mixer controls the whole beat track, lane sources/effects/modulators are controlled through the Units view, and the beat pattern editor in Editor handles beat creation. Test voice replacement, one-step MIDI note-off, full-length audio hits, and serial lane/track routing. Add multiple-voice and stealing checks when MIDI polyphony is implemented. Preserve the modular runtime's callback, preparation, and atomic-publication rules.
 
