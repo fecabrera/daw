@@ -17,13 +17,25 @@ impl DawUi {
         next.placed_clips(&clips)
     }
 
-    pub(super) fn resolve_move_preview(&self, mut raw: Vec<ClipPreview>) -> Vec<ClipPreview> {
+    pub(super) fn resolve_move_preview(
+        &self,
+        mut raw: Vec<ClipPreview>,
+        duplicate: bool,
+    ) -> Vec<ClipPreview> {
         if raw.is_empty() {
             return raw;
         }
-        match self.move_project(&raw) {
+        let mut placements = raw.clone();
+        if duplicate {
+            // Keep the originals in the candidate so copies can trim/split them too.
+            // Raw preview IDs still identify the dragged clips for pointer handling.
+            for preview in &mut placements {
+                preview.clip.id = Id::new_v4();
+            }
+        }
+        match self.move_project(&placements) {
             Ok(next) => {
-                let ids = raw.iter().map(|preview| preview.clip.id).collect();
+                let ids = placements.iter().map(|preview| preview.clip.id).collect();
                 raw.extend(self.placement_neighbors(&next, &ids));
             }
             Err(_) => raw.iter_mut().for_each(|preview| preview.valid = false),

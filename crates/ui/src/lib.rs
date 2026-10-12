@@ -556,6 +556,7 @@ impl ClipDragMode {
         }
     }
 }
+#[derive(Clone)]
 struct ClipPreview {
     track: Id,
     // Indices beyond the existing tracks describe preview-only destination rows.
@@ -1346,14 +1347,14 @@ impl DawUi {
         for entry in &mut clips {
             entry.clip.id = Id::new_v4();
         }
-        let edits = clips
+        let placements = clips
             .iter()
-            .map(|entry| Edit::InsertClip {
+            .map(|entry| daw_core::ClipPlacement {
                 track_id: entry.track,
                 clip: entry.clip.clone(),
             })
             .collect();
-        match project.edit(Edit::Batch(edits)) {
+        match project.edit(Edit::OverwriteClips(placements)) {
             Ok(()) => {
                 self.session.project = project;
                 self.select_track(clips[primary].track, false);
@@ -3580,7 +3581,7 @@ impl DawUi {
         if !unsnapped && delta == raw && delta != 0 {
             delta = self.musical_timeline().snap_group_delta(delta, &ranges);
         }
-        let mut previews: Vec<_> = clips
+        let previews: Vec<_> = clips
             .iter()
             .map(|entry| {
                 let track_index = (entry.track_index as i128 + track_delta) as usize;
@@ -3597,25 +3598,6 @@ impl DawUi {
                 }
             })
             .collect();
-        let valid = !drag.duplicate
-            || previews.iter().all(|preview| {
-                preview
-                    .clip
-                    .start_frame
-                    .checked_add(preview.clip.length_frames)
-                    .is_some_and(|end| {
-                        tracks.get(preview.track_index).is_none_or(|track| {
-                            track.clips.iter().all(|clip| {
-                                ignored.contains(&clip.id)
-                                    || end <= clip.start_frame
-                                    || preview.clip.start_frame >= clip.end()
-                            })
-                        })
-                    })
-            });
-        for preview in &mut previews {
-            preview.valid = valid;
-        }
         Some(previews)
     }
     fn clip_drag_previews(&self, drag: &Drag, pointer: Pos2, unsnapped: bool) -> Vec<ClipPreview> {
@@ -3643,8 +3625,8 @@ impl DawUi {
             };
         }
         let raw = self.raw_clip_drag_previews(drag, pointer, unsnapped);
-        if drag.mode == ClipDragMode::Move && !drag.duplicate {
-            self.resolve_move_preview(raw)
+        if drag.mode == ClipDragMode::Move {
+            self.resolve_move_preview(raw, drag.duplicate)
         } else {
             self.resolve_resize_preview(drag, raw)
         }
@@ -4078,7 +4060,7 @@ impl DawUi {
         };
         if (drag.mode.resize_edge().is_some()
             || drag.mode.stretch_edge().is_some()
-            || (drag.mode == ClipDragMode::Move && !drag.duplicate))
+            || drag.mode == ClipDragMode::Move)
             && previews.iter().all(|preview| preview.valid)
         {
             self.mask_neighbor_previews(ui, viewport, &previews[incoming_count..]);
@@ -4630,6 +4612,7 @@ impl DawUi {
 
 #[cfg(test)]
 mod tests {
+    mod clip_duplication;
     mod group_looping;
     mod group_stretch;
     mod menu_shortcuts;
@@ -5375,7 +5358,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_clip_copy_paste_preserves_layout_and_rejects_the_whole_group() {
+    fn multiple_clip_copy_paste_resolves_collisions_and_rejects_invalid_ranges() {
         let (mut app, tracks, ids) = multi_clip_fixture();
         let source = TestWav::new();
         let audio = daw_media::decode_wav(&source.0).unwrap();
@@ -5434,23 +5417,25 @@ mod tests {
             &app.session.audio[&asset].samples,
             &audio.samples
         ));
-        // The first copy would overlap C on the last track; even newly needed tracks roll back.
+        // Pasting over C resolves its collision and creates needed tracks together.
         app.selected_track = Some(app.session.project.tracks[3].id);
         app.session.project.transport.playhead_frame = frames(11.13);
         app.dirty = false;
-        let selection = app.selected_clips.clone();
-        let before = format!("{:?}", app.session.project);
         frame(&mut app, &ctx, vec![egui::Event::Paste(token.clone())]);
-        assert!(app.error.as_ref().unwrap().contains("overlap"));
-        assert_eq!(format!("{:?}", app.session.project), before);
-        assert_eq!(app.selected_clips, selection);
-        assert!(!app.dirty);
-        app.error = None;
+        assert!(app.error.is_none());
+        assert!(app.dirty);
+        assert_eq!(app.session.project.tracks.len(), 5);
+        assert_eq!(app.selected_clips.len(), 3);
+        app.session.project.validate().unwrap();
+        app.dirty = false;
+        let selection = app.selected_clips.clone();
         app.session.project.transport.playhead_frame = u64::MAX - frames(1.0);
         let before = format!("{:?}", app.session.project);
         app.perform_clip_action(ClipAction::Paste, &ctx);
         assert!(app.error.is_some());
         assert_eq!(format!("{:?}", app.session.project), before);
+        assert_eq!(app.selected_clips, selection);
+        assert!(!app.dirty);
         assert_eq!(app.clip_clipboard.as_ref().unwrap().token, token);
     }
     #[test]
@@ -6093,7 +6078,7 @@ mod tests {
         }
     }
     #[test]
-    fn multiple_clip_drag_rejection_clamping_and_focus_loss_are_atomic() {
+    fn multiple_clip_drag_collisions_clamping_and_focus_loss_are_atomic() {
         for duplicate in [false, true] {
             for cancel in [false, true] {
                 let (mut app, tracks, ids) = multi_clip_fixture();
@@ -6133,9 +6118,11 @@ mod tests {
                     Vec2::new(1280.0, 800.0),
                 );
                 let previews = app.clip_drag_previews(app.drag.as_ref().unwrap(), end, true);
-                assert_eq!(previews.len(), if duplicate { 3 } else { 4 });
+                assert_eq!(previews.len(), if duplicate { 6 } else { 4 });
+                assert_eq!(format!("{:?}", app.session.project), before);
+                assert!(!app.dirty);
                 for preview in previews {
-                    assert_eq!(preview.valid, !duplicate);
+                    assert!(preview.valid);
                     if preview.removed {
                         continue;
                     }
@@ -6146,11 +6133,7 @@ mod tests {
                             &preview.clip,
                             preview.clip.start_frame
                         ),
-                        if duplicate {
-                            theme::ERROR
-                        } else {
-                            theme::ACCENT
-                        }
+                        theme::ACCENT
                     ));
                 }
                 let mut output = ctx.run_ui(
@@ -6171,21 +6154,28 @@ mod tests {
                     |ui| app.show(ui),
                 );
                 output.textures_delta.clear();
-                if duplicate || cancel {
+                if cancel {
                     assert_eq!(format!("{:?}", app.session.project), before);
                     assert!(!app.dirty);
                 } else {
                     assert!(app.dirty);
-                    assert!(
-                        !app.session.project.tracks[0]
-                            .clips
-                            .iter()
-                            .any(|clip| clip.name == "Obstacle")
-                    );
+                    if !duplicate {
+                        assert!(
+                            !app.session.project.tracks[0]
+                                .clips
+                                .iter()
+                                .any(|clip| clip.name == "Obstacle")
+                        );
+                    }
                     app.session.project.validate().unwrap();
                 }
-                assert_eq!(app.selected_clips, HashSet::from(ids));
-                assert_eq!(app.error.is_some(), duplicate && !cancel);
+                if duplicate && !cancel {
+                    assert_eq!(app.selected_clips.len(), 3);
+                    assert!(app.selected_clips.is_disjoint(&HashSet::from(ids)));
+                } else {
+                    assert_eq!(app.selected_clips, HashSet::from(ids));
+                }
+                assert!(app.error.is_none());
             }
         }
         let (mut app, tracks, ids) = multi_clip_fixture();
@@ -8380,9 +8370,9 @@ mod tests {
         frame(&mut app, &ctx, vec![egui::Event::Copy]);
         let token = app.clip_clipboard.as_ref().unwrap().token.clone();
         frame(&mut app, &ctx, vec![egui::Event::Paste(token.clone())]);
-        assert!(app.error.as_ref().unwrap().contains("overlap"));
+        assert!(app.error.is_none());
         assert_eq!(app.session.project.tracks[0].clips.len(), 1);
-        assert!(!app.dirty);
+        assert!(app.dirty);
         app.error = None;
         app.pending = Some(Action::New);
         app.perform_pending();
@@ -10434,7 +10424,7 @@ mod tests {
     }
 
     #[test]
-    fn modifier_drag_snaps_to_original_edges_rejects_overlap_and_cancels_on_focus_loss() {
+    fn modifier_drag_snaps_to_original_edges_resolves_overlap_and_cancels_on_focus_loss() {
         let (mut app, track) = fixture();
         let clip = &mut app.session.project.tracks[0].clips[0];
         clip.start_frame = frames(2.63);
@@ -10489,7 +10479,7 @@ mod tests {
             let preview = app
                 .clip_drag_preview(app.drag.as_ref().unwrap(), end, false)
                 .unwrap();
-            assert!(!preview.valid);
+            assert!(preview.valid);
             assert!(has_preview_outline(
                 &shapes,
                 app.clip_block(
@@ -10497,7 +10487,7 @@ mod tests {
                     &preview.clip,
                     preview.clip.start_frame
                 ),
-                theme::ERROR
+                theme::ACCENT
             ));
             let mut output = ctx.run_ui(
                 egui::RawInput {
@@ -10515,16 +10505,28 @@ mod tests {
             );
             output.textures_delta.clear();
             assert!(app.drag.is_none());
-            assert_eq!(app.session.project.tracks[0].clips.len(), 1);
+            assert_eq!(
+                app.session.project.tracks[0].clips.len(),
+                if cancel { 1 } else { 2 }
+            );
             assert_eq!(app.session.project.tracks[0].clips[0].id, original.id);
             assert_eq!(
                 app.session.project.tracks[0].clips[0].start_frame,
                 original.start_frame
             );
-            assert!(!app.dirty);
-            assert_eq!(app.error.is_some(), !cancel);
+            assert_eq!(app.dirty, !cancel);
+            assert!(app.error.is_none());
             if !cancel {
-                assert!(app.error.as_ref().unwrap().contains("overlap"));
+                let retained = &app.session.project.tracks[0].clips[0];
+                assert_eq!(
+                    retained.length_frames,
+                    preview.clip.start_frame - original.start_frame
+                );
+                let copy = &app.session.project.tracks[0].clips[1];
+                assert_ne!(copy.id, original.id);
+                assert_eq!(copy.start_frame, preview.clip.start_frame);
+                assert_eq!(copy.length_frames, original.length_frames);
+                app.session.project.validate().unwrap();
             }
         }
     }
