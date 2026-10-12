@@ -192,3 +192,11 @@ python3 tools/check_cli.py
 ```
 
 See [the scope baseline](docs/MVP.md), [the implementation specification](specs/mvp-iteration-1.md), and [validation results](docs/validation.md). Real-device and cross-platform results must be recorded separately from automated tests.
+
+Future source and effect work follows the [modular audio units design and decisions](docs/modular-audio-units.md). Beat pattern editor requirements, accepted MVP behavior, and remaining implementation details are recorded in the separate [beat pattern editor design](docs/beat-editor.md). The planned audio/MIDI/beat track types and step-based audio/MIDI lanes are design requirements for future implementation. Beat and MIDI patterns will be clip sources: trims and loops preserve them, while pattern edits create a new source without changing other clips.
+
+The agreed view names are **Timeline**, **Units**, **Edit**, and **Mixer**. Edit chooses an audio editor for audio clips, a MIDI pattern editor for MIDI clips, or a beat pattern editor for beat clips. Units and Edit are pending implementation. Initial instrument support will use one active voice per MIDI track and per beat lane; MIDI polyphony is future work.
+
+The [accepted beat pattern editor MVP scope](docs/beat-editor.md#accepted-beat-mvp-scope) in Edit defines the initial grid, velocity controls, lane playback/stop rules, view navigation, and serial effects. Advanced step controls, custom duration modes, lane conversion, and advanced audio routing are deferred.
+
+The [accepted Units MVP scope](docs/modular-audio-units.md#accepted-units-mvp-scope) selects FunDSP behind the shared unit API, serial effects and instrument/modulation graphs, mono voice behavior, transport rules, versioned state, and export tails capped at 10 seconds. It also defines the initial unit set and performance target. Implementation is pending.

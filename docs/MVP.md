@@ -33,7 +33,7 @@ Provide a headless command-line mode from the start, using the same project mode
 | MVP-03 | Clips | Move, trim, split, and delete clips without modifying the source recording. Clips on the same track must not overlap; clips on different tracks can play simultaneously. |
 | MVP-04 | Timeline | Provide a simple timeline with a track list on the left and a toolbar above the timeline containing playback controls. Provide horizontal zoom and scrolling. |
 | MVP-05 | Transport | Play, pause, stop, seek, and loop a selected region. |
-| MVP-06 | Mixing | Mix tracks. Provide a master gain control and peak meters. |
+| MVP-06 | Mixing | Mixer tracks. Provide a master gain control and peak meters. |
 | MVP-07 | Output | Use the system's default audio output device. Display audio initialization errors. If the device disconnects, stop playback safely and display a clear error. |
 | MVP-08 | Projects | Save and open projects stored as folders containing manifest files and an assets directory. Reference external source audio files during the MVP. Open projects with missing sources normally, show a warning, and display affected clips as empty placeholders. |
 | MVP-10 | Export | Export the arrangement as a stereo WAV or MP3 file. |
@@ -334,6 +334,8 @@ Audio file → decoder → sample-rate and channel conversion → internal audio
 
 A decoder trait and clear module boundaries are sufficient for the MVP. A runtime plugin system is a mid-term goal after the MVP. Keep extension interfaces separate from any future plugin discovery and loading mechanism.
 
+Future synth and effect work follows [Modular audio units design and decisions](modular-audio-units.md). Beat-track work follows [Beat pattern editor design and decisions](beat-editor.md). Confirmed requirements include user-built synths/effect chains, the Units view, effects-only audio tracks, sources/effects on MIDI tracks, and a shared unit core for independent distribution as Rust crates and standalone tools. The planned track types are audio, MIDI, and beat. The future Edit view chooses an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor provides step toggles in audio or MIDI lanes, each with its own sources and effects. Beat and MIDI patterns are clip sources: trimming and looping preserve the source, while pattern edits create a new source without changing other clips. The Beat and [Units MVP scopes](modular-audio-units.md#accepted-units-mvp-scope) are accepted, including FunDSP, initial units, routing, voice/transport rules, state ownership, and export tails. Detailed APIs and packaging remain to be specified; these features are not part of the current iteration. The agreed view names are Timeline, Units, Edit, and Mixer. Units and Edit remain future additions.
+
 ## Output buffer and latency
 
 - Request the selected project buffer size; default 512 frames.
@@ -444,7 +446,8 @@ Source management is also a future goal; its delivery horizon remains to be defi
 - Stem separation.
 - Plugin engine.
 - MIDI editing and playback.
-- Instruments.
+- Instruments and effects follow the [accepted Units MVP scope](modular-audio-units.md#accepted-units-mvp-scope): FunDSP behind a shared API; oscillators, noise, sample playback, envelope, LFO, filter, gain, delay, and simple reverb. Use one active voice per MIDI track and per beat lane, with latest-note replacement on MIDI tracks. Include serial track/lane/Master effects, instrument/modulation graphs, agreed transport and persistence rules, and export tails capped at 10 seconds. MIDI polyphony, nested graph editing/presets, latency compensation, SoundFont instruments, spectral effects, and convolution follow later.
+- The Edit view hosts audio, MIDI pattern, and beat pattern editors, chosen by clip type. Audio-editor and MIDI-pattern-editor tools remain to be specified. Beat tracks and the beat pattern editor follow the [accepted beat pattern editor MVP scope](beat-editor.md#accepted-beat-mvp-scope): audio/MIDI lanes; on/off and per-step velocity; one pitch per MIDI lane; a shared 1–16-bar grid at 1/4, 1/8, 1/16, or 1/32 resolution, defaulting to one bar at 1/16. Audio hits play to their end; MIDI notes send note-off after one step, and retriggers replace the lane's voice. Simple lane-stop connections fade the stopped voice; the stopping lane wins when connected lanes trigger together. Units provides lane gain/pan/mute/solo and serial lane/track effects. Open beat clips from Timeline in Edit using the beat pattern editor, and retain clip/lane context in Units. Lane type is fixed at creation. Pattern edits create a new source while clip trims/loops preserve it. MIDI polyphony, custom duration modes, advanced step controls, lane conversion, parallel audio paths, shared-effect sends, and audio sidechains follow later.
 - Automation.
 - Extend undo/redo coverage to mixing controls and the new editing features introduced after the MVP.
 
