@@ -2,7 +2,7 @@
 
 Status: design baseline; implementation pending. Last updated: 2026-10-11.
 
-Users will build synths and effect chains from modular units in a dedicated Units view. The planned track types are audio, MIDI, and beat. Audio tracks will accept effects; MIDI tracks will accept sources and effects. A future Edit view will provide an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor will provide step toggles in audio or MIDI lanes, each with its own sources and effects. Every unit will use a shared core and support independent distribution. These are confirmed requirements. The Units MVP scope below is accepted. Detailed API, layout, and packaging choices remain proposals or implementation details.
+Users will build synths and effect chains from modular units in a dedicated Units view. The planned track types are audio, MIDI, and beat. Audio tracks will accept effects; MIDI tracks will accept sources and effects. A future Editor view will provide an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor will provide step toggles in audio or MIDI lanes, each with its own sources and effects. Every unit will use a shared core and support independent distribution. These are confirmed requirements. The Units MVP scope below is accepted. Detailed API, layout, and packaging choices remain proposals or implementation details.
 
 ## Terms
 
@@ -26,13 +26,13 @@ Users will build synths and effect chains from modular units in a dedicated Unit
 | --- | --- | --- |
 | D01 | Units must be modular so users can build synths and effect chains. | Avoid monolithic instruments or effects that cannot expose reusable components. |
 | D02 | Add the Units view for audio sources and processing. | Users can add oscillators, effects, and other units through this view. Its layout remains open. |
-| D03 | Audio tracks accept effects only. MIDI tracks accept sources and effects. | Track capabilities must constrain unit placement. MIDI tracks are a future addition. |
+| D03 | Audio tracks accept effects only. MIDI tracks accept sources and effects. | Track capabilities must constrain unit placement. Basic MIDI tracks and oscillator instruments are implemented; effect chains remain pending. |
 | D04 | All units share a base core and can ship independently. | Separate common contracts from individual implementations and DAW integration. Distribution targets are defined in D10. |
-| D05 | Add a beat pattern editor in the Edit view with lanes and step toggles for easy beat creation. | Keep step editing distinct from unit/source/effect configuration. |
+| D05 | Add a beat pattern editor in the Editor view with lanes and step toggles for easy beat creation. | Keep step editing distinct from unit/source/effect configuration. |
 | D06 | Support three track types: audio, MIDI, and beat. | Keep track identity separate from editor view mode. |
 | D07 | Every beat lane is an audio lane or a MIDI lane and has its own sources and effects. | Model lane type and processing independently within each beat track. |
 | D08 | Future polyphonic MIDI tracks use multiple voices of one instrument. Each beat lane has one instrument; MIDI lanes can gain polyphony later, and different lanes can use different instruments. | Keep instrument configuration separate from MIDI voice state. |
-| D09 | Name the views Timeline, Units, Edit, and Mixer. | Edit chooses an editor for the clip type; use these names in future view buttons and menus. |
+| D09 | Name the views Timeline, Units, Editor, and Mixer. | Editor chooses an editor for the clip type; use these names in future view buttons and menus. |
 | D10 | Distribute units as reusable Rust crates and standalone tools. | Keep unit implementations independent of the DAW and provide standalone host adapters. |
 | D11 | Treat audio files, MIDI patterns, and beat patterns as clip sources. | Clip trims and loops preserve their underlying source. |
 | D12 | Editing a MIDI or beat pattern creates a new source. | Other clips retain their original source and content. |
@@ -51,19 +51,21 @@ Users will build synths and effect chains from modular units in a dedicated Unit
 | D25 | Initial units add no processing latency; export reported tails up to 10 seconds (Q07). | Warn if tails are truncated; defer automatic latency compensation. |
 | D26 | Version unit state and preserve missing-unit data; separate pattern content from track/lane processing (Q08). | Missing instruments render silence; missing effects pass audio through. Defer nested presets. |
 | D27 | Use FunDSP behind the shared unit API for the initial unit set and performance target (Q10). | Validate integration before expanding the set; keep backend types out of public and saved formats. |
-| D28 | Use one Edit view with an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. | Choose the editor from the clip type. Replace the earlier standalone Beat view. |
+| D28 | Use one Editor view with an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. | Choose the editor from the clip type. Replace the earlier standalone Beat view. |
 
-These decisions define future work. They do not mean that MIDI/beat tracks, the Units view, Edit view, clip editors, units, or plugin loading already exist. The delivery schedule remains on the [MVP roadmap](MVP.md#future-features).
+D29 (2026-10-11) updates the MIDI voice scope: MIDI patterns support simultaneous pitches in playback and export. Drawing replaces notes only on the same pitch, with trim, split, and removal behavior. Prepare voice slots for the actual note overlap and release tails before publication; no fixed voice cap or callback allocation. Beat lanes retain their accepted one-voice MVP scope.
+
+These decisions define the full target scope. Basic MIDI tracks, patterns, oscillator units, and the MIDI Editor view are implemented; beat tracks, graph tools, other clip editors, and plugin loading remain pending. The delivery schedule remains on the [MVP roadmap](MVP.md#future-features).
 
 ## Accepted Units MVP scope
 
-Accepted on 2026-10-11. Q01–Q10 are resolved for the MVP through D10 and D19–D27. This scope defines future implementation; it does not add runtime features or dependencies to the current application.
+Accepted on 2026-10-11. Q01–Q10 are resolved for the MVP through D10 and D19–D27. This scope defines the full Units MVP. The first MIDI/oscillator implementation is described below; the remaining unit set and graph features are pending.
 
 | ID | Initial choice | Deferred work |
 | --- | --- | --- |
 | Q01 | Serial effect chains; a small node graph for instrument construction and modulation. | Nested graph editing. |
 | Q02 | Declared capabilities, typed ports, and shared-core placement validation. Modulators can operate inside audio-track effects. Sound-generating instruments belong on MIDI tracks or beat lanes. | Additional placement capabilities. |
-| Q03 | One active voice per MIDI track or beat lane. For general MIDI tracks, the latest note replaces the current note and restarts its envelope. Note-off affects only the current note. Beat playback follows the accepted Beat rules. | Returning to older held notes, legato, MIDI polyphony, and voice stealing. |
+| Q03 | Polyphonic MIDI tracks under D29, with independent note-offs and prepared voice slots. One active voice per beat lane. Beat playback follows the accepted Beat rules. | Legato, configurable voice limits/stealing, and MIDI-lane polyphony. |
 | Q04 | Mono/stereo audio, modulation signals, and sample-timed note/control events at the project rate. Reject graph cycles. Delay feedback is internal to the delay unit. | Graph-level feedback and additional port layouts. |
 | Q05 | Source/clip output → serial effects → gain/pan → track mix. Beat lanes pass through lane effects and lane gain/pan, then sum into parent effects and parent gain/pan. Serial Master effects precede Master gain and output meters. | Sends and advanced audio routing. |
 | Q06 | Stop and seek reset voices and effects. Pause preserves state. Loop boundaries end active notes while effects continue. Mute suppresses output while processing continues. Smooth bypass changes and publish prepared graph replacements atomically. | More advanced transport-state restoration. |
@@ -80,28 +82,28 @@ The initial performance target is eight simultaneous voices with representative 
 
 ## View names and responsibilities
 
-The view names were revised on 2026-10-11. D28 replaces the standalone Beat view with Edit and updates D05 and D09. The beat pattern editor remains a dedicated editor within Edit.
+The view names were revised on 2026-10-11. D28 replaces the standalone Beat view with Editor and updates D05 and D09. The beat pattern editor remains a dedicated editor within Editor.
 
 | View | Responsibility |
 | --- | --- |
 | Timeline | Arrange clips and patterns on tracks. |
 | Units | Configure sources, effects, and modulators for tracks and beat lanes. |
-| Edit | Edit the active clip using its audio, MIDI pattern, or beat pattern editor. |
+| Editor | Edit the active clip using its audio, MIDI pattern, or beat pattern editor. |
 | Mixer | Control tracks, including each beat track as a whole. |
 
-The current application exposes Timeline and Mixer. Units and Edit remain planned additions.
+The clip-editing view was renamed from Edit to Editor on 2026-10-12. The application exposes Timeline, Units, Editor, and Mixer. Units currently configures an oscillator instrument; Editor currently provides the MIDI piano roll. The remaining source/effect graph tools, audio editor, and beat editor are pending.
 
 ### Clip editors
 
-| Clip type | Editor in the Edit view |
+| Clip type | Editor in the Editor view |
 | --- | --- |
 | Audio | Audio editor. |
 | MIDI | MIDI pattern editor. |
 | Beat | Beat pattern editor. |
 
-Select the editor from the clip being edited, rather than its track or a beat lane's instrument type. A beat clip with audio and MIDI lanes still opens the beat pattern editor. Retain the active clip context when switching between Timeline, Edit, and Units; beat clips also retain their selected lane. Unit configuration stays in Units, and Mixer controls tracks.
+Select the editor from the clip being edited, rather than its track or a beat lane's instrument type. A beat clip with audio and MIDI lanes still opens the beat pattern editor. Retain the active clip context when switching between Timeline, Editor, and Units; beat clips also retain their selected lane. Unit configuration stays in Units, and Mixer controls tracks.
 
-Audio-editor and MIDI-pattern-editor tools, the gesture for opening a clip, and Edit behavior with no active clip or multiple selected clips remain to be specified. The [beat pattern editor design](beat-editor.md) retains the accepted step-editing scope. All editors must preserve source recordings and the pattern-source isolation rules below.
+The first MIDI editor and opening gesture are defined in [MIDI patterns and oscillators](midi-patterns.md). Audio-editor tools and further multi-clip editor behavior remain to be specified. The [beat pattern editor design](beat-editor.md) retains the accepted step-editing scope. All editors must preserve source recordings and the pattern-source isolation rules below.
 
 ## Track capabilities
 
@@ -111,22 +113,40 @@ Audio-editor and MIDI-pattern-editor tools, the gesture for opening a clip, and 
 | MIDI | Sources and effects. |
 | Beat | Each audio or MIDI lane has its own sources, effects, and controls. The parent track has its own effects. Units configures both levels. |
 
-The [Beat pattern editor design and decisions](beat-editor.md) defines the accepted Beat MVP scope and remaining implementation details. The beat pattern editor in Edit handles beat creation. Units configures lane sources, effects, modulators, independent controls, and parent-track effects. Mixer controls each beat track as a whole. Beat lanes should reuse the shared unit core and processing runtime described here.
+The [Beat pattern editor design and decisions](beat-editor.md) defines the accepted Beat MVP scope and remaining implementation details. The beat pattern editor in Editor handles beat creation. Units configures lane sources, effects, modulators, independent controls, and parent-track effects. Mixer controls each beat track as a whole. Beat lanes should reuse the shared unit core and processing runtime described here.
 
 ### Confirmed instrument and voice model
 
-A beat track contains audio or MIDI lanes, each with one instrument. Initially each MIDI track and each beat lane has at most one active instrument voice. The limit is per lane, so multiple beat lanes can sound at the same time. Later MIDI polyphony will provide multiple voices of the same configured instrument on a MIDI track or MIDI lane. Different beat lanes can use different instruments. One instrument may contain several source units, such as oscillators or sample players; those units form the instrument rather than separate instruments.
+A beat track contains audio or MIDI lanes, each with one instrument. Beat lanes initially have one active voice each, so multiple lanes can sound at the same time. MIDI tracks now support multiple simultaneous voices of the same configured instrument under D29. Different beat lanes can use different instruments. One instrument may contain several source units; those units form the instrument rather than separate instruments.
 
-D17's initial scope was confirmed on 2026-10-11. Beat lanes replace the active voice on a new trigger, audio hits play to their end, and MIDI notes send note-off after one step. General MIDI tracks use latest-note replacement with envelope restart; note-off affects only the current note. Older held notes do not resume, and legato is deferred. Future MIDI polyphony limits, allocation, and stealing will be specified for a later implementation.
+D17 originally specified one voice for both MIDI tracks and beat lanes. D29 supersedes that limit for MIDI tracks. Beat lanes retain retrigger replacement, audio hits playing to their end, and MIDI notes sending note-off after one step. General MIDI notes now sound independently, including after seeking into a chord. Voice slots account for overlapping notes and fixed release tails, and are allocated before processing. Configurable limits, stealing, legato, and polyphonic MIDI beat lanes remain future work.
 
 ### Clip sources and pattern editing
 
 Audio files, MIDI patterns, and beat patterns share a clip-source model. Clip placement, trimming, and looping operate independently of source content. Editing a pattern creates a new source for the edited clip, while other clips retain their original source. This requirement was confirmed on 2026-10-11 in D11–D12; the [Beat design](beat-editor.md#pattern-sources-and-clip-editing) records the clip-sharing example and validation criteria. Pattern sources hold immutable note/step content. Tracks and lanes own their instrument/effect setups. Changing a track instrument or its effects intentionally affects clips using that track; it is separate from editing a clip's pattern content.
 
+## First MIDI/oscillator implementation
+
+Implemented on 2026-10-11. See [MIDI patterns and oscillators](midi-patterns.md) for the model, controls, timing, and limits. `daw-unit-core` owns the portable source contract and versioned settings; `daw-oscillator` hides FunDSP. MIDI patterns are embedded immutable assets, and tracks own their oscillator settings. Playback and export use sequential per-track polyphonic voices with independent note-offs and prepared voice slots.
+
+### Shared unit panel
+
+All source, effect, and modulator units in Units must use the same base panel, provided by `PanelStyle::unit` in [panels.rs](../crates/ui/src/panels.rs). Do not build separate panel shells for individual units. Each unit supplies its name and controls to this shared component.
+
+- The header spans the panel’s inner width and displays the unit name, without repeating the track name.
+- Use the active application accent for the header background and the mixer strip’s contrasting foreground rule for centered text. Deep Orange and Purple use bright text; Yellow uses dark text. Update both when the accent changes.
+- Share the mixer strip’s 24-point header height and 11-point text size through the common panel constants.
+- Use the current theme’s neutral panel background for controls, with the shared thin border and 10-point body padding. Keep the header flush with the panel edges inside that border. Share one 1-point divider between the playback toolbar and Units, without an extra gap or stacked top borders.
+- Reuse the standard knobs, faders, numeric fields, and dropdowns. Individual units define their parameters inside the body; they retain the same panel shell in both themes.
+
+The Oscillator panel uses this base panel. Future units must reuse it.
+
+This is the first working path. Serial effects, graph connections, other source/modulator units, standalone interfaces, and the full Units performance workload remain pending.
+
 ## Existing architecture to preserve
 
 - [core](../crates/core/src/lib.rs) owns project entities, stable IDs, validation, and transactional edits. Keep device and UI dependencies out of this crate.
-- [engine](../crates/engine/src/lib.rs) supplies shared mixing and transport. Its current `RenderPlan::sample_at` and `render` read prepared audio at arbitrary frames. Stateful oscillators, filters, and delays require a processing runtime that advances state in sequence; adding them to random frame lookup alone is insufficient.
+- [engine](../crates/engine/src/lib.rs) supplies shared mixing and transport. `RenderPlan::sample_at` and `render` read prepared audio at arbitrary frames. MIDI oscillators advance through the sequential runtime shared by `Renderer::next_sample` and `render_offline`. Future filters and delays must use that runtime; do not add stateful processing to random frame lookup alone.
 - [project](../crates/project/src/lib.rs) owns sessions, persistence, asset paths, prepared audio, and export orchestration.
 - [output](../crates/output/src/lib.rs) owns CPAL output, device conversion, bounded queues, and renderer retirement. Preserve allocation-free, nonblocking callbacks and retire final audio owners outside them.
 - The project processing rate is selectable from 44.1 to 192 kHz. Buffer sizes range from 32 to 4096 samples. Defaults are 48 kHz and 512 samples. Units must receive these settings explicitly and handle variable callback sizes.
@@ -185,7 +205,7 @@ Rebuild affected units when the processing rate changes, using the existing prep
 
 ## Library findings and recommendations
 
-Library findings were reviewed on 2026-10-11. FunDSP is the accepted MVP backend behind the shared unit API. Its integration is pending. The other libraries remain candidates for later or specific needs; their inclusion is not approved by this scope.
+Library findings were reviewed on 2026-10-11. FunDSP is the accepted MVP backend behind the shared unit API. Its oscillator integration is implemented behind `daw-unit-core`; other unit families remain pending. The other libraries remain candidates for later or specific needs; their inclusion is not approved by this scope.
 
 | Library | Findings | Proposed role | License reported by the project |
 | --- | --- | --- | --- |
@@ -243,12 +263,12 @@ These details must preserve the accepted behavior. Specify future polyphony, nes
 1. Define the shared API and persisted graph model within the accepted scope. Specify the remaining implementation details needed for the first units.
 2. Validate the architecture with a small MIDI synth graph using one voice per MIDI track, and an audio-track effect graph. Keep the initial unit set small.
 3. Integrate block processing, events, transport, and atomic graph publication into the shared engine.
-4. Add the Units view and project persistence over that same model. Add Edit with editor selection by clip type. Implement the accepted beat pattern editor MVP scope over shared event scheduling and unit processing, after specifying its remaining implementation details.
+4. Add the Units view and project persistence over that same model. Add Editor with editor selection by clip type. Implement the accepted beat pattern editor MVP scope over shared event scheduling and unit processing, after specifying its remaining implementation details.
 5. Package reusable Rust crates and add standalone tools after the unit contract works in both playback and export.
 
 Before expanding the unit set, check source rejection on audio tracks, invalid-graph rollback, parameter smoothing, event timing, every supported project rate/buffer size, variable block sizes, save/reopen, and playback/export consistency. Measure callback allocation and blocking behavior, CPU/memory use, and native-device stability. Verify latest-note replacement and stale note-off handling, transport resets, preserved pause state, loop voice termination with continuing effects, mute processing, smooth bypass, and atomic graph replacement. Test the absence of added processing latency, tail rendering and truncation notices, missing-unit fallback/data preservation, and pattern-versus-track ownership. Measure the accepted eight-voice workload and record its hardware and results.
 
-Verify that audio, MIDI, and beat clips open their respective editors in Edit, including beat clips with mixed audio/MIDI lanes. Check clip/lane context retention across Timeline, Edit, and Units. Beat-specific validation criteria are recorded in the [beat pattern editor design](beat-editor.md#validation-criteria).
+Verify that audio, MIDI, and beat clips open their respective editors in Editor, including beat clips with mixed audio/MIDI lanes. Check clip/lane context retention across Timeline, Editor, and Units. Beat-specific validation criteria are recorded in the [beat pattern editor design](beat-editor.md#validation-criteria).
 
 ## Decision record maintenance
 

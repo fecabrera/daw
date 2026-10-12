@@ -1,3 +1,4 @@
+mod midi;
 use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
 use daw_media::AudioData;
 use std::collections::HashMap;
@@ -91,6 +92,7 @@ pub struct Renderer {
     playback_start: Option<u64>,
     pub ramp: f32,
     gains: Vec<TrackGains>,
+    midi: Vec<Option<midi::MidiTrackRuntime>>,
     master: f32,
     master_target: f32,
     master_remaining: u32,
@@ -136,7 +138,14 @@ impl Renderer {
             .collect();
         let master = linear_gain(plan.project.master.gain_db);
         let playhead = plan.project.transport.playhead_frame;
+        let midi = plan
+            .project
+            .tracks
+            .iter()
+            .map(|track| midi::MidiTrackRuntime::new(&plan.project, track))
+            .collect();
         Self {
+            midi,
             plan,
             playhead,
             playing: false,
@@ -152,7 +161,7 @@ impl Renderer {
             previous: [0.0; 2],
         }
     }
-    pub fn inherit(&mut self, old: &Self) {
+    pub fn inherit(&mut self, old: &mut Self) {
         let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
         self.playhead = old.playhead;
         self.playing = old.playing;
@@ -164,6 +173,22 @@ impl Renderer {
         self.previous = old.previous;
         self.transition_from = old.previous;
         self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
+        for (index, runtime) in self.midi.iter_mut().enumerate() {
+            let id = self.plan.project.tracks[index].id;
+            if let Some(previous) = old
+                .plan
+                .project
+                .tracks
+                .iter()
+                .position(|track| track.id == id)
+                && runtime
+                    .as_ref()
+                    .zip(old.midi[previous].as_ref())
+                    .is_some_and(|(a, b)| a.compatible(b))
+            {
+                std::mem::swap(runtime, &mut old.midi[previous]);
+            }
+        }
         for g in &mut self.gains {
             if let Some(o) = old.gains.iter().find(|o| o.id == g.id) {
                 g.value = o.value;
@@ -174,6 +199,9 @@ impl Renderer {
         }
     }
     pub fn seek(&mut self, frame: u64) {
+        for runtime in self.midi.iter_mut().flatten() {
+            runtime.reset();
+        }
         self.playhead = frame;
         self.transition_from = self.previous;
         self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
@@ -194,10 +222,33 @@ impl Renderer {
         self.playing = false;
     }
     pub fn stop(&mut self) {
+        for runtime in self.midi.iter_mut().flatten() {
+            runtime.reset();
+        }
         self.playing = false;
         self.paused = false;
         if let Some(start) = self.playback_start.take() {
             self.seek(start);
+        }
+    }
+    pub fn render_offline(&mut self, out: &mut [[f32; 2]]) {
+        for sample in out {
+            let mut mix = [0.0; 2];
+            for (track, midi) in self.plan.project.tracks.iter().zip(&mut self.midi) {
+                if let Some(runtime) = midi {
+                    let source = runtime.sample(self.playhead);
+                    if self.plan.project.audible(track) {
+                        let pan = pan_coefficients(track.pan, true);
+                        for ch in 0..2 {
+                            mix[ch] += source * linear_gain(track.gain_db) * pan[ch];
+                        }
+                    }
+                }
+            }
+            let audio = self.plan.sample_at(self.playhead);
+            let gain = linear_gain(self.plan.project.master.gain_db);
+            *sample = [audio[0] + mix[0] * gain, audio[1] + mix[1] * gain];
+            self.playhead += 1;
         }
     }
     /// Reset once per output buffer, outside the per-sample loop.
@@ -225,6 +276,9 @@ impl Renderer {
                 && l.enabled
                 && (self.playhead < l.start_frame || self.playhead >= l.end_frame)
             {
+                for runtime in self.midi.iter_mut().flatten() {
+                    runtime.end_notes();
+                }
                 self.playhead = l.start_frame;
                 self.transition_from = self.previous;
                 self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
@@ -232,12 +286,34 @@ impl Renderer {
             if self.playing && !l.enabled && self.playhead >= self.plan.project.end() {
                 self.playing = false;
             }
-            for (t, g) in self.plan.project.tracks.iter().zip(&mut self.gains) {
+            for ((t, g), midi) in self
+                .plan
+                .project
+                .tracks
+                .iter()
+                .zip(&mut self.gains)
+                .zip(&mut self.midi)
+            {
                 if g.remaining > 0 {
                     for ch in 0..4 {
                         g.value[ch] += (g.target[ch] - g.value[ch]) / g.remaining as f32;
                     }
                     g.remaining -= 1;
+                }
+                if let Some(runtime) = midi {
+                    {
+                        let source = if self.playing {
+                            runtime.sample(self.playhead)
+                        } else {
+                            runtime.held_sample()
+                        };
+                        for (ch, value) in mix.iter_mut().enumerate() {
+                            let sample = source * g.value[ch];
+                            *value += sample;
+                            g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
+                        }
+                    }
+                    continue;
                 }
                 if let Some(c) = t
                     .clips
@@ -314,6 +390,7 @@ mod tests {
             bits_per_sample: 32,
         };
         project.assets.push(Asset {
+            midi_pattern: None,
             id,
             name: "Test".into(),
             source: Source {
@@ -482,7 +559,7 @@ mod tests {
             renderer.next_sample();
         }
         let mut next = Renderer::new(plan());
-        next.inherit(&renderer);
+        next.inherit(&mut renderer);
         assert!(next.playing);
         next.pause();
         next.stop();
@@ -566,7 +643,7 @@ mod tests {
         next_plan.project.tracks[0].pan = 0.5;
         next_plan.project.master.gain_db = -6.0;
         let mut next = Renderer::new(next_plan);
-        next.inherit(&old);
+        next.inherit(&mut old);
         for _ in 0..240 {
             next.next_sample();
         }

@@ -5,6 +5,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 ## Current features
 
 - **Timeline:** arrange audio clips, trim, loop, stretch, move, copy, and duplicate selections. Placement and resizing make room by trimming, splitting, or removing covered clips. Edits preview before committing, with grid snapping and Shift to bypass it.
+- **MIDI:** create MIDI tracks and patterns. Editor notes in a piano roll and choose sine, saw, square, or triangle oscillators in Units. Patterns support playback, clip editing, and export.
 - **Mixer:** adjust track gain, pan, mute, and solo, plus master gain. Timeline and Mixer share controls, values, and selection.
 - **Playback:** tempo-based ruler, loop selection, stereo meters, and trackpad scrolling and zoom.
 - **Projects:** folder-based saves, project naming, and configurable processing sample rate and buffer size. Source recordings remain external and unchanged.
@@ -13,11 +14,11 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 ## Status and planned work
 
-The project format is experimental. Current tracks use audio files. Undo/redo is outside the current MVP. Missing sources remain visible and render as silence; saving a project does not bundle its recordings.
+The project format is experimental. Tracks support external audio files and embedded MIDI patterns. Undo/redo is outside the current MVP. Missing sources remain visible and render as silence; saving a project does not bundle its recordings.
 
-The planned views are **Timeline**, **Units**, **Edit**, and **Mixer**. Units will configure sources, effects, and modulators. Edit will choose an audio, MIDI pattern, or beat pattern editor for the selected clip type. Units, Edit, MIDI tracks, and beat tracks are pending implementation.
+The views are **Timeline**, **Units**, **Editor**, and **Mixer**. Units currently configures the MIDI oscillator instrument. Editor provides a basic MIDI piano roll. Audio and beat editors, beat tracks, effect chains, and instrument graphs are planned.
 
-MIDI and beat patterns will be immutable clip sources: trimming and looping will preserve the source, while pattern edits will create a new source without changing other clips. Initial instrument support will use one voice per MIDI track and per beat lane.
+MIDI patterns are immutable clip sources: trimming and looping preserve the source, while pattern edits create a new source without changing other clips. MIDI tracks play overlapping pitches with multiple voices of their configured instrument. Beat patterns will follow the same source model.
 
 ## Build and run
 
@@ -40,7 +41,7 @@ The desktop requires an OpenGL-capable graphics driver on Windows. No separate W
 #### Configure libclang
 
 1. Install LLVM and check that `libclang.dll` exists, usually at `C:\Program Files\LLVM\bin\libclang.dll`.
-2. Open Windows **Edit environment variables for your account**. Add a user variable named `LIBCLANG_PATH` with value `C:\Program Files\LLVM\bin`. If LLVM is installed elsewhere, use the folder that contains the DLL. Set the folder, not the DLL file.
+2. Open Windows **Editor environment variables for your account**. Add a user variable named `LIBCLANG_PATH` with value `C:\Program Files\LLVM\bin`. If LLVM is installed elsewhere, use the folder that contains the DLL. Set the folder, not the DLL file.
 3. Fully close and reopen your terminal and IDE so they receive the new environment variable.
 
 See the [bindgen requirements](https://rust-lang.github.io/rust-bindgen/requirements.html#windows) for LLVM installation details. Setting `LIBCLANG_PATH` does not install the DLL.
@@ -94,9 +95,10 @@ cargo run -p daw-desktop
 
 - [Project scope](docs/MVP.md) and [implementation specification](specs/mvp-iteration-1.md).
 - [Modular audio units](docs/modular-audio-units.md) and [beat pattern editor](docs/beat-editor.md) designs and decisions.
+- [MIDI patterns and oscillators](docs/midi-patterns.md), including current controls and limits.
 - [Validation records](docs/validation.md).
 - [Contribution and development instructions](AGENTS.md), including architecture, documentation rules, and checks.
 
 ## Licenses
 
-Original code uses the [BSD 2-Clause License](LICENSE). Bundled dependencies have separate terms. Their notices are included with the [media libraries](crates/media/assets/licenses), [fonts](crates/ui/assets/fonts), [icons](crates/ui/assets/icons), and [UI dependencies](crates/ui/assets/licenses).
+Original code uses the [BSD 2-Clause License](LICENSE). Bundled dependencies have separate terms. Their notices are included with the [media libraries](crates/media/assets/licenses), [fonts](crates/ui/assets/fonts), [icons](crates/ui/assets/icons), [UI dependencies](crates/ui/assets/licenses), and [oscillator dependencies](crates/oscillator/assets/licenses).

@@ -1,10 +1,9 @@
 use super::*;
+use crate::panels::{HEADER_FONT_SIZE, HEADER_HEIGHT};
 
 const STRIP_WIDTH: f32 = 108.0;
 const STRIP_MARGIN: f32 = 7.0;
 const CONTROL_SPACING: f32 = 6.0;
-const HEADER_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 2.0;
-pub(super) const HEADER_FONT_SIZE: f32 = 11.0;
 
 // Leave the bottom edge to the single mixer/status separator.
 fn strip_edges(ui: &egui::Ui, rect: Rect, stroke: Stroke) {
@@ -24,16 +23,20 @@ fn strip_edges(ui: &egui::Ui, rect: Rect, stroke: Stroke) {
 pub enum ViewMode {
     #[default]
     Timeline,
+    Units,
+    Edit,
     Mixer,
 }
 
 impl ViewMode {
-    pub const ALL: [Self; 2] = [Self::Timeline, Self::Mixer];
+    pub const ALL: [Self; 4] = [Self::Timeline, Self::Units, Self::Edit, Self::Mixer];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Timeline => "Timeline",
             Self::Mixer => "Mixer",
+            Self::Units => "Units",
+            Self::Edit => "Editor",
         }
     }
 }
@@ -45,6 +48,7 @@ impl DawUi {
 
     pub fn view_switch_enabled(&self) -> bool {
         self.settings_enabled()
+            && !self.midi_editor.dragging()
             && self.time_drag.is_none()
             && self.musical_drag.is_none()
             && self.selection_drag.iter().all(Option::is_none)
@@ -55,6 +59,7 @@ impl DawUi {
             return;
         }
         self.view_mode = mode;
+        self.midi_editor.cancel();
         self.track_name_edit = None;
         self.tempo_edit = None;
         self.inputs.clear();

@@ -57,6 +57,13 @@ impl Project {
         next.transport.r#loop.start_frame = scale(next.transport.r#loop.start_frame)?;
         next.transport.r#loop.end_frame = scale(next.transport.r#loop.end_frame)?;
         next.sample_rate_hz = sample_rate_hz;
+        for index in 0..next.assets.len() {
+            if let Some(pattern) = &next.assets[index].midi_pattern {
+                next.assets[index].decoded_frame_count = next.midi_frame(pattern.length_ticks);
+                next.assets[index].source_metadata.sample_rate_hz = sample_rate_hz;
+            }
+        }
+        next.bound_retimed_midi_sources()?;
         next.validate()?;
         Ok(next)
     }
@@ -72,6 +79,7 @@ mod tests {
         let track = project.add_track().unwrap();
         let asset = crate::Id::new_v4();
         project.assets.push(crate::Asset {
+            midi_pattern: None,
             id: asset,
             name: "source.wav".into(),
             source: crate::Source {

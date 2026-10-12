@@ -30,7 +30,7 @@ fn menu_and_view_buttons_share_one_row_with_a_separator() {
                         })
                         .unwrap_or_else(|| panic!("Missing label: {label}"))
                 };
-                let rects = ["Timeline", "Mixer"].map(label_rect);
+                let rects = ViewMode::ALL.map(|mode| label_rect(mode.label()));
                 for pair in rects.windows(2) {
                     assert!(pair[0].right() < pair[1].left());
                     assert!((pair[0].center().y - pair[1].center().y).abs() < 0.1);
@@ -42,9 +42,9 @@ fn menu_and_view_buttons_share_one_row_with_a_separator() {
                 }));
                 assert!(!shapes.iter().any(|shape| {
                     matches!(&shape.shape, egui::Shape::Text(text)
-                        if ["File", "Edit", "Track", "View"].contains(&text.galley.text()))
+                        if ["File", "Track", "View"].contains(&text.galley.text()))
                 }));
-                let timeline_index = rects.len() - 2;
+                let timeline_index = 0;
                 let menus_right = f32::from(theme::TOOLBAR_PADDING) + 28.0;
                 let separators = shapes
                     .iter()
@@ -61,7 +61,7 @@ fn menu_and_view_buttons_share_one_row_with_a_separator() {
 
                 let project = format!("{:?}", app.session.project);
                 let (target, index) = if mode == ViewMode::Timeline {
-                    (ViewMode::Mixer, timeline_index + 1)
+                    (ViewMode::Mixer, rects.len() - 1)
                 } else {
                     (ViewMode::Timeline, timeline_index)
                 };
@@ -148,7 +148,7 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                 let name = shapes
                     .iter()
                     .find_map(|shape| match &shape.shape {
-                        egui::Shape::Text(text) if text.galley.text() == "Track 1" => Some(text),
+                        egui::Shape::Text(text) if text.galley.text() == "Audio 1" => Some(text),
                         _ => None,
                     })
                     .unwrap();
@@ -638,7 +638,7 @@ fn mixer_name_editing_and_out_of_range_gain_survive_display() {
     app.view_mode = crate::mixer::ViewMode::Mixer;
     app.session.project.tracks[0].gain_db = 20.0;
     let ctx = context();
-    let point = label_point(&mut app, &ctx, "Track 1", None);
+    let point = label_point(&mut app, &ctx, "Audio 1", None);
     assert_eq!(app.session.project.tracks[0].gain_db, 20.0);
     assert!(!app.dirty);
     click(&mut app, &ctx, point);

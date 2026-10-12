@@ -2,13 +2,73 @@ use super::*;
 use daw_core::ClipPlacement;
 
 impl DawUi {
-    fn move_project(&self, previews: &[ClipPreview]) -> daw_core::Result<daw_core::Project> {
+    pub(super) fn add_placement_track(
+        &self,
+        project: &mut daw_core::Project,
+        clip: &Clip,
+    ) -> daw_core::Result<Id> {
+        let midi = project
+            .assets
+            .iter()
+            .find(|a| a.id == clip.asset_id)
+            .is_some_and(|a| a.midi_pattern.is_some());
+        if midi {
+            let instrument = self
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.clips.iter().any(|c| c.id == clip.id))
+                .or_else(|| {
+                    self.session
+                        .project
+                        .tracks
+                        .iter()
+                        .find(|t| t.clips.iter().any(|c| c.asset_id == clip.asset_id))
+                })
+                .and_then(|t| t.instrument.clone());
+            let id = project.add_midi_track()?;
+            project.tracks.last_mut().unwrap().instrument = instrument;
+            Ok(id)
+        } else {
+            project.add_track()
+        }
+    }
+
+    pub(super) fn prepare_placement_tracks(
+        &self,
+        project: &mut daw_core::Project,
+        placements: &[(usize, &Clip)],
+    ) -> daw_core::Result<()> {
+        let Some(last) = placements.iter().map(|(index, _)| *index).max() else {
+            return Ok(());
+        };
+        while project.tracks.len() <= last {
+            let index = project.tracks.len();
+            if let Some((_, clip)) = placements.iter().find(|(target, _)| *target == index) {
+                self.add_placement_track(project, clip)?;
+            } else {
+                project.add_track()?;
+            }
+        }
+        Ok(())
+    }
+
+    fn move_project(
+        &self,
+        previews: &[ClipPreview],
+        originals: &[ClipPreview],
+    ) -> daw_core::Result<daw_core::Project> {
         let mut next = self.session.project.clone();
+        self.prepare_placement_tracks(
+            &mut next,
+            &originals
+                .iter()
+                .map(|p| (p.track_index, &p.clip))
+                .collect::<Vec<_>>(),
+        )?;
         let mut clips = Vec::with_capacity(previews.len());
         for preview in previews {
-            while next.tracks.len() <= preview.track_index {
-                next.add_track()?;
-            }
             clips.push(ClipPlacement {
                 track_id: next.tracks[preview.track_index].id,
                 clip: preview.clip.clone(),
@@ -33,7 +93,7 @@ impl DawUi {
                 preview.clip.id = Id::new_v4();
             }
         }
-        match self.move_project(&placements) {
+        match self.move_project(&placements, &raw) {
             Ok(next) => {
                 let ids = placements.iter().map(|preview| preview.clip.id).collect();
                 raw.extend(self.placement_neighbors(&next, &ids));
@@ -124,13 +184,17 @@ impl DawUi {
             .unwrap_or(0);
         if drag.duplicate {
             let mut next = self.session.project.clone();
+            if let Err(error) = self.prepare_placement_tracks(
+                &mut next,
+                &previews
+                    .iter()
+                    .map(|p| (p.track_index, &p.clip))
+                    .collect::<Vec<_>>(),
+            ) {
+                self.fail(error);
+                return;
+            }
             for preview in &mut previews {
-                while next.tracks.len() <= preview.track_index {
-                    if let Err(error) = next.add_track() {
-                        self.fail(error);
-                        return;
-                    }
-                }
                 preview.track = next.tracks[preview.track_index].id;
             }
             let clips = previews
@@ -154,7 +218,7 @@ impl DawUi {
         }) {
             return;
         }
-        match self.move_project(&previews) {
+        match self.move_project(&previews, &previews) {
             Ok(next) => {
                 let track = next.tracks[previews[primary].track_index].id;
                 self.selected_clip = Some(drag.clip.id);

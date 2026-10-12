@@ -1,3 +1,6 @@
+mod midi;
+pub use daw_unit_core::{OscillatorSettings, Waveform};
+pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, TrackKind};
 mod audio_settings;
 mod boundary;
 mod looping;
@@ -134,6 +137,8 @@ pub struct Master {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Asset {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub midi_pattern: Option<MidiPattern>,
     pub id: Id,
     pub name: String,
     pub source: Source,
@@ -155,6 +160,10 @@ pub struct SourceMetadata {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Track {
+    #[serde(default)]
+    pub kind: TrackKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument: Option<OscillatorSettings>,
     pub id: Id,
     pub name: String,
     /// Default color for this track's clips; older projects assign it by track position.
@@ -406,6 +415,23 @@ impl Project {
             if !ids.insert(a.id) {
                 return Err(invalid("Duplicate asset ID"));
             }
+            if let Some(pattern) = &a.midi_pattern {
+                pattern.validate()?;
+                if a.source.kind != "midi_pattern"
+                    || a.source.path_kind != "embedded"
+                    || !a.source.path.is_empty()
+                    || a.decoded_frame_count == 0
+                    || a.decoded_frame_count == u64::MAX
+                    || a.decoded_frame_count != self.midi_frame(pattern.length_ticks)
+                    || pattern.notes.iter().any(|note| {
+                        self.midi_frame(note.start_tick + note.length_ticks)
+                            <= self.midi_frame(note.start_tick)
+                    })
+                {
+                    return Err(invalid("Invalid MIDI pattern source"));
+                }
+                continue;
+            }
             if a.source.kind != "external"
                 || !matches!(a.source.path_kind.as_str(), "relative" | "absolute")
                 || a.source.path.is_empty()
@@ -436,6 +462,14 @@ impl Project {
             {
                 return Err(invalid("Invalid track gain or pan"));
             }
+            if t.instrument
+                .as_ref()
+                .is_some_and(|instrument| t.kind != TrackKind::Midi || !instrument.valid())
+            {
+                return Err(invalid(
+                    "Invalid instrument or source instrument on an audio track",
+                ));
+            }
             let mut previous_end = 0;
             let mut clips = t.clips.iter().collect::<Vec<_>>();
             clips.sort_by_key(|c| c.start_frame);
@@ -444,6 +478,10 @@ impl Project {
                     return Err(invalid("Duplicate clip ID"));
                 }
                 self.validate_clip(c)?;
+                let asset = self.assets.iter().find(|a| a.id == c.asset_id).unwrap();
+                if (t.kind == TrackKind::Midi) != asset.midi_pattern.is_some() {
+                    return Err(invalid("Clip source type does not match track type"));
+                }
                 if c.start_frame < previous_end {
                     return Err(invalid("Clips cannot overlap on the same track"));
                 }
@@ -492,8 +530,10 @@ impl Project {
     pub fn add_track(&mut self) -> Result<Id> {
         let id = Id::new_v4();
         self.tracks.push(Track {
+            kind: TrackKind::Audio,
+            instrument: None,
             id,
-            name: format!("Track {}", self.tracks.len() + 1),
+            name: format!("Audio {}", self.tracks.len() + 1),
             color: default_track_color(self.tracks.len()),
             gain_db: 0.0,
             pan: 0.0,
@@ -513,6 +553,26 @@ impl Project {
 
     fn apply_edit(&mut self, command: Edit) -> Result<()> {
         match command {
+            Edit::ResizeMidiPattern {
+                clip_id,
+                start_tick,
+                end_tick,
+            } => {
+                self.apply_midi_pattern_resize(clip_id, start_tick, end_tick)?;
+            }
+            Edit::ReplaceMidiPattern { clip_id, pattern } => {
+                self.replace_midi_pattern(clip_id, pattern)?
+            }
+            Edit::SetInstrument {
+                track_id,
+                instrument,
+            } => {
+                self.tracks
+                    .iter_mut()
+                    .find(|t| t.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?
+                    .instrument = instrument;
+            }
             Edit::Batch(commands) => {
                 for command in commands {
                     self.apply_edit(command)?;
@@ -535,7 +595,7 @@ impl Project {
                 }
                 if bpm != self.tempo_bpm {
                     // Beat position = frames * BPM / (sample rate * 60).
-                    // Only starts move. Source ranges and playback duration stay intact.
+                    // Audio lengths stay fixed. MIDI ranges scale with their beat-timed notes.
                     let ratio = f64::from(self.tempo_bpm) / f64::from(bpm);
                     let checked_frame = |frame: f64| {
                         // u64::MAX rounds up to 2^64 as f64. Reject before casting.
@@ -544,10 +604,38 @@ impl Project {
                         }
                         Ok(frame as u64)
                     };
-                    for clip in self.tracks.iter_mut().flat_map(|track| &mut track.clips) {
-                        clip.start_frame =
-                            checked_frame((clip.start_frame as f64 * ratio).round())?;
+                    for track in &mut self.tracks {
+                        for clip in &mut track.clips {
+                            if track.kind == TrackKind::Midi {
+                                clip.length_frames =
+                                    checked_frame((clip.length_frames as f64 * ratio).round())?;
+                                clip.source_offset_frame = checked_frame(
+                                    (clip.source_offset_frame as f64 * ratio).round(),
+                                )?;
+                                if let Some(repeat) = &mut clip.repeat {
+                                    repeat.length_frames = checked_frame(
+                                        (repeat.length_frames as f64 * ratio).round(),
+                                    )?;
+                                    repeat.phase_frame =
+                                        checked_frame((repeat.phase_frame as f64 * ratio).round())?;
+                                }
+                            }
+                            clip.start_frame =
+                                checked_frame((clip.start_frame as f64 * ratio).round())?;
+                        }
                     }
+                    for asset in &mut self.assets {
+                        if let Some(pattern) = &asset.midi_pattern {
+                            asset.decoded_frame_count = checked_frame(
+                                (f64::from(pattern.length_ticks)
+                                    * f64::from(self.sample_rate_hz)
+                                    * 60.0
+                                    / (f64::from(bpm) * f64::from(MIDI_TICKS_PER_BEAT)))
+                                .round(),
+                            )?;
+                        }
+                    }
+                    self.bound_retimed_midi_sources()?;
                     let region = &mut self.transport.r#loop;
                     // Match ruler snapping: fractional beat boundaries must not land
                     // in the preceding beat in the selection monitor.
@@ -689,6 +777,19 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    ResizeMidiPattern {
+        clip_id: Id,
+        start_tick: i64,
+        end_tick: i64,
+    },
+    ReplaceMidiPattern {
+        clip_id: Id,
+        pattern: MidiPattern,
+    },
+    SetInstrument {
+        track_id: Id,
+        instrument: Option<OscillatorSettings>,
+    },
     /// Apply all commands and validate the final state as one transaction.
     Batch(Vec<Edit>),
     /// Place clips with priority over existing ranges, trimming/splitting neighbors.
@@ -712,7 +813,8 @@ pub enum Edit {
     },
     /// Retain clip start beat positions, rounding to the nearest sample frame.
     /// Scale loop-selection endpoints too, rounding up as with ruler snapping.
-    /// Lengths stay unchanged; final overlap/bounds validation is transactional.
+    /// Audio lengths stay unchanged; MIDI ranges retain their beat timing.
+    /// Final overlap/bounds validation is transactional.
     SetTempo {
         bpm: f32,
     },

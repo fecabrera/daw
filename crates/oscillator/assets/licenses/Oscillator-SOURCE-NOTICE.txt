@@ -1,0 +1,59 @@
+Oscillator dependency notices
+
+FunDSP is used behind the shared unit API. The bundled dependencies below are distributed under their MIT license option. Their full license texts are included beside this notice.
+
+dyn-clone 1.0.20: https://crates.io/crates/dyn-clone/1.0.20
+Upstream: https://github.com/dtolnay/dyn-clone
+License: MIT OR Apache-2.0; included text: dyn-clone-1.0.20-MIT.txt
+
+fundsp 0.23.0: https://crates.io/crates/fundsp/0.23.0
+Upstream: https://github.com/SamiPerttu/fundsp
+License: MIT OR Apache-2.0; included text: fundsp-0.23.0-MIT.txt
+
+funutd 0.16.0: https://crates.io/crates/funutd/0.16.0
+Upstream: https://github.com/SamiPerttu/funutd
+License: MIT OR Apache-2.0; included text: funutd-0.16.0-MIT.txt
+
+generic-array 1.4.5: https://crates.io/crates/generic-array/1.4.5
+Upstream: https://github.com/fizyk20/generic-array.git
+License: MIT; included text: generic-array-1.4.5-MIT.txt
+
+glam 0.28.0: https://crates.io/crates/glam/0.28.0
+Upstream: https://github.com/bitshifter/glam-rs
+License: MIT OR Apache-2.0; included text: glam-0.28.0-MIT.txt
+
+hashbrown 0.14.5: https://crates.io/crates/hashbrown/0.14.5
+Upstream: https://github.com/rust-lang/hashbrown
+License: MIT OR Apache-2.0; included text: hashbrown-0.14.5-MIT.txt
+
+microfft 0.6.0: https://crates.io/crates/microfft/0.6.0
+Upstream: https://gitlab.com/teskje/microfft-rs
+License: MIT; included text: microfft-0.6.0-MIT.txt
+
+numeric-array 0.6.1: https://crates.io/crates/numeric-array/0.6.1
+Upstream: https://github.com/novacrazy/numeric-array
+License: MIT OR Apache-2.0; included text: numeric-array-0.6.1-MIT.txt
+
+resampler 0.4.1: https://crates.io/crates/resampler/0.4.1
+Upstream: https://github.com/hasenbanck/resampler
+License: Apache-2.0 OR MIT; included text: resampler-0.4.1-MIT.txt
+
+safe_arch 1.2.0: https://crates.io/crates/safe_arch/1.2.0
+Upstream: https://github.com/Lokathor/safe_arch
+License: Zlib OR Apache-2.0 OR MIT; included text: safe_arch-1.2.0-MIT.txt
+
+thingbuf 0.1.6: https://crates.io/crates/thingbuf/0.1.6
+Upstream: https://github.com/hawkw/thingbuf
+License: MIT; included text: thingbuf-0.1.6-MIT.txt
+
+tinyvec 1.13.3: https://crates.io/crates/tinyvec/1.13.3
+Upstream: https://github.com/Lokathor/tinyvec
+License: Zlib OR Apache-2.0 OR MIT; included text: tinyvec-1.13.3-MIT.txt
+
+typenum 1.20.1: https://crates.io/crates/typenum/1.20.1
+Upstream: https://github.com/paholg/typenum
+License: MIT OR Apache-2.0; included text: typenum-1.20.1-MIT.txt
+
+wide 1.7.1: https://crates.io/crates/wide/1.7.1
+Upstream: https://github.com/Lokathor/wide
+License: Zlib OR Apache-2.0 OR MIT; included text: wide-1.7.1-MIT.txt

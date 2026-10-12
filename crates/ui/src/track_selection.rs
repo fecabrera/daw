@@ -60,7 +60,13 @@ impl DawUi {
     }
 
     pub fn track_action_enabled(&self, action: TrackAction, ctx: &egui::Context) -> bool {
-        self.clip_actions_available(ctx)
+        (action != TrackAction::AddMidi || self.view_mode == ViewMode::Timeline)
+            && (action != TrackAction::Duplicate
+                || self.view_mode == ViewMode::Timeline
+                || !self.session.project.tracks.iter().any(|track| {
+                    self.track_selected(track.id) && track.kind == daw_core::TrackKind::Midi
+                }))
+            && self.clip_actions_available(ctx)
             && self.track_name_edit.is_none()
             && self.tempo_edit.is_none()
             && self.time_drag.is_none()
@@ -76,7 +82,7 @@ impl DawUi {
                     .filter(|track| self.track_selected(track.id))
                     .count()
                     == 1)
-            && (action == TrackAction::Add
+            && (matches!(action, TrackAction::Add | TrackAction::AddMidi)
                 || self
                     .session
                     .project
@@ -113,8 +119,13 @@ impl DawUi {
             self.duplicate_selected_tracks();
             return;
         }
-        if action == TrackAction::Add {
-            match self.session.project.add_track() {
+        if matches!(action, TrackAction::Add | TrackAction::AddMidi) {
+            let result = if action == TrackAction::AddMidi {
+                self.session.project.add_midi_track()
+            } else {
+                self.session.project.add_track()
+            };
+            match result {
                 Ok(id) => {
                     self.select_track(id, false);
                     self.changed();

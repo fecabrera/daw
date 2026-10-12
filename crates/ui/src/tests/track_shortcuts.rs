@@ -420,7 +420,7 @@ fn rename_shortcut_uses_the_existing_editor_in_both_views() {
             );
             let draft = app.track_name_edit.as_ref().unwrap();
             assert_eq!(draft.track, tracks[0]);
-            assert_eq!(draft.text, "Track 1");
+            assert_eq!(draft.text, "Audio 1");
             assert!(draft.focus);
             assert!(!app.dirty);
             frame(&mut app, &ctx, vec![]);
@@ -615,7 +615,7 @@ fn add_track_menu_item_is_first_and_works_without_a_selection() {
         .filter_map(|shape| match &shape.shape {
             egui::Shape::Text(text)
                 if [
-                    "Add track",
+                    "Add audio track",
                     "Mute",
                     "Solo",
                     "Duplicate track",
@@ -637,7 +637,7 @@ fn add_track_menu_item_is_first_and_works_without_a_selection() {
             .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>(),
         [
-            "Add track",
+            "Add audio track",
             "Mute",
             "Solo",
             "Duplicate track",

@@ -133,6 +133,12 @@ pub fn clip_colors(
     }
 }
 
+/// Match colored strip text while retaining the unit header's undimmed accent fill.
+pub(crate) fn unit_header_text(accent: Color32) -> Color32 {
+    let header = blend(accent, Color32::BLACK, 20);
+    blend(header, contrast_color(header), 90)
+}
+
 const fn display_color(color: daw_core::RgbColor) -> Color32 {
     Color32::from_rgb(color.r, color.g, color.b)
 }

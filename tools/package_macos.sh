@@ -18,6 +18,7 @@ cp crates/ui/assets/icons/LUCIDE-LICENSE.txt "$bundle/Contents/Resources/license
 cp crates/ui/assets/icons/EGUI-LUCIDE-LICENSE.txt "$bundle/Contents/Resources/licenses/EGUI-LUCIDE-LICENSE.txt"
 cp crates/ui/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
 cp crates/media/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
+cp crates/oscillator/assets/licenses/*.txt "$bundle/Contents/Resources/licenses/"
 cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -90,7 +90,7 @@ impl Timeline {
         (frame as f64 / f64::from(self.sample_rate_hz)) * self.beats_per_second
     }
 
-    fn visible_step(&self) -> f64 {
+    pub(super) fn visible_step(&self) -> f64 {
         2.0_f64
             .powf((10.0 / self.pixels_per_beat).log2().ceil())
             .max(1.0 / 16.0)
@@ -236,7 +236,7 @@ impl Timeline {
         (0..count).filter_map(move |index| {
             let beat = (first + index as f64) * step;
             let x = (beat - self.scroll_beats) * self.pixels_per_beat;
-            if x < 0.0 || x > f64::from(width) {
+            if beat < 0.0 || x < 0.0 || x > f64::from(width) {
                 return None;
             }
             let whole_beat = beat.fract() == 0.0;

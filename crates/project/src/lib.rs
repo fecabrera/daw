@@ -77,6 +77,9 @@ impl Session {
             return Ok(next);
         }
         for asset in &self.project.assets {
+            if asset.midi_pattern.is_some() {
+                continue;
+            }
             let Some(cached) = self.audio.get(&asset.id) else {
                 continue;
             };
@@ -148,6 +151,9 @@ impl Session {
             warnings: vec![],
         };
         for asset in &session.project.assets {
+            if asset.midi_pattern.is_some() {
+                continue;
+            }
             let path = session.source_path(asset)?;
             match fs::metadata(&path) {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -274,6 +280,7 @@ impl Session {
             repeat: None,
         };
         next.assets.push(Asset {
+            midi_pattern: None,
             id: asset_id,
             name,
             source: Source {
@@ -326,6 +333,9 @@ impl Session {
         fs::create_dir_all(folder.join("assets")).map_err(error)?;
         let mut next = self.project.clone();
         for asset in &mut next.assets {
+            if asset.midi_pattern.is_some() {
+                continue;
+            }
             let original = self
                 .project
                 .assets
@@ -392,6 +402,9 @@ impl Session {
         progress(0, end);
         let path = absolute(path)?;
         for asset in &self.project.assets {
+            if asset.midi_pattern.is_some() {
+                continue;
+            }
             let source = self.source_path(asset)?;
             if same_file(&path, &source) {
                 return Err(error("Export cannot overwrite a source audio file"));
@@ -414,7 +427,8 @@ impl Session {
         let result = (|| {
             let mut snapshot = self.clone();
             snapshot.prepare_stretches()?;
-            let plan = snapshot.plan();
+            let mut renderer = daw_engine::Renderer::new(snapshot.plan());
+            renderer.seek(0);
             let mut encoder =
                 ExportEncoder::at_sample_rate(&temp, settings, self.project.sample_rate_hz)
                     .map_err(error)?;
@@ -423,7 +437,7 @@ impl Session {
             let mut position = 0;
             while position < end {
                 let count = (end - position).min(block_size as u64) as usize;
-                plan.render(position, &mut block[..count]);
+                renderer.render_offline(&mut block[..count]);
                 encoder.write_frames(&block[..count]).map_err(error)?;
                 position += count as u64;
                 progress(position, end);

@@ -316,7 +316,7 @@ impl Callback {
                         self.pending = Some(next);
                         break;
                     }
-                    next.inherit(&self.renderer);
+                    next.inherit(&mut self.renderer);
                     let old = std::mem::replace(&mut self.renderer, next);
                     // A single producer owns this queue; the capacity check guarantees success.
                     let _ = self.retired.push(old);
@@ -454,6 +454,7 @@ mod tests {
             bits_per_sample: 32,
         };
         project.assets.push(Asset {
+            midi_pattern: None,
             id,
             name: "Test".into(),
             source: Source {
@@ -656,7 +657,7 @@ mod tests {
             });
         let updated_meters = track_meters(&plan, &meters);
         let mut updated = PreparedRenderer::new(plan.clone(), &updated_meters);
-        updated.inherit(&prepared);
+        updated.inherit(&mut prepared);
         for _ in 0..1000 {
             updated.next_sample();
         }

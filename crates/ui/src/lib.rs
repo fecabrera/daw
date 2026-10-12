@@ -1,4 +1,5 @@
 mod looping;
+mod midi_editor;
 mod placement;
 mod resize;
 mod stretch;
@@ -321,6 +322,7 @@ impl ClipAction {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrackAction {
     Add,
+    AddMidi,
     Mute,
     Solo,
     Rename,
@@ -328,8 +330,9 @@ pub enum TrackAction {
     Delete,
 }
 impl TrackAction {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Add,
+        Self::AddMidi,
         Self::Mute,
         Self::Solo,
         Self::Rename,
@@ -339,7 +342,8 @@ impl TrackAction {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Add => "Add track",
+            Self::Add => "Add audio track",
+            Self::AddMidi => "Add MIDI track",
             Self::Mute => "Mute",
             Self::Solo => "Solo",
             Self::Rename => "Rename track",
@@ -350,7 +354,7 @@ impl TrackAction {
 
     pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
         let (modifiers, key) = match self {
-            Self::Add | Self::Duplicate | Self::Delete => return None,
+            Self::Add | Self::AddMidi | Self::Duplicate | Self::Delete => return None,
             Self::Mute => (egui::Modifiers::NONE, egui::Key::M),
             Self::Solo => (egui::Modifiers::NONE, egui::Key::S),
             Self::Rename => (egui::Modifiers::COMMAND, egui::Key::R),
@@ -593,6 +597,7 @@ struct LoopDrag {
 
 pub struct DawUi {
     view_mode: mixer::ViewMode,
+    midi_editor: midi_editor::MidiEditor,
     #[cfg(test)]
     mixer_bounds: HashMap<Id, Rect>,
     #[cfg(test)]
@@ -662,6 +667,7 @@ impl Default for DawUi {
     fn default() -> Self {
         Self {
             view_mode: mixer::ViewMode::default(),
+            midi_editor: Default::default(),
             #[cfg(test)]
             mixer_bounds: HashMap::new(),
             #[cfg(test)]
@@ -848,6 +854,7 @@ impl DawUi {
             Some(Action::New | Action::CloseProject) => {
                 self.output = None;
                 self.session = Session::default();
+                self.midi_editor.cancel();
                 self.dirty = false;
                 self.inputs.clear();
                 self.track_name_edit = None;
@@ -1085,6 +1092,7 @@ impl DawUi {
                         self.time_drag = None;
                         self.selection_drag = [None, None];
                         self.scroll = 0.0;
+                        self.midi_editor.cancel();
                     }
                     self.notices = session.warnings.clone();
                     self.session = session;
@@ -1315,15 +1323,19 @@ impl DawUi {
             .unwrap();
         let first_track = clips[0].track_index;
         let mut next = project.clone();
+        if let Err(error) = self.prepare_placement_tracks(
+            &mut next,
+            &clips
+                .iter()
+                .map(|entry| (target_index + entry.track_index - first_track, &entry.clip))
+                .collect::<Vec<_>>(),
+        ) {
+            self.fail(error);
+            return;
+        }
         let mut placements = Vec::new();
         for mut entry in clips {
             entry.track_index = target_index + entry.track_index - first_track;
-            while next.tracks.len() <= entry.track_index {
-                if let Err(error) = next.add_track() {
-                    self.fail(error);
-                    return;
-                }
-            }
             entry.track = next.tracks[entry.track_index].id;
             let Some(position) = project
                 .transport
@@ -1387,6 +1399,12 @@ impl DawUi {
                 ClipAction::Paste => self.clip_clipboard.as_ref().is_some_and(|clipboard| {
                     clipboard.project == self.session.project.project_id
                         && !self.session.project.tracks.is_empty()
+                        && (self.view_mode == ViewMode::Timeline
+                            || !clipboard.clips.iter().any(|entry| {
+                                self.session.project.assets.iter().any(|asset| {
+                                    asset.id == entry.clip.asset_id && asset.midi_pattern.is_some()
+                                })
+                            }))
                 }),
             }
     }
@@ -1488,7 +1506,7 @@ impl DawUi {
                     theme::palette(ui.ctx()).panel
                 },
             ))
-            .show_separator_line(self.view_mode != mixer::ViewMode::Mixer)
+            .show_separator_line(!matches!(self.view_mode, ViewMode::Mixer | ViewMode::Units))
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.add_enabled_ui(
@@ -1560,6 +1578,8 @@ impl DawUi {
                     |ui| match self.view_mode {
                         mixer::ViewMode::Timeline => self.workspace(ui),
                         mixer::ViewMode::Mixer => self.mixer(ui),
+                        mixer::ViewMode::Units => self.units_view(ui),
+                        mixer::ViewMode::Edit => self.edit_view(ui),
                     },
                 );
             });
@@ -1608,7 +1628,8 @@ impl DawUi {
                 if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
                     self.toggle_playback();
                 }
-                if self.clip_actions_available(&ctx)
+                if self.view_mode != ViewMode::Edit
+                    && self.clip_actions_available(&ctx)
                     && ctx.input(|i| {
                         i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)
                     })
@@ -1688,7 +1709,8 @@ impl DawUi {
     }
 
     pub fn file_action_enabled(&self, action: FileAction) -> bool {
-        self.job.is_none()
+        !self.midi_editor.dragging()
+            && self.job.is_none()
             && !self.unsaved_prompt
             && self.overwrite.is_none()
             && self.export_dialog.is_none()
@@ -2101,7 +2123,13 @@ impl DawUi {
             ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
-            if self.view_mode == mixer::ViewMode::Timeline {
+            if self.view_mode == ViewMode::Units {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.source_track_control(ui);
+                });
+            }
+            if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit) {
+                let mut zoom = self.view_zoom();
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.scope(|ui| {
                         ui.spacing_mut().slider_width = 56.0;
@@ -2111,16 +2139,20 @@ impl DawUi {
                             .text_styles
                             .insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
                         let response = ui.add(
-                            egui::Slider::new(&mut self.zoom, MIN_ZOOM..=MAX_ZOOM)
+                            egui::Slider::new(&mut zoom, MIN_ZOOM..=MAX_ZOOM)
                                 .logarithmic(true)
                                 .show_value(false)
                                 .trailing_fill(false)
                                 .handle_shape(egui::style::HandleShape::Circle),
                         );
+                        #[cfg(test)]
+                        {
+                            self.midi_editor.zoom_bounds = response.rect;
+                        }
                         response.widget_info(|| {
                             egui::WidgetInfo::slider(
                                 ui.is_enabled(),
-                                f64::from(self.zoom),
+                                f64::from(zoom),
                                 "Horizontal zoom",
                             )
                         });
@@ -2137,7 +2169,16 @@ impl DawUi {
                             .alt_text("Horizontal zoom"),
                     )
                     .on_hover_text("Horizontal zoom");
+                    if self.view_mode == ViewMode::Edit {
+                        ui.separator();
+                        self.source_track_control(ui);
+                    }
                 });
+                if self.view_mode == ViewMode::Edit {
+                    self.midi_editor.zoom = zoom;
+                } else {
+                    self.zoom = zoom;
+                }
             }
         });
     }
@@ -2214,6 +2255,7 @@ impl DawUi {
             Sense::click_and_drag(),
         );
         self.lane_bounds.clear();
+        let selected_before_tracks = self.selected_clip;
         let tracks = egui::ScrollArea::vertical()
             .max_height((master_rect.top() - ui.cursor().top()).max(0.0))
             .auto_shrink([false, false])
@@ -2223,12 +2265,15 @@ impl DawUi {
             });
         self.timeline_bounds = timeline_rect;
         self.track_reorder(ui, tracks.inner_rect);
-        self.timeline_selection(
-            ui,
-            &background,
-            timeline_rect,
-            tracks.inner_rect.intersect(timeline_rect),
-        );
+        // A clip interaction or pattern creation already handled this click.
+        if self.selected_clip == selected_before_tracks {
+            self.timeline_selection(
+                ui,
+                &background,
+                timeline_rect,
+                tracks.inner_rect.intersect(timeline_rect),
+            );
+        }
         self.finish_clip_drag(ui);
         self.paint_drag_preview(ui, tracks.inner_rect.intersect(timeline_rect));
         self.paint_file_hover(ui, tracks.inner_rect.intersect(timeline_rect));
@@ -2480,20 +2525,23 @@ impl DawUi {
         if !factor.is_finite() || factor <= 0.0 || factor == 1.0 {
             return;
         }
-        let zoom = (self.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
-        if zoom == self.zoom {
+        let zoom = (self.view_zoom() * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+        if zoom == self.view_zoom() {
             return;
         }
         let offset = f64::from(pointer.x - viewport.left());
-        let anchor = self.scroll + offset / f64::from(self.zoom);
+        let anchor = self.view_scroll() + offset / f64::from(self.view_zoom());
         let maximum =
             (self.timeline_extent() - f64::from(viewport.width()) / f64::from(zoom)).max(0.0);
-        self.scroll = (anchor - offset / f64::from(zoom)).clamp(0.0, maximum);
-        self.zoom = zoom;
+        self.set_view_scroll(
+            (anchor - offset / f64::from(zoom)).clamp(self.view_scroll_minimum(), maximum),
+        );
+        self.set_view_zoom(zoom);
         ui.ctx().request_repaint();
     }
     fn timeline_swipe(&mut self, ui: &egui::Ui, viewport: Rect) {
         if !ui.is_enabled()
+            || self.midi_editor.dragging()
             || !ui.input(|input| input.focused)
             || !ui.rect_contains_pointer(viewport)
         {
@@ -2503,19 +2551,22 @@ impl DawUi {
         if delta == 0.0 {
             return;
         }
-        let maximum =
-            (self.timeline_extent() - f64::from(viewport.width()) / f64::from(self.zoom)).max(0.0);
-        let scroll = (self.scroll - f64::from(delta) / f64::from(self.zoom)).clamp(0.0, maximum);
-        if scroll != self.scroll {
-            self.scroll = scroll;
+        let maximum = (self.timeline_extent()
+            - f64::from(viewport.width()) / f64::from(self.view_zoom()))
+        .max(0.0);
+        let scroll = (self.view_scroll() - f64::from(delta) / f64::from(self.view_zoom()))
+            .clamp(self.view_scroll_minimum(), maximum);
+        if scroll != self.view_scroll() {
+            self.set_view_scroll(scroll);
             ui.ctx().request_repaint();
         }
     }
     fn timeline_scrollbar(&mut self, ui: &mut egui::Ui) {
         ui.scope(|ui| {
             let width = ui.available_width();
-            let extent = self.timeline_extent();
-            let offset = self.scroll * f64::from(self.zoom);
+            let minimum = self.view_scroll_minimum();
+            let extent = self.timeline_extent() - minimum;
+            let offset = (self.view_scroll() - minimum) * f64::from(self.view_zoom());
             let output = ui
                 .scope(|ui| {
                     ui.spacing_mut().scroll = egui::style::ScrollStyle {
@@ -2525,7 +2576,10 @@ impl DawUi {
                     // The timeline paints only its visible range. This scroll area supplies
                     // the standard scrollbar and measures the full range in pixels.
                     egui::ScrollArea::horizontal()
-                        .id_salt("timeline_horizontal_scroll")
+                        .id_salt((
+                            "timeline_horizontal_scroll",
+                            self.view_mode == ViewMode::Edit,
+                        ))
                         .max_width(width)
                         .max_height(1.0)
                         .min_scrolled_height(0.0)
@@ -2537,15 +2591,15 @@ impl DawUi {
                         .horizontal_scroll_offset(offset as f32)
                         .show(ui, |ui| {
                             ui.allocate_space(Vec2::new(
-                                (extent as f32 * self.zoom).max(width),
+                                (extent as f32 * self.view_zoom()).max(width),
                                 1.0,
                             ));
                         })
                 })
                 .inner;
-            let scroll = f64::from(output.state.offset.x) / f64::from(self.zoom);
-            if scroll != self.scroll {
-                self.scroll = scroll;
+            let scroll = minimum + f64::from(output.state.offset.x) / f64::from(self.view_zoom());
+            if scroll != self.view_scroll() {
+                self.set_view_scroll(scroll);
                 ui.ctx().request_repaint();
             }
         });
@@ -2553,7 +2607,9 @@ impl DawUi {
     fn loop_pixels(&self, rect: Rect) -> (f32, f32) {
         let region = &self.session.project.transport.r#loop;
         let pixel = |frame| {
-            rect.left() + ((self.session.project.seconds(frame) - self.scroll) as f32) * self.zoom
+            rect.left()
+                + ((self.session.project.seconds(frame) - self.view_scroll()) as f32)
+                    * self.view_zoom()
         };
         (pixel(region.start_frame), pixel(region.end_frame))
     }
@@ -2580,7 +2636,7 @@ impl DawUi {
     fn ruler_frame(&self, rect: Rect, pointer: Pos2) -> u64 {
         self.session
             .project
-            .frames(self.scroll + f64::from((pointer.x - rect.left()) / self.zoom))
+            .frames(self.view_scroll() + f64::from((pointer.x - rect.left()) / self.view_zoom()))
     }
     fn ruler_interaction(
         &mut self,
@@ -2642,7 +2698,7 @@ impl DawUi {
                 ),
                 LoopDragMode::Move => {
                     let length = original.end_frame - original.start_frame;
-                    let delta = (f64::from(pointer.x - drag.origin.x) / f64::from(self.zoom)
+                    let delta = (f64::from(pointer.x - drag.origin.x) / f64::from(self.view_zoom())
                         * f64::from(self.session.project.sample_rate_hz))
                     .round() as i128;
                     let start = self.selection_frame(
@@ -2706,7 +2762,7 @@ impl DawUi {
                         if icons::button(
                             ui,
                             icons::Lucide::Plus,
-                            "Add track",
+                            TrackAction::Add.label(),
                             self.track_action_enabled(TrackAction::Add, ui.ctx()),
                             theme::palette(ui.ctx()).text,
                         )
@@ -2717,135 +2773,138 @@ impl DawUi {
                     });
                 });
             });
-            let (rect, response) = ui.allocate_exact_size(
-                Vec2::new(ui.available_width(), RULER_HEIGHT),
-                Sense::hover(),
+            self.time_ruler(ui);
+        });
+    }
+    fn time_ruler(&mut self, ui: &mut egui::Ui) -> Rect {
+        let zoom = self.view_zoom();
+        let scroll = self.view_scroll();
+        let (rect, response) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width(), RULER_HEIGHT),
+            Sense::hover(),
+        );
+        let labels = Rect::from_min_max(rect.min, Pos2::new(rect.right(), rect.bottom() - 20.0));
+        let ticks = Rect::from_min_max(labels.left_bottom(), rect.max);
+        let selection_response = ui.interact(
+        labels, response.id.with("selection"), Sense::click_and_drag(),
+    ).on_hover_text("Drag empty space to select a loop range. Drag its edges to resize or its body to move. Hold Shift to bypass snapping.");
+        let playhead_response = ui
+            .interact(ticks, response.id.with("playhead"), Sense::click_and_drag())
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .on_hover_text(
+                "Click or drag to position the playhead. Hold Shift to bypass snapping.",
             );
-            let labels =
-                Rect::from_min_max(rect.min, Pos2::new(rect.right(), rect.bottom() - 20.0));
-            let ticks = Rect::from_min_max(labels.left_bottom(), rect.max);
-            let selection_response = ui.interact(
-                labels, response.id.with("selection"), Sense::click_and_drag(),
-            ).on_hover_text("Drag empty space to select a loop range. Drag its edges to resize or its body to move. Hold Shift to bypass snapping.");
-            let playhead_response = ui
-                .interact(ticks, response.id.with("playhead"), Sense::click_and_drag())
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .on_hover_text(
-                    "Click or drag to position the playhead. Hold Shift to bypass snapping.",
-                );
-            self.ruler_interaction(ui, rect, &selection_response, &playhead_response);
-            let painter = ui.painter().with_clip_rect(rect);
-            painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
-            painter.rect_filled(labels, 0.0, theme::palette(ui.ctx()).panel);
-            let l = &self.session.project.transport.r#loop;
-            let (x1, x2) = self.loop_pixels(rect);
-            if l.end_frame > l.start_frame && x2 > rect.left() && x1 < rect.right() {
-                let band = Rect::from_min_max(
-                    Pos2::new(x1.max(rect.left()), labels.top()),
-                    Pos2::new(x2.min(rect.right()), labels.bottom()),
-                );
-                painter.rect_filled(band, 0.0, theme::ruler_selection(ui.ctx(), l.enabled));
-                // Draw handles at the real endpoints, including when the range is scrolled.
-                for x in [x1, x2] {
-                    if (rect.left()..=rect.right()).contains(&x) {
-                        painter.rect_filled(
-                            Rect::from_min_max(
-                                Pos2::new(x - 1.5, labels.top() + 2.0),
-                                Pos2::new(x + 1.5, labels.bottom() - 2.0),
-                            ),
-                            0.0,
-                            theme::accent(ui.ctx()),
-                        );
-                    }
-                }
-            }
-            if let Some(pointer) = selection_response.hover_pos() {
-                let mode = self
-                    .loop_drag
-                    .as_ref()
-                    .map_or_else(|| self.loop_drag_mode(rect, pointer), |drag| drag.mode);
-                ui.ctx().set_cursor_icon(match mode {
-                    LoopDragMode::Create => egui::CursorIcon::Crosshair,
-                    LoopDragMode::Start | LoopDragMode::End => egui::CursorIcon::ResizeHorizontal,
-                    LoopDragMode::Move if selection_response.dragged() => {
-                        egui::CursorIcon::Grabbing
-                    }
-                    LoopDragMode::Move => egui::CursorIcon::Grab,
-                });
-            }
-            painter.line_segment(
-                [ticks.left_top(), ticks.right_top()],
-                Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
+        self.ruler_interaction(ui, rect, &selection_response, &playhead_response);
+        let painter = ui.painter().with_clip_rect(rect);
+        painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
+        painter.rect_filled(labels, 0.0, theme::palette(ui.ctx()).panel);
+        let l = &self.session.project.transport.r#loop;
+        let (x1, x2) = self.loop_pixels(rect);
+        if l.end_frame > l.start_frame && x2 > rect.left() && x1 < rect.right() {
+            let band = Rect::from_min_max(
+                Pos2::new(x1.max(rect.left()), labels.top()),
+                Pos2::new(x2.min(rect.right()), labels.bottom()),
             );
-            let timeline = self.musical_timeline();
-            for tick in timeline.ticks(rect.width()) {
-                let x = rect.left() + tick.x;
-                if x < rect.left() || x > rect.right() {
-                    continue;
-                }
-                let top = if tick.bar {
-                    rect.top()
-                } else if tick.whole_beat {
-                    ticks.top()
-                } else if tick.beat.fract() == 0.5 {
-                    ticks.bottom() - 8.0
-                } else {
-                    ticks.bottom() - 5.0
-                };
-                painter.line_segment(
-                    [Pos2::new(x, top), Pos2::new(x, ticks.bottom())],
-                    Stroke::new(1.0_f32, theme::palette(ui.ctx()).secondary),
-                );
-                if let Some(label) = tick.label {
-                    let selected = tick.beat >= timeline.beats(l.start_frame)
-                        && tick.beat < timeline.beats(l.end_frame);
-                    painter.text(
-                        Pos2::new(x + 3.0, labels.center().y),
-                        egui::Align2::LEFT_CENTER,
-                        label,
-                        egui::FontId::proportional(11.0),
-                        if selected && ui.visuals().dark_mode {
-                            theme::CLIP_TEXT
-                        } else {
-                            theme::palette(ui.ctx()).text
-                        },
+            painter.rect_filled(band, 0.0, theme::ruler_selection(ui.ctx(), l.enabled));
+            // Draw handles at the real endpoints, including when the range is scrolled.
+            for x in [x1, x2] {
+                if (rect.left()..=rect.right()).contains(&x) {
+                    painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2::new(x - 1.5, labels.top() + 2.0),
+                            Pos2::new(x + 1.5, labels.bottom() - 2.0),
+                        ),
+                        0.0,
+                        theme::accent(ui.ctx()),
                     );
                 }
             }
-            let playhead_x = rect.left()
-                + ((self
-                    .session
-                    .project
-                    .seconds(self.session.project.transport.playhead_frame)
-                    - self.scroll) as f32)
-                    * self.zoom;
-            if (rect.left()..=rect.right()).contains(&playhead_x) {
-                let painter = painter.with_clip_rect(rect);
-                painter.line_segment(
-                    [
-                        Pos2::new(playhead_x, ticks.top()),
-                        Pos2::new(playhead_x, rect.bottom()),
-                    ],
-                    Stroke::new(1.0_f32, theme::accent(ui.ctx())),
-                );
-                painter.add(egui::Shape::convex_polygon(
-                    vec![
-                        Pos2::new(playhead_x - 4.0, rect.bottom() - 13.0),
-                        Pos2::new(playhead_x + 4.0, rect.bottom() - 13.0),
-                        Pos2::new(playhead_x + 4.0, rect.bottom() - 7.0),
-                        Pos2::new(playhead_x, rect.bottom() - 3.0),
-                        Pos2::new(playhead_x - 4.0, rect.bottom() - 7.0),
-                    ],
-                    theme::accent(ui.ctx()),
-                    Stroke::NONE,
-                ));
+        }
+        if let Some(pointer) = selection_response.hover_pos() {
+            let mode = self
+                .loop_drag
+                .as_ref()
+                .map_or_else(|| self.loop_drag_mode(rect, pointer), |drag| drag.mode);
+            ui.ctx().set_cursor_icon(match mode {
+                LoopDragMode::Create => egui::CursorIcon::Crosshair,
+                LoopDragMode::Start | LoopDragMode::End => egui::CursorIcon::ResizeHorizontal,
+                LoopDragMode::Move if selection_response.dragged() => egui::CursorIcon::Grabbing,
+                LoopDragMode::Move => egui::CursorIcon::Grab,
+            });
+        }
+        painter.line_segment(
+            [ticks.left_top(), ticks.right_top()],
+            Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
+        );
+        let timeline = self.musical_timeline();
+        for tick in timeline.ticks(rect.width()) {
+            let x = rect.left() + tick.x;
+            if x < rect.left() || x > rect.right() {
+                continue;
             }
-        });
+            let top = if tick.bar {
+                rect.top()
+            } else if tick.whole_beat {
+                ticks.top()
+            } else if tick.beat.fract() == 0.5 {
+                ticks.bottom() - 8.0
+            } else {
+                ticks.bottom() - 5.0
+            };
+            painter.line_segment(
+                [Pos2::new(x, top), Pos2::new(x, ticks.bottom())],
+                Stroke::new(1.0_f32, theme::palette(ui.ctx()).secondary),
+            );
+            if let Some(label) = tick.label {
+                let selected = tick.beat >= timeline.beats(l.start_frame)
+                    && tick.beat < timeline.beats(l.end_frame);
+                painter.text(
+                    Pos2::new(x + 3.0, labels.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    label,
+                    egui::FontId::proportional(11.0),
+                    if selected && ui.visuals().dark_mode {
+                        theme::CLIP_TEXT
+                    } else {
+                        theme::palette(ui.ctx()).text
+                    },
+                );
+            }
+        }
+        let playhead_x = rect.left()
+            + ((self
+                .session
+                .project
+                .seconds(self.session.project.transport.playhead_frame)
+                - scroll) as f32)
+                * zoom;
+        if (rect.left()..=rect.right()).contains(&playhead_x) {
+            let painter = painter.with_clip_rect(rect);
+            painter.line_segment(
+                [
+                    Pos2::new(playhead_x, ticks.top()),
+                    Pos2::new(playhead_x, rect.bottom()),
+                ],
+                Stroke::new(1.0_f32, theme::accent(ui.ctx())),
+            );
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    Pos2::new(playhead_x - 4.0, rect.bottom() - 13.0),
+                    Pos2::new(playhead_x + 4.0, rect.bottom() - 13.0),
+                    Pos2::new(playhead_x + 4.0, rect.bottom() - 7.0),
+                    Pos2::new(playhead_x, rect.bottom() - 3.0),
+                    Pos2::new(playhead_x - 4.0, rect.bottom() - 7.0),
+                ],
+                theme::accent(ui.ctx()),
+                Stroke::NONE,
+            ));
+        }
+        rect
     }
     fn track_name(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
         let width = ui.available_width();
         let font_size = if self.view_mode == mixer::ViewMode::Mixer {
-            mixer::HEADER_FONT_SIZE
+            panels::HEADER_FONT_SIZE
         } else {
             13.0
         };
@@ -3395,11 +3454,46 @@ impl DawUi {
             }
         });
     }
+    fn view_zoom(&self) -> f32 {
+        if self.view_mode == ViewMode::Edit {
+            self.midi_editor.zoom
+        } else {
+            self.zoom
+        }
+    }
+    fn set_view_zoom(&mut self, zoom: f32) {
+        if self.view_mode == ViewMode::Edit {
+            self.midi_editor.zoom = zoom;
+        } else {
+            self.zoom = zoom;
+        }
+    }
+    fn view_scroll_minimum(&self) -> f64 {
+        if self.view_mode == ViewMode::Edit {
+            self.midi_editor.source_origin.min(0.0)
+        } else {
+            0.0
+        }
+    }
+    fn view_scroll(&self) -> f64 {
+        if self.view_mode == ViewMode::Edit {
+            self.midi_editor.scroll
+        } else {
+            self.scroll
+        }
+    }
+    fn set_view_scroll(&mut self, seconds: f64) {
+        if self.view_mode == ViewMode::Edit {
+            self.midi_editor.scroll = seconds;
+        } else {
+            self.scroll = seconds;
+        }
+    }
     fn musical_timeline(&self) -> musical_time::Timeline {
         musical_time::Timeline::at_sample_rate(
             self.session.project.tempo_bpm,
-            self.zoom,
-            self.scroll,
+            self.view_zoom(),
+            self.view_scroll(),
             self.session.project.sample_rate_hz,
         )
     }
@@ -4127,7 +4221,14 @@ impl DawUi {
     ) {
         let cached = prepared.or_else(|| self.session.audio_for_clip(clip));
         let audio = cached.or_else(|| self.session.audio.get(&clip.asset_id));
-        let missing = audio.is_none();
+        let pattern = self
+            .session
+            .project
+            .assets
+            .iter()
+            .find(|a| a.id == clip.asset_id)
+            .and_then(|a| a.midi_pattern.as_ref());
+        let missing = audio.is_none() && pattern.is_none();
         let lane = painter.clip_rect();
         let colors = if missing {
             theme::ClipColors::default()
@@ -4173,6 +4274,8 @@ impl DawUi {
                 egui::FontId::proportional(13.0),
                 theme::palette(painter.ctx()).warning,
             );
+        } else if let Some(pattern) = pattern {
+            self.paint_midi_notes(&clip_painter, block, clip, pattern, colors.waveform);
         } else if let Some(audio) = audio {
             let channels = usize::from(audio.metadata.channels);
             let body = Rect::from_min_max(Pos2::new(block.left(), block.top() + 22.0), block.max);
@@ -4336,6 +4439,26 @@ impl DawUi {
         let track_id = track.id;
         let (rect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::hover());
+        if track.kind == daw_core::TrackKind::Midi
+            && ui.rect_contains_pointer(rect)
+            && ui.input(|i| {
+                i.pointer
+                    .button_double_clicked(egui::PointerButton::Primary)
+            })
+            && let Some(pointer) = ui.input(|i| i.pointer.interact_pos())
+        {
+            let start = self.selection_frame(
+                i128::from(self.ruler_frame(rect, pointer)),
+                0..=u64::MAX,
+                ui.input(|i| i.modifiers.shift),
+            );
+            if !track.clips.iter().any(|clip| {
+                self.clip_block(rect, clip, clip.start_frame)
+                    .contains(pointer)
+            }) {
+                self.add_midi_pattern(track_id, start, ui.ctx());
+            }
+        }
         self.lane_bounds.insert(track_id, rect);
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
@@ -4366,6 +4489,10 @@ impl DawUi {
             }
             self.paint_clip(&clip_painter, track.color, block, clip, selected, None);
             response.context_menu(|ui| {
+                if ui.button("Edit clip").clicked() {
+                    self.open_clip_editor(clip.id, track_id, ui.ctx());
+                    ui.close();
+                }
                 if ui.button("Split at playhead").clicked() {
                     self.edit(Edit::Split {
                         clip_id: clip.id,
@@ -4395,6 +4522,9 @@ impl DawUi {
                     ui.close();
                 }
             });
+            if response.double_clicked() {
+                self.open_clip_editor(clip.id, track_id, ui.ctx());
+            }
             if response.clicked() {
                 self.select_clip(
                     clip.id,
@@ -4616,6 +4746,7 @@ mod tests {
     mod group_looping;
     mod group_stretch;
     mod menu_shortcuts;
+    mod midi;
     mod mixer;
     mod placement_overwrite;
     mod project_settings;
@@ -4632,6 +4763,7 @@ mod tests {
         let track = app.session.project.add_track().unwrap();
         let asset = Id::new_v4();
         app.session.project.assets.push(daw_core::Asset {
+            midi_pattern: None,
             id: asset,
             name: "Missing".into(),
             source: daw_core::Source {
@@ -4744,7 +4876,7 @@ mod tests {
                     "Missing fill {fill:?} in {color_theme:?}"
                 );
             }
-            for label in ["Track 1", "Master"] {
+            for label in ["Audio 1", "Master"] {
                 assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t)
                     if t.galley.text() == label && (t.fallback_color == palette.text
                         || t.galley.job.sections.iter().all(|section| section.format.color == palette.text)))),
@@ -5550,7 +5682,7 @@ mod tests {
                         assert_eq!(app.session.project.tracks.len(), if group { 6 } else { 4 });
                         for index in 3..app.session.project.tracks.len() {
                             let track = &app.session.project.tracks[index];
-                            assert_eq!(track.name, format!("Track {}", index + 1));
+                            assert_eq!(track.name, format!("Audio {}", index + 1));
                             assert_eq!(track.color, daw_core::default_track_color(index));
                         }
                         if group {
@@ -7627,7 +7759,7 @@ mod tests {
         frame(&mut app, &ctx, vec![]);
         frame(&mut app, &ctx, vec![egui::Event::Text("Bajo 🎸".into())]);
         assert_eq!(app.track_name_edit.as_ref().unwrap().text, "Bajo 🎸");
-        assert_eq!(app.session.project.tracks[0].name, "Track 1");
+        assert_eq!(app.session.project.tracks[0].name, "Audio 1");
         assert!(!app.dirty);
         frame(&mut app, &ctx, vec![key(egui::Key::Enter)]);
         assert!(app.track_name_edit.is_none());
@@ -7681,7 +7813,7 @@ mod tests {
         );
         frame(&mut app, &ctx, vec![button(outside, false)]);
         assert!(app.track_name_edit.is_none());
-        assert_eq!(app.session.project.tracks[0].name, "Track 1");
+        assert_eq!(app.session.project.tracks[0].name, "Audio 1");
         assert!(!app.dirty);
         app.track_name_edit = Some(TrackNameEdit {
             track,
@@ -7712,7 +7844,7 @@ mod tests {
                 } else {
                     app.track_name_edit = Some(TrackNameEdit {
                         track,
-                        text: "Track 1".into(),
+                        text: "Audio 1".into(),
                         focus: true,
                     });
                     frame(&mut app, &ctx, vec![]);
@@ -7744,7 +7876,7 @@ mod tests {
                 }
                 assert!(app.track_name_edit.is_none());
                 assert!(app.tempo_edit.is_none());
-                assert_eq!(app.session.project.tracks[0].name, "Track 1");
+                assert_eq!(app.session.project.tracks[0].name, "Audio 1");
                 assert_eq!(app.session.project.tempo_bpm, 120.0);
                 assert!(!app.dirty);
                 assert!(app.error.is_none());
@@ -8326,7 +8458,7 @@ mod tests {
                 _ => {
                     app.track_name_edit = Some(TrackNameEdit {
                         track: first,
-                        text: "Track 1".into(),
+                        text: "Audio 1".into(),
                         focus: true,
                     });
                     frame(&mut app, &ctx, vec![]);
@@ -8360,7 +8492,7 @@ mod tests {
                         .text
                         .contains("Renamed")
                 );
-                assert_eq!(app.session.project.tracks[0].name, "Track 1");
+                assert_eq!(app.session.project.tracks[0].name, "Audio 1");
             }
         }
         let (mut app, track) = fixture();

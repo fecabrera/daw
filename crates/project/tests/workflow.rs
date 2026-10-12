@@ -2251,3 +2251,109 @@ fn mp3_export_converts_high_processing_rates_with_correct_duration() {
         assert_eq!(frames, output_rate as usize / 10, "processing rate {rate}");
     }
 }
+
+#[test]
+fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_source_paths() {
+    use daw_core::{MidiNote, MidiPattern, TrackKind, Waveform};
+    use daw_media::{ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .waveform = Waveform::Triangle;
+    let clip = session.project.add_midi_pattern(track, 0).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: MidiPattern {
+                length_ticks: 960,
+                notes: vec![MidiNote {
+                    id: daw_core::Id::new_v4(),
+                    start_tick: 0,
+                    length_ticks: 960,
+                    pitch: 69,
+                    velocity: 100,
+                }],
+            },
+        })
+        .unwrap();
+    // Round-trip and export a chord through the same persisted source format.
+    let mut chord = session
+        .project
+        .assets
+        .last()
+        .unwrap()
+        .midi_pattern
+        .clone()
+        .unwrap();
+    chord.notes.push(MidiNote {
+        id: daw_core::Id::new_v4(),
+        pitch: 72,
+        ..chord.notes[0].clone()
+    });
+    session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: chord,
+        })
+        .unwrap();
+    let source = fixture.wav("source.wav", 48_000, 2, 16, false);
+    session.import(&source, None, 0).unwrap();
+    let folder = fixture.0.join("project");
+    session.save(&folder).unwrap();
+    let restored = Session::open(&folder).unwrap();
+    assert!(restored.warnings.is_empty());
+    assert_eq!(restored.project.tracks[0].kind, TrackKind::Midi);
+    assert_eq!(
+        restored.project.tracks[0].instrument,
+        session.project.tracks[0].instrument
+    );
+    assert_eq!(
+        restored.project.assets[2].midi_pattern,
+        session.project.assets[2].midi_pattern
+    );
+    let settings = ExportSettings {
+        wav_codec: WavCodec::Float32,
+        ..Default::default()
+    };
+    let first = fixture.0.join("first.wav");
+    let second = fixture.0.join("second.wav");
+    session
+        .export_with_settings(&first, false, settings)
+        .unwrap();
+    restored
+        .export_with_settings(&second, false, settings)
+        .unwrap();
+    assert_eq!(fs::read(&first).unwrap(), fs::read(&second).unwrap());
+    let samples = hound::WavReader::open(&first)
+        .unwrap()
+        .samples::<f32>()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>();
+    assert!(samples[12_000..24_000].iter().any(|x| x.abs() > 0.02));
+    let mut save_as = restored;
+    save_as.save(&fixture.0.join("another")).unwrap();
+    assert!(
+        Session::open(&fixture.0.join("another"))
+            .unwrap()
+            .warnings
+            .is_empty()
+    );
+    let changed = save_as.with_audio_settings(44_100, 128).unwrap();
+    assert_eq!(changed.project.tracks[0].clips[0].length_frames, 22_050);
+    changed
+        .export_with_settings(&fixture.0.join("resampled.wav"), false, settings)
+        .unwrap();
+    let mp3 = ExportSettings {
+        format: daw_media::ExportFormat::Mp3,
+        ..settings
+    };
+    changed
+        .export_with_settings(&fixture.0.join("pattern.mp3"), false, mp3)
+        .unwrap();
+}
