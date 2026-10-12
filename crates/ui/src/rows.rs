@@ -1,5 +1,7 @@
 use egui::{Align, InnerResponse, Layout, Ui, Vec2};
 
+pub const NAME_FONT_SIZE: f32 = 13.0;
+
 /// Reserve the tallest control's height before placing vertically centered items.
 pub fn centered<R>(
     ui: &mut Ui,

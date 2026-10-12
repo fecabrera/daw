@@ -24,19 +24,27 @@ fn strip_edges(ui: &egui::Ui, rect: Rect, stroke: Stroke) {
 pub enum ViewMode {
     #[default]
     Timeline,
-    Units,
+    Instrument,
+    Effects,
     Edit,
     Mixer,
 }
 
 impl ViewMode {
-    pub const ALL: [Self; 4] = [Self::Timeline, Self::Units, Self::Edit, Self::Mixer];
+    pub const ALL: [Self; 5] = [
+        Self::Timeline,
+        Self::Instrument,
+        Self::Effects,
+        Self::Edit,
+        Self::Mixer,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Timeline => "Timeline",
             Self::Mixer => "Mixer",
-            Self::Units => "Units",
+            Self::Instrument => "Instrument",
+            Self::Effects => "Effects",
             Self::Edit => "Editor",
         }
     }
@@ -61,6 +69,7 @@ impl DawUi {
         }
         self.view_mode = mode;
         self.midi_editor.cancel();
+        self.instrument_ui.cancel();
         self.track_name_edit = None;
         self.tempo_edit = None;
         self.inputs.clear();

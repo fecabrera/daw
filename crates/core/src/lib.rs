@@ -1,6 +1,7 @@
 mod midi;
 pub use daw_unit_core::{
-    CurveShape, EnvelopeSettings, EnvelopeStageSettings, MAX_ENVELOPE_TIME_MS,
+    CurveShape, EnvelopeSettings, EnvelopeStageSettings, INSTRUMENT_STATE_VERSION,
+    InstrumentLayerSettings, InstrumentSettings, MAX_ENVELOPE_TIME_MS,
     OscillatorInstrumentSettings, OscillatorSettings, SILENT_GAIN_DB, Waveform,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
@@ -166,7 +167,7 @@ pub struct Track {
     #[serde(default)]
     pub kind: TrackKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub instrument: Option<OscillatorInstrumentSettings>,
+    pub instrument: Option<InstrumentSettings>,
     pub id: Id,
     pub name: String,
     /// Default color for this track's clips; older projects assign it by track position.
@@ -364,6 +365,11 @@ impl Clip {
         }
     }
 }
+/// Shared track/layer solo precedence. Solo overrides mute when any peer is soloed.
+pub fn mix_audible(muted: bool, soloed: bool, any_solo: bool) -> bool {
+    if any_solo { soloed } else { !muted }
+}
+
 pub fn linear_gain(db: f32) -> f32 {
     10.0_f32.powf(db / 20.0)
 }
@@ -392,11 +398,11 @@ impl Project {
             .unwrap_or(0)
     }
     pub fn audible(&self, track: &Track) -> bool {
-        if self.tracks.iter().any(|t| t.soloed) {
-            track.soloed
-        } else {
-            !track.muted
-        }
+        mix_audible(
+            track.muted,
+            track.soloed,
+            self.tracks.iter().any(|t| t.soloed),
+        )
     }
     pub fn validate(&self) -> Result<()> {
         let invalid = |text: &str| Error(text.into());
@@ -791,7 +797,7 @@ pub enum Edit {
     },
     SetInstrument {
         track_id: Id,
-        instrument: Option<OscillatorInstrumentSettings>,
+        instrument: Option<InstrumentSettings>,
     },
     /// Apply all commands and validate the final state as one transaction.
     Batch(Vec<Edit>),

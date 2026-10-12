@@ -4,6 +4,8 @@ Status: design baseline; implementation pending. Last updated: 2026-10-12.
 
 The beat pattern editor in the future Editor view will let users create beats through lanes of step toggles. Editor will choose an editor by clip type: audio editor for audio clips, MIDI pattern editor for MIDI clips, and beat pattern editor for beat clips. Each lane will be an audio lane or a MIDI lane, with its own sources and effects. The user will set pattern length and step resolution for all lanes together. The Units view will control lane sources, effects, and modulators. Mixer will control each beat track as a whole. Beat tracks will join audio and MIDI tracks as the third track type. Beat and MIDI patterns will be clip sources, with clip editing separate from source editing. The accepted MVP scope below defines the initial controls, playback, navigation, and routing.
 
+The view split accepted on 2026-10-12 supersedes the combined Units UI in the original plan below. Current views are Timeline, Instrument, Effects, Editor, and Mixer. Instrument is restricted to MIDI tracks; Effects owns track effects. Beat-lane source/modulation and lane-effect editing require a separate design before implementation. Parent beat-track effects belong in Effects. Historical Units references below record the original requirements and do not authorize adding beat lanes to Instrument. See D33 in [modular audio units](modular-audio-units.md).
+
 ## Confirmed requirements
 
 | ID | Requirement | Consequence |

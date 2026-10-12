@@ -13,15 +13,21 @@ struct PatternClip {
     clip: Clip,
     events: Vec<NoteEvent>,
 }
-struct Voice {
+struct LayerVoice {
     sources: Vec<OscillatorVoice>,
-    current: Option<Id>,
     envelope: Envelope,
+    gain: [f32; 2],
+    gain_target: [f32; 2],
+    gain_remaining: u32,
+}
+struct Voice {
+    layers: Vec<LayerVoice>,
+    current: Option<Id>,
     velocity: f32,
     pitch: u8,
     reconstructed_at: u64,
-    previous: f32,
-    transition_from: f32,
+    previous: [f32; 2],
+    transition_from: [f32; 2],
     transition: u32,
     fade_frames: u32,
 }
@@ -37,13 +43,22 @@ struct OscillatorVoice {
 }
 impl Voice {
     fn note_on(&mut self, id: Id, pitch: u8, velocity: u8) {
+        let idle = self.transition == 0 && self.layers.iter().all(|layer| layer.envelope.is_idle());
+        if idle {
+            for layer in &mut self.layers {
+                layer.gain = layer.gain_target;
+                layer.gain_remaining = 0;
+            }
+        }
         self.transition_from = self.previous;
         self.transition = self.fade_frames;
         self.current = Some(id);
-        self.envelope.note_on();
+        for layer in &mut self.layers {
+            layer.envelope.note_on();
+        }
         self.velocity = f32::from(velocity) / 127.0;
         self.pitch = pitch;
-        for oscillator in &mut self.sources {
+        for oscillator in self.layers.iter_mut().flat_map(|layer| &mut layer.sources) {
             oscillator.source.reset();
             oscillator.frequency = note_frequency(pitch, oscillator.transpose);
             oscillator.frequency_target = oscillator.frequency;
@@ -53,22 +68,61 @@ impl Voice {
     }
     fn end_note(&mut self) {
         self.current = None;
-        self.envelope.note_off();
+        for layer in &mut self.layers {
+            layer.envelope.note_off();
+        }
     }
     fn reset(&mut self) {
         self.end_note();
-        self.envelope.reset();
+        for layer in &mut self.layers {
+            layer.envelope.reset();
+        }
         self.reconstructed_at = 0;
-        self.previous = 0.0;
+        self.previous = [0.0; 2];
         self.transition = 0;
-        for oscillator in &mut self.sources {
+        for oscillator in self.layers.iter_mut().flat_map(|layer| &mut layer.sources) {
             oscillator.source.reset();
         }
     }
-    fn sample(&mut self) -> f32 {
-        if self.envelope.is_idle() && self.transition == 0 {
-            self.previous = 0.0;
-            return 0.0;
+    fn advance_envelopes(&mut self, frames: u64) {
+        for layer in &mut self.layers {
+            layer.envelope.advance(frames);
+        }
+    }
+    fn sample(&mut self) -> [f32; 2] {
+        if self.layers.iter().all(|layer| layer.envelope.is_idle()) && self.transition == 0 {
+            self.previous = [0.0; 2];
+            return [0.0; 2];
+        }
+        let mut sample = [0.0; 2];
+        for layer in &mut self.layers {
+            let value = layer.sample();
+            for ch in 0..2 {
+                sample[ch] += value[ch];
+            }
+        }
+        for value in &mut sample {
+            *value *= self.velocity;
+        }
+        if self.transition > 0 {
+            let progress = 1.0 - self.transition as f32 / self.fade_frames as f32;
+            for (ch, value) in sample.iter_mut().enumerate() {
+                *value = self.transition_from[ch] * (1.0 - progress) + *value * progress;
+            }
+            self.transition -= 1;
+        }
+        self.previous = sample;
+        sample
+    }
+}
+impl LayerVoice {
+    fn sample(&mut self) -> [f32; 2] {
+        if self.gain_remaining > 0 {
+            for ch in 0..2 {
+                self.gain[ch] +=
+                    (self.gain_target[ch] - self.gain[ch]) / self.gain_remaining as f32;
+            }
+            self.gain_remaining -= 1;
         }
         let envelope = self.envelope.next_sample();
         let sources = self
@@ -88,15 +142,20 @@ impl Voice {
                 s.source.next_sample() * s.gain
             })
             .sum::<f32>();
-        let mut sample = sources * envelope * self.velocity;
-        if self.transition > 0 {
-            let progress = 1.0 - self.transition as f32 / self.fade_frames as f32;
-            sample = self.transition_from * (1.0 - progress) + sample * progress;
-            self.transition -= 1;
-        }
-        self.previous = sample;
-        sample
+        self.gain.map(|gain| sources * envelope * gain)
     }
+}
+
+/// Center is unity per channel so legacy instruments retain their original gain and track pan.
+/// Muted and solo-excluded layers continue advancing all sources/envelopes with zero output.
+fn layer_gains(layer: &daw_core::InstrumentLayerSettings, any_solo: bool) -> [f32; 2] {
+    if !daw_core::mix_audible(layer.muted, layer.soloed, any_solo) {
+        return [0.0; 2];
+    }
+    let pan = super::pan_coefficients(layer.pan, true);
+    let center = super::pan_coefficients(0.0, true);
+    let gain = linear_gain(layer.gain_db);
+    std::array::from_fn(|ch| gain * (pan[ch] / center[ch]))
 }
 
 fn note_frequency(pitch: u8, transpose: i8) -> f32 {
@@ -108,7 +167,7 @@ pub(crate) struct MidiTrackRuntime {
     clips: Vec<PatternClip>,
     sample_rate_hz: u32,
     fingerprint: u64,
-    held_sample: f32,
+    held_sample: [f32; 2],
     last_clip: Option<Id>,
     last_source: Option<u64>,
     next_event: usize,
@@ -120,6 +179,10 @@ impl MidiTrackRuntime {
             return None;
         }
         let instrument = track.instrument.as_ref()?;
+        // UI order and names do not change routing. Keep DSP order stable across row moves.
+        let mut layers: Vec<_> = instrument.layers.iter().collect();
+        layers.sort_by_key(|layer| layer.id);
+        let any_solo = layers.iter().any(|layer| layer.soloed);
         let fade_frames = (project.sample_rate_hz / 200).max(1);
         let mut voice_count = 0;
         let clips = track
@@ -185,10 +248,15 @@ impl MidiTrackRuntime {
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         format!("{:?}", track.clips).hash(&mut hash);
         instrument.version.hash(&mut hash);
-        instrument.oscillators.len().hash(&mut hash);
-        // Gain, pitch, and mute can change without replacing phase or note schedules.
-        for settings in &instrument.oscillators {
-            format!("{:?}", settings.waveform).hash(&mut hash);
+        instrument.layers.len().hash(&mut hash);
+        // Stable layer IDs preserve independent controls and identify topology changes.
+        for layer in &layers {
+            layer.id.hash(&mut hash);
+            layer.has_envelope.hash(&mut hash);
+            layer.oscillators.len().hash(&mut hash);
+            for settings in &layer.oscillators {
+                format!("{:?}", settings.waveform).hash(&mut hash);
+            }
         }
         project.tempo_bpm.to_bits().hash(&mut hash);
         project.sample_rate_hz.hash(&mut hash);
@@ -199,51 +267,59 @@ impl MidiTrackRuntime {
         }
         Some(Self {
             fingerprint: hash.finish(),
-            held_sample: 0.0,
+            held_sample: [0.0; 2],
             voices: (0..voice_count)
                 .map(|_| Voice {
-                    sources: instrument
-                        .oscillators
+                    layers: layers
                         .iter()
-                        .map(|settings| OscillatorVoice {
-                            source: Oscillator::new(
-                                settings.waveform,
+                        .map(|layer| LayerVoice {
+                            sources: layer
+                                .oscillators
+                                .iter()
+                                .map(|settings| OscillatorVoice {
+                                    source: Oscillator::new(
+                                        settings.waveform,
+                                        ProcessingContext {
+                                            sample_rate_hz: project.sample_rate_hz,
+                                            max_block_frames: project.buffer_size_frames,
+                                        },
+                                    ),
+                                    // Muted sources still advance; retain their saved gain for unmuting.
+                                    gain: if settings.muted {
+                                        0.0
+                                    } else {
+                                        linear_gain(settings.gain_db)
+                                    },
+                                    gain_target: if settings.muted {
+                                        0.0
+                                    } else {
+                                        linear_gain(settings.gain_db)
+                                    },
+                                    gain_remaining: 0,
+                                    transpose: settings.transpose,
+                                    frequency: 440.0,
+                                    frequency_target: 440.0,
+                                    frequency_remaining: 0,
+                                })
+                                .collect(),
+                            gain: layer_gains(layer, any_solo),
+                            gain_target: layer_gains(layer, any_solo),
+                            gain_remaining: 0,
+                            envelope: Envelope::new(
+                                layer.effective_envelope(),
                                 ProcessingContext {
                                     sample_rate_hz: project.sample_rate_hz,
                                     max_block_frames: project.buffer_size_frames,
                                 },
                             ),
-                            // Muted sources still advance; retain their saved gain for unmuting.
-                            gain: if settings.muted {
-                                0.0
-                            } else {
-                                linear_gain(settings.gain_db)
-                            },
-                            gain_target: if settings.muted {
-                                0.0
-                            } else {
-                                linear_gain(settings.gain_db)
-                            },
-                            gain_remaining: 0,
-                            transpose: settings.transpose,
-                            frequency: 440.0,
-                            frequency_target: 440.0,
-                            frequency_remaining: 0,
                         })
                         .collect(),
                     current: None,
-                    envelope: Envelope::new(
-                        instrument.envelope,
-                        ProcessingContext {
-                            sample_rate_hz: project.sample_rate_hz,
-                            max_block_frames: project.buffer_size_frames,
-                        },
-                    ),
                     velocity: 0.0,
                     pitch: 69,
                     reconstructed_at: 0,
-                    previous: 0.0,
-                    transition_from: 0.0,
+                    previous: [0.0; 2],
+                    transition_from: [0.0; 2],
                     transition: 0,
                     fade_frames,
                 })
@@ -266,25 +342,49 @@ impl MidiTrackRuntime {
     pub fn retarget_controls(&mut self, prepared: &Self) {
         let fade_frames = (self.sample_rate_hz / 200).max(1);
         for (voice, next) in self.voices.iter_mut().zip(&prepared.voices) {
-            voice.envelope.set_settings(next.envelope.settings());
-            for (source, target) in voice.sources.iter_mut().zip(&next.sources) {
-                if source.transpose != target.transpose {
-                    source.transpose = target.transpose;
-                    source.frequency_target = note_frequency(voice.pitch, source.transpose);
-                    source.frequency_remaining = fade_frames;
+            let idle =
+                voice.transition == 0 && voice.layers.iter().all(|layer| layer.envelope.is_idle());
+            for (layer, next_layer) in voice.layers.iter_mut().zip(&next.layers) {
+                layer.envelope.set_settings(next_layer.envelope.settings());
+                if layer.gain_target != next_layer.gain_target {
+                    layer.gain_target = next_layer.gain_target;
+                    if idle {
+                        // Future notes start at the new controls, including exact mute.
+                        layer.gain = next_layer.gain_target;
+                        layer.gain_remaining = 0;
+                    } else {
+                        layer.gain_remaining = fade_frames;
+                    }
                 }
-                if source.gain_target != target.gain_target {
-                    source.gain_target = target.gain_target;
-                    source.gain_remaining = fade_frames;
+                for (source, target) in layer.sources.iter_mut().zip(&next_layer.sources) {
+                    if source.transpose != target.transpose {
+                        source.transpose = target.transpose;
+                        source.frequency_target = note_frequency(voice.pitch, source.transpose);
+                        source.frequency_remaining = fade_frames;
+                    }
+                    if source.gain_target != target.gain_target {
+                        source.gain_target = target.gain_target;
+                        source.gain_remaining = fade_frames;
+                    }
                 }
             }
         }
     }
-    pub fn held_sample(&self) -> f32 {
+    fn voice_sample(&mut self) -> [f32; 2] {
+        let mut sum = [0.0; 2];
+        for voice in &mut self.voices {
+            let sample = voice.sample();
+            for ch in 0..2 {
+                sum[ch] += sample[ch];
+            }
+        }
+        sum
+    }
+    pub fn held_sample(&self) -> [f32; 2] {
         self.held_sample
     }
     pub fn reset(&mut self) {
-        self.held_sample = 0.0;
+        self.held_sample = [0.0; 2];
         for voice in &mut self.voices {
             voice.reset();
         }
@@ -298,7 +398,7 @@ impl MidiTrackRuntime {
         self.last_clip = None;
         self.last_source = None;
     }
-    pub fn sample(&mut self, frame: u64) -> f32 {
+    pub fn sample(&mut self, frame: u64) -> [f32; 2] {
         let sample = if let Some(prepared) = self
             .clips
             .iter()
@@ -326,9 +426,7 @@ impl MidiTrackRuntime {
                             .div_ceil(u128::from(stretch.source_frames))
                             .min(u128::from(u64::MAX)) as u64
                     });
-                    voice
-                        .envelope
-                        .advance(event_frame.saturating_sub(voice.reconstructed_at));
+                    voice.advance_envelopes(event_frame.saturating_sub(voice.reconstructed_at));
                     if let Some((pitch, velocity)) = event.on {
                         voice.note_on(event.note, pitch, velocity);
                     } else if voice.current == Some(event.note) {
@@ -337,9 +435,7 @@ impl MidiTrackRuntime {
                     voice.reconstructed_at = event_frame;
                 }
                 for voice in &mut self.voices {
-                    voice
-                        .envelope
-                        .advance(position.saturating_sub(voice.reconstructed_at));
+                    voice.advance_envelopes(position.saturating_sub(voice.reconstructed_at));
                 }
             } else {
                 while let Some(event) = prepared
@@ -358,13 +454,13 @@ impl MidiTrackRuntime {
             }
             self.last_clip = Some(clip.id);
             self.last_source = Some(source);
-            self.voices.iter_mut().map(Voice::sample).sum::<f32>()
-                * super::sample_fade(
-                    clip,
-                    frame - clip.start_frame,
-                    position,
-                    self.sample_rate_hz,
-                )
+            let fade = super::sample_fade(
+                clip,
+                frame - clip.start_frame,
+                position,
+                self.sample_rate_hz,
+            );
+            self.voice_sample().map(|sample| sample * fade)
         } else {
             if self.last_clip.take().is_some() {
                 // Clip fades have already reached zero; do not resurrect a release tail in a gap.
@@ -373,7 +469,7 @@ impl MidiTrackRuntime {
                 }
             }
             self.last_source = None;
-            self.voices.iter_mut().map(Voice::sample).sum::<f32>()
+            self.voice_sample()
         };
         self.held_sample = sample;
         sample
@@ -388,6 +484,7 @@ mod tests {
     fn overlapping_notes_have_independent_voices_and_note_offs() {
         let mut project = Project::default();
         let track = project.add_midi_track().unwrap();
+        project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
         let clip = project.add_midi_pattern(track, 0).unwrap();
         let first = Id::new_v4();
         let second = Id::new_v4();
@@ -434,7 +531,7 @@ mod tests {
         for frame in 48_001..60_300 {
             runtime.sample(frame);
         }
-        assert_eq!(runtime.held_sample(), 0.0);
+        assert_eq!(runtime.held_sample(), [0.0; 2]);
     }
 
     #[test]
@@ -463,9 +560,16 @@ mod tests {
                     },
                 })
                 .unwrap();
+            project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
             let instrument = project.tracks[0].instrument.as_mut().unwrap();
-            instrument.envelope.attack.time_ms = 200.0;
-            instrument.envelope.release.time_ms = 500.0;
+            instrument.layers[0].envelope.attack.time_ms = 200.0;
+            instrument.layers[0].envelope.release.time_ms = 500.0;
+            let mut layer = daw_core::InstrumentLayerSettings::default();
+            layer.oscillators.push(Default::default());
+            layer.has_envelope = true;
+            layer.envelope.attack.time_ms = 350.0;
+            layer.envelope.release.time_ms = 800.0;
+            instrument.layers.push(layer);
             project.tracks[0].clips[0].stretch = stretch;
             project.tracks[0].clips[0].length_frames =
                 stretch.map_or(96_000, |s| s.scale(96_000).unwrap());
@@ -478,8 +582,10 @@ mod tests {
                 sought.sample(frame);
                 let played = played.voices.iter().find(|v| v.pitch == 60).unwrap();
                 let sought = sought.voices.iter().find(|v| v.pitch == 60).unwrap();
-                assert_eq!(sought.envelope.stage(), played.envelope.stage());
-                assert!((sought.envelope.level() - played.envelope.level()).abs() < 1e-6);
+                for (sought, played) in sought.layers.iter().zip(&played.layers) {
+                    assert_eq!(sought.envelope.stage(), played.envelope.stage());
+                    assert!((sought.envelope.level() - played.envelope.level()).abs() < 1e-6);
+                }
             }
             // Trimming starts inside the source; a seek reconstructs its existing envelope.
             let clip = &mut project.tracks[0].clips[0];
@@ -492,7 +598,7 @@ mod tests {
                 .iter()
                 .find(|v| v.current == Some(note))
                 .unwrap();
-            assert!(voice.envelope.level() > 0.0);
+            assert!(voice.layers[0].envelope.level() > 0.0);
         }
     }
 }

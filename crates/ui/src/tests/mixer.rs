@@ -374,7 +374,7 @@ fn view_menu_checks_one_mode_and_switches_on_release_without_project_changes() {
             )),
             !cfg!(any(target_os = "windows", target_os = "linux"))
         );
-        for mode in [ViewMode::Mixer, ViewMode::Timeline, ViewMode::Timeline] {
+        for mode in ViewMode::ALL.into_iter().chain([ViewMode::Timeline]) {
             let output = menu_frame(&mut app, &ctx, vec![]);
             let checks: Vec<_> = output
                 .shapes
@@ -668,10 +668,7 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
             settings::AccentColor::DeepOrange,
             settings::AccentColor::Yellow,
         ] {
-            for mode in [
-                crate::mixer::ViewMode::Timeline,
-                crate::mixer::ViewMode::Mixer,
-            ] {
+            for mode in ViewMode::ALL {
                 let mut reference_size = None;
                 for titlebar in [
                     settings::TitlebarStyle::Custom,
@@ -691,11 +688,7 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                     if cfg!(target_os = "macos") {
                         app.use_native_menu();
                     }
-                    let selected_label = if mode == crate::mixer::ViewMode::Timeline {
-                        "Timeline"
-                    } else {
-                        "Mixer"
-                    };
+                    let selected_label = mode.label();
                     let point = label_point(&mut app, &ctx, selected_label, None);
                     let unselected_label = if selected_label == "Timeline" {
                         "Mixer"
@@ -1085,5 +1078,96 @@ fn gain_and_peak_fields_align_with_marked_columns_in_tracks_and_master() {
                 assert!(!app.dirty);
             }
         }
+    }
+}
+
+#[test]
+fn instrument_and_effects_views_use_their_track_scope_without_project_changes() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, audio) = fixture();
+        app.session.project.tracks[0].name = "Audio only".into();
+        let midi = app.session.project.add_midi_track().unwrap();
+        app.session.project.tracks[1].name = "MIDI only".into();
+        let clip = app.session.project.tracks[0].clips[0].id;
+        app.select_clip(clip, audio, false);
+        let project = format!("{:?}", app.session.project);
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let has = |shapes: &[egui::epaint::ClippedShape], name: &str| {
+            shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == name))
+        };
+        assert!(has(
+            &shapes,
+            "Select a MIDI track to configure its instrument."
+        ));
+        assert!(!has(&shapes, "Add source"));
+        let point = label_point(&mut app, &ctx, "Select MIDI track", None);
+        click(&mut app, &ctx, point);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(has(&shapes, "MIDI only"));
+        assert!(!has(&shapes, "Audio only"));
+        let point = label_point(&mut app, &ctx, "MIDI only", None);
+        click(&mut app, &ctx, point);
+        assert_eq!(app.selected_track, Some(midi));
+        assert_eq!(app.selected_clip, Some(clip));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(has(&shapes, "Layers"));
+        assert!(has(&shapes, "Add source"));
+        assert!(!has(&shapes, "Units"));
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(has(&shapes, "Track effects are not available yet."));
+        assert!(!has(&shapes, "Layers"));
+        assert!(!has(&shapes, "Add source"));
+        let point = label_point(&mut app, &ctx, "MIDI only", None);
+        click(&mut app, &ctx, point);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(has(&shapes, "Audio only"));
+        assert!(has(&shapes, "MIDI only"));
+        let point = label_point(&mut app, &ctx, "Audio only", None);
+        click(&mut app, &ctx, point);
+        assert_eq!(app.selected_track, Some(audio));
+        assert_eq!(app.selected_clip, Some(clip));
+        assert_eq!(format!("{:?}", app.session.project), project);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn processing_view_names_and_empty_states_keep_their_responsibilities_separate() {
+    assert_eq!(
+        ViewMode::ALL.map(ViewMode::label),
+        ["Timeline", "Instrument", "Effects", "Editor", "Mixer"]
+    );
+    let mut app = DawUi::default();
+    let ctx = context();
+    for (mode, prompt) in [
+        (
+            ViewMode::Instrument,
+            "Select a MIDI track to configure its instrument.",
+        ),
+        (
+            ViewMode::Effects,
+            "Select a track to configure its effects.",
+        ),
+    ] {
+        app.set_view_mode(mode, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(
+            shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == prompt))
+        );
+        assert!(!app.dirty);
     }
 }

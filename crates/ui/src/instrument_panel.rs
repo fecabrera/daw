@@ -1,0 +1,895 @@
+use super::*;
+use daw_core::{InstrumentLayerSettings, TrackKind};
+use midi_editor::OSCILLATOR_STRIP_WIDTH;
+
+const LAYER_HEADER_WIDTH: f32 = TRACK_WIDTH;
+
+#[derive(Default)]
+pub(super) struct InstrumentUi {
+    pub(super) track: Option<Id>,
+    name_edit: Option<LayerNameEdit>,
+    drag: Option<Id>,
+    inputs: HashMap<Id, Inputs>,
+}
+struct LayerNameEdit {
+    layer: Id,
+    text: String,
+    focus: bool,
+}
+impl InstrumentUi {
+    pub(super) fn cancel(&mut self) {
+        *self = Self::default();
+    }
+    pub(super) fn dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+    pub(super) fn editing_name(&self) -> bool {
+        self.name_edit.is_some()
+    }
+}
+
+#[cfg(test)]
+pub(crate) struct LayerUiBounds {
+    pub row: Rect,
+    pub label: Rect,
+    pub grip: Rect,
+    pub name: Rect,
+    pub mix_controls: [Rect; 6],
+    pub add_source: Rect,
+    pub add_envelope: Rect,
+    pub source_empty_state: Rect,
+    pub envelope_empty_state: Rect,
+    pub oscillator_panel: Rect,
+    pub oscillator_header: Rect,
+    pub envelope_panel: Rect,
+    pub envelope_header: Rect,
+    pub oscillators: Vec<Rect>,
+    pub envelope_stages: [Rect; 4],
+}
+
+impl DawUi {
+    pub(super) fn instrument_view(&mut self, ui: &mut egui::Ui) {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        // Share one divider between the toolbar and workspace.
+        ui.painter().hline(
+            ui.max_rect().x_range(),
+            ui.max_rect().top() + 0.5,
+            Stroke::new(1.0, theme::palette(ui.ctx()).border),
+        );
+        let Some(track) = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|t| Some(t.id) == self.selected_track)
+            .cloned()
+        else {
+            ui.label("Select a MIDI track to configure its instrument.");
+            return;
+        };
+        if track.kind != TrackKind::Midi {
+            ui.label("Select a MIDI track to configure its instrument.");
+            return;
+        }
+        let Some(mut settings) = track.instrument.clone() else {
+            ui.label("No instrument assigned");
+            return;
+        };
+        #[cfg(test)]
+        {
+            self.midi_editor.layer_bounds.clear();
+        }
+        if self.instrument_ui.track != Some(track.id) {
+            self.instrument_ui.cancel();
+            self.instrument_ui.track = Some(track.id);
+        }
+        if self
+            .instrument_ui
+            .name_edit
+            .as_ref()
+            .is_some_and(|edit| !settings.layers.iter().any(|layer| layer.id == edit.layer))
+        {
+            self.instrument_ui.name_edit = None;
+        }
+        self.instrument_ui
+            .inputs
+            .retain(|id, _| settings.layers.iter().any(|layer| layer.id == *id));
+        let mut remove_layer = None;
+        let column = Rect::from_min_max(
+            ui.max_rect().min + Vec2::new(0.0, 1.0),
+            Pos2::new(
+                ui.max_rect().left() + LAYER_HEADER_WIDTH,
+                ui.max_rect().bottom(),
+            ),
+        );
+        ui.painter()
+            .rect_filled(column, 0.0, theme::palette(ui.ctx()).panel);
+        ui.add_space(1.0);
+        ui.spacing_mut().item_spacing.y = -1.0;
+        let header = ui
+            .allocate_ui_with_layout(
+                Vec2::new(LAYER_HEADER_WIDTH, toolbars::HEIGHT),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    toolbars::Toolbar::row(ui, |ui| {
+                        ui.label("Layers");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let add = icons::button(
+                                ui,
+                                icons::Lucide::Plus,
+                                "Add layer",
+                                true,
+                                theme::palette(ui.ctx()).text,
+                            );
+                            #[cfg(test)]
+                            {
+                                self.midi_editor.add_layer_bounds = add.rect;
+                            }
+                            if add.clicked() {
+                                let mut layer = InstrumentLayerSettings::default();
+                                let mut number = 1;
+                                loop {
+                                    layer.name = format!("Layer {number}");
+                                    if !settings
+                                        .layers
+                                        .iter()
+                                        .any(|existing| existing.name == layer.name)
+                                    {
+                                        break;
+                                    }
+                                    number += 1;
+                                }
+                                settings.layers.push(layer);
+                            }
+                        });
+                    })
+                },
+            )
+            .inner;
+        #[cfg(test)]
+        {
+            self.midi_editor.instrument_header_bounds = header.response.rect;
+        }
+        ui.painter().hline(
+            ui.max_rect().x_range(),
+            header.response.rect.bottom() - 0.5,
+            Stroke::new(1.0, theme::palette(ui.ctx()).border),
+        );
+        let count = settings.layers.len();
+        let mut layer_rows = Vec::new();
+        let scroll = egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .id_salt(("instrument-layers", track.id))
+            .show(ui, |ui| {
+                egui::Frame::new().show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    // Adjacent rows share one border pixel.
+                    ui.spacing_mut().item_spacing.y = -1.0;
+                    if self.instrument_ui.dragging() {
+                        self.scroll_layer_drag(ui);
+                    }
+                    for layer in &mut settings.layers {
+                        ui.push_id((track.id, layer.id), |ui| {
+                            // Empty and populated rows share the unit shell's full height.
+                            let height = crate::envelope_panel::control_height()
+                                + 2.0 * f32::from(panels::PanelStyle::default().margin)
+                                + panels::HEADER_HEIGHT
+                                + 2.0;
+                            let row = ui.horizontal_top(|ui| {
+                                ui.spacing_mut().item_spacing.x = if layer.oscillators.is_empty() {
+                                    0.0
+                                } else {
+                                    -1.0
+                                };
+                                ui.spacing_mut().item_spacing.y = 0.0;
+                                let (label, response) = ui.allocate_exact_size(
+                                    Vec2::new(LAYER_HEADER_WIDTH, height),
+                                    Sense::click_and_drag(),
+                                );
+                                ui.painter().rect_filled(
+                                    label,
+                                    0.0,
+                                    theme::palette(ui.ctx()).panel,
+                                );
+                                let mut header_ui = ui.new_child(
+                                    egui::UiBuilder::new()
+                                        .max_rect(Rect::from_min_size(
+                                            label.min + Vec2::splat(7.0),
+                                            Vec2::new(
+                                                // Reserve the same control width as a track's meter layout.
+                                                label.width()
+                                                    - 14.0
+                                                    - (meters::STEREO_WIDTH - meters::SCALE_WIDTH)
+                                                    - 6.0,
+                                                toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE,
+                                            ),
+                                        ))
+                                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                                );
+                                header_ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                                let mixing_enabled = !self.instrument_ui.dragging()
+                                    && !self.instrument_ui.editing_name();
+                                let header = rows::centered(
+                                    &mut header_ui,
+                                    toolbars::CONTROL_HEIGHT,
+                                    |ui| {
+                                        let buttons_width = 2.0 * toolbars::CONTROL_HEIGHT
+                                            + ui.spacing().item_spacing.x;
+                                        let name_width = (ui.available_width()
+                                            - toolbars::CONTROL_HEIGHT
+                                            - buttons_width
+                                            - 2.0 * ui.spacing().item_spacing.x)
+                                            .max(1.0);
+                                        let grip = icons::reorder_grip(ui, "layer");
+                                        self.start_layer_drag(ui, &grip, layer.id);
+                                        let name = ui
+                                            .allocate_ui_with_layout(
+                                                Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                    // Short names must still reserve the full name column.
+                                                    ui.set_min_width(name_width);
+                                                    self.layer_name(ui, layer)
+                                                },
+                                            )
+                                            .inner;
+                                        let toggles = ui
+                                            .add_enabled_ui(mixing_enabled, |ui| {
+                                                mix_controls::mute_solo(
+                                                    ui,
+                                                    &mut layer.muted,
+                                                    &mut layer.soloed,
+                                                    [
+                                                        "Mute layer",
+                                                        "Solo layer within this instrument",
+                                                    ],
+                                                )
+                                            })
+                                            .inner;
+                                        (grip.rect, name, toggles.map(|response| response.rect))
+                                    },
+                                )
+                                .inner;
+                                let inputs =
+                                    self.instrument_ui.inputs.entry(layer.id).or_insert_with(
+                                        || Inputs {
+                                            gain: faders::format_gain(layer.gain_db),
+                                            pan: format!("{:.2}", layer.pan),
+                                        },
+                                    );
+                                let mixing = header_ui
+                                    .add_enabled_ui(mixing_enabled, |ui| {
+                                        mix_controls::gain_pan(
+                                            ui,
+                                            &mut layer.gain_db,
+                                            &mut layer.pan,
+                                            inputs,
+                                        )
+                                    })
+                                    .inner;
+                                if let Some(error) = mixing.error {
+                                    self.fail(error);
+                                }
+                                let controls = (header.0, header.1);
+                                let mixing_bounds = [
+                                    header.2[0],
+                                    header.2[1],
+                                    mixing.bounds[0],
+                                    mixing.bounds[1],
+                                    mixing.bounds[2],
+                                    mixing.bounds[3],
+                                ];
+                                // Click-only buttons can pass a drag to the background. Exclude
+                                // controls at the press origin, even when the pointer leaves them.
+                                let control_press = ui.input(|input| {
+                                    input.pointer.press_origin().is_some_and(|point| {
+                                        mixing_bounds.iter().any(|rect| rect.contains(point))
+                                    })
+                                });
+                                if !control_press {
+                                    self.start_layer_drag(ui, &response, layer.id);
+                                }
+                                let response = response.on_hover_cursor(egui::CursorIcon::Grab);
+                                response.context_menu(|ui| {
+                                    if ui
+                                        .add_enabled(
+                                            count > 1 && !self.instrument_ui.dragging(),
+                                            egui::Button::new("Remove layer"),
+                                        )
+                                        .clicked()
+                                    {
+                                        remove_layer = Some(layer.id);
+                                        ui.close();
+                                    }
+                                });
+                                let mut source_empty_state = Rect::NOTHING;
+                                let mut envelope_empty_state = Rect::NOTHING;
+                                let mut add_source = Rect::NOTHING;
+                                let mut add_envelope = Rect::NOTHING;
+                                let mut oscillator_panel = None;
+                                let mut oscillator_header = Rect::NOTHING;
+                                let mut envelope_header = Rect::NOTHING;
+                                let mut envelope_stages = [Rect::NOTHING; 4];
+                                let mut envelope_rect = Rect::NOTHING;
+                                egui::ScrollArea::horizontal()
+                                    .id_salt("layer-units")
+                                    .auto_shrink([false, true])
+                                    .show(ui, |ui| {
+                                        ui.horizontal_top(|ui| {
+                                            ui.spacing_mut().item_spacing.x =
+                                                if !layer.oscillators.is_empty()
+                                                    && layer.has_envelope
+                                                {
+                                                    -1.0
+                                                } else if layer.oscillators.is_empty()
+                                                    && !layer.has_envelope
+                                                {
+                                                    // Adjacent cards share one outer margin.
+                                                    -crate::empty_state::MARGIN
+                                                } else {
+                                                    0.0
+                                                };
+                                            if !layer.oscillators.is_empty() {
+                                                let (rect, header) = self.oscillator_unit(
+                                                    ui,
+                                                    track.id,
+                                                    &mut layer.oscillators,
+                                                    height,
+                                                );
+                                                oscillator_panel = Some(rect);
+                                                oscillator_header = header;
+                                            } else {
+                                                #[cfg(test)]
+                                                {
+                                                    self.midi_editor.oscillator_bounds.clear();
+                                                    self.midi_editor
+                                                        .oscillator_strip_bounds
+                                                        .clear();
+                                                    self.midi_editor
+                                                        .oscillator_power_bounds
+                                                        .clear();
+                                                    self.midi_editor.oscillator_panel_bounds =
+                                                        Rect::NOTHING;
+                                                }
+                                                let source = crate::empty_state::show(
+                                                    ui,
+                                                    height,
+                                                    "No source",
+                                                    "Generate sound with an oscillator.",
+                                                    "Add source",
+                                                );
+                                                source_empty_state = source.area;
+                                                add_source = source.action.rect;
+                                                if source
+                                                    .action
+                                                    .on_hover_text(
+                                                        "Add an oscillator to this layer",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    layer.oscillators.push(Default::default());
+                                                }
+                                            }
+                                            if layer.has_envelope {
+                                                let panel = panels::PanelStyle {
+                                                    margin: 0,
+                                                    ..Default::default()
+                                                };
+                                                let envelope =
+                                                    panel.unit(ui, "Envelope", height, |ui| {
+                                                        crate::envelope_panel::body(
+                                                            ui,
+                                                            &mut layer.envelope,
+                                                            10,
+                                                        )
+                                                    });
+                                                envelope_rect = envelope.response.rect;
+                                                envelope_stages =
+                                                    envelope.inner.unwrap_or([Rect::NOTHING; 4]);
+                                                envelope_header = envelope.header.rect;
+                                                envelope.header.context_menu(|ui| {
+                                                    if ui.button("Remove envelope").clicked() {
+                                                        layer.has_envelope = false;
+                                                        ui.close();
+                                                    }
+                                                });
+                                                if let Some(oscillator) = oscillator_panel {
+                                                    ui.painter().vline(
+                                                        oscillator.right() - 0.5,
+                                                        oscillator.top()..=envelope_rect.bottom(),
+                                                        panel.frame(ui.ctx(), false).stroke,
+                                                    );
+                                                }
+                                            }
+                                            if !layer.has_envelope {
+                                                let envelope = crate::empty_state::show(
+                                                    ui,
+                                                    height,
+                                                    "No envelope",
+                                                    "Shape this layer’s volume over time.",
+                                                    "Add envelope",
+                                                );
+                                                envelope_empty_state = envelope.area;
+                                                add_envelope = envelope.action.rect;
+                                                if envelope
+                                                    .action
+                                                    .on_hover_text(
+                                                        "Add an amplitude envelope for this layer",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    layer.has_envelope = true;
+                                                }
+                                            }
+                                        });
+                                    });
+                                #[cfg(test)]
+                                {
+                                    self.midi_editor.envelope_panel_bounds = envelope_rect;
+                                    self.midi_editor.envelope_stage_bounds = envelope_stages;
+                                    if oscillator_panel.is_none() {
+                                        self.midi_editor.add_oscillator_bounds = add_source;
+                                    }
+                                    self.midi_editor.layer_bounds.insert(
+                                        layer.id,
+                                        LayerUiBounds {
+                                            row: label,
+                                            label,
+                                            grip: controls.0,
+                                            name: controls.1,
+                                            mix_controls: mixing_bounds,
+                                            add_source,
+                                            add_envelope,
+                                            source_empty_state,
+                                            envelope_empty_state,
+                                            oscillator_panel: oscillator_panel
+                                                .unwrap_or(Rect::NOTHING),
+                                            oscillator_header,
+                                            envelope_panel: envelope_rect,
+                                            envelope_header,
+                                            oscillators: self.midi_editor.oscillator_bounds.clone(),
+                                            envelope_stages,
+                                        },
+                                    );
+                                }
+                                #[cfg(not(test))]
+                                {
+                                    let _ = (
+                                        add_source,
+                                        add_envelope,
+                                        envelope_stages,
+                                        controls,
+                                        mixing_bounds,
+                                        source_empty_state,
+                                        envelope_empty_state,
+                                        oscillator_header,
+                                        envelope_header,
+                                    );
+                                }
+                            });
+                            layer_rows.push((layer.id, row.response.rect));
+                            ui.painter().hline(
+                                row.response.rect.x_range(),
+                                row.response.rect.top() + 0.5,
+                                Stroke::new(1.0, theme::palette(ui.ctx()).border),
+                            );
+                            ui.painter().hline(
+                                row.response.rect.x_range(),
+                                row.response.rect.bottom() - 0.5,
+                                Stroke::new(1.0, theme::palette(ui.ctx()).border),
+                            );
+                            #[cfg(test)]
+                            {
+                                self.midi_editor
+                                    .layer_bounds
+                                    .get_mut(&layer.id)
+                                    .unwrap()
+                                    .row = row.response.rect;
+                            }
+                        });
+                    }
+                });
+            });
+        ui.painter().vline(
+            column.right() - 0.5,
+            column.y_range(),
+            Stroke::new(1.0, theme::palette(ui.ctx()).border),
+        );
+        self.layer_reorder(ui, &mut settings, &layer_rows, scroll.inner_rect);
+        if let Some(id) = remove_layer {
+            if self
+                .instrument_ui
+                .name_edit
+                .as_ref()
+                .is_some_and(|edit| edit.layer == id)
+            {
+                self.instrument_ui.name_edit = None;
+            }
+            settings.layers.retain(|layer| layer.id != id);
+        }
+        if Some(&settings) != track.instrument.as_ref() {
+            self.edit(Edit::SetInstrument {
+                track_id: track.id,
+                instrument: Some(settings),
+            });
+        }
+    }
+
+    fn layer_name(&mut self, ui: &mut egui::Ui, layer: &mut InstrumentLayerSettings) -> Rect {
+        let width = ui.available_width();
+        if self
+            .instrument_ui
+            .name_edit
+            .as_ref()
+            .is_some_and(|edit| edit.layer == layer.id)
+        {
+            let mut edit = self.instrument_ui.name_edit.take().unwrap();
+            let mut output = egui::TextEdit::singleline(&mut edit.text)
+                .id(ui.make_persistent_id("layer-name"))
+                .font(egui::FontId::proportional(rows::NAME_FONT_SIZE))
+                .text_color(theme::palette(ui.ctx()).text)
+                .desired_width(width)
+                .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
+                .show(ui);
+            output.response.widget_info(|| {
+                egui::WidgetInfo::text_edit(ui.is_enabled(), &layer.name, &edit.text, "Layer name")
+            });
+            if edit.focus {
+                output.response.request_focus();
+                output
+                    .state
+                    .cursor
+                    .set_char_range(Some(egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(edit.text.chars().count()),
+                    )));
+                output.state.store(ui.ctx(), output.response.id);
+                edit.focus = false;
+            }
+            if let Some(action) = inline_edit_action(ui, &output.response) {
+                output.response.surrender_focus();
+                if action == InlineEditAction::Commit && !edit.text.trim().is_empty() {
+                    layer.name = edit.text.trim().to_owned();
+                }
+            } else {
+                self.instrument_ui.name_edit = Some(edit);
+            }
+            output.response.rect
+        } else {
+            let response = ui.add(
+                egui::Label::new(
+                    egui::RichText::new(&layer.name)
+                        .font(egui::FontId::proportional(rows::NAME_FONT_SIZE))
+                        .color(theme::palette(ui.ctx()).text),
+                )
+                .truncate()
+                .sense(Sense::click_and_drag()),
+            );
+            let response = response
+                .on_hover_text(format!(
+                    "{}\nDrag to reorder. Double-click to rename layer.",
+                    layer.name
+                ))
+                .on_hover_cursor(egui::CursorIcon::Grab);
+            if response.double_clicked()
+                && self.instrument_ui.name_edit.is_none()
+                && !self.instrument_ui.dragging()
+            {
+                self.instrument_ui.name_edit = Some(LayerNameEdit {
+                    layer: layer.id,
+                    text: layer.name.clone(),
+                    focus: true,
+                });
+            }
+            self.start_layer_drag(ui, &response, layer.id);
+            response.rect
+        }
+    }
+
+    fn start_layer_drag(&mut self, ui: &egui::Ui, response: &egui::Response, layer: Id) {
+        if response.drag_started_by(egui::PointerButton::Primary)
+            && ui.is_enabled()
+            && ui.input(|input| input.focused)
+            && self.edit_environment_available()
+            && !self.instrument_ui.editing_name()
+        {
+            self.instrument_ui.drag = Some(layer);
+        }
+    }
+
+    fn layer_reorder(
+        &mut self,
+        ui: &egui::Ui,
+        settings: &mut daw_core::InstrumentSettings,
+        rows: &[(Id, Rect)],
+        viewport: Rect,
+    ) {
+        let Some(id) = self.instrument_ui.drag else {
+            return;
+        };
+        if !ui.is_enabled()
+            || !self.edit_environment_available()
+            || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape))
+        {
+            self.instrument_ui.drag = None;
+            return;
+        }
+        let Some(source) = settings.layers.iter().position(|layer| layer.id == id) else {
+            self.instrument_ui.drag = None;
+            return;
+        };
+        let target = ui
+            .input(|input| input.pointer.latest_pos())
+            .filter(|p| viewport.contains(*p))
+            .map(|pointer| {
+                let slot = rows
+                    .iter()
+                    .position(|(_, row)| pointer.y < row.center().y)
+                    .unwrap_or(rows.len());
+                (slot, slot - usize::from(slot > source))
+            });
+        if let Some((slot, index)) = target
+            && index != source
+        {
+            let y = rows
+                .get(slot)
+                .map_or_else(|| rows.last().unwrap().1.bottom(), |(_, row)| row.top())
+                .clamp(viewport.top(), viewport.bottom());
+            ui.painter_at(viewport).hline(
+                viewport.x_range(),
+                y,
+                Stroke::new(2.0, theme::accent(ui.ctx())),
+            );
+        }
+        ui.ctx().set_cursor_icon(if target.is_some() {
+            egui::CursorIcon::Grabbing
+        } else {
+            egui::CursorIcon::NotAllowed
+        });
+        if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
+            self.instrument_ui.drag = None;
+            if let Some((_, index)) = target
+                && index != source
+            {
+                let layer = settings.layers.remove(source);
+                settings.layers.insert(index, layer);
+            }
+        } else if !ui.input(|input| input.pointer.button_down(egui::PointerButton::Primary)) {
+            self.instrument_ui.drag = None;
+        }
+    }
+
+    fn scroll_layer_drag(&self, ui: &egui::Ui) {
+        if !ui.is_enabled()
+            || !self.edit_environment_available()
+            || ui.input(|input| {
+                !input.focused
+                    || !input.pointer.primary_down()
+                    || input.key_pressed(egui::Key::Escape)
+            })
+        {
+            return;
+        }
+        if let Some(pointer) = ui.input(|input| input.pointer.latest_pos())
+            && ui.clip_rect().contains(pointer)
+        {
+            let viewport = ui.clip_rect();
+            let direction = if pointer.y < viewport.top() + 24.0 {
+                1.0
+            } else if pointer.y > viewport.bottom() - 24.0 {
+                -1.0
+            } else {
+                0.0
+            };
+            if direction != 0.0 {
+                ui.scroll_with_delta(Vec2::new(
+                    0.0,
+                    direction * 240.0 * ui.input(|input| input.stable_dt),
+                ));
+                ui.ctx().request_repaint();
+            }
+        }
+    }
+
+    fn oscillator_unit(
+        &mut self,
+        ui: &mut egui::Ui,
+        track: Id,
+        oscillators: &mut Vec<daw_core::OscillatorSettings>,
+        height: f32,
+    ) -> (Rect, Rect) {
+        let panel = panels::PanelStyle::default();
+        let strip_margin = panel.margin;
+        let strip_height = crate::envelope_panel::control_height();
+        let strip_width = OSCILLATOR_STRIP_WIDTH - 2.0 * f32::from(strip_margin);
+        let mut remove = None;
+        let mut add = false;
+        #[cfg(test)]
+        {
+            self.midi_editor.oscillator_bounds.clear();
+            self.midi_editor.oscillator_strip_bounds.clear();
+            self.midi_editor.oscillator_power_bounds.clear();
+            self.midi_editor.add_oscillator_bounds = Rect::NOTHING;
+            self.midi_editor.add_oscillator_strip_bounds = Rect::NOTHING;
+        }
+        let result =
+            panels::PanelStyle { margin: 0, ..panel }.unit(ui, "Oscillator", height, |ui| {
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(0.0, theme::TOOLBAR_PADDING as f32);
+                    let mut previous_column: Option<Rect> = None;
+                    for (index, oscillator) in oscillators.iter_mut().enumerate() {
+                        let strip = ui.scope_builder(
+                            egui::UiBuilder::new()
+                                .id_salt(("oscillator-strip", track, index))
+                                .sense(Sense::click()),
+                            |ui| {
+                                egui::Frame::new()
+                                    .inner_margin(strip_margin)
+                                    .show(ui, |ui| {
+                                        ui.scope_builder(
+                                            egui::UiBuilder::new()
+                                                .id_salt(("oscillator-settings", track, index))
+                                                .layout(egui::Layout::top_down(egui::Align::Min))
+                                                .sense(Sense::click()),
+                                            |ui| {
+                                                ui.set_width(strip_width);
+                                                [
+                                                    knobs::row(
+                                                        ui,
+                                                        &mut oscillator.waveform,
+                                                        knobs::CHOICE_SIZE,
+                                                        knobs::waveform,
+                                                    ),
+                                                    knobs::row(
+                                                        ui,
+                                                        &mut oscillator.transpose,
+                                                        knobs::CHOICE_SIZE,
+                                                        knobs::pitch,
+                                                    ),
+                                                    knobs::row(
+                                                        ui,
+                                                        &mut oscillator.gain_db,
+                                                        knobs::CHOICE_SIZE,
+                                                        knobs::gain_with_markers,
+                                                    ),
+                                                    crate::rows::centered(
+                                                        ui,
+                                                        icons::COMPACT_BUTTON_SIZE,
+                                                        |ui| {
+                                                            let on = !oscillator.muted;
+                                                            let palette = theme::palette(ui.ctx());
+                                                            let label =
+                                                                ui.painter().layout_no_wrap(
+                                                                    format!("Osc {}", index + 1),
+                                                                    egui::FontId::proportional(
+                                                                        panels::HEADER_FONT_SIZE,
+                                                                    ),
+                                                                    if on {
+                                                                        palette.text
+                                                                    } else {
+                                                                        palette.secondary
+                                                                    },
+                                                                );
+                                                            let gap =
+                                                                f32::from(theme::TOOLBAR_PADDING);
+                                                            let pair_width =
+                                                                icons::COMPACT_BUTTON_SIZE
+                                                                    + gap
+                                                                    + label.size().x;
+                                                            ui.spacing_mut().item_spacing.x = gap;
+                                                            ui.add_space(
+                                                                ((ui.available_width()
+                                                                    - pair_width)
+                                                                    * 0.5)
+                                                                    .max(0.0)
+                                                                    .round(),
+                                                            );
+                                                            let response = icons::circular_button(
+                                                                ui,
+                                                                icons::Lucide::Power,
+                                                                &format!(
+                                                                    "Toggle oscillator {}",
+                                                                    index + 1
+                                                                ),
+                                                                Some(on),
+                                                                icons::COMPACT_BUTTON_SIZE,
+                                                            );
+                                                            ui.add(
+                                                                egui::Label::new(label)
+                                                                    .selectable(false),
+                                                            );
+                                                            if response.clicked() {
+                                                                oscillator.muted =
+                                                                    !oscillator.muted;
+                                                            }
+                                                            #[cfg(test)]
+                                                            self.midi_editor
+                                                                .oscillator_power_bounds
+                                                                .push(response.rect);
+                                                            response
+                                                        },
+                                                    )
+                                                    .inner,
+                                                ]
+                                            },
+                                        )
+                                    })
+                            },
+                        );
+                        let column = strip.inner.inner;
+                        if let Some(previous) = previous_column {
+                            panels::unit_divider(
+                                ui,
+                                strip.response.rect.left(),
+                                previous.top()..=strip.response.rect.bottom(),
+                            );
+                        }
+                        previous_column = Some(strip.response.rect);
+                        #[cfg(test)]
+                        {
+                            self.midi_editor
+                                .oscillator_bounds
+                                .push(column.response.rect);
+                            self.midi_editor
+                                .oscillator_strip_bounds
+                                .push(strip.response.rect);
+                        }
+                        // The column covers gaps; knob responses cover their interactive faces.
+                        for response in column
+                            .inner
+                            .iter()
+                            .chain([&column.response, &strip.response])
+                        {
+                            response.context_menu(|ui| {
+                                if ui
+                                    .add_enabled(
+                                        response.enabled(),
+                                        egui::Button::new("Remove oscillator"),
+                                    )
+                                    .clicked()
+                                {
+                                    remove = Some(index);
+                                    ui.close();
+                                }
+                            });
+                        }
+                    }
+                    let add_strip = ui.scope(|ui| {
+                        icons::circular_strip_button(
+                            ui,
+                            icons::Lucide::Plus,
+                            "Add oscillator",
+                            Vec2::new(icons::COMPACT_BUTTON_SIZE, strip_height)
+                                + Vec2::splat(2.0 * f32::from(strip_margin)),
+                            icons::COMPACT_BUTTON_SIZE,
+                        )
+                    });
+                    if let Some(previous) = previous_column {
+                        panels::unit_divider(
+                            ui,
+                            add_strip.response.rect.left(),
+                            previous.top()..=add_strip.response.rect.bottom(),
+                        );
+                    }
+                    #[cfg(test)]
+                    {
+                        self.midi_editor.add_oscillator_bounds = add_strip.inner.rect;
+                        self.midi_editor.add_oscillator_strip_bounds = add_strip.response.rect;
+                    }
+                    add = add_strip.inner.clicked();
+                });
+            });
+
+        if let Some(index) = remove {
+            oscillators.remove(index);
+        }
+        if add {
+            oscillators.push(Default::default());
+        }
+        #[cfg(test)]
+        {
+            self.midi_editor.oscillator_panel_bounds = result.response.rect;
+        }
+        (result.response.rect, result.header.rect)
+    }
+}

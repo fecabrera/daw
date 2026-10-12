@@ -30,6 +30,7 @@ fn draw_click(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
 fn fixture() -> (DawUi, Id, Id, Id) {
     let mut app = DawUi::default();
     let track = app.session.project.add_midi_track().unwrap();
+    app.session.project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
     let clip = app.session.project.add_midi_pattern(track, 0).unwrap();
     let note = Id::new_v4();
     app.session
@@ -65,6 +66,1151 @@ fn pattern(app: &DawUi) -> &MidiPattern {
         .unwrap()
 }
 
+fn layer_header_fixture() -> (DawUi, egui::Context, Vec<daw_core::InstrumentLayerSettings>) {
+    let (mut app, _, _, _) = fixture();
+    let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    settings.layers[0].name = "Lead".into();
+    let mut second = daw_core::InstrumentLayerSettings {
+        name: "Bass".into(),
+        ..Default::default()
+    };
+    second.oscillators.push(daw_core::OscillatorSettings {
+        transpose: -12,
+        ..Default::default()
+    });
+    settings.layers.push(second);
+    settings.layers.push(daw_core::InstrumentLayerSettings {
+        name: "Layer 3".into(),
+        ..Default::default()
+    });
+    let layers = settings.layers.clone();
+    let ctx = context();
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    (app, ctx, layers)
+}
+fn begin_layer_rename(app: &mut DawUi, ctx: &egui::Context, id: Id) {
+    // Start a separate double-click gesture after the previous edit's clicks.
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            time: Some(ctx.input(|input| input.time) + 0.6),
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+            ..Default::default()
+        },
+        |ui| app.show(ui),
+    );
+    output.textures_delta.clear();
+    let point = app.midi_editor.layer_bounds[&id].name.center();
+    for _ in 0..2 {
+        frame(
+            app,
+            ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(app, ctx, vec![button(point, false)]);
+    }
+    frame(app, ctx, vec![]);
+    assert!(
+        app.instrument_ui.editing_name(),
+        "name at {point:?}, model={}, focus={:?}",
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .name,
+        ctx.memory(|m| m.focused())
+    );
+}
+fn layer_key(key: egui::Key) -> egui::Event {
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Default::default(),
+    }
+}
+#[test]
+fn layer_headers_share_track_geometry_and_leave_the_header_workspace_dark() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, mut layers) = layer_header_fixture();
+        let envelope_only = daw_core::InstrumentLayerSettings {
+            name: "Envelope only".into(),
+            has_envelope: true,
+            ..Default::default()
+        };
+        layers.push(envelope_only);
+        app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers = layers.clone();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(640.0, 1300.0));
+        let header = app.midi_editor.instrument_header_bounds;
+        assert_eq!(header.width(), TRACK_WIDTH);
+        let add = app.midi_editor.add_layer_bounds;
+        assert!(header.contains_rect(add));
+        assert!((header.right() - add.right() - f32::from(theme::TOOLBAR_PADDING)).abs() < 0.1);
+        let blank = Pos2::new(header.right() + 40.0, header.center().y);
+        assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect.contains(blank) && r.fill == theme::palette(&ctx).panel)));
+        let below = Pos2::new(
+            header.center().x,
+            app.midi_editor.layer_bounds[&layers.last().unwrap().id]
+                .row
+                .bottom()
+                + 10.0,
+        );
+        assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect.contains(below) && r.fill == theme::palette(&ctx).panel)));
+        for layer in &layers {
+            let bounds = &app.midi_editor.layer_bounds[&layer.id];
+            let full_height = app.midi_editor.layer_bounds[&layers[0].id].row.height();
+            assert_eq!(bounds.row.height(), full_height, "{}", layer.name);
+            assert_eq!(bounds.label.height(), full_height, "{}", layer.name);
+            for area in [bounds.source_empty_state, bounds.envelope_empty_state] {
+                if area != Rect::NOTHING {
+                    assert_eq!(area.height(), full_height);
+                }
+            }
+            assert_eq!(bounds.label.width(), TRACK_WIDTH);
+            assert_eq!(bounds.label.right(), header.right());
+            assert_eq!(bounds.grip.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
+            assert_eq!(bounds.grip.left(), bounds.label.left() + 7.0);
+            assert!((bounds.name.left() - bounds.grip.right() - 6.0).abs() < 0.1);
+            let text = shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == layer.name => Some(t),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(
+                text.galley
+                    .job
+                    .sections
+                    .iter()
+                    .all(|s| s.format.font_id.size == rows::NAME_FONT_SIZE)
+            );
+        }
+    }
+}
+fn double_click_unit_header(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            time: Some(ctx.input(|input| input.time) + 0.6),
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+            ..Default::default()
+        },
+        |ui| app.show(ui),
+    );
+    output.textures_delta.clear();
+    for _ in 0..2 {
+        click_note_or_lane(app, ctx, point);
+    }
+    frame(app, ctx, vec![]);
+}
+
+#[test]
+fn unit_headers_collapse_independently_without_changing_instruments_or_layer_height() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for accent in [
+            settings::AccentColor::DeepOrange,
+            settings::AccentColor::Yellow,
+        ] {
+            let (mut app, ctx, layers) = layer_header_fixture();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    accent,
+                    ..Default::default()
+                },
+            );
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let before = serde_json::to_value(&app.session.project).unwrap();
+            let first = layers[0].id;
+            let second = layers[1].id;
+            let initial = &app.midi_editor.layer_bounds[&first];
+            let full_height = initial.row.height();
+            let full_width = initial.oscillator_panel.width();
+            let point = initial.oscillator_header.center();
+            click_note_or_lane(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(
+                app.midi_editor.layer_bounds[&first]
+                    .oscillator_panel
+                    .width(),
+                full_width,
+                "A single click must leave the unit expanded"
+            );
+            double_click_unit_header(&mut app, &ctx, point);
+            let first_bounds = &app.midi_editor.layer_bounds[&first];
+            assert_eq!(
+                first_bounds.oscillator_panel.width(),
+                panels::HEADER_HEIGHT + 2.0
+            );
+            assert_eq!(first_bounds.oscillator_panel.height(), full_height);
+            assert_eq!(first_bounds.row.height(), full_height);
+            assert!(first_bounds.oscillators.is_empty());
+            assert!(
+                first_bounds
+                    .envelope_stages
+                    .iter()
+                    .all(|rect| *rect != Rect::NOTHING)
+            );
+            assert!(
+                app.midi_editor.layer_bounds[&second]
+                    .oscillator_panel
+                    .width()
+                    > panels::HEADER_HEIGHT + 2.0
+            );
+            let point = first_bounds.envelope_header.center();
+            double_click_unit_header(&mut app, &ctx, point);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let bounds = &app.midi_editor.layer_bounds[&first];
+            assert!(
+                bounds
+                    .envelope_stages
+                    .iter()
+                    .all(|rect| *rect == Rect::NOTHING)
+            );
+            assert_eq!(bounds.envelope_panel.width(), panels::HEADER_HEIGHT + 2.0);
+            assert_eq!(bounds.envelope_panel.height(), full_height);
+            assert_eq!(
+                bounds.oscillator_panel.right() - 1.0,
+                bounds.envelope_panel.left()
+            );
+            for (name, panel, header) in [
+                (
+                    "Oscillator",
+                    bounds.oscillator_panel,
+                    bounds.oscillator_header,
+                ),
+                ("Envelope", bounds.envelope_panel, bounds.envelope_header),
+            ] {
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Rect(rect) if rect.rect == panel && rect.fill == theme::accent(&ctx))));
+                let text = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text)
+                            if text.galley.text() == name
+                                && text.angle != 0.0
+                                && header.contains(text.visual_bounding_rect().center()) =>
+                        {
+                            Some(text)
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(text.angle, -std::f32::consts::FRAC_PI_2);
+                assert_eq!(
+                    text.fallback_color,
+                    theme::unit_header_text(theme::accent(&ctx))
+                );
+                assert!(
+                    text.galley
+                        .job
+                        .sections
+                        .iter()
+                        .all(|section| section.format.font_id.size == panels::HEADER_FONT_SIZE)
+                );
+                assert!(header.contains_rect(text.visual_bounding_rect()));
+            }
+            assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+            assert!(!app.dirty);
+            let disabled_point = bounds.oscillator_header.center();
+            for _ in 0..2 {
+                for pressed in [true, false] {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(1280.0, 800.0),
+                            )),
+                            events: vec![
+                                egui::Event::PointerMoved(disabled_point),
+                                button(disabled_point, pressed),
+                            ],
+                            ..Default::default()
+                        },
+                        |ui| {
+                            ui.disable();
+                            app.show(ui);
+                        },
+                    );
+                    output.textures_delta.clear();
+                }
+            }
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(
+                app.midi_editor.layer_bounds[&first]
+                    .oscillator_panel
+                    .width(),
+                panels::HEADER_HEIGHT + 2.0,
+                "Disabled headers must not expand"
+            );
+            app.set_view_mode(ViewMode::Timeline, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            app.set_view_mode(ViewMode::Instrument, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(
+                app.midi_editor.layer_bounds[&first]
+                    .oscillator_panel
+                    .width(),
+                panels::HEADER_HEIGHT + 2.0
+            );
+            // Identity-scoped presentation follows the layer when its row changes.
+            app.session.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers
+                .swap(0, 1);
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(
+                app.midi_editor.layer_bounds[&first]
+                    .oscillator_panel
+                    .width(),
+                panels::HEADER_HEIGHT + 2.0
+            );
+            assert!(
+                app.midi_editor.layer_bounds[&second]
+                    .oscillator_panel
+                    .width()
+                    > panels::HEADER_HEIGHT + 2.0
+            );
+            let point = app.midi_editor.layer_bounds[&first]
+                .oscillator_header
+                .center();
+            double_click_unit_header(&mut app, &ctx, point);
+            assert_eq!(
+                app.midi_editor.layer_bounds[&first]
+                    .oscillator_panel
+                    .width(),
+                full_width
+            );
+            assert!(!app.midi_editor.layer_bounds[&first].oscillators.is_empty());
+            assert_eq!(
+                app.midi_editor.layer_bounds[&first].envelope_panel.width(),
+                panels::HEADER_HEIGHT + 2.0
+            );
+            let point = app.midi_editor.layer_bounds[&first]
+                .envelope_header
+                .center();
+            double_click_unit_header(&mut app, &ctx, point);
+            assert!(
+                app.midi_editor.layer_bounds[&first]
+                    .envelope_stages
+                    .iter()
+                    .all(|rect| *rect != Rect::NOTHING)
+            );
+            app.session.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers
+                .swap(0, 1);
+            assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, layers) = layer_header_fixture();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        let first = layers[0].id;
+        let original_peer = layers[1].clone();
+        let original_track = (
+            app.session.project.tracks[0].gain_db,
+            app.session.project.tracks[0].pan,
+            app.session.project.tracks[0].muted,
+            app.session.project.tracks[0].soloed,
+        );
+        let bounds = &app.midi_editor.layer_bounds[&first];
+        let [mute, solo, gain, gain_input, pan, pan_input] = bounds.mix_controls;
+        assert_eq!(mute.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
+        assert_eq!(solo.size(), mute.size());
+        let right_inset = 7.0 + (meters::STEREO_WIDTH - meters::SCALE_WIDTH) + 6.0;
+        assert_eq!(bounds.label.right() - solo.right(), right_inset);
+        assert_eq!(solo.left() - mute.right(), 6.0);
+        for peer in &layers[1..] {
+            let controls = app.midi_editor.layer_bounds[&peer.id].mix_controls;
+            assert_eq!(controls[0].x_range(), mute.x_range());
+            assert_eq!(controls[1].x_range(), solo.x_range());
+        }
+        assert_eq!(gain.size(), Vec2::splat(knobs::SIZE));
+        assert_eq!(pan.size(), gain.size());
+        assert_eq!(gain.left(), bounds.label.left() + 7.0);
+        assert_eq!(
+            gain.top(),
+            bounds.label.top() + 7.0 + toolbars::CONTROL_HEIGHT + 4.0
+        );
+        assert_eq!(gain_input.width(), NUMERIC_WIDTH);
+        assert_eq!(pan_input.width(), NUMERIC_WIDTH);
+        assert_eq!(pan.left() - gain_input.right(), 4.0);
+        let point = mute.center();
+        app.dirty = false;
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        assert!(
+            !app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .muted
+        );
+        assert!(!app.dirty);
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        assert!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .muted
+        );
+        assert!(app.dirty);
+        click_note_or_lane(&mut app, &ctx, solo.center());
+        assert!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .soloed
+        );
+        click_note_or_lane(&mut app, &ctx, gain.center());
+        frame(&mut app, &ctx, vec![layer_key(egui::Key::ArrowUp)]);
+        assert!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .gain_db
+                > 0.0
+        );
+        click_note_or_lane(&mut app, &ctx, pan.center());
+        frame(&mut app, &ctx, vec![layer_key(egui::Key::ArrowRight)]);
+        assert!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .pan
+                > 0.0
+        );
+        for (input, text, key, expected) in [
+            (gain_input, "-6.0", egui::Key::Enter, -6.0),
+            (gain_input, "-3.0", egui::Key::Escape, -6.0),
+            (
+                gain_input,
+                "-inf",
+                egui::Key::Enter,
+                daw_core::SILENT_GAIN_DB,
+            ),
+            (pan_input, "-0.75", egui::Key::Enter, -0.75),
+            (pan_input, "0.9", egui::Key::Escape, -0.75),
+        ] {
+            click_note_or_lane(&mut app, &ctx, input.center());
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::A,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::COMMAND,
+                }],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::Text(text.into())]);
+            app.dirty = false;
+            frame(&mut app, &ctx, vec![layer_key(key)]);
+            let layer = &app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0];
+            assert_eq!(
+                if input == gain_input {
+                    layer.gain_db
+                } else {
+                    layer.pan
+                },
+                expected
+            );
+            assert_eq!(app.dirty, key == egui::Key::Enter);
+        }
+        let track = &app.session.project.tracks[0];
+        assert_eq!(track.instrument.as_ref().unwrap().layers[1], original_peer);
+        assert_eq!(
+            (track.gain_db, track.pan, track.muted, track.soloed),
+            original_track
+        );
+        assert!(app.error.is_none());
+        click_note_or_lane(&mut app, &ctx, pan_input.center());
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::A,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::COMMAND,
+            }],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::Text("1.01".into())]);
+        app.dirty = false;
+        frame(&mut app, &ctx, vec![layer_key(egui::Key::Enter)]);
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .pan,
+            -0.75
+        );
+        assert!(!app.dirty);
+        assert!(app.error.is_some());
+    }
+}
+
+#[test]
+fn layer_names_commit_on_enter_and_cancel_without_changing_instrument_settings() {
+    let (mut app, ctx, layers) = layer_header_fixture();
+    let id = layers[0].id;
+    app.dirty = false;
+    begin_layer_rename(&mut app, &ctx, id);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Text("  Lead 🎹  ".into())],
+    );
+    assert!(!app.dirty);
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers,
+        layers
+    );
+    frame(&mut app, &ctx, vec![layer_key(egui::Key::Enter)]);
+    let mut expected = layers;
+    expected[0].name = "Lead 🎹".into();
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers,
+        expected
+    );
+    assert!(app.dirty);
+    for cancel in [
+        "escape",
+        "blur",
+        "view",
+        "empty",
+        "unchanged",
+        "window",
+        "track",
+    ] {
+        app.dirty = false;
+        begin_layer_rename(&mut app, &ctx, id);
+        if cancel != "unchanged" {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Text(
+                    if cancel == "empty" { "  " } else { "Discard" }.into(),
+                )],
+            );
+        }
+        match cancel {
+            "escape" => frame(&mut app, &ctx, vec![layer_key(egui::Key::Escape)]),
+            "empty" | "unchanged" => frame(&mut app, &ctx, vec![layer_key(egui::Key::Enter)]),
+            "view" => {
+                app.set_view_mode(ViewMode::Timeline, &ctx);
+                frame(&mut app, &ctx, vec![]);
+                app.set_view_mode(ViewMode::Instrument, &ctx);
+            }
+            "track" => {
+                let other = app.session.project.add_midi_track().unwrap();
+                app.select_track(other, false);
+                frame(&mut app, &ctx, vec![]);
+                app.select_track(app.session.project.tracks[0].id, false);
+            }
+            "window" => {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        focused: false,
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1280.0, 800.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| app.show(ui),
+                );
+                output.textures_delta.clear();
+            }
+            _ => {
+                let point = Pos2::new(1200.0, 750.0);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                );
+                frame(&mut app, &ctx, vec![button(point, false)]);
+            }
+        }
+        assert!(!app.instrument_ui.editing_name(), "{cancel}");
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers,
+            expected,
+            "{cancel}"
+        );
+        assert!(!app.dirty, "{cancel}");
+        frame(&mut app, &ctx, vec![]);
+    }
+}
+#[test]
+fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
+    for area in ["grip", "name", "blank", "inset", "gutter", "body"] {
+        for action in ["commit", "escape", "window", "outside", "same", "disabled"] {
+            let (mut app, ctx, layers) = layer_header_fixture();
+            app.dirty = false;
+            let bounds = &app.midi_editor.layer_bounds[&layers[0].id];
+            let start = match area {
+                "grip" => bounds.grip.center(),
+                "name" => bounds.name.center(),
+                "blank" => Pos2::new(bounds.name.right() + 10.0, bounds.grip.center().y),
+                "inset" => Pos2::new(bounds.label.left() + 2.0, bounds.grip.center().y),
+                "gutter" => Pos2::new(bounds.label.right() - 2.0, bounds.grip.center().y),
+                _ => bounds.label.center(),
+            };
+            let end = if action == "same" {
+                start + Vec2::new(8.0, 0.0)
+            } else if action == "outside" {
+                Pos2::new(start.x, 10.0)
+            } else {
+                app.midi_editor.layer_bounds[&layers[2].id].row.center() + Vec2::new(0.0, 8.0)
+            };
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert!(app.instrument_ui.dragging());
+            assert!(!app.file_action_enabled(FileAction::Import));
+            assert!(!app.view_switch_enabled());
+            assert_eq!(
+                app.session.project.tracks[0]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .layers,
+                layers
+            );
+            assert!(!app.dirty);
+            match action {
+                "escape" => frame(&mut app, &ctx, vec![layer_key(egui::Key::Escape)]),
+                "window" | "disabled" => {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            focused: action != "window",
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(1280.0, 800.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            ui.add_enabled_ui(action != "disabled", |ui| app.show(ui));
+                        },
+                    );
+                    output.textures_delta.clear();
+                }
+                _ => (),
+            }
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            let expected = if action == "commit" {
+                vec![layers[1].clone(), layers[2].clone(), layers[0].clone()]
+            } else {
+                layers
+            };
+            assert_eq!(
+                app.session.project.tracks[0]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .layers,
+                expected,
+                "{area}: {action}"
+            );
+            assert_eq!(app.dirty, action == "commit");
+            assert!(!app.instrument_ui.dragging());
+        }
+    }
+}
+
+#[test]
+fn layer_control_and_name_editor_drags_do_not_reorder_layers() {
+    for control in 0..7 {
+        let (mut app, ctx, layers) = layer_header_fixture();
+        let id = layers[0].id;
+        let start = if control == 6 {
+            begin_layer_rename(&mut app, &ctx, id);
+            app.midi_editor.layer_bounds[&id].name.center()
+        } else {
+            app.midi_editor.layer_bounds[&id].mix_controls[control].center()
+        };
+        let end = start + Vec2::new(0.0, -20.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert!(!app.instrument_ui.dragging(), "control {control}");
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert!(!app.instrument_ui.dragging(), "control {control}");
+        let current = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers;
+        assert_eq!(
+            current.iter().map(|layer| layer.id).collect::<Vec<_>>(),
+            layers.iter().map(|layer| layer.id).collect::<Vec<_>>()
+        );
+        assert_eq!(current[1..], layers[1..]);
+        if control == 2 {
+            assert!(current[0].gain_db > layers[0].gain_db);
+        } else if control == 4 {
+            assert!(current[0].pan > layers[0].pan);
+        }
+        if control == 6 {
+            assert!(app.instrument_ui.editing_name());
+            frame(&mut app, &ctx, vec![layer_key(egui::Key::Escape)]);
+        }
+    }
+}
+
+#[test]
+fn dragging_layers_scrolls_the_rows_while_the_instrument_header_stays_fixed() {
+    let (mut app, ctx, mut layers) = layer_header_fixture();
+    for number in 4..=12 {
+        let mut layer = daw_core::InstrumentLayerSettings {
+            name: format!("Layer {number}"),
+            ..Default::default()
+        };
+        layer.oscillators.push(Default::default());
+        layers.push(layer);
+    }
+    app.session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers = layers.clone();
+    app.dirty = false;
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let viewport = shapes
+        .iter()
+        .find(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Lead"))
+        .unwrap()
+        .clip_rect;
+    let header = app.midi_editor.instrument_header_bounds;
+    let first_top = app.midi_editor.layer_bounds[&layers[0].id].row.top();
+    let bounds = &app.midi_editor.layer_bounds[&layers[0].id];
+    let start = Pos2::new(bounds.name.right() + 10.0, bounds.grip.center().y);
+    let end = Pos2::new(start.x, viewport.bottom() - 2.0);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+    );
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    for _ in 0..25 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    assert!(app.midi_editor.layer_bounds[&layers[0].id].row.top() < first_top - 10.0);
+    assert_eq!(app.midi_editor.instrument_header_bounds, header);
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers,
+        layers
+    );
+    frame(&mut app, &ctx, vec![layer_key(egui::Key::Escape)]);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    assert!(!app.dirty);
+    assert!(!app.instrument_ui.dragging());
+}
+
+#[test]
+fn instrument_rows_start_empty_and_add_independent_sources_envelopes_and_layers() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let mut app = DawUi::default();
+        let track = app.session.project.add_midi_track().unwrap();
+        app.selected_track = Some(track);
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        for text in [
+            "Layers",
+            "Layer 1",
+            "No source",
+            "Generate sound with an oscillator.",
+            "Add source",
+            "No envelope",
+            "Shape this layer’s volume over time.",
+            "Add envelope",
+        ] {
+            assert!(
+                shapes
+                    .iter()
+                    .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == text))
+            );
+        }
+        let first = app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .id;
+        let bounds = &app.midi_editor.layer_bounds[&first];
+        assert_eq!(bounds.label.left(), bounds.row.left());
+        assert!((bounds.label.right() - bounds.source_empty_state.left()).abs() < 0.01);
+        assert_eq!(
+            bounds.source_empty_state.right() - crate::empty_state::MARGIN,
+            bounds.envelope_empty_state.left()
+        );
+        let source_card = bounds.source_empty_state.shrink(crate::empty_state::MARGIN);
+        let envelope_card = bounds
+            .envelope_empty_state
+            .shrink(crate::empty_state::MARGIN);
+        assert_eq!(source_card.left() - bounds.label.right(), 20.0);
+        assert_eq!(envelope_card.left() - source_card.right(), 20.0);
+        for (area, card) in [
+            (bounds.source_empty_state, source_card),
+            (bounds.envelope_empty_state, envelope_card),
+        ] {
+            assert_eq!(card.top() - area.top(), 20.0);
+            assert_eq!(area.bottom() - card.bottom(), 20.0);
+            assert_eq!(area.right() - card.right(), 20.0);
+        }
+        assert!(bounds.oscillators.is_empty());
+        assert!(bounds.envelope_stages.iter().all(|r| *r == Rect::NOTHING));
+        assert!(
+            app.midi_editor
+                .instrument_header_bounds
+                .contains_rect(app.midi_editor.add_layer_bounds)
+        );
+        assert_eq!(
+            app.midi_editor.add_layer_bounds.size(),
+            Vec2::new(30.0, toolbars::CONTROL_HEIGHT)
+        );
+        let blank = Pos2::new(bounds.row.right() - 10.0, bounds.row.center().y);
+        assert!(!shapes.iter().any(|s| matches!(&s.shape,
+            egui::Shape::Rect(r) if r.rect.contains(blank) && r.fill == theme::palette(&ctx).panel)),
+            "Unused layer space must retain the workspace background");
+        let mut inactive_points = Vec::new();
+        for (area, action, title) in [
+            (bounds.source_empty_state, bounds.add_source, "No source"),
+            (
+                bounds.envelope_empty_state,
+                bounds.add_envelope,
+                "No envelope",
+            ),
+        ] {
+            let card = area.shrink(crate::empty_state::MARGIN);
+            assert!(card.contains_rect(action));
+            assert_eq!(action.height(), toolbars::CONTROL_HEIGHT);
+            assert!(!shapes.iter().any(|s| matches!(&s.shape,
+                egui::Shape::Rect(r) if r.rect.contains_rect(card) && r.fill != egui::Color32::TRANSPARENT
+                    && r.fill != theme::palette(&ctx).background)),
+                "Empty cards must not paint a background");
+            // Dashed outlines are short strokes with visible gaps, not a solid frame.
+            let dashes = shapes.iter().filter(|s| matches!(&s.shape,
+                egui::Shape::LineSegment { points, stroke } if card.contains(points[0]) && card.contains(points[1])
+                    && stroke.color == theme::palette(&ctx).border && stroke.width == 1.0
+                    && points[0].distance(points[1]) <= 6.1)).count();
+            assert!(dashes > 20);
+            let label = shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == title => {
+                        Some(t.galley.rect.translate(t.pos.to_vec2()))
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert!(card.contains_rect(label));
+            assert!((label.center().x - card.center().x).abs() < 1.0);
+            assert!((action.center().x - card.center().x).abs() < 1.0);
+            let outer_margin = Pos2::new(area.left() + 2.0, area.center().y);
+            assert!(!shapes.iter().any(|s| matches!(&s.shape,
+                egui::Shape::Rect(r) if r.rect.contains(outer_margin) && r.fill == theme::palette(&ctx).panel)));
+            inactive_points.extend([outer_margin, label.center()]);
+        }
+        let point = bounds.add_source.center();
+        let before = app.session.project.tracks[0].instrument.clone();
+        for inactive in inactive_points {
+            click_note_or_lane(&mut app, &ctx, inactive);
+            assert_eq!(app.session.project.tracks[0].instrument, before);
+            assert!(!app.dirty);
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        assert!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .oscillators
+                .is_empty()
+        );
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.midi_editor.layer_bounds[&first].add_source,
+            Rect::NOTHING
+        );
+        let envelope = app.midi_editor.layer_bounds[&first].add_envelope.center();
+        click_note_or_lane(&mut app, &ctx, envelope);
+        frame(&mut app, &ctx, vec![]);
+        assert!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .has_envelope
+        );
+        assert!(
+            app.midi_editor.layer_bounds[&first]
+                .envelope_stages
+                .iter()
+                .all(|r| r.is_positive())
+        );
+        assert_eq!(app.midi_editor.layer_bounds[&first].oscillators.len(), 1);
+        let add = app.midi_editor.add_layer_bounds.center();
+        click_note_or_lane(&mut app, &ctx, add);
+        frame(&mut app, &ctx, vec![]);
+        let layers = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers;
+        assert_eq!(layers.len(), 2);
+        assert_eq!(layers[0].id, first);
+        let second = layers[1].id;
+        assert_ne!(first, second);
+        assert!(!layers[1].has_envelope);
+        assert!(layers[1].oscillators.is_empty());
+        assert!(
+            (app.midi_editor.layer_bounds[&first].row.bottom()
+                - app.midi_editor.layer_bounds[&second].row.top()
+                - 1.0)
+                .abs()
+                < 0.01
+        );
+        let source = app.midi_editor.layer_bounds[&second].add_source.center();
+        click_note_or_lane(&mut app, &ctx, source);
+        frame(&mut app, &ctx, vec![]);
+        let layers = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers;
+        assert_eq!(layers[0].oscillators.len(), 1);
+        assert_eq!(layers[1].oscillators.len(), 1);
+        assert!(!layers[1].has_envelope);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(!shapes.iter().any(|s| matches!(&s.shape,
+            egui::Shape::Text(t) if t.galley.text() == "Add source")));
+        let oscillator = app.midi_editor.layer_bounds[&second].oscillators[0];
+        let pitch = Pos2::new(
+            oscillator.center().x,
+            oscillator.top() + knobs::CHOICE_SIZE * 1.5 + theme::TOOLBAR_PADDING as f32,
+        );
+        click_note_or_lane(&mut app, &ctx, pitch);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowUp,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        let layers = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers;
+        assert_eq!(layers[0].oscillators[0].transpose, 0);
+        assert_eq!(layers[1].oscillators[0].transpose, 1);
+    }
+}
+
+#[test]
+fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
+    fn menu(app: &mut DawUi, ctx: &egui::Context, point: Pos2, text: &str) -> Pos2 {
+        for pressed in [true, false] {
+            frame(
+                app,
+                ctx,
+                vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+        }
+        frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0))
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == text => {
+                    Some(t.pos + t.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .expect("context menu item")
+    }
+    for collapsed in [false, true] {
+        let (mut app, _, _, _) = fixture();
+        let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        settings.layers[0].envelope.attack.time_ms = 75.0;
+        settings
+            .layers
+            .push(daw_core::InstrumentLayerSettings::default());
+        let first = settings.layers[0].id;
+        let second = settings.layers[1].id;
+        let ctx = context();
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let envelope = app.midi_editor.layer_bounds[&first].envelope_stages[0];
+        let header = Pos2::new(
+            envelope.center().x,
+            envelope.top() - panels::HEADER_HEIGHT * 0.5,
+        );
+        let header = if collapsed {
+            double_click_unit_header(&mut app, &ctx, header);
+            app.midi_editor.layer_bounds[&first]
+                .envelope_header
+                .center()
+        } else {
+            header
+        };
+        let remove = menu(&mut app, &ctx, header, "Remove envelope");
+        let before = app.session.project.tracks[0].instrument.clone().unwrap();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(remove), button(remove, true)],
+        );
+        assert_eq!(
+            app.session.project.tracks[0].instrument.as_ref(),
+            Some(&before)
+        );
+        frame(&mut app, &ctx, vec![button(remove, false)]);
+        frame(&mut app, &ctx, vec![]);
+        let layers = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers;
+        assert!(!layers[0].has_envelope);
+        assert_eq!(layers[0].envelope.attack.time_ms, 75.0);
+        assert_eq!(layers[1], before.layers[1]);
+        let add = app.midi_editor.layer_bounds[&first].add_envelope.center();
+        click_note_or_lane(&mut app, &ctx, add);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.session.project.tracks[0].instrument.as_ref(),
+            Some(&before)
+        );
+        let label = app.midi_editor.layer_bounds[&second].label.center();
+        let remove = menu(&mut app, &ctx, label, "Remove layer");
+        click_note_or_lane(&mut app, &ctx, remove);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers,
+            vec![before.layers[0].clone()]
+        );
+        let label = app.midi_editor.layer_bounds[&first].label.center();
+        let remove = menu(&mut app, &ctx, label, "Remove layer");
+        click_note_or_lane(&mut app, &ctx, remove);
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers
+                .len(),
+            1
+        );
+    }
+}
+
 #[test]
 fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
@@ -77,22 +1223,25 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
                 ..Default::default()
             },
         );
-        app.set_view_mode(ViewMode::Units, &ctx);
-        for count in [0, 1, 3] {
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        for count in [1, 3] {
             let mut settings = app.session.project.tracks[0].instrument.clone().unwrap();
-            settings
+            settings.layers[0]
                 .oscillators
                 .resize(count, daw_core::OscillatorSettings::default());
-            (settings.envelope.attack.time_ms, settings.envelope.sustain) = match count {
+            (
+                settings.layers[0].envelope.attack.time_ms,
+                settings.layers[0].envelope.sustain,
+            ) = match count {
                 0 => (5.0, 0.8),
                 1 => (1200.0, 0.2),
                 _ => (10_000.0, 0.99),
             };
             let readouts = [
-                knobs::format_time(settings.envelope.attack.time_ms),
-                knobs::format_time(settings.envelope.decay.time_ms),
-                format!("{:.0}%", settings.envelope.sustain * 100.0),
-                knobs::format_time(settings.envelope.release.time_ms),
+                knobs::format_time(settings.layers[0].envelope.attack.time_ms),
+                knobs::format_time(settings.layers[0].envelope.decay.time_ms),
+                format!("{:.0}%", settings.layers[0].envelope.sustain * 100.0),
+                knobs::format_time(settings.layers[0].envelope.release.time_ms),
             ];
             app.edit(Edit::SetInstrument {
                 track_id: track,
@@ -307,9 +1456,10 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
         .instrument
         .as_ref()
         .unwrap()
+        .layers[0]
         .oscillators
         .clone();
-    app.set_view_mode(ViewMode::Units, &ctx);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
     frame(&mut app, &ctx, vec![]);
     let point = |app: &DawUi, stage: usize, row: usize| {
         let strip = app.midi_editor.envelope_stage_bounds[stage];
@@ -344,6 +1494,7 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .instrument
             .as_ref()
             .unwrap()
+            .layers[0]
             .envelope
             .attack
             .amount,
@@ -357,6 +1508,7 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .instrument
             .as_ref()
             .unwrap()
+            .layers[0]
             .envelope
             .attack
             .shape,
@@ -370,6 +1522,7 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .instrument
             .as_ref()
             .unwrap()
+            .layers[0]
             .envelope
             .attack
             .amount
@@ -385,6 +1538,7 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .instrument
             .as_ref()
             .unwrap()
+            .layers[0]
             .envelope
             .attack
             .time_ms
@@ -400,6 +1554,7 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .instrument
             .as_ref()
             .unwrap()
+            .layers[0]
             .envelope
             .sustain
             - 0.79)
@@ -413,6 +1568,7 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .instrument
             .as_ref()
             .unwrap()
+            .layers[0]
             .envelope
             .attack
             .shape,
@@ -421,8 +1577,8 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
     click_note_or_lane(&mut app, &ctx, disabled);
     arrow(&mut app, egui::Key::ArrowUp);
     let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-    assert!((instrument.envelope.attack.amount - 0.51).abs() < 1e-6);
-    assert_eq!(instrument.oscillators, sources);
+    assert!((instrument.layers[0].envelope.attack.amount - 0.51).abs() < 1e-6);
+    assert_eq!(instrument.layers[0].oscillators, sources);
     assert_eq!(
         serde_json::to_value(&app.session.project.assets).unwrap(),
         assets
@@ -440,7 +1596,7 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
         } else {
             ctx.set_visuals(egui::Visuals::light());
         }
-        app.set_view_mode(ViewMode::Units, &ctx);
+        app.set_view_mode(ViewMode::Instrument, &ctx);
         frame(&mut app, &ctx, vec![]);
         for count in 1..=2 {
             for strip in &app.midi_editor.oscillator_strip_bounds {
@@ -475,15 +1631,16 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
                     .instrument
                     .as_ref()
                     .unwrap()
+                    .layers[0]
                     .oscillators
                     .len(),
                 count + 1
             );
         }
         let mut settings = app.session.project.tracks[0].instrument.clone().unwrap();
-        settings.oscillators[0].waveform = Waveform::Saw;
-        settings.oscillators[1].waveform = Waveform::Square;
-        settings.oscillators[2].waveform = Waveform::Triangle;
+        settings.layers[0].oscillators[0].waveform = Waveform::Saw;
+        settings.layers[0].oscillators[1].waveform = Waveform::Square;
+        settings.layers[0].oscillators[2].waveform = Waveform::Triangle;
         app.edit(Edit::SetInstrument {
             track_id: track,
             instrument: Some(settings),
@@ -510,7 +1667,7 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
         }
         let settings = app.session.project.tracks[0].instrument.as_ref().unwrap();
         assert_eq!(
-            settings
+            settings.layers[0]
                 .oscillators
                 .iter()
                 .map(|s| s.transpose)
@@ -562,7 +1719,7 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
             click_note_or_lane(&mut app, &ctx, menu);
             frame(&mut app, &ctx, vec![]);
             let mut expected = before;
-            expected.oscillators.remove(index);
+            expected.layers[0].oscillators.remove(index);
             assert_eq!(
                 app.session.project.tracks[0].instrument.as_ref().unwrap(),
                 &expected
@@ -577,6 +1734,7 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
                 .instrument
                 .as_ref()
                 .unwrap()
+                .layers[0]
                 .oscillators,
             vec![Default::default()]
         );
@@ -587,8 +1745,8 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
         assert_eq!(app.selected_track, Some(track));
         assert!(app.dirty);
         let mut settings = app.session.project.tracks[0].instrument.clone().unwrap();
-        settings.oscillators[0].transpose = -24;
-        settings.oscillators[0].gain_db = daw_core::SILENT_GAIN_DB;
+        settings.layers[0].oscillators[0].transpose = -24;
+        settings.layers[0].oscillators[0].gain_db = daw_core::SILENT_GAIN_DB;
         app.edit(Edit::SetInstrument {
             track_id: track,
             instrument: Some(settings),
@@ -612,6 +1770,7 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
             .instrument
             .as_mut()
             .unwrap()
+            .layers[0]
             .oscillators
             .push(Default::default());
         let ctx = context();
@@ -620,7 +1779,7 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
         } else {
             egui::Visuals::light()
         });
-        app.set_view_mode(ViewMode::Units, &ctx);
+        app.set_view_mode(ViewMode::Instrument, &ctx);
         frame(&mut app, &ctx, vec![]);
         let before = app.session.project.tracks[0].instrument.clone().unwrap();
         let assets = serde_json::to_value(&app.session.project.assets).unwrap();
@@ -841,7 +2000,7 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
         frame(&mut app, &ctx, vec![button(point, false)]);
         frame(&mut app, &ctx, vec![]);
         let mut expected = before.clone();
-        expected.oscillators[1].muted = true;
+        expected.layers[0].oscillators[1].muted = true;
         assert_eq!(
             app.session.project.tracks[0].instrument.as_ref().unwrap(),
             &expected
@@ -881,7 +2040,7 @@ fn midi_tracks_units_editor_and_clip_copy_use_shared_actions() {
     let (mut app, track, clip, _) = fixture();
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
-    app.set_view_mode(ViewMode::Units, &ctx);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
     frame(&mut app, &ctx, vec![]);
     app.edit(Edit::SetInstrument {
         track_id: track,
@@ -898,6 +2057,7 @@ fn midi_tracks_units_editor_and_clip_copy_use_shared_actions() {
             .instrument
             .as_ref()
             .unwrap()
+            .layers[0]
             .oscillators[0]
             .waveform,
         Waveform::Saw
@@ -962,9 +2122,9 @@ fn toolbar_track_dropdown_switches_units_and_edit_without_changing_the_project()
     let dirty = app.dirty;
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
-    for mode in [ViewMode::Units, ViewMode::Edit] {
+    for mode in [ViewMode::Instrument, ViewMode::Edit] {
         app.set_view_mode(mode, &ctx);
-        // Edit still follows the active clip after selecting a track in Units.
+        // Edit still follows the active clip after selecting a track in Instrument.
         let current = "Lead";
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let point = shapes
@@ -992,7 +2152,7 @@ fn toolbar_track_dropdown_switches_units_and_edit_without_changing_the_project()
         click_note_or_lane(&mut app, &ctx, bass);
         frame(&mut app, &ctx, vec![]);
         assert_eq!(app.selected_track, Some(second));
-        if mode == ViewMode::Units {
+        if mode == ViewMode::Instrument {
             assert_eq!(app.selected_clip, Some(first_clip));
         } else {
             assert_eq!(app.selected_clip, Some(second_clip));
@@ -1035,7 +2195,7 @@ fn unit_header_text_and_toolbar_divider_follow_the_accent_in_both_themes() {
     let (mut app, _, _, _) = fixture();
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
-    app.set_view_mode(ViewMode::Units, &ctx);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for accent in [
             settings::AccentColor::DeepOrange,
@@ -1053,12 +2213,13 @@ fn unit_header_text_and_toolbar_divider_follow_the_accent_in_both_themes() {
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let header = shapes
                 .iter()
-                .find_map(|s| match &s.shape {
+                .filter_map(|s| match &s.shape {
                     egui::Shape::Rect(r) if r.fill == accent.color() && r.rect.height() == 24.0 => {
                         Some(r.rect)
                     }
                     _ => None,
                 })
+                .min_by(|a, b| a.top().total_cmp(&b.top()))
                 .unwrap();
             let text = shapes
                 .iter()
@@ -1081,13 +2242,43 @@ fn unit_header_text_and_toolbar_divider_follow_the_accent_in_both_themes() {
             let text_center = text.pos + text.galley.rect.center().to_vec2();
             assert!((text_center.x - header.center().x).abs() < 1.0);
             assert!((text_center.y - header.center().y).abs() < 1.0);
+            let instrument = app.midi_editor.instrument_header_bounds;
+            let heading = shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "Layers" => Some(t),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(
+                (heading.pos.x - instrument.left() - f32::from(theme::TOOLBAR_PADDING)).abs() < 0.1
+            );
+            assert!(
+                instrument.contains_rect(Rect::from_min_size(heading.pos, heading.galley.size()))
+            );
+            for section in &heading.galley.job.sections {
+                assert_eq!(
+                    heading.override_text_color.unwrap_or_else(|| {
+                        if section.format.color == egui::Color32::PLACEHOLDER {
+                            heading.fallback_color
+                        } else {
+                            section.format.color
+                        }
+                    }),
+                    theme::palette(&ctx).text
+                );
+            }
+            assert!(
+                !shapes.iter().any(|s| matches!(&s.shape,
+                egui::Shape::Rect(r) if r.rect.intersect(instrument).is_positive() && r.fill == accent.color()))
+            );
             let toolbar_bottom = shapes
                 .iter()
                 .filter_map(|s| match &s.shape {
                     egui::Shape::Rect(r)
                         if r.fill == theme::palette(&ctx).panel
                             && r.rect.width() > 1000.0
-                            && r.rect.bottom() <= header.top() =>
+                            && r.rect.bottom() <= instrument.top() =>
                     {
                         Some(r.rect.bottom())
                     }
@@ -1096,13 +2287,13 @@ fn unit_header_text_and_toolbar_divider_follow_the_accent_in_both_themes() {
                 .max_by(f32::total_cmp)
                 .unwrap();
             assert!(
-                (header.top() - toolbar_bottom - 1.0).abs() < 0.1,
+                (instrument.top() - toolbar_bottom - 1.0).abs() < 0.1,
                 "Only one point separates the toolbar and unit header: {}",
-                header.top() - toolbar_bottom
+                instrument.top() - toolbar_bottom
             );
             let dividers = shapes.iter().filter(|s| matches!(&s.shape,
                 egui::Shape::LineSegment { points, stroke, .. }
-                    if points[0].y == points[1].y && (points[0].y - (header.top() - 0.5)).abs() < 0.1
+                    if points[0].y == points[1].y && (points[0].y - (instrument.top() - 0.5)).abs() < 0.1
                     && (points[1].x - points[0].x).abs() > 1000.0 && stroke.width == 1.0
             )).count();
             assert_eq!(dividers, 1);
@@ -1290,13 +2481,13 @@ fn new_destination_tracks_preserve_each_midi_instrument_and_track_gaps() {
         assert!(app.error.is_none(), "{:?}", app.error);
         let tracks = &app.session.project.tracks;
         assert_eq!(
-            tracks[2].instrument.as_ref().unwrap().oscillators[0].waveform,
+            tracks[2].instrument.as_ref().unwrap().layers[0].oscillators[0].waveform,
             Waveform::Sine
         );
         assert_eq!(tracks[3].kind, TrackKind::Audio);
         assert!(tracks[3].clips.is_empty());
         assert_eq!(
-            tracks[4].instrument.as_ref().unwrap().oscillators[0].waveform,
+            tracks[4].instrument.as_ref().unwrap().layers[0].oscillators[0].waveform,
             Waveform::Square
         );
         assert_eq!(tracks[0].clips.len(), usize::from(duplicate));
@@ -1333,7 +2524,7 @@ fn empty_midi_lane_double_click_creates_one_beat_without_switching_views() {
     assert_eq!(clip.length_frames, 24_000);
     assert_eq!(pattern(&app).length_ticks, 960);
     assert_eq!(app.selected_clip, Some(clip.id));
-    for view in [ViewMode::Units, ViewMode::Mixer] {
+    for view in [ViewMode::Instrument, ViewMode::Mixer] {
         app.set_view_mode(view, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(
@@ -3602,7 +4793,7 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
                 ..Default::default()
             },
         );
-        app.set_view_mode(ViewMode::Units, &ctx);
+        app.set_view_mode(ViewMode::Instrument, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let shapes: Vec<_> = shapes
             .into_iter()
@@ -3826,9 +5017,9 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
             );
         }
         let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-        assert_eq!(instrument.oscillators[0].waveform, Waveform::Saw);
-        assert_eq!(instrument.oscillators[0].transpose, 1);
-        assert!((instrument.oscillators[0].gain_db + 11.9).abs() < 0.001);
+        assert_eq!(instrument.layers[0].oscillators[0].waveform, Waveform::Saw);
+        assert_eq!(instrument.layers[0].oscillators[0].transpose, 1);
+        assert!((instrument.layers[0].oscillators[0].gain_db + 11.9).abs() < 0.001);
         let updated = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         for label in ["+1", "-11.9 dB"] {
             assert!(

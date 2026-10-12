@@ -7,3 +7,4 @@ license = "BSD-2-Clause"
 
 [dependencies]
 serde.workspace = true
+uuid.workspace = true

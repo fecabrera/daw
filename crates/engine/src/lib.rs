@@ -272,7 +272,7 @@ impl Renderer {
                     if self.plan.project.audible(track) {
                         let pan = pan_coefficients(track.pan, true);
                         for ch in 0..2 {
-                            mix[ch] += source * linear_gain(track.gain_db) * pan[ch];
+                            mix[ch] += source[ch] * linear_gain(track.gain_db) * pan[ch];
                         }
                     }
                 }
@@ -340,7 +340,7 @@ impl Renderer {
                             runtime.held_sample()
                         };
                         for (ch, value) in mix.iter_mut().enumerate() {
-                            let sample = source * g.value[ch];
+                            let sample = source[ch] * g.value[ch];
                             *value += sample;
                             g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
                         }

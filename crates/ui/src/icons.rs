@@ -9,6 +9,11 @@ pub fn configure(ctx: &Context) {
 
 /// A compact, unframed reorder handle with the app's standard icon styling.
 pub fn grip(ui: &mut Ui) -> Response {
+    reorder_grip(ui, "track")
+}
+
+pub fn reorder_grip(ui: &mut Ui, item: &str) -> Response {
+    let name = format!("Reorder {item}");
     let (rect, response) = ui.allocate_exact_size(
         Vec2::splat(crate::toolbars::CONTROL_HEIGHT),
         egui::Sense::click_and_drag(),
@@ -22,13 +27,13 @@ pub fn grip(ui: &mut Ui) -> Response {
             crate::theme::palette(ui.ctx()).border
         })
         .image()
-        .alt_text("Reorder track")
+        .alt_text(&name)
         .paint_at(
             ui,
             egui::Rect::from_center_size(rect.center(), Vec2::splat(16.0)),
         );
     response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), "Reorder track")
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &name)
     });
     let cursor = if response.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -37,7 +42,7 @@ pub fn grip(ui: &mut Ui) -> Response {
         egui::CursorIcon::Grab
     };
     response
-        .on_hover_text("Drag to reorder track")
+        .on_hover_text(format!("Drag to reorder {item}"))
         .on_hover_cursor(cursor)
 }
 

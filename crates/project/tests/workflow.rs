@@ -2259,16 +2259,19 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
     let fixture = Fixture::new();
     let mut session = Session::default();
     let track = session.project.add_midi_track().unwrap();
+    session.project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
     session.project.tracks[0]
         .instrument
         .as_mut()
         .unwrap()
+        .layers[0]
         .oscillators[0]
         .waveform = Waveform::Triangle;
     session.project.tracks[0]
         .instrument
         .as_mut()
         .unwrap()
+        .layers[0]
         .oscillators
         .extend([
             daw_core::OscillatorSettings {
@@ -2290,6 +2293,7 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
         .instrument
         .as_mut()
         .unwrap()
+        .layers[0]
         .envelope;
     envelope.attack.time_ms = 37.0;
     envelope.attack.shape = daw_core::CurveShape::Logarithmic;
@@ -2301,6 +2305,44 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
     envelope.release.time_ms = 310.0;
     envelope.release.shape = daw_core::CurveShape::Linear;
     envelope.release.amount = 0.9;
+    let mut second_layer = daw_core::InstrumentLayerSettings::default();
+    second_layer.oscillators.push(daw_core::OscillatorSettings {
+        waveform: daw_core::Waveform::Sine,
+        transpose: -12,
+        gain_db: -18.0,
+        ..Default::default()
+    });
+    second_layer.has_envelope = true;
+    second_layer.envelope.attack.time_ms = 25.0;
+    second_layer.envelope.release.time_ms = 700.0;
+    session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers
+        .push(second_layer);
+    session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers
+        .push(daw_core::InstrumentLayerSettings::default());
+    let layers = &mut session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers;
+    layers[0].name = "Lead 🎹".into();
+    layers[1].name = "Bass".into();
+    layers[2].name = "Unused".into();
+    layers[0].gain_db = -3.0;
+    layers[0].pan = -0.5;
+    layers[1].gain_db = -6.0;
+    layers[1].pan = 0.65;
+    layers[0].soloed = true;
+    layers[1].soloed = true;
+    layers[2].muted = true;
+    layers.swap(0, 1);
     let clip = session.project.add_midi_pattern(track, 0).unwrap();
     session
         .project
@@ -2480,8 +2522,9 @@ fn silent_oscillator_survives_save_reopen_playback_and_float_export() {
         })
         .unwrap();
     let assets = serde_json::to_value(&session.project.assets).unwrap();
-    let mut instrument = session.project.tracks[0].instrument.clone().unwrap();
-    instrument.oscillators[0].gain_db = SILENT_GAIN_DB;
+    let mut instrument: daw_core::InstrumentSettings =
+        daw_core::OscillatorSettings::default().into();
+    instrument.layers[0].oscillators[0].gain_db = SILENT_GAIN_DB;
     session
         .project
         .edit(Edit::SetInstrument {
@@ -2494,12 +2537,7 @@ fn silent_oscillator_survives_save_reopen_playback_and_float_export() {
     let mut loaded = Session::open(&folder).unwrap();
     assert!(loaded.warnings.is_empty());
     assert_eq!(
-        loaded.project.tracks[0]
-            .instrument
-            .as_ref()
-            .unwrap()
-            .oscillators[0]
-            .gain_db,
+        loaded.project.tracks[0].instrument.as_ref().unwrap().layers[0].oscillators[0].gain_db,
         SILENT_GAIN_DB
     );
     assert_eq!(
@@ -2529,7 +2567,7 @@ fn silent_oscillator_survives_save_reopen_playback_and_float_export() {
             .all(|sample| sample.unwrap() == 0.0)
     );
     let mut instrument = loaded.project.tracks[0].instrument.clone().unwrap();
-    instrument.oscillators[0].gain_db = 0.0;
+    instrument.layers[0].oscillators[0].gain_db = 0.0;
     loaded
         .project
         .edit(Edit::SetInstrument {

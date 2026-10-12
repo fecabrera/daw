@@ -2,6 +2,7 @@ use daw_core::*;
 fn fixture() -> (Project, Id, Id) {
     let mut project = Project::default();
     let track = project.add_midi_track().unwrap();
+    project.tracks[0].instrument = Some(OscillatorSettings::default().into());
     let clip = project.add_midi_pattern(track, 24_000).unwrap();
     let mut pattern = MidiPattern {
         length_ticks: 3840,
@@ -35,7 +36,7 @@ fn oscillator_collections_migrate_legacy_state_and_validate_atomically() {
     let mut saved = serde_json::to_value(&legacy).unwrap();
     saved.as_object_mut().unwrap().remove("muted");
     let migrated: OscillatorInstrumentSettings = serde_json::from_value(saved.clone()).unwrap();
-    assert_eq!(migrated.oscillators, vec![legacy]);
+    assert_eq!(migrated.layers[0].oscillators, vec![legacy]);
     let older_collection: OscillatorInstrumentSettings =
         serde_json::from_value(serde_json::json!({
             "version": 1, "oscillators": [saved.clone()]
@@ -47,7 +48,7 @@ fn oscillator_collections_migrate_legacy_state_and_validate_atomically() {
     assert!(serde_json::from_value::<OscillatorInstrumentSettings>(malformed).is_err());
     let (mut project, track, _) = fixture();
     let mut settings = migrated;
-    settings.oscillators.push(OscillatorSettings {
+    settings.layers[0].oscillators.push(OscillatorSettings {
         transpose: 12,
         ..Default::default()
     });
@@ -58,7 +59,7 @@ fn oscillator_collections_migrate_legacy_state_and_validate_atomically() {
         })
         .unwrap();
     let before = serde_json::to_value(&project).unwrap();
-    settings.oscillators[1].transpose = 49;
+    settings.layers[0].oscillators[1].transpose = 49;
     assert!(
         project
             .edit(Edit::SetInstrument {
@@ -71,18 +72,12 @@ fn oscillator_collections_migrate_legacy_state_and_validate_atomically() {
     let mut restored: Project = serde_json::from_value(before).unwrap();
     restored.validate().unwrap();
     assert_eq!(
-        restored.tracks[0]
-            .instrument
-            .as_ref()
-            .unwrap()
+        restored.tracks[0].instrument.as_ref().unwrap().layers[0]
             .oscillators
             .len(),
         2
     );
-    let empty = OscillatorInstrumentSettings {
-        oscillators: vec![],
-        ..Default::default()
-    };
+    let empty = OscillatorInstrumentSettings::default();
     restored
         .edit(Edit::SetInstrument {
             track_id: track,
@@ -95,29 +90,147 @@ fn oscillator_collections_migrate_legacy_state_and_validate_atomically() {
 #[test]
 fn envelope_settings_round_trip_and_missing_envelopes_preserve_legacy_sound() {
     let mut instrument = OscillatorInstrumentSettings::default();
-    assert_eq!(instrument.envelope, EnvelopeSettings::default());
+    assert_eq!(instrument.layers[0].envelope, EnvelopeSettings::default());
     for shape in CurveShape::ALL {
-        instrument.envelope.attack.shape = shape;
-        instrument.envelope.decay.shape = shape;
-        instrument.envelope.release.shape = shape;
-        instrument.envelope.attack.amount = 0.0;
-        instrument.envelope.decay.amount = 1.0;
-        instrument.envelope.release.time_ms = MAX_ENVELOPE_TIME_MS;
+        instrument.layers[0].envelope.attack.shape = shape;
+        instrument.layers[0].envelope.decay.shape = shape;
+        instrument.layers[0].envelope.release.shape = shape;
+        instrument.layers[0].envelope.attack.amount = 0.0;
+        instrument.layers[0].envelope.decay.amount = 1.0;
+        instrument.layers[0].envelope.release.time_ms = MAX_ENVELOPE_TIME_MS;
         let saved = serde_json::to_value(&instrument).unwrap();
         let restored: OscillatorInstrumentSettings = serde_json::from_value(saved).unwrap();
         assert_eq!(restored, instrument);
         assert!(restored.valid());
     }
-    let mut saved = serde_json::to_value(&instrument).unwrap();
-    saved.as_object_mut().unwrap().remove("envelope");
+    let mut saved = serde_json::json!({
+        "version": 1,
+        "oscillators": [OscillatorSettings::default()]
+    });
     let restored: OscillatorInstrumentSettings = serde_json::from_value(saved.clone()).unwrap();
-    assert_eq!(restored.envelope, EnvelopeSettings::legacy());
+    assert_eq!(restored.layers[0].envelope, EnvelopeSettings::legacy());
     saved["envelope"] = serde_json::Value::Null;
     assert!(serde_json::from_value::<OscillatorInstrumentSettings>(saved).is_err());
+    let legacy: InstrumentSettings = serde_json::from_value(serde_json::json!({
+        "version": 1,
+        "oscillators": [OscillatorSettings::default()],
+        "envelope": instrument.layers[0].envelope,
+    }))
+    .unwrap();
+    assert!(legacy.layers[0].has_envelope);
+    assert_eq!(legacy.layers[0].envelope, instrument.layers[0].envelope);
     let restored: OscillatorInstrumentSettings =
         serde_json::from_value(serde_json::to_value(OscillatorSettings::default()).unwrap())
             .unwrap();
-    assert_eq!(restored.envelope, EnvelopeSettings::legacy());
+    assert_eq!(restored.layers[0].envelope, EnvelopeSettings::legacy());
+}
+
+#[test]
+fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
+    let mut project = Project::default();
+    let track = project.add_midi_track().unwrap();
+    let mut instrument = project.tracks[0].instrument.clone().unwrap();
+    assert_eq!(instrument.version, INSTRUMENT_STATE_VERSION);
+    assert_eq!(instrument.layers.len(), 1);
+    assert!(instrument.layers[0].oscillators.is_empty());
+    assert!(!instrument.layers[0].has_envelope);
+    assert!(!instrument.layers[0].muted && !instrument.layers[0].soloed);
+    assert_eq!(instrument.layers[0].gain_db, 0.0);
+    assert_eq!(instrument.layers[0].pan, 0.0);
+    instrument.layers.push(InstrumentLayerSettings::default());
+    instrument.layers[1]
+        .oscillators
+        .push(OscillatorSettings::default());
+    instrument.layers[1].has_envelope = true;
+    project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument.clone()),
+        })
+        .unwrap();
+    instrument.layers[0].muted = true;
+    instrument.layers[1].soloed = true;
+    instrument.layers[1].gain_db = -6.0;
+    instrument.layers[1].pan = -0.7;
+    project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument.clone()),
+        })
+        .unwrap();
+    let before = serde_json::to_value(&project).unwrap();
+    let restored: Project = serde_json::from_value(before.clone()).unwrap();
+    assert_eq!(restored.tracks[0].instrument.as_ref(), Some(&instrument));
+    let mut unnamed = before.clone();
+    for layer in unnamed["tracks"][0]["instrument"]["layers"]
+        .as_array_mut()
+        .unwrap()
+    {
+        layer.as_object_mut().unwrap().remove("name");
+        for field in ["muted", "soloed", "gain_db", "pan"] {
+            layer.as_object_mut().unwrap().remove(field);
+        }
+    }
+    let older: Project = serde_json::from_value(unnamed).unwrap();
+    let older_layers = &older.tracks[0].instrument.as_ref().unwrap().layers;
+    assert_eq!(older_layers[0].name, "Layer 1");
+    assert_eq!(older_layers[1].name, "Layer 2");
+    assert_eq!(older_layers[1].id, instrument.layers[1].id);
+    assert!(
+        older_layers
+            .iter()
+            .all(|layer| !layer.muted && !layer.soloed && layer.gain_db == 0.0 && layer.pan == 0.0)
+    );
+    assert_eq!(
+        older_layers[1].oscillators,
+        instrument.layers[1].oscillators
+    );
+    let mut malformed_name = before.clone();
+    malformed_name["tracks"][0]["instrument"]["layers"][0]["name"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<Project>(malformed_name).is_err());
+    let mut invalid = vec![];
+    let mut value = instrument.clone();
+    value.layers[0].name = "   ".into();
+    invalid.push(value);
+    let mut value = instrument.clone();
+    value.layers.clear();
+    invalid.push(value);
+    let mut value = instrument.clone();
+    value.layers[1].id = value.layers[0].id;
+    invalid.push(value);
+    let mut value = instrument.clone();
+    value.layers[0].id = Id::nil();
+    invalid.push(value);
+    let mut value = instrument.clone();
+    value.version = 1;
+    invalid.push(value);
+    for gain in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 1000.0] {
+        let mut value = instrument.clone();
+        value.layers[0].gain_db = gain;
+        invalid.push(value);
+    }
+    for pan in [f32::NAN, f32::INFINITY, -1.01, 1.01] {
+        let mut value = instrument.clone();
+        value.layers[0].pan = pan;
+        invalid.push(value);
+    }
+    let mut value = instrument;
+    value.layers[1].oscillators[0].transpose = 49;
+    invalid.push(value);
+    for value in invalid {
+        assert!(
+            project
+                .edit(Edit::SetInstrument {
+                    track_id: track,
+                    instrument: Some(value),
+                })
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&project).unwrap(), before);
+    }
+    let mut malformed = before;
+    malformed["tracks"][0]["instrument"]["layers"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<Project>(malformed).is_err());
 }
 
 #[test]
@@ -157,7 +270,7 @@ fn invalid_envelope_edits_reject_the_entire_transaction() {
     });
     for envelope in invalid {
         let mut instrument = project.tracks[0].instrument.clone().unwrap();
-        instrument.envelope = envelope;
+        instrument.layers[0].envelope = envelope;
         assert!(
             project
                 .edit(Edit::Batch(vec![

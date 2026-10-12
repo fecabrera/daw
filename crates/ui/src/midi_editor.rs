@@ -52,6 +52,12 @@ struct NoteSelection {
     toggle: bool,
 }
 pub(super) struct MidiEditor {
+    #[cfg(test)]
+    pub(crate) layer_bounds: HashMap<Id, crate::instrument_panel::LayerUiBounds>,
+    #[cfg(test)]
+    pub(crate) add_layer_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) instrument_header_bounds: Rect,
     selected_note: Option<Id>,
     selected_notes: HashSet<(Id, Id)>,
     selection: Option<NoteSelection>,
@@ -100,6 +106,12 @@ pub(super) struct MidiEditor {
 impl Default for MidiEditor {
     fn default() -> Self {
         Self {
+            #[cfg(test)]
+            layer_bounds: HashMap::new(),
+            #[cfg(test)]
+            add_layer_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            instrument_header_bounds: Rect::NOTHING,
             selected_note: None,
             selected_notes: HashSet::new(),
             selection: None,
@@ -270,277 +282,6 @@ impl DawUi {
     pub(super) fn open_clip_editor(&mut self, clip: Id, track: Id, ctx: &egui::Context) {
         self.select_clip(clip, track, false);
         self.set_view_mode(ViewMode::Edit, ctx);
-    }
-    pub(super) fn source_track_control(&mut self, ui: &mut egui::Ui) {
-        ui.add_enabled_ui(!self.midi_editor.dragging(), |ui| {
-            let tracks: Vec<_> = self
-                .session
-                .project
-                .tracks
-                .iter()
-                .map(|t| (t.id, t.name.clone()))
-                .collect();
-            // Edit follows the active clip when Units has selected another track.
-            let current = if self.view_mode == ViewMode::Edit {
-                self.session
-                    .project
-                    .tracks
-                    .iter()
-                    .find(|t| t.clips.iter().any(|c| Some(c.id) == self.selected_clip))
-                    .map(|t| t.id)
-                    .or(self.selected_track)
-            } else {
-                self.selected_track
-            };
-            let label = current
-                .and_then(|id| tracks.iter().find(|t| t.0 == id))
-                .map_or("Select track", |t| t.1.as_str());
-            let mut selected = current;
-            egui::ComboBox::from_id_salt("source-track")
-                .selected_text(label)
-                .show_ui(ui, |ui| {
-                    for (id, name) in &tracks {
-                        ui.selectable_value(&mut selected, Some(*id), name);
-                    }
-                });
-            if selected != current
-                && let Some(id) = selected
-            {
-                self.select_track(id, false);
-                if self.view_mode == ViewMode::Edit {
-                    let clip = self
-                        .session
-                        .project
-                        .tracks
-                        .iter()
-                        .find(|t| t.id == id)
-                        .and_then(|t| t.clips.iter().min_by_key(|c| c.start_frame))
-                        .map(|c| c.id);
-                    if let Some(clip) = clip {
-                        self.select_clip(clip, id, false);
-                    } else {
-                        self.selected_clip = None;
-                        self.selected_clips.clear();
-                    }
-                    self.midi_editor.cancel();
-                }
-            }
-        });
-    }
-    pub(super) fn units_view(&mut self, ui: &mut egui::Ui) {
-        ui.spacing_mut().item_spacing.y = 0.0;
-        // The first unit's top border shares this workspace divider.
-        ui.painter().hline(
-            ui.max_rect().x_range(),
-            ui.max_rect().top() + 0.5,
-            Stroke::new(1.0, theme::palette(ui.ctx()).border),
-        );
-        let Some(track) = self
-            .session
-            .project
-            .tracks
-            .iter()
-            .find(|t| Some(t.id) == self.selected_track)
-            .cloned()
-        else {
-            ui.label("Select a MIDI track to configure its instrument. Add tracks in Timeline.");
-            return;
-        };
-        if track.kind != TrackKind::Midi {
-            ui.label("Audio tracks accept effects. Effects are not available yet.");
-            return;
-        }
-        let panel = panels::PanelStyle::default();
-        let strip_margin = panel.margin;
-        let Some(mut settings) = track.instrument.clone() else {
-            ui.label("No instrument assigned");
-            return;
-        };
-        let mut remove = None;
-        let mut add = false;
-        let strip_height = crate::envelope_panel::control_height();
-        let strip_width = OSCILLATOR_STRIP_WIDTH - 2.0 * f32::from(strip_margin);
-        egui::ScrollArea::horizontal().id_salt(("instrument-units", track.id)).show(ui, |ui| {
-            ui.horizontal_top(|ui| {
-                // Overlap adjacent unit outlines by one point so they share a divider.
-                ui.spacing_mut().item_spacing.x = -1.0;
-                let oscillator_panel = panels::PanelStyle { margin: 0, ..panel }.unit(ui, "Oscillator", |ui| {
-            #[cfg(test)]
-            {
-                self.midi_editor.oscillator_bounds.clear();
-                self.midi_editor.oscillator_strip_bounds.clear();
-                self.midi_editor.oscillator_power_bounds.clear();
-            }
-                    ui.horizontal_top(|ui| {
-                        ui.spacing_mut().item_spacing =
-                            Vec2::new(0.0, theme::TOOLBAR_PADDING as f32);
-                        let mut previous_column: Option<Rect> = None;
-                        for (index, oscillator) in settings.oscillators.iter_mut().enumerate() {
-                            let strip = ui.scope_builder(
-                                egui::UiBuilder::new()
-                                    .id_salt(("oscillator-strip", track.id, index))
-                                    .sense(Sense::click()),
-                                |ui| {
-                                    egui::Frame::new()
-                                        .inner_margin(strip_margin)
-                                        .show(ui, |ui| {
-                                            ui.scope_builder(
-                                                egui::UiBuilder::new()
-                                                    .id_salt((
-                                                        "oscillator-settings",
-                                                        track.id,
-                                                        index,
-                                                    ))
-                                                    .layout(egui::Layout::top_down(
-                                                        egui::Align::Min,
-                                                    ))
-                                                    .sense(Sense::click()),
-                                                |ui| {
-                                                    ui.set_width(strip_width);
-                                                    [
-                                                        knobs::row(
-                                                            ui,
-                                                            &mut oscillator.waveform,
-                                                            knobs::CHOICE_SIZE,
-                                                            knobs::waveform,
-                                                        ),
-                                                        knobs::row(
-                                                            ui,
-                                                            &mut oscillator.transpose,
-                                                            knobs::CHOICE_SIZE,
-                                                            knobs::pitch,
-                                                        ),
-                                                        knobs::row(
-                                                            ui,
-                                                            &mut oscillator.gain_db,
-                                                            knobs::CHOICE_SIZE,
-                                                            knobs::gain_with_markers,
-                                                        ),
-                                                        crate::rows::centered(
-                                                            ui,
-                                                            icons::COMPACT_BUTTON_SIZE,
-                                                            |ui| {
-                                                                let on = !oscillator.muted;
-                                                                let palette = theme::palette(ui.ctx());
-                                                                let label = ui.painter().layout_no_wrap(
-                                                                    format!("Osc {}", index + 1),
-                                                                    egui::FontId::proportional(panels::HEADER_FONT_SIZE),
-                                                                    if on { palette.text } else { palette.secondary },
-                                                                );
-                                                                let gap = f32::from(theme::TOOLBAR_PADDING);
-                                                                let pair_width = icons::COMPACT_BUTTON_SIZE + gap + label.size().x;
-                                                                ui.spacing_mut().item_spacing.x = gap;
-                                                                ui.add_space(((ui.available_width() - pair_width) * 0.5).max(0.0).round());
-                                                                let response =
-                                                                    icons::circular_button(
-                                                                        ui,
-                                                                        icons::Lucide::Power,
-                                                                        &format!(
-                                                                            "Toggle oscillator {}",
-                                                                            index + 1
-                                                                        ),
-                                                                        Some(on),
-                                                                        icons::COMPACT_BUTTON_SIZE,
-                                                                    );
-                                                                ui.add(egui::Label::new(label).selectable(false));
-                                                                if response.clicked() {
-                                                                    oscillator.muted =
-                                                                        !oscillator.muted;
-                                                                }
-                                                                #[cfg(test)]
-                                                                self.midi_editor
-                                                                    .oscillator_power_bounds
-                                                                    .push(response.rect);
-                                                                response
-                                                            },
-                                                        )
-                                                        .inner,
-                                                    ]
-                                                },
-                                            )
-                                        })
-                                },
-                            );
-                            let column = strip.inner.inner;
-                            if let Some(previous) = previous_column {
-                                panels::unit_divider(ui, strip.response.rect.left(),
-                                    previous.top()..=strip.response.rect.bottom());
-                            }
-                            previous_column = Some(strip.response.rect);
-                            #[cfg(test)]
-                            {
-                                self.midi_editor
-                                    .oscillator_bounds
-                                    .push(column.response.rect);
-                                self.midi_editor
-                                    .oscillator_strip_bounds
-                                    .push(strip.response.rect);
-                            }
-                            // The column covers gaps; knob responses cover their interactive faces.
-                            for response in column
-                                .inner
-                                .iter()
-                                .chain([&column.response, &strip.response])
-                            {
-                                response.context_menu(|ui| {
-                                    if ui
-                                        .add_enabled(
-                                            response.enabled(),
-                                            egui::Button::new("Remove oscillator"),
-                                        )
-                                        .clicked()
-                                    {
-                                        remove = Some(index);
-                                        ui.close();
-                                    }
-                                });
-                            }
-                        }
-                        let add_strip = ui.scope(|ui| {
-                            icons::circular_strip_button(
-                                ui, icons::Lucide::Plus, "Add oscillator",
-                                Vec2::new(icons::COMPACT_BUTTON_SIZE, strip_height) + Vec2::splat(2.0 * f32::from(strip_margin)),
-                                icons::COMPACT_BUTTON_SIZE,
-                            )
-                        });
-                        if let Some(previous) = previous_column {
-                            panels::unit_divider(ui, add_strip.response.rect.left(),
-                                previous.top()..=add_strip.response.rect.bottom());
-                        }
-                        #[cfg(test)]
-                        {
-                            self.midi_editor.add_oscillator_bounds = add_strip.inner.rect;
-                            self.midi_editor.add_oscillator_strip_bounds = add_strip.response.rect;
-                        }
-                        add = add_strip.inner.clicked();
-                    });
-                });
-                let envelope_panel = panels::PanelStyle { margin: 0, ..panel }.unit(ui, "Envelope", |ui| {
-                    crate::envelope_panel::body(ui, &mut settings.envelope, strip_margin)
-                });
-                ui.painter().vline(oscillator_panel.response.rect.right() - 0.5,
-                    oscillator_panel.response.rect.top()..=envelope_panel.response.rect.bottom(),
-                    panel.frame(ui.ctx(), false).stroke);
-                #[cfg(test)] {
-                    self.midi_editor.oscillator_panel_bounds = oscillator_panel.response.rect;
-                    self.midi_editor.envelope_panel_bounds = envelope_panel.response.rect;
-                    self.midi_editor.envelope_stage_bounds = envelope_panel.inner;
-                }
-            });
-        });
-        // Mutate only after painting: removal must not invalidate iteration or widget IDs.
-        if let Some(index) = remove {
-            settings.oscillators.remove(index);
-        }
-        if add {
-            settings.oscillators.push(Default::default());
-        }
-        if Some(&settings) != track.instrument.as_ref() {
-            self.edit(Edit::SetInstrument {
-                track_id: track.id,
-                instrument: Some(settings),
-            });
-        }
     }
     fn editor_ruler(&mut self, ui: &mut egui::Ui) {
         let row = rows::centered(ui, RULER_HEIGHT, |ui| {

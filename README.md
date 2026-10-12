@@ -5,7 +5,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 ## Current features
 
 - **Timeline:** arrange audio clips, trim, loop, stretch, move, copy, and duplicate selections. Placement and resizing make room by trimming, splitting, or removing covered clips. Edits preview before committing, with grid snapping and Shift to bypass it.
-- **MIDI:** create MIDI tracks and patterns. Edit notes in a piano roll and add sine, saw, square, or triangle oscillators to one instrument in Units. Each oscillator has its own pitch and gain. Shape each note with an ADSR Envelope unit, including per-stage curves and curve strength. Patterns support playback, shared clip actions in Timeline and Editor, and export.
+- **MIDI:** create MIDI tracks and patterns. Edit notes in a piano roll and build one instrument from parallel layers in Instrument. New MIDI tracks start with an empty layer; add sine, saw, square, or triangle sources and an optional ADSR envelope to each layer. Drag layer handles to reorder and double-click names to rename; both persist with the project. Each oscillator has its own pitch and gain. Each layer’s ADSR supports stage curves and curve strength. Patterns support playback, shared clip actions in Timeline and Editor, and export.
 - **Mixer:** adjust track gain, pan, mute, and solo, plus master gain. Timeline and Mixer share controls, values, and selection.
 - **Playback:** tempo-based ruler, loop selection, stereo meters, and trackpad scrolling and zoom.
 - **Projects:** folder-based saves, project naming, and configurable processing sample rate and buffer size. Source recordings remain external and unchanged.
@@ -16,7 +16,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 The project format is experimental. Tracks support external audio files and embedded MIDI patterns. Undo/redo is outside the current MVP. Missing sources remain visible and render as silence; saving a project does not bundle its recordings.
 
-The views are **Timeline**, **Units**, **Editor**, and **Mixer**. Units currently configures the MIDI oscillator instrument. Editor provides a basic MIDI piano roll. Audio and beat editors, beat tracks, effect chains, and instrument graphs are planned.
+The views are **Timeline**, **Instrument**, **Effects**, **Editor**, and **Mixer**. Instrument configures MIDI sources and their layer envelopes under the Layers panel. Effects is a separate view for track effects on audio and MIDI tracks; effect processing is not implemented yet. Editor provides a basic MIDI piano roll. Audio and beat editors, beat tracks, effect chains, and instrument graphs are planned.
 
 MIDI patterns are immutable clip sources: body-edge trims crop or pad a new source for the edited clip, while header-edge looping preserves the source. Other clips retain their previous source. MIDI tracks play overlapping pitches with multiple voices of their configured instrument. Beat patterns will follow the same source model.
 

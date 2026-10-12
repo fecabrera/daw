@@ -23,6 +23,8 @@ use std::{
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 mod application_menu;
 pub mod dialogs;
+mod effects_panel;
+mod empty_state;
 mod envelope_panel;
 mod export_dialog;
 mod export_status;
@@ -30,9 +32,12 @@ pub mod faders;
 mod file_drop;
 pub mod fonts;
 pub mod icons;
+mod instrument_panel;
 pub mod knobs;
 pub mod meters;
+mod mix_controls;
 mod mixer;
+mod track_selector;
 pub use mixer::ViewMode;
 mod musical_time;
 pub mod panels;
@@ -619,6 +624,7 @@ struct LoopDrag {
 pub struct DawUi {
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
+    instrument_ui: instrument_panel::InstrumentUi,
     #[cfg(test)]
     mixer_bounds: HashMap<Id, Rect>,
     #[cfg(test)]
@@ -689,6 +695,7 @@ impl Default for DawUi {
         Self {
             view_mode: mixer::ViewMode::default(),
             midi_editor: Default::default(),
+            instrument_ui: Default::default(),
             #[cfg(test)]
             mixer_bounds: HashMap::new(),
             #[cfg(test)]
@@ -786,6 +793,7 @@ impl DawUi {
     pub fn project_settings_enabled(&self) -> bool {
         self.settings_enabled()
             && self.track_name_edit.is_none()
+            && !self.instrument_ui.editing_name()
             && self.tempo_edit.is_none()
             && self.time_drag.is_none()
             && self.musical_drag.is_none()
@@ -876,6 +884,7 @@ impl DawUi {
                 self.output = None;
                 self.session = Session::default();
                 self.midi_editor.cancel();
+                self.instrument_ui.cancel();
                 self.dirty = false;
                 self.inputs.clear();
                 self.track_name_edit = None;
@@ -1115,6 +1124,7 @@ impl DawUi {
                         self.selection_drag = [None, None];
                         self.scroll = 0.0;
                         self.midi_editor.cancel();
+                        self.instrument_ui.cancel();
                     }
                     self.notices = session.warnings.clone();
                     self.session = session;
@@ -1402,6 +1412,7 @@ impl DawUi {
     fn clip_actions_available(&self, ctx: &egui::Context) -> bool {
         self.file_action_enabled(FileAction::Import)
             && !ctx.egui_wants_keyboard_input()
+            && !self.instrument_ui.editing_name()
             && ctx.input(|input| input.focused)
             && self.drag.is_none()
             && self.track_drag.is_none()
@@ -1478,6 +1489,14 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        if self.view_mode != mixer::ViewMode::Instrument
+            || !self.edit_environment_available()
+            || !ui.is_enabled()
+            || ui.input(|input| !input.focused)
+            || self.instrument_ui.track != self.selected_track
+        {
+            self.instrument_ui.cancel();
+        }
         let ctx = ui.ctx().clone();
         self.poll();
         if let Some(drag) = &mut self.drag {
@@ -1528,7 +1547,10 @@ impl DawUi {
                     theme::palette(ui.ctx()).panel
                 },
             ))
-            .show_separator_line(!matches!(self.view_mode, ViewMode::Mixer | ViewMode::Units))
+            .show_separator_line(!matches!(
+                self.view_mode,
+                ViewMode::Mixer | ViewMode::Instrument | ViewMode::Effects
+            ))
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.add_enabled_ui(
@@ -1600,7 +1622,8 @@ impl DawUi {
                     |ui| match self.view_mode {
                         mixer::ViewMode::Timeline => self.workspace(ui),
                         mixer::ViewMode::Mixer => self.mixer(ui),
-                        mixer::ViewMode::Units => self.units_view(ui),
+                        mixer::ViewMode::Instrument => self.instrument_view(ui),
+                        mixer::ViewMode::Effects => self.effects_view(ui),
                         mixer::ViewMode::Edit => self.edit_view(ui),
                     },
                 );
@@ -1733,6 +1756,7 @@ impl DawUi {
     pub fn file_action_enabled(&self, action: FileAction) -> bool {
         self.drag.is_none()
             && !self.midi_editor.dragging()
+            && !self.instrument_ui.dragging()
             && self.edit_environment_available()
             && (action != FileAction::Export || self.session.project.end() > 0)
     }
@@ -2151,9 +2175,9 @@ impl DawUi {
             ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
-            if self.view_mode == ViewMode::Units {
+            if matches!(self.view_mode, ViewMode::Instrument | ViewMode::Effects) {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.source_track_control(ui);
+                    self.track_control(ui);
                 });
             }
             if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit) {
@@ -2199,7 +2223,7 @@ impl DawUi {
                     .on_hover_text("Horizontal zoom");
                     if self.view_mode == ViewMode::Edit {
                         ui.separator();
-                        self.source_track_control(ui);
+                        self.track_control(ui);
                     }
                 });
                 if self.view_mode == ViewMode::Edit {
@@ -2935,7 +2959,7 @@ impl DawUi {
         let font_size = if self.view_mode == mixer::ViewMode::Mixer {
             panels::HEADER_FONT_SIZE
         } else {
-            13.0
+            rows::NAME_FONT_SIZE
         };
         let name_align = if self.view_mode == mixer::ViewMode::Mixer {
             egui::Align::Center
@@ -3031,7 +3055,10 @@ impl DawUi {
                 } else {
                     egui::CursorIcon::PointingHand
                 });
-            if response.double_clicked() && self.track_name_edit.is_none() {
+            if response.double_clicked()
+                && self.track_name_edit.is_none()
+                && !self.instrument_ui.editing_name()
+            {
                 let on_text = response
                     .interact_pointer_pos()
                     .is_some_and(|pos| text_rect.is_some_and(|rect| rect.contains(pos)));
@@ -3232,38 +3259,16 @@ impl DawUi {
                                                     .with_main_align(egui::Align::Min),
                                                     |ui| self.track_name(ui, &track),
                                                 );
-                                                let mute_button =
-                                                    toolbars::square_toggle(ui, "M", mute)
-                                                        .on_hover_text(
+                                                let [mute_button, solo_button] =
+                                                    mix_controls::mute_solo(
+                                                        ui,
+                                                        &mut mute,
+                                                        &mut solo,
+                                                        [
                                                             "Mute (M toggles selected tracks)",
-                                                        );
-                                                mute_button.widget_info(|| {
-                                                    egui::WidgetInfo::selected(
-                                                        egui::WidgetType::Button,
-                                                        ui.is_enabled(),
-                                                        mute,
-                                                        "Mute",
-                                                    )
-                                                });
-                                                if mute_button.clicked() {
-                                                    mute = !mute;
-                                                }
-                                                let solo_button =
-                                                    toolbars::square_toggle(ui, "S", solo)
-                                                        .on_hover_text(
                                                             "Solo (S toggles selected tracks)",
-                                                        );
-                                                solo_button.widget_info(|| {
-                                                    egui::WidgetInfo::selected(
-                                                        egui::WidgetType::Button,
-                                                        ui.is_enabled(),
-                                                        solo,
-                                                        "Solo",
-                                                    )
-                                                });
-                                                if solo_button.clicked() {
-                                                    solo = !solo;
-                                                }
+                                                        ],
+                                                    );
                                                 [
                                                     grip.rect,
                                                     name.response.rect,
@@ -3294,81 +3299,16 @@ impl DawUi {
                                                 gain: faders::format_gain(track.gain_db),
                                                 pan: format!("{:.2}", track.pan),
                                             });
-                                        let mut gain = None;
-                                        let mut pan = None;
-                                        let mut input_error = None;
-                                        rows::centered(ui, knobs::SIZE, |ui| {
-                                            ui.spacing_mut().item_spacing.x = 4.0;
-                                            let mut value = track.gain_db;
-                                            if knobs::gain(ui, &mut value).changed() {
-                                                gain = Some(value);
-                                                inputs.gain = faders::format_gain(value);
-                                            }
-                                            let r =
-                                                numeric_input(ui, &mut inputs.gain, "Gain (dB)");
-                                            if r.lost_focus()
-                                                || (r.has_focus()
-                                                    && ui
-                                                        .input(|i| i.key_pressed(egui::Key::Enter)))
-                                            {
-                                                match faders::parse_gain(&inputs.gain) {
-                                                    Some(v) => gain = Some(v),
-                                                    _ => {
-                                                        inputs.gain =
-                                                            faders::format_gain(track.gain_db);
-                                                        input_error = Some(
-                                                            "Gain must be a finite number or −∞",
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                            if r.has_focus()
-                                                && ui.input(|i| i.key_pressed(egui::Key::Escape))
-                                            {
-                                                inputs.gain = faders::format_gain(track.gain_db);
-                                                r.surrender_focus();
-                                            }
-                                            let mut value = track.pan;
-                                            if knobs::pan(ui, &mut value).changed() {
-                                                pan = Some(value);
-                                                inputs.pan = format!("{value:.2}");
-                                            }
-                                            let r = numeric_input(
-                                                ui,
-                                                &mut inputs.pan,
-                                                "Pan (-1 left, 0 center, +1 right)",
-                                            );
-                                            if r.lost_focus()
-                                                || (r.has_focus()
-                                                    && ui
-                                                        .input(|i| i.key_pressed(egui::Key::Enter)))
-                                            {
-                                                match inputs.pan.parse::<f32>() {
-                                                    Ok(v)
-                                                        if v.is_finite()
-                                                            && (-1.0..=1.0).contains(&v) =>
-                                                    {
-                                                        pan = Some(v)
-                                                    }
-                                                    _ => {
-                                                        inputs.pan = format!("{:.2}", track.pan);
-                                                        input_error =
-                                                            Some("Pan must be between -1 and 1");
-                                                    }
-                                                }
-                                            }
-                                            if r.has_focus()
-                                                && ui.input(|i| i.key_pressed(egui::Key::Escape))
-                                            {
-                                                inputs.pan = format!("{:.2}", track.pan);
-                                                r.surrender_focus();
-                                            }
-                                        });
+                                        let mut gain = track.gain_db;
+                                        let mut pan = track.pan;
+                                        let controls =
+                                            mix_controls::gain_pan(ui, &mut gain, &mut pan, inputs);
+                                        let input_error = controls.error;
                                         if let Some(e) = input_error {
                                             self.fail(e);
                                         }
-                                        let updated = gain.is_some_and(|v| v != track.gain_db)
-                                            || pan.is_some_and(|v| v != track.pan)
+                                        let updated = gain != track.gain_db
+                                            || pan != track.pan
                                             || mute != track.muted
                                             || solo != track.soloed;
                                         if updated {
@@ -3379,8 +3319,8 @@ impl DawUi {
                                                 .iter_mut()
                                                 .find(|t| t.id == track.id)
                                             {
-                                                t.gain_db = gain.unwrap_or(t.gain_db);
-                                                t.pan = pan.unwrap_or(t.pan);
+                                                t.gain_db = gain;
+                                                t.pan = pan;
                                                 t.muted = mute;
                                                 t.soloed = solo;
                                             }

@@ -59,43 +59,143 @@ impl OscillatorSettings {
     }
 }
 
-/// One track instrument containing independently configured oscillator sources.
-/// Empty instruments render silence; hosts may add sources again without replacing the instrument.
+pub const INSTRUMENT_STATE_VERSION: u32 = 2;
+
+/// A parallel instrument layer. Settings are shared by notes; runtime state is per voice.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct OscillatorInstrumentSettings {
-    pub version: u32,
+pub struct InstrumentLayerSettings {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub muted: bool,
+    pub soloed: bool,
+    pub gain_db: f32,
+    pub pan: f32,
     pub oscillators: Vec<OscillatorSettings>,
+    /// Presence is separate from retained settings so removing a unit keeps its defaults reusable.
+    pub has_envelope: bool,
     pub envelope: EnvelopeSettings,
 }
-impl Default for OscillatorInstrumentSettings {
+impl Default for InstrumentLayerSettings {
     fn default() -> Self {
-        OscillatorSettings::default().into()
-    }
-}
-impl From<OscillatorSettings> for OscillatorInstrumentSettings {
-    fn from(oscillator: OscillatorSettings) -> Self {
         Self {
-            version: UNIT_STATE_VERSION,
-            oscillators: vec![oscillator],
+            id: uuid::Uuid::new_v4(),
+            name: "Layer 1".into(),
+            muted: false,
+            soloed: false,
+            gain_db: 0.0,
+            pan: 0.0,
+            oscillators: Vec::new(),
+            has_envelope: false,
             envelope: EnvelopeSettings::default(),
         }
     }
 }
-impl OscillatorInstrumentSettings {
+impl InstrumentLayerSettings {
     pub fn valid(&self) -> bool {
-        self.version == UNIT_STATE_VERSION
+        !self.id.is_nil()
+            && !self.name.trim().is_empty()
+            && self.gain_db.is_finite()
+            && 10.0_f32.powf(self.gain_db / 20.0).is_finite()
+            && (-1.0..=1.0).contains(&self.pan)
             && self.oscillators.iter().all(OscillatorSettings::valid)
             && self.envelope.valid()
     }
+    /// Unassigned envelopes use the existing short note gate for click-free note boundaries.
+    pub fn effective_envelope(&self) -> EnvelopeSettings {
+        if self.has_envelope {
+            self.envelope
+        } else {
+            EnvelopeSettings::legacy()
+        }
+    }
 }
-impl<'de> Deserialize<'de> for OscillatorInstrumentSettings {
+
+// Missing names in existing version-2 instruments follow their original row positions.
+#[derive(Deserialize)]
+struct SavedLayer {
+    id: uuid::Uuid,
+    #[serde(default, deserialize_with = "saved_layer_name")]
+    name: Option<String>,
+    #[serde(default)]
+    muted: bool,
+    #[serde(default)]
+    soloed: bool,
+    #[serde(default)]
+    gain_db: f32,
+    #[serde(default)]
+    pan: f32,
+    oscillators: Vec<OscillatorSettings>,
+    has_envelope: bool,
+    envelope: EnvelopeSettings,
+}
+fn saved_layer_name<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    String::deserialize(d).map(Some)
+}
+impl SavedLayer {
+    fn into_settings(self, index: usize) -> InstrumentLayerSettings {
+        InstrumentLayerSettings {
+            id: self.id,
+            name: self.name.unwrap_or_else(|| format!("Layer {}", index + 1)),
+            muted: self.muted,
+            soloed: self.soloed,
+            gain_db: self.gain_db,
+            pan: self.pan,
+            oscillators: self.oscillators,
+            has_envelope: self.has_envelope,
+            envelope: self.envelope,
+        }
+    }
+}
+impl<'de> Deserialize<'de> for InstrumentLayerSettings {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        SavedLayer::deserialize(d).map(|layer| layer.into_settings(0))
+    }
+}
+
+/// One track instrument, with parallel layers feeding one output bus.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct InstrumentSettings {
+    pub version: u32,
+    pub layers: Vec<InstrumentLayerSettings>,
+}
+/// Compatibility name for callers of the original oscillator-only instrument API.
+pub type OscillatorInstrumentSettings = InstrumentSettings;
+impl Default for InstrumentSettings {
+    fn default() -> Self {
+        Self {
+            version: INSTRUMENT_STATE_VERSION,
+            layers: vec![InstrumentLayerSettings::default()],
+        }
+    }
+}
+impl From<OscillatorSettings> for InstrumentSettings {
+    fn from(oscillator: OscillatorSettings) -> Self {
+        let mut instrument = Self::default();
+        let layer = &mut instrument.layers[0];
+        layer.oscillators.push(oscillator);
+        layer.has_envelope = true;
+        instrument
+    }
+}
+impl InstrumentSettings {
+    pub fn valid(&self) -> bool {
+        let mut ids = std::collections::HashSet::new();
+        self.version == INSTRUMENT_STATE_VERSION
+            && !self.layers.is_empty()
+            && self
+                .layers
+                .iter()
+                .all(|layer| ids.insert(layer.id) && layer.valid())
+    }
+}
+impl<'de> Deserialize<'de> for InstrumentSettings {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        // Select by presence of the collection. A malformed new instrument must not
-        // fall back to a legacy oscillator and silently discard its source settings.
         #[derive(Deserialize)]
         struct Saved {
             version: u32,
-            #[serde(default, deserialize_with = "collection")]
+            #[serde(default, deserialize_with = "layers")]
+            layers: Option<Vec<InstrumentLayerSettings>>,
+            #[serde(default, deserialize_with = "sources")]
             oscillators: Option<Vec<OscillatorSettings>>,
             waveform: Option<Waveform>,
             transpose: Option<i8>,
@@ -105,20 +205,41 @@ impl<'de> Deserialize<'de> for OscillatorInstrumentSettings {
             #[serde(default = "EnvelopeSettings::legacy")]
             envelope: EnvelopeSettings,
         }
-        fn collection<'de, D: serde::Deserializer<'de>>(
-            deserializer: D,
+        // Explicit malformed collections must fail instead of selecting legacy fields.
+        fn layers<'de, D: serde::Deserializer<'de>>(
+            d: D,
+        ) -> Result<Option<Vec<InstrumentLayerSettings>>, D::Error> {
+            Vec::<SavedLayer>::deserialize(d).map(|layers| {
+                Some(
+                    layers
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, layer)| layer.into_settings(index))
+                        .collect(),
+                )
+            })
+        }
+        fn sources<'de, D: serde::Deserializer<'de>>(
+            d: D,
         ) -> Result<Option<Vec<OscillatorSettings>>, D::Error> {
-            Vec::deserialize(deserializer).map(Some)
+            Vec::deserialize(d).map(Some)
         }
         let saved = Saved::deserialize(deserializer)?;
-        if let Some(oscillators) = saved.oscillators {
-            Ok(Self {
+        if let Some(layers) = saved.layers {
+            return Ok(Self {
                 version: saved.version,
-                oscillators,
-                envelope: saved.envelope,
-            })
+                layers,
+            });
+        }
+        if saved.version != UNIT_STATE_VERSION {
+            return Err(serde::de::Error::custom(
+                "Unsupported legacy instrument version",
+            ));
+        }
+        let oscillators = if let Some(sources) = saved.oscillators {
+            sources
         } else {
-            let mut instrument: Self = OscillatorSettings {
+            vec![OscillatorSettings {
                 version: saved.version,
                 waveform: saved
                     .waveform
@@ -130,11 +251,23 @@ impl<'de> Deserialize<'de> for OscillatorInstrumentSettings {
                     .gain_db
                     .ok_or_else(|| serde::de::Error::missing_field("gain_db"))?,
                 muted: saved.muted,
-            }
-            .into();
-            instrument.envelope = saved.envelope;
-            Ok(instrument)
-        }
+            }]
+        };
+        Ok(Self {
+            version: INSTRUMENT_STATE_VERSION,
+            layers: vec![InstrumentLayerSettings {
+                // Deterministic within the migrated instrument; widget scopes also include the track ID.
+                id: uuid::Uuid::from_u128(1),
+                name: "Layer 1".into(),
+                muted: false,
+                soloed: false,
+                gain_db: 0.0,
+                pan: 0.0,
+                oscillators,
+                has_envelope: true,
+                envelope: saved.envelope,
+            }],
+        })
     }
 }
 
