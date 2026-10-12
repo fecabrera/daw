@@ -173,78 +173,110 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
     let popup_was_open = egui::Popup::is_any_open(ctx);
     let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
         .show_with_content(ctx, |ui| {
+            let label_width = ui
+                .painter()
+                .layout_no_wrap(
+                    "Accent color".into(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::palette(ctx).text,
+                )
+                .size()
+                .x
+                + ui.spacing().item_spacing.x
+                + 14.0;
             #[cfg(any(target_os = "macos", target_os = "windows"))]
-            crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                ui.label("Titlebar");
-                egui::ComboBox::from_id_salt("titlebar_style")
-                    .selected_text(settings.titlebar.name())
-                    .width(165.0)
-                    .show_ui(ui, |ui| {
-                        for style in [TitlebarStyle::Custom, TitlebarStyle::Native] {
-                            ui.selectable_value(&mut settings.titlebar, style, style.name());
-                        }
-                    });
-            });
-            crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                ui.label("Theme");
-                egui::ComboBox::from_id_salt("color_theme")
-                    .selected_text(settings.theme.name())
-                    .width(165.0)
-                    .show_ui(ui, |ui| {
-                        for theme in [ColorTheme::Dark, ColorTheme::Light] {
-                            if ui
-                                .selectable_value(&mut settings.theme, theme, theme.name())
-                                .changed()
-                            {
-                                crate::theme::apply(ctx, *settings);
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Titlebar");
+                },
+                |ui| {
+                    egui::ComboBox::from_id_salt("titlebar_style")
+                        .selected_text(settings.titlebar.name())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for style in [TitlebarStyle::Custom, TitlebarStyle::Native] {
+                                ui.selectable_value(&mut settings.titlebar, style, style.name());
                             }
-                        }
-                    });
-            });
-            crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                ui.label("Accent color");
-                let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), egui::Sense::hover());
-                swatch(ui, rect, settings.accent.color());
-                egui::ComboBox::from_id_salt("accent_color")
-                    .selected_text(settings.accent.name())
-                    .width(165.0)
-                    .height(300.0)
-                    .show_ui(ui, |ui| {
-                        for accent in AccentColor::ALL {
-                            let selected = settings.accent == accent;
-                            let response = ui.add(
-                                egui::Button::new("")
-                                    .selected(selected)
-                                    .min_size(Vec2::new(165.0, crate::toolbars::CONTROL_HEIGHT)),
-                            );
-                            let rect = Rect::from_center_size(
-                                Pos2::new(response.rect.left() + 13.0, response.rect.center().y),
-                                Vec2::splat(14.0),
-                            );
-                            swatch(ui, rect, accent.color());
-                            ui.painter().text(
-                                Pos2::new(rect.right() + 8.0, rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                accent.name(),
-                                egui::TextStyle::Body.resolve(ui.style()),
-                                crate::theme::palette(ui.ctx()).text,
-                            );
-                            response.widget_info(|| {
-                                egui::WidgetInfo::selected(
-                                    egui::WidgetType::Button,
-                                    ui.is_enabled(),
-                                    selected,
+                        });
+                },
+            );
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Theme");
+                },
+                |ui| {
+                    egui::ComboBox::from_id_salt("color_theme")
+                        .selected_text(settings.theme.name())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for theme in [ColorTheme::Dark, ColorTheme::Light] {
+                                if ui
+                                    .selectable_value(&mut settings.theme, theme, theme.name())
+                                    .changed()
+                                {
+                                    crate::theme::apply(ctx, *settings);
+                                }
+                            }
+                        });
+                },
+            );
+            let swatch_color = settings.accent.color();
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Accent color");
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), egui::Sense::hover());
+                    swatch(ui, rect, swatch_color);
+                },
+                |ui| {
+                    egui::ComboBox::from_id_salt("accent_color")
+                        .selected_text(settings.accent.name())
+                        .width(ui.available_width())
+                        .height(300.0)
+                        .show_ui(ui, |ui| {
+                            for accent in AccentColor::ALL {
+                                let selected = settings.accent == accent;
+                                let response =
+                                    ui.add(egui::Button::new("").selected(selected).min_size(
+                                        Vec2::new(165.0, crate::toolbars::CONTROL_HEIGHT),
+                                    ));
+                                let rect = Rect::from_center_size(
+                                    Pos2::new(
+                                        response.rect.left() + 13.0,
+                                        response.rect.center().y,
+                                    ),
+                                    Vec2::splat(14.0),
+                                );
+                                swatch(ui, rect, accent.color());
+                                ui.painter().text(
+                                    Pos2::new(rect.right() + 8.0, rect.center().y),
+                                    egui::Align2::LEFT_CENTER,
                                     accent.name(),
-                                )
-                            });
-                            if response.clicked() {
-                                settings.accent = accent;
-                                crate::theme::apply(ctx, *settings);
-                                ui.close();
+                                    egui::TextStyle::Body.resolve(ui.style()),
+                                    crate::theme::palette(ui.ctx()).text,
+                                );
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Button,
+                                        ui.is_enabled(),
+                                        selected,
+                                        accent.name(),
+                                    )
+                                });
+                                if response.clicked() {
+                                    settings.accent = accent;
+                                    crate::theme::apply(ctx, *settings);
+                                    ui.close();
+                                }
                             }
-                        }
-                    });
-            });
+                        });
+                },
+            );
         })
         .is_some();
     close || (!popup_was_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)))

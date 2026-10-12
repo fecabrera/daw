@@ -48,56 +48,84 @@ impl ProjectSettings {
             &[("Apply", true), ("Cancel", false)],
         )
         .show_with_content(ctx, |ui| {
-            crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                ui.label("Project name");
-                let mut output = egui::TextEdit::singleline(&mut self.name)
-                    .id_salt("project_settings_name")
-                    .desired_width(220.0)
-                    .show(ui);
-                let response = output.response;
-                if self.focus {
-                    response.request_focus();
-                    output
-                        .state
-                        .cursor
-                        .set_char_range(Some(egui::text::CCursorRange::select_all(&output.galley)));
-                    output.state.store(ctx, response.id);
-                    self.focus = false;
-                }
-                if response.has_focus() || response.lost_focus() {
-                    enter = ui.input_mut(|input| {
-                        input.consume_key(egui::Modifiers::NONE, egui::Key::Enter)
-                    });
-                }
-            });
-            crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                ui.label("Sample rate");
-                egui::ComboBox::from_id_salt("project_sample_rate")
-                    .selected_text(format!("{} Hz", self.sample_rate_hz))
-                    .show_ui(ui, |ui| {
-                        for rate in daw_core::SAMPLE_RATES {
-                            ui.selectable_value(
-                                &mut self.sample_rate_hz,
-                                rate,
-                                format!("{rate} Hz"),
-                            );
-                        }
-                    });
-            });
-            crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                ui.label("Buffer size");
-                egui::ComboBox::from_id_salt("project_buffer_size")
-                    .selected_text(format!("{} samples", self.buffer_size_frames))
-                    .show_ui(ui, |ui| {
-                        for size in daw_core::BUFFER_SIZES {
-                            ui.selectable_value(
-                                &mut self.buffer_size_frames,
-                                size,
-                                format!("{size} samples"),
-                            );
-                        }
-                    });
-            });
+            let label_width = ui
+                .painter()
+                .layout_no_wrap(
+                    "Project name".into(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::palette(ctx).text,
+                )
+                .size()
+                .x;
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Project name");
+                },
+                |ui| {
+                    let mut output = egui::TextEdit::singleline(&mut self.name)
+                        .id_salt("project_settings_name")
+                        .desired_width(ui.available_width())
+                        .show(ui);
+                    let response = output.response;
+                    if self.focus {
+                        response.request_focus();
+                        output.state.cursor.set_char_range(Some(
+                            egui::text::CCursorRange::select_all(&output.galley),
+                        ));
+                        output.state.store(ctx, response.id);
+                        self.focus = false;
+                    }
+                    if response.has_focus() || response.lost_focus() {
+                        enter = ui.input_mut(|input| {
+                            input.consume_key(egui::Modifiers::NONE, egui::Key::Enter)
+                        });
+                    }
+                },
+            );
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Sample rate");
+                },
+                |ui| {
+                    egui::ComboBox::from_id_salt("project_sample_rate")
+                        .selected_text(format!("{} Hz", self.sample_rate_hz))
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for rate in daw_core::SAMPLE_RATES {
+                                ui.selectable_value(
+                                    &mut self.sample_rate_hz,
+                                    rate,
+                                    format!("{rate} Hz"),
+                                );
+                            }
+                        });
+                },
+            );
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Buffer size");
+                },
+                |ui| {
+                    egui::ComboBox::from_id_salt("project_buffer_size")
+                        .selected_text(format!("{} samples", self.buffer_size_frames))
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for size in daw_core::BUFFER_SIZES {
+                                ui.selectable_value(
+                                    &mut self.buffer_size_frames,
+                                    size,
+                                    format!("{size} samples"),
+                                );
+                            }
+                        });
+                },
+            );
             ui.label(format!(
                 "Buffer duration: {:.2} ms",
                 self.buffer_size_frames as f64 * 1000.0 / self.sample_rate_hz as f64

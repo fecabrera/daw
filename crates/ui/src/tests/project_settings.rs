@@ -1,4 +1,5 @@
 use super::*;
+use crate::settings::{AppSettings, ColorTheme};
 
 fn key(key: egui::Key) -> egui::Event {
     egui::Event::Key {
@@ -254,4 +255,68 @@ fn failed_audio_settings_retain_name_timing_and_modified_state() {
     assert!(app.error.is_some());
     assert_eq!(format!("{:?}", app.session.project), before);
     assert!(!app.dirty);
+}
+
+#[test]
+fn settings_dialog_fields_share_left_and_right_edges() {
+    for theme in [ColorTheme::Dark, ColorTheme::Light] {
+        for project_settings in [false, true] {
+            let (mut app, _) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                AppSettings {
+                    theme,
+                    ..Default::default()
+                },
+            );
+            let labels = if project_settings {
+                app.open_project_settings();
+                vec!["Untitled", "48000 Hz", "512 samples"]
+            } else {
+                app.settings_open = true;
+                vec![
+                    theme.name(),
+                    app.settings.accent.name(),
+                    #[cfg(any(target_os = "macos", target_os = "windows"))]
+                    app.settings.titlebar.name(),
+                ]
+            };
+            for _ in 0..3 {
+                frame(&mut app, &ctx, vec![]);
+            }
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let fields: Vec<_> = labels
+                .iter()
+                .map(|label| {
+                    let point = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text) if text.galley.text() == *label => {
+                                Some(text.pos + text.galley.size() * 0.5)
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| panic!("Missing field: {label}"));
+                    shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect)
+                                if rect.rect.contains(point)
+                                    && rect.rect.width() > 100.0
+                                    && rect.rect.height() < 30.0 =>
+                            {
+                                Some(rect.rect)
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| panic!("Missing field border: {label}"))
+                })
+                .collect();
+            for rect in &fields[1..] {
+                assert!((rect.left() - fields[0].left()).abs() < 0.1, "{fields:?}");
+                assert!((rect.right() - fields[0].right()).abs() < 0.1, "{fields:?}");
+            }
+        }
+    }
 }

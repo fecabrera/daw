@@ -24,6 +24,26 @@ pub fn centered_with_id<R>(
         .inner
 }
 
+/// Keep form controls aligned after a shared label column.
+pub fn field<R>(
+    ui: &mut Ui,
+    label_width: f32,
+    label: impl FnOnce(&mut Ui),
+    control: impl FnOnce(&mut Ui) -> R,
+) -> InnerResponse<R> {
+    centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
+        ui.allocate_ui_with_layout(
+            Vec2::new(label_width, crate::toolbars::CONTROL_HEIGHT),
+            Layout::left_to_right(Align::Center),
+            |ui| {
+                ui.set_min_width(label_width);
+                label(ui);
+            },
+        );
+        control(ui)
+    })
+}
+
 pub fn wrapped<R>(
     ui: &mut Ui,
     height: f32,

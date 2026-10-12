@@ -956,3 +956,9 @@ All 228 workspace tests pass, including 27 core tests and 158 UI tests. New chec
 - Units shares one 1-point divider with the playback toolbar. The toolbar’s separate bottom divider is omitted for Units; the workspace line and first unit’s top border align, without an extra gap or stacked borders. The shared base-panel requirement remains in the Units design and repository instructions.
 - All 324 workspace tests pass. The new egui regression check covers Deep Orange, Purple, and Yellow in both themes, centered 11-point header text, exact toolbar/header spacing, and one thin full-width divider. Existing 229 UI tests also passed before adding that check. Logs: `work/unit-header-divider-focused.log`, `work/unit-header-divider-regression.log`, and `work/unit-header-divider-tests.log`.
 - Strict workspace/all-target Clippy, formatting, `git diff --check`, and relevant documentation links pass. Rebuilt `target/debug/DAW.app`; logs: `work/unit-header-divider-clippy.log` and `work/unit-header-divider-package.log`. Native layout and Windows/Linux native UI were not checked.
+
+## Settings field alignment — 2026-10-12
+
+- Settings and Project Settings use a shared label-column row layout. All dropdowns and the project-name field fill the remaining width, with matching left and right edges within each dialog. The application accent swatch stays beside its label.
+- The egui regression check covers field-border alignment in both dialogs and both themes. All 18 settings-related tests and 325 workspace tests pass, including dropdown behavior, name selection, and Apply/Cancel transactions. Logs: `work/settings-alignment-focused.log` and `work/settings-alignment-tests.log`.
+- Strict workspace/all-target Clippy, formatting, documentation links, and `git diff --check` pass. Rebuilt `target/debug/DAW.app`; logs: `work/settings-alignment-clippy.log` and `work/settings-alignment-package.log`. Native layout and Windows/Linux native UI were not checked.
