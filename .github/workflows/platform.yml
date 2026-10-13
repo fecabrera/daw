@@ -1,0 +1,177 @@
+name: Platform test and build
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: Platform label for jobs and summaries.
+        required: true
+        type: string
+      runner:
+        description: Native GitHub-hosted runner label.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        id: checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare log directory
+        run: |
+          mkdir -p work/ci-logs
+          printf 'Runner: %s / %s\nCommit: %s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$GITHUB_SHA" > work/ci-logs/runner.log
+
+      - name: Set up native build
+        id: setup
+        uses: ./.github/actions/setup-build
+
+      - name: Check formatting
+        id: formatting
+        run: |
+          mkdir -p work/ci-logs
+          cargo fmt --all --check 2>&1 | tee work/ci-logs/formatting.log
+
+      - name: Check Clippy
+        id: clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings 2>&1 | tee work/ci-logs/clippy.log
+
+      - name: Run workspace tests
+        id: tests
+        run: cargo test --locked --workspace 2>&1 | tee work/ci-logs/tests.log
+
+      - name: Check the headless CLI
+        id: cli
+        run: |
+          cargo build --locked -p daw-cli 2>&1 | tee work/ci-logs/cli-build.log
+          python tools/check_cli.py 2>&1 | tee work/ci-logs/cli.log
+
+      - name: Upload test logs
+        id: logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-test-${{ runner.os }}-${{ runner.arch }}
+          path: work/ci-logs/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Write test summary
+        if: always() && steps.checkout.outcome == 'success'
+        env:
+          CI_STEP_RESULTS: ${{ toJSON(steps) }}
+          CI_JOB_LABEL: ${{ github.job }} / ${{ inputs.platform }}
+          CI_JOB_STATUS: ${{ job.status }}
+        run: python tools/summarize_ci.py
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        id: checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare log directory
+        run: |
+          mkdir -p work/ci-logs
+          printf 'Runner: %s / %s\nCommit: %s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$GITHUB_SHA" > work/ci-logs/runner.log
+
+      - name: Set up native build
+        id: setup
+        uses: ./.github/actions/setup-build
+
+      - name: Package Windows executable and licenses
+        id: windows_package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path work/ci-logs -Force | Out-Null
+          ./tools/package_windows.ps1 release *>&1 | Tee-Object -FilePath work/ci-logs/package.log
+          Expand-Archive -LiteralPath target/release/DAW.zip -DestinationPath target/release/windows-artifact -Force
+
+      - name: Package macOS disk image
+        id: macos_package
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p work/ci-logs
+          sh tools/package_macos_dmg.sh release 2>&1 | tee work/ci-logs/package.log
+
+      - name: Package Linux ZIP
+        id: linux_package
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p work/ci-logs
+          sh tools/package_linux.sh release 2>&1 | tee work/ci-logs/package.log
+
+      - name: Upload Windows executable and licenses
+        id: windows_artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: DAW-windows-x64
+          path: target/release/windows-artifact/DAW/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload macOS disk image
+        id: macos_artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/release/DAW-macos-arm64.dmg
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Linux ZIP
+        id: linux_artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/release/DAW-linux-x64.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build logs
+        id: logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-build-${{ runner.os }}-${{ runner.arch }}
+          path: work/ci-logs/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Write build summary
+        if: always() && steps.checkout.outcome == 'success'
+        env:
+          CI_STEP_RESULTS: ${{ toJSON(steps) }}
+          CI_JOB_LABEL: ${{ github.job }} / ${{ inputs.platform }}
+          CI_JOB_STATUS: ${{ job.status }}
+        run: python tools/summarize_ci.py

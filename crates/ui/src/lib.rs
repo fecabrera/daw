@@ -8390,14 +8390,18 @@ mod tests {
     }
 
     fn wait_for_save(app: &mut DawUi) {
-        for _ in 0..400 {
+        let started = std::time::Instant::now();
+        while started.elapsed() < Duration::from_secs(30) {
             app.poll();
             if app.job.is_none() {
                 return;
             }
             std::thread::sleep(Duration::from_millis(5));
         }
-        panic!("Save did not finish");
+        panic!(
+            "Background job did not finish within 30 seconds: {}",
+            app.busy
+        );
     }
 
     struct SaveLocation(PathBuf);

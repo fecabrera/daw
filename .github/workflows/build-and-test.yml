@@ -12,15 +12,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: '1'
-
 jobs:
-  test:
-    name: Test / ${{ matrix.platform }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+  platform:
+    name: ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
@@ -31,97 +25,7 @@ jobs:
             runner: macos-15
           - platform: Linux x64
             runner: ubuntu-24.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Set up native build
-        uses: ./.github/actions/setup-build
-
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Check Clippy
-        run: cargo clippy --locked --workspace --all-targets -- -D warnings
-
-      - name: Run workspace tests
-        run: cargo test --locked --workspace
-
-      - name: Check the headless CLI
-        run: |
-          cargo build --locked -p daw-cli
-          python tools/check_cli.py
-
-  build:
-    name: Build / ${{ matrix.platform }}
-    needs: test
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: Windows x64
-            runner: windows-2025
-          - platform: macOS arm64
-            runner: macos-15
-          - platform: Linux x64
-            runner: ubuntu-24.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Set up native build
-        uses: ./.github/actions/setup-build
-
-      - name: Package Windows executable and licenses
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          ./tools/package_windows.ps1 release
-          Expand-Archive -LiteralPath target/release/DAW.zip -DestinationPath target/release/windows-artifact -Force
-
-      - name: Package macOS disk image
-        if: runner.os == 'macOS'
-        run: sh tools/package_macos_dmg.sh release
-
-      - name: Package Linux ZIP
-        if: runner.os == 'Linux'
-        run: sh tools/package_linux.sh release
-
-      - name: Upload Windows executable and licenses
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: DAW-windows-x64
-          path: target/release/windows-artifact/DAW/
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload macOS disk image
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v7
-        with:
-          path: target/release/DAW-macos-arm64.dmg
-          archive: false
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload Linux ZIP
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          path: target/release/DAW-linux-x64.zip
-          archive: false
-          if-no-files-found: error
-          retention-days: 14
+    uses: ./.github/workflows/platform.yml
+    with:
+      platform: ${{ matrix.platform }}
+      runner: ${{ matrix.runner }}

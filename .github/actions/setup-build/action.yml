@@ -24,6 +24,17 @@ runs:
       with:
         arch: x64
 
+    - name: Select the MSVC linker
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $linker = Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64\link.exe'
+        if (-not (Test-Path -LiteralPath $linker)) {
+          throw 'The Windows runner is missing the MSVC x64 linker.'
+        }
+        "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$linker" >> $env:GITHUB_ENV
+        Write-Output "MSVC linker: $linker"
+
     - name: Configure Windows libclang
       if: runner.os == 'Windows'
       shell: pwsh
@@ -58,4 +69,3 @@ runs:
           ~/.cargo/registry/cache
           ~/.cargo/git/db
         key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-
