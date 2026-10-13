@@ -97,57 +97,40 @@ impl DawUi {
             .inputs
             .retain(|id, _| settings.layers.iter().any(|layer| layer.id == *id));
         let mut remove_layer = None;
-        let column = Rect::from_min_max(
-            ui.max_rect().min + Vec2::new(0.0, 1.0),
-            Pos2::new(
-                ui.max_rect().left() + LAYER_HEADER_WIDTH,
-                ui.max_rect().bottom(),
-            ),
-        );
-        ui.painter()
-            .rect_filled(column, 0.0, theme::palette(ui.ctx()).panel);
+        let mut column_bounds = ui.max_rect();
+        column_bounds.min.y += 1.0;
+        let control_panel = panels::ControlPanel::begin(ui, column_bounds);
         ui.add_space(1.0);
         ui.spacing_mut().item_spacing.y = -1.0;
-        let header = ui
-            .allocate_ui_with_layout(
-                Vec2::new(LAYER_HEADER_WIDTH, toolbars::HEIGHT),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| {
-                    toolbars::Toolbar::row(ui, |ui| {
-                        ui.label("Layers");
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let add = icons::button(
-                                ui,
-                                icons::Lucide::Plus,
-                                "Add layer",
-                                true,
-                                theme::palette(ui.ctx()).text,
-                            );
-                            #[cfg(test)]
-                            {
-                                self.midi_editor.add_layer_bounds = add.rect;
-                            }
-                            if add.clicked() {
-                                let mut layer = InstrumentLayerSettings::default();
-                                let mut number = 1;
-                                loop {
-                                    layer.name = format!("Layer {number}");
-                                    if !settings
-                                        .layers
-                                        .iter()
-                                        .any(|existing| existing.name == layer.name)
-                                    {
-                                        break;
-                                    }
-                                    number += 1;
-                                }
-                                settings.layers.push(layer);
-                            }
-                        });
-                    })
-                },
-            )
-            .inner;
+        let header = control_panel.header(ui, "Layers", |ui| {
+            let add = icons::button(
+                ui,
+                icons::Lucide::Plus,
+                "Add layer",
+                true,
+                theme::palette(ui.ctx()).text,
+            );
+            #[cfg(test)]
+            {
+                self.midi_editor.add_layer_bounds = add.rect;
+            }
+            if add.clicked() {
+                let mut layer = InstrumentLayerSettings::default();
+                let mut number = 1;
+                loop {
+                    layer.name = format!("Layer {number}");
+                    if !settings
+                        .layers
+                        .iter()
+                        .any(|existing| existing.name == layer.name)
+                    {
+                        break;
+                    }
+                    number += 1;
+                }
+                settings.layers.push(layer);
+            }
+        });
         #[cfg(test)]
         {
             self.midi_editor.instrument_header_bounds = header.response.rect;
@@ -484,16 +467,7 @@ impl DawUi {
                                 }
                             });
                             layer_rows.push((layer.id, row.response.rect));
-                            ui.painter().hline(
-                                row.response.rect.x_range(),
-                                row.response.rect.top() + 0.5,
-                                Stroke::new(1.0, theme::palette(ui.ctx()).border),
-                            );
-                            ui.painter().hline(
-                                row.response.rect.x_range(),
-                                row.response.rect.bottom() - 0.5,
-                                Stroke::new(1.0, theme::palette(ui.ctx()).border),
-                            );
+                            panels::ControlPanel::row_dividers(ui, row.response.rect, true, true);
                             #[cfg(test)]
                             {
                                 self.midi_editor
@@ -506,11 +480,7 @@ impl DawUi {
                     }
                 });
             });
-        ui.painter().vline(
-            column.right() - 0.5,
-            column.y_range(),
-            Stroke::new(1.0, theme::palette(ui.ctx()).border),
-        );
+        control_panel.finish(ui);
         self.layer_reorder(ui, &mut settings, &layer_rows, scroll.inner_rect);
         if let Some(id) = remove_layer {
             if self

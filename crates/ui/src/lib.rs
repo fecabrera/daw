@@ -52,7 +52,7 @@ pub mod titlebar;
 pub mod toolbars;
 mod waveforms;
 
-const TRACK_WIDTH: f32 = 250.0;
+const TRACK_WIDTH: f32 = panels::ControlPanel::WIDTH;
 const ROW_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE + 14.0;
 const MASTER_HEIGHT: f32 = ROW_HEIGHT;
 const RULER_HEIGHT: f32 = toolbars::HEIGHT;
@@ -2251,13 +2251,7 @@ impl DawUi {
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
         let painter = ui.painter().clone();
-        let track_surface =
-            Rect::from_min_max(bounds.min, Pos2::new(timeline_left, bounds.bottom()));
-        painter.rect_filled(track_surface, 0.0, theme::palette(ui.ctx()).panel);
-        painter.line_segment(
-            [track_surface.right_top(), track_surface.right_bottom()],
-            Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
-        );
+        let control_panel = panels::ControlPanel::begin(ui, bounds);
 
         let master_rect = Rect::from_min_max(
             Pos2::new(
@@ -2296,7 +2290,7 @@ impl DawUi {
         self.timeline_scrollbar(&mut scrollbar_ui);
 
         ui.set_max_height((scrollbar_rect.top() - bounds.top()).max(0.0));
-        self.ruler(ui);
+        self.ruler(ui, &control_panel);
         let timeline_rect = Rect::from_min_max(
             Pos2::new(timeline_left, ui.cursor().top()),
             Pos2::new(bounds.right(), scrollbar_rect.top()),
@@ -2370,6 +2364,7 @@ impl DawUi {
                 Stroke::new(1.0_f32, theme::accent(ui.ctx())),
             );
         }
+        control_panel.finish(ui);
     }
     fn master_track(&mut self, ui: &mut egui::Ui) {
         let panel = panels::PanelStyle {
@@ -2441,7 +2436,6 @@ impl DawUi {
         for edge in [
             [rect.left_top(), rect.right_top()],
             [rect.left_top(), rect.left_bottom()],
-            [rect.right_top(), rect.right_bottom()],
         ] {
             ui.painter()
                 .line_segment(edge, Stroke::new(1.0, theme::palette(ui.ctx()).border));
@@ -2795,37 +2789,31 @@ impl DawUi {
             }
         }
     }
-    fn ruler(&mut self, ui: &mut egui::Ui) {
+    fn ruler(&mut self, ui: &mut egui::Ui, control_panel: &panels::ControlPanel) {
         rows::centered(ui, RULER_HEIGHT, |ui| {
-            ui.allocate_ui(Vec2::new(TRACK_WIDTH, RULER_HEIGHT), |ui| {
-                ui.set_min_width(TRACK_WIDTH);
-                toolbars::Toolbar::row(ui, |ui| {
-                    ui.label("Tracks");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if icons::button(
-                            ui,
-                            icons::Lucide::CopyPlus,
-                            self.track_action_label(TrackAction::Duplicate),
-                            self.track_action_enabled(TrackAction::Duplicate, ui.ctx()),
-                            theme::palette(ui.ctx()).text,
-                        )
-                        .clicked()
-                        {
-                            self.perform_track_action(TrackAction::Duplicate, ui.ctx());
-                        }
-                        if icons::button(
-                            ui,
-                            icons::Lucide::Plus,
-                            TrackAction::Add.label(),
-                            self.track_action_enabled(TrackAction::Add, ui.ctx()),
-                            theme::palette(ui.ctx()).text,
-                        )
-                        .clicked()
-                        {
-                            self.perform_track_action(TrackAction::Add, ui.ctx());
-                        }
-                    });
-                });
+            control_panel.header(ui, "Tracks", |ui| {
+                if icons::button(
+                    ui,
+                    icons::Lucide::CopyPlus,
+                    self.track_action_label(TrackAction::Duplicate),
+                    self.track_action_enabled(TrackAction::Duplicate, ui.ctx()),
+                    theme::palette(ui.ctx()).text,
+                )
+                .clicked()
+                {
+                    self.perform_track_action(TrackAction::Duplicate, ui.ctx());
+                }
+                if icons::button(
+                    ui,
+                    icons::Lucide::Plus,
+                    TrackAction::Add.label(),
+                    self.track_action_enabled(TrackAction::Add, ui.ctx()),
+                    theme::palette(ui.ctx()).text,
+                )
+                .clicked()
+                {
+                    self.perform_track_action(TrackAction::Add, ui.ctx());
+                }
             });
             self.time_ruler(ui);
         });
@@ -3367,25 +3355,10 @@ impl DawUi {
                     let rect = inner.response.rect.shrink(0.5);
                     outlines.push((track.id, inner.response.rect));
                     let painter = ui.painter();
-                    if index > 0 {
-                        painter.line_segment(
-                            [rect.left_top(), rect.right_top()],
-                            Stroke::new(1.0, theme::palette(ui.ctx()).border),
-                        );
-                    }
-                    for edge in [
+                    painter.line_segment(
                         [rect.left_top(), rect.left_bottom()],
-                        [rect.right_top(), rect.right_bottom()],
-                    ] {
-                        painter
-                            .line_segment(edge, Stroke::new(1.0, theme::palette(ui.ctx()).border));
-                    }
-                    if index + 1 == count {
-                        painter.line_segment(
-                            [rect.left_bottom(), rect.right_bottom()],
-                            Stroke::new(1.0, theme::palette(ui.ctx()).border),
-                        );
-                    }
+                        Stroke::new(1.0, theme::palette(ui.ctx()).border),
+                    );
                     let context_click = ui.is_enabled()
                         && self.file_action_enabled(FileAction::Import)
                         && ui.rect_contains_pointer(inner.response.rect)
@@ -3400,7 +3373,7 @@ impl DawUi {
                     {
                         context_action = Some(action);
                     }
-                    self.lane(ui, &track);
+                    self.lane(ui, &track, inner.response.rect, index, count);
                 });
             }
             for (id, rect) in outlines {
@@ -4302,19 +4275,29 @@ impl DawUi {
             }
         }
     }
-    fn lane(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
+    fn lane(
+        &mut self,
+        ui: &mut egui::Ui,
+        track: &daw_core::Track,
+        panel: Rect,
+        index: usize,
+        count: usize,
+    ) {
         let track_id = track.id;
         let (rect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::hover());
+        // Use the laid-out panel bounds rather than a separately centered lane height.
+        let rect = Rect::from_min_max(
+            Pos2::new(rect.left(), panel.top()),
+            Pos2::new(rect.right(), panel.bottom()),
+        );
         self.create_midi_pattern_in_empty_lane(ui, track, rect);
         self.lane_bounds.insert(track_id, rect);
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
-        painter.line_segment(
-            [rect.left_bottom(), rect.right_bottom()],
-            Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
-        );
         self.paint_grid(&painter, rect);
+        // Keep row separators below clip shells and their selection outlines.
+        panels::ControlPanel::row_dividers(ui, panel.union(rect), index > 0, index + 1 == count);
         for clip in &track.clips {
             let block = self.clip_block(rect, clip, clip.start_frame);
             if !block.intersects(rect) {

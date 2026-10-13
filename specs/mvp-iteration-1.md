@@ -226,7 +226,7 @@ The detailed dark color descriptions below use the matching shared light palette
 
 Give the track section the same background as the toolbar. Extend it through the full workspace height and separate it from the darker timeline with a vertical border. Extend the timeline grid and playhead through the unused space below the tracks.
 
-Use no outer workspace padding or gaps between sections. Track boxes fill the track column width. The toolbar meets the track section and timeline ruler at a single 1-point horizontal divider across the full window width. The ruler meets the track section at its left edge. Track rows and timeline lanes meet at their borders. Keep padding inside controls and track information blocks.
+Use no outer workspace padding or gaps between sections. Track boxes fill the track column width. The toolbar meets the track section and timeline ruler at a single 1-point horizontal divider across the full window width. The ruler meets the track section at its left edge. Track rows and timeline lanes share the same laid-out vertical bounds. Draw each horizontal row separator once across the panel and lane through `ControlPanel::row_dividers`, including during vertical scrolling and at different display scales; do not position lane borders separately. Keep padding inside controls and track information blocks.
 
 Extend the ruler's bottom divider across the full workspace width, including below the Tracks header. Show this single 1-point divider even when there are no tracks. Do not stack it with the first track's top border.
 

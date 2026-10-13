@@ -110,3 +110,190 @@ fn blank_header_selection_is_blocked_during_jobs_and_dialogs() {
         }
     }
 }
+
+#[test]
+fn tracks_and_layers_share_the_control_panel_surface_header_and_final_border() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for height in [400.0, 1300.0] {
+            let mut app = DawUi::default();
+            let midi = app.session.project.add_midi_track().unwrap();
+            let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+            for index in 2..=4 {
+                instrument.layers.push(daw_core::InstrumentLayerSettings {
+                    name: format!("Layer {index}"),
+                    ..Default::default()
+                });
+            }
+            for _ in 0..8 {
+                app.session.project.add_track().unwrap();
+            }
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.select_track(midi, false);
+            app.selected_tracks.insert(app.session.project.tracks[1].id);
+            for view in [ViewMode::Timeline, ViewMode::Instrument] {
+                app.set_view_mode(view, &ctx);
+                let size = Vec2::new(1280.0, height);
+                frame_shapes(&mut app, &ctx, vec![], size);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+                let palette = theme::palette(&ctx);
+                let column = shapes
+                    .iter()
+                    .filter_map(|shape| match &shape.shape {
+                        egui::Shape::Rect(rect)
+                            if rect.fill == palette.panel
+                                && rect.rect.width() == TRACK_WIDTH
+                                && shape.clip_rect.contains_rect(rect.rect) =>
+                        {
+                            Some(rect.rect)
+                        }
+                        _ => None,
+                    })
+                    .max_by(|a, b| a.height().total_cmp(&b.height()))
+                    .unwrap();
+                let x = column.right() - 0.5;
+                let borders = shapes.iter().enumerate().filter(|(_, shape)| matches!(
+                    &shape.shape, egui::Shape::LineSegment { points, stroke }
+                        if *points == [Pos2::new(x, column.top()), Pos2::new(x, column.bottom())]
+                        && *stroke == Stroke::new(1.0, palette.border)
+                )).collect::<Vec<_>>();
+                assert_eq!(borders.len(), 1, "one continuous outer border in {view:?}");
+                let border_index = borders[0].0;
+                assert!(
+                    shapes
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, shape)| matches!(
+                            &shape.shape, egui::Shape::Rect(rect)
+                                if rect.rect.left() <= x && rect.rect.right() >= x
+                                    && rect.rect.top() < column.bottom()
+                                    && rect.rect.bottom() > column.top()
+                        ))
+                        .all(|(index, _)| index < border_index),
+                    "row fills and selection outlines cannot cover the column border"
+                );
+                let title = if view == ViewMode::Timeline {
+                    "Tracks"
+                } else {
+                    "Layers"
+                };
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Text(text) if text.galley.text() == title
+                        && (text.pos.x - column.left() - f32::from(theme::TOOLBAR_PADDING)).abs() < 0.1)));
+                if view == ViewMode::Timeline {
+                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Rect(rect) if rect.stroke == theme::selection_outline(&ctx)
+                            && rect.rect.right() == column.right())));
+                } else {
+                    assert_eq!(
+                        app.midi_editor.instrument_header_bounds.width(),
+                        column.width()
+                    );
+                    assert!(
+                        app.midi_editor
+                            .instrument_header_bounds
+                            .contains_rect(app.midi_editor.add_layer_bounds)
+                    );
+                }
+            }
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn timeline_row_dividers_share_track_panel_bounds_at_different_scales_and_scroll_offsets() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for scale in [1.0, 1.25, 2.0] {
+            let mut app = DawUi::default();
+            let tracks = (0..12)
+                .map(|_| app.session.project.add_track().unwrap())
+                .collect::<Vec<_>>();
+            app.selected_track = Some(tracks[0]);
+            app.selected_tracks = tracks.iter().copied().collect();
+            let ctx = context();
+            ctx.set_pixels_per_point(scale);
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            let original = format!("{:?}", app.session.project);
+            let size = Vec2::new(900.0, 600.0);
+            frame_shapes(&mut app, &ctx, vec![], size);
+            let first = app.lane_bounds[&tracks[0]];
+            for scroll in [false, true] {
+                let events = if scroll {
+                    vec![
+                        egui::Event::PointerMoved(first.min + Vec2::splat(20.0)),
+                        egui::Event::MouseWheel {
+                            unit: egui::MouseWheelUnit::Point,
+                            delta: Vec2::new(0.0, -114.25),
+                            modifiers: Default::default(),
+                            phase: egui::TouchPhase::Move,
+                        },
+                    ]
+                } else {
+                    vec![]
+                };
+                frame_shapes(&mut app, &ctx, events, size);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+                if scroll {
+                    assert!(app.lane_bounds[&tracks[0]].top() < first.top());
+                }
+                let mut visible_rows = 0;
+                for (index, track) in tracks.iter().enumerate() {
+                    let lane = app.lane_bounds[track];
+                    if lane.top() < app.timeline_bounds.top()
+                        || lane.bottom() > app.master_bounds.top()
+                    {
+                        continue;
+                    }
+                    visible_rows += 1;
+                    let panel = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect)
+                                if rect.stroke == theme::selection_outline(&ctx)
+                                    && rect.rect.right() == lane.left()
+                                    && rect.rect.center().y == lane.center().y =>
+                            {
+                                Some(rect.rect)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert_eq!(panel.y_range(), lane.y_range());
+                    if index > 0 {
+                        let y = panel.top() + 0.5;
+                        let lines = shapes.iter().filter(|shape| matches!(
+                            &shape.shape, egui::Shape::LineSegment { points, stroke }
+                                if *points == [Pos2::new(panel.left(), y), Pos2::new(lane.right(), y)]
+                                    && *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                        )).count();
+                        assert_eq!(lines, 1, "one aligned separator across panel and lane");
+                    }
+                    assert!(
+                        !shapes.iter().any(|shape| matches!(
+                            &shape.shape, egui::Shape::LineSegment { points, stroke }
+                                if *points == [lane.left_bottom(), lane.right_bottom()]
+                                    && *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                        )),
+                        "no separately positioned lane border"
+                    );
+                }
+                assert!(visible_rows > 1);
+            }
+            assert_eq!(format!("{:?}", app.session.project), original);
+            assert!(!app.dirty);
+        }
+    }
+}

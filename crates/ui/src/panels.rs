@@ -13,6 +13,67 @@ pub(super) fn unit_divider(ui: &Ui, x: f32, range: std::ops::RangeInclusive<f32>
     );
 }
 
+/// Base control column shared by Tracks and Layers. Row content stays with each view.
+/// Paint the border last so selected rows, lanes, and scrolling cannot cover it.
+pub(super) struct ControlPanel {
+    rect: Rect,
+}
+
+impl ControlPanel {
+    pub(super) const WIDTH: f32 = 250.0;
+
+    pub(super) fn begin(ui: &Ui, bounds: Rect) -> Self {
+        let rect = Rect::from_min_max(
+            bounds.min,
+            egui::pos2(bounds.left() + Self::WIDTH, bounds.bottom()),
+        );
+        ui.painter()
+            .rect_filled(rect, 0.0, crate::theme::palette(ui.ctx()).panel);
+        Self { rect }
+    }
+
+    pub(super) fn header<R>(
+        &self,
+        ui: &mut Ui,
+        title: &str,
+        actions: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<R> {
+        ui.allocate_ui_with_layout(
+            Vec2::new(self.rect.width(), crate::toolbars::HEIGHT),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.set_min_width(self.rect.width());
+                crate::toolbars::Toolbar::row(ui, |ui| {
+                    ui.label(title);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), actions)
+                        .inner
+                })
+            },
+        )
+        .inner
+    }
+
+    /// One row boundary can span both the control column and its workspace lane.
+    pub(super) fn row_dividers(ui: &Ui, row: Rect, top: bool, bottom: bool) {
+        let stroke = Stroke::new(1.0, crate::theme::palette(ui.ctx()).border);
+        if top {
+            ui.painter().hline(row.x_range(), row.top() + 0.5, stroke);
+        }
+        if bottom {
+            ui.painter()
+                .hline(row.x_range(), row.bottom() - 0.5, stroke);
+        }
+    }
+
+    pub(super) fn finish(self, ui: &Ui) {
+        ui.painter().vline(
+            self.rect.right() - 0.5,
+            self.rect.y_range(),
+            Stroke::new(1.0, crate::theme::palette(ui.ctx()).border),
+        );
+    }
+}
+
 /// Shared framing for outlined information panels. Content and commands stay with each panel.
 pub struct PanelStyle {
     pub outline: Option<Color32>,
