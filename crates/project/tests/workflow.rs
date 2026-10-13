@@ -2344,6 +2344,7 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
     layers[2].muted = true;
     layers[0].envelope_enabled = false;
     layers[1].oscillator_enabled = false;
+    layers[0].collapsed = true;
     layers[0].oscillator_collapsed = true;
     layers[1].envelope_collapsed = true;
     layers.swap(0, 1);

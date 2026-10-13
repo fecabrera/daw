@@ -66,6 +66,8 @@ pub const INSTRUMENT_STATE_VERSION: u32 = 2;
 pub struct InstrumentLayerSettings {
     pub id: uuid::Uuid,
     pub name: String,
+    /// Saved compact presentation; does not change unit or audio settings.
+    pub collapsed: bool,
     pub muted: bool,
     pub soloed: bool,
     pub gain_db: f32,
@@ -86,6 +88,7 @@ impl Default for InstrumentLayerSettings {
         Self {
             id: uuid::Uuid::new_v4(),
             name: "Layer 1".into(),
+            collapsed: false,
             muted: false,
             soloed: false,
             gain_db: 0.0,
@@ -128,6 +131,8 @@ struct SavedLayer {
     #[serde(default, deserialize_with = "saved_layer_name")]
     name: Option<String>,
     #[serde(default)]
+    collapsed: bool,
+    #[serde(default)]
     muted: bool,
     #[serde(default)]
     soloed: bool,
@@ -158,6 +163,7 @@ impl SavedLayer {
         InstrumentLayerSettings {
             id: self.id,
             name: self.name.unwrap_or_else(|| format!("Layer {}", index + 1)),
+            collapsed: self.collapsed,
             muted: self.muted,
             soloed: self.soloed,
             gain_db: self.gain_db,
@@ -285,6 +291,7 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
                 // Deterministic within the migrated instrument; widget scopes also include the track ID.
                 id: uuid::Uuid::from_u128(1),
                 name: "Layer 1".into(),
+                collapsed: false,
                 muted: false,
                 soloed: false,
                 gain_db: 0.0,

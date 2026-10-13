@@ -13,6 +13,7 @@ pub(super) struct EmptyStateResponse {
 pub(super) fn show(
     ui: &mut Ui,
     height: f32,
+    compact: bool,
     title: &str,
     description: &str,
     action: &str,
@@ -21,6 +22,21 @@ pub(super) fn show(
     let card = area.shrink(MARGIN);
     let palette = theme::palette(ui.ctx());
     dashed_outline(ui, card.shrink(0.5), Stroke::new(1.0, palette.border));
+
+    // Compact layers retain the action inside the same inset outline.
+    if compact {
+        let mut body = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt(("empty-state", action))
+                .max_rect(card)
+                .layout(egui::Layout::top_down(Align::Center)),
+        );
+        body.add_space((card.height() - toolbars::CONTROL_HEIGHT).max(0.0) * 0.5);
+        let action = body
+            .add(egui::Button::new(action).min_size(Vec2::new(0.0, toolbars::CONTROL_HEIGHT)))
+            .on_hover_text(description);
+        return EmptyStateResponse { area, action };
+    }
 
     let title_font = TextStyle::Heading.resolve(ui.style());
     let body_font = TextStyle::Body.resolve(ui.style());

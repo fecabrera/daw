@@ -6,8 +6,24 @@ pub(super) fn control_height() -> f32 {
     3.0 * knobs::CHOICE_SIZE + 3.0 * f32::from(theme::TOOLBAR_PADDING) + icons::COMPACT_BUTTON_SIZE
 }
 
+pub(super) fn body_height(compact: bool) -> f32 {
+    if compact {
+        crate::ROW_HEIGHT
+            - panels::HEADER_HEIGHT
+            - 2.0
+            - 2.0 * f32::from(panels::PanelStyle::default().margin)
+    } else {
+        control_height()
+    }
+}
+
 /// Four stage containers share the oscillator's row, footer, and padding geometry.
-pub(super) fn body(ui: &mut Ui, settings: &mut EnvelopeSettings, margin: i8) -> [Rect; 4] {
+pub(super) fn body(
+    ui: &mut Ui,
+    settings: &mut EnvelopeSettings,
+    margin: i8,
+    compact: bool,
+) -> [Rect; 4] {
     let defaults = EnvelopeSettings::default();
     let mut bounds = [Rect::NOTHING; 4];
     ui.horizontal_top(|ui| {
@@ -20,45 +36,52 @@ pub(super) fn body(ui: &mut Ui, settings: &mut EnvelopeSettings, margin: i8) -> 
                 egui::Frame::new().inner_margin(margin).show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
-                        ui.set_min_height(control_height());
-                        match index {
-                            0 => stage_controls(
-                                ui,
-                                &mut settings.attack,
-                                defaults.attack,
-                                "Attack time",
-                                false,
-                            ),
-                            1 => stage_controls(
-                                ui,
-                                &mut settings.decay,
-                                defaults.decay,
-                                "Decay time",
-                                true,
-                            ),
-                            3 => stage_controls(
-                                ui,
-                                &mut settings.release,
-                                defaults.release,
-                                "Release time",
-                                true,
-                            ),
-                            _ => {
-                                knobs::row(
+                        ui.set_min_height(body_height(compact));
+                        if !compact {
+                            match index {
+                                0 => stage_controls(
                                     ui,
-                                    &mut settings.sustain,
-                                    knobs::CHOICE_SIZE,
-                                    knobs::sustain,
-                                );
-                                for _ in 0..2 {
-                                    ui.allocate_exact_size(
-                                        Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
-                                        Sense::hover(),
+                                    &mut settings.attack,
+                                    defaults.attack,
+                                    "Attack time",
+                                    false,
+                                ),
+                                1 => stage_controls(
+                                    ui,
+                                    &mut settings.decay,
+                                    defaults.decay,
+                                    "Decay time",
+                                    true,
+                                ),
+                                3 => stage_controls(
+                                    ui,
+                                    &mut settings.release,
+                                    defaults.release,
+                                    "Release time",
+                                    true,
+                                ),
+                                _ => {
+                                    knobs::row(
+                                        ui,
+                                        &mut settings.sustain,
+                                        knobs::CHOICE_SIZE,
+                                        knobs::sustain,
                                     );
+                                    for _ in 0..2 {
+                                        ui.allocate_exact_size(
+                                            Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
+                                            Sense::hover(),
+                                        );
+                                    }
                                 }
                             }
                         }
-                        rows::centered(ui, icons::COMPACT_BUTTON_SIZE, |ui| {
+                        let footer_height = if compact {
+                            body_height(true)
+                        } else {
+                            icons::COMPACT_BUTTON_SIZE
+                        };
+                        rows::centered(ui, footer_height, |ui| {
                             ui.add_sized(
                                 Vec2::new(ui.available_width(), icons::COMPACT_BUTTON_SIZE),
                                 egui::Label::new(

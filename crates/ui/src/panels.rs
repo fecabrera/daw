@@ -91,16 +91,17 @@ impl Default for PanelStyle {
 
 impl PanelStyle {
     /// Base panel for every source, effect, and modulator; callers supply names and controls.
-    /// Callers supply project-owned enable and collapse states scoped to each unit.
+    /// Callers supply compact title mode and project-owned enable/collapse states.
     pub fn unit<R>(
         &self,
         ui: &mut Ui,
-        name: &str,
+        title: (&str, bool),
         height: f32,
         enabled: &mut bool,
         collapsed: &mut bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
+        let (name, compact_title) = title;
         let id = ui.id().with(("unit-header", name));
         let is_collapsed = *collapsed;
         let mut header_rect = Rect::NOTHING;
@@ -173,7 +174,12 @@ impl PanelStyle {
             } else {
                 header_text
             };
-            paint_unit_title(ui, body, name, text, true);
+            let strip_title = if compact_title {
+                format!("{}...", name.chars().take(3).collect::<String>())
+            } else {
+                name.to_owned()
+            };
+            paint_unit_title(ui, body, &strip_title, text, true);
         } else {
             paint_unit_title(ui, cap, name, header_text, false);
         }

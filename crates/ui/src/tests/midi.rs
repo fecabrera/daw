@@ -903,8 +903,9 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         let [mute, solo, gain, gain_input, pan, pan_input] = bounds.mix_controls;
         assert_eq!(mute.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
         assert_eq!(solo.size(), mute.size());
-        let right_inset = 7.0 + (meters::STEREO_WIDTH - meters::SCALE_WIDTH) + 6.0;
-        assert_eq!(bounds.label.right() - solo.right(), right_inset);
+        assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
+        assert_eq!(bounds.collapse.left() - solo.right(), 6.0);
+        assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
         assert_eq!(solo.left() - mute.right(), 6.0);
         for peer in &layers[1..] {
             let controls = app.midi_editor.layer_bounds[&peer.id].mix_controls;
@@ -1172,7 +1173,7 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
                 "name" => bounds.name.center(),
                 "blank" => Pos2::new(bounds.name.right() + 10.0, bounds.grip.center().y),
                 "inset" => Pos2::new(bounds.label.left() + 2.0, bounds.grip.center().y),
-                "gutter" => Pos2::new(bounds.label.right() - 2.0, bounds.grip.center().y),
+                "gutter" => Pos2::new(bounds.label.right() - 2.0, bounds.label.bottom() - 10.0),
                 _ => bounds.label.center(),
             };
             let end = if action == "same" {
@@ -1243,12 +1244,14 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
 
 #[test]
 fn layer_control_and_name_editor_drags_do_not_reorder_layers() {
-    for control in 0..7 {
+    for control in 0..8 {
         let (mut app, ctx, layers) = layer_header_fixture();
         let id = layers[0].id;
         let start = if control == 6 {
             begin_layer_rename(&mut app, &ctx, id);
             app.midi_editor.layer_bounds[&id].name.center()
+        } else if control == 7 {
+            app.midi_editor.layer_bounds[&id].collapse.center()
         } else {
             app.midi_editor.layer_bounds[&id].mix_controls[control].center()
         };
@@ -5781,4 +5784,343 @@ fn midi_clip_context_menus_split_and_delete_in_both_views() {
         );
         assert_eq!(app.view_mode, view);
     }
+}
+
+#[test]
+fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, mut layers) = layer_header_fixture();
+        layers[0].oscillators.resize(12, Default::default());
+        layers.push(daw_core::InstrumentLayerSettings {
+            name: "Envelope only".into(),
+            has_envelope: true,
+            ..Default::default()
+        });
+        app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers = layers.clone();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 1400.0));
+        let expanded = app.session.project.clone();
+        let widths: Vec<_> = layers
+            .iter()
+            .map(|layer| {
+                let bounds = &app.midi_editor.layer_bounds[&layer.id];
+                (
+                    bounds.oscillator_panel.width(),
+                    bounds.envelope_panel.width(),
+                )
+            })
+            .collect();
+        for layer in &layers {
+            let bounds = &app.midi_editor.layer_bounds[&layer.id];
+            assert_eq!(bounds.collapse.left() - bounds.mix_controls[1].right(), 6.0);
+            assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
+            assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
+            assert!(bounds.label.contains_rect(bounds.collapse));
+            assert_eq!(
+                bounds.collapse.width(),
+                app.midi_editor.add_layer_bounds.width()
+            );
+            let point = bounds.collapse.center();
+            app.dirty = false;
+            frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point), button(point, true)],
+                Vec2::new(1280.0, 1400.0),
+            );
+            assert!(
+                !app.session.project.tracks[0]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .layers
+                    .iter()
+                    .find(|l| l.id == layer.id)
+                    .unwrap()
+                    .collapsed
+            );
+            assert!(!app.dirty);
+            frame_shapes(
+                &mut app,
+                &ctx,
+                vec![button(point, false)],
+                Vec2::new(1280.0, 1400.0),
+            );
+            assert!(app.dirty);
+            frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 1400.0));
+        }
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let mut expected = expanded.clone();
+        for layer in &mut expected.tracks[0].instrument.as_mut().unwrap().layers {
+            layer.collapsed = true;
+        }
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            serde_json::to_value(&expected).unwrap()
+        );
+        for (index, layer) in layers.iter().enumerate() {
+            let bounds = &app.midi_editor.layer_bounds[&layer.id];
+            assert_eq!(bounds.row.height(), ROW_HEIGHT);
+            assert_eq!(bounds.label.height(), ROW_HEIGHT);
+            assert_eq!(
+                bounds.collapse.width(),
+                app.midi_editor.add_layer_bounds.width()
+            );
+            assert_eq!(bounds.collapse.left() - bounds.mix_controls[1].right(), 6.0);
+            assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
+            assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
+            assert!(bounds.label.contains_rect(bounds.collapse));
+            assert_eq!(bounds.oscillator_panel.width(), widths[index].0);
+            assert_eq!(bounds.envelope_panel.width(), widths[index].1);
+            for panel in [
+                bounds.oscillator_panel,
+                bounds.envelope_panel,
+                bounds.source_empty_state,
+                bounds.envelope_empty_state,
+            ] {
+                if panel != Rect::NOTHING {
+                    assert_eq!(panel.height(), ROW_HEIGHT);
+                }
+            }
+            for strip in bounds
+                .oscillators
+                .iter()
+                .chain(&bounds.envelope_stages)
+                .filter(|r| **r != Rect::NOTHING)
+            {
+                assert!(strip.height() < knobs::CHOICE_SIZE);
+                assert!(
+                    bounds.row.y_range().contains(strip.top())
+                        && bounds.row.y_range().contains(strip.bottom())
+                );
+            }
+            if index > 0 {
+                assert_eq!(
+                    app.midi_editor.layer_bounds[&layers[index - 1].id]
+                        .row
+                        .bottom()
+                        - 1.0,
+                    bounds.row.top()
+                );
+            }
+        }
+        for label in [
+            "Osc 1",
+            "Attack",
+            "Decay",
+            "Sustain",
+            "Release",
+            "Add source",
+            "Add envelope",
+        ] {
+            assert!(
+                shapes
+                    .iter()
+                    .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == label)),
+                "{label}"
+            );
+        }
+        assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "5.0 ms" || t.galley.text() == "No source")));
+        // Compact footers and empty cards retain their actions without resizing the layer.
+        let source_power = app.midi_editor.layer_bounds[&layers[0].id].source_powers[0].center();
+        click_note_or_lane(&mut app, &ctx, source_power);
+        frame(&mut app, &ctx, vec![]);
+        assert!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .oscillators[0]
+                .muted
+        );
+        let empty = layers[2].id;
+        for source in [true, false] {
+            let bounds = &app.midi_editor.layer_bounds[&empty];
+            let point = if source {
+                bounds.add_source.center()
+            } else {
+                bounds.add_envelope.center()
+            };
+            click_note_or_lane(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(
+                app.midi_editor.layer_bounds[&empty].row.height(),
+                ROW_HEIGHT
+            );
+        }
+        let added = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[2];
+        assert_eq!(added.oscillators.len(), 1);
+        assert!(added.has_envelope);
+        let saved = serde_json::to_vec(&app.session.project).unwrap();
+        let mut reopened = DawUi::default();
+        reopened.session.project = serde_json::from_slice(&saved).unwrap();
+        reopened.selected_track = Some(expanded.tracks[0].id);
+        let fresh = context();
+        reopened.set_view_mode(ViewMode::Instrument, &fresh);
+        frame(&mut reopened, &fresh, vec![]);
+        assert!(!reopened.dirty);
+        for layer in &layers {
+            assert_eq!(
+                reopened.midi_editor.layer_bounds[&layer.id].row.height(),
+                ROW_HEIGHT
+            );
+        }
+        let point = reopened.midi_editor.layer_bounds[&layers[0].id]
+            .collapse
+            .center();
+        click_note_or_lane(&mut reopened, &fresh, point);
+        frame(&mut reopened, &fresh, vec![]);
+        assert!(
+            reopened.midi_editor.layer_bounds[&layers[0].id]
+                .row
+                .height()
+                > ROW_HEIGHT
+        );
+        assert_eq!(
+            reopened.midi_editor.layer_bounds[&layers[1].id]
+                .row
+                .height(),
+            ROW_HEIGHT
+        );
+    }
+}
+
+#[test]
+fn compact_layer_collapse_is_guarded_and_preserves_independent_unit_states_and_order() {
+    let (mut app, ctx, mut layers) = layer_header_fixture();
+    layers[0].oscillator_collapsed = true;
+    layers[0].envelope_collapsed = true;
+    layers[0].collapsed = true;
+    layers[2].collapsed = true;
+    app.session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers = layers.clone();
+    frame(&mut app, &ctx, vec![]);
+    app.dirty = false;
+    let first = layers[0].id;
+    let point = app.midi_editor.layer_bounds[&first].collapse.center();
+    for disabled in [false, true] {
+        for pressed in [true, false] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    focused: disabled,
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    events: vec![egui::Event::PointerMoved(point), button(point, pressed)],
+                    ..Default::default()
+                },
+                |ui| {
+                    if disabled {
+                        ui.disable();
+                    }
+                    app.show(ui);
+                },
+            );
+            output.textures_delta.clear();
+        }
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers,
+            layers
+        );
+        assert!(!app.dirty);
+    }
+    frame(&mut app, &ctx, vec![]);
+    let bounds = &app.midi_editor.layer_bounds[&first];
+    let panels = [
+        (bounds.oscillator_panel, "Osc..."),
+        (bounds.envelope_panel, "Env..."),
+    ];
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    for (panel, name) in panels {
+        assert_eq!(
+            panel.size(),
+            Vec2::new(panels::HEADER_HEIGHT + 2.0, ROW_HEIGHT)
+        );
+        let text = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == name => Some(text),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(text.angle, -std::f32::consts::FRAC_PI_2);
+        let body = Rect::from_min_max(
+            panel.min + Vec2::new(1.0, panels::HEADER_HEIGHT + 1.0),
+            panel.max - Vec2::splat(1.0),
+        );
+        assert!(body.contains_rect(text.visual_bounding_rect()));
+    }
+    let bounds = &app.midi_editor.layer_bounds[&first];
+    // Reordering mixed heights uses actual row bounds and keeps saved states with IDs.
+    let start = bounds.grip.center();
+    let end = app.midi_editor.layer_bounds[&layers[2].id].row.center() + Vec2::new(0.0, 8.0);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+    );
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    assert!(app.instrument_ui.dragging());
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    frame(&mut app, &ctx, vec![]);
+    let expected = vec![layers[1].clone(), layers[2].clone(), layers[0].clone()];
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers,
+        expected
+    );
+    let point = app.midi_editor.layer_bounds[&first].collapse.center();
+    click_note_or_lane(&mut app, &ctx, point);
+    frame(&mut app, &ctx, vec![]);
+    let bounds = &app.midi_editor.layer_bounds[&first];
+    assert!(bounds.row.height() > ROW_HEIGHT);
+    assert_eq!(bounds.oscillator_panel.width(), panels::HEADER_HEIGHT + 2.0);
+    assert_eq!(bounds.envelope_panel.width(), panels::HEADER_HEIGHT + 2.0);
+    let track = app.session.project.tracks[0].id;
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(
+        app.midi_editor.layer_bounds[&layers[2].id].row.height(),
+        ROW_HEIGHT
+    );
+    app.select_track(track, false);
+    begin_layer_rename(&mut app, &ctx, first);
+    app.dirty = false;
+    let point = app.midi_editor.layer_bounds[&first].collapse.center();
+    click_note_or_lane(&mut app, &ctx, point);
+    frame(&mut app, &ctx, vec![]);
+    assert!(
+        !app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[2]
+            .collapsed
+    );
+    assert!(!app.dirty);
 }

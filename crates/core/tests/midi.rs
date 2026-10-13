@@ -136,6 +136,7 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
     assert_eq!(instrument.layers.len(), 1);
     assert!(instrument.layers[0].oscillators.is_empty());
     assert!(!instrument.layers[0].has_envelope);
+    assert!(!instrument.layers[0].collapsed);
     assert!(instrument.layers[0].oscillator_enabled && instrument.layers[0].envelope_enabled);
     assert!(!instrument.layers[0].oscillator_collapsed && !instrument.layers[0].envelope_collapsed);
     assert!(!instrument.layers[0].muted && !instrument.layers[0].soloed);
@@ -158,6 +159,7 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
     instrument.layers[1].pan = -0.7;
     instrument.layers[0].oscillator_enabled = false;
     instrument.layers[1].envelope_enabled = false;
+    instrument.layers[0].collapsed = true;
     instrument.layers[0].oscillator_collapsed = true;
     instrument.layers[1].envelope_collapsed = true;
     project
@@ -176,6 +178,7 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
     {
         layer.as_object_mut().unwrap().remove("name");
         for field in [
+            "collapsed",
             "muted",
             "soloed",
             "gain_db",
@@ -196,9 +199,9 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
             .all(|layer| layer.oscillator_enabled && layer.envelope_enabled)
     );
     assert!(
-        older_layers
-            .iter()
-            .all(|layer| !layer.oscillator_collapsed && !layer.envelope_collapsed)
+        older_layers.iter().all(|layer| !layer.collapsed
+            && !layer.oscillator_collapsed
+            && !layer.envelope_collapsed)
     );
     assert_eq!(older_layers[0].name, "Layer 1");
     assert_eq!(older_layers[1].name, "Layer 2");
@@ -212,7 +215,7 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
         older_layers[1].oscillators,
         instrument.layers[1].oscillators
     );
-    for field in ["oscillator_collapsed", "envelope_collapsed"] {
+    for field in ["collapsed", "oscillator_collapsed", "envelope_collapsed"] {
         let mut malformed = before.clone();
         malformed["tracks"][0]["instrument"]["layers"][0][field] = serde_json::Value::Null;
         assert!(serde_json::from_value::<Project>(malformed).is_err());

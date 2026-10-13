@@ -35,6 +35,7 @@ pub(crate) struct LayerUiBounds {
     pub grip: Rect,
     pub name: Rect,
     pub mix_controls: [Rect; 6],
+    pub collapse: Rect,
     pub add_source: Rect,
     pub add_envelope: Rect,
     pub source_empty_state: Rect,
@@ -46,6 +47,7 @@ pub(crate) struct LayerUiBounds {
     pub envelope_header: Rect,
     pub envelope_power: Rect,
     pub oscillators: Vec<Rect>,
+    pub source_powers: Vec<Rect>,
     pub envelope_stages: [Rect; 4],
 }
 
@@ -130,6 +132,7 @@ impl DawUi {
                 }
                 settings.layers.push(layer);
             }
+            add.rect.width()
         });
         #[cfg(test)]
         {
@@ -140,6 +143,7 @@ impl DawUi {
             header.response.rect.bottom() - 0.5,
             Stroke::new(1.0, theme::palette(ui.ctx()).border),
         );
+        let layer_action_width = header.inner;
         let count = settings.layers.len();
         let mut layer_rows = Vec::new();
         let scroll = egui::ScrollArea::vertical()
@@ -155,11 +159,16 @@ impl DawUi {
                     }
                     for layer in &mut settings.layers {
                         ui.push_id((track.id, layer.id), |ui| {
-                            // Empty and populated rows share the unit shell's full height.
-                            let height = crate::envelope_panel::control_height()
-                                + 2.0 * f32::from(panels::PanelStyle::default().margin)
-                                + panels::HEADER_HEIGHT
-                                + 2.0;
+                            // Use one presentation snapshot for the entire frame.
+                            let compact = layer.collapsed;
+                            let height = if compact {
+                                ROW_HEIGHT
+                            } else {
+                                crate::envelope_panel::control_height()
+                                    + 2.0 * f32::from(panels::PanelStyle::default().margin)
+                                    + panels::HEADER_HEIGHT
+                                    + 2.0
+                            };
                             let row = ui.horizontal_top(|ui| {
                                 ui.spacing_mut().item_spacing.x = if layer.oscillators.is_empty() {
                                     0.0
@@ -181,11 +190,7 @@ impl DawUi {
                                         .max_rect(Rect::from_min_size(
                                             label.min + Vec2::splat(7.0),
                                             Vec2::new(
-                                                // Reserve the same control width as a track's meter layout.
-                                                label.width()
-                                                    - 14.0
-                                                    - (meters::STEREO_WIDTH - meters::SCALE_WIDTH)
-                                                    - 6.0,
+                                                label.width() - 14.0,
                                                 toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE,
                                             ),
                                         ))
@@ -199,7 +204,8 @@ impl DawUi {
                                     toolbars::CONTROL_HEIGHT,
                                     |ui| {
                                         let buttons_width = 2.0 * toolbars::CONTROL_HEIGHT
-                                            + ui.spacing().item_spacing.x;
+                                            + layer_action_width
+                                            + 2.0 * ui.spacing().item_spacing.x;
                                         let name_width = (ui.available_width()
                                             - toolbars::CONTROL_HEIGHT
                                             - buttons_width
@@ -231,10 +237,35 @@ impl DawUi {
                                                 )
                                             })
                                             .inner;
-                                        (grip.rect, name, toggles.map(|response| response.rect))
+                                        let collapse = icons::button(
+                                            ui,
+                                            if compact {
+                                                icons::Lucide::ArrowDownFromLine
+                                            } else {
+                                                icons::Lucide::ArrowUpFromLine
+                                            },
+                                            if compact {
+                                                "Expand layer"
+                                            } else {
+                                                "Collapse layer"
+                                            },
+                                            mixing_enabled && ui.input(|input| input.focused),
+                                            theme::palette(ui.ctx()).text,
+                                        );
+                                        (
+                                            grip.rect,
+                                            name,
+                                            toggles.map(|response| response.rect),
+                                            collapse,
+                                        )
                                     },
                                 )
                                 .inner;
+                                let collapse = header.3;
+                                if collapse.clicked() {
+                                    layer.collapsed = !compact;
+                                    ui.ctx().request_repaint();
+                                }
                                 let inputs =
                                     self.instrument_ui.inputs.entry(layer.id).or_insert_with(
                                         || Inputs {
@@ -268,7 +299,8 @@ impl DawUi {
                                 // controls at the press origin, even when the pointer leaves them.
                                 let control_press = ui.input(|input| {
                                     input.pointer.press_origin().is_some_and(|point| {
-                                        mixing_bounds.iter().any(|rect| rect.contains(point))
+                                        collapse.rect.contains(point)
+                                            || mixing_bounds.iter().any(|rect| rect.contains(point))
                                     })
                                 });
                                 if !control_press {
@@ -318,12 +350,7 @@ impl DawUi {
                                                 };
                                             if !layer.oscillators.is_empty() {
                                                 let (rect, header, power) = self.oscillator_unit(
-                                                    ui,
-                                                    track.id,
-                                                    &mut layer.oscillators,
-                                                    &mut layer.oscillator_enabled,
-                                                    &mut layer.oscillator_collapsed,
-                                                    height,
+                                                    ui, track.id, layer, height, compact,
                                                 );
                                                 oscillator_panel = Some(rect);
                                                 oscillator_header = header;
@@ -344,6 +371,7 @@ impl DawUi {
                                                 let source = crate::empty_state::show(
                                                     ui,
                                                     height,
+                                                    compact,
                                                     "No source",
                                                     "Generate sound with an oscillator.",
                                                     "Add source",
@@ -367,7 +395,7 @@ impl DawUi {
                                                 };
                                                 let envelope = panel.unit(
                                                     ui,
-                                                    "Envelope",
+                                                    ("Envelope", compact),
                                                     height,
                                                     &mut layer.envelope_enabled,
                                                     &mut layer.envelope_collapsed,
@@ -376,6 +404,7 @@ impl DawUi {
                                                             ui,
                                                             &mut layer.envelope,
                                                             10,
+                                                            compact,
                                                         )
                                                     },
                                                 );
@@ -402,6 +431,7 @@ impl DawUi {
                                                 let envelope = crate::empty_state::show(
                                                     ui,
                                                     height,
+                                                    compact,
                                                     "No envelope",
                                                     "Shape this layer’s volume over time.",
                                                     "Add envelope",
@@ -435,6 +465,7 @@ impl DawUi {
                                             grip: controls.0,
                                             name: controls.1,
                                             mix_controls: mixing_bounds,
+                                            collapse: collapse.rect,
                                             add_source,
                                             add_envelope,
                                             source_empty_state,
@@ -447,6 +478,10 @@ impl DawUi {
                                             envelope_header,
                                             envelope_power,
                                             oscillators: self.midi_editor.oscillator_bounds.clone(),
+                                            source_powers: self
+                                                .midi_editor
+                                                .oscillator_power_bounds
+                                                .clone(),
                                             envelope_stages,
                                         },
                                     );
@@ -683,14 +718,19 @@ impl DawUi {
         &mut self,
         ui: &mut egui::Ui,
         track: Id,
-        oscillators: &mut Vec<daw_core::OscillatorSettings>,
-        enabled: &mut bool,
-        collapsed: &mut bool,
+        layer: &mut InstrumentLayerSettings,
         height: f32,
+        compact: bool,
     ) -> (Rect, Rect, Rect) {
+        let InstrumentLayerSettings {
+            oscillators,
+            oscillator_enabled: enabled,
+            oscillator_collapsed: collapsed,
+            ..
+        } = layer;
         let panel = panels::PanelStyle::default();
         let strip_margin = panel.margin;
-        let strip_height = crate::envelope_panel::control_height();
+        let strip_height = crate::envelope_panel::body_height(compact);
         let strip_width = OSCILLATOR_STRIP_WIDTH - 2.0 * f32::from(strip_margin);
         let mut remove = None;
         let mut add = false;
@@ -704,7 +744,7 @@ impl DawUi {
         }
         let result = panels::PanelStyle { margin: 0, ..panel }.unit(
             ui,
-            "Oscillator",
+            ("Oscillator", compact),
             height,
             enabled,
             collapsed,
@@ -728,28 +768,37 @@ impl DawUi {
                                                 .sense(Sense::click()),
                                             |ui| {
                                                 ui.set_width(strip_width);
-                                                [
-                                                    knobs::row(
-                                                        ui,
-                                                        &mut oscillator.waveform,
-                                                        knobs::CHOICE_SIZE,
-                                                        knobs::waveform,
-                                                    ),
-                                                    knobs::row(
-                                                        ui,
-                                                        &mut oscillator.transpose,
-                                                        knobs::CHOICE_SIZE,
-                                                        knobs::pitch,
-                                                    ),
-                                                    knobs::row(
-                                                        ui,
-                                                        &mut oscillator.gain_db,
-                                                        knobs::CHOICE_SIZE,
-                                                        knobs::gain_with_markers,
-                                                    ),
+                                                let mut responses = Vec::with_capacity(4);
+                                                if !compact {
+                                                    responses.extend([
+                                                        knobs::row(
+                                                            ui,
+                                                            &mut oscillator.waveform,
+                                                            knobs::CHOICE_SIZE,
+                                                            knobs::waveform,
+                                                        ),
+                                                        knobs::row(
+                                                            ui,
+                                                            &mut oscillator.transpose,
+                                                            knobs::CHOICE_SIZE,
+                                                            knobs::pitch,
+                                                        ),
+                                                        knobs::row(
+                                                            ui,
+                                                            &mut oscillator.gain_db,
+                                                            knobs::CHOICE_SIZE,
+                                                            knobs::gain_with_markers,
+                                                        ),
+                                                    ]);
+                                                }
+                                                responses.push(
                                                     crate::rows::centered(
                                                         ui,
-                                                        icons::COMPACT_BUTTON_SIZE,
+                                                        if compact {
+                                                            strip_height
+                                                        } else {
+                                                            icons::COMPACT_BUTTON_SIZE
+                                                        },
                                                         |ui| {
                                                             let on = !oscillator.muted;
                                                             let palette = theme::palette(ui.ctx());
@@ -805,7 +854,8 @@ impl DawUi {
                                                         },
                                                     )
                                                     .inner,
-                                                ]
+                                                );
+                                                responses
                                             },
                                         )
                                     })
