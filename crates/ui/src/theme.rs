@@ -97,6 +97,15 @@ pub fn unit_separator(ctx: &Context) -> Color32 {
     blend(colors.panel, colors.border, 50)
 }
 
+/// Unit headers share the active view fill when on and the panel border color when off.
+pub(crate) fn unit_header_fill(ctx: &Context, enabled: bool) -> Color32 {
+    if enabled {
+        toggle_colors(ctx, true).0
+    } else {
+        palette(ctx).border
+    }
+}
+
 /// Shared on/off colors for view controls and unit toggles.
 pub fn toggle_colors(ctx: &Context, selected: bool) -> (Color32, Color32) {
     if selected {
@@ -149,9 +158,9 @@ pub fn clip_colors(
     }
 }
 
-/// Match colored strip text while retaining the unit header's undimmed accent fill.
-pub(crate) fn unit_header_text(accent: Color32) -> Color32 {
-    let header = blend(accent, Color32::BLACK, 20);
+/// Match colored strip text with contrast against the unit header surface.
+pub(crate) fn unit_header_text(background: Color32) -> Color32 {
+    let header = blend(background, Color32::BLACK, 20);
     blend(header, contrast_color(header), 90)
 }
 

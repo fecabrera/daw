@@ -41,8 +41,10 @@ pub(crate) struct LayerUiBounds {
     pub envelope_empty_state: Rect,
     pub oscillator_panel: Rect,
     pub oscillator_header: Rect,
+    pub oscillator_power: Rect,
     pub envelope_panel: Rect,
     pub envelope_header: Rect,
+    pub envelope_power: Rect,
     pub oscillators: Vec<Rect>,
     pub envelope_stages: [Rect; 4],
 }
@@ -308,7 +310,9 @@ impl DawUi {
                                 let mut add_envelope = Rect::NOTHING;
                                 let mut oscillator_panel = None;
                                 let mut oscillator_header = Rect::NOTHING;
+                                let mut oscillator_power = Rect::NOTHING;
                                 let mut envelope_header = Rect::NOTHING;
+                                let mut envelope_power = Rect::NOTHING;
                                 let mut envelope_stages = [Rect::NOTHING; 4];
                                 let mut envelope_rect = Rect::NOTHING;
                                 egui::ScrollArea::horizontal()
@@ -330,14 +334,16 @@ impl DawUi {
                                                     0.0
                                                 };
                                             if !layer.oscillators.is_empty() {
-                                                let (rect, header) = self.oscillator_unit(
+                                                let (rect, header, power) = self.oscillator_unit(
                                                     ui,
                                                     track.id,
                                                     &mut layer.oscillators,
+                                                    &mut layer.oscillator_enabled,
                                                     height,
                                                 );
                                                 oscillator_panel = Some(rect);
                                                 oscillator_header = header;
+                                                oscillator_power = power;
                                             } else {
                                                 #[cfg(test)]
                                                 {
@@ -375,18 +381,24 @@ impl DawUi {
                                                     margin: 0,
                                                     ..Default::default()
                                                 };
-                                                let envelope =
-                                                    panel.unit(ui, "Envelope", height, |ui| {
+                                                let envelope = panel.unit(
+                                                    ui,
+                                                    "Envelope",
+                                                    height,
+                                                    &mut layer.envelope_enabled,
+                                                    |ui| {
                                                         crate::envelope_panel::body(
                                                             ui,
                                                             &mut layer.envelope,
                                                             10,
                                                         )
-                                                    });
+                                                    },
+                                                );
                                                 envelope_rect = envelope.response.rect;
                                                 envelope_stages =
                                                     envelope.inner.unwrap_or([Rect::NOTHING; 4]);
                                                 envelope_header = envelope.header.rect;
+                                                envelope_power = envelope.power.rect;
                                                 envelope.header.context_menu(|ui| {
                                                     if ui.button("Remove envelope").clicked() {
                                                         layer.has_envelope = false;
@@ -445,8 +457,10 @@ impl DawUi {
                                             oscillator_panel: oscillator_panel
                                                 .unwrap_or(Rect::NOTHING),
                                             oscillator_header,
+                                            oscillator_power,
                                             envelope_panel: envelope_rect,
                                             envelope_header,
+                                            envelope_power,
                                             oscillators: self.midi_editor.oscillator_bounds.clone(),
                                             envelope_stages,
                                         },
@@ -463,7 +477,9 @@ impl DawUi {
                                         source_empty_state,
                                         envelope_empty_state,
                                         oscillator_header,
+                                        oscillator_power,
                                         envelope_header,
+                                        envelope_power,
                                     );
                                 }
                             });
@@ -696,8 +712,9 @@ impl DawUi {
         ui: &mut egui::Ui,
         track: Id,
         oscillators: &mut Vec<daw_core::OscillatorSettings>,
+        enabled: &mut bool,
         height: f32,
-    ) -> (Rect, Rect) {
+    ) -> (Rect, Rect, Rect) {
         let panel = panels::PanelStyle::default();
         let strip_margin = panel.margin;
         let strip_height = crate::envelope_panel::control_height();
@@ -712,8 +729,12 @@ impl DawUi {
             self.midi_editor.add_oscillator_bounds = Rect::NOTHING;
             self.midi_editor.add_oscillator_strip_bounds = Rect::NOTHING;
         }
-        let result =
-            panels::PanelStyle { margin: 0, ..panel }.unit(ui, "Oscillator", height, |ui| {
+        let result = panels::PanelStyle { margin: 0, ..panel }.unit(
+            ui,
+            "Oscillator",
+            height,
+            enabled,
+            |ui| {
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(0.0, theme::TOOLBAR_PADDING as f32);
                     let mut previous_column: Option<Rect> = None;
@@ -878,7 +899,8 @@ impl DawUi {
                     }
                     add = add_strip.inner.clicked();
                 });
-            });
+            },
+        );
 
         if let Some(index) = remove {
             oscillators.remove(index);
@@ -890,6 +912,6 @@ impl DawUi {
         {
             self.midi_editor.oscillator_panel_bounds = result.response.rect;
         }
-        (result.response.rect, result.header.rect)
+        (result.response.rect, result.header.rect, result.power.rect)
     }
 }

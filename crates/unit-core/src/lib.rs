@@ -71,6 +71,9 @@ pub struct InstrumentLayerSettings {
     pub gain_db: f32,
     pub pan: f32,
     pub oscillators: Vec<OscillatorSettings>,
+    /// Unit enable states retain individual source switches and envelope settings.
+    pub oscillator_enabled: bool,
+    pub envelope_enabled: bool,
     /// Presence is separate from retained settings so removing a unit keeps its defaults reusable.
     pub has_envelope: bool,
     pub envelope: EnvelopeSettings,
@@ -85,6 +88,8 @@ impl Default for InstrumentLayerSettings {
             gain_db: 0.0,
             pan: 0.0,
             oscillators: Vec::new(),
+            oscillator_enabled: true,
+            envelope_enabled: true,
             has_envelope: false,
             envelope: EnvelopeSettings::default(),
         }
@@ -100,7 +105,8 @@ impl InstrumentLayerSettings {
             && self.oscillators.iter().all(OscillatorSettings::valid)
             && self.envelope.valid()
     }
-    /// Unassigned envelopes use the existing short note gate for click-free note boundaries.
+    /// Retained ADSR settings, independent of its enable state. The renderer crossfades
+    /// bypass to the short note gate; unassigned envelopes use that gate for both paths.
     pub fn effective_envelope(&self) -> EnvelopeSettings {
         if self.has_envelope {
             self.envelope
@@ -125,11 +131,18 @@ struct SavedLayer {
     #[serde(default)]
     pan: f32,
     oscillators: Vec<OscillatorSettings>,
+    #[serde(default = "default_unit_enabled")]
+    oscillator_enabled: bool,
+    #[serde(default = "default_unit_enabled")]
+    envelope_enabled: bool,
     has_envelope: bool,
     envelope: EnvelopeSettings,
 }
 fn saved_layer_name<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     String::deserialize(d).map(Some)
+}
+fn default_unit_enabled() -> bool {
+    true
 }
 impl SavedLayer {
     fn into_settings(self, index: usize) -> InstrumentLayerSettings {
@@ -141,6 +154,8 @@ impl SavedLayer {
             gain_db: self.gain_db,
             pan: self.pan,
             oscillators: self.oscillators,
+            oscillator_enabled: self.oscillator_enabled,
+            envelope_enabled: self.envelope_enabled,
             has_envelope: self.has_envelope,
             envelope: self.envelope,
         }
@@ -264,6 +279,8 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
                 gain_db: 0.0,
                 pan: 0.0,
                 oscillators,
+                oscillator_enabled: true,
+                envelope_enabled: true,
                 has_envelope: true,
                 envelope: saved.envelope,
             }],

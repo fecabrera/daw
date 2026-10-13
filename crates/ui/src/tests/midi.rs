@@ -218,6 +218,239 @@ fn double_click_unit_header(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
 }
 
 #[test]
+fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for accent in [
+            settings::AccentColor::DeepOrange,
+            settings::AccentColor::Yellow,
+        ] {
+            for oscillator in [true, false] {
+                let (mut app, ctx, layers) = layer_header_fixture();
+                let id = layers[0].id;
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        accent,
+                        ..Default::default()
+                    },
+                );
+                frame(&mut app, &ctx, vec![]);
+                for collapsed in [false, true] {
+                    if collapsed {
+                        let bounds = &app.midi_editor.layer_bounds[&id];
+                        let header = if oscillator {
+                            bounds.oscillator_header
+                        } else {
+                            bounds.envelope_header
+                        };
+                        double_click_unit_header(&mut app, &ctx, header.center());
+                    }
+                    app.dirty = false;
+                    let before = app.session.project.tracks[0].instrument.clone().unwrap();
+                    let bounds = &app.midi_editor.layer_bounds[&id];
+                    let (header, power) = if oscillator {
+                        (bounds.oscillator_header, bounds.oscillator_power)
+                    } else {
+                        (bounds.envelope_header, bounds.envelope_power)
+                    };
+                    assert!(header.contains_rect(power));
+                    assert_eq!(
+                        power.center().x,
+                        header.left() + panels::HEADER_HEIGHT / 2.0
+                    );
+                    assert_eq!(power.center().y, header.top() + panels::HEADER_HEIGHT / 2.0);
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    let circle = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Circle(circle)
+                                if circle.center == power.center()
+                                    && (2.0 * circle.radius + circle.stroke.width
+                                        - panels::UNIT_POWER_SIZE)
+                                        .abs()
+                                        < 0.01 =>
+                            {
+                                Some(circle)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    let on = if oscillator {
+                        before.layers[0].oscillator_enabled
+                    } else {
+                        before.layers[0].envelope_enabled
+                    };
+                    let fill = theme::unit_header_fill(&ctx, on);
+                    if on {
+                        assert_eq!(fill, ctx.global_style().visuals.selection.bg_fill);
+                        assert_ne!(fill, theme::accent(&ctx));
+                        assert_ne!(fill, theme::palette(&ctx).panel);
+                    } else {
+                        assert_eq!(
+                            fill,
+                            panels::PanelStyle::default()
+                                .frame(&ctx, false)
+                                .stroke
+                                .color
+                        );
+                    }
+                    assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == Rect::from_min_size(header.min, Vec2::new(header.width(), panels::HEADER_HEIGHT)) && rect.fill == fill)));
+                    let color = if on {
+                        theme::accent(&ctx)
+                    } else {
+                        theme::palette(&ctx).secondary
+                    };
+                    if collapsed {
+                        let panel = if oscillator {
+                            app.midi_editor.layer_bounds[&id].oscillator_panel
+                        } else {
+                            app.midi_editor.layer_bounds[&id].envelope_panel
+                        };
+                        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::Rect(rect) if rect.rect == panel && rect.fill == theme::palette(&ctx).panel)));
+                    }
+                    let name = if oscillator { "Oscillator" } else { "Envelope" };
+                    let title = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text)
+                                if text.galley.text() == name
+                                    && header.contains(text.visual_bounding_rect().center()) =>
+                            {
+                                Some(text)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    let expected_text = if !on {
+                        theme::palette(&ctx).secondary
+                    } else if collapsed {
+                        theme::palette(&ctx).text
+                    } else {
+                        theme::unit_header_text(fill)
+                    };
+                    assert_eq!(title.fallback_color, expected_text);
+                    assert_eq!(circle.stroke.color, color);
+                    assert_eq!(
+                        circle.fill,
+                        if on {
+                            color
+                        } else {
+                            egui::Color32::TRANSPARENT
+                        }
+                    );
+                    let point = power.center();
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(point), button(point, true)],
+                    );
+                    assert_eq!(
+                        app.session.project.tracks[0].instrument.as_ref().unwrap(),
+                        &before
+                    );
+                    assert!(!app.dirty);
+                    frame(&mut app, &ctx, vec![button(point, false)]);
+                    let mut expected = before.clone();
+                    if oscillator {
+                        expected.layers[0].oscillator_enabled = !on;
+                    } else {
+                        expected.layers[0].envelope_enabled = !on;
+                    }
+                    assert_eq!(
+                        app.session.project.tracks[0].instrument.as_ref().unwrap(),
+                        &expected
+                    );
+                    assert!(app.dirty);
+                    let after = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    if on {
+                        let cap = Rect::from_min_size(
+                            header.min,
+                            Vec2::new(header.width(), panels::HEADER_HEIGHT),
+                        );
+                        assert!(after.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::Rect(rect) if rect.rect == cap && rect.fill == theme::palette(&ctx).border)));
+                        let title = after
+                            .iter()
+                            .find_map(|shape| match &shape.shape {
+                                egui::Shape::Text(text)
+                                    if text.galley.text() == name
+                                        && header
+                                            .contains(text.visual_bounding_rect().center()) =>
+                                {
+                                    Some(text)
+                                }
+                                _ => None,
+                            })
+                            .unwrap();
+                        assert_eq!(title.fallback_color, theme::palette(&ctx).secondary);
+                    }
+                    let bounds = &app.midi_editor.layer_bounds[&id];
+                    let actual_header = if oscillator {
+                        bounds.oscillator_header
+                    } else {
+                        bounds.envelope_header
+                    };
+                    assert_eq!(
+                        actual_header, header,
+                        "Power clicks must not collapse or expand"
+                    );
+                    // A second quick click remains a toggle, even when interpreted as a double-click.
+                    click_note_or_lane(&mut app, &ctx, point);
+                    frame(&mut app, &ctx, vec![]);
+                    assert_eq!(
+                        app.session.project.tracks[0].instrument.as_ref().unwrap(),
+                        &before
+                    );
+                    let bounds = &app.midi_editor.layer_bounds[&id];
+                    assert_eq!(
+                        if oscillator {
+                            bounds.oscillator_header
+                        } else {
+                            bounds.envelope_header
+                        },
+                        header
+                    );
+                    // Restore off for the collapsed presentation's hollow-circle check.
+                    click_note_or_lane(&mut app, &ctx, point);
+                    frame(&mut app, &ctx, vec![]);
+                    let before = app.session.project.tracks[0].instrument.clone().unwrap();
+                    app.dirty = false;
+                    for enabled in [false, true] {
+                        let mut output = ctx.run_ui(
+                            egui::RawInput {
+                                focused: !enabled,
+                                screen_rect: Some(Rect::from_min_size(
+                                    Pos2::ZERO,
+                                    Vec2::new(1280.0, 800.0),
+                                )),
+                                events: vec![
+                                    egui::Event::PointerMoved(point),
+                                    button(point, true),
+                                    button(point, false),
+                                ],
+                                ..Default::default()
+                            },
+                            |ui| {
+                                ui.add_enabled_ui(enabled, |ui| app.show(ui));
+                            },
+                        );
+                        output.textures_delta.clear();
+                        assert_eq!(
+                            app.session.project.tracks[0].instrument.as_ref().unwrap(),
+                            &before
+                        );
+                        assert!(!app.dirty);
+                    }
+                    frame(&mut app, &ctx, vec![]);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn unit_headers_collapse_independently_without_changing_instruments_or_layer_height() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for accent in [
@@ -297,7 +530,7 @@ fn unit_headers_collapse_independently_without_changing_instruments_or_layer_hei
                 ("Envelope", bounds.envelope_panel, bounds.envelope_header),
             ] {
                 assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                    egui::Shape::Rect(rect) if rect.rect == panel && rect.fill == theme::accent(&ctx))));
+                    egui::Shape::Rect(rect) if rect.rect == panel && rect.fill == theme::palette(&ctx).panel)));
                 let text = shapes
                     .iter()
                     .find_map(|shape| match &shape.shape {
@@ -312,10 +545,7 @@ fn unit_headers_collapse_independently_without_changing_instruments_or_layer_hei
                     })
                     .unwrap();
                 assert_eq!(text.angle, -std::f32::consts::FRAC_PI_2);
-                assert_eq!(
-                    text.fallback_color,
-                    theme::unit_header_text(theme::accent(&ctx))
-                );
+                assert_eq!(text.fallback_color, theme::palette(&ctx).text);
                 assert!(
                     text.galley
                         .job
@@ -323,7 +553,22 @@ fn unit_headers_collapse_independently_without_changing_instruments_or_layer_hei
                         .iter()
                         .all(|section| section.format.font_id.size == panels::HEADER_FONT_SIZE)
                 );
-                assert!(header.contains_rect(text.visual_bounding_rect()));
+                let body = Rect::from_min_max(
+                    Pos2::new(header.left(), header.top() + panels::HEADER_HEIGHT),
+                    header.max,
+                );
+                assert!(body.contains_rect(text.visual_bounding_rect()));
+                assert!(
+                    ((text.pos
+                        + egui::emath::Rot2::from_angle(text.angle)
+                            * text.galley.rect.center().to_vec2())
+                        - body.center())
+                    .length()
+                        < 0.01
+                );
+                let cap = Rect::from_min_size(header.min, Vec2::splat(panels::HEADER_HEIGHT));
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Rect(rect) if rect.rect == cap && rect.fill == theme::unit_header_fill(&ctx, true))));
             }
             assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
             assert!(!app.dirty);
@@ -1440,7 +1685,7 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
                 .unwrap();
             assert_eq!(
                 header.galley.job.sections[0].format.color,
-                theme::unit_header_text(theme::accent(&ctx))
+                theme::unit_header_text(theme::unit_header_fill(&ctx, true))
             );
         }
     }
@@ -2214,7 +2459,10 @@ fn unit_header_text_and_toolbar_divider_follow_the_accent_in_both_themes() {
             let header = shapes
                 .iter()
                 .filter_map(|s| match &s.shape {
-                    egui::Shape::Rect(r) if r.fill == accent.color() && r.rect.height() == 24.0 => {
+                    egui::Shape::Rect(r)
+                        if r.fill == theme::unit_header_fill(&ctx, true)
+                            && r.rect.height() == 24.0 =>
+                    {
                         Some(r.rect)
                     }
                     _ => None,
@@ -2230,14 +2478,10 @@ fn unit_header_text_and_toolbar_divider_follow_the_accent_in_both_themes() {
                 .unwrap();
             for section in &text.galley.job.sections {
                 assert_eq!(section.format.font_id.size, 11.0);
-                if accent == settings::AccentColor::Yellow {
-                    assert!(section.format.color.r() < 60);
-                } else {
-                    assert!(
-                        section.format.color.r() > 220,
-                        "Vivid unit headers need bright text"
-                    );
-                }
+                assert_eq!(
+                    section.format.color,
+                    theme::unit_header_text(theme::unit_header_fill(&ctx, true))
+                );
             }
             let text_center = text.pos + text.galley.rect.center().to_vec2();
             assert!((text_center.x - header.center().x).abs() < 1.0);

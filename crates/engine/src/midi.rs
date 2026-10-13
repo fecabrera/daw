@@ -16,6 +16,10 @@ struct PatternClip {
 struct LayerVoice {
     sources: Vec<OscillatorVoice>,
     envelope: Envelope,
+    gate: Envelope,
+    envelope_mix: f32,
+    envelope_mix_target: f32,
+    envelope_mix_remaining: u32,
     gain: [f32; 2],
     gain_target: [f32; 2],
     gain_remaining: u32,
@@ -43,11 +47,13 @@ struct OscillatorVoice {
 }
 impl Voice {
     fn note_on(&mut self, id: Id, pitch: u8, velocity: u8) {
-        let idle = self.transition == 0 && self.layers.iter().all(|layer| layer.envelope.is_idle());
+        let idle = self.transition == 0 && self.layers.iter().all(LayerVoice::is_idle);
         if idle {
             for layer in &mut self.layers {
                 layer.gain = layer.gain_target;
                 layer.gain_remaining = 0;
+                layer.envelope_mix = layer.envelope_mix_target;
+                layer.envelope_mix_remaining = 0;
             }
         }
         self.transition_from = self.previous;
@@ -55,6 +61,7 @@ impl Voice {
         self.current = Some(id);
         for layer in &mut self.layers {
             layer.envelope.note_on();
+            layer.gate.note_on();
         }
         self.velocity = f32::from(velocity) / 127.0;
         self.pitch = pitch;
@@ -70,12 +77,16 @@ impl Voice {
         self.current = None;
         for layer in &mut self.layers {
             layer.envelope.note_off();
+            layer.gate.note_off();
         }
     }
     fn reset(&mut self) {
         self.end_note();
         for layer in &mut self.layers {
             layer.envelope.reset();
+            layer.gate.reset();
+            layer.envelope_mix = layer.envelope_mix_target;
+            layer.envelope_mix_remaining = 0;
         }
         self.reconstructed_at = 0;
         self.previous = [0.0; 2];
@@ -87,10 +98,11 @@ impl Voice {
     fn advance_envelopes(&mut self, frames: u64) {
         for layer in &mut self.layers {
             layer.envelope.advance(frames);
+            layer.gate.advance(frames);
         }
     }
     fn sample(&mut self) -> [f32; 2] {
-        if self.layers.iter().all(|layer| layer.envelope.is_idle()) && self.transition == 0 {
+        if self.layers.iter().all(LayerVoice::is_idle) && self.transition == 0 {
             self.previous = [0.0; 2];
             return [0.0; 2];
         }
@@ -116,6 +128,9 @@ impl Voice {
     }
 }
 impl LayerVoice {
+    fn is_idle(&self) -> bool {
+        self.envelope.is_idle() && self.gate.is_idle()
+    }
     fn sample(&mut self) -> [f32; 2] {
         if self.gain_remaining > 0 {
             for ch in 0..2 {
@@ -124,7 +139,21 @@ impl LayerVoice {
             }
             self.gain_remaining -= 1;
         }
+        if self.envelope_mix_remaining > 0 {
+            self.envelope_mix +=
+                (self.envelope_mix_target - self.envelope_mix) / self.envelope_mix_remaining as f32;
+            self.envelope_mix_remaining -= 1;
+        }
+        // Keep ADSR and the short gate advancing so bypass never restarts a held note.
         let envelope = self.envelope.next_sample();
+        let gate = self.gate.next_sample();
+        let envelope = if self.envelope_mix >= 1.0 {
+            envelope
+        } else if self.envelope_mix <= 0.0 {
+            gate
+        } else {
+            gate + (envelope - gate) * self.envelope_mix
+        };
         let sources = self
             .sources
             .iter_mut()
@@ -149,7 +178,7 @@ impl LayerVoice {
 /// Center is unity per channel so legacy instruments retain their original gain and track pan.
 /// Muted and solo-excluded layers continue advancing all sources/envelopes with zero output.
 fn layer_gains(layer: &daw_core::InstrumentLayerSettings, any_solo: bool) -> [f32; 2] {
-    if !daw_core::mix_audible(layer.muted, layer.soloed, any_solo) {
+    if !layer.oscillator_enabled || !daw_core::mix_audible(layer.muted, layer.soloed, any_solo) {
         return [0.0; 2];
     }
     let pan = super::pan_coefficients(layer.pan, true);
@@ -305,6 +334,16 @@ impl MidiTrackRuntime {
                             gain: layer_gains(layer, any_solo),
                             gain_target: layer_gains(layer, any_solo),
                             gain_remaining: 0,
+                            gate: Envelope::new(
+                                daw_core::EnvelopeSettings::legacy(),
+                                ProcessingContext {
+                                    sample_rate_hz: project.sample_rate_hz,
+                                    max_block_frames: project.buffer_size_frames,
+                                },
+                            ),
+                            envelope_mix: f32::from(layer.envelope_enabled),
+                            envelope_mix_target: f32::from(layer.envelope_enabled),
+                            envelope_mix_remaining: 0,
                             envelope: Envelope::new(
                                 layer.effective_envelope(),
                                 ProcessingContext {
@@ -342,10 +381,18 @@ impl MidiTrackRuntime {
     pub fn retarget_controls(&mut self, prepared: &Self) {
         let fade_frames = (self.sample_rate_hz / 200).max(1);
         for (voice, next) in self.voices.iter_mut().zip(&prepared.voices) {
-            let idle =
-                voice.transition == 0 && voice.layers.iter().all(|layer| layer.envelope.is_idle());
+            let idle = voice.transition == 0 && voice.layers.iter().all(LayerVoice::is_idle);
             for (layer, next_layer) in voice.layers.iter_mut().zip(&next.layers) {
                 layer.envelope.set_settings(next_layer.envelope.settings());
+                if layer.envelope_mix_target != next_layer.envelope_mix_target {
+                    layer.envelope_mix_target = next_layer.envelope_mix_target;
+                    if idle {
+                        layer.envelope_mix = next_layer.envelope_mix_target;
+                        layer.envelope_mix_remaining = 0;
+                    } else {
+                        layer.envelope_mix_remaining = fade_frames;
+                    }
+                }
                 if layer.gain_target != next_layer.gain_target {
                     layer.gain_target = next_layer.gain_target;
                     if idle {

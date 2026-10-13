@@ -2342,6 +2342,8 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
     layers[0].soloed = true;
     layers[1].soloed = true;
     layers[2].muted = true;
+    layers[0].envelope_enabled = false;
+    layers[1].oscillator_enabled = false;
     layers.swap(0, 1);
     let clip = session.project.add_midi_pattern(track, 0).unwrap();
     session

@@ -1015,3 +1015,148 @@ fn live_layer_gain_pan_mute_and_solo_edits_preserve_voices_and_ramp_without_allo
         current = replacement;
     }
 }
+
+#[test]
+fn unit_enable_states_silence_sources_bypass_adsr_and_match_playback_export() {
+    for rate in [44_100, 48_000] {
+        let gate = plan(Waveform::Sine, rate);
+        let mut wet = gate.clone();
+        wet.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelope = EnvelopeSettings {
+            attack: EnvelopeStageSettings {
+                time_ms: 200.0,
+                ..EnvelopeSettings::default().attack
+            },
+            sustain: 0.25,
+            release: EnvelopeStageSettings {
+                time_ms: 700.0,
+                ..EnvelopeSettings::default().release
+            },
+            ..Default::default()
+        };
+        let count = rate as usize;
+        let mut gate_audio = vec![[0.0; 2]; count];
+        Renderer::new(gate.clone()).render_offline(&mut gate_audio);
+        for (oscillator_enabled, envelope_enabled) in
+            [(false, true), (false, false), (true, false), (true, true)]
+        {
+            let mut changed = wet.clone();
+            let layer = &mut changed.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0];
+            layer.oscillator_enabled = oscillator_enabled;
+            layer.envelope_enabled = envelope_enabled;
+            let mut audio = vec![[0.0; 2]; count];
+            Renderer::new(changed.clone()).render_offline(&mut audio);
+            if !oscillator_enabled {
+                assert!(audio.iter().all(|frame| *frame == [0.0; 2]));
+            } else if !envelope_enabled {
+                assert_eq!(audio, gate_audio, "Bypass uses the legacy note gate");
+            } else {
+                assert!(
+                    audio
+                        .iter()
+                        .zip(&gate_audio)
+                        .any(|(a, b)| (a[0] - b[0]).abs() > 0.01)
+                );
+            }
+            let mut live = Renderer::new(changed);
+            live.play();
+            for (frame, expected) in audio.into_iter().enumerate() {
+                let actual = live.next_sample();
+                if frame >= rate as usize / 200 {
+                    assert_eq!(actual, expected);
+                }
+            }
+        }
+        // Disabling one source unit must not silence another layer.
+        let mut combined = gate.clone();
+        let mut peer = combined.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .clone();
+        peer.id = Id::new_v4();
+        let layers = &mut combined.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers;
+        layers[0].oscillator_enabled = false;
+        layers.push(peer);
+        let mut audio = vec![[0.0; 2]; count];
+        Renderer::new(combined).render_offline(&mut audio);
+        assert_eq!(audio, gate_audio);
+    }
+}
+
+#[test]
+fn live_unit_toggles_ramp_without_resetting_source_or_adsr_and_do_not_allocate() {
+    let gate = plan(Waveform::Sine, 48_000);
+    let mut wet = gate.clone();
+    wet.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelope = EnvelopeSettings {
+        attack: EnvelopeStageSettings {
+            time_ms: 200.0,
+            ..EnvelopeSettings::default().attack
+        },
+        sustain: 0.4,
+        ..Default::default()
+    };
+    let mut current = Renderer::new(wet.clone());
+    let mut wet_reference = Renderer::new(wet.clone());
+    let mut gate_reference = Renderer::new(gate);
+    current.play();
+    wet_reference.play();
+    gate_reference.play();
+    for _ in 0..4000 {
+        assert_eq!(current.next_sample(), wet_reference.next_sample());
+        gate_reference.next_sample();
+    }
+    let mut gain = 1.0;
+    let mut mix = 1.0;
+    for (oscillator_enabled, envelope_enabled) in [
+        (true, false),
+        (false, false),
+        (true, false),
+        (true, true),
+        (false, true),
+        (true, true),
+    ] {
+        let mut changed = wet.clone();
+        let layer = &mut changed.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        layer.oscillator_enabled = oscillator_enabled;
+        layer.envelope_enabled = envelope_enabled;
+        let next_gain = f32::from(oscillator_enabled);
+        let next_mix = f32::from(envelope_enabled);
+        let mut replacement = Renderer::new(changed);
+        ALLOCATIONS.with(|count| count.set(0));
+        TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+        replacement.inherit(&mut current);
+        for step in 1..=740 {
+            let actual = replacement.next_sample();
+            let wet_sample = wet_reference.next_sample();
+            let gate_sample = gate_reference.next_sample();
+            let progress = (step as f32 / 240.0).min(1.0);
+            let gain = gain + (next_gain - gain) * progress;
+            let mix = mix + (next_mix - mix) * progress;
+            for ch in 0..2 {
+                let expected = (gate_sample[ch] + (wet_sample[ch] - gate_sample[ch]) * mix) * gain;
+                assert!(
+                    (actual[ch] - expected).abs() < 1e-6,
+                    "Unit toggle must retain phase and ADSR progress and ramp over 5 ms"
+                );
+            }
+        }
+        TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        gain = next_gain;
+        mix = next_mix;
+        current = replacement;
+    }
+}

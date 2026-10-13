@@ -118,6 +118,7 @@ fn envelope_settings_round_trip_and_missing_envelopes_preserve_legacy_sound() {
     }))
     .unwrap();
     assert!(legacy.layers[0].has_envelope);
+    assert!(legacy.layers[0].oscillator_enabled && legacy.layers[0].envelope_enabled);
     assert_eq!(legacy.layers[0].envelope, instrument.layers[0].envelope);
     let restored: OscillatorInstrumentSettings =
         serde_json::from_value(serde_json::to_value(OscillatorSettings::default()).unwrap())
@@ -134,6 +135,7 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
     assert_eq!(instrument.layers.len(), 1);
     assert!(instrument.layers[0].oscillators.is_empty());
     assert!(!instrument.layers[0].has_envelope);
+    assert!(instrument.layers[0].oscillator_enabled && instrument.layers[0].envelope_enabled);
     assert!(!instrument.layers[0].muted && !instrument.layers[0].soloed);
     assert_eq!(instrument.layers[0].gain_db, 0.0);
     assert_eq!(instrument.layers[0].pan, 0.0);
@@ -152,6 +154,8 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
     instrument.layers[1].soloed = true;
     instrument.layers[1].gain_db = -6.0;
     instrument.layers[1].pan = -0.7;
+    instrument.layers[0].oscillator_enabled = false;
+    instrument.layers[1].envelope_enabled = false;
     project
         .edit(Edit::SetInstrument {
             track_id: track,
@@ -167,12 +171,24 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
         .unwrap()
     {
         layer.as_object_mut().unwrap().remove("name");
-        for field in ["muted", "soloed", "gain_db", "pan"] {
+        for field in [
+            "muted",
+            "soloed",
+            "gain_db",
+            "pan",
+            "oscillator_enabled",
+            "envelope_enabled",
+        ] {
             layer.as_object_mut().unwrap().remove(field);
         }
     }
     let older: Project = serde_json::from_value(unnamed).unwrap();
     let older_layers = &older.tracks[0].instrument.as_ref().unwrap().layers;
+    assert!(
+        older_layers
+            .iter()
+            .all(|layer| layer.oscillator_enabled && layer.envelope_enabled)
+    );
     assert_eq!(older_layers[0].name, "Layer 1");
     assert_eq!(older_layers[1].name, "Layer 2");
     assert_eq!(older_layers[1].id, instrument.layers[1].id);

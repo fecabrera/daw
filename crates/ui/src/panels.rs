@@ -2,6 +2,7 @@ use egui::{Color32, Frame, Rect, Response, Stroke, Ui, Vec2};
 
 pub(super) const HEADER_HEIGHT: f32 = crate::toolbars::CONTROL_HEIGHT + 2.0;
 pub(super) const HEADER_FONT_SIZE: f32 = 11.0;
+pub(super) const UNIT_POWER_SIZE: f32 = 10.0;
 
 /// Shared muted full-height separator for internally padded unit strips.
 pub(super) fn unit_divider(ui: &Ui, x: f32, range: std::ops::RangeInclusive<f32>) {
@@ -35,23 +36,23 @@ impl PanelStyle {
         ui: &mut Ui,
         name: &str,
         height: f32,
+        enabled: &mut bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
         let id = ui.id().with(("unit-header", name));
         let collapsed = ui
             .ctx()
             .data(|data| data.get_temp::<bool>(id).unwrap_or(false));
-        let accent = crate::theme::accent(ui.ctx());
         let mut header_rect = Rect::NOTHING;
         let frame = self.frame(ui.ctx(), false).inner_margin(0);
         let result = if collapsed {
-            frame.fill(accent).show(ui, |ui| {
+            frame.show(ui, |ui| {
                 let (strip, _) = ui.allocate_exact_size(
                     Vec2::new(HEADER_HEIGHT, height - 2.0),
                     egui::Sense::hover(),
                 );
+                // The full strip remains the expansion/context-menu target.
                 header_rect = strip;
-                paint_unit_title(ui, strip, name, accent, true);
                 None
             })
         } else {
@@ -69,14 +70,80 @@ impl PanelStyle {
                         header.min,
                         Vec2::new(body.response.rect.width(), HEADER_HEIGHT),
                     );
-                    ui.painter().rect_filled(header_rect, 0.0, accent);
-                    paint_unit_title(ui, header_rect, name, accent, false);
                     Some(body.inner)
                 })
                 .inner
             })
         };
         let header = ui.interact(header_rect, id, egui::Sense::click());
+        let power_rect = Rect::from_min_size(
+            header_rect.min + Vec2::splat(1.0),
+            Vec2::splat(HEADER_HEIGHT - 2.0),
+        );
+        let power = ui.interact(power_rect, id.with("power"), egui::Sense::click());
+        power.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Button,
+                ui.is_enabled(),
+                *enabled,
+                format!("{name} enabled"),
+            )
+        });
+        if ui.is_enabled() && ui.input(|input| input.focused) && power.clicked() {
+            *enabled = !*enabled;
+        }
+        let fill = crate::theme::unit_header_fill(ui.ctx(), *enabled);
+        let cap = Rect::from_min_size(
+            header_rect.min,
+            Vec2::new(header_rect.width(), HEADER_HEIGHT),
+        );
+        ui.painter().rect_filled(cap, 0.0, fill);
+        let header_text = if *enabled {
+            crate::theme::unit_header_text(fill)
+        } else {
+            crate::theme::palette(ui.ctx()).secondary
+        };
+        if collapsed {
+            let body = Rect::from_min_max(
+                egui::pos2(header_rect.left(), cap.bottom()),
+                header_rect.max,
+            );
+            let text = if *enabled {
+                crate::theme::palette(ui.ctx()).text
+            } else {
+                header_text
+            };
+            paint_unit_title(ui, body, name, text, true);
+        } else {
+            paint_unit_title(ui, cap, name, header_text, false);
+        }
+        let color = if *enabled {
+            crate::theme::accent(ui.ctx())
+        } else {
+            header_text
+        };
+        let color = if ui.is_enabled() {
+            color
+        } else {
+            color.gamma_multiply(0.5)
+        };
+        if power.hovered() || power.has_focus() {
+            ui.painter().circle_filled(
+                power_rect.center(),
+                UNIT_POWER_SIZE * 0.5 + 3.0,
+                color.gamma_multiply(0.15),
+            );
+        }
+        ui.painter().circle(
+            power_rect.center(),
+            (UNIT_POWER_SIZE - 1.0) * 0.5,
+            if *enabled {
+                color
+            } else {
+                Color32::TRANSPARENT
+            },
+            Stroke::new(1.0, color),
+        );
         let action = if collapsed { "Expand" } else { "Collapse" };
         header.widget_info(|| {
             egui::WidgetInfo::labeled(
@@ -85,7 +152,13 @@ impl PanelStyle {
                 format!("{action} {name}"),
             )
         });
-        if ui.is_enabled() && ui.input(|input| input.focused) && header.double_clicked() {
+        if ui.is_enabled()
+            && ui.input(|input| input.focused)
+            && header.double_clicked()
+            && !header
+                .interact_pointer_pos()
+                .is_some_and(|pos| power_rect.contains(pos))
+        {
             ui.ctx().data_mut(|data| data.insert_temp(id, !collapsed));
             ui.ctx().request_repaint();
         }
@@ -94,6 +167,10 @@ impl PanelStyle {
             response: result.response,
             header: header
                 .on_hover_text(format!("Double-click to {} {name}", action.to_lowercase())),
+            power: power.on_hover_text(format!(
+                "{} {name}",
+                if *enabled { "Turn off" } else { "Turn on" }
+            )),
         }
     }
 
@@ -124,10 +201,10 @@ pub struct UnitResponse<R> {
     pub inner: Option<R>,
     pub response: Response,
     pub header: Response,
+    pub power: Response,
 }
 
-fn paint_unit_title(ui: &Ui, rect: Rect, name: &str, accent: Color32, vertical: bool) {
-    let color = crate::theme::unit_header_text(accent);
+fn paint_unit_title(ui: &Ui, rect: Rect, name: &str, color: Color32, vertical: bool) {
     let galley = ui.painter().layout_no_wrap(
         name.to_owned(),
         egui::FontId::proportional(HEADER_FONT_SIZE),
