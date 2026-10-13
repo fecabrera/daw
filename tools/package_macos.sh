@@ -10,7 +10,12 @@ esac
 bundle="target/$profile/DAW.app"
 mkdir -p "$bundle/Contents/MacOS"
 mkdir -p "$bundle/Contents/Resources/licenses"
-cp "target/$profile/daw-desktop" "$bundle/Contents/MacOS/daw-desktop"
+# Publish a fresh inode so a running DAW instance can keep its mapped executable.
+temporary_executable="$(mktemp "$bundle/Contents/MacOS/.daw-desktop.XXXXXX")"
+trap 'rm -f "$temporary_executable"' EXIT
+cp "target/$profile/daw-desktop" "$temporary_executable"
+chmod 755 "$temporary_executable"
+mv -f "$temporary_executable" "$bundle/Contents/MacOS/daw-desktop"
 cp LICENSE "$bundle/Contents/Resources/LICENSE.txt"
 cp crates/ui/assets/fonts/OFL.txt "$bundle/Contents/Resources/licenses/Outfit-OFL.txt"
 rm -f "$bundle/Contents/Resources/licenses/DM-Sans-OFL.txt"

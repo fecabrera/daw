@@ -232,6 +232,9 @@ impl Renderer {
                     daw_core::EffectSettings::AutoFilter(_) => {
                         daw_unit_core::AUTO_FILTER_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::Compressor(_) => {
+                        daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
                 }
             }
@@ -267,6 +270,16 @@ impl Renderer {
             transition_from: [0.0; 2],
             previous: [0.0; 2],
             source_fingerprint,
+        }
+    }
+    /// Attach prepared meter handles before publishing a renderer to the callback.
+    pub fn set_effect_meter(
+        &mut self,
+        id: Id,
+        meter: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    ) {
+        for effects in &mut self.effects {
+            effects.set_meter(id, &meter);
         }
     }
     pub fn inherit(&mut self, old: &mut Self) {

@@ -1,4 +1,96 @@
 #[cfg(test)]
+mod compressor_tests {
+    use crate::*;
+    #[test]
+    fn compressor_state_round_trips_and_duplicate_ids_change() {
+        let mut project = Project::default();
+        let track = project.add_track().unwrap();
+        let mut effect = EffectInstance::compressor();
+        let EffectSettings::Compressor(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        settings.detection = CompressorDetection::Rms;
+        settings.enabled = false;
+        settings.collapsed = true;
+        settings.threshold_db = -36.0;
+        settings.ratio = 8.0;
+        settings.knee_db = 12.0;
+        settings.attack_ms = 0.1;
+        settings.release_ms = 2000.0;
+        settings.level_db = SILENT_GAIN_DB;
+        settings.dry_wet = 0.5;
+        project
+            .edit(Edit::SetEffects {
+                track_id: track,
+                effects: vec![effect.clone()],
+                compact: true,
+            })
+            .unwrap();
+        let loaded: Project =
+            serde_json::from_str(&serde_json::to_string(&project).unwrap()).unwrap();
+        loaded.validate().unwrap();
+        assert_eq!(loaded.tracks[0].effects, vec![effect.clone()]);
+        project
+            .edit(Edit::DuplicateTrack {
+                track_id: track,
+                new_track_id: Id::new_v4(),
+            })
+            .unwrap();
+        assert_eq!(project.tracks[1].effects[0].unit, effect.unit);
+        assert_ne!(project.tracks[1].effects[0].id, effect.id);
+        assert!(project.tracks[1].effects_compact);
+        let encoded = serde_json::json!({"type_id": COMPRESSOR_TYPE_ID, "state": {"version": 99, "future_control": [1, 2]}});
+        let future: EffectSettings = serde_json::from_value(encoded.clone()).unwrap();
+        assert!(future.valid());
+        assert!(matches!(future, EffectSettings::Missing { .. }));
+        assert_eq!(serde_json::to_value(future).unwrap(), encoded);
+    }
+    #[test]
+    fn compressor_invalid_values_reject_the_entire_chain_edit() {
+        let mut project = Project::default();
+        let track = project.add_track().unwrap();
+        let effect = EffectInstance::compressor();
+        project
+            .edit(Edit::SetEffects {
+                track_id: track,
+                effects: vec![effect.clone()],
+                compact: false,
+            })
+            .unwrap();
+        let saved = serde_json::to_string(&project).unwrap();
+        for parameter in 0..11 {
+            let mut bad = effect.clone();
+            let EffectSettings::Compressor(s) = &mut bad.unit else {
+                unreachable!()
+            };
+            match parameter {
+                0 => s.threshold_db = -60.1,
+                1 => s.threshold_db = f32::NAN,
+                2 => s.ratio = 0.9,
+                3 => s.ratio = 20.1,
+                4 => s.attack_ms = 0.0,
+                5 => s.release_ms = f32::INFINITY,
+                6 => s.knee_db = 24.1,
+                7 => s.knee_db = -0.1,
+                8 => s.level_db = 12.1,
+                9 => s.dry_wet = -0.1,
+                _ => s.version = 0,
+            }
+            assert!(
+                project
+                    .edit(Edit::SetEffects {
+                        track_id: track,
+                        effects: vec![EffectInstance::drive(), bad],
+                        compact: true
+                    })
+                    .is_err()
+            );
+            assert_eq!(serde_json::to_string(&project).unwrap(), saved);
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use crate::*;
     #[test]

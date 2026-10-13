@@ -575,3 +575,129 @@ fn auto_filter_loop_wrap_locks_phase_and_keeps_filter_history() {
         since_wrap += 1;
     }
 }
+
+fn add_compressor(plan: &mut RenderPlan, detection: CompressorDetection) -> Id {
+    let mut effect = EffectInstance::compressor();
+    let EffectSettings::Compressor(settings) = &mut effect.unit else {
+        unreachable!()
+    };
+    settings.threshold_db = -36.0;
+    settings.ratio = 6.0;
+    settings.attack_ms = 0.1;
+    settings.release_ms = 30.0;
+    settings.detection = detection;
+    settings.level_db = 3.0;
+    settings.dry_wet = 0.7;
+    let id = effect.id;
+    plan.project.tracks[0].effects.push(effect);
+    id
+}
+#[test]
+fn compressor_matches_playback_export_blocks_and_random_access_at_all_rates() {
+    for rate in SAMPLE_RATES {
+        for detection in [CompressorDetection::Peak, CompressorDetection::Rms] {
+            let mut plan = plan(rate, false);
+            add_compressor(&mut plan, detection);
+            let mut expected = vec![[0.0; 2]; 8192];
+            Renderer::new(plan.clone()).render_offline(&mut expected);
+            let mut live = Renderer::new(plan.clone());
+            live.play();
+            for (frame, sample) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if frame >= rate as usize / 200 {
+                    for channel in 0..2 {
+                        assert!((actual[channel] - sample[channel]).abs() < 1e-6);
+                    }
+                }
+            }
+            for block in BUFFER_SIZES {
+                let mut output = vec![[0.0; 2]; 8192];
+                let mut renderer = Renderer::new(plan.clone());
+                for chunk in output.chunks_mut(block as usize) {
+                    renderer.render_offline(chunk);
+                }
+                assert_eq!(output, expected);
+            }
+            let mut range = [[0.0; 2]; 64];
+            plan.render(1000, &mut range);
+            assert_eq!(range.as_slice(), &expected[1000..1064]);
+            let mut drive = plan.clone();
+            drive.project.tracks[0]
+                .effects
+                .push(EffectInstance::drive());
+            let mut first = vec![[0.0; 2]; 8192];
+            Renderer::new(drive.clone()).render_offline(&mut first);
+            drive.project.tracks[0].effects.reverse();
+            let mut reversed = vec![[0.0; 2]; 8192];
+            Renderer::new(drive).render_offline(&mut reversed);
+            assert!(
+                first
+                    .iter()
+                    .zip(reversed)
+                    .any(|(a, b)| (a[0] - b[0]).abs() > 0.001)
+            );
+        }
+    }
+}
+#[test]
+fn compressor_inherits_history_and_meter_without_callback_allocations() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    };
+    let mut plan = plan(48000, false);
+    let id = add_compressor(&mut plan, CompressorDetection::Rms);
+    let meter = Arc::new(AtomicU32::new(0));
+    let mut current = Renderer::new(plan.clone());
+    current.set_effect_meter(id, meter.clone());
+    let mut reference = Renderer::new(plan.clone());
+    current.play();
+    reference.play();
+    for _ in 0..2000 {
+        assert_eq!(current.next_sample(), reference.next_sample());
+    }
+    assert!(f32::from_bits(meter.load(Ordering::Relaxed)) > 3.0);
+    plan.project.tracks[0].effects_compact = true;
+    let EffectSettings::Compressor(settings) = &mut plan.project.tracks[0].effects[0].unit else {
+        unreachable!()
+    };
+    settings.collapsed = true;
+    let mut next = Renderer::new(plan.clone());
+    next.set_effect_meter(id, meter.clone());
+    ALLOCATIONS.with(|value| value.set(0));
+    TRACK_ALLOCATIONS.with(|value| value.set(true));
+    next.inherit(&mut current);
+    for _ in 0..1000 {
+        assert_eq!(next.next_sample(), reference.next_sample());
+    }
+    next.seek(1000);
+    assert_eq!(meter.load(Ordering::Relaxed), 0);
+    next.next_sample();
+    next.stop();
+    assert_eq!(meter.load(Ordering::Relaxed), 0);
+    TRACK_ALLOCATIONS.with(|value| value.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    // Parameter retargeting retains live history and also remains callback-safe.
+    let EffectSettings::Compressor(settings) = &mut plan.project.tracks[0].effects[0].unit else {
+        unreachable!()
+    };
+    settings.threshold_db = -48.0;
+    settings.detection = CompressorDetection::Peak;
+    let mut updated = Renderer::new(plan);
+    updated.set_effect_meter(id, meter.clone());
+    ALLOCATIONS.with(|value| value.set(0));
+    TRACK_ALLOCATIONS.with(|value| value.set(true));
+    updated.inherit(&mut next);
+    updated.play();
+    for _ in 0..1000 {
+        assert!(
+            updated
+                .next_sample()
+                .iter()
+                .all(|sample| sample.is_finite())
+        );
+    }
+    TRACK_ALLOCATIONS.with(|value| value.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(f32::from_bits(meter.load(Ordering::Relaxed)) > 3.0);
+}

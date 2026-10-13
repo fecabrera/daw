@@ -9,6 +9,7 @@ pub(crate) struct EffectsUiBounds {
     pub entry: Rect,
     pub drive_entry: Rect,
     pub auto_filter_entry: Rect,
+    pub compressor_entry: Rect,
     pub compact: Rect,
     pub chain: Vec<(Id, Rect)>,
     pub lane_viewport: Rect,
@@ -16,6 +17,7 @@ pub(crate) struct EffectsUiBounds {
     pub units: Vec<crate::equalizer_panel::Bounds>,
     pub drive_units: Vec<crate::drive_panel::Bounds>,
     pub auto_filter_units: Vec<crate::auto_filter_panel::Bounds>,
+    pub compressor_units: Vec<crate::compressor_panel::Bounds>,
 }
 
 #[cfg(test)]
@@ -29,6 +31,7 @@ impl Default for EffectsUiBounds {
             entry: Rect::NOTHING,
             drive_entry: Rect::NOTHING,
             auto_filter_entry: Rect::NOTHING,
+            compressor_entry: Rect::NOTHING,
             compact: Rect::NOTHING,
             chain: vec![],
             lane_viewport: Rect::NOTHING,
@@ -36,6 +39,7 @@ impl Default for EffectsUiBounds {
             units: vec![],
             drive_units: vec![],
             auto_filter_units: vec![],
+            compressor_units: vec![],
         }
     }
 }
@@ -89,6 +93,7 @@ impl DawUi {
             self.effects_bounds.units.clear();
             self.effects_bounds.drive_units.clear();
             self.effects_bounds.auto_filter_units.clear();
+            self.effects_bounds.compressor_units.clear();
         }
         let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
         ui.painter()
@@ -161,6 +166,11 @@ impl DawUi {
                             "Auto-filter",
                             daw_core::EffectInstance::auto_filter,
                         ),
+                        (
+                            daw_core::COMPRESSOR_TYPE_ID,
+                            "Compressor",
+                            daw_core::EffectInstance::compressor,
+                        ),
                     ] {
                         let response = ui
                             .add_enabled_ui(
@@ -195,6 +205,10 @@ impl DawUi {
                         #[cfg(test)]
                         if type_id == daw_core::AUTO_FILTER_TYPE_ID {
                             self.effects_bounds.auto_filter_entry = response.rect;
+                        }
+                        #[cfg(test)]
+                        if type_id == daw_core::COMPRESSOR_TYPE_ID {
+                            self.effects_bounds.compressor_entry = response.rect;
                         }
                     }
                     #[cfg(test)]
@@ -378,6 +392,24 @@ impl DawUi {
                                                     .sense(Sense::click_and_drag()),
                                                 );
                                                 (response, Rect::NOTHING)
+                                            }
+                                            daw_core::EffectSettings::Compressor(settings) => {
+                                                let reduction =
+                                                    self.output.as_ref().map_or(0.0, |output| {
+                                                        output.gain_reduction_db(effect.id)
+                                                    });
+                                                let (_bounds, header) =
+                                                    crate::compressor_panel::show(
+                                                        ui,
+                                                        settings,
+                                                        compact,
+                                                        strip.height(),
+                                                        reduction,
+                                                    );
+                                                let power = _bounds.power;
+                                                #[cfg(test)]
+                                                self.effects_bounds.compressor_units.push(_bounds);
+                                                (header, power)
                                             }
                                         })
                                         .inner;

@@ -12,6 +12,64 @@ const MARKS: [i32; 15] = [
     0, -3, -6, -9, -12, -15, -18, -21, -24, -30, -35, -40, -45, -50, -60,
 ];
 
+/// Read-only compression monitor. The rail covers 0–24 dB; the number retains larger readings.
+pub fn gain_reduction(ui: &mut Ui, reduction_db: f32) -> Response {
+    let db = if reduction_db.is_finite() {
+        reduction_db.max(0.0)
+    } else {
+        0.0
+    };
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::splat(crate::knobs::CHOICE_SIZE), Sense::hover());
+    let palette = theme::palette(ui.ctx());
+    let painter = ui.painter();
+    let rail = Rect::from_center_size(rect.center(), Vec2::new(rect.width() - 8.0, 8.0));
+    painter.rect_filled(rail, 1.0, palette.input);
+    let fill = Rect::from_min_size(
+        rail.min,
+        Vec2::new(rail.width() * (db / 24.0).min(1.0), rail.height()),
+    );
+    if fill.width() > 0.0 {
+        painter.rect_filled(fill, 1.0, theme::accent(ui.ctx()));
+    }
+    painter.text(
+        rect.center_top(),
+        egui::Align2::CENTER_TOP,
+        if db > 0.0 {
+            format!("−{db:.1} dB")
+        } else {
+            "0.0 dB".into()
+        },
+        crate::fonts::numeric(9.0),
+        palette.text,
+    );
+    for (position, align, label) in [
+        (rect.left_bottom(), egui::Align2::LEFT_BOTTOM, "0"),
+        (rect.center_bottom(), egui::Align2::CENTER_BOTTOM, "GR"),
+        (rect.right_bottom(), egui::Align2::RIGHT_BOTTOM, "24"),
+    ] {
+        painter.text(
+            position,
+            align,
+            label,
+            crate::fonts::numeric(9.0),
+            palette.secondary,
+        );
+    }
+    response.widget_info(|| {
+        let mut info = egui::WidgetInfo::labeled(
+            egui::WidgetType::ProgressIndicator,
+            ui.is_enabled(),
+            "Gain reduction",
+        );
+        info.value = Some(f64::from(db));
+        info
+    });
+    response.on_hover_text(format!(
+        "Gain reduction: {db:.1} dB before Dry/Wet. Read-only; 0–24 dB display scale."
+    ))
+}
+
 fn position_for_dbfs(db: f32) -> f32 {
     ((db - MIN_DBFS) / -MIN_DBFS).clamp(0.0, 1.0)
 }

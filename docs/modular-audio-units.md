@@ -1,6 +1,6 @@
 # Modular audio units design and decisions
 
-Status: design baseline; implementation pending. Last updated: 2026-10-12.
+Status: design baseline; implementation pending. Last updated: 2026-10-13.
 
 Users build MIDI instruments in Instrument and will configure track effect chains in Effects. These replace the earlier combined Units view. The planned track types are audio, MIDI, and beat. Audio tracks will accept effects; MIDI tracks will accept sources and effects. A future Editor view will provide an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor will provide step toggles in audio or MIDI lanes, each with its own sources and effects. Every unit will use a shared core and support independent distribution. These are confirmed requirements. The Units MVP scope below is accepted. Detailed API, layout, and packaging choices remain proposals or implementation details.
 
@@ -361,3 +361,8 @@ D36 (2026-10-13) adds the reusable [Auto-filter](auto-filter.md) to the serial t
 Every shape-selection knob uses the shared `Knob` and `KnobSpec::diagrams` design. Arrange diagrams of all available choices around the knob. Highlight the active diagram with the accent color and use secondary text color for the others. Each diagram must represent its choice: waveform for a source or LFO, frequency response for a filter or Drive color, and curve for an envelope. Reuse the control design, not unrelated shape drawings. Keep choice names and current values in tooltips and accessibility; omit a separate current-shape text label. Retain the parameter's agreed wrapping or bounded behavior.
 
 Two-option mode selectors are separate from shape selectors. Use the shared bounded two-way knob, with the first value at the upper left and the second at the upper right. Highlight the selected label with the accent color and dim the other choice with secondary text color. These are choice labels, not range endpoints. Draw a neutral arc between the choices, with no markers or accent value arc. Retain the knob face and pointer. Auto-filter Rate mode uses Hz and Note and does not wrap.
+
+
+## Compressor — 2026-10-13
+
+The accepted [Compressor](compressor.md) has three strips: Comp (Threshold, Ratio, Peak/RMS), Response (Attack, Release, Knee), and Out (Level, Dry/Wet, live gain-reduction meter). Peak/RMS uses the same bounded two-way knob as Auto-filter's Hz/Note, including upper-corner choice labels, a neutral arc, and no markers or wrapping. The independent `daw-compressor` crate uses a linked stereo detector and a shared soft-knee gain envelope, with private FunDSP RMS state. It adds no processing latency. Level follows Dry/Wet; header power bypasses the whole unit. Versioned state, existing effect-lane interactions, save/open, compatible history inheritance, callback-safe monitoring, and playback/export parity are implemented together. The detector high-pass remains a later proposal.

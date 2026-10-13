@@ -2820,3 +2820,77 @@ fn auto_filter_save_reopen_rate_change_and_float_export_preserve_the_effect() {
     );
     assert_eq!(fs::read(source).unwrap(), bytes);
 }
+
+#[test]
+fn compressor_save_open_save_as_rate_change_and_export_keep_settings_and_audio() {
+    use daw_core::{CompressorDetection, EffectInstance, EffectSettings};
+    use daw_media::{ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let source = fixture.wav("compressor-source.wav", 48000, 2, 32, true);
+    let original = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let mut effect = EffectInstance::compressor();
+    let EffectSettings::Compressor(settings) = &mut effect.unit else {
+        unreachable!()
+    };
+    settings.threshold_db = -36.0;
+    settings.detection = CompressorDetection::Rms;
+    settings.attack_ms = 0.1;
+    settings.knee_db = 12.0;
+    settings.level_db = 3.0;
+    settings.dry_wet = 0.75;
+    settings.collapsed = true;
+    session
+        .project
+        .edit(Edit::SetEffects {
+            track_id: session.project.tracks[0].id,
+            effects: vec![effect.clone()],
+            compact: true,
+        })
+        .unwrap();
+    let first = fixture.0.join("compressor-first");
+    session.save(&first).unwrap();
+    let mut loaded = Session::open(&first).unwrap();
+    assert_eq!(loaded.project.tracks[0].effects, vec![effect.clone()]);
+    assert!(loaded.project.tracks[0].effects_compact);
+    let second = fixture.0.join("compressor-second");
+    loaded.save(&second).unwrap();
+    let loaded = Session::open(&second).unwrap();
+    assert_eq!(loaded.project.tracks[0].effects, vec![effect.clone()]);
+    let changed = loaded.with_audio_settings(96000, 128).unwrap();
+    assert_eq!(changed.project.tracks[0].effects, vec![effect]);
+    let output = fixture.0.join("compressed.wav");
+    loaded
+        .export_with_settings(
+            &output,
+            false,
+            ExportSettings {
+                wav_codec: WavCodec::Float32,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let exported: Vec<f32> = hound::WavReader::open(output)
+        .unwrap()
+        .samples::<f32>()
+        .map(Result::unwrap)
+        .collect();
+    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
+    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
+    assert_eq!(
+        exported,
+        rendered.iter().flatten().copied().collect::<Vec<_>>()
+    );
+    let mut dry = loaded;
+    dry.project.tracks[0].effects.clear();
+    let mut dry_audio = vec![[0.0; 2]; rendered.len()];
+    daw_engine::Renderer::new(dry.plan()).render_offline(&mut dry_audio);
+    assert!(
+        rendered
+            .iter()
+            .zip(dry_audio)
+            .any(|(a, b)| (a[0] - b[0]).abs() > 0.01)
+    );
+    assert_eq!(fs::read(source).unwrap(), original);
+}

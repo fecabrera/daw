@@ -13,6 +13,7 @@ daw-media.workspace = true
 daw-equalizer.workspace = true
 daw-drive.workspace = true
 daw-auto-filter.workspace = true
+daw-compressor.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

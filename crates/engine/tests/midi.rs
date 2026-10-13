@@ -1296,3 +1296,40 @@ fn midi_track_auto_filter_processes_the_instrument_bus_in_playback_and_export() 
         assert_eq!(bypass, dry);
     }
 }
+
+#[test]
+fn midi_compressor_processes_the_instrument_bus_and_matches_export() {
+    for rate in SAMPLE_RATES {
+        let dry = plan(Waveform::Sine, rate);
+        let mut compressed = dry.clone();
+        let mut effect = EffectInstance::compressor();
+        let EffectSettings::Compressor(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        settings.threshold_db = -36.0;
+        settings.attack_ms = 0.1;
+        settings.detection = CompressorDetection::Rms;
+        compressed.project.tracks[0].effects.push(effect);
+        let frames = rate as usize / 5;
+        let mut expected = vec![[0.0; 2]; frames];
+        Renderer::new(compressed.clone()).render_offline(&mut expected);
+        let mut untouched = vec![[0.0; 2]; frames];
+        Renderer::new(dry).render_offline(&mut untouched);
+        assert!(
+            expected
+                .iter()
+                .zip(untouched)
+                .any(|(a, b)| (a[0] - b[0]).abs() > 0.01)
+        );
+        let mut live = Renderer::new(compressed);
+        live.play();
+        for (frame, expected) in expected.iter().enumerate() {
+            let actual = live.next_sample();
+            if frame >= rate as usize / 200 {
+                for ch in 0..2 {
+                    assert!((actual[ch] - expected[ch]).abs() < 1e-6);
+                }
+            }
+        }
+    }
+}

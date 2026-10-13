@@ -113,6 +113,28 @@ fn track_meters(
         .map(|t| (t.id, previous.get(&t.id).cloned().unwrap_or_default()))
         .collect()
 }
+fn effect_meters(
+    plan: &RenderPlan,
+    previous: &HashMap<Id, Arc<AtomicU32>>,
+) -> HashMap<Id, Arc<AtomicU32>> {
+    plan.project
+        .tracks
+        .iter()
+        .flat_map(|track| &track.effects)
+        .filter(|effect| matches!(effect.unit, daw_core::EffectSettings::Compressor(_)))
+        .map(|effect| {
+            (
+                effect.id,
+                previous.get(&effect.id).cloned().unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+fn bind_effect_meters(renderer: &mut Renderer, meters: &HashMap<Id, Arc<AtomicU32>>) {
+    for (id, meter) in meters {
+        renderer.set_effect_meter(*id, meter.clone());
+    }
+}
 enum Command {
     Plan(Box<PreparedRenderer>),
     Play,
@@ -134,6 +156,7 @@ pub struct AudioOutput {
     pub status: Arc<Status>,
     pub description: String,
     track_meters: HashMap<Id, Arc<TrackMeter>>,
+    effect_meters: HashMap<Id, Arc<AtomicU32>>,
 }
 impl AudioOutput {
     pub fn new(plan: RenderPlan) -> Result<Self, String> {
@@ -164,11 +187,12 @@ impl AudioOutput {
         });
         let status = Arc::new(Status::default());
         let meters = track_meters(&plan, &HashMap::new());
+        let reductions = effect_meters(&plan, &HashMap::new());
         // Retried stream construction happens before playback; each attempt receives fresh queues.
         let build = |cfg: &cpal::StreamConfig| -> Result<BuiltStream, String> {
             let (commands, consumer) = RingBuffer::new(32);
             let (retire, retired) = RingBuffer::new(64);
-            let state = Callback::new(
+            let mut state = Callback::new(
                 plan.clone(),
                 &meters,
                 consumer,
@@ -176,6 +200,7 @@ impl AudioOutput {
                 status.clone(),
                 rate,
             )?;
+            bind_effect_meters(&mut state.renderer, &reductions);
             macro_rules! stream {
                 ($t:ty) => {
                     build_stream::<$t>(&device, cfg, state, status.clone())
@@ -223,6 +248,7 @@ impl AudioOutput {
             status,
             description,
             track_meters: meters,
+            effect_meters: reductions,
         })
     }
     fn send(&mut self, command: Command) -> Result<(), String> {
@@ -238,14 +264,24 @@ impl AudioOutput {
             return Err("Recreate output after changing project audio settings".into());
         }
         let meters = track_meters(&plan, &self.track_meters);
-        self.send(Command::Plan(Box::new(PreparedRenderer::new(
-            plan, &meters,
-        ))))?;
+        let reductions = effect_meters(&plan, &self.effect_meters);
+        let mut prepared = PreparedRenderer::new(plan, &meters);
+        bind_effect_meters(&mut prepared, &reductions);
+        self.send(Command::Plan(Box::new(prepared)))?;
         self.track_meters = meters;
+        self.effect_meters = reductions;
         Ok(())
     }
     pub fn track_meter(&self, id: Id) -> Option<&TrackMeter> {
         self.track_meters.get(&id).map(AsRef::as_ref)
+    }
+    pub fn gain_reduction_db(&self, id: Id) -> f32 {
+        if !self.status.playing.load(Ordering::Relaxed) {
+            return 0.0;
+        }
+        self.effect_meters
+            .get(&id)
+            .map_or(0.0, |meter| f32::from_bits(meter.load(Ordering::Relaxed)))
     }
     pub fn play(&mut self) -> Result<(), String> {
         self.send(Command::Play)
@@ -461,7 +497,7 @@ where
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    fn transport_plan() -> RenderPlan {
+    pub(super) fn transport_plan() -> RenderPlan {
         use daw_core::{Asset, Clip, Project, Source, SourceMetadata};
         let mut project = Project::default();
         project.add_track().unwrap();
@@ -830,5 +866,58 @@ mod tests {
             assert_eq!(callback.renderer.playhead, 123);
             assert!(retired.pop().is_ok());
         }
+    }
+}
+
+#[cfg(test)]
+mod compressor_meter_tests {
+    use super::*;
+
+    #[test]
+    fn effect_meter_handles_follow_ids_and_report_callback_compression() {
+        let mut plan = crate::tests::transport_plan();
+        let mut effect = daw_core::EffectInstance::compressor();
+        let daw_core::EffectSettings::Compressor(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        settings.threshold_db = -36.0;
+        settings.attack_ms = 0.1;
+        let id = effect.id;
+        plan.project.tracks[0].effects.push(effect.clone());
+        let meters = effect_meters(&plan, &HashMap::new());
+        let (producer, consumer) = RingBuffer::new(32);
+        let (retire, _retired) = RingBuffer::new(64);
+        let status = Arc::new(Status::default());
+        let tracks = track_meters(&plan, &HashMap::new());
+        let mut callback =
+            Callback::new(plan.clone(), &tracks, consumer, retire, status, 48_000).unwrap();
+        bind_effect_meters(&mut callback.renderer, &meters);
+        let mut producer = producer;
+        producer
+            .push(Command::Play)
+            .unwrap_or_else(|_| panic!("queue"));
+        callback.update();
+        for _ in 0..2000 {
+            callback.next();
+        }
+        assert!(f32::from_bits(meters[&id].load(Ordering::Relaxed)) > 10.0);
+        let mut other = effect;
+        other.id = Id::new_v4();
+        let second = other.id;
+        plan.project.tracks[0].effects.insert(0, other);
+        let updated = effect_meters(&plan, &meters);
+        assert!(Arc::ptr_eq(&updated[&id], &meters[&id]));
+        assert!(!Arc::ptr_eq(&updated[&second], &meters[&id]));
+        plan.project.tracks[0]
+            .effects
+            .retain(|effect| effect.id != id);
+        let removed = effect_meters(&plan, &updated);
+        assert!(!removed.contains_key(&id));
+        assert!(Arc::ptr_eq(&removed[&second], &updated[&second]));
+        producer
+            .push(Command::Stop)
+            .unwrap_or_else(|_| panic!("queue"));
+        callback.update();
+        assert_eq!(meters[&id].load(Ordering::Relaxed), 0);
     }
 }

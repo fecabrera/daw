@@ -1820,3 +1820,297 @@ fn auto_filter_diagrams_and_bounded_mode_selector_match_their_controls() {
         assert_eq!(auto_filter_settings(&app).rate_hz, hz);
     }
 }
+
+fn compressor_settings(app: &DawUi) -> &daw_core::CompressorSettings {
+    let daw_core::EffectSettings::Compressor(settings) =
+        &app.session.project.tracks[0].effects[0].unit
+    else {
+        panic!("expected Compressor")
+    };
+    settings
+}
+#[test]
+fn compressor_catalog_adds_independent_units_and_blocks_without_a_track() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let entry = app.effects_bounds.compressor_entry.center();
+    assert!(entry.y > app.effects_bounds.auto_filter_entry.bottom());
+    app.dirty = false;
+    click(&mut app, &ctx, entry);
+    assert_eq!(
+        app.effects_catalog_selection,
+        Some(daw_core::COMPRESSOR_TYPE_ID)
+    );
+    assert!(!app.dirty);
+    click(&mut app, &ctx, entry);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(
+        compressor_settings(&app),
+        &daw_core::CompressorSettings::default()
+    );
+    end_click_sequence(&mut app, &ctx);
+    click(&mut app, &ctx, entry);
+    click(&mut app, &ctx, entry);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.effects_bounds.compressor_units.len(), 2);
+    assert_ne!(
+        app.session.project.tracks[0].effects[0].id,
+        app.session.project.tracks[0].effects[1].id
+    );
+    for blocked in [false, true] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        if blocked {
+            app.unsaved_prompt = true;
+        } else {
+            app.selected_track = None;
+        }
+        frame(&mut app, &ctx, vec![]);
+        let entry = app.effects_bounds.compressor_entry.center();
+        click(&mut app, &ctx, entry);
+        click(&mut app, &ctx, entry);
+        assert!(app.session.project.tracks[0].effects.is_empty());
+    }
+}
+#[test]
+fn compressor_layout_compact_collapse_and_readonly_meter_follow_unit_conventions() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::compressor()];
+            app.session.project.tracks[0].effects_compact = compact;
+            app.select_track(track, false);
+            app.set_view_mode(ViewMode::Effects, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let bounds = &app.effects_bounds.compressor_units[0];
+            for (column, section) in bounds.sections.iter().enumerate() {
+                assert!((section.width() - crate::midi_editor::UNIT_STRIP_WIDTH).abs() < 0.1);
+                if column > 0 {
+                    assert!((section.left() - bounds.sections[column - 1].right()).abs() < 0.1);
+                }
+            }
+            for name in ["Comp", "Response", "Out"] {
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == name)));
+            }
+            if compact {
+                assert!(
+                    bounds
+                        .controls
+                        .iter()
+                        .flatten()
+                        .all(|rect| !rect.is_positive())
+                );
+            } else {
+                for row in 0..3 {
+                    for column in 0..3 {
+                        assert!(
+                            (bounds.controls[column][row].center().y
+                                - bounds.controls[0][row].center().y)
+                                .abs()
+                                < 0.1
+                        );
+                    }
+                }
+                // The third Out row is a meter, not a control which edits saved state.
+                let meter = bounds.controls[2][2].center();
+                app.dirty = false;
+                let before = compressor_settings(&app).clone();
+                click(&mut app, &ctx, meter);
+                assert_eq!(compressor_settings(&app), &before);
+                assert!(!app.dirty);
+            }
+            let power = app.effects_bounds.compressor_units[0].power.center();
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, power);
+            assert!(!compressor_settings(&app).enabled);
+            let header = app.effects_bounds.compressor_units[0].header.center();
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, header);
+            click(&mut app, &ctx, header);
+            frame(&mut app, &ctx, vec![]);
+            assert!(compressor_settings(&app).collapsed);
+        }
+    }
+}
+#[test]
+fn compressor_controls_edit_in_the_agreed_order_and_peak_rms_is_bounded() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::compressor()];
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    for (column, row, key) in [
+        (0, 0, egui::Key::ArrowRight),
+        (0, 1, egui::Key::ArrowRight),
+        (1, 0, egui::Key::ArrowRight),
+        (1, 1, egui::Key::ArrowRight),
+        (1, 2, egui::Key::ArrowRight),
+        (2, 0, egui::Key::ArrowRight),
+        (2, 1, egui::Key::ArrowLeft),
+    ] {
+        let before = compressor_settings(&app).clone();
+        let point = app.effects_bounds.compressor_units[0].controls[column][row].center();
+        end_click_sequence(&mut app, &ctx);
+        click(&mut app, &ctx, point);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        let after = compressor_settings(&app);
+        assert!(after.valid());
+        let mut expected = before.clone();
+        match (column, row) {
+            (0, 0) => {
+                assert!(after.threshold_db > before.threshold_db);
+                expected.threshold_db = after.threshold_db;
+            }
+            (0, 1) => {
+                assert!(after.ratio > before.ratio);
+                expected.ratio = after.ratio;
+            }
+            (1, 0) => {
+                assert!(after.attack_ms > before.attack_ms);
+                expected.attack_ms = after.attack_ms;
+            }
+            (1, 1) => {
+                assert!(after.release_ms > before.release_ms);
+                expected.release_ms = after.release_ms;
+            }
+            (1, 2) => {
+                assert!(after.knee_db > before.knee_db);
+                expected.knee_db = after.knee_db;
+            }
+            (2, 0) => {
+                assert!(after.level_db > before.level_db);
+                expected.level_db = after.level_db;
+            }
+            (2, 1) => {
+                assert!(after.dry_wet < before.dry_wet);
+                expected.dry_wet = after.dry_wet;
+            }
+            _ => unreachable!(),
+        }
+        assert_eq!(after, &expected);
+    }
+    for (delta, expected) in [
+        (300.0, daw_core::CompressorDetection::Peak),
+        (-300.0, daw_core::CompressorDetection::Rms),
+        (-300.0, daw_core::CompressorDetection::Rms),
+    ] {
+        let start = app.effects_bounds.compressor_units[0].controls[0][2].center();
+        let end = start + Vec2::new(0.0, delta);
+        end_click_sequence(&mut app, &ctx);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert_eq!(compressor_settings(&app).detection, expected);
+    }
+}
+#[test]
+fn compressor_peak_rms_paint_uses_the_shared_neutral_arc_and_choice_labels() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for detection in [
+            daw_core::CompressorDetection::Peak,
+            daw_core::CompressorDetection::Rms,
+        ] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            let mut effect = daw_core::EffectInstance::compressor();
+            let daw_core::EffectSettings::Compressor(settings) = &mut effect.unit else {
+                unreachable!()
+            };
+            settings.detection = detection;
+            app.session.project.tracks[0].effects = vec![effect];
+            app.select_track(track, false);
+            app.set_view_mode(ViewMode::Effects, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let rect = app.effects_bounds.compressor_units[0].controls[0][2];
+            for (name, selected, left) in [
+                (
+                    "Peak",
+                    detection == daw_core::CompressorDetection::Peak,
+                    true,
+                ),
+                (
+                    "RMS",
+                    detection == daw_core::CompressorDetection::Rms,
+                    false,
+                ),
+            ] {
+                let text = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == name => Some(text),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert!(text.pos.y < rect.center().y);
+                assert_eq!(text.pos.x < rect.center().x, left);
+                assert!(
+                    text.galley
+                        .job
+                        .sections
+                        .iter()
+                        .all(|section| section.format.color
+                            == if selected {
+                                theme::accent(&ctx)
+                            } else {
+                                theme::palette(&ctx).secondary
+                            })
+                );
+            }
+            let arcs: Vec<_> = shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Path(path)
+                        if path.points.len() == 33
+                            && path.points.iter().all(|point| rect.contains(*point)) =>
+                    {
+                        Some(path)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(arcs.len(), 1);
+            assert_eq!(
+                arcs[0].stroke.color,
+                egui::epaint::ColorMode::Solid(theme::palette(&ctx).border)
+            );
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment {points,..} if points.iter().all(|point| rect.contains(*point)) && points[0].distance(points[1]) <= 3.1)));
+        }
+    }
+}

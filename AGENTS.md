@@ -41,6 +41,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/equalizer` | Reusable stereo 3-band EQ behind the shared effect API; keep FunDSP types private. |
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
 | `crates/auto-filter` | Portable stereo filter and transport-locked LFO behind the shared effect API; keep FunDSP types private. |
+| `crates/compressor` | Portable linked stereo dynamics and gain-reduction monitoring behind the shared effect API; keep FunDSP detector types private. |
 | `crates/envelope` | Reusable, allocation-free per-note ADSR modulator; no DAW, UI, or device dependencies. |
 | `crates/core` | Project entities, stable IDs, frame ranges, colors, validation, and transactional edit commands. No UI, device, or file-dialog dependencies. |
 | `crates/media` | WAV decoding, sample-rate conversion, waveform peaks, WAV/MP3 encoding, and offline Rubber Band processing. |
@@ -131,6 +132,7 @@ The audio callback must remain nonblocking and must not allocate or perform file
 - Isolate unsafe native API calls in the desktop platform adapters and document their safety requirements.
 
 - Auto-filter uses three strips: Cutoff, LFO, and Out. LFO is one strip with two control columns, equal inner/outer horizontal gaps, no internal divider, and one centered `rows::power_label` footer. Match the control inset of the 90-point single-column strips. Pass project frame and tempo to `AutoFilter::process_at` in playback/export; retain compatible histories and ramps. Follow [Auto-filter](docs/auto-filter.md) for rates, phases, smoothing, and saved state.
+- Compressor uses three strips: Comp (Threshold, Ratio, Peak/RMS), Response (Attack, Release, Knee), and Out (Level, Dry/Wet, read-only gain-reduction meter). Peak/RMS reuses Auto-filter's bounded two-way knob. Prepare meter handles on a control thread, publish actual processor reduction through atomics, and retain handles/history by stable effect ID. Follow [Compressor](docs/compressor.md) for detector timing, stereo linking, gain order, smoothing, defaults, and saved state.
 
 ## Persistence and export
 
