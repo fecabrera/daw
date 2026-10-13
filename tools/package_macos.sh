@@ -3,14 +3,15 @@ set -eu
 cd "$(dirname "$0")/.."
 profile="${1:-debug}"
 case "$profile" in
-  debug) cargo build -p daw-desktop ;;
-  release) cargo build -p daw-desktop --release ;;
+  debug) cargo build --locked -p daw-desktop ;;
+  release) cargo build --locked -p daw-desktop --release ;;
   *) echo "Usage: $0 [debug|release]" >&2; exit 2 ;;
 esac
 bundle="target/$profile/DAW.app"
 mkdir -p "$bundle/Contents/MacOS"
 mkdir -p "$bundle/Contents/Resources/licenses"
 cp "target/$profile/daw-desktop" "$bundle/Contents/MacOS/daw-desktop"
+cp LICENSE "$bundle/Contents/Resources/LICENSE.txt"
 cp crates/ui/assets/fonts/OFL.txt "$bundle/Contents/Resources/licenses/Outfit-OFL.txt"
 rm -f "$bundle/Contents/Resources/licenses/DM-Sans-OFL.txt"
 cp crates/ui/assets/fonts/Hack-LICENSE.txt "$bundle/Contents/Resources/licenses/Hack-LICENSE.txt"

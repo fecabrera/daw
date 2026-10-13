@@ -105,6 +105,10 @@ impl DawUi {
                                 + 2.0 * style.spacing.button_padding.x
                         })
                         .sum();
+                    let gap = ui.spacing().item_spacing.x;
+                    // Include gaps between view buttons, both sides of the separator,
+                    // and the separator's own width when reserving title space.
+                    let views_spacing = (crate::ViewMode::ALL.len() - 1) as f32 * gap;
                     let title_width = ui
                         .painter()
                         .layout_no_wrap(
@@ -115,9 +119,7 @@ impl DawUi {
                         .size()
                         .x
                         .min(
-                            (ui.available_width()
-                                - views_width
-                                - 4.0 * ui.spacing().item_spacing.x)
+                            (ui.available_width() - views_width - views_spacing - 3.0 * gap)
                                 .max(0.0),
                         );
                     ui.allocate_ui_with_layout(
@@ -128,7 +130,7 @@ impl DawUi {
                                 .on_hover_text(&self.window_title);
                         },
                     );
-                    ui.separator();
+                    ui.add(egui::Separator::default().spacing(gap));
                     controls.push(ui.scope(|ui| self.view_controls(ui)).response.rect);
                 },
             );
@@ -161,6 +163,51 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_titles_keep_view_controls_outside_native_captions() {
+        for theme in [
+            crate::settings::ColorTheme::Dark,
+            crate::settings::ColorTheme::Light,
+        ] {
+            for width in [900.0, 1280.0] {
+                let ctx = egui::Context::default();
+                let mut app = DawUi::default();
+                app.set_settings(
+                    &ctx,
+                    crate::settings::AppSettings {
+                        theme,
+                        ..Default::default()
+                    },
+                );
+                app.window_title = "Long project title ".repeat(30);
+                for _ in 0..2 {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(width, 800.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            egui::Panel::top("test_header")
+                                .frame(egui::Frame::NONE)
+                                .show(ui, |ui| app.windows_header(ui));
+                        },
+                    );
+                    output.textures_delta.clear();
+                }
+                let layout = app.header_layout(&ctx);
+                assert!(
+                    layout.controls[1].right() <= layout.captions[0].left(),
+                    "width={width}, controls={:?}, captions={:?}",
+                    layout.controls,
+                    layout.captions
+                );
+            }
+        }
+    }
 
     #[test]
     fn controls_dialogs_and_space_outside_the_header_are_not_drag_targets() {

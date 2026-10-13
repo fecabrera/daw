@@ -21,7 +21,7 @@ use std::{
     time::Duration,
 };
 
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
 mod application_menu;
 mod auto_filter_panel;
 pub mod dialogs;
@@ -52,7 +52,7 @@ mod project_settings;
 pub mod rows;
 pub mod settings;
 pub mod theme;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", test))]
 pub mod titlebar;
 pub mod toolbars;
 mod waveforms;
@@ -697,9 +697,9 @@ pub struct DawUi {
     allow_close: bool,
     native_menu: bool,
     window_title: String,
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", test))]
     caption_metrics: titlebar::CaptionMetrics,
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", test))]
     header_layout: titlebar::HeaderLayout,
 }
 impl Default for DawUi {
@@ -773,9 +773,9 @@ impl Default for DawUi {
             allow_close: false,
             native_menu: false,
             window_title: String::new(),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", test))]
             caption_metrics: titlebar::CaptionMetrics::default(),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", test))]
             header_layout: titlebar::HeaderLayout::default(),
         }
     }
@@ -4483,7 +4483,10 @@ mod tests {
             name: "Missing".into(),
             source: daw_core::Source {
                 kind: "external".into(),
-                path: "/missing.wav".into(),
+                path: std::env::temp_dir()
+                    .join(format!("daw-missing-{}.wav", Id::new_v4()))
+                    .to_string_lossy()
+                    .into_owned(),
                 path_kind: "absolute".into(),
             },
             source_metadata: daw_core::SourceMetadata {

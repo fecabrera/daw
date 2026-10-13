@@ -50,7 +50,8 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/ui` | egui application state, interactions, previews, reusable controls, and presentation. |
 | `apps/desktop` | eframe startup, GPU backend selection, and native menu, window, and file-drag adapters. Windows uses Glow/OpenGL for native caption composition; macOS/Linux use wgpu. Keep OS-specific code here. |
 | `apps/cli` | clap arguments, diagnostics, and exit codes over the shared project/export APIs. Must remain usable without graphics or an audio device. |
-| `tools` | Demo generation, CLI smoke checks, and macOS/Windows packaging. |
+| `tools` | Demo generation, CLI smoke checks, and macOS/Windows/Linux packaging. |
+| `.github/workflows` | Native platform tests and release-package artifact uploads. |
 | `examples` | Tracked generated audio and demo project fixtures. |
 | `docs`, `specs` | Scope, requirements, and validation records. |
 | `work`, `target` | Ignored scratch files, dependency cache, logs, and build outputs. |
@@ -177,6 +178,7 @@ cargo test --workspace
 - For CLI or shared import/render/export changes, build `daw-cli`, then run `python3 tools/check_cli.py`. It needs the tracked demo and uses temporary output folders.
 - `python3 tools/create_demo.py` regenerates tracked demo files. Do not run it over user edits or include regenerated fixtures unless required by the task.
 - On macOS, rebuild desktop deliverables with `sh tools/package_macos.sh debug` or `release` when desktop/runtime changes need an updated app. The unsigned bundle is under `target/<profile>/DAW.app`.
+- CI uses separate `test` and `build` jobs with Windows, macOS, and Linux workers. The build job depends on the complete test matrix and includes release builds, packaging, and artifact uploads. Both jobs use `.github/actions/setup-build` for native dependencies, the pinned Rust toolchain, Python, and Cargo caching. Tests run locked workspace checks and CLI smoke checks. Keep the portable Windows executable with its project license and dependency notices, and retain the same notices in macOS DMG and Linux ZIP artifacts. Use the native scripts in `tools` rather than duplicating packaging commands in the workflow.
 - For documentation-only changes, check content, links, commands against their definitions, and `git diff --check`; do not rebuild or run unrelated audio tests.
 - Use temporary folders for tests. Do not overwrite user projects, recordings, or exports. Review `git diff` and `git status` before completion.
 - Once relevant checks pass, repeat them only after new changes or unresolved failures. Record unavailable device/platform checks explicitly; automated egui tests do not establish native gesture behavior.

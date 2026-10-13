@@ -98,6 +98,8 @@ cargo run -p daw-desktop
 
 Create an app bundle with `sh tools/package_macos.sh debug`. Open `target/debug/DAW.app`, then select a project folder with File > Open. Use `release` instead of `debug` for an optimized build. The local bundle is unsigned.
 
+Create a disk image with `sh tools/package_macos_dmg.sh release`. Use `debug` for a debug build. The image is `target/<profile>/DAW-macos-arm64.dmg` on Apple Silicon or `DAW-macos-x64.dmg` on Intel. Open the image and drag DAW to Applications. The app includes the project license and dependency notices in `Contents/Resources`. The image is unsigned and the app is not notarized.
+
 ### Linux
 
 Install Rust through Rustup, a C++ compiler, Clang/libclang, and ALSA development libraries. Ensure the XDG Desktop Portal service is available for file dialogs. Package names depend on your distribution.
@@ -106,6 +108,20 @@ Install Rust through Rustup, a C++ compiler, Clang/libclang, and ALSA developmen
 cargo build -p daw-desktop
 cargo run -p daw-desktop
 ```
+
+Create a portable ZIP with `sh tools/package_linux.sh release`. Use `debug` for a debug build. The archive is `target/<profile>/DAW-linux-x64.zip` on x64 or `DAW-linux-arm64.zip` on ARM64. Extract it and run `DAW/daw-desktop`. Keep `DAW/LICENSE.txt` and `DAW/licenses` with the executable. The archive preserves executable permissions and includes the same dependency notices as the other packages. It does not bundle system libraries: the destination needs compatible C/C++ runtime, ALSA, graphics libraries, and a desktop portal for dialogs.
+
+### GitHub Actions builds
+
+The [Test and build workflow](.github/workflows/build-and-test.yml) runs on pushes, pull requests, and manual dispatches. It has separate `test` and `build` jobs, each with Windows, macOS, and Linux workers. Tests run formatting, strict workspace/all-target Clippy, workspace tests, and the headless CLI smoke checks with the pinned Rust toolchain and locked dependencies. Build starts only after all three test workers pass, builds and packages release binaries on fresh workers, and uploads artifacts retained for 14 days. A failing worker does not cancel the other workers in its job. Both jobs use the same [native build setup action](.github/actions/setup-build/action.yml).
+
+| Platform | Runner | Download |
+| --- | --- | --- |
+| Windows x64 | `windows-2025` | `DAW-windows-x64`: portable `daw-desktop.exe`, project license, and dependency notices |
+| macOS Apple Silicon | `macos-15` | `DAW-macos-arm64.dmg` |
+| Linux x64 | `ubuntu-24.04` | `DAW-linux-x64.zip` |
+
+Download artifacts from the workflow run's summary. Windows downloads as a ZIP containing the executable and licenses; it is not an installer. The disk image and Linux ZIP upload directly as files. These builds do not sign binaries, notarize the macOS app, or publish a GitHub release. The Linux package targets Ubuntu 24.04 and compatible systems; it is not a static binary for every distribution. Native UI and audio-device checks remain separate from CI.
 
 ## Documentation
 

@@ -1,6 +1,8 @@
 //! Application menus and view toolbar shared by Windows and Linux.
 
-use crate::{DawUi, icons, theme, toolbars};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+use crate::toolbars;
+use crate::{DawUi, icons, theme};
 
 impl DawUi {
     pub(super) fn application_menu(&mut self, ui: &mut egui::Ui) -> egui::Response {
@@ -34,6 +36,7 @@ impl DawUi {
         menu
     }
 
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     pub(super) fn menu_view_toolbar(&mut self, ui: &mut egui::Ui) {
         toolbars::Toolbar::row(ui, |ui| {
             self.application_menu(ui);
