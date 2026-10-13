@@ -16,7 +16,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 The project format is experimental. Tracks support external audio files and embedded MIDI patterns. Undo/redo is outside the current MVP. Missing sources remain visible and render as silence; saving a project does not bundle its recordings.
 
-The views are **Timeline**, **Instrument**, **Effects**, **Editor**, and **Mixer**. Instrument configures MIDI sources and their layer envelopes under the Layers panel. Effects is a separate view for track effects on audio and MIDI tracks; effect processing is not implemented yet. Editor provides a basic MIDI piano roll. Audio and beat editors, beat tracks, effect chains, and instrument graphs are planned.
+The views are **Timeline**, **Instrument**, **Effects**, **Editor**, and **Mixer**. Instrument configures MIDI sources and their layer envelopes under the Layers panel. Effects has an effects catalog at the upper left, the shared Editor ruler and selected-track strip at the top right, and an empty effects lane across the full window width at the bottom. The timeline scrollbar sits immediately above the lane; one thin separator separates it from the status bar. It accepts audio and MIDI tracks; effect units and processing are not implemented yet. Editor provides a basic MIDI piano roll. Audio and beat editors, beat tracks, effect chains, and instrument graphs are planned.
 
 MIDI patterns are immutable clip sources: body-edge trims crop or pad a new source for the edited clip, while header-edge looping preserves the source. Other clips retain their previous source. MIDI tracks play overlapping pitches with multiple voices of their configured instrument. Beat patterns will follow the same source model.
 

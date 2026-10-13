@@ -1,7 +1,7 @@
 use super::*;
 use daw_core::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, TrackKind};
 
-const KEY_WIDTH: f32 = 52.0;
+use crate::track_overview::LABEL_WIDTH as KEY_WIDTH;
 const NOTE_HEIGHT: f32 = 18.0;
 pub(super) const UNIT_STRIP_WIDTH: f32 = 90.0;
 pub(super) const OSCILLATOR_STRIP_WIDTH: f32 = UNIT_STRIP_WIDTH;
@@ -67,9 +67,9 @@ pub(super) struct MidiEditor {
     pub(super) zoom: f32,
     pub(super) scroll: f64,
     pub(super) source_origin: f64,
-    timeline_left: f32,
-    active_clip: Option<Id>,
-    active_track: Option<Id>,
+    pub(super) timeline_left: f32,
+    pub(super) active_clip: Option<Id>,
+    pub(super) active_track: Option<Id>,
     #[cfg(test)]
     pub(crate) track_bounds: Rect,
     #[cfg(test)]
@@ -177,7 +177,7 @@ impl MidiEditor {
     pub(crate) fn selecting(&self) -> bool {
         self.selection.is_some()
     }
-    fn clear_note_selection(&mut self) {
+    pub(super) fn clear_note_selection(&mut self) {
         self.selected_note = None;
         self.selected_notes.clear();
     }
@@ -229,9 +229,7 @@ fn black_key(pitch: u8) -> bool {
 
 impl DawUi {
     pub(super) fn add_midi_pattern(&mut self, track: Id, start: u64, ctx: &egui::Context) {
-        if !matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
-            || !self.clip_actions_available(ctx)
-        {
+        if !self.view_mode.has_clip_lanes() || !self.clip_actions_available(ctx) {
             return;
         }
         match self.session.project.add_midi_pattern(track, start) {
@@ -263,8 +261,8 @@ impl DawUi {
             return;
         };
         if track.clips.iter().any(|clip| {
-            let block = if self.view_mode == ViewMode::Edit {
-                self.editor_clip_rect(lane, clip)
+            let block = if self.view_mode.has_track_overview() {
+                self.track_overview_clip_rect(lane, clip)
             } else {
                 self.clip_block(lane, clip, clip.start_frame)
             };
@@ -282,28 +280,6 @@ impl DawUi {
     pub(super) fn open_clip_editor(&mut self, clip: Id, track: Id, ctx: &egui::Context) {
         self.select_clip(clip, track, false);
         self.set_view_mode(ViewMode::Edit, ctx);
-    }
-    fn editor_ruler(&mut self, ui: &mut egui::Ui) {
-        let row = rows::centered(ui, RULER_HEIGHT, |ui| {
-            ui.allocate_exact_size(Vec2::new(KEY_WIDTH, RULER_HEIGHT), Sense::hover());
-            let rect = self.time_ruler(ui);
-            #[cfg(test)]
-            {
-                self.midi_editor.ruler_bounds = rect;
-            }
-            #[cfg(not(test))]
-            {
-                let _ = rect;
-            }
-        });
-        let y = row.response.rect.bottom() - 0.5;
-        ui.painter().line_segment(
-            [
-                Pos2::new(ui.max_rect().left(), y),
-                Pos2::new(ui.max_rect().right(), y),
-            ],
-            Stroke::new(1.0, theme::palette(ui.ctx()).border),
-        );
     }
     pub(super) fn edit_view(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
@@ -325,59 +301,20 @@ impl DawUi {
         }
         self.update_midi_notes(ui);
         let previous_track = self.midi_editor.active_track;
-        let resize_preview = self.clip_trim_preview_project(ui);
-        let project = resize_preview.as_ref().unwrap_or(&self.session.project);
-        let track = project
-            .tracks
-            .iter()
-            .find(|t| t.clips.iter().any(|c| Some(c.id) == self.selected_clip))
-            .or_else(|| {
-                project
-                    .tracks
-                    .iter()
-                    .find(|t| Some(t.id) == self.selected_track)
-            })
-            .cloned();
-        let assets: Vec<_> = project
-            .assets
-            .iter()
-            .filter(|asset| {
-                track
-                    .as_ref()
-                    .is_some_and(|t| t.clips.iter().any(|c| c.asset_id == asset.id))
-            })
-            .cloned()
-            .collect();
-        // Selecting another pattern on the same track must not jump the shared viewport.
-        self.midi_editor.source_origin = 0.0;
-        if self.midi_editor.active_clip != self.selected_clip && !self.midi_editor.dragging() {
-            self.midi_editor.clear_note_selection();
-            self.midi_editor.active_clip = self.selected_clip;
-        }
-        if let Some(track) = &track
-            && self.midi_editor.active_track != Some(track.id)
-        {
-            self.midi_editor.cancel();
-            self.midi_editor.scroll = track
-                .clips
-                .iter()
-                .find(|c| Some(c.id) == self.selected_clip)
-                .map_or(0.0, |c| self.session.project.seconds(c.start_frame));
-            self.midi_editor.active_track = Some(track.id);
-            self.midi_editor.active_clip = self.selected_clip;
-        }
+        let (track, assets) = self.track_overview_content(ui);
+        self.prepare_track_overview(track.as_ref());
         let viewport = Rect::from_min_max(
             Pos2::new(ui.max_rect().left() + KEY_WIDTH, ui.max_rect().top()),
             ui.max_rect().max,
         );
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
-        self.editor_ruler(ui);
+        self.track_overview_ruler(ui);
         let Some(track) = track else {
             ui.label("Select a MIDI track to edit its patterns.");
             return;
         };
-        self.editor_track_strip(ui, &track, &assets);
+        self.track_overview_strip(ui, &track, &assets);
         self.finish_clip_drag(ui);
         if track.kind != TrackKind::Midi {
             ui.label("The audio editor is not available yet.");
@@ -470,8 +407,8 @@ impl DawUi {
                     );
                 }
             });
-        rows::centered(ui, 15.0, |ui| {
-            ui.allocate_exact_size(Vec2::new(KEY_WIDTH, 15.0), Sense::hover());
+        rows::centered(ui, SCROLLBAR_HEIGHT, |ui| {
+            ui.allocate_exact_size(Vec2::new(KEY_WIDTH, SCROLLBAR_HEIGHT), Sense::hover());
             self.timeline_scrollbar(ui);
         });
         if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
@@ -604,7 +541,11 @@ impl DawUi {
         self.select_clip(clip, track, false);
         self.midi_editor.active_clip = Some(clip);
     }
-    fn editor_pattern<'a>(&'a self, clip: Id, original: &'a MidiPattern) -> &'a MidiPattern {
+    pub(super) fn editor_pattern<'a>(
+        &'a self,
+        clip: Id,
+        original: &'a MidiPattern,
+    ) -> &'a MidiPattern {
         self.midi_editor
             .draw
             .as_ref()
@@ -630,94 +571,6 @@ impl DawUi {
         .max(1.0) as u32
     }
 
-    fn editor_clip_rect(&self, band: Rect, clip: &Clip) -> Rect {
-        let left = band.left()
-            + (self.session.project.seconds(clip.start_frame) - self.midi_editor.scroll) as f32
-                * self.midi_editor.zoom;
-        Rect::from_min_size(
-            Pos2::new(left, band.top()),
-            Vec2::new(
-                self.session.project.seconds(clip.length_frames) as f32 * self.midi_editor.zoom,
-                band.height(),
-            ),
-        )
-    }
-    fn editor_track_strip(
-        &mut self,
-        ui: &mut egui::Ui,
-        track: &daw_core::Track,
-        assets: &[daw_core::Asset],
-    ) {
-        let (band, _) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), 56.0), Sense::hover());
-        let lane = Rect::from_min_max(Pos2::new(band.left() + KEY_WIDTH, band.top()), band.max);
-        self.midi_editor.timeline_left = lane.left();
-        self.lane_bounds.clear();
-        self.lane_bounds.insert(track.id, lane);
-        self.timeline_bounds = lane;
-        self.create_midi_pattern_in_empty_lane(ui, track, lane);
-        let palette = theme::palette(ui.ctx());
-        ui.painter().rect_filled(band, 0.0, palette.background);
-        ui.painter()
-            .with_clip_rect(Rect::from_min_max(band.min, lane.left_bottom()))
-            .text(
-                Pos2::new(band.left() + 4.0, band.center().y),
-                egui::Align2::LEFT_CENTER,
-                &track.name,
-                egui::FontId::proportional(10.0),
-                palette.text,
-            );
-        #[cfg(test)]
-        {
-            self.midi_editor.track_bounds = lane;
-            self.midi_editor.clip_bounds.clear();
-        }
-        let painter = ui.painter_at(lane);
-        self.paint_grid(&painter, lane);
-        for clip in &track.clips {
-            let block = self.editor_clip_rect(lane, clip);
-            #[cfg(test)]
-            {
-                self.midi_editor.clip_bounds.insert(clip.id, block);
-                if Some(clip.id) == self.selected_clip {
-                    self.midi_editor.pattern_bounds = block;
-                }
-            }
-            if !block.intersects(lane) {
-                continue;
-            }
-            let pattern = assets
-                .iter()
-                .find(|a| a.id == clip.asset_id)
-                .and_then(|a| a.midi_pattern.as_ref())
-                .map(|pattern| PreparedClipSource::Midi(self.editor_pattern(clip.id, pattern)));
-            self.paint_clip(
-                &painter,
-                track.color,
-                block,
-                clip,
-                self.clip_selected(clip.id),
-                pattern,
-            );
-            self.clip_lane_interaction(ui, track.id, clip, block, lane);
-        }
-        self.paint_drag_preview(ui, lane);
-        ui.painter().line_segment(
-            [band.left_bottom(), band.right_bottom()],
-            Stroke::new(1.0, palette.border),
-        );
-        let x = lane.left()
-            + (self
-                .session
-                .project
-                .seconds(self.session.project.transport.playhead_frame)
-                - self.midi_editor.scroll) as f32
-                * self.midi_editor.zoom;
-        painter.line_segment(
-            [Pos2::new(x, lane.top()), Pos2::new(x, lane.bottom())],
-            Stroke::new(1.0, theme::accent(ui.ctx())),
-        );
-    }
     pub(super) fn midi_clip_note_menu(&mut self, ui: &mut egui::Ui, clip: &Clip) {
         if Some(clip.id) != self.selected_clip {
             return;
@@ -785,7 +638,7 @@ impl DawUi {
             Pos2::new(canvas.left() + KEY_WIDTH, canvas.top()),
             canvas.max,
         );
-        let block = self.editor_clip_rect(lane, clip);
+        let block = self.track_overview_clip_rect(lane, clip);
         let visible = block.intersect(viewport);
         if !visible.is_positive() {
             return;

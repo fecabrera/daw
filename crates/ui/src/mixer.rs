@@ -39,6 +39,14 @@ impl ViewMode {
         Self::Mixer,
     ];
 
+    pub(super) fn has_track_overview(self) -> bool {
+        matches!(self, Self::Edit | Self::Effects)
+    }
+
+    pub(super) fn has_clip_lanes(self) -> bool {
+        self == Self::Timeline || self.has_track_overview()
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Timeline => "Timeline",

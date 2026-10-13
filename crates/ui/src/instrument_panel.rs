@@ -161,14 +161,7 @@ impl DawUi {
                         ui.push_id((track.id, layer.id), |ui| {
                             // Use one presentation snapshot for the entire frame.
                             let compact = layer.collapsed;
-                            let height = if compact {
-                                ROW_HEIGHT
-                            } else {
-                                crate::envelope_panel::control_height()
-                                    + 2.0 * f32::from(panels::PanelStyle::default().margin)
-                                    + panels::HEADER_HEIGHT
-                                    + 2.0
-                            };
+                            let height = panels::unit_height(compact);
                             let row = ui.horizontal_top(|ui| {
                                 ui.spacing_mut().item_spacing.x = if layer.oscillators.is_empty() {
                                     0.0

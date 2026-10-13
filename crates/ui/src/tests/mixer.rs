@@ -1126,7 +1126,9 @@ fn instrument_and_effects_views_use_their_track_scope_without_project_changes() 
         assert!(!has(&shapes, "Units"));
         app.set_view_mode(ViewMode::Effects, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        assert!(has(&shapes, "Track effects are not available yet."));
+        assert!(!has(&shapes, "Track effects are not available yet."));
+        assert!(app.effects_bounds.strip.is_positive());
+        assert_eq!(app.effects_bounds.library.width(), TRACK_WIDTH);
         assert!(!has(&shapes, "Layers"));
         assert!(!has(&shapes, "Add source"));
         let point = label_point(&mut app, &ctx, "MIDI only", None);

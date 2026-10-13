@@ -83,7 +83,7 @@ fn editor_and_timeline_share_clip_painting_and_group_selection() {
             // Include selection membership without a primary clip, as with a group toggle.
             for selection in 0..3 {
                 let mut appearances = Vec::new();
-                for view in [ViewMode::Timeline, ViewMode::Edit] {
+                for view in [ViewMode::Timeline, ViewMode::Edit, ViewMode::Effects] {
                     app.set_view_mode(view, &ctx);
                     app.selected_track = Some(track);
                     app.selected_clip = (selection == 1).then_some(clip_id);
@@ -98,7 +98,7 @@ fn editor_and_timeline_share_clip_painting_and_group_selection() {
                     app.midi_editor.scroll = 0.25;
                     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                     let lane = app.lane_bounds[&track];
-                    let block = if view == ViewMode::Edit {
+                    let block = if view.has_track_overview() {
                         app.midi_editor.clip_bounds[&clip_id]
                     } else {
                         app.clip_block(lane, &clip, clip.start_frame)
@@ -197,7 +197,7 @@ fn editor_and_timeline_share_clip_painting_and_group_selection() {
                         repeats,
                     ));
                 }
-                assert_eq!(appearances[0], appearances[1]);
+                assert!(appearances.windows(2).all(|pair| pair[0] == pair[1]));
                 assert!(!app.dirty);
             }
         }
@@ -5531,17 +5531,17 @@ fn midi_clip_gestures_keep_timeline_editor_parity_and_cancel_without_changes() {
                 continue;
             }
             let mut outcomes = Vec::new();
-            for view in [ViewMode::Timeline, ViewMode::Edit] {
+            for view in [ViewMode::Timeline, ViewMode::Edit, ViewMode::Effects] {
                 for cancel in [false, true] {
                     let (mut app, track, clip, _) = fixture();
                     app.session.project.tracks[0].clips[0].start_frame = 48_000;
                     let original = app.session.project.tracks[0].clips[0].clone();
                     let ctx = context();
-                    if view == ViewMode::Edit {
-                        app.open_clip_editor(clip, track, &ctx);
+                    if view.has_track_overview() {
+                        app.set_view_mode(view, &ctx);
                     }
                     frame(&mut app, &ctx, vec![]);
-                    if view == ViewMode::Edit {
+                    if view.has_track_overview() {
                         app.midi_editor.zoom = 120.0;
                         app.midi_editor.scroll = 0.0;
                     } else {
@@ -5550,7 +5550,7 @@ fn midi_clip_gestures_keep_timeline_editor_parity_and_cancel_without_changes() {
                     }
                     frame(&mut app, &ctx, vec![]);
                     let lane = app.lane_bounds[&track];
-                    let block = if view == ViewMode::Edit {
+                    let block = if view.has_track_overview() {
                         app.midi_editor.clip_bounds[&clip]
                     } else {
                         app.clip_block(lane, &original, original.start_frame)
@@ -5666,14 +5666,17 @@ fn midi_clip_gestures_keep_timeline_editor_parity_and_cancel_without_changes() {
                     assert_eq!(app.session.project.tracks[0].clips.len(), clip_count);
                 }
             }
-            assert_eq!(outcomes[0], outcomes[1], "{mode:?}/copy={copy}");
+            assert!(
+                outcomes.windows(2).all(|pair| pair[0] == pair[1]),
+                "{mode:?}/copy={copy}"
+            );
         }
     }
 }
 
 #[test]
 fn empty_midi_editor_lane_creation_and_cross_view_clipboard_use_shared_actions() {
-    for view in [ViewMode::Timeline, ViewMode::Edit] {
+    for view in [ViewMode::Timeline, ViewMode::Edit, ViewMode::Effects] {
         let mut app = DawUi::default();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
@@ -5681,7 +5684,7 @@ fn empty_midi_editor_lane_creation_and_cross_view_clipboard_use_shared_actions()
         let track = app.selected_track.unwrap();
         app.set_view_mode(view, &ctx);
         frame(&mut app, &ctx, vec![]);
-        if view == ViewMode::Edit {
+        if view.has_track_overview() {
             app.midi_editor.zoom = 120.0;
             app.midi_editor.scroll = 0.5;
         } else {

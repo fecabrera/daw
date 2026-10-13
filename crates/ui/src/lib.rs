@@ -38,6 +38,7 @@ pub mod knobs;
 pub mod meters;
 mod mix_controls;
 mod mixer;
+mod track_overview;
 mod track_selector;
 pub use mixer::ViewMode;
 mod musical_time;
@@ -56,6 +57,7 @@ const TRACK_WIDTH: f32 = panels::ControlPanel::WIDTH;
 const ROW_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE + 14.0;
 const MASTER_HEIGHT: f32 = ROW_HEIGHT;
 const RULER_HEIGHT: f32 = toolbars::HEIGHT;
+const SCROLLBAR_HEIGHT: f32 = 15.0;
 const MIN_ZOOM: f32 = 1.0;
 const MAX_ZOOM: f32 = 3000.0;
 
@@ -627,6 +629,8 @@ pub struct DawUi {
     midi_editor: midi_editor::MidiEditor,
     instrument_ui: instrument_panel::InstrumentUi,
     #[cfg(test)]
+    effects_bounds: effects_panel::EffectsUiBounds,
+    #[cfg(test)]
     mixer_bounds: HashMap<Id, Rect>,
     #[cfg(test)]
     mixer_faders: HashMap<Option<Id>, Rect>,
@@ -697,6 +701,8 @@ impl Default for DawUi {
             view_mode: mixer::ViewMode::default(),
             midi_editor: Default::default(),
             instrument_ui: Default::default(),
+            #[cfg(test)]
+            effects_bounds: Default::default(),
             #[cfg(test)]
             mixer_bounds: HashMap::new(),
             #[cfg(test)]
@@ -1433,7 +1439,7 @@ impl DawUi {
                 ClipAction::Paste => self.clip_clipboard.as_ref().is_some_and(|clipboard| {
                     clipboard.project == self.session.project.project_id
                         && !self.session.project.tracks.is_empty()
-                        && (matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
+                        && (self.view_mode.has_clip_lanes()
                             || !clipboard.clips.iter().any(|entry| {
                                 self.session.project.assets.iter().any(|asset| {
                                     asset.id == entry.clip.asset_id && asset.midi_pattern.is_some()
@@ -2176,12 +2182,12 @@ impl DawUi {
             ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.tempo_control(ui));
-            if matches!(self.view_mode, ViewMode::Instrument | ViewMode::Effects) {
+            if self.view_mode == ViewMode::Instrument {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     self.track_control(ui);
                 });
             }
-            if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit) {
+            if self.view_mode.has_clip_lanes() {
                 let mut zoom = self.view_zoom();
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.scope(|ui| {
@@ -2222,12 +2228,12 @@ impl DawUi {
                             .alt_text("Horizontal zoom"),
                     )
                     .on_hover_text("Horizontal zoom");
-                    if self.view_mode == ViewMode::Edit {
+                    if self.view_mode.has_track_overview() {
                         ui.separator();
                         self.track_control(ui);
                     }
                 });
-                if self.view_mode == ViewMode::Edit {
+                if self.view_mode.has_track_overview() {
                     self.midi_editor.zoom = zoom;
                 } else {
                     self.zoom = zoom;
@@ -2274,20 +2280,17 @@ impl DawUi {
 
         // The scrollbar belongs to the timeline viewport, not a window-wide panel.
         let scrollbar_rect = Rect::from_min_max(
-            Pos2::new(timeline_left, (bounds.bottom() - 15.0).max(bounds.top())),
+            Pos2::new(
+                timeline_left,
+                (bounds.bottom() - SCROLLBAR_HEIGHT).max(bounds.top()),
+            ),
             bounds.max,
         );
         #[cfg(test)]
         {
             self.scrollbar_bounds = scrollbar_rect;
         }
-        let mut scrollbar_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt("timeline_scrollbar")
-                .max_rect(scrollbar_rect),
-        );
-        scrollbar_ui.set_clip_rect(scrollbar_rect.intersect(ui.clip_rect()));
-        self.timeline_scrollbar(&mut scrollbar_ui);
+        self.timeline_scrollbar_at(ui, scrollbar_rect, "timeline_scrollbar");
 
         ui.set_max_height((scrollbar_rect.top() - bounds.top()).max(0.0));
         self.ruler(ui, &control_panel);
@@ -2609,6 +2612,11 @@ impl DawUi {
             ui.ctx().request_repaint();
         }
     }
+    fn timeline_scrollbar_at(&mut self, ui: &mut egui::Ui, bounds: Rect, id: &'static str) {
+        let mut scrollbar_ui = ui.new_child(egui::UiBuilder::new().id_salt(id).max_rect(bounds));
+        scrollbar_ui.set_clip_rect(bounds.intersect(ui.clip_rect()));
+        self.timeline_scrollbar(&mut scrollbar_ui);
+    }
     fn timeline_scrollbar(&mut self, ui: &mut egui::Ui) {
         ui.scope(|ui| {
             let width = ui.available_width();
@@ -2626,7 +2634,7 @@ impl DawUi {
                     egui::ScrollArea::horizontal()
                         .id_salt((
                             "timeline_horizontal_scroll",
-                            self.view_mode == ViewMode::Edit,
+                            self.view_mode.has_track_overview(),
                         ))
                         .max_width(width)
                         .max_height(1.0)
@@ -3393,35 +3401,35 @@ impl DawUi {
         });
     }
     fn view_zoom(&self) -> f32 {
-        if self.view_mode == ViewMode::Edit {
+        if self.view_mode.has_track_overview() {
             self.midi_editor.zoom
         } else {
             self.zoom
         }
     }
     fn set_view_zoom(&mut self, zoom: f32) {
-        if self.view_mode == ViewMode::Edit {
+        if self.view_mode.has_track_overview() {
             self.midi_editor.zoom = zoom;
         } else {
             self.zoom = zoom;
         }
     }
     fn view_scroll_minimum(&self) -> f64 {
-        if self.view_mode == ViewMode::Edit {
+        if self.view_mode.has_track_overview() {
             self.midi_editor.source_origin.min(0.0)
         } else {
             0.0
         }
     }
     fn view_scroll(&self) -> f64 {
-        if self.view_mode == ViewMode::Edit {
+        if self.view_mode.has_track_overview() {
             self.midi_editor.scroll
         } else {
             self.scroll
         }
     }
     fn set_view_scroll(&mut self, seconds: f64) {
-        if self.view_mode == ViewMode::Edit {
+        if self.view_mode.has_track_overview() {
             self.midi_editor.scroll = seconds;
         } else {
             self.scroll = seconds;
@@ -3574,7 +3582,7 @@ impl DawUi {
             && self
                 .file_target(pointer, self.timeline_bounds, true)
                 .is_some_and(|target| target.track.is_none());
-        let track_delta = if self.view_mode == ViewMode::Edit {
+        let track_delta = if self.view_mode.has_track_overview() {
             0
         } else {
             if new_tracks {
@@ -4438,6 +4446,7 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     mod clip_duplication;
+    mod effects;
     mod group_looping;
     mod group_stretch;
     mod menu_shortcuts;

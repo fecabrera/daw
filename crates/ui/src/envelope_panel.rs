@@ -2,9 +2,7 @@ use crate::{icons, knobs, midi_editor::UNIT_STRIP_WIDTH, panels, rows, theme};
 use daw_core::{CurveShape, EnvelopeSettings, EnvelopeStageSettings};
 use egui::{Rect, Sense, Ui, Vec2};
 
-pub(super) fn control_height() -> f32 {
-    3.0 * knobs::CHOICE_SIZE + 3.0 * f32::from(theme::TOOLBAR_PADDING) + icons::COMPACT_BUTTON_SIZE
-}
+use panels::unit_control_height as control_height;
 
 pub(super) fn body_height(compact: bool) -> f32 {
     if compact {

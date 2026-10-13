@@ -4,6 +4,21 @@ pub(super) const HEADER_HEIGHT: f32 = crate::toolbars::CONTROL_HEIGHT + 2.0;
 pub(super) const HEADER_FONT_SIZE: f32 = 11.0;
 pub(super) const UNIT_POWER_SIZE: f32 = 10.0;
 
+/// Three shared knob rows and a footer, before the unit frame and header.
+pub(super) fn unit_control_height() -> f32 {
+    3.0 * crate::knobs::CHOICE_SIZE
+        + 3.0 * f32::from(crate::theme::TOOLBAR_PADDING)
+        + crate::icons::COMPACT_BUTTON_SIZE
+}
+
+pub(super) fn unit_height(compact: bool) -> f32 {
+    if compact {
+        crate::ROW_HEIGHT
+    } else {
+        unit_control_height() + 2.0 * f32::from(PanelStyle::default().margin) + HEADER_HEIGHT + 2.0
+    }
+}
+
 /// Shared muted full-height separator for internally padded unit strips.
 pub(super) fn unit_divider(ui: &Ui, x: f32, range: std::ops::RangeInclusive<f32>) {
     ui.painter().vline(
@@ -13,7 +28,7 @@ pub(super) fn unit_divider(ui: &Ui, x: f32, range: std::ops::RangeInclusive<f32>
     );
 }
 
-/// Base control column shared by Tracks and Layers. Row content stays with each view.
+/// Base control column shared by Tracks, Layers, and the Effects catalog. Row content stays with each view.
 /// Paint the border last so selected rows, lanes, and scrolling cannot cover it.
 pub(super) struct ControlPanel {
     rect: Rect,
