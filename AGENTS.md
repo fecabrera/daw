@@ -77,6 +77,8 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 - Rubber Band uses R3/Finer in offline mode with linked stereo channels. Prepare buffers on a worker before applying a stretch edit. Playback, waveforms, and export must resolve the same prepared buffer. Preserve the original clip on processing failure.
 - Share mixing behavior between live playback and offline export. Preserve solo precedence, pan/balance behavior, clip/loop boundary fades, and clipping diagnostics.
 
+- Keep effect unit selection in UI state, independent of track/clip/catalog selection. Plain clicks select one unit; Shift-click toggles membership; an empty effects-lane click clears unit selection. Reuse `panels::selection_border` for selected track rows and effect units. Effect header dragging moves selected instances as a group in their existing chain order with a preview and edge scrolling; commit its ordered chain through `Edit::SetEffects` on release only. Cancel on Escape, focus loss, outside drops, or invalidated editing/chain state. Preserve saved settings and compatible DSP history; power/knob gestures and double-click collapse keep their behavior. Do not mark selection, cancellation, or same-position drops as project edits.
+
 ## Real-time and background work
 
 The audio callback must remain nonblocking and must not allocate or perform file I/O.

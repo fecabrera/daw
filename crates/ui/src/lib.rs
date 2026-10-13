@@ -26,6 +26,7 @@ mod application_menu;
 pub mod dialogs;
 mod drive_panel;
 mod effects_panel;
+mod effects_reorder;
 mod empty_state;
 mod envelope_panel;
 mod equalizer_panel;
@@ -631,6 +632,8 @@ pub struct DawUi {
     midi_editor: midi_editor::MidiEditor,
     instrument_ui: instrument_panel::InstrumentUi,
     effects_catalog_selection: Option<&'static str>,
+    effects_drag: Option<effects_reorder::EffectDrag>,
+    selected_effects: HashSet<Id>,
     #[cfg(test)]
     effects_bounds: effects_panel::EffectsUiBounds,
     #[cfg(test)]
@@ -703,6 +706,8 @@ impl Default for DawUi {
         Self {
             view_mode: mixer::ViewMode::default(),
             effects_catalog_selection: None,
+            effects_drag: None,
+            selected_effects: HashSet::new(),
             midi_editor: Default::default(),
             instrument_ui: Default::default(),
             #[cfg(test)]
@@ -896,6 +901,8 @@ impl DawUi {
                 self.session = Session::default();
                 self.midi_editor.cancel();
                 self.instrument_ui.cancel();
+                self.effects_drag = None;
+                self.selected_effects.clear();
                 self.dirty = false;
                 self.inputs.clear();
                 self.track_name_edit = None;
@@ -1136,6 +1143,8 @@ impl DawUi {
                         self.scroll = 0.0;
                         self.midi_editor.cancel();
                         self.instrument_ui.cancel();
+                        self.effects_drag = None;
+                        self.selected_effects.clear();
                     }
                     self.notices = session.warnings.clone();
                     self.session = session;
@@ -1500,6 +1509,7 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.cancel_unavailable_effect_drag(ui);
         if self.view_mode != mixer::ViewMode::Instrument
             || !self.edit_environment_available()
             || !ui.is_enabled()
@@ -1765,7 +1775,8 @@ impl DawUi {
     }
 
     pub fn file_action_enabled(&self, action: FileAction) -> bool {
-        self.drag.is_none()
+        self.effects_drag.is_none()
+            && self.drag.is_none()
             && !self.midi_editor.dragging()
             && !self.instrument_ui.dragging()
             && self.edit_environment_available()
@@ -3390,12 +3401,7 @@ impl DawUi {
             }
             for (id, rect) in outlines {
                 if self.track_selected(id) {
-                    ui.painter().rect_stroke(
-                        rect,
-                        2.0,
-                        theme::selection_outline(ui.ctx()),
-                        StrokeKind::Inside,
-                    );
+                    panels::selection_border(ui, rect);
                 }
             }
             if let Some(action) = context_action {

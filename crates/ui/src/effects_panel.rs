@@ -9,6 +9,9 @@ pub(crate) struct EffectsUiBounds {
     pub entry: Rect,
     pub drive_entry: Rect,
     pub compact: Rect,
+    pub chain: Vec<(Id, Rect)>,
+    pub lane_viewport: Rect,
+    pub lane_scroll: f32,
     pub units: Vec<crate::equalizer_panel::Bounds>,
     pub drive_units: Vec<crate::drive_panel::Bounds>,
 }
@@ -24,6 +27,9 @@ impl Default for EffectsUiBounds {
             entry: Rect::NOTHING,
             drive_entry: Rect::NOTHING,
             compact: Rect::NOTHING,
+            chain: vec![],
+            lane_viewport: Rect::NOTHING,
+            lane_scroll: 0.0,
             units: vec![],
             drive_units: vec![],
         }
@@ -33,6 +39,13 @@ impl Default for EffectsUiBounds {
 impl DawUi {
     pub(super) fn effects_view(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
+        self.selected_effects.retain(|id| {
+            self.session
+                .project
+                .tracks
+                .iter()
+                .any(|track| track.effects.iter().any(|effect| effect.id == *id))
+        });
         let selected = self
             .selected_track
             .and_then(|id| {
@@ -50,7 +63,11 @@ impl DawUi {
             .unwrap_or_default();
         // Knob focus must remain editable; text editors and other active gestures still block changes.
         let allowed = ui.is_enabled()
-            && self.file_action_enabled(FileAction::Import)
+            && self.edit_environment_available()
+            && self.drag.is_none()
+            && self.track_drag.is_none()
+            && !self.midi_editor.dragging()
+            && !self.instrument_ui.dragging()
             && ui.input(|input| input.focused)
             && !self.instrument_ui.editing_name()
             && self.track_name_edit.is_none()
@@ -93,23 +110,26 @@ impl DawUi {
                     ui.set_min_height(upper.height());
                     let header = library.header(ui, "Effects", |ui| {
                         let response = ui
-                            .add_enabled_ui(allowed && selected.is_some(), |ui| {
-                                icons::button(
-                                    ui,
-                                    if compact {
-                                        icons::Lucide::ArrowDownFromLine
-                                    } else {
-                                        icons::Lucide::ArrowUpFromLine
-                                    },
-                                    if compact {
-                                        "Expand effects"
-                                    } else {
-                                        "Collapse effects"
-                                    },
-                                    true,
-                                    theme::palette(ui.ctx()).text,
-                                )
-                            })
+                            .add_enabled_ui(
+                                allowed && self.effects_drag.is_none() && selected.is_some(),
+                                |ui| {
+                                    icons::button(
+                                        ui,
+                                        if compact {
+                                            icons::Lucide::ArrowDownFromLine
+                                        } else {
+                                            icons::Lucide::ArrowUpFromLine
+                                        },
+                                        if compact {
+                                            "Expand effects"
+                                        } else {
+                                            "Collapse effects"
+                                        },
+                                        true,
+                                        theme::palette(ui.ctx()).text,
+                                    )
+                                },
+                            )
                             .inner;
                         if response.clicked() {
                             compact = !compact;
@@ -133,17 +153,20 @@ impl DawUi {
                         ),
                     ] {
                         let response = ui
-                            .add_enabled_ui(allowed && selected.is_some(), |ui| {
-                                library
-                                    .catalog_item(
-                                        ui,
-                                        name,
-                                        self.effects_catalog_selection == Some(type_id),
-                                    )
-                                    .on_hover_text(format!(
-                                        "Double-click to add {name} to this track."
-                                    ))
-                            })
+                            .add_enabled_ui(
+                                allowed && self.effects_drag.is_none() && selected.is_some(),
+                                |ui| {
+                                    library
+                                        .catalog_item(
+                                            ui,
+                                            name,
+                                            self.effects_catalog_selection == Some(type_id),
+                                        )
+                                        .on_hover_text(format!(
+                                            "Double-click to add {name} to this track."
+                                        ))
+                                },
+                            )
                             .inner;
                         if response.clicked() {
                             self.effects_catalog_selection = Some(type_id);
@@ -265,6 +288,8 @@ impl DawUi {
         allowed: bool,
     ) {
         let mut remove = None;
+        let mut slots = Vec::with_capacity(effects.len());
+        let order: Vec<_> = effects.iter().map(|effect| effect.id).collect();
         let mut lane = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt(("effects-lane", track))
@@ -272,62 +297,137 @@ impl DawUi {
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
         lane.set_clip_rect(strip.intersect(ui.clip_rect()));
-        lane.add_enabled_ui(allowed, |ui| {
-            egui::ScrollArea::horizontal()
-                .id_salt("effect-chain")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.horizontal_top(|ui| {
-                        ui.spacing_mut().item_spacing.x = -1.0;
-                        for effect in effects.iter_mut() {
-                            ui.push_id(effect.id, |ui| match &mut effect.unit {
-                                daw_core::EffectSettings::Eq3(settings) => {
-                                    let (_bounds, header) = crate::equalizer_panel::show(
-                                        ui,
-                                        settings,
-                                        compact,
-                                        strip.height(),
+        let scrolled = lane
+            .add_enabled_ui(allowed, |ui| {
+                egui::ScrollArea::horizontal()
+                    .id_salt("effect-chain")
+                    .auto_shrink([false, false])
+                    .scroll_source(egui::scroll_area::ScrollSource {
+                        drag: egui::scroll_area::DragScroll::Never,
+                        ..Default::default()
+                    })
+                    .show(ui, |ui| {
+                        self.scroll_effect_drag(ui);
+                        ui.horizontal_top(|ui| {
+                            ui.spacing_mut().item_spacing.x = -1.0;
+                            for effect in effects.iter_mut() {
+                                let unit = ui.push_id(effect.id, |ui| {
+                                    let interactive =
+                                        self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
+                                    let (header, power) = ui
+                                        .add_enabled_ui(interactive, |ui| match &mut effect.unit {
+                                            daw_core::EffectSettings::Eq3(settings) => {
+                                                let (_bounds, header) =
+                                                    crate::equalizer_panel::show(
+                                                        ui,
+                                                        settings,
+                                                        compact,
+                                                        strip.height(),
+                                                    );
+                                                let power = _bounds.power;
+                                                #[cfg(test)]
+                                                self.effects_bounds.units.push(_bounds);
+                                                (header, power)
+                                            }
+                                            daw_core::EffectSettings::Drive(settings) => {
+                                                let (_bounds, header) = crate::drive_panel::show(
+                                                    ui,
+                                                    settings,
+                                                    compact,
+                                                    strip.height(),
+                                                );
+                                                let power = _bounds.power;
+                                                #[cfg(test)]
+                                                self.effects_bounds.drive_units.push(_bounds);
+                                                (header, power)
+                                            }
+                                            daw_core::EffectSettings::Missing {
+                                                type_id, ..
+                                            } => {
+                                                let response = ui.add(
+                                                    egui::Label::new(format!(
+                                                        "Missing effect: {type_id} (bypassed)"
+                                                    ))
+                                                    .sense(Sense::click_and_drag()),
+                                                );
+                                                (response, Rect::NOTHING)
+                                            }
+                                        })
+                                        .inner;
+                                    if allowed && interactive {
+                                        self.start_effect_drag(
+                                            ui, &header, power, track, effect.id, &order,
+                                        );
+                                        header
+                                            .on_hover_cursor(egui::CursorIcon::Grab)
+                                            .context_menu(|ui| {
+                                                if ui
+                                                    .add_enabled(
+                                                        self.effects_drag.is_none(),
+                                                        egui::Button::new("Remove effect"),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    remove = Some(effect.id);
+                                                    ui.close();
+                                                }
+                                            });
+                                    }
+                                });
+                                let rect = unit.response.rect;
+                                if allowed
+                                    && self.effects_drag.as_ref().is_none_or(|drag| !drag.active)
+                                    && ui.rect_contains_pointer(rect)
+                                    && ui.input(|input| {
+                                        input.focused
+                                            && input
+                                                .pointer
+                                                .button_clicked(egui::PointerButton::Primary)
+                                    })
+                                {
+                                    self.select_effect(
+                                        effect.id,
+                                        ui.input(|input| input.modifiers.shift),
                                     );
-                                    header.context_menu(|ui| {
-                                        if ui.button("Remove effect").clicked() {
-                                            remove = Some(effect.id);
-                                            ui.close();
-                                        }
-                                    });
-                                    #[cfg(test)]
-                                    self.effects_bounds.units.push(_bounds);
                                 }
-                                daw_core::EffectSettings::Drive(settings) => {
-                                    let (_bounds, header) = crate::drive_panel::show(
-                                        ui,
-                                        settings,
-                                        compact,
-                                        strip.height(),
-                                    );
-                                    header.context_menu(|ui| {
-                                        if ui.button("Remove effect").clicked() {
-                                            remove = Some(effect.id);
-                                            ui.close();
-                                        }
-                                    });
-                                    #[cfg(test)]
-                                    self.effects_bounds.drive_units.push(_bounds);
-                                }
-                                daw_core::EffectSettings::Missing { type_id, .. } => {
-                                    let response =
-                                        ui.label(format!("Missing effect: {type_id} (bypassed)"));
-                                    response.context_menu(|ui| {
-                                        if ui.button("Remove effect").clicked() {
-                                            remove = Some(effect.id);
-                                            ui.close();
-                                        }
-                                    });
-                                }
-                            });
+                                slots.push((effect.id, rect));
+                            }
+                        });
+                        // Paint last so adjacent units cannot cover a selected outline.
+                        for (id, rect) in &slots {
+                            if self.selected_effects.contains(id) {
+                                panels::selection_border(ui, *rect);
+                            }
                         }
-                    });
-                });
-        });
+                    })
+            })
+            .inner;
+        #[cfg(test)]
+        {
+            self.effects_bounds.chain = slots.clone();
+            self.effects_bounds.lane_viewport = scrolled.inner_rect.intersect(strip);
+            self.effects_bounds.lane_scroll = scrolled.state.offset.x;
+        }
+        if allowed
+            && self.effects_drag.is_none()
+            && lane.rect_contains_pointer(scrolled.inner_rect.intersect(strip))
+            && lane.input(|input| {
+                input.focused && input.pointer.button_clicked(egui::PointerButton::Primary)
+            })
+            && !slots
+                .iter()
+                .any(|(_, rect)| lane.rect_contains_pointer(*rect))
+        {
+            self.selected_effects.clear();
+        }
+        self.finish_effect_drag(
+            &lane,
+            effects,
+            &slots,
+            scrolled.inner_rect.intersect(strip),
+            allowed,
+        );
+
         if let Some(id) = remove {
             effects.retain(|effect| effect.id != id);
         }

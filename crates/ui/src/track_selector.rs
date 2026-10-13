@@ -4,7 +4,9 @@ use daw_core::TrackKind;
 impl DawUi {
     pub(super) fn track_control(&mut self, ui: &mut egui::Ui) {
         ui.add_enabled_ui(
-            !self.midi_editor.dragging() && !self.instrument_ui.dragging(),
+            !self.midi_editor.dragging()
+                && !self.instrument_ui.dragging()
+                && self.effects_drag.is_none(),
             |ui| {
                 let tracks: Vec<_> = self
                     .session

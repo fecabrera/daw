@@ -766,3 +766,546 @@ fn drive_catalog_is_guarded_without_selection_and_during_modal_work() {
         assert!(!app.dirty);
     }
 }
+
+fn chain_fixture(compact: bool, collapsed: bool) -> (DawUi, Id, egui::Context, Vec<Id>) {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    let mut eq = daw_core::EffectInstance::equalizer();
+    let daw_core::EffectSettings::Eq3(settings) = &mut eq.unit else {
+        unreachable!()
+    };
+    settings.collapsed = collapsed;
+    settings.enabled = false;
+    settings.bands[0].gain_db = -9.0;
+    let mut drive = daw_core::EffectInstance::drive();
+    let daw_core::EffectSettings::Drive(settings) = &mut drive.unit else {
+        unreachable!()
+    };
+    settings.collapsed = collapsed;
+    settings.color_shape = daw_core::DriveColorShape::MidHump;
+    settings.gain = 0.7;
+    app.session.project.tracks[0].effects = vec![eq, drive, daw_core::EffectInstance::equalizer()];
+    app.session.project.tracks[0].effects_compact = compact;
+    let ids = app.session.project.tracks[0]
+        .effects
+        .iter()
+        .map(|unit| unit.id)
+        .collect();
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    app.dirty = false;
+    (app, track, ctx, ids)
+}
+fn begin_effect_drag(app: &mut DawUi, ctx: &egui::Context, point: Pos2, end: Pos2) {
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
+}
+fn chain_ids(app: &DawUi) -> Vec<Id> {
+    app.session.project.tracks[0]
+        .effects
+        .iter()
+        .map(|unit| unit.id)
+        .collect()
+}
+#[test]
+fn effect_headers_preview_and_commit_order_on_release_in_all_presentation_modes() {
+    for compact in [false, true] {
+        for collapsed in [false, true] {
+            for source in [0, 2] {
+                let (mut app, track, ctx, ids) = chain_fixture(compact, collapsed);
+                let before = app.session.project.tracks[0].effects.clone();
+                let selected = app.selected_clips.clone();
+                let header = if source == 0 {
+                    app.effects_bounds.units[0].header
+                } else {
+                    app.effects_bounds.units[1].header
+                };
+                // Use the title below the cap in a collapsed strip; exclude the power control.
+                let start = header.center();
+                let chain = &app.effects_bounds.chain;
+                let end = Pos2::new(
+                    if source == 0 {
+                        chain.last().unwrap().1.right() + 10.0
+                    } else {
+                        chain[0].1.left() + 2.0
+                    },
+                    start.y,
+                );
+                begin_effect_drag(&mut app, &ctx, start, end);
+                assert_eq!(
+                    app.effects_drag
+                        .as_ref()
+                        .map(|drag| (drag.track, drag.unit)),
+                    Some((track, ids[source]))
+                );
+                assert!(!app.file_action_enabled(FileAction::Import));
+                assert!(!app.view_switch_enabled());
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { points, stroke } if points[0].x == points[1].x && *stroke == Stroke::new(2.0, theme::accent(&ctx)) && points[0].y >= app.effects_bounds.strip.top())));
+                assert_eq!(app.session.project.tracks[0].effects, before);
+                assert!(!app.dirty);
+                frame(&mut app, &ctx, vec![button(end, false)]);
+                assert!(app.effects_drag.is_none());
+                let expected = if source == 0 {
+                    vec![ids[1], ids[2], ids[0]]
+                } else {
+                    vec![ids[2], ids[0], ids[1]]
+                };
+                assert_eq!(chain_ids(&app), expected);
+                assert!(app.dirty);
+                assert_eq!(app.selected_track, Some(track));
+                assert_eq!(app.selected_clips, selected);
+                for unit in &app.session.project.tracks[0].effects {
+                    assert!(
+                        before.contains(unit),
+                        "move must preserve all settings and IDs"
+                    );
+                }
+                let restored: daw_core::Project =
+                    serde_json::from_str(&serde_json::to_string(&app.session.project).unwrap())
+                        .unwrap();
+                assert_eq!(
+                    restored.tracks[0].effects,
+                    app.session.project.tracks[0].effects
+                );
+                assert_eq!(restored.tracks[0].effects_compact, compact);
+            }
+        }
+    }
+}
+#[test]
+fn effect_reorder_cancels_and_same_position_drops_leave_the_project_clean() {
+    for mode in [
+        "escape", "focus", "outside", "same", "modal", "track", "changed",
+    ] {
+        let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        let original = app.session.project.tracks[0].effects.clone();
+        let start = app.effects_bounds.units[0].header.center();
+        let end = if mode == "same" {
+            start + Vec2::new(10.0, 0.0)
+        } else if mode == "outside" {
+            start - Vec2::new(0.0, 40.0)
+        } else {
+            Pos2::new(
+                app.effects_bounds.chain.last().unwrap().1.right() + 10.0,
+                start.y,
+            )
+        };
+        begin_effect_drag(&mut app, &ctx, start, end);
+        assert!(app.effects_drag.is_some());
+        match mode {
+            "escape" => {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            "focus" => {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        focused: false,
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1280.0, 800.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| app.show(ui),
+                );
+                output.textures_delta.clear();
+            }
+            "modal" => {
+                app.unsaved_prompt = true;
+            }
+            "track" => {
+                let other = app.session.project.add_track().unwrap();
+                app.select_track(other, false);
+            }
+            "changed" => {
+                app.session.project.tracks[0].effects.swap(1, 2);
+            }
+            _ => {}
+        }
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert!(app.effects_drag.is_none(), "{mode}");
+        if mode == "changed" {
+            assert_eq!(chain_ids(&app), [ids[0], ids[2], ids[1]]);
+        } else {
+            assert_eq!(app.session.project.tracks[0].effects, original, "{mode}");
+        }
+        assert!(!app.dirty, "{mode}");
+    }
+}
+#[test]
+fn effect_power_and_knob_drags_do_not_start_reordering_and_secondary_drags_do_not_move_units() {
+    let (mut app, _, ctx, ids) = chain_fixture(false, false);
+    for start in [
+        app.effects_bounds.units[0].power.center(),
+        app.effects_bounds.units[0].knobs[0][0].center(),
+    ] {
+        let end = start + Vec2::new(200.0, 0.0);
+        begin_effect_drag(&mut app, &ctx, start, end);
+        assert!(app.effects_drag.is_none());
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert_eq!(chain_ids(&app), ids);
+    }
+    let start = app.effects_bounds.units[0].header.center();
+    let end = start + Vec2::new(400.0, 0.0);
+    let secondary = |point, pressed| egui::Event::PointerButton {
+        pos: point,
+        button: egui::PointerButton::Secondary,
+        pressed,
+        modifiers: Default::default(),
+    };
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), secondary(start, true)],
+    );
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![secondary(end, false)]);
+    assert!(app.effects_drag.is_none());
+    assert_eq!(chain_ids(&app), ids);
+}
+#[test]
+fn effect_header_drag_scrolls_at_lane_edges_and_reaches_offscreen_units() {
+    let (mut app, _, ctx, _) = chain_fixture(false, false);
+    for _ in 0..8 {
+        app.session.project.tracks[0]
+            .effects
+            .push(daw_core::EffectInstance::equalizer());
+    }
+    frame_sized(&mut app, &ctx, vec![], Vec2::new(640.0, 800.0));
+    let start = app.effects_bounds.units[0].header.center();
+    let viewport = app.effects_bounds.lane_viewport;
+    let end = Pos2::new(viewport.right() - 3.0, start.y);
+    frame_sized(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+        Vec2::new(640.0, 800.0),
+    );
+    frame_sized(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(end)],
+        Vec2::new(640.0, 800.0),
+    );
+    assert!(app.effects_drag.is_some());
+    for _ in 0..50 {
+        frame_sized(&mut app, &ctx, vec![], Vec2::new(640.0, 800.0));
+    }
+    assert!(app.effects_bounds.lane_scroll > 0.0);
+    assert!(app.effects_bounds.chain[0].1.right() < viewport.right());
+    let moved = app.session.project.tracks[0].effects[0].id;
+    frame_sized(
+        &mut app,
+        &ctx,
+        vec![button(end, false)],
+        Vec2::new(640.0, 800.0),
+    );
+    assert_ne!(chain_ids(&app)[0], moved);
+    assert!(app.dirty);
+}
+
+fn click_effect_with_shift(app: &mut DawUi, ctx: &egui::Context, point: Pos2, shift: bool) {
+    for pressed in [true, false] {
+        let modifiers = egui::Modifiers {
+            shift,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                events: vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers,
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| app.show(ui),
+        );
+        output.textures_delta.clear();
+    }
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::ModifiersChanged(Default::default())],
+    );
+}
+#[test]
+fn effect_unit_click_selection_and_shift_toggle_share_the_track_outline_without_project_edits() {
+    for compact in [false, true] {
+        for collapsed in [false, true] {
+            for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+                let (mut app, _, ctx, ids) = chain_fixture(compact, collapsed);
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                frame(&mut app, &ctx, vec![]);
+                let before = app.session.project.clone();
+                let first = app.effects_bounds.units[0].header.center();
+                let second = app.effects_bounds.drive_units[0].header.center();
+                click_effect_with_shift(&mut app, &ctx, first, false);
+                assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+                click_effect_with_shift(&mut app, &ctx, second, true);
+                assert_eq!(app.selected_effects, HashSet::from([ids[0], ids[1]]));
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                for (id, rect) in &app.effects_bounds.chain {
+                    let outlined = shapes.iter().any(|s| {
+                        matches!(&s.shape, egui::Shape::Rect(r)
+                        if r.rect == *rect && r.stroke == theme::selection_outline(&ctx)
+                            && r.corner_radius == egui::CornerRadius::same(2))
+                    });
+                    assert_eq!(outlined, app.selected_effects.contains(id));
+                }
+                // Break the click sequence so the next Shift click does not collapse a header.
+                end_click_sequence(&mut app, &ctx);
+                click_effect_with_shift(&mut app, &ctx, second, true);
+                assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+                end_click_sequence(&mut app, &ctx);
+                click_effect_with_shift(&mut app, &ctx, second, true);
+                click_effect_with_shift(&mut app, &ctx, first, false);
+                assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+                end_click_sequence(&mut app, &ctx);
+                click_effect_with_shift(&mut app, &ctx, first, true);
+                assert!(app.selected_effects.is_empty());
+                assert_eq!(format!("{:?}", app.session.project), format!("{before:?}"));
+                assert!(!app.dirty);
+            }
+        }
+    }
+}
+#[test]
+fn effect_body_selection_keeps_child_controls_and_survives_reordering_and_view_changes() {
+    let (mut app, _, ctx, ids) = chain_fixture(false, false);
+    let rect = app.effects_bounds.chain[0].1;
+    let blank = Pos2::new(rect.left() + 6.0, rect.center().y);
+    click(&mut app, &ctx, blank);
+    assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+    let second = app.effects_bounds.drive_units[0].header.center();
+    click_effect_with_shift(&mut app, &ctx, second, true);
+    let selected = app.selected_effects.clone();
+    let start = app.effects_bounds.units[0].header.center();
+    let end = Pos2::new(
+        app.effects_bounds.chain.last().unwrap().1.right() + 10.0,
+        start.y,
+    );
+    begin_effect_drag(&mut app, &ctx, start, end);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    assert_eq!(app.selected_effects, selected);
+    assert_eq!(chain_ids(&app), [ids[2], ids[0], ids[1]]);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.selected_effects, selected);
+    // A power click still changes enable state and selects its owning unit.
+    let power = app.effects_bounds.drive_units[0].power.center();
+    click(&mut app, &ctx, power);
+    let daw_core::EffectSettings::Drive(settings) = &app.session.project.tracks[0].effects[2].unit
+    else {
+        panic!("expected moved Drive");
+    };
+    assert!(!settings.enabled);
+    assert_eq!(app.selected_effects, HashSet::from([ids[1]]));
+    app.session.project.tracks[0]
+        .effects
+        .retain(|effect| effect.id != ids[1]);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.selected_effects.is_empty());
+}
+#[test]
+fn effect_unit_selection_ignores_disabled_and_unfocused_clicks() {
+    for unfocused in [false, true] {
+        let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        app.selected_effects.insert(ids[0]);
+        let point = app.effects_bounds.drive_units[0].header.center();
+        if !unfocused {
+            app.unsaved_prompt = true;
+        }
+        let original = app.session.project.clone();
+        for pressed in [true, false] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    focused: !unfocused,
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    events: vec![egui::Event::PointerMoved(point), button(point, pressed)],
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            output.textures_delta.clear();
+        }
+        assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+        assert_eq!(
+            format!("{:?}", app.session.project),
+            format!("{original:?}")
+        );
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn dragging_selected_effects_preserves_chain_order_for_contiguous_and_separated_groups() {
+    for compact in [false, true] {
+        for collapsed in [false, true] {
+            for forward in [false, true] {
+                for separated in [false, true] {
+                    let (mut app, _, ctx, _) = chain_fixture(compact, collapsed);
+                    app.session.project.tracks[0].effects.extend([
+                        daw_core::EffectInstance::drive(),
+                        daw_core::EffectInstance::equalizer(),
+                    ]);
+                    frame(&mut app, &ctx, vec![]);
+                    let ids = chain_ids(&app);
+                    let selected = if forward {
+                        [ids[0], ids[if separated { 2 } else { 1 }]]
+                    } else {
+                        [ids[if separated { 2 } else { 3 }], ids[4]]
+                    };
+                    // Deliberately select in reverse order; chain order owns movement order.
+                    app.select_effect(selected[1], false);
+                    app.select_effect(selected[0], true);
+                    let before = app.session.project.tracks[0].effects.clone();
+                    let index = if forward { 0 } else { 4 };
+                    let rect = app.effects_bounds.chain[index].1;
+                    let start = if forward {
+                        app.effects_bounds.units[0].header.center()
+                    } else {
+                        Pos2::new(rect.center().x, rect.top() + 12.0)
+                    };
+                    let end = Pos2::new(
+                        if forward {
+                            app.effects_bounds.chain.last().unwrap().1.right() + 10.0
+                        } else {
+                            app.effects_bounds.chain[0].1.left() + 2.0
+                        },
+                        start.y,
+                    );
+                    begin_effect_drag(&mut app, &ctx, start, end);
+                    assert_eq!(app.session.project.tracks[0].effects, before);
+                    assert!(!app.dirty);
+                    frame(&mut app, &ctx, vec![button(end, false)]);
+                    let moving: Vec<_> = ids
+                        .iter()
+                        .copied()
+                        .filter(|id| selected.contains(id))
+                        .collect();
+                    let rest: Vec<_> = ids
+                        .iter()
+                        .copied()
+                        .filter(|id| !selected.contains(id))
+                        .collect();
+                    let expected: Vec<_> = if forward {
+                        rest.into_iter().chain(moving).collect()
+                    } else {
+                        moving.into_iter().chain(rest).collect()
+                    };
+                    assert_eq!(chain_ids(&app), expected);
+                    assert_eq!(app.selected_effects, HashSet::from(selected));
+                    for unit in &app.session.project.tracks[0].effects {
+                        assert!(before.contains(unit));
+                    }
+                    assert!(app.dirty);
+                }
+            }
+        }
+    }
+}
+#[test]
+fn selected_effect_group_same_position_and_cancelled_moves_leave_order_and_selection_intact() {
+    for cancel in [false, true] {
+        let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        app.selected_effects = HashSet::from([ids[0], ids[1]]);
+        let start = app.effects_bounds.units[0].header.center();
+        let end = if cancel {
+            Pos2::new(
+                app.effects_bounds.chain.last().unwrap().1.right() + 10.0,
+                start.y,
+            )
+        } else {
+            start + Vec2::new(10.0, 0.0)
+        };
+        begin_effect_drag(&mut app, &ctx, start, end);
+        if cancel {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }],
+            );
+        }
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert_eq!(chain_ids(&app), ids);
+        assert_eq!(app.selected_effects, HashSet::from([ids[0], ids[1]]));
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn empty_effects_lane_click_clears_unit_selection_without_editing_the_project() {
+    for compact in [false, true] {
+        let (mut app, _, ctx, ids) = chain_fixture(compact, false);
+        app.selected_effects = HashSet::from([ids[0], ids[1]]);
+        let before = format!("{:?}", app.session.project);
+        let strip = app.effects_bounds.strip;
+        let empty = Pos2::new(strip.right() - 20.0, strip.center().y);
+        // Clicking the catalog or timeline workspace does not clear installed-unit selection.
+        let catalog = app.effects_bounds.entry.center();
+        click(&mut app, &ctx, catalog);
+        assert_eq!(app.selected_effects.len(), 2);
+        click(&mut app, &ctx, empty);
+        assert!(app.selected_effects.is_empty());
+        assert_eq!(format!("{:?}", app.session.project), before);
+        assert!(!app.dirty);
+    }
+}
+#[test]
+fn effect_header_fast_drag_can_commit_when_motion_and_release_arrive_in_one_frame() {
+    let (mut app, _, ctx, ids) = chain_fixture(false, false);
+    let start = app.effects_bounds.units[0].header.center();
+    let end = Pos2::new(
+        app.effects_bounds.chain.last().unwrap().1.right() + 10.0,
+        start.y,
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(end), button(end, false)],
+    );
+    assert_eq!(chain_ids(&app), [ids[1], ids[2], ids[0]]);
+    assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+    assert!(app.dirty);
+}

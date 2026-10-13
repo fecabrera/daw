@@ -217,7 +217,15 @@ impl PanelStyle {
                 .inner
             })
         };
-        let header = ui.interact(header_rect, id, egui::Sense::click());
+        let header = ui.interact(
+            header_rect,
+            id,
+            if bottom_border {
+                egui::Sense::click()
+            } else {
+                egui::Sense::click_and_drag()
+            },
+        );
         let power_rect = Rect::from_min_size(
             header_rect.min + Vec2::splat(1.0),
             Vec2::splat(HEADER_HEIGHT - 2.0),
@@ -318,8 +326,14 @@ impl PanelStyle {
         UnitResponse {
             inner: result.inner,
             response: result.response,
-            header: header
-                .on_hover_text(format!("Double-click to {} {name}", action.to_lowercase())),
+            header: header.on_hover_text(if bottom_border {
+                format!("Double-click to {} {name}", action.to_lowercase())
+            } else {
+                format!(
+                    "Drag to move {name}; double-click to {}",
+                    action.to_lowercase()
+                )
+            }),
             power: power.on_hover_text(format!(
                 "{} {name}",
                 if *enabled { "Turn off" } else { "Turn on" }
@@ -375,4 +389,14 @@ fn paint_unit_title(ui: &Ui, rect: Rect, name: &str, color: Color32, vertical: b
     ui.painter()
         .with_clip_rect(rect.intersect(ui.clip_rect()))
         .add(text);
+}
+
+/// Shared selected outline for track rows and effect units.
+pub(super) fn selection_border(ui: &Ui, rect: Rect) {
+    ui.painter().rect_stroke(
+        rect,
+        2.0,
+        crate::theme::selection_outline(ui.ctx()),
+        egui::StrokeKind::Inside,
+    );
 }
