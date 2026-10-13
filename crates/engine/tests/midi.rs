@@ -816,7 +816,7 @@ fn polyphonic_playback_and_seek_mix_each_pitch_independently() {
 }
 
 #[test]
-fn layer_renaming_and_reordering_preserve_live_voices_and_offline_audio() {
+fn layer_renaming_reordering_and_unit_collapse_preserve_live_voices_and_offline_audio() {
     let mut original = plan(Waveform::Sine, 48_000);
     let instrument = original.project.tracks[0].instrument.as_mut().unwrap();
     let mut layer = daw_core::InstrumentLayerSettings {
@@ -842,6 +842,9 @@ fn layer_renaming_and_reordering_preserve_live_voices_and_offline_audio() {
     let mut edited = original.clone();
     let layers = &mut edited.project.tracks[0].instrument.as_mut().unwrap().layers;
     layers[0].name = "Renamed lead".into();
+    layers[0].oscillator_collapsed = true;
+    layers[0].envelope_collapsed = true;
+    layers[1].envelope_collapsed = true;
     layers.reverse();
     let mut replacement = Renderer::new(edited.clone());
     replacement.inherit(&mut live);

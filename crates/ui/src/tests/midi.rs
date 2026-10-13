@@ -602,7 +602,7 @@ fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
 }
 
 #[test]
-fn unit_headers_collapse_independently_without_changing_instruments_or_layer_height() {
+fn unit_headers_save_collapse_independently_without_changing_audio_settings_or_layer_height() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for accent in [
             settings::AccentColor::DeepOrange,
@@ -721,8 +721,12 @@ fn unit_headers_collapse_independently_without_changing_instruments_or_layer_hei
                 assert!(shapes.iter().any(|shape| matches!(&shape.shape,
                     egui::Shape::Rect(rect) if rect.rect == cap && rect.fill == theme::unit_header_fill(&ctx, true))));
             }
-            assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
-            assert!(!app.dirty);
+            let mut saved = before.clone();
+            saved["tracks"][0]["instrument"]["layers"][0]["oscillator_collapsed"] = true.into();
+            saved["tracks"][0]["instrument"]["layers"][0]["envelope_collapsed"] = true.into();
+            assert_eq!(serde_json::to_value(&app.session.project).unwrap(), saved);
+            assert!(app.dirty);
+            app.dirty = false;
             let disabled_point = bounds.oscillator_header.center();
             for _ in 0..2 {
                 for pressed in [true, false] {
@@ -764,7 +768,7 @@ fn unit_headers_collapse_independently_without_changing_instruments_or_layer_hei
                     .width(),
                 panels::HEADER_HEIGHT + 2.0
             );
-            // Identity-scoped presentation follows the layer when its row changes.
+            // Saved presentation follows the layer when its row changes.
             app.session.project.tracks[0]
                 .instrument
                 .as_mut()
@@ -816,9 +820,63 @@ fn unit_headers_collapse_independently_without_changing_instruments_or_layer_hei
                 .layers
                 .swap(0, 1);
             assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
-            assert!(!app.dirty);
+            assert!(app.dirty);
         }
     }
+}
+
+#[test]
+fn saved_unit_collapse_restores_in_a_fresh_ui_and_project_replacement_uses_its_own_state() {
+    let (mut app, ctx, layers) = layer_header_fixture();
+    frame(&mut app, &ctx, vec![]);
+    let expanded = app.session.project.clone();
+    let track = expanded.tracks[0].id;
+    let first = layers[0].id;
+    let second = layers[1].id;
+    let full_width = app.midi_editor.layer_bounds[&first]
+        .oscillator_panel
+        .width();
+    let header = app.midi_editor.layer_bounds[&first].oscillator_header;
+    double_click_unit_header(&mut app, &ctx, header.center());
+    let header = app.midi_editor.layer_bounds[&first].envelope_header;
+    double_click_unit_header(&mut app, &ctx, header.center());
+    assert!(app.dirty);
+    let saved = serde_json::to_vec(&app.session.project).unwrap();
+    let mut reopened = DawUi::default();
+    reopened.session.project = serde_json::from_slice(&saved).unwrap();
+    reopened.selected_track = Some(track);
+    let fresh_ctx = context();
+    reopened.set_view_mode(ViewMode::Instrument, &fresh_ctx);
+    frame(&mut reopened, &fresh_ctx, vec![]);
+    let collapsed_width = panels::HEADER_HEIGHT + 2.0;
+    let bounds = &reopened.midi_editor.layer_bounds[&first];
+    assert_eq!(bounds.oscillator_panel.width(), collapsed_width);
+    assert_eq!(bounds.envelope_panel.width(), collapsed_width);
+    assert!(bounds.oscillators.is_empty());
+    assert!(
+        bounds
+            .envelope_stages
+            .iter()
+            .all(|rect| *rect == Rect::NOTHING)
+    );
+    assert!(
+        reopened.midi_editor.layer_bounds[&second]
+            .oscillator_panel
+            .width()
+            > collapsed_width
+    );
+    assert!(
+        !reopened.dirty,
+        "loading saved presentation must not dirty the project"
+    );
+    // The same IDs in the same UI context must still obey the replacement project.
+    reopened.session.project = expanded;
+    frame(&mut reopened, &fresh_ctx, vec![]);
+    let bounds = &reopened.midi_editor.layer_bounds[&first];
+    assert_eq!(bounds.oscillator_panel.width(), full_width);
+    assert!(bounds.envelope_panel.width() > collapsed_width);
+    assert!(!bounds.oscillators.is_empty());
+    assert!(!reopened.dirty);
 }
 
 #[test]

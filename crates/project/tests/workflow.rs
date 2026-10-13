@@ -2344,6 +2344,8 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
     layers[2].muted = true;
     layers[0].envelope_enabled = false;
     layers[1].oscillator_enabled = false;
+    layers[0].oscillator_collapsed = true;
+    layers[1].envelope_collapsed = true;
     layers.swap(0, 1);
     let clip = session.project.add_midi_pattern(track, 0).unwrap();
     session
@@ -2424,6 +2426,14 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
             .unwrap()
             .warnings
             .is_empty()
+    );
+    assert_eq!(
+        Session::open(&fixture.0.join("another"))
+            .unwrap()
+            .project
+            .tracks[0]
+            .instrument,
+        save_as.project.tracks[0].instrument
     );
     let changed = save_as.with_audio_settings(44_100, 128).unwrap();
     assert_eq!(changed.project.tracks[0].clips[0].length_frames, 22_050);

@@ -91,22 +91,21 @@ impl Default for PanelStyle {
 
 impl PanelStyle {
     /// Base panel for every source, effect, and modulator; callers supply names and controls.
-    /// Collapse is temporary UI state keyed by the enclosing track/layer scope and unit name.
+    /// Callers supply project-owned enable and collapse states scoped to each unit.
     pub fn unit<R>(
         &self,
         ui: &mut Ui,
         name: &str,
         height: f32,
         enabled: &mut bool,
+        collapsed: &mut bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
         let id = ui.id().with(("unit-header", name));
-        let collapsed = ui
-            .ctx()
-            .data(|data| data.get_temp::<bool>(id).unwrap_or(false));
+        let is_collapsed = *collapsed;
         let mut header_rect = Rect::NOTHING;
         let frame = self.frame(ui.ctx(), false).inner_margin(0);
-        let result = if collapsed {
+        let result = if is_collapsed {
             frame.show(ui, |ui| {
                 let (strip, _) = ui.allocate_exact_size(
                     Vec2::new(HEADER_HEIGHT, height - 2.0),
@@ -164,7 +163,7 @@ impl PanelStyle {
         } else {
             crate::theme::palette(ui.ctx()).secondary
         };
-        if collapsed {
+        if is_collapsed {
             let body = Rect::from_min_max(
                 egui::pos2(header_rect.left(), cap.bottom()),
                 header_rect.max,
@@ -205,7 +204,7 @@ impl PanelStyle {
             },
             Stroke::new(1.0, color),
         );
-        let action = if collapsed { "Expand" } else { "Collapse" };
+        let action = if is_collapsed { "Expand" } else { "Collapse" };
         header.widget_info(|| {
             egui::WidgetInfo::labeled(
                 egui::WidgetType::Button,
@@ -220,7 +219,7 @@ impl PanelStyle {
                 .interact_pointer_pos()
                 .is_some_and(|pos| power_rect.contains(pos))
         {
-            ui.ctx().data_mut(|data| data.insert_temp(id, !collapsed));
+            *collapsed = !is_collapsed;
             ui.ctx().request_repaint();
         }
         UnitResponse {

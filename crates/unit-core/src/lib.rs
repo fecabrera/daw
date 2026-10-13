@@ -74,6 +74,9 @@ pub struct InstrumentLayerSettings {
     /// Unit enable states retain individual source switches and envelope settings.
     pub oscillator_enabled: bool,
     pub envelope_enabled: bool,
+    /// Saved unit presentation; collapse does not change audio processing.
+    pub oscillator_collapsed: bool,
+    pub envelope_collapsed: bool,
     /// Presence is separate from retained settings so removing a unit keeps its defaults reusable.
     pub has_envelope: bool,
     pub envelope: EnvelopeSettings,
@@ -90,6 +93,8 @@ impl Default for InstrumentLayerSettings {
             oscillators: Vec::new(),
             oscillator_enabled: true,
             envelope_enabled: true,
+            oscillator_collapsed: false,
+            envelope_collapsed: false,
             has_envelope: false,
             envelope: EnvelopeSettings::default(),
         }
@@ -135,6 +140,10 @@ struct SavedLayer {
     oscillator_enabled: bool,
     #[serde(default = "default_unit_enabled")]
     envelope_enabled: bool,
+    #[serde(default)]
+    oscillator_collapsed: bool,
+    #[serde(default)]
+    envelope_collapsed: bool,
     has_envelope: bool,
     envelope: EnvelopeSettings,
 }
@@ -156,6 +165,8 @@ impl SavedLayer {
             oscillators: self.oscillators,
             oscillator_enabled: self.oscillator_enabled,
             envelope_enabled: self.envelope_enabled,
+            oscillator_collapsed: self.oscillator_collapsed,
+            envelope_collapsed: self.envelope_collapsed,
             has_envelope: self.has_envelope,
             envelope: self.envelope,
         }
@@ -281,6 +292,8 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
                 oscillators,
                 oscillator_enabled: true,
                 envelope_enabled: true,
+                oscillator_collapsed: false,
+                envelope_collapsed: false,
                 has_envelope: true,
                 envelope: saved.envelope,
             }],

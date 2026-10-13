@@ -322,6 +322,7 @@ impl DawUi {
                                                     track.id,
                                                     &mut layer.oscillators,
                                                     &mut layer.oscillator_enabled,
+                                                    &mut layer.oscillator_collapsed,
                                                     height,
                                                 );
                                                 oscillator_panel = Some(rect);
@@ -369,6 +370,7 @@ impl DawUi {
                                                     "Envelope",
                                                     height,
                                                     &mut layer.envelope_enabled,
+                                                    &mut layer.envelope_collapsed,
                                                     |ui| {
                                                         crate::envelope_panel::body(
                                                             ui,
@@ -683,6 +685,7 @@ impl DawUi {
         track: Id,
         oscillators: &mut Vec<daw_core::OscillatorSettings>,
         enabled: &mut bool,
+        collapsed: &mut bool,
         height: f32,
     ) -> (Rect, Rect, Rect) {
         let panel = panels::PanelStyle::default();
@@ -704,6 +707,7 @@ impl DawUi {
             "Oscillator",
             height,
             enabled,
+            collapsed,
             |ui| {
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(0.0, theme::TOOLBAR_PADDING as f32);
