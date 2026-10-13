@@ -225,3 +225,316 @@ fn effects_ruler_seek_loop_and_zoom_use_the_overview_viewport() {
     assert!(!app.dirty);
     assert_eq!((app.zoom, app.scroll), timeline);
 }
+
+fn eq_settings(app: &DawUi) -> &daw_core::EqSettings {
+    let daw_core::EffectSettings::Eq3(settings) = &app.session.project.tracks[0].effects[0].unit
+    else {
+        panic!("expected EQ")
+    };
+    settings
+}
+
+#[test]
+fn effect_catalog_colors_follow_hover_and_selection_without_editing_the_project() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for accent in [
+            settings::AccentColor::DeepOrange,
+            settings::AccentColor::Yellow,
+        ] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    accent,
+                    ..Default::default()
+                },
+            );
+            app.select_track(track, false);
+            app.set_view_mode(ViewMode::Effects, &ctx);
+            let project = serde_json::to_string(&app.session.project).unwrap();
+            app.dirty = false;
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerGone],
+                Vec2::new(1280.0, 800.0),
+            );
+            let point = app.effects_bounds.entry.center();
+            let palette = theme::palette(&ctx);
+            let check = |shapes: &[egui::epaint::ClippedShape],
+                         entry: Rect,
+                         color: egui::Color32,
+                         selected: bool| {
+                let text = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == "3-band EQ" => Some(text),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(text.override_text_color, Some(color));
+                assert_eq!(
+                    text.pos,
+                    entry.min + Vec2::splat(f32::from(theme::TOOLBAR_PADDING))
+                );
+                assert!(
+                    text.galley
+                        .job
+                        .sections
+                        .iter()
+                        .all(|section| section.format.font_id.size == 11.0)
+                );
+                let fill = theme::toggle_colors(&ctx, true).0;
+                assert_eq!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == entry && rect.fill == fill)), selected);
+            };
+            check(&shapes, app.effects_bounds.entry, palette.secondary, false);
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point)],
+                Vec2::new(1280.0, 800.0),
+            );
+            check(&shapes, app.effects_bounds.entry, palette.text, false);
+            click(&mut app, &ctx, point);
+            let shapes = frame_shapes(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerGone],
+                Vec2::new(1280.0, 800.0),
+            );
+            check(&shapes, app.effects_bounds.entry, palette.text, true);
+            assert_eq!(app.effects_catalog_selection, Some(daw_core::EQ_TYPE_ID));
+            assert!(app.session.project.tracks[0].effects.is_empty());
+            assert_eq!(
+                serde_json::to_string(&app.session.project).unwrap(),
+                project
+            );
+            assert!(!app.dirty);
+        }
+    }
+}
+#[test]
+fn eq_catalog_adds_on_double_click_and_controls_save_independent_states() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let entry = app.effects_bounds.entry.center();
+    app.dirty = false;
+    click(&mut app, &ctx, entry);
+    assert!(app.session.project.tracks[0].effects.is_empty());
+    assert!(!app.dirty);
+    // Second click is the double-click release; only one instance is added.
+    click(&mut app, &ctx, entry);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.session.project.tracks[0].effects.len(), 1);
+    assert_eq!(eq_settings(&app).bands[0].frequency_hz, 250.0);
+    assert_eq!(eq_settings(&app).bands[2].frequency_hz, 2500.0);
+    assert!(app.dirty);
+    let unit = &app.effects_bounds.units[0];
+    assert_eq!(unit.knobs.len(), 3);
+    for index in [0, 2] {
+        assert!(unit.knobs[index].iter().all(Rect::is_positive));
+    }
+    assert!(unit.knobs[1][0].is_positive());
+    assert_eq!(&unit.knobs[1][1..], &[Rect::NOTHING; 2]);
+    assert_eq!(unit.bands[0].center().y, unit.bands[1].center().y);
+    assert_eq!(unit.bands[1].center().y, unit.bands[2].center().y);
+    let band = unit.bands[1].center();
+    let original = eq_settings(&app).bands[1];
+    click(&mut app, &ctx, band);
+    let cut = eq_settings(&app).bands[1];
+    assert!(!cut.enabled);
+    assert_eq!(cut.gain_db, original.gain_db);
+    assert_eq!(cut.frequency_hz, original.frequency_hz);
+    assert_eq!(cut.q, original.q);
+    let power = app.effects_bounds.units[0].power.center();
+    click(&mut app, &ctx, power);
+    assert!(!eq_settings(&app).enabled);
+    assert!(!eq_settings(&app).bands[1].enabled);
+    let compact = app.effects_bounds.compact.center();
+    click(&mut app, &ctx, compact);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.session.project.tracks[0].effects_compact);
+    assert_eq!(app.effects_bounds.strip.height(), ROW_HEIGHT);
+    assert_eq!(app.effects_bounds.units[0].knobs, [[Rect::NOTHING; 3]; 3]);
+    assert!(
+        app.effects_bounds.units[0]
+            .bands
+            .iter()
+            .all(Rect::is_positive)
+    );
+    let header = app.effects_bounds.units[0].header.center();
+    end_click_sequence(&mut app, &ctx);
+    click(&mut app, &ctx, header);
+    click(&mut app, &ctx, header);
+    frame(&mut app, &ctx, vec![]);
+    assert!(eq_settings(&app).collapsed);
+    assert!(app.effects_bounds.units[0].power.is_positive());
+    assert_eq!(app.effects_bounds.units[0].bands, [Rect::NOTHING; 3]);
+    let saved = serde_json::to_string(&app.session.project).unwrap();
+    let restored: daw_core::Project = serde_json::from_str(&saved).unwrap();
+    assert_eq!(
+        restored.tracks[0].effects,
+        app.session.project.tracks[0].effects
+    );
+    assert!(restored.tracks[0].effects_compact);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(eq_settings(&app).collapsed);
+    assert!(!eq_settings(&app).enabled);
+}
+#[test]
+fn eq_addition_is_guarded_without_a_track_during_disabled_editing_and_focus_loss() {
+    for mode in 0..3 {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        if mode == 0 {
+            app.selected_track = None;
+        }
+        frame(&mut app, &ctx, vec![]);
+        let entry = app.effects_bounds.entry.center();
+        if mode == 1 {
+            app.unsaved_prompt = true;
+        }
+        app.dirty = false;
+        if mode == 2 {
+            for pressed in [true, false, true, false] {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        focused: false,
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1280.0, 800.0),
+                        )),
+                        events: vec![egui::Event::PointerMoved(entry), button(entry, pressed)],
+                        ..Default::default()
+                    },
+                    |ui| app.show(ui),
+                );
+                output.textures_delta.clear();
+            }
+        } else {
+            click(&mut app, &ctx, entry);
+            click(&mut app, &ctx, entry);
+        }
+        assert!(app.session.project.tracks[0].effects.is_empty());
+        assert!(!app.dirty);
+    }
+}
+
+fn end_click_sequence(app: &mut DawUi, ctx: &egui::Context) {
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            time: Some(ctx.input(|input| input.time) + 0.6),
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+            ..Default::default()
+        },
+        |ui| app.show(ui),
+    );
+    output.textures_delta.clear();
+}
+#[test]
+fn eq_knobs_edit_saved_parameters_and_multiple_instances_have_distinct_identity() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.session.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::equalizer());
+    frame(&mut app, &ctx, vec![]);
+    for row in 0..3 {
+        let point = app.effects_bounds.units[0].knobs[0][row].center();
+        let before = eq_settings(&app).bands[0];
+        let end = point - Vec2::new(0.0, 30.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        let after = eq_settings(&app).bands[0];
+        let values = |band: daw_core::EqBandSettings| [band.gain_db, band.frequency_hz, band.q];
+        assert!(
+            values(after)[row] > values(before)[row],
+            "row={row} rect={:?} before={before:?} after={after:?}",
+            app.effects_bounds.units[0].knobs[0][row]
+        );
+        assert!(after.valid());
+    }
+    let point = app.effects_bounds.units[0].knobs[1][0].center();
+    let before = eq_settings(&app).bands[1];
+    let end = point - Vec2::new(0.0, 30.0);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    let after = eq_settings(&app).bands[1];
+    assert!(after.gain_db > before.gain_db);
+    assert_eq!(after.frequency_hz, before.frequency_hz);
+    assert_eq!(after.q, before.q);
+    end_click_sequence(&mut app, &ctx);
+    let entry = app.effects_bounds.entry.center();
+    click(&mut app, &ctx, entry);
+    click(&mut app, &ctx, entry);
+    frame(&mut app, &ctx, vec![]);
+    let effects = &app.session.project.tracks[0].effects;
+    assert_eq!(effects.len(), 2);
+    assert_ne!(effects[0].id, effects[1].id);
+    assert_eq!(app.effects_bounds.units.len(), 2);
+    let other = app.session.project.add_track().unwrap();
+    app.select_track(other, false);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.effects_bounds.units.is_empty());
+    app.select_track(track, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.effects_bounds.units.len(), 2);
+}
+
+#[test]
+fn eq_footer_pairs_match_oscillator_spacing_in_both_modes_and_share_the_status_separator() {
+    for compact in [false, true] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.session.project.tracks[0]
+            .effects
+            .push(daw_core::EffectInstance::equalizer());
+        app.session.project.tracks[0].effects_compact = compact;
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        for (index, label) in ["Low", "Mid", "High"].into_iter().enumerate() {
+            let button = app.effects_bounds.units[0].bands[index];
+            let text = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => Some(text),
+                    _ => None,
+                })
+                .unwrap();
+            let text_bounds = text.galley.rect.translate(text.pos.to_vec2());
+            assert!((text_bounds.left() - button.right() - 8.0).abs() < 0.51);
+            assert!((text_bounds.center().y - button.center().y).abs() < 0.51);
+            assert_eq!(button.size(), Vec2::splat(icons::COMPACT_BUTTON_SIZE));
+            assert_eq!(
+                text.galley.job.sections[0].format.font_id.size,
+                panels::HEADER_FONT_SIZE
+            );
+        }
+        // The unit frame reserves its border geometry but omits the bottom stroke.
+        let rack = app.effects_bounds.strip;
+        assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.stroke.width > 0.0 && rect.stroke.color != egui::Color32::TRANSPARENT && (rect.rect.bottom() - rack.bottom()).abs() < 0.1 && rect.rect.width() > 200.0)));
+    }
+}

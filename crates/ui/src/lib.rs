@@ -27,6 +27,7 @@ pub mod dialogs;
 mod effects_panel;
 mod empty_state;
 mod envelope_panel;
+mod equalizer_panel;
 mod export_dialog;
 mod export_status;
 pub mod faders;
@@ -628,6 +629,7 @@ pub struct DawUi {
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
     instrument_ui: instrument_panel::InstrumentUi,
+    effects_catalog_selection: Option<&'static str>,
     #[cfg(test)]
     effects_bounds: effects_panel::EffectsUiBounds,
     #[cfg(test)]
@@ -699,6 +701,7 @@ impl Default for DawUi {
     fn default() -> Self {
         Self {
             view_mode: mixer::ViewMode::default(),
+            effects_catalog_selection: None,
             midi_editor: Default::default(),
             instrument_ui: Default::default(),
             #[cfg(test)]

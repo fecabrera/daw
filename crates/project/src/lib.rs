@@ -150,6 +150,16 @@ impl Session {
             folder: Some(folder),
             warnings: vec![],
         };
+        for track in &session.project.tracks {
+            for effect in &track.effects {
+                if let daw_core::EffectSettings::Missing { type_id, .. } = &effect.unit {
+                    session.warnings.push(format!(
+                        "Unavailable effect {type_id} on track {}; bypassed with settings retained",
+                        track.name
+                    ));
+                }
+            }
+        }
         for asset in &session.project.assets {
             if asset.midi_pattern.is_some() {
                 continue;

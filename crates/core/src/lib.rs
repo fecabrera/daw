@@ -1,12 +1,14 @@
 mod midi;
 pub use daw_unit_core::{
-    CurveShape, EnvelopeSettings, EnvelopeStageSettings, INSTRUMENT_STATE_VERSION,
+    CurveShape, EQ_TYPE_ID, EffectInstance, EffectSettings, EnvelopeSettings,
+    EnvelopeStageSettings, EqBandSettings, EqSettings, INSTRUMENT_STATE_VERSION,
     InstrumentLayerSettings, InstrumentSettings, MAX_ENVELOPE_TIME_MS,
     OscillatorInstrumentSettings, OscillatorSettings, SILENT_GAIN_DB, Waveform,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
 mod audio_settings;
 mod boundary;
+mod effects;
 mod looping;
 mod placement;
 mod resize;
@@ -164,6 +166,10 @@ pub struct SourceMetadata {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Track {
+    #[serde(default)]
+    pub effects: Vec<EffectInstance>,
+    #[serde(default)]
+    pub effects_compact: bool,
     #[serde(default)]
     pub kind: TrackKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -479,6 +485,11 @@ impl Project {
                     "Invalid instrument or source instrument on an audio track",
                 ));
             }
+            for effect in &t.effects {
+                if effect.id.is_nil() || !ids.insert(effect.id) || !effect.unit.valid() {
+                    return Err(invalid("Invalid effect settings or duplicate effect ID"));
+                }
+            }
             let mut previous_end = 0;
             let mut clips = t.clips.iter().collect::<Vec<_>>();
             clips.sort_by_key(|c| c.start_frame);
@@ -539,6 +550,8 @@ impl Project {
     pub fn add_track(&mut self) -> Result<Id> {
         let id = Id::new_v4();
         self.tracks.push(Track {
+            effects: vec![],
+            effects_compact: false,
             kind: TrackKind::Audio,
             instrument: None,
             id,
@@ -562,6 +575,19 @@ impl Project {
 
     fn apply_edit(&mut self, command: Edit) -> Result<()> {
         match command {
+            Edit::SetEffects {
+                track_id,
+                effects,
+                compact,
+            } => {
+                let track = self
+                    .tracks
+                    .iter_mut()
+                    .find(|t| t.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?;
+                track.effects = effects;
+                track.effects_compact = compact;
+            }
             Edit::ResizeMidiPattern {
                 clip_id,
                 start_tick,
@@ -695,6 +721,9 @@ impl Project {
                 let mut copy = self.tracks[index].clone();
                 copy.id = new_track_id;
                 copy.clips.clear();
+                for effect in &mut copy.effects {
+                    effect.id = Id::new_v4();
+                }
                 self.tracks.insert(index + 1, copy);
             }
             Edit::ReorderTrack { track_id, index } => {
@@ -786,6 +815,11 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    SetEffects {
+        track_id: Id,
+        effects: Vec<EffectInstance>,
+        compact: bool,
+    },
     ResizeMidiPattern {
         clip_id: Id,
         start_tick: i64,

@@ -1165,3 +1165,53 @@ fn live_unit_toggles_ramp_without_resetting_source_or_adsr_and_do_not_allocate()
         current = replacement;
     }
 }
+
+#[test]
+fn midi_track_eq_uses_the_aggregated_instrument_bus_in_playback_and_export() {
+    for rate in SAMPLE_RATES {
+        let mut source = plan(Waveform::Sine, rate);
+        let mut dry = vec![[0.0; 2]; 4096];
+        Renderer::new(source.clone()).render_offline(&mut dry);
+        let mut effect = EffectInstance::equalizer();
+        let EffectSettings::Eq3(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        settings.bands[1].frequency_hz = 440.0;
+        settings.bands[1].gain_db = 12.0;
+        source.project.tracks[0].effects.push(effect.clone());
+        let mut wet = vec![[0.0; 2]; 4096];
+        Renderer::new(source.clone()).render_offline(&mut wet);
+        let power = |samples: &[[f32; 2]]| {
+            samples[2000..]
+                .iter()
+                .map(|sample| sample[0] * sample[0])
+                .sum::<f32>()
+        };
+        assert!(power(&wet) > power(&dry) * 4.0);
+        let mut live = Renderer::new(source.clone());
+        live.play();
+        for (frame, sample) in wet.iter().enumerate() {
+            let output = live.next_sample();
+            if frame > rate as usize / 200 {
+                for ch in 0..2 {
+                    assert!((output[ch] - sample[ch]).abs() < 1e-6);
+                }
+            }
+        }
+        let EffectSettings::Eq3(settings) = &mut source.project.tracks[0].effects[0].unit else {
+            unreachable!()
+        };
+        settings.enabled = false;
+        let mut bypass = vec![[0.0; 2]; 4096];
+        Renderer::new(source.clone()).render_offline(&mut bypass);
+        assert_eq!(bypass, dry);
+        let EffectSettings::Eq3(settings) = &mut source.project.tracks[0].effects[0].unit else {
+            unreachable!()
+        };
+        settings.enabled = true;
+        settings.bands[1].enabled = false;
+        let mut cut = vec![[0.0; 2]; 4096];
+        Renderer::new(source).render_offline(&mut cut);
+        assert!(power(&cut) < power(&dry) * 0.5);
+    }
+}

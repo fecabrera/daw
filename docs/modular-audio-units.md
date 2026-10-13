@@ -27,7 +27,7 @@ Users build MIDI instruments in Instrument and will configure track effect chain
 | --- | --- | --- |
 | D01 | Units must be modular so users can build synths and effect chains. | Avoid monolithic instruments or effects that cannot expose reusable components. |
 | D02 | Add the Units view for audio sources and processing. | Users can add oscillators, effects, and other units through this view. Its layout remains open. |
-| D03 | Audio tracks accept effects only. MIDI tracks accept sources and effects. | Track capabilities must constrain unit placement. Basic MIDI tracks and oscillator instruments are implemented; effect chains remain pending. |
+| D03 | Audio tracks accept effects only. MIDI tracks accept sources and effects. | Track capabilities must constrain unit placement. Basic MIDI tracks and oscillator instruments are implemented; serial track EQ chains are implemented; Master/lane effects remain pending. |
 | D04 | All units share a base core and can ship independently. | Separate common contracts from individual implementations and DAW integration. Distribution targets are defined in D10. |
 | D05 | Add a beat pattern editor in the Editor view with lanes and step toggles for easy beat creation. | Keep step editing distinct from unit/source/effect configuration. |
 | D06 | Support three track types: audio, MIDI, and beat. | Keep track identity separate from editor view mode. |
@@ -341,3 +341,7 @@ Verify that audio, MIDI, and beat clips open their respective editors in Editor,
 Keep D01–D28 as confirmed requirements and accepted choices. Add accepted design choices with a decision date and rationale. Until accepted, retain proposals and open questions with their current status. Record implementation and validation separately; a library's advertised behavior does not establish integration performance.
 
 Related documents: [beat pattern editor design](beat-editor.md), [repository guidelines](../AGENTS.md), [scope and roadmap](MVP.md), [current implementation specification](../specs/mvp-iteration-1.md), and [validation history](validation.md).
+
+## First track effect — D35, 2026-10-13
+
+The [3-band EQ](equalizer.md) implements the first serial track effect on audio and MIDI tracks. The catalog name adds one instance on double-click. Low/High use shelves and Mid uses a middle shelf with Gain and on/off only. Low off applies a high-pass cut; High off applies a low-pass cut. Mid off cuts between the Low/High frequency values, with Low/High Q controlling the corresponding slopes. Mid has no independent Frequency/Q controls. This supersedes the earlier bell and Mid-Q design. All bands off produces exact silence after the transition. Whole-unit off bypasses the EQ. The user sets the defaults to Low 250 Hz and High 2.5 kHz. Reuse shared unit controls, saved presentation states, and oscillator footer pairs. The status panel supplies the only thin bottom separator. The linked specification defines ranges, state ownership, processing order, smoothing, and current limits. D34 remains the historical workspace preparation; its empty catalog/lane are now populated by this effect.

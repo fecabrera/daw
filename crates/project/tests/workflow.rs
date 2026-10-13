@@ -2601,3 +2601,70 @@ fn silent_oscillator_survives_save_reopen_playback_and_float_export() {
         assets
     );
 }
+
+#[test]
+fn eq_save_reopen_save_as_rate_change_and_float_export_use_the_same_settings_and_audio() {
+    use daw_core::{EffectInstance, EffectSettings};
+    use daw_media::{ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let source = fixture.wav("eq-source.wav", 48000, 2, 32, true);
+    let bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let mut eq = EffectInstance::equalizer();
+    let EffectSettings::Eq3(settings) = &mut eq.unit else {
+        unreachable!()
+    };
+    settings.collapsed = true;
+    settings.bands[1].frequency_hz = 440.0;
+    settings.bands[1].gain_db = 12.0;
+    settings.bands[0].enabled = false;
+    session
+        .project
+        .edit(Edit::SetEffects {
+            track_id: session.project.tracks[0].id,
+            effects: vec![eq.clone()],
+            compact: true,
+        })
+        .unwrap();
+    let first = fixture.0.join("eq-first");
+    session.save(&first).unwrap();
+    let mut loaded = Session::open(&first).unwrap();
+    assert_eq!(loaded.project.tracks[0].effects, vec![eq.clone()]);
+    assert!(loaded.project.tracks[0].effects_compact);
+    let second = fixture.0.join("eq-second");
+    loaded.save(&second).unwrap();
+    let loaded = Session::open(&second).unwrap();
+    assert_eq!(loaded.project.tracks[0].effects, vec![eq.clone()]);
+    let changed = loaded.with_audio_settings(96000, 128).unwrap();
+    assert_eq!(changed.project.tracks[0].effects, vec![eq]);
+    assert!(changed.project.tracks[0].effects_compact);
+    let output = fixture.0.join("equalized.wav");
+    loaded
+        .export_with_settings(
+            &output,
+            false,
+            ExportSettings {
+                wav_codec: WavCodec::Float32,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let exported: Vec<f32> = hound::WavReader::open(output)
+        .unwrap()
+        .samples::<f32>()
+        .map(Result::unwrap)
+        .collect();
+    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
+    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
+    assert_eq!(
+        exported,
+        rendered.iter().flatten().copied().collect::<Vec<_>>()
+    );
+    let mut dry = loaded.clone();
+    dry.project.tracks[0].effects.clear();
+    let mut dry_audio = vec![[0.0; 2]; rendered.len()];
+    daw_engine::Renderer::new(dry.plan()).render_offline(&mut dry_audio);
+    assert!(rendered[1000][0].abs() > dry_audio[1000][0].abs() * 2.0);
+    assert_eq!(fs::read(source).unwrap(), bytes);
+}

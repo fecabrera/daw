@@ -1,3 +1,4 @@
+mod effects;
 mod midi;
 use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
 use daw_media::AudioData;
@@ -17,6 +18,16 @@ impl RenderPlan {
         }
     }
     pub fn sample_at(&self, frame: u64) -> [f32; 2] {
+        if self
+            .project
+            .tracks
+            .iter()
+            .any(|track| !track.effects.is_empty())
+        {
+            let mut output = [[0.0; 2]];
+            self.render(frame, &mut output);
+            return output[0];
+        }
         let mut mix = [0.0; 2];
         for t in &self.project.tracks {
             if !self.project.audible(t) {
@@ -47,11 +58,57 @@ impl RenderPlan {
         [mix[0] * gain, mix[1] * gain]
     }
     pub fn render(&self, start: u64, out: &mut [[f32; 2]]) {
+        if self
+            .project
+            .tracks
+            .iter()
+            .any(|track| !track.effects.is_empty())
+        {
+            let mut renderer = Renderer::new(self.clone());
+            renderer.playhead = 0;
+            let mut scratch = [[0.0; 2]; 512];
+            while renderer.playhead < start {
+                let frames = (start - renderer.playhead).min(scratch.len() as u64) as usize;
+                renderer.render_offline(&mut scratch[..frames]);
+            }
+            renderer.render_offline(out);
+            return;
+        }
         for (i, s) in out.iter_mut().enumerate() {
             *s = self.sample_at(start + i as u64);
         }
     }
 }
+/// Clip bus before track effects and mixing controls. Missing ranges feed zeros into effects.
+fn audio_source(
+    plan: &RenderPlan,
+    track: &daw_core::Track,
+    frame: u64,
+) -> ([f32; 2], Option<bool>) {
+    let Some(clip) = track
+        .clips
+        .iter()
+        .find(|clip| frame >= clip.start_frame && frame < clip.end())
+    else {
+        return ([0.0; 2], None);
+    };
+    let Some(audio) = plan.audio_for_clip(clip) else {
+        return ([0.0; 2], None);
+    };
+    let local = frame - clip.start_frame;
+    let source_frame = clip.source_frame(local);
+    let fade = sample_fade(clip, local, source_frame, plan.project.sample_rate_hz);
+    (
+        audio
+            .samples
+            .get(source_frame as usize)
+            .copied()
+            .unwrap_or_default()
+            .map(|value| value * fade),
+        Some(audio.metadata.channels == 1),
+    )
+}
+
 fn sample_fade(clip: &daw_core::Clip, local: u64, source_frame: u64, sample_rate_hz: u32) -> f32 {
     let outer = clip_fade_at_rate(local, clip.length_frames, sample_rate_hz);
     clip.repeat.map_or(outer, |repeat| {
@@ -92,6 +149,7 @@ pub struct Renderer {
     playback_start: Option<u64>,
     pub ramp: f32,
     gains: Vec<TrackGains>,
+    effects: Vec<effects::TrackEffects>,
     midi: Vec<Option<midi::MidiTrackRuntime>>,
     master: f32,
     master_target: f32,
@@ -137,6 +195,18 @@ impl Renderer {
                 }
             })
             .collect();
+        let effects = plan
+            .project
+            .tracks
+            .iter()
+            .map(|track| {
+                effects::TrackEffects::new(
+                    track,
+                    plan.project.sample_rate_hz,
+                    plan.project.buffer_size_frames,
+                )
+            })
+            .collect();
         let master = linear_gain(plan.project.master.gain_db);
         let playhead = plan.project.transport.playhead_frame;
         let midi: Vec<_> = plan
@@ -152,6 +222,13 @@ impl Renderer {
         plan.project.sample_rate_hz.hash(&mut hash);
         for (track, runtime) in plan.project.tracks.iter().zip(&midi) {
             track.id.hash(&mut hash);
+            for effect in &track.effects {
+                effect.id.hash(&mut hash);
+                match &effect.unit {
+                    daw_core::EffectSettings::Eq3(_) => daw_unit_core::EQ_TYPE_ID.hash(&mut hash),
+                    daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
+                }
+            }
             if let Some(runtime) = runtime {
                 Some(runtime.fingerprint()).hash(&mut hash);
             } else {
@@ -169,6 +246,7 @@ impl Renderer {
         let source_fingerprint = hash.finish();
         Self {
             midi,
+            effects,
             plan,
             playhead,
             playing: false,
@@ -221,6 +299,11 @@ impl Renderer {
                 std::mem::swap(runtime, &mut old.midi[previous]);
             }
         }
+        if self.plan.project.sample_rate_hz == old.plan.project.sample_rate_hz {
+            for (effects, track) in self.effects.iter_mut().zip(&self.plan.project.tracks) {
+                effects.inherit(&mut old.effects, track);
+            }
+        }
         for g in &mut self.gains {
             if let Some(o) = old.gains.iter().find(|o| o.id == g.id) {
                 g.value = o.value;
@@ -231,6 +314,9 @@ impl Renderer {
         }
     }
     pub fn seek(&mut self, frame: u64) {
+        for effects in &mut self.effects {
+            effects.reset();
+        }
         for runtime in self.midi.iter_mut().flatten() {
             runtime.reset();
         }
@@ -254,6 +340,9 @@ impl Renderer {
         self.playing = false;
     }
     pub fn stop(&mut self) {
+        for effects in &mut self.effects {
+            effects.reset();
+        }
         for runtime in self.midi.iter_mut().flatten() {
             runtime.reset();
         }
@@ -266,20 +355,29 @@ impl Renderer {
     pub fn render_offline(&mut self, out: &mut [[f32; 2]]) {
         for sample in out {
             let mut mix = [0.0; 2];
-            for (track, midi) in self.plan.project.tracks.iter().zip(&mut self.midi) {
-                if let Some(runtime) = midi {
-                    let source = runtime.sample(self.playhead);
-                    if self.plan.project.audible(track) {
-                        let pan = pan_coefficients(track.pan, true);
-                        for ch in 0..2 {
-                            mix[ch] += source[ch] * linear_gain(track.gain_db) * pan[ch];
-                        }
+            for ((track, midi), effects) in self
+                .plan
+                .project
+                .tracks
+                .iter()
+                .zip(&mut self.midi)
+                .zip(&mut self.effects)
+            {
+                let (source, mono) = if let Some(runtime) = midi {
+                    (runtime.sample(self.playhead), Some(true))
+                } else {
+                    audio_source(&self.plan, track, self.playhead)
+                };
+                let (source, mono) = effects.sample(source, mono);
+                if self.plan.project.audible(track) {
+                    let pan = pan_coefficients(track.pan, mono);
+                    for ch in 0..2 {
+                        mix[ch] += source[ch] * linear_gain(track.gain_db) * pan[ch];
                     }
                 }
             }
-            let audio = self.plan.sample_at(self.playhead);
             let gain = linear_gain(self.plan.project.master.gain_db);
-            *sample = [audio[0] + mix[0] * gain, audio[1] + mix[1] * gain];
+            *sample = mix.map(|value| value * gain);
             self.playhead += 1;
         }
     }
@@ -318,13 +416,14 @@ impl Renderer {
             if self.playing && !l.enabled && self.playhead >= self.plan.project.end() {
                 self.playing = false;
             }
-            for ((t, g), midi) in self
+            for (((track, g), midi), effects) in self
                 .plan
                 .project
                 .tracks
                 .iter()
                 .zip(&mut self.gains)
                 .zip(&mut self.midi)
+                .zip(&mut self.effects)
             {
                 if g.remaining > 0 {
                     for ch in 0..4 {
@@ -332,41 +431,24 @@ impl Renderer {
                     }
                     g.remaining -= 1;
                 }
-                if let Some(runtime) = midi {
-                    {
-                        let source = if self.playing {
+                let (source, mono) = if let Some(runtime) = midi {
+                    (
+                        if self.playing {
                             runtime.sample(self.playhead)
                         } else {
                             runtime.held_sample()
-                        };
-                        for (ch, value) in mix.iter_mut().enumerate() {
-                            let sample = source[ch] * g.value[ch];
-                            *value += sample;
-                            g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
-                        }
-                    }
-                    continue;
-                }
-                if let Some(c) = t
-                    .clips
-                    .iter()
-                    .find(|c| self.playhead >= c.start_frame && self.playhead < c.end())
-                {
-                    let Some(audio) = self.plan.audio_for_clip(c) else {
-                        continue;
-                    };
-                    let local = self.playhead - c.start_frame;
-                    let source_frame = c.source_frame(local);
-                    if let Some(s) = audio.samples.get(source_frame as usize) {
-                        let base = if audio.metadata.channels == 1 { 0 } else { 2 };
-                        let fade =
-                            sample_fade(c, local, source_frame, self.plan.project.sample_rate_hz);
-                        for ch in 0..2 {
-                            let sample = s[ch] * g.value[base + ch] * fade;
-                            mix[ch] += sample;
-                            g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
-                        }
-                    }
+                        },
+                        Some(true),
+                    )
+                } else {
+                    audio_source(&self.plan, track, self.playhead)
+                };
+                let (source, mono) = effects.sample(source, mono);
+                let base = if mono { 0 } else { 2 };
+                for ch in 0..2 {
+                    let sample = source[ch] * g.value[base + ch];
+                    mix[ch] += sample;
+                    g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
                 }
             }
             if self.playing {

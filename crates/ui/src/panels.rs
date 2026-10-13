@@ -68,6 +68,42 @@ impl ControlPanel {
         .inner
     }
 
+    /// Catalog entries share padding, small text, and the view controls' selected fill.
+    pub(super) fn catalog_item(&self, ui: &mut Ui, name: &str, selected: bool) -> Response {
+        let padding = f32::from(crate::theme::TOOLBAR_PADDING);
+        let palette = crate::theme::palette(ui.ctx());
+        let galley = ui.painter().layout_no_wrap(
+            name.into(),
+            egui::TextStyle::Small.resolve(ui.style()),
+            palette.text,
+        );
+        let (rect, response) = ui.allocate_exact_size(
+            Vec2::new(self.rect.width() - 1.0, galley.size().y + 2.0 * padding),
+            egui::Sense::click(),
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, name)
+        });
+        let color = if selected || response.hovered() || response.has_focus() {
+            palette.text
+        } else {
+            palette.secondary
+        };
+        if selected {
+            ui.painter().rect_filled(
+                rect,
+                ui.visuals().widgets.inactive.corner_radius,
+                crate::theme::toggle_colors(ui.ctx(), true).0,
+            );
+        }
+        ui.painter().galley_with_override_text_color(
+            rect.min + Vec2::splat(padding),
+            galley,
+            color,
+        );
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    }
+
     /// One row boundary can span both the control column and its workspace lane.
     pub(super) fn row_dividers(ui: &Ui, row: Rect, top: bool, bottom: bool) {
         let stroke = Stroke::new(1.0, crate::theme::palette(ui.ctx()).border);
@@ -116,11 +152,41 @@ impl PanelStyle {
         collapsed: &mut bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
+        self.unit_shell(ui, title, height, (enabled, collapsed), true, content)
+    }
+
+    /// Units pinned above a lane separator share that separator instead of adding a bottom edge.
+    pub fn unit_in_lane<R>(
+        &self,
+        ui: &mut Ui,
+        title: (&str, bool),
+        height: f32,
+        enabled: &mut bool,
+        collapsed: &mut bool,
+        content: impl FnOnce(&mut Ui) -> R,
+    ) -> UnitResponse<R> {
+        self.unit_shell(ui, title, height, (enabled, collapsed), false, content)
+    }
+
+    fn unit_shell<R>(
+        &self,
+        ui: &mut Ui,
+        title: (&str, bool),
+        height: f32,
+        states: (&mut bool, &mut bool),
+        bottom_border: bool,
+        content: impl FnOnce(&mut Ui) -> R,
+    ) -> UnitResponse<R> {
+        let (enabled, collapsed) = states;
         let (name, compact_title) = title;
         let id = ui.id().with(("unit-header", name));
         let is_collapsed = *collapsed;
         let mut header_rect = Rect::NOTHING;
-        let frame = self.frame(ui.ctx(), false).inner_margin(0);
+        let mut frame = self.frame(ui.ctx(), false).inner_margin(0);
+        let outline = frame.stroke;
+        if !bottom_border {
+            frame.stroke.color = Color32::TRANSPARENT;
+        }
         let result = if is_collapsed {
             frame.show(ui, |ui| {
                 let (strip, _) = ui.allocate_exact_size(
@@ -242,6 +308,12 @@ impl PanelStyle {
         {
             *collapsed = !is_collapsed;
             ui.ctx().request_repaint();
+        }
+        if !bottom_border {
+            let rect = result.response.rect.shrink(0.5);
+            ui.painter().hline(rect.x_range(), rect.top(), outline);
+            ui.painter().vline(rect.left(), rect.y_range(), outline);
+            ui.painter().vline(rect.right(), rect.y_range(), outline);
         }
         UnitResponse {
             inner: result.inner,

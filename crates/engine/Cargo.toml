@@ -10,3 +10,7 @@ daw-oscillator.workspace = true
 daw-envelope.workspace = true
 daw-core.workspace = true
 daw-media.workspace = true
+daw-equalizer.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

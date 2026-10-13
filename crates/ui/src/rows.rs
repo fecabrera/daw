@@ -57,3 +57,27 @@ pub fn wrapped<R>(
         content,
     )
 }
+
+/// Standard centered unit-footer pair: 18-point Power, 8-point gap, 11-point label.
+/// The caller supplies state and handles the returned release action.
+pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Response {
+    let palette = crate::theme::palette(ui.ctx());
+    let label = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        egui::FontId::proportional(crate::panels::HEADER_FONT_SIZE),
+        if on { palette.text } else { palette.secondary },
+    );
+    let gap = f32::from(crate::theme::TOOLBAR_PADDING);
+    let pair_width = crate::icons::COMPACT_BUTTON_SIZE + gap + label.size().x;
+    ui.spacing_mut().item_spacing.x = gap;
+    ui.add_space(((ui.available_width() - pair_width) * 0.5).max(0.0).round());
+    let response = crate::icons::circular_button(
+        ui,
+        crate::icons::Lucide::Power,
+        name,
+        Some(on),
+        crate::icons::COMPACT_BUTTON_SIZE,
+    );
+    ui.add(egui::Label::new(label).selectable(false));
+    response
+}

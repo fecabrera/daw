@@ -794,46 +794,14 @@ impl DawUi {
                                                         },
                                                         |ui| {
                                                             let on = !oscillator.muted;
-                                                            let palette = theme::palette(ui.ctx());
-                                                            let label =
-                                                                ui.painter().layout_no_wrap(
-                                                                    format!("Osc {}", index + 1),
-                                                                    egui::FontId::proportional(
-                                                                        panels::HEADER_FONT_SIZE,
-                                                                    ),
-                                                                    if on {
-                                                                        palette.text
-                                                                    } else {
-                                                                        palette.secondary
-                                                                    },
-                                                                );
-                                                            let gap =
-                                                                f32::from(theme::TOOLBAR_PADDING);
-                                                            let pair_width =
-                                                                icons::COMPACT_BUTTON_SIZE
-                                                                    + gap
-                                                                    + label.size().x;
-                                                            ui.spacing_mut().item_spacing.x = gap;
-                                                            ui.add_space(
-                                                                ((ui.available_width()
-                                                                    - pair_width)
-                                                                    * 0.5)
-                                                                    .max(0.0)
-                                                                    .round(),
-                                                            );
-                                                            let response = icons::circular_button(
+                                                            let response = rows::power_label(
                                                                 ui,
-                                                                icons::Lucide::Power,
+                                                                &format!("Osc {}", index + 1),
                                                                 &format!(
                                                                     "Toggle oscillator {}",
                                                                     index + 1
                                                                 ),
-                                                                Some(on),
-                                                                icons::COMPACT_BUTTON_SIZE,
-                                                            );
-                                                            ui.add(
-                                                                egui::Label::new(label)
-                                                                    .selectable(false),
+                                                                on,
                                                             );
                                                             if response.clicked() {
                                                                 oscillator.muted =

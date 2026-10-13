@@ -1038,9 +1038,11 @@ version = "0.1.0"
 dependencies = [
  "daw-core",
  "daw-envelope",
+ "daw-equalizer",
  "daw-media",
  "daw-oscillator",
  "daw-unit-core",
+ "serde_json",
 ]
 
 [[package]]
@@ -1048,6 +1050,14 @@ name = "daw-envelope"
 version = "0.1.0"
 dependencies = [
  "daw-unit-core",
+]
+
+[[package]]
+name = "daw-equalizer"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
+ "fundsp",
 ]
 
 [[package]]
@@ -1119,6 +1129,7 @@ name = "daw-unit-core"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "uuid",
 ]
 

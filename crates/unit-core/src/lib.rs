@@ -1,5 +1,9 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
 use serde::{Deserialize, Serialize};
+mod effects;
+pub use effects::{
+    EQ_STATE_VERSION, EQ_TYPE_ID, EffectInstance, EffectSettings, EqBandSettings, EqSettings,
+};
 mod envelope;
 pub use envelope::{CurveShape, EnvelopeSettings, EnvelopeStageSettings, MAX_ENVELOPE_TIME_MS};
 
@@ -336,6 +340,13 @@ pub trait SourceUnit: Send {
     fn reset(&mut self);
     fn set_frequency(&mut self, hz: f32);
     fn next_sample(&mut self) -> f32;
+}
+
+/// A prepared stereo effect. All callback methods must be allocation-free and nonblocking.
+pub trait EffectUnit: Send {
+    fn descriptor(&self) -> UnitDescriptor;
+    fn reset(&mut self);
+    fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2];
 }
 
 #[cfg(test)]
