@@ -53,6 +53,157 @@ fn fixture() -> (DawUi, Id, Id, Id) {
     app.select_clip(clip, track, false);
     (app, track, clip, note)
 }
+#[test]
+fn editor_and_timeline_share_clip_painting_and_group_selection() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for override_color in [
+            None,
+            Some(daw_core::RgbColor {
+                r: 40,
+                g: 180,
+                b: 220,
+            }),
+        ] {
+            let (mut app, track, clip_id, _) = fixture();
+            let clip = &mut app.session.project.tracks[0].clips[0];
+            clip.color = override_color;
+            clip.repeat = Some(daw_core::ClipLoop {
+                length_frames: 48_000,
+                phase_frame: 0,
+            });
+            let clip = clip.clone();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            // Include selection membership without a primary clip, as with a group toggle.
+            for selection in 0..3 {
+                let mut appearances = Vec::new();
+                for view in [ViewMode::Timeline, ViewMode::Edit] {
+                    app.set_view_mode(view, &ctx);
+                    app.selected_track = Some(track);
+                    app.selected_clip = (selection == 1).then_some(clip_id);
+                    app.selected_clips.clear();
+                    if selection == 2 {
+                        app.selected_clips.insert(clip_id);
+                    }
+                    app.zoom = 240.0;
+                    app.midi_editor.zoom = 240.0;
+                    frame(&mut app, &ctx, vec![]);
+                    app.scroll = 0.25;
+                    app.midi_editor.scroll = 0.25;
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    let lane = app.lane_bounds[&track];
+                    let block = if view == ViewMode::Edit {
+                        app.midi_editor.clip_bounds[&clip_id]
+                    } else {
+                        app.clip_block(lane, &clip, clip.start_frame)
+                    };
+                    assert!(block.left() < lane.left(), "exercise viewport clipping");
+                    let colors =
+                        theme::clip_colors(app.session.project.tracks[0].color, override_color);
+                    let shell = shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect) if rect.rect == block => Some(rect),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    let body = shell.iter().find(|rect| rect.fill == colors.body).unwrap();
+                    let outline = shell.iter().find(|rect| rect.stroke.width > 0.0).unwrap();
+                    let expected_stroke = if selection == 0 {
+                        Stroke::new(1.0, theme::palette(&ctx).divider)
+                    } else {
+                        theme::selection_outline(&ctx)
+                    };
+                    assert_eq!(outline.stroke, expected_stroke);
+                    assert_eq!(outline.corner_radius, egui::CornerRadius::same(2));
+                    let header = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect)
+                                if rect.fill == colors.header && rect.rect.min == block.min =>
+                            {
+                                Some(rect)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert_eq!(header.rect.height(), 22.0);
+                    let title = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text)
+                                if text.galley.text() == clip.name
+                                    && text.pos.y >= block.top()
+                                    && text.pos.y < header.rect.bottom() =>
+                            {
+                                Some(text)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert_eq!(title.pos.x - block.left(), 7.0);
+                    assert_eq!(title.fallback_color, colors.text);
+                    let notes = shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect)
+                                if rect.fill == colors.waveform
+                                    && rect.rect.top() >= header.rect.bottom()
+                                    && rect.rect.bottom() <= block.bottom() =>
+                            {
+                                Some((
+                                    (rect.rect.left() - block.left()).round() as i32,
+                                    rect.rect.width().round() as i32,
+                                    ((block.bottom() - rect.rect.top()) / (block.height() - 22.0)
+                                        * 1000.0)
+                                        .round() as i32,
+                                    rect.rect.height().round() as i32,
+                                ))
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    assert_eq!(notes.len(), 2, "both repeated note previews remain visible");
+                    let repeats = shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::LineSegment { points, stroke }
+                                if stroke.color == colors.text.gamma_multiply(0.25)
+                                    && points[0].y == block.top()
+                                    && points[1].y == block.bottom() =>
+                            {
+                                Some((points[0].x - block.left()).round() as i32)
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    assert_eq!(repeats, vec![240]);
+                    appearances.push((
+                        body.fill,
+                        body.corner_radius,
+                        header.fill,
+                        header.corner_radius,
+                        outline.stroke,
+                        title.fallback_color,
+                        title.galley.job.sections[0].format.font_id.clone(),
+                        title.pos.y - block.top(),
+                        notes,
+                        repeats,
+                    ));
+                }
+                assert_eq!(appearances[0], appearances[1]);
+                assert!(!app.dirty);
+            }
+        }
+    }
+}
+
 fn pattern(app: &DawUi) -> &MidiPattern {
     let asset = app.session.project.tracks[0].clips[0].asset_id;
     app.session
