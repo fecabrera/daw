@@ -2396,16 +2396,10 @@ impl DawUi {
             ui.set_min_width(TRACK_WIDTH - 14.0);
             ui.set_min_height(MASTER_HEIGHT - 14.0);
             ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-            let clipped = self
+            let levels = self
                 .output
                 .as_ref()
-                .is_some_and(|output| output.status.clipped.load(Ordering::Relaxed));
-            let levels = std::array::from_fn(|ch| {
-                let peak = self.output.as_ref().map_or(0.0, |output| {
-                    f32::from_bits(output.status.peaks[ch].load(Ordering::Relaxed))
-                });
-                (peak, clipped)
-            });
+                .map_or([(0.0, false); 2], |output| output.status.meter.levels());
             let cleared = meters::stereo_panel(ui, MASTER_HEIGHT - 14.0, levels, |ui| {
                 ui.add_sized(
                     [ui.available_width(), 22.0],
@@ -2445,11 +2439,11 @@ impl DawUi {
                     }
                 });
             });
-            if cleared.into_iter().any(|clicked| clicked)
-                && let Some(output) = &self.output
-            {
-                output.status.clipped.store(false, Ordering::Relaxed);
-            }
+            meters::reset_on_click(
+                ui,
+                self.output.as_ref().map(|output| &output.status.meter),
+                cleared,
+            );
         });
         // The status panel supplies the shared bottom divider.
         let rect = panel.response.rect.shrink(0.5);
@@ -3238,18 +3232,11 @@ impl DawUi {
                                 ui.set_min_width(TRACK_WIDTH - 14.0);
                                 ui.set_min_height(ROW_HEIGHT - 14.0);
                                 ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                                let levels = std::array::from_fn(|ch| {
-                                    let meter = self
-                                        .output
-                                        .as_ref()
-                                        .and_then(|output| output.track_meter(track.id));
-                                    let peak = meter.map_or(0.0, |m| {
-                                        f32::from_bits(m.peaks[ch].load(Ordering::Relaxed))
-                                    });
-                                    let clipped = meter
-                                        .is_some_and(|m| m.clipped[ch].load(Ordering::Relaxed));
-                                    (peak, clipped)
-                                });
+                                let levels = self
+                                    .output
+                                    .as_ref()
+                                    .and_then(|output| output.track_meter(track.id))
+                                    .map_or([(0.0, false); 2], |meter| meter.levels());
                                 let cleared =
                                     meters::stereo_panel(ui, ROW_HEIGHT - 14.0, levels, |ui| {
                                         let mut mute = track.muted;
@@ -3341,17 +3328,13 @@ impl DawUi {
                                             self.changed();
                                         }
                                     });
-                                if let Some(meter) = self
-                                    .output
-                                    .as_ref()
-                                    .and_then(|output| output.track_meter(track.id))
-                                {
-                                    for (ch, clicked) in cleared.into_iter().enumerate() {
-                                        if clicked {
-                                            meter.clipped[ch].store(false, Ordering::Relaxed);
-                                        }
-                                    }
-                                }
+                                meters::reset_on_click(
+                                    ui,
+                                    self.output
+                                        .as_ref()
+                                        .and_then(|output| output.track_meter(track.id)),
+                                    cleared,
+                                );
                             });
                         },
                     );

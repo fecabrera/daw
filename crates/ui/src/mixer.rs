@@ -360,23 +360,15 @@ impl DawUi {
                 knobs::SIZE + toolbars::CONTROL_HEIGHT + CONTROL_SPACING,
             ));
         }
-        let levels: [(f32, bool); 2] = std::array::from_fn(|ch| {
-            if let Some(track) = track {
-                let meter = self.output.as_ref().and_then(|o| o.track_meter(track.id));
-                (
-                    meter.map_or(0.0, |m| f32::from_bits(m.peaks[ch].load(Ordering::Relaxed))),
-                    meter.is_some_and(|m| m.clipped[ch].load(Ordering::Relaxed)),
-                )
-            } else {
-                (
-                    self.output.as_ref().map_or(0.0, |o| {
-                        f32::from_bits(o.status.peaks[ch].load(Ordering::Relaxed))
-                    }),
-                    self.output
-                        .as_ref()
-                        .is_some_and(|o| o.status.clipped.load(Ordering::Relaxed)),
-                )
-            }
+        let levels = self.output.as_ref().map_or([(0.0, false); 2], |output| {
+            track.map_or_else(
+                || output.status.meter.levels(),
+                |track| {
+                    output
+                        .track_meter(track.id)
+                        .map_or([(0.0, false); 2], |meter| meter.levels())
+                },
+            )
         });
         let mut cleared = [false; 2];
         let column_widths = [
@@ -424,15 +416,13 @@ impl DawUi {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
                             ui.add_space((column_widths[1] - NUMERIC_WIDTH) / 2.0);
-                            let idle_peak = std::sync::atomic::AtomicU32::new(0);
-                            let held_peak = self.output.as_ref().map_or(&idle_peak, |output| {
-                                track.map_or(&output.status.held_peak, |track| {
-                                    output
-                                        .track_meter(track.id)
-                                        .map_or(&idle_peak, |meter| &meter.held_peak)
+                            let idle_meter = daw_output::StereoMeter::default();
+                            let meter = self.output.as_ref().map_or(&idle_meter, |output| {
+                                track.map_or(&output.status.meter, |track| {
+                                    output.track_meter(track.id).unwrap_or(&idle_meter)
                                 })
                             });
-                            meters::peak_level(ui, held_peak);
+                            meters::peak_level(ui, meter);
                         });
                         cleared = meters::stereo(ui, fader_height, levels)
                             .map(|response| response.clicked());
@@ -486,25 +476,19 @@ impl DawUi {
                 }
                 self.changed();
             }
-            if let Some(meter) = self.output.as_ref().and_then(|o| o.track_meter(track.id)) {
-                for (ch, clicked) in cleared.into_iter().enumerate() {
-                    if clicked {
-                        meter.clipped[ch].store(false, Ordering::Relaxed);
-                    }
-                }
-            }
         } else {
             self.master_gain_input = inputs.gain;
             if gain != previous.0 {
                 self.session.project.master.gain_db = gain;
                 self.changed();
             }
-            if cleared.into_iter().any(|clicked| clicked)
-                && let Some(output) = &self.output
-            {
-                output.status.clipped.store(false, Ordering::Relaxed);
-            }
         }
+        let meter = self.output.as_ref().and_then(|output| {
+            track.map_or(Some(&output.status.meter), |track| {
+                output.track_meter(track.id)
+            })
+        });
+        meters::reset_on_click(ui, meter, cleared);
     }
 }
 

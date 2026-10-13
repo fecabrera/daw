@@ -1,6 +1,5 @@
 use crate::theme;
 use egui::{Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
-use std::sync::atomic::{AtomicU32, Ordering};
 
 const MIN_DBFS: f32 = -60.0;
 const CHANNEL_WIDTH: f32 = 8.0;
@@ -100,8 +99,8 @@ fn peak_text(peak: f32) -> String {
 }
 
 /// Read the held stereo peak; clicking resets monitoring without changing gain.
-pub fn peak_level(ui: &mut Ui, held: &AtomicU32) -> Response {
-    let mut text = peak_text(f32::from_bits(held.load(Ordering::Relaxed)));
+pub fn peak_level(ui: &mut Ui, meter: &daw_output::StereoMeter) -> Response {
+    let mut text = peak_text(meter.held_peak());
     let response = ui
         .allocate_ui_with_layout(
             Vec2::new(crate::NUMERIC_WIDTH, crate::toolbars::CONTROL_HEIGHT),
@@ -111,28 +110,37 @@ pub fn peak_level(ui: &mut Ui, held: &AtomicU32) -> Response {
                 crate::numeric_field(
                     ui,
                     &mut text,
-                    "Held peak level (dBFS). Click to reset.",
+                    "Held peak level (dBFS). Click to reset peak and stereo clipping.",
                     false,
                 )
             },
         )
         .inner
         .interact(Sense::click());
-    if response.clicked() && ui.is_enabled() && ui.input(|input| input.focused) {
-        held.store(0, Ordering::Relaxed);
-        ui.ctx().request_repaint();
-    }
+    reset_on_click(ui, Some(meter), [response.clicked(), false]);
     response.widget_info(|| {
         egui::WidgetInfo::labeled(
             egui::WidgetType::Button,
             ui.is_enabled(),
-            format!("Held peak level (dBFS): {text}. Reset peak"),
+            format!("Held peak level (dBFS): {text}. Reset peak and stereo clipping"),
         )
     });
     response
 }
 
-/// One shared dBFS scale for both channels, with independent clipping controls.
+/// Shared reset for channel bars and the held-peak readout in every view.
+pub fn reset_on_click(ui: &Ui, meter: Option<&daw_output::StereoMeter>, clicked: [bool; 2]) {
+    if ui.is_enabled()
+        && ui.input(|input| input.focused)
+        && clicked.into_iter().any(|clicked| clicked)
+        && let Some(meter) = meter
+    {
+        meter.reset();
+        ui.ctx().request_repaint();
+    }
+}
+
+/// One shared dBFS scale and clipping warning for both channels.
 pub fn stereo(ui: &mut Ui, height: f32, levels: [(f32, bool); 2]) -> [Response; 2] {
     stereo_with_scale(ui, height, levels, true)
 }
@@ -275,7 +283,7 @@ pub fn channel(ui: &mut Ui, label: &str, height: f32, peak: f32, clipped: bool) 
         painter.rect_filled(warning, 1.0, theme::palette(ui.ctx()).error);
     }
     response.on_hover_text(if clipped {
-        format!("{label}: {level}. Clipping detected. Click to clear.")
+        format!("{label}: {level}. Clipping detected. Click to reset peak and stereo clipping.")
     } else {
         format!("{label}: {level}")
     })
@@ -284,6 +292,83 @@ pub fn channel(ui: &mut Ui, label: &str, height: f32, peak: f32, clipped: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn either_channel_click_clears_stereo_warning_in_scaled_and_compact_meters() {
+        for show_scale in [true, false] {
+            for channel in 0..2 {
+                for (enabled, focused) in [(true, true), (false, true), (true, false)] {
+                    let ctx = egui::Context::default();
+                    theme::configure(&ctx);
+                    let meter = daw_output::StereoMeter::default();
+                    meter.publish_peaks(if channel == 0 {
+                        [1.5, 0.25]
+                    } else {
+                        [0.25, 1.5]
+                    });
+                    meter.publish_peaks([0.25, 0.5]);
+                    let mut rects = [Rect::NOTHING; 2];
+                    for phase in 0..4 {
+                        let events = if phase == 1 || phase == 2 {
+                            let point = rects[channel].center();
+                            vec![
+                                egui::Event::PointerMoved(point),
+                                egui::Event::PointerButton {
+                                    pos: point,
+                                    button: egui::PointerButton::Primary,
+                                    pressed: phase == 1,
+                                    modifiers: Default::default(),
+                                },
+                            ]
+                        } else {
+                            vec![]
+                        };
+                        let mut output = ctx.run_ui(
+                            egui::RawInput {
+                                events,
+                                focused,
+                                ..Default::default()
+                            },
+                            |ui| {
+                                ui.add_enabled_ui(enabled, |ui| {
+                                    let responses =
+                                        stereo_with_scale(ui, 54.0, meter.levels(), show_scale);
+                                    rects = responses.each_ref().map(|response| response.rect);
+                                    reset_on_click(
+                                        ui,
+                                        Some(&meter),
+                                        responses.map(|response| response.clicked()),
+                                    );
+                                });
+                            },
+                        );
+                        output.textures_delta.clear();
+                        let expected_clipped = phase < 2 || !enabled || !focused;
+                        assert_eq!(
+                            meter.levels(),
+                            [(0.25, expected_clipped), (0.5, expected_clipped)]
+                        );
+                        assert_eq!(meter.held_peak(), if expected_clipped { 1.5 } else { 0.0 });
+                        // Both red caps appear before clearing, and disappear on the next frame.
+                        let expected_caps = if phase < 3 || !enabled || !focused {
+                            2
+                        } else {
+                            0
+                        };
+                        let caps = output.shapes.iter().filter(|shape| matches!(&shape.shape,
+                            egui::Shape::Rect(rect) if rect.rect.height() == 3.0 && rects.iter().any(|channel| level_rail(*channel).min == rect.rect.min)
+                        )).count();
+                        assert_eq!(
+                            caps, expected_caps,
+                            "scale={show_scale}, channel={channel}, enabled={enabled}, focused={focused}, phase={phase}"
+                        );
+                    }
+                    meter.publish_peaks([0.25, 1.5]);
+                    assert!(meter.levels().iter().all(|(_, clipped)| *clipped));
+                }
+            }
+        }
+    }
 
     #[test]
     fn held_peak_readout_resets_on_release_and_does_not_accept_text_input() {
@@ -298,7 +383,8 @@ mod tests {
             (1.0, "0.0"),
             (daw_core::linear_gain(-90.0), "-90.0"),
         ] {
-            let held = AtomicU32::new(peak.to_bits());
+            let meter = daw_output::StereoMeter::default();
+            meter.publish_peaks([peak; 2]);
             let mut rect = Rect::NOTHING;
             for phase in 0..4 {
                 let mut events = vec![];
@@ -321,7 +407,7 @@ mod tests {
                         ..Default::default()
                     },
                     |ui| {
-                        rect = peak_level(ui, &held).rect;
+                        rect = peak_level(ui, &meter).rect;
                     },
                 );
                 output.textures_delta.clear();
@@ -330,14 +416,13 @@ mod tests {
                     egui::Shape::Text(text) if text.galley.text() == expected
                 )));
                 assert!(!ctx.egui_wants_keyboard_input());
-                assert_eq!(
-                    f32::from_bits(held.load(Ordering::Relaxed)),
-                    if phase < 2 { peak } else { 0.0 }
-                );
+                assert_eq!(meter.is_clipped(), phase < 2 && peak > 1.0);
+                assert_eq!(meter.held_peak(), if phase < 2 { peak } else { 0.0 });
             }
         }
         for (enabled, focused) in [(false, true), (true, false)] {
-            let held = AtomicU32::new(2.0_f32.to_bits());
+            let meter = daw_output::StereoMeter::default();
+            meter.publish_peaks([2.0; 2]);
             let mut rect = Rect::NOTHING;
             for phase in 0..3 {
                 let events = if phase == 0 {
@@ -361,12 +446,13 @@ mod tests {
                     },
                     |ui| {
                         ui.add_enabled_ui(enabled, |ui| {
-                            rect = peak_level(ui, &held).rect;
+                            rect = peak_level(ui, &meter).rect;
                         });
                     },
                 );
                 output.textures_delta.clear();
-                assert_eq!(f32::from_bits(held.load(Ordering::Relaxed)), 2.0);
+                assert_eq!(meter.held_peak(), 2.0);
+                assert!(meter.is_clipped());
             }
         }
     }

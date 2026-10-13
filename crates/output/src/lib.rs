@@ -9,72 +9,24 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
 };
 
+mod meters;
+pub use meters::StereoMeter;
+
+#[derive(Default)]
 pub struct Status {
     pub playhead: AtomicU64,
     pub playing: AtomicBool,
     pub failed: AtomicBool,
-    pub clipped: AtomicBool,
-    pub peaks: [AtomicU32; 2],
-    pub held_peak: AtomicU32,
-}
-impl Default for Status {
-    fn default() -> Self {
-        Self {
-            playhead: AtomicU64::new(0),
-            playing: AtomicBool::new(false),
-            failed: AtomicBool::new(false),
-            clipped: AtomicBool::new(false),
-            peaks: [AtomicU32::new(0), AtomicU32::new(0)],
-            held_peak: AtomicU32::new(0),
-        }
-    }
-}
-impl Status {
-    fn publish_peaks(&self, peaks: [f32; 2]) {
-        for (ch, peak) in peaks.into_iter().enumerate() {
-            self.peaks[ch].store(peak.to_bits(), Ordering::Relaxed);
-        }
-        hold_peak(&self.held_peak, peaks);
-        if peaks.iter().any(|peak| *peak > 1.0) {
-            self.clipped.store(true, Ordering::Relaxed);
-        }
-    }
-}
-
-// Positive finite f32 bit patterns have the same order as their amplitudes.
-// Atomic max and UI reset share one value without callback allocation or locks.
-fn hold_peak(held: &AtomicU32, peaks: [f32; 2]) {
-    let peak = peaks[0].max(peaks[1]);
-    if peak.is_finite() && peak > 0.0 {
-        held.fetch_max(peak.to_bits(), Ordering::Relaxed);
-    }
-}
-
-#[derive(Default)]
-pub struct TrackMeter {
-    pub peaks: [AtomicU32; 2],
-    pub clipped: [AtomicBool; 2],
-    pub held_peak: AtomicU32,
-}
-impl TrackMeter {
-    fn publish(&self, peaks: [f32; 2]) {
-        for (ch, peak) in peaks.into_iter().enumerate() {
-            self.peaks[ch].store(peak.to_bits(), Ordering::Relaxed);
-            if peak > 1.0 {
-                self.clipped[ch].store(true, Ordering::Relaxed);
-            }
-        }
-        hold_peak(&self.held_peak, peaks);
-    }
+    pub meter: StereoMeter,
 }
 // Prepared on the application thread and retired there. The callback only reads
 // the existing meter handles and writes atomics; it does not allocate or lock.
 struct PreparedRenderer {
     renderer: Renderer,
-    meters: Vec<Arc<TrackMeter>>,
+    meters: Vec<Arc<StereoMeter>>,
 }
 impl PreparedRenderer {
-    fn new(plan: RenderPlan, meters: &HashMap<Id, Arc<TrackMeter>>) -> Self {
+    fn new(plan: RenderPlan, meters: &HashMap<Id, Arc<StereoMeter>>) -> Self {
         let handles = plan
             .project
             .tracks
@@ -88,7 +40,7 @@ impl PreparedRenderer {
     }
     fn publish_track_peaks(&self) {
         for (meter, peaks) in self.meters.iter().zip(self.renderer.track_peaks()) {
-            meter.publish(peaks);
+            meter.publish_peaks(peaks);
         }
     }
 }
@@ -105,8 +57,8 @@ impl std::ops::DerefMut for PreparedRenderer {
 }
 fn track_meters(
     plan: &RenderPlan,
-    previous: &HashMap<Id, Arc<TrackMeter>>,
-) -> HashMap<Id, Arc<TrackMeter>> {
+    previous: &HashMap<Id, Arc<StereoMeter>>,
+) -> HashMap<Id, Arc<StereoMeter>> {
     plan.project
         .tracks
         .iter()
@@ -155,7 +107,7 @@ pub struct AudioOutput {
     retired: Consumer<Box<PreparedRenderer>>,
     pub status: Arc<Status>,
     pub description: String,
-    track_meters: HashMap<Id, Arc<TrackMeter>>,
+    track_meters: HashMap<Id, Arc<StereoMeter>>,
     effect_meters: HashMap<Id, Arc<AtomicU32>>,
 }
 impl AudioOutput {
@@ -272,7 +224,7 @@ impl AudioOutput {
         self.effect_meters = reductions;
         Ok(())
     }
-    pub fn track_meter(&self, id: Id) -> Option<&TrackMeter> {
+    pub fn track_meter(&self, id: Id) -> Option<&StereoMeter> {
         self.track_meters.get(&id).map(AsRef::as_ref)
     }
     pub fn gain_reduction_db(&self, id: Id) -> f32 {
@@ -317,7 +269,7 @@ struct Callback {
 impl Callback {
     fn new(
         plan: RenderPlan,
-        meters: &HashMap<Id, Arc<TrackMeter>>,
+        meters: &HashMap<Id, Arc<StereoMeter>>,
         commands: Consumer<Command>,
         retired: Producer<Box<PreparedRenderer>>,
         status: Arc<Status>,
@@ -474,7 +426,7 @@ where
                 if callback.converter.is_none() || callback.rendered_input {
                     callback.renderer.publish_track_peaks();
                 }
-                callback.status.publish_peaks(peaks);
+                callback.status.meter.publish_peaks(peaks);
                 callback
                     .status
                     .playhead
@@ -732,7 +684,7 @@ mod tests {
     }
     #[test]
     fn track_and_master_peak_hold_retain_maximum_until_reset() {
-        let track = TrackMeter::default();
+        let track = StereoMeter::default();
         let master = Status::default();
         for peaks in [
             [0.0; 2],
@@ -742,50 +694,36 @@ mod tests {
             [0.75, 0.5],
             [0.0; 2],
         ] {
-            track.publish(peaks);
-            master.publish_peaks(peaks);
+            track.publish_peaks(peaks);
+            master.meter.publish_peaks(peaks);
         }
-        for held in [&track.held_peak, &master.held_peak] {
-            assert_eq!(f32::from_bits(held.load(Ordering::Relaxed)), 2.0);
+        for held in [track.held_peak(), master.meter.held_peak()] {
+            assert_eq!(held, 2.0);
         }
         assert!(
             track
                 .peaks
                 .iter()
-                .chain(&master.peaks)
+                .chain(&master.meter.peaks)
                 .all(|peak| peak.load(Ordering::Relaxed) == 0)
         );
-        track.held_peak.store(0, Ordering::Relaxed);
-        assert_eq!(track.held_peak.load(Ordering::Relaxed), 0);
-        assert_eq!(
-            f32::from_bits(master.held_peak.load(Ordering::Relaxed)),
-            2.0
-        );
-        assert!(track.clipped[1].load(Ordering::Relaxed));
-        assert!(master.clipped.load(Ordering::Relaxed));
-        track.publish([0.125, 0.25]);
-        master.publish_peaks([0.125, 0.25]);
-        assert_eq!(
-            f32::from_bits(track.held_peak.load(Ordering::Relaxed)),
-            0.25
-        );
-        assert_eq!(
-            f32::from_bits(master.held_peak.load(Ordering::Relaxed)),
-            2.0
-        );
-        master.held_peak.store(0, Ordering::Relaxed);
-        assert_eq!(
-            f32::from_bits(track.held_peak.load(Ordering::Relaxed)),
-            0.25
-        );
-        master.publish_peaks([0.5, 0.125]);
-        assert_eq!(
-            f32::from_bits(master.held_peak.load(Ordering::Relaxed)),
-            0.5
-        );
-        assert!(master.clipped.load(Ordering::Relaxed));
+        track.reset();
+        assert_eq!(track.held_peak(), 0.0);
+        assert_eq!(master.meter.held_peak(), 2.0);
+        assert!(!track.is_clipped());
+        assert!(master.meter.is_clipped());
+        track.publish_peaks([0.125, 0.25]);
+        master.meter.publish_peaks([0.125, 0.25]);
+        assert_eq!(track.held_peak(), 0.25);
+        assert_eq!(master.meter.held_peak(), 2.0);
+        master.meter.reset();
+        assert_eq!(track.held_peak(), 0.25);
+        master.meter.publish_peaks([0.5, 0.125]);
+        assert_eq!(master.meter.held_peak(), 0.5);
+        assert!(!master.meter.is_clipped());
         assert!(
             master
+                .meter
                 .peaks
                 .iter()
                 .zip([0.5_f32, 0.125])
@@ -794,7 +732,7 @@ mod tests {
     }
 
     #[test]
-    fn track_meter_latches_each_channel_and_follows_track_identity() {
+    fn track_meter_latches_stereo_and_follows_track_identity() {
         let mut plan = RenderPlan {
             stretched_audio: HashMap::new(),
             project: daw_core::Project::default(),
@@ -805,24 +743,20 @@ mod tests {
         let first = plan.project.tracks[0].id;
         let second = plan.project.tracks[1].id;
         let meters = track_meters(&plan, &HashMap::new());
-        meters[&first].publish([1.2, 0.5]);
-        meters[&first].publish([0.0; 2]);
-        assert!(meters[&first].clipped[0].load(Ordering::Relaxed));
-        assert!(!meters[&first].clipped[1].load(Ordering::Relaxed));
-        assert!(!meters[&second].clipped[0].load(Ordering::Relaxed));
-        meters[&first].clipped[0].store(false, Ordering::Relaxed);
-        meters[&first].publish([0.5, 1.1]);
-        assert!(!meters[&first].clipped[0].load(Ordering::Relaxed));
-        assert!(meters[&first].clipped[1].load(Ordering::Relaxed));
+        meters[&first].publish_peaks([1.2, 0.5]);
+        meters[&first].publish_peaks([0.0; 2]);
+        assert!(meters[&first].is_clipped());
+        assert!(!meters[&second].is_clipped());
+        meters[&first].reset();
+        assert!(!meters[&first].is_clipped());
+        meters[&first].publish_peaks([0.5, 1.1]);
+        assert!(meters[&first].is_clipped());
 
         plan.project.tracks.swap(0, 1);
         let updated = track_meters(&plan, &meters);
         assert!(Arc::ptr_eq(&updated[&first], &meters[&first]));
-        assert_eq!(
-            f32::from_bits(updated[&first].held_peak.load(Ordering::Relaxed)),
-            1.2
-        );
-        assert_eq!(updated[&second].held_peak.load(Ordering::Relaxed), 0);
+        assert_eq!(updated[&first].held_peak(), 1.1);
+        assert_eq!(updated[&second].held_peak(), 0.0);
         plan.project.tracks.retain(|t| t.id == second);
         let updated = track_meters(&plan, &updated);
         assert!(!updated.contains_key(&first));
