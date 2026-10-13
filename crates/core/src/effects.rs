@@ -91,3 +91,71 @@ mod tests {
         assert_eq!(encoded["unit"]["state"]["future"], "retain");
     }
 }
+
+#[cfg(test)]
+mod drive_tests {
+    use crate::*;
+    #[test]
+    fn drive_settings_round_trip_and_invalid_edits_leave_the_project_unchanged() {
+        let mut project = Project::default();
+        let track = project.add_midi_track().unwrap();
+        let mut effect = EffectInstance::drive();
+        let EffectSettings::Drive(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        settings.collapsed = true;
+        settings.color_shape = DriveColorShape::MidHumpBassCut;
+        settings.color_frequency_hz = 1250.0;
+        settings.gain = 0.75;
+        project
+            .edit(Edit::SetEffects {
+                track_id: track,
+                effects: vec![effect.clone()],
+                compact: true,
+            })
+            .unwrap();
+        let saved = serde_json::to_string(&project).unwrap();
+        let restored: Project = serde_json::from_str(&saved).unwrap();
+        restored.validate().unwrap();
+        assert_eq!(restored.tracks[0].effects, vec![effect.clone()]);
+        for parameter in 0..6 {
+            let mut bad = effect.clone();
+            let EffectSettings::Drive(settings) = &mut bad.unit else {
+                unreachable!()
+            };
+            match parameter {
+                0 => settings.volume_db = 12.1,
+                1 => settings.gain = f32::NAN,
+                2 => settings.tone = -0.01,
+                3 => settings.color_strength = 1.01,
+                4 => settings.color_frequency_hz = 2001.0,
+                _ => settings.version = 0,
+            }
+            assert!(
+                project
+                    .edit(Edit::SetEffects {
+                        track_id: track,
+                        effects: vec![bad],
+                        compact: false
+                    })
+                    .is_err()
+            );
+            assert_eq!(serde_json::to_string(&project).unwrap(), saved);
+        }
+        let copy = Id::new_v4();
+        project
+            .edit(Edit::DuplicateTrack {
+                track_id: track,
+                new_track_id: copy,
+            })
+            .unwrap();
+        assert_eq!(project.tracks[1].effects[0].unit, effect.unit);
+        assert_ne!(project.tracks[1].effects[0].id, effect.id);
+        assert!(project.tracks[1].effects_compact);
+        let future = serde_json::json!({"type_id": DRIVE_TYPE_ID, "state": {"version": 99, "opaque": [1, 2]}});
+        let decoded: EffectSettings = serde_json::from_value(future.clone()).unwrap();
+        assert!(decoded.valid());
+        assert!(matches!(decoded, EffectSettings::Missing { .. }));
+        assert_eq!(serde_json::to_value(decoded).unwrap(), future);
+    }
+}

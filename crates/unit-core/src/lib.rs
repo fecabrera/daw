@@ -1,5 +1,7 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
 use serde::{Deserialize, Serialize};
+mod drive;
+pub use drive::{DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveColorShape, DriveSettings};
 mod effects;
 pub use effects::{
     EQ_STATE_VERSION, EQ_TYPE_ID, EffectInstance, EffectSettings, EqBandSettings, EqSettings,

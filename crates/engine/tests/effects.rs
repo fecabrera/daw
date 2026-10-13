@@ -313,3 +313,122 @@ fn all_eq_bands_off_silence_playback_export_and_live_updates() {
         }
     }
 }
+
+#[test]
+fn drive_and_eq_chain_matches_playback_export_and_block_sizes_at_all_rates() {
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        for mono in [false, true] {
+            let mut plan = plan(rate, mono);
+            add_eq(&mut plan);
+            let mut effect = EffectInstance::drive();
+            let EffectSettings::Drive(settings) = &mut effect.unit else {
+                unreachable!()
+            };
+            settings.color_shape = DriveColorShape::MidHumpBassCut;
+            settings.color_frequency_hz = 1000.0;
+            settings.color_strength = 0.8;
+            settings.gain = 0.8;
+            settings.volume_db = -6.0;
+            plan.project.tracks[0].effects.push(effect);
+            plan.project.tracks[0].gain_db = -6.0;
+            plan.project.tracks[0].pan = -0.3;
+            let mut expected = vec![[0.0; 2]; 8192];
+            Renderer::new(plan.clone()).render_offline(&mut expected);
+            let mut live = Renderer::new(plan.clone());
+            live.play();
+            for (frame, sample) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if frame >= rate as usize / 200 {
+                    for channel in 0..2 {
+                        assert!((actual[channel] - sample[channel]).abs() < 1e-6);
+                    }
+                }
+            }
+            for block in [32, 64, 128, 256, 512, 1024, 2048, 4096] {
+                let mut output = vec![[0.0; 2]; 8192];
+                let mut renderer = Renderer::new(plan.clone());
+                for buffer in output.chunks_mut(block) {
+                    renderer.render_offline(buffer);
+                }
+                assert_eq!(output, expected);
+            }
+            let mut range = [[0.0; 2]; 64];
+            plan.render(1000, &mut range);
+            assert_eq!(range.as_slice(), &expected[1000..1064]);
+            let mut reversed = plan.clone();
+            reversed.project.tracks[0].effects.reverse();
+            let mut output = vec![[0.0; 2]; 8192];
+            Renderer::new(reversed).render_offline(&mut output);
+            assert!(
+                output
+                    .iter()
+                    .zip(expected)
+                    .any(|(a, b)| (a[0] - b[0]).abs() > 0.01)
+            );
+        }
+    }
+}
+
+#[test]
+fn drive_updates_preserve_history_and_retarget_reset_and_processing_allocate_nothing() {
+    let mut plan = plan(48000, false);
+    add_eq(&mut plan);
+    plan.project.tracks[0].effects.push(EffectInstance::drive());
+    let mut reference = Renderer::new(plan.clone());
+    let mut current = Renderer::new(plan.clone());
+    reference.play();
+    current.play();
+    for _ in 0..700 {
+        reference.next_sample();
+        current.next_sample();
+    }
+    let EffectSettings::Drive(settings) = &mut plan.project.tracks[0].effects[1].unit else {
+        unreachable!()
+    };
+    settings.collapsed = true;
+    plan.project.tracks[0].effects_compact = true;
+    let mut next = Renderer::new(plan.clone());
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+    next.inherit(&mut current);
+    for _ in 0..500 {
+        assert_eq!(next.next_sample(), reference.next_sample());
+    }
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    let EffectSettings::Drive(settings) = &mut plan.project.tracks[0].effects[1].unit else {
+        unreachable!()
+    };
+    settings.gain = 1.0;
+    settings.color_shape = DriveColorShape::MidScoop;
+    settings.color_strength = 1.0;
+    settings.color_frequency_hz = 250.0;
+    settings.tone = 0.0;
+    settings.enabled = false;
+    let mut changed = Renderer::new(plan.clone());
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+    changed.inherit(&mut next);
+    for _ in 0..1000 {
+        assert!(
+            changed
+                .next_sample()
+                .iter()
+                .all(|sample| sample.is_finite())
+        );
+    }
+    changed.stop();
+    changed.play();
+    for _ in 0..1000 {
+        changed.next_sample();
+    }
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    let mut eq_only = plan.clone();
+    eq_only.project.tracks[0].effects.pop();
+    let mut bypass = vec![[0.0; 2]; 8192];
+    let mut dry = vec![[0.0; 2]; 8192];
+    Renderer::new(plan).render_offline(&mut bypass);
+    Renderer::new(eq_only).render_offline(&mut dry);
+    assert_eq!(bypass, dry);
+}

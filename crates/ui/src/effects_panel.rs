@@ -7,8 +7,10 @@ pub(crate) struct EffectsUiBounds {
     pub strip: Rect,
     pub scrollbar: Rect,
     pub entry: Rect,
+    pub drive_entry: Rect,
     pub compact: Rect,
     pub units: Vec<crate::equalizer_panel::Bounds>,
+    pub drive_units: Vec<crate::drive_panel::Bounds>,
 }
 
 #[cfg(test)]
@@ -20,8 +22,10 @@ impl Default for EffectsUiBounds {
             strip: Rect::NOTHING,
             scrollbar: Rect::NOTHING,
             entry: Rect::NOTHING,
+            drive_entry: Rect::NOTHING,
             compact: Rect::NOTHING,
             units: vec![],
+            drive_units: vec![],
         }
     }
 }
@@ -62,6 +66,7 @@ impl DawUi {
         #[cfg(test)]
         {
             self.effects_bounds.units.clear();
+            self.effects_bounds.drive_units.clear();
         }
         let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
         ui.painter()
@@ -115,26 +120,45 @@ impl DawUi {
                         }
                     });
                     panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
-                    let response = ui
-                        .add_enabled_ui(allowed && selected.is_some(), |ui| {
-                            library
-                                .catalog_item(
-                                    ui,
-                                    "3-band EQ",
-                                    self.effects_catalog_selection == Some(daw_core::EQ_TYPE_ID),
-                                )
-                                .on_hover_text("Double-click to add a 3-band EQ to this track.")
-                        })
-                        .inner;
-                    if response.clicked() {
-                        self.effects_catalog_selection = Some(daw_core::EQ_TYPE_ID);
-                    }
-                    if response.double_clicked() {
-                        effects.push(daw_core::EffectInstance::equalizer());
-                    }
-                    #[cfg(test)]
-                    {
-                        self.effects_bounds.entry = response.rect;
+                    for (type_id, name, make) in [
+                        (
+                            daw_core::EQ_TYPE_ID,
+                            "3-band EQ",
+                            daw_core::EffectInstance::equalizer as fn() -> daw_core::EffectInstance,
+                        ),
+                        (
+                            daw_core::DRIVE_TYPE_ID,
+                            "Drive",
+                            daw_core::EffectInstance::drive,
+                        ),
+                    ] {
+                        let response = ui
+                            .add_enabled_ui(allowed && selected.is_some(), |ui| {
+                                library
+                                    .catalog_item(
+                                        ui,
+                                        name,
+                                        self.effects_catalog_selection == Some(type_id),
+                                    )
+                                    .on_hover_text(format!(
+                                        "Double-click to add {name} to this track."
+                                    ))
+                            })
+                            .inner;
+                        if response.clicked() {
+                            self.effects_catalog_selection = Some(type_id);
+                        }
+                        if response.double_clicked() {
+                            effects.push(make());
+                        }
+                        #[cfg(test)]
+                        if type_id == daw_core::EQ_TYPE_ID {
+                            self.effects_bounds.entry = response.rect;
+                        }
+                        #[cfg(test)]
+                        if type_id == daw_core::DRIVE_TYPE_ID {
+                            self.effects_bounds.drive_entry = response.rect;
+                        }
                     }
                     #[cfg(test)]
                     {
@@ -272,6 +296,22 @@ impl DawUi {
                                     });
                                     #[cfg(test)]
                                     self.effects_bounds.units.push(_bounds);
+                                }
+                                daw_core::EffectSettings::Drive(settings) => {
+                                    let (_bounds, header) = crate::drive_panel::show(
+                                        ui,
+                                        settings,
+                                        compact,
+                                        strip.height(),
+                                    );
+                                    header.context_menu(|ui| {
+                                        if ui.button("Remove effect").clicked() {
+                                            remove = Some(effect.id);
+                                            ui.close();
+                                        }
+                                    });
+                                    #[cfg(test)]
+                                    self.effects_bounds.drive_units.push(_bounds);
                                 }
                                 daw_core::EffectSettings::Missing { type_id, .. } => {
                                     let response =

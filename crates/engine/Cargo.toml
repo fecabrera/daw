@@ -11,6 +11,7 @@ daw-envelope.workspace = true
 daw-core.workspace = true
 daw-media.workspace = true
 daw-equalizer.workspace = true
+daw-drive.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

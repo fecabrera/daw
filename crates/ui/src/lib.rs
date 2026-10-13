@@ -24,6 +24,7 @@ use std::{
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 mod application_menu;
 pub mod dialogs;
+mod drive_panel;
 mod effects_panel;
 mod empty_state;
 mod envelope_panel;

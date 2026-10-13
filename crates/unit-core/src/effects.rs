@@ -1,3 +1,4 @@
+use crate::{DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveSettings};
 use serde::{Deserialize, Serialize};
 
 pub const EQ_TYPE_ID: &str = "daw.eq3";
@@ -55,6 +56,7 @@ impl EqSettings {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectSettings {
     Eq3(EqSettings),
+    Drive(DriveSettings),
     Missing {
         type_id: String,
         state: serde_json::Value,
@@ -71,6 +73,10 @@ impl Serialize for EffectSettings {
             Self::Eq3(eq) => StoredEffect {
                 type_id: EQ_TYPE_ID.into(),
                 state: serde_json::to_value(eq).map_err(serde::ser::Error::custom)?,
+            },
+            Self::Drive(drive) => StoredEffect {
+                type_id: DRIVE_TYPE_ID.into(),
+                state: serde_json::to_value(drive).map_err(serde::ser::Error::custom)?,
             },
             Self::Missing { type_id, state } => StoredEffect {
                 type_id: type_id.clone(),
@@ -93,6 +99,16 @@ impl<'de> Deserialize<'de> for EffectSettings {
             serde_json::from_value(stored.state)
                 .map(Self::Eq3)
                 .map_err(serde::de::Error::custom)
+        } else if stored.type_id == DRIVE_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|version| version <= u64::from(DRIVE_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::Drive)
+                .map_err(serde::de::Error::custom)
         } else {
             Ok(Self::Missing {
                 type_id: stored.type_id,
@@ -105,13 +121,20 @@ impl EffectSettings {
     pub fn valid(&self) -> bool {
         match self {
             Self::Eq3(eq) => eq.valid(),
+            Self::Drive(drive) => drive.valid(),
             Self::Missing { type_id, state } => {
+                let known_version = match type_id.as_str() {
+                    EQ_TYPE_ID => Some(EQ_STATE_VERSION),
+                    DRIVE_TYPE_ID => Some(DRIVE_STATE_VERSION),
+                    _ => None,
+                };
                 !type_id.trim().is_empty()
-                    && (type_id != EQ_TYPE_ID
-                        || state
+                    && known_version.is_none_or(|known| {
+                        state
                             .get("version")
                             .and_then(serde_json::Value::as_u64)
-                            .is_some_and(|version| version > u64::from(EQ_STATE_VERSION)))
+                            .is_some_and(|version| version > u64::from(known))
+                    })
             }
         }
     }
@@ -122,6 +145,12 @@ pub struct EffectInstance {
     pub unit: EffectSettings,
 }
 impl EffectInstance {
+    pub fn drive() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::Drive(DriveSettings::default()),
+        }
+    }
     pub fn equalizer() -> Self {
         Self {
             id: uuid::Uuid::new_v4(),

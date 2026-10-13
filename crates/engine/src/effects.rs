@@ -1,11 +1,39 @@
 use daw_core::{EffectSettings, Id, Track};
+use daw_drive::Drive;
 use daw_equalizer::Equalizer;
 use daw_unit_core::{EffectUnit, ProcessingContext};
+
+enum RuntimeEffect {
+    Eq3(Box<Equalizer>),
+    Drive(Box<Drive>),
+}
+impl RuntimeEffect {
+    fn sample(&mut self, input: [f32; 2]) -> [f32; 2] {
+        match self {
+            Self::Eq3(unit) => unit.process_sample(input),
+            Self::Drive(unit) => unit.process_sample(input),
+        }
+    }
+    fn reset(&mut self) {
+        match self {
+            Self::Eq3(unit) => unit.reset(),
+            Self::Drive(unit) => unit.reset(),
+        }
+    }
+    fn retarget(&mut self, settings: &EffectSettings) -> bool {
+        match (self, settings) {
+            (Self::Eq3(unit), EffectSettings::Eq3(settings)) => unit.retarget(settings),
+            (Self::Drive(unit), EffectSettings::Drive(settings)) => unit.retarget(settings),
+            _ => return false,
+        }
+        true
+    }
+}
 
 pub(super) struct TrackEffects {
     id: Id,
     mono: bool,
-    units: Vec<(Id, Option<Equalizer>)>,
+    units: Vec<(Id, Option<RuntimeEffect>)>,
 }
 impl TrackEffects {
     pub fn new(track: &Track, sample_rate_hz: u32, max_block_frames: u32) -> Self {
@@ -23,9 +51,12 @@ impl TrackEffects {
                     (
                         effect.id,
                         match &effect.unit {
-                            EffectSettings::Eq3(settings) => {
-                                Some(Equalizer::new(context, settings))
-                            }
+                            EffectSettings::Eq3(settings) => Some(RuntimeEffect::Eq3(Box::new(
+                                Equalizer::new(context, settings),
+                            ))),
+                            EffectSettings::Drive(settings) => Some(RuntimeEffect::Drive(
+                                Box::new(Drive::new(context, settings)),
+                            )),
                             EffectSettings::Missing { .. } => None,
                         },
                     )
@@ -41,10 +72,9 @@ impl TrackEffects {
         for ((id, next), settings) in self.units.iter_mut().zip(&track.effects) {
             if let Some((_, Some(previous))) =
                 previous.units.iter_mut().find(|(old_id, _)| id == old_id)
-                && let EffectSettings::Eq3(settings) = &settings.unit
                 && let Some(next) = next
+                && previous.retarget(&settings.unit)
             {
-                previous.retarget(settings);
                 std::mem::swap(next, previous);
             }
         }
@@ -55,7 +85,7 @@ impl TrackEffects {
         }
         for (_, unit) in &mut self.units {
             if let Some(unit) = unit {
-                input = unit.process_sample(input);
+                input = unit.sample(input);
             }
         }
         (input, self.mono)

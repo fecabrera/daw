@@ -1,8 +1,8 @@
 mod midi;
 pub use daw_unit_core::{
-    CurveShape, EQ_TYPE_ID, EffectInstance, EffectSettings, EnvelopeSettings,
-    EnvelopeStageSettings, EqBandSettings, EqSettings, INSTRUMENT_STATE_VERSION,
-    InstrumentLayerSettings, InstrumentSettings, MAX_ENVELOPE_TIME_MS,
+    CurveShape, DRIVE_TYPE_ID, DriveColorShape, DriveSettings, EQ_TYPE_ID, EffectInstance,
+    EffectSettings, EnvelopeSettings, EnvelopeStageSettings, EqBandSettings, EqSettings,
+    INSTRUMENT_STATE_VERSION, InstrumentLayerSettings, InstrumentSettings, MAX_ENVELOPE_TIME_MS,
     OscillatorInstrumentSettings, OscillatorSettings, SILENT_GAIN_DB, Waveform,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};

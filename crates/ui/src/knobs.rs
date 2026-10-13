@@ -258,7 +258,22 @@ fn marked_gain_spec() -> KnobSpec {
 
 /// Optional gain scale marks and current-value label, painted by the shared knob base.
 pub fn gain_with_markers(ui: &mut Ui, value: &mut f32) -> Response {
-    ui.add(Knob::new(value, marked_gain_spec()))
+    gain_with_markers_named(ui, value, "Gain")
+}
+
+/// Reuse the gain scale while giving output-level controls their own accessible name.
+pub fn gain_with_markers_named(ui: &mut Ui, value: &mut f32, name: &'static str) -> Response {
+    let mut spec = marked_gain_spec();
+    spec.name = name;
+    ui.add(Knob::new(value, spec))
+}
+
+pub fn format_frequency(value: f32) -> String {
+    if value >= 1000.0 {
+        format!("{:.1} kHz", value / 1000.0)
+    } else {
+        format!("{value:.0} Hz")
+    }
 }
 
 pub fn pan(ui: &mut Ui, value: &mut f32) -> Response {

@@ -2668,3 +2668,77 @@ fn eq_save_reopen_save_as_rate_change_and_float_export_use_the_same_settings_and
     assert!(rendered[1000][0].abs() > dry_audio[1000][0].abs() * 2.0);
     assert_eq!(fs::read(source).unwrap(), bytes);
 }
+
+#[test]
+fn drive_save_reopen_save_as_rate_change_and_float_export_preserve_the_effect() {
+    use daw_core::{DriveColorShape, EffectInstance, EffectSettings};
+    use daw_media::{ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let source = fixture.wav("drive-source.wav", 48000, 2, 32, true);
+    let bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let mut drive = EffectInstance::drive();
+    let EffectSettings::Drive(settings) = &mut drive.unit else {
+        unreachable!()
+    };
+    settings.collapsed = true;
+    settings.color_shape = DriveColorShape::MidHumpBassCut;
+    settings.color_frequency_hz = 1250.0;
+    settings.color_strength = 0.7;
+    settings.gain = 0.9;
+    settings.tone = 0.3;
+    settings.volume_db = -9.0;
+    session
+        .project
+        .edit(Edit::SetEffects {
+            track_id: session.project.tracks[0].id,
+            effects: vec![drive.clone()],
+            compact: true,
+        })
+        .unwrap();
+    let first = fixture.0.join("drive-first");
+    session.save(&first).unwrap();
+    let mut loaded = Session::open(&first).unwrap();
+    assert_eq!(loaded.project.tracks[0].effects, vec![drive.clone()]);
+    assert!(loaded.project.tracks[0].effects_compact);
+    let second = fixture.0.join("drive-second");
+    loaded.save(&second).unwrap();
+    let loaded = Session::open(&second).unwrap();
+    assert_eq!(loaded.project.tracks[0].effects, vec![drive.clone()]);
+    let changed = loaded.with_audio_settings(96000, 128).unwrap();
+    assert_eq!(changed.project.tracks[0].effects, vec![drive]);
+    let output = fixture.0.join("driven.wav");
+    loaded
+        .export_with_settings(
+            &output,
+            false,
+            ExportSettings {
+                wav_codec: WavCodec::Float32,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let exported: Vec<f32> = hound::WavReader::open(output)
+        .unwrap()
+        .samples::<f32>()
+        .map(Result::unwrap)
+        .collect();
+    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
+    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
+    assert_eq!(
+        exported,
+        rendered.iter().flatten().copied().collect::<Vec<_>>()
+    );
+    let mut dry = loaded.clone();
+    dry.project.tracks[0].effects.clear();
+    let mut dry_audio = vec![[0.0; 2]; rendered.len()];
+    daw_engine::Renderer::new(dry.plan()).render_offline(&mut dry_audio);
+    assert!(
+        rendered
+            .iter()
+            .zip(dry_audio)
+            .any(|(wet, dry)| (wet[0] - dry[0]).abs() > 0.01)
+    );
+    assert_eq!(fs::read(source).unwrap(), bytes);
+}

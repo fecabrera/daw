@@ -23,13 +23,6 @@ fn gain_spec() -> KnobSpec {
         .endpoint_labels("−24", "+24")
         .format(|value| format!("{value:.1} dB"))
 }
-fn frequency(value: f32) -> String {
-    if value >= 1000.0 {
-        format!("{:.1} kHz", value / 1000.0)
-    } else {
-        format!("{value:.0} Hz")
-    }
-}
 fn frequency_spec(reset: f32) -> KnobSpec {
     KnobSpec::new("EQ frequency", 20.0..=20_000.0, reset, 1.0)
         .scale(
@@ -37,8 +30,8 @@ fn frequency_spec(reset: f32) -> KnobSpec {
             |position| 20.0 * 1000_f32.powf(position),
             |value, delta| value * 2_f32.powf(delta / 24.0),
         )
-        .value_label(frequency)
-        .format(frequency)
+        .value_label(knobs::format_frequency)
+        .format(knobs::format_frequency)
         .endpoint_labels("20", "20k")
 }
 fn q_spec() -> KnobSpec {

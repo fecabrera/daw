@@ -461,3 +461,7 @@ These details are not yet fixed:
 
 - Delivery horizon and detailed behavior for the source manager and source inclusion.
 - Post-MVP undo/redo rollout: exact coverage per stage, action grouping, and history limits.
+
+### Drive effect — 2026-10-13
+
+The [Drive effect](drive.md) is implemented alongside 3-band EQ in the serial track effects lane. It provides Drive (Volume, Gain, Tone) and Color (Shape, Strength, Frequency) strips. Color choices cover flat, mid scoop, mid hump, and mid hump with bass cut. Audio/MIDI tracks, saved presentation/settings, shared unit controls, 5 ms live transitions, and playback/export use the existing effects architecture. The specification records DSP ranges and limits. Other effect units and lane/Master routing remain pending.

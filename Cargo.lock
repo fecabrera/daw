@@ -1033,10 +1033,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-drive"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
+ "fundsp",
+]
+
+[[package]]
 name = "daw-engine"
 version = "0.1.0"
 dependencies = [
  "daw-core",
+ "daw-drive",
  "daw-envelope",
  "daw-equalizer",
  "daw-media",

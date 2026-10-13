@@ -538,3 +538,231 @@ fn eq_footer_pairs_match_oscillator_spacing_in_both_modes_and_share_the_status_s
         assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.stroke.width > 0.0 && rect.stroke.color != egui::Color32::TRANSPARENT && (rect.rect.bottom() - rack.bottom()).abs() < 0.1 && rect.rect.width() > 200.0)));
     }
 }
+
+fn drive_settings(app: &DawUi) -> &daw_core::DriveSettings {
+    let daw_core::EffectSettings::Drive(settings) = &app.session.project.tracks[0].effects[0].unit
+    else {
+        panic!("expected Drive")
+    };
+    settings
+}
+#[test]
+fn drive_catalog_adds_independent_units_and_keeps_the_existing_eq() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let entry = app.effects_bounds.drive_entry.center();
+    assert!(entry.y > app.effects_bounds.entry.bottom());
+    app.dirty = false;
+    click(&mut app, &ctx, entry);
+    assert_eq!(app.effects_catalog_selection, Some(daw_core::DRIVE_TYPE_ID));
+    assert!(app.session.project.tracks[0].effects.is_empty());
+    assert!(!app.dirty);
+    click(&mut app, &ctx, entry);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.session.project.tracks[0].effects.len(), 1);
+    assert_eq!(drive_settings(&app), &daw_core::DriveSettings::default());
+    assert!(app.dirty);
+    end_click_sequence(&mut app, &ctx);
+    click(&mut app, &ctx, entry);
+    click(&mut app, &ctx, entry);
+    frame(&mut app, &ctx, vec![]);
+    let effects = &app.session.project.tracks[0].effects;
+    assert_eq!(effects.len(), 2);
+    assert_ne!(effects[0].id, effects[1].id);
+    end_click_sequence(&mut app, &ctx);
+    let eq_entry = app.effects_bounds.entry.center();
+    click(&mut app, &ctx, eq_entry);
+    click(&mut app, &ctx, eq_entry);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.effects_bounds.drive_units.len(), 2);
+    assert_eq!(app.effects_bounds.units.len(), 1);
+    let other = app.session.project.add_track().unwrap();
+    app.select_track(other, false);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.effects_bounds.drive_units.is_empty());
+    app.select_track(track, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.effects_bounds.drive_units.len(), 2);
+}
+#[test]
+fn drive_controls_edit_and_reset_saved_settings_and_off_color_retains_its_parameters() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.session.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::drive());
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    // Off prevents editing the two inactive color parameters.
+    let before = drive_settings(&app).clone();
+    for row in [1, 2] {
+        let point = app.effects_bounds.drive_units[0].knobs[1][row].center();
+        let end = point - Vec2::new(0.0, 30.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+    }
+    assert_eq!(drive_settings(&app), &before);
+    // The shape selector uses the shared cyclic knob and keyboard behavior.
+    let point = app.effects_bounds.drive_units[0].knobs[1][0].center();
+    click(&mut app, &ctx, point);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::ArrowUp,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    assert_eq!(
+        drive_settings(&app).color_shape,
+        daw_core::DriveColorShape::MidScoop
+    );
+    for (strip, row) in [(0, 0), (0, 1), (0, 2), (1, 1), (1, 2)] {
+        let before = drive_settings(&app).clone();
+        let point = app.effects_bounds.drive_units[0].knobs[strip][row].center();
+        let end = point - Vec2::new(0.0, 20.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        let after = drive_settings(&app);
+        let values = |settings: &daw_core::DriveSettings| {
+            [
+                settings.volume_db,
+                settings.gain,
+                settings.tone,
+                settings.color_strength,
+                settings.color_frequency_hz,
+            ]
+        };
+        let index = if strip == 0 { row } else { row + 2 };
+        assert!(
+            values(after)[index] > values(&before)[index],
+            "strip={strip} row={row}"
+        );
+        assert!(after.valid());
+    }
+    let saved = serde_json::to_string(&app.session.project).unwrap();
+    let loaded: daw_core::Project = serde_json::from_str(&saved).unwrap();
+    assert_eq!(
+        loaded.tracks[0].effects,
+        app.session.project.tracks[0].effects
+    );
+    assert!(app.dirty);
+    end_click_sequence(&mut app, &ctx);
+    let point = app.effects_bounds.drive_units[0].knobs[0][1].center();
+    click(&mut app, &ctx, point);
+    click(&mut app, &ctx, point);
+    assert_eq!(drive_settings(&app).gain, 0.2);
+}
+#[test]
+fn drive_labels_and_knobs_align_with_eq_and_both_presentation_modes_persist() {
+    for compact in [false, true] {
+        for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.session.project.tracks[0].effects = vec![
+                daw_core::EffectInstance::drive(),
+                daw_core::EffectInstance::equalizer(),
+            ];
+            app.session.project.tracks[0].effects_compact = compact;
+            app.select_track(track, false);
+            app.set_view_mode(ViewMode::Effects, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let drive = &app.effects_bounds.drive_units[0];
+            let eq = &app.effects_bounds.units[0];
+            assert_eq!(drive.header.height(), eq.header.height());
+            assert!((drive.labels[0].center().y - eq.bands[0].center().y).abs() < 0.51);
+            assert!((drive.labels[1].center().y - drive.labels[0].center().y).abs() < 0.51);
+            assert_eq!(
+                (drive.labels[1].center().x - drive.labels[0].center().x).round(),
+                crate::midi_editor::UNIT_STRIP_WIDTH
+            );
+            for label in ["Drive", "Color"] {
+                assert!(
+                    shapes.iter().any(
+                        |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == label)
+                    )
+                );
+            }
+            for strip in 0..2 {
+                for row in 0..3 {
+                    if compact {
+                        assert_eq!(drive.knobs[strip][row], Rect::NOTHING);
+                    } else {
+                        assert!(
+                            (drive.knobs[strip][row].center().y - eq.knobs[0][row].center().y)
+                                .abs()
+                                < 0.1
+                        );
+                    }
+                }
+            }
+            let power = drive.power.center();
+            click(&mut app, &ctx, power);
+            assert!(!drive_settings(&app).enabled);
+            assert!(!drive_settings(&app).collapsed);
+            end_click_sequence(&mut app, &ctx);
+            let header = app.effects_bounds.drive_units[0].header.center();
+            click(&mut app, &ctx, header);
+            click(&mut app, &ctx, header);
+            assert!(drive_settings(&app).collapsed);
+            let saved = serde_json::to_string(&app.session.project).unwrap();
+            let restored: daw_core::Project = serde_json::from_str(&saved).unwrap();
+            assert_eq!(
+                restored.tracks[0].effects,
+                app.session.project.tracks[0].effects
+            );
+            assert_eq!(restored.tracks[0].effects_compact, compact);
+            app.set_view_mode(ViewMode::Timeline, &ctx);
+            app.set_view_mode(ViewMode::Effects, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            assert!(drive_settings(&app).collapsed);
+            assert!(!drive_settings(&app).enabled);
+        }
+    }
+}
+#[test]
+fn drive_catalog_is_guarded_without_selection_and_during_modal_work() {
+    for no_selection in [false, true] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let entry = app.effects_bounds.drive_entry.center();
+        if no_selection {
+            app.selected_track = None;
+        } else {
+            app.unsaved_prompt = true;
+        }
+        app.dirty = false;
+        click(&mut app, &ctx, entry);
+        click(&mut app, &ctx, entry);
+        assert!(app.session.project.tracks[0].effects.is_empty());
+        assert!(!app.dirty);
+    }
+}
