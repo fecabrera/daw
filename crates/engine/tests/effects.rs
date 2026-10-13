@@ -432,3 +432,146 @@ fn drive_updates_preserve_history_and_retarget_reset_and_processing_allocate_not
     Renderer::new(eq_only).render_offline(&mut dry);
     assert_eq!(bypass, dry);
 }
+
+#[test]
+fn auto_filter_transport_processing_matches_playback_export_and_random_access_at_all_rates() {
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        for mono in [false, true] {
+            let mut plan = plan(rate, mono);
+            plan.project.tempo_bpm = 137.0;
+            let mut effect = EffectInstance::auto_filter();
+            let EffectSettings::AutoFilter(s) = &mut effect.unit else {
+                unreachable!()
+            };
+            s.stereo_phase_degrees = -90.0;
+            s.sync_phase_degrees = 45.0;
+            s.strength_octaves = 3.0;
+            s.note_rate = NoteRate(20);
+            plan.project.tracks[0].effects = vec![effect, EffectInstance::drive()];
+            let mut expected = vec![[0.0; 2]; 8192];
+            Renderer::new(plan.clone()).render_offline(&mut expected);
+            let mut live = Renderer::new(plan.clone());
+            live.play();
+            for (frame, sample) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if frame >= rate as usize / 200 {
+                    for ch in 0..2 {
+                        assert!((actual[ch] - sample[ch]).abs() < 1e-6);
+                    }
+                }
+            }
+            for block in [32, 64, 128, 256, 512, 1024, 2048, 4096] {
+                let mut output = vec![[0.0; 2]; 8192];
+                let mut renderer = Renderer::new(plan.clone());
+                for buffer in output.chunks_mut(block) {
+                    renderer.render_offline(buffer);
+                }
+                assert_eq!(output, expected);
+            }
+            let mut range = [[0.0; 2]; 64];
+            plan.render(1000, &mut range);
+            assert_eq!(range.as_slice(), &expected[1000..1064]);
+            let mut reversed = plan.clone();
+            reversed.project.tracks[0].effects.reverse();
+            let mut output = vec![[0.0; 2]; 8192];
+            Renderer::new(reversed).render_offline(&mut output);
+            assert!(
+                output
+                    .iter()
+                    .zip(expected)
+                    .any(|(a, b)| (a[0] - b[0]).abs() > 1e-4)
+            );
+        }
+    }
+}
+#[test]
+fn auto_filter_live_inheritance_preserves_state_and_processing_reset_and_retarget_do_not_allocate()
+{
+    let mut plan = plan(48000, false);
+    plan.project.tracks[0]
+        .effects
+        .push(EffectInstance::auto_filter());
+    let mut reference = Renderer::new(plan.clone());
+    let mut current = Renderer::new(plan.clone());
+    reference.play();
+    current.play();
+    for _ in 0..700 {
+        assert_eq!(reference.next_sample(), current.next_sample());
+    }
+    let EffectSettings::AutoFilter(s) = &mut plan.project.tracks[0].effects[0].unit else {
+        unreachable!()
+    };
+    s.collapsed = true;
+    let mut next = Renderer::new(plan.clone());
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+    next.inherit(&mut current);
+    for _ in 0..500 {
+        assert_eq!(next.next_sample(), reference.next_sample());
+    }
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    let EffectSettings::AutoFilter(s) = &mut plan.project.tracks[0].effects[0].unit else {
+        unreachable!()
+    };
+    s.frequency_hz = 5000.0;
+    s.rate_mode = LfoRateMode::Hz;
+    s.rate_hz = 15.0;
+    s.wave = LfoWave::Square;
+    s.shape = FilterShape::HighPass;
+    s.stereo_phase_degrees = 180.0;
+    let mut changed = Renderer::new(plan);
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+    changed.inherit(&mut next);
+    for _ in 0..1000 {
+        assert!(changed.next_sample().iter().all(|v| v.is_finite()));
+    }
+    changed.stop();
+    changed.seek(6000);
+    changed.play();
+    for _ in 0..500 {
+        changed.next_sample();
+    }
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}
+
+#[test]
+fn auto_filter_loop_wrap_locks_phase_and_keeps_filter_history() {
+    let mut plan = plan(48000, false);
+    plan.project.tracks[0]
+        .effects
+        .push(EffectInstance::auto_filter());
+    let EffectSettings::AutoFilter(settings) = &mut plan.project.tracks[0].effects[0].unit else {
+        unreachable!()
+    };
+    settings.frequency_hz = 100.0;
+    settings.q = 5.0;
+    settings.rate_mode = LfoRateMode::Hz;
+    settings.rate_hz = 20.0;
+    settings.strength_octaves = 3.0;
+    settings.stereo_phase_degrees = 90.0;
+    plan.project.transport.r#loop.enabled = true;
+    plan.project.transport.r#loop.start_frame = 128;
+    plan.project.transport.r#loop.end_frame = 1024;
+    let mut live = Renderer::new(plan.clone());
+    live.play();
+    let mut reference = Renderer::new(plan);
+    let mut since_wrap = 0;
+    for _ in 0..5000 {
+        if reference.playhead < 128 || reference.playhead >= 1024 {
+            reference.playhead = 128;
+            since_wrap = 0;
+        }
+        let mut expected = [[0.0; 2]];
+        reference.render_offline(&mut expected);
+        let actual = live.next_sample();
+        if since_wrap >= 240 {
+            for ch in 0..2 {
+                assert!((actual[ch] - expected[0][ch]).abs() < 1e-6);
+            }
+        }
+        since_wrap += 1;
+    }
+}

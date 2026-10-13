@@ -1,3 +1,4 @@
+use daw_auto_filter::AutoFilter;
 use daw_core::{EffectSettings, Id, Track};
 use daw_drive::Drive;
 use daw_equalizer::Equalizer;
@@ -6,24 +7,30 @@ use daw_unit_core::{EffectUnit, ProcessingContext};
 enum RuntimeEffect {
     Eq3(Box<Equalizer>),
     Drive(Box<Drive>),
+    AutoFilter(Box<AutoFilter>),
 }
 impl RuntimeEffect {
-    fn sample(&mut self, input: [f32; 2]) -> [f32; 2] {
+    fn sample(&mut self, input: [f32; 2], frame: u64, tempo: f32) -> [f32; 2] {
         match self {
             Self::Eq3(unit) => unit.process_sample(input),
             Self::Drive(unit) => unit.process_sample(input),
+            Self::AutoFilter(unit) => unit.process_at(input, frame, tempo),
         }
     }
     fn reset(&mut self) {
         match self {
             Self::Eq3(unit) => unit.reset(),
             Self::Drive(unit) => unit.reset(),
+            Self::AutoFilter(unit) => unit.reset(),
         }
     }
     fn retarget(&mut self, settings: &EffectSettings) -> bool {
         match (self, settings) {
             (Self::Eq3(unit), EffectSettings::Eq3(settings)) => unit.retarget(settings),
             (Self::Drive(unit), EffectSettings::Drive(settings)) => unit.retarget(settings),
+            (Self::AutoFilter(unit), EffectSettings::AutoFilter(settings)) => {
+                unit.retarget(settings)
+            }
             _ => return false,
         }
         true
@@ -57,6 +64,11 @@ impl TrackEffects {
                             EffectSettings::Drive(settings) => Some(RuntimeEffect::Drive(
                                 Box::new(Drive::new(context, settings)),
                             )),
+                            EffectSettings::AutoFilter(settings) => {
+                                Some(RuntimeEffect::AutoFilter(Box::new(AutoFilter::new(
+                                    context, settings,
+                                ))))
+                            }
                             EffectSettings::Missing { .. } => None,
                         },
                     )
@@ -79,13 +91,19 @@ impl TrackEffects {
             }
         }
     }
-    pub fn sample(&mut self, mut input: [f32; 2], mono: Option<bool>) -> ([f32; 2], bool) {
+    pub fn sample(
+        &mut self,
+        mut input: [f32; 2],
+        mono: Option<bool>,
+        frame: u64,
+        tempo: f32,
+    ) -> ([f32; 2], bool) {
         if let Some(mono) = mono {
             self.mono = mono;
         }
         for (_, unit) in &mut self.units {
             if let Some(unit) = unit {
-                input = unit.sample(input);
+                input = unit.sample(input, frame, tempo);
             }
         }
         (input, self.mono)

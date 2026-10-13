@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/unit-core", "crates/oscillator", "crates/envelope", "crates/equalizer", "crates/drive", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
+members = ["crates/unit-core", "crates/oscillator", "crates/envelope", "crates/equalizer", "crates/drive", "crates/auto-filter", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
 default-members = ["apps/desktop", "apps/cli"]
 
 [workspace.package]
@@ -14,6 +14,7 @@ daw-oscillator = { path = "crates/oscillator" }
 daw-envelope = { path = "crates/envelope" }
 daw-equalizer = { path = "crates/equalizer" }
 daw-drive = { path = "crates/drive" }
+daw-auto-filter = { path = "crates/auto-filter" }
 fundsp = { version = "0.23", default-features = false, features = ["std"] }
 daw-core = { path = "crates/core" }
 daw-media = { path = "crates/media" }

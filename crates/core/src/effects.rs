@@ -159,3 +159,78 @@ mod drive_tests {
         assert_eq!(serde_json::to_value(decoded).unwrap(), future);
     }
 }
+
+#[cfg(test)]
+mod auto_filter_tests {
+    use crate::*;
+    #[test]
+    fn auto_filter_state_round_trips_duplicates_and_validates_atomically() {
+        let mut project = Project::default();
+        let track = project.add_track().unwrap();
+        let mut effect = EffectInstance::auto_filter();
+        let EffectSettings::AutoFilter(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        settings.collapsed = true;
+        settings.wave = LfoWave::SawDown;
+        settings.sync_phase_degrees = -180.0;
+        settings.stereo_phase_degrees = 180.0;
+        settings.rate_mode = LfoRateMode::Hz;
+        settings.rate_hz = 0.01;
+        settings.note_rate = NoteRate(26);
+        settings.shape = FilterShape::Notch;
+        project
+            .edit(Edit::SetEffects {
+                track_id: track,
+                effects: vec![effect.clone()],
+                compact: true,
+            })
+            .unwrap();
+        let saved = serde_json::to_string(&project).unwrap();
+        let loaded: Project = serde_json::from_str(&saved).unwrap();
+        loaded.validate().unwrap();
+        assert_eq!(loaded.tracks[0].effects, vec![effect.clone()]);
+        for parameter in 0..11 {
+            let mut bad = effect.clone();
+            let EffectSettings::AutoFilter(s) = &mut bad.unit else {
+                unreachable!()
+            };
+            match parameter {
+                0 => s.frequency_hz = 20001.0,
+                1 => s.q = 0.0,
+                2 => s.rate_hz = f32::NAN,
+                3 => s.note_rate = NoteRate(27),
+                4 => s.strength_octaves = 6.1,
+                5 => s.sync_phase_degrees = -181.0,
+                6 => s.stereo_phase_degrees = 181.0,
+                7 => s.level_db = 12.1,
+                8 => s.dry_wet = -0.01,
+                9 => s.version = 0,
+                _ => s.q = f32::INFINITY,
+            }
+            assert!(
+                project
+                    .edit(Edit::SetEffects {
+                        track_id: track,
+                        effects: vec![bad],
+                        compact: false
+                    })
+                    .is_err()
+            );
+            assert_eq!(serde_json::to_string(&project).unwrap(), saved);
+        }
+        project
+            .edit(Edit::DuplicateTrack {
+                track_id: track,
+                new_track_id: Id::new_v4(),
+            })
+            .unwrap();
+        assert_ne!(project.tracks[1].effects[0].id, effect.id);
+        assert_eq!(project.tracks[1].effects[0].unit, effect.unit);
+        let encoded = serde_json::json!({"type_id": AUTO_FILTER_TYPE_ID, "state": {"version": 99, "unknown": "retained"}});
+        let future: EffectSettings = serde_json::from_value(encoded.clone()).unwrap();
+        assert!(future.valid());
+        assert!(matches!(future, EffectSettings::Missing { .. }));
+        assert_eq!(serde_json::to_value(future).unwrap(), encoded);
+    }
+}

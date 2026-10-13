@@ -1255,3 +1255,44 @@ fn midi_track_drive_processes_the_instrument_bus_in_playback_and_export() {
         assert_eq!(bypass, dry);
     }
 }
+
+#[test]
+fn midi_track_auto_filter_processes_the_instrument_bus_in_playback_and_export() {
+    for rate in SAMPLE_RATES {
+        let mut source = plan(Waveform::Sine, rate);
+        let mut dry = vec![[0.0; 2]; 4096];
+        Renderer::new(source.clone()).render_offline(&mut dry);
+        let mut effect = EffectInstance::auto_filter();
+        let EffectSettings::AutoFilter(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        settings.frequency_hz = 100.0;
+        settings.stereo_phase_degrees = -90.0;
+        source.project.tracks[0].effects.push(effect);
+        let mut wet = vec![[0.0; 2]; 4096];
+        Renderer::new(source.clone()).render_offline(&mut wet);
+        assert!(
+            wet.iter()
+                .zip(&dry)
+                .any(|(wet, dry)| (wet[0] - dry[0]).abs() > 0.01)
+        );
+        let mut live = Renderer::new(source.clone());
+        live.play();
+        for (frame, sample) in wet.iter().enumerate() {
+            let output = live.next_sample();
+            if frame > rate as usize / 200 {
+                for channel in 0..2 {
+                    assert!((output[channel] - sample[channel]).abs() < 1e-6);
+                }
+            }
+        }
+        let EffectSettings::AutoFilter(settings) = &mut source.project.tracks[0].effects[0].unit
+        else {
+            unreachable!()
+        };
+        settings.enabled = false;
+        let mut bypass = vec![[0.0; 2]; 4096];
+        Renderer::new(source).render_offline(&mut bypass);
+        assert_eq!(bypass, dry);
+    }
+}

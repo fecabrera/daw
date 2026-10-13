@@ -229,6 +229,9 @@ impl Renderer {
                     daw_core::EffectSettings::Drive(_) => {
                         daw_unit_core::DRIVE_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::AutoFilter(_) => {
+                        daw_unit_core::AUTO_FILTER_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
                 }
             }
@@ -371,7 +374,8 @@ impl Renderer {
                 } else {
                     audio_source(&self.plan, track, self.playhead)
                 };
-                let (source, mono) = effects.sample(source, mono);
+                let (source, mono) =
+                    effects.sample(source, mono, self.playhead, self.plan.project.tempo_bpm);
                 if self.plan.project.audible(track) {
                     let pan = pan_coefficients(track.pan, mono);
                     for ch in 0..2 {
@@ -446,7 +450,8 @@ impl Renderer {
                 } else {
                     audio_source(&self.plan, track, self.playhead)
                 };
-                let (source, mono) = effects.sample(source, mono);
+                let (source, mono) =
+                    effects.sample(source, mono, self.playhead, self.plan.project.tempo_bpm);
                 let base = if mono { 0 } else { 2 };
                 for ch in 0..2 {
                     let sample = source[ch] * g.value[base + ch];

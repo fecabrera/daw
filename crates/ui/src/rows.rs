@@ -81,3 +81,18 @@ pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Resp
     ui.add(egui::Label::new(label).selectable(false));
     response
 }
+
+/// Center a standard unit footer label in its reserved row.
+pub fn unit_label(ui: &mut Ui, name: &str) -> egui::Response {
+    let label = ui.painter().layout_no_wrap(
+        name.into(),
+        egui::FontId::proportional(crate::panels::HEADER_FONT_SIZE),
+        crate::theme::palette(ui.ctx()).text,
+    );
+    ui.add_space(
+        ((ui.available_width() - label.size().x) * 0.5)
+            .max(0.0)
+            .round(),
+    );
+    ui.add(egui::Label::new(label).selectable(false))
+}

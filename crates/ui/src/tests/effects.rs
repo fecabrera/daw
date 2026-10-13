@@ -1309,3 +1309,514 @@ fn effect_header_fast_drag_can_commit_when_motion_and_release_arrive_in_one_fram
     assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
     assert!(app.dirty);
 }
+
+fn auto_filter_settings(app: &DawUi) -> &daw_core::AutoFilterSettings {
+    let daw_core::EffectSettings::AutoFilter(settings) =
+        &app.session.project.tracks[0].effects[0].unit
+    else {
+        panic!("expected Auto-filter")
+    };
+    settings
+}
+#[test]
+fn auto_filter_catalog_adds_independent_saved_units_and_respects_guards() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let entry = app.effects_bounds.auto_filter_entry.center();
+    assert!(entry.y > app.effects_bounds.drive_entry.bottom());
+    app.dirty = false;
+    click(&mut app, &ctx, entry);
+    assert_eq!(
+        app.effects_catalog_selection,
+        Some(daw_core::AUTO_FILTER_TYPE_ID)
+    );
+    assert!(!app.dirty);
+    click(&mut app, &ctx, entry);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(
+        auto_filter_settings(&app),
+        &daw_core::AutoFilterSettings::default()
+    );
+    end_click_sequence(&mut app, &ctx);
+    click(&mut app, &ctx, entry);
+    click(&mut app, &ctx, entry);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.effects_bounds.auto_filter_units.len(), 2);
+    assert_ne!(
+        app.session.project.tracks[0].effects[0].id,
+        app.session.project.tracks[0].effects[1].id
+    );
+    for blocked in [false, true] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        if blocked {
+            app.unsaved_prompt = true;
+        } else {
+            app.selected_track = None;
+        }
+        frame(&mut app, &ctx, vec![]);
+        let entry = app.effects_bounds.auto_filter_entry.center();
+        click(&mut app, &ctx, entry);
+        click(&mut app, &ctx, entry);
+        assert!(app.session.project.tracks[0].effects.is_empty());
+    }
+}
+#[test]
+fn auto_filter_has_three_strips_with_evenly_spaced_lfo_columns_and_a_centered_footer() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.session.project.tracks[0].effects = vec![
+                daw_core::EffectInstance::auto_filter(),
+                daw_core::EffectInstance::drive(),
+            ];
+            app.session.project.tracks[0].effects_compact = compact;
+            app.select_track(track, false);
+            app.set_view_mode(ViewMode::Effects, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let bounds = &app.effects_bounds.auto_filter_units[0];
+            assert_eq!(
+                bounds.header.height(),
+                app.effects_bounds.drive_units[0].header.height()
+            );
+            assert!((bounds.sections[0].width() - midi_editor::UNIT_STRIP_WIDTH).abs() < 0.1);
+
+            assert!((bounds.sections[2].width() - midi_editor::UNIT_STRIP_WIDTH).abs() < 0.1);
+            let text = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == "LFO" => Some(text),
+                    _ => None,
+                })
+                .unwrap();
+            let text_rect = text.galley.rect.translate(text.pos.to_vec2());
+            assert!((text_rect.left() - bounds.lfo.right() - 8.0).abs() < 0.51);
+            assert!(
+                ((bounds.lfo.left() + text_rect.right()) * 0.5 - bounds.sections[1].center().x)
+                    .abs()
+                    < 0.51
+            );
+            assert_eq!(bounds.lfo.size(), Vec2::splat(icons::COMPACT_BUTTON_SIZE));
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { points, .. } if points[0].x == points[1].x && (points[0].x - bounds.sections[1].center().x).abs() < 1.0 && (points[1].y - points[0].y).abs() > 15.0)));
+            if !compact {
+                for row in 0..3 {
+                    let left = bounds.knobs[1][row];
+                    let right = bounds.knobs[2][row];
+                    let outer_left = left.left() - bounds.sections[1].left();
+                    let gap = right.left() - left.right();
+                    let outer_right = bounds.sections[1].right() - right.right();
+                    assert!((gap - outer_left).abs() < 0.1);
+                    assert!((gap - outer_right).abs() < 0.1);
+                    assert!(
+                        (outer_left - (bounds.knobs[0][row].left() - bounds.sections[0].left()))
+                            .abs()
+                            < 0.1
+                    );
+                }
+                for strip in 0..4 {
+                    for row in 0..3 {
+                        assert!(
+                            (bounds.knobs[strip][row].top() - bounds.knobs[0][row].top()).abs()
+                                < 0.1
+                        );
+                    }
+                }
+                assert!(
+                    (bounds.lfo.center().y
+                        - app.effects_bounds.drive_units[0].labels[0].center().y)
+                        .abs()
+                        < 0.51
+                );
+            }
+            let lfo = bounds.lfo.center();
+            click(&mut app, &ctx, lfo);
+            assert!(!auto_filter_settings(&app).lfo_enabled);
+            assert!(auto_filter_settings(&app).enabled);
+            let power = app.effects_bounds.auto_filter_units[0].power.center();
+            click(&mut app, &ctx, power);
+            assert!(!auto_filter_settings(&app).enabled);
+            end_click_sequence(&mut app, &ctx);
+            let header = app.effects_bounds.auto_filter_units[0].header.center();
+            click(&mut app, &ctx, header);
+            click(&mut app, &ctx, header);
+            assert!(auto_filter_settings(&app).collapsed);
+            let saved = serde_json::to_string(&app.session.project).unwrap();
+            let restored: daw_core::Project = serde_json::from_str(&saved).unwrap();
+            assert_eq!(
+                restored.tracks[0].effects,
+                app.session.project.tracks[0].effects
+            );
+        }
+    }
+}
+#[test]
+fn auto_filter_controls_edit_phases_depth_and_both_retained_rate_modes() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.session.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::auto_filter());
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    for (strip, row) in [
+        (0, 0),
+        (0, 1),
+        (0, 2),
+        (1, 0),
+        (1, 2),
+        (2, 0),
+        (2, 1),
+        (2, 2),
+        (3, 0),
+        (3, 1),
+    ] {
+        end_click_sequence(&mut app, &ctx);
+        let before = auto_filter_settings(&app).clone();
+        let point = app.effects_bounds.auto_filter_units[0].knobs[strip][row].center();
+        let end = point + Vec2::new(0.0, if (strip, row) == (3, 1) { 30.0 } else { -30.0 });
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert_ne!(
+            *auto_filter_settings(&app),
+            before,
+            "strip={strip} row={row}"
+        );
+        assert!(auto_filter_settings(&app).valid());
+    }
+    let saved_note = auto_filter_settings(&app).note_rate;
+    end_click_sequence(&mut app, &ctx);
+    let mode = app.effects_bounds.auto_filter_units[0].knobs[1][1].center();
+    click(&mut app, &ctx, mode);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::ArrowDown,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    assert_eq!(
+        auto_filter_settings(&app).rate_mode,
+        daw_core::LfoRateMode::Hz
+    );
+    assert_eq!(auto_filter_settings(&app).note_rate, saved_note);
+    let point = app.effects_bounds.auto_filter_units[0].knobs[1][2].center();
+    let end = point - Vec2::new(0.0, 30.0);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    assert!(auto_filter_settings(&app).rate_hz > 2.0);
+    assert_eq!(auto_filter_settings(&app).note_rate, saved_note);
+}
+
+#[test]
+fn auto_filter_note_rate_is_bounded_ordered_and_labeled_and_resets_to_a_quarter_note() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    let mut effect = daw_core::EffectInstance::auto_filter();
+    let daw_core::EffectSettings::AutoFilter(settings) = &mut effect.unit else {
+        unreachable!()
+    };
+    settings.note_rate = daw_core::NoteRate(1); // Slowest: dotted 4 bars.
+    app.session.project.tracks[0].effects.push(effect);
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    for label in ["4b D", "1/64 T"] {
+        assert!(
+            shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == label))
+        );
+    }
+    let check_marker = |app: &mut DawUi| {
+        let shapes = frame_shapes(app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let rect = app.effects_bounds.auto_filter_units[0].knobs[1][2];
+        let pointer = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::LineSegment { points, .. }
+                    if points.iter().all(|point| rect.contains(*point))
+                        && (points[0].distance(points[1]) - 5.0).abs() < 0.01 =>
+                {
+                    Some((points[1] - rect.center()).normalized())
+                }
+                _ => None,
+            })
+            .unwrap();
+        let marked = shapes.iter().any(|s| match &s.shape {
+            egui::Shape::LineSegment { points, .. }
+                if points.iter().all(|point| rect.contains(*point))
+                    && points[0].distance(points[1]) <= 3.1 =>
+            {
+                let direction = (points[1] - rect.center()).normalized();
+                direction.dot(pointer) > 0.99999
+            }
+            _ => false,
+        });
+        let label = auto_filter_settings(app).note_rate.label();
+        assert_eq!(
+            marked,
+            !label.ends_with('D') && !label.ends_with('T'),
+            "{label}"
+        );
+    };
+    check_marker(&mut app);
+    let rate = app.effects_bounds.auto_filter_units[0].knobs[1][2].center();
+    click(&mut app, &ctx, rate);
+    let key = |app: &mut DawUi, key| {
+        for pressed in [true, false] {
+            frame(
+                app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+        }
+    };
+    app.dirty = false;
+    key(&mut app, egui::Key::ArrowDown);
+    assert_eq!(auto_filter_settings(&app).note_rate, daw_core::NoteRate(1));
+    assert!(!app.dirty);
+    let mut seen = std::collections::HashSet::new();
+    seen.insert(auto_filter_settings(&app).note_rate.0);
+    for _ in 0..26 {
+        let previous = auto_filter_settings(&app).note_rate.beats();
+        key(&mut app, egui::Key::ArrowUp);
+        let next = auto_filter_settings(&app).note_rate;
+        assert!(next.beats() < previous, "previous={previous} next={next:?}");
+        seen.insert(next.0);
+        check_marker(&mut app);
+    }
+    assert_eq!(seen.len(), 27);
+    assert_eq!(auto_filter_settings(&app).note_rate, daw_core::NoteRate(26));
+    app.dirty = false;
+    key(&mut app, egui::Key::ArrowUp);
+    assert_eq!(auto_filter_settings(&app).note_rate, daw_core::NoteRate(26));
+    assert!(!app.dirty);
+    end_click_sequence(&mut app, &ctx);
+    click(&mut app, &ctx, rate);
+    click(&mut app, &ctx, rate);
+    assert_eq!(
+        auto_filter_settings(&app).note_rate,
+        daw_core::NoteRate::default()
+    );
+    assert_eq!(auto_filter_settings(&app).rate_hz, 2.0);
+}
+
+#[test]
+fn auto_filter_diagrams_and_bounded_mode_selector_match_their_controls() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.session.project.tracks[0]
+            .effects
+            .push(daw_core::EffectInstance::auto_filter());
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let bounds = &app.effects_bounds.auto_filter_units[0];
+        for (rect, count) in [(bounds.knobs[0][0], 4), (bounds.knobs[1][0], 5)] {
+            let diagrams: Vec<_> = shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Path(path)
+                        if path.stroke.width == 1.25
+                            && path.points.iter().all(|point| rect.contains(*point)) =>
+                    {
+                        Some(path)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(diagrams.len(), count);
+            assert_eq!(
+                diagrams
+                    .iter()
+                    .filter(|path| path.stroke.color
+                        == egui::epaint::ColorMode::Solid(theme::accent(&ctx)))
+                    .count(),
+                1
+            );
+        }
+        for (rect, expected) in [(bounds.knobs[1][2], 9), (bounds.knobs[2][0], 7)] {
+            let marks = shapes
+                .iter()
+                .filter(|s| {
+                    matches!(&s.shape,
+                        egui::Shape::LineSegment { points, .. }
+                            if points.iter().all(|point| rect.contains(*point))
+                            && points[0].distance(points[1]) <= 3.1
+                    )
+                })
+                .count();
+            assert_eq!(marks, expected);
+        }
+        for name in ["Low-pass", "Sine"] {
+            assert!(
+                !shapes
+                    .iter()
+                    .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == name))
+            );
+        }
+        let mode = bounds.knobs[1][1];
+        for (name, left) in [("Hz", true), ("Note", false)] {
+            let text = shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == name => Some(t),
+                    _ => None,
+                })
+                .unwrap();
+            assert!((text.pos.y - mode.top()).abs() < 0.1);
+            let text_rect = egui::Rect::from_min_size(text.pos, text.galley.size());
+            assert!(
+                (if left {
+                    text_rect.left() - mode.left()
+                } else {
+                    text_rect.right() - mode.right()
+                })
+                .abs()
+                    < 0.1
+            );
+        }
+        let note = auto_filter_settings(&app).note_rate;
+        let hz = auto_filter_settings(&app).rate_hz;
+        click(&mut app, &ctx, mode.center());
+        let key = |app: &mut DawUi, key| {
+            for pressed in [true, false] {
+                frame(
+                    app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                );
+            }
+        };
+        for (key_code, expected) in [
+            (egui::Key::ArrowUp, daw_core::LfoRateMode::Note),
+            (egui::Key::ArrowDown, daw_core::LfoRateMode::Hz),
+            (egui::Key::ArrowDown, daw_core::LfoRateMode::Hz),
+            (egui::Key::ArrowUp, daw_core::LfoRateMode::Note),
+        ] {
+            key(&mut app, key_code);
+            assert_eq!(auto_filter_settings(&app).rate_mode, expected);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let arcs: Vec<_> = shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Path(path)
+                        if path.stroke.width == 2.0
+                            && path.points.iter().all(|point| mode.contains(*point)) =>
+                    {
+                        Some(path)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(arcs.len(), 1);
+            assert_eq!(
+                arcs[0].stroke.color,
+                egui::epaint::ColorMode::Solid(theme::palette(&ctx).border)
+            );
+            let center = mode.center();
+            // The neutral arc spans only the two upper choices, rather than a full circle.
+            assert!(arcs[0].points.iter().all(|point| point.y < center.y));
+            assert!(arcs[0].points.first().unwrap().x < center.x);
+            assert!(arcs[0].points.last().unwrap().x > center.x);
+            for name in ["Hz", "Note"] {
+                let color = if name == expected.name() {
+                    theme::accent(&ctx)
+                } else {
+                    theme::palette(&ctx).secondary
+                };
+                let text = shapes
+                    .iter()
+                    .find_map(|s| match &s.shape {
+                        egui::Shape::Text(t) if t.galley.text() == name => Some(t),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(text.galley.job.sections[0].format.color, color);
+            }
+            let marks: Vec<_> = shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::LineSegment { points, stroke }
+                        if points.iter().all(|point| mode.contains(*point))
+                            && points[0].distance(points[1]) <= 3.1 =>
+                    {
+                        Some((points, stroke))
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert!(marks.is_empty());
+        }
+        // Large drags clamp to either endpoint and never wrap.
+        for (delta, expected) in [
+            (300.0, daw_core::LfoRateMode::Hz),
+            (-300.0, daw_core::LfoRateMode::Note),
+        ] {
+            end_click_sequence(&mut app, &ctx);
+            let start = mode.center();
+            let end = start + Vec2::new(0.0, delta);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert_eq!(auto_filter_settings(&app).rate_mode, expected);
+        }
+        assert_eq!(auto_filter_settings(&app).note_rate, note);
+        assert_eq!(auto_filter_settings(&app).rate_hz, hz);
+    }
+}

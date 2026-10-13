@@ -23,6 +23,7 @@ use std::{
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 mod application_menu;
+mod auto_filter_panel;
 pub mod dialogs;
 mod drive_panel;
 mod effects_panel;

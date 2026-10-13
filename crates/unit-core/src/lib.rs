@@ -1,5 +1,10 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
 use serde::{Deserialize, Serialize};
+mod auto_filter;
+pub use auto_filter::{
+    AUTO_FILTER_STATE_VERSION, AUTO_FILTER_TYPE_ID, AutoFilterSettings, FilterShape, LfoRateMode,
+    LfoWave, NoteRate,
+};
 mod drive;
 pub use drive::{DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveColorShape, DriveSettings};
 mod effects;

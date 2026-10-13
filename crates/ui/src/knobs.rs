@@ -26,6 +26,7 @@ pub struct KnobSpec {
     reference_values: Option<&'static [f32]>,
     value_label: Option<fn(f32) -> String>,
     endpoint_labels: Option<[&'static str; 2]>,
+    two_way_labels: Option<[&'static str; 2]>,
     center: Option<f32>,
     scale: Option<ParameterScale>,
     bipolar: bool,
@@ -53,6 +54,7 @@ impl KnobSpec {
             reference_values: None,
             value_label: None,
             endpoint_labels: None,
+            two_way_labels: None,
             center: None,
             scale: None,
             bipolar: false,
@@ -106,6 +108,13 @@ impl KnobSpec {
     /// Label both range endpoints below their marks, independently of the current value.
     pub fn endpoint_labels(mut self, min: &'static str, max: &'static str) -> Self {
         self.endpoint_labels = Some([min, max]);
+        self
+    }
+    /// Show a bounded two-position selector with upper-corner labels and a neutral arc.
+    pub fn two_way_labels(mut self, min: &'static str, max: &'static str) -> Self {
+        self.discrete_step = Some(self.max - self.min);
+        self.cyclic = false;
+        self.two_way_labels = Some([min, max]);
         self
     }
     pub fn bipolar(mut self) -> Self {
@@ -328,8 +337,12 @@ fn waveform_spec() -> KnobSpec {
 }
 
 fn waveform_diagram(value: f32) -> Vec<Vec2> {
+    waveform_path(daw_core::Waveform::ALL[value as usize])
+}
+
+pub(super) fn waveform_path(waveform: daw_core::Waveform) -> Vec<Vec2> {
     use daw_core::Waveform;
-    match Waveform::ALL[value as usize] {
+    match waveform {
         Waveform::Sine => (0..=24)
             .map(|i| {
                 let x = i as f32 / 24.0;
@@ -484,17 +497,24 @@ pub fn row<T>(
 }
 
 fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
-    let size =
-        if spec.diagram.is_some() || spec.value_label.is_some() || spec.endpoint_labels.is_some() {
-            CHOICE_SIZE
-        } else {
-            SIZE
-        };
+    let size = if spec.diagram.is_some()
+        || spec.value_label.is_some()
+        || spec.endpoint_labels.is_some()
+        || spec.two_way_labels.is_some()
+    {
+        CHOICE_SIZE
+    } else {
+        SIZE
+    };
     let (rect, mut response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
     let previous = *value;
     let drag_id = response.id.with("knob-drag");
     if ui.is_enabled() && ui.input(|input| input.focused) {
-        if response.clicked() || response.drag_started() {
+        if response.clicked()
+            || response.drag_started()
+            || (response.is_pointer_button_down_on()
+                && ui.input(|input| input.pointer.button_pressed(egui::PointerButton::Primary)))
+        {
             response.request_focus();
         }
         if response.drag_started() {
@@ -514,6 +534,18 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
                 next
             });
             *value = spec.value(normalized);
+        }
+        if ui.memory(|memory| memory.has_focus(response.id)) {
+            ui.memory_mut(|memory| {
+                memory.set_focus_lock_filter(
+                    response.id,
+                    egui::EventFilter {
+                        horizontal_arrows: true,
+                        vertical_arrows: true,
+                        ..Default::default()
+                    },
+                );
+            });
         }
         if response.has_focus() {
             let change = ui.input(|input| {
@@ -553,8 +585,13 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
         let painter = ui.painter();
         let center = rect.center();
         let radius = SIZE / 2.0 - 2.0;
-        let start = if spec.cyclic { -0.5 * PI } else { 0.75 * PI };
-        let sweep = if spec.cyclic { 2.0 * PI } else { 1.5 * PI };
+        let (start, sweep) = if spec.two_way_labels.is_some() {
+            (-0.75 * PI, 0.5 * PI)
+        } else if spec.cyclic {
+            (-0.5 * PI, 2.0 * PI)
+        } else {
+            (0.75 * PI, 1.5 * PI)
+        };
         let normalized = spec.normalized(*value);
         let point = |fraction: f32, radius: f32| {
             let angle = start + fraction * sweep;
@@ -566,13 +603,13 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
                 .collect();
             painter.add(Shape::line(points, Stroke::new(2.0, color)));
         };
-        arc(0.0, 1.0, theme::palette(ui.ctx()).border);
         let origin = if spec.bipolar {
             spec.normalized(spec.reset)
         } else {
             0.0
         };
-        if !spec.cyclic && normalized != origin {
+        arc(0.0, 1.0, theme::palette(ui.ctx()).border);
+        if spec.two_way_labels.is_none() && !spec.cyclic && normalized != origin {
             arc(origin, normalized, theme::accent(ui.ctx()));
         }
         painter.circle(
@@ -604,42 +641,43 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
                 ),
             )
         };
-        if let Some(diagram) = spec.diagram {
-            let step = spec.discrete_step.unwrap();
-            for index in 0..=((spec.max - spec.min) / step).round() as u32 {
-                let choice = spec.min + index as f32 * step;
-                let center = point(spec.normalized(choice), 20.0);
-                let points = diagram(choice)
-                    .into_iter()
-                    .map(|p| center + p * DIAGRAM_SIZE)
-                    .collect();
-                let color = if choice == *value {
-                    theme::accent(ui.ctx())
-                } else {
-                    theme::palette(ui.ctx()).secondary
-                };
-                painter.add(Shape::line(points, Stroke::new(1.25, color)));
-            }
-        } else if let Some(values) = spec.reference_values {
-            for &value in values {
-                if value.is_finite() && (spec.min..=spec.max).contains(&value) {
-                    mark(spec.normalized(value), value != spec.reset);
+        if spec.two_way_labels.is_none() {
+            if let Some(diagram) = spec.diagram {
+                let step = spec.discrete_step.unwrap();
+                for index in 0..=((spec.max - spec.min) / step).round() as u32 {
+                    let choice = spec.min + index as f32 * step;
+                    let center = point(spec.normalized(choice), 20.0);
+                    let points = diagram(choice)
+                        .into_iter()
+                        .map(|p| center + p * DIAGRAM_SIZE)
+                        .collect();
+                    let color = if choice == *value {
+                        theme::accent(ui.ctx())
+                    } else {
+                        theme::palette(ui.ctx()).secondary
+                    };
+                    painter.add(Shape::line(points, Stroke::new(1.25, color)));
                 }
+            } else if let Some(values) = spec.reference_values {
+                for &value in values {
+                    if value.is_finite() && (spec.min..=spec.max).contains(&value) {
+                        mark(spec.normalized(value), value != spec.reset);
+                    }
+                }
+            } else if let Some(step) = spec.reference_step.or_else(|| {
+                spec.discrete_step
+                    .filter(|step| (spec.max - spec.min) / step <= 15.0)
+            }) {
+                for index in 0..=((spec.max - spec.min) / step).round() as u32 {
+                    let value = spec.min + index as f32 * step;
+                    mark(
+                        spec.normalized(value),
+                        spec.reference_step.is_some() && value != spec.reset,
+                    );
+                }
+            } else {
+                mark(spec.normalized(spec.reset), false);
             }
-        } else if let Some(step) = spec
-            .reference_step
-            .or(spec.discrete_step)
-            .filter(|step| (spec.max - spec.min) / step <= 15.0)
-        {
-            for index in 0..=((spec.max - spec.min) / step).round() as u32 {
-                let value = spec.min + index as f32 * step;
-                mark(
-                    spec.normalized(value),
-                    spec.reference_step.is_some() && value != spec.reset,
-                );
-            }
-        } else {
-            mark(spec.normalized(spec.reset), false);
         }
         if let Some(format) = spec.value_label {
             painter.text(
@@ -658,6 +696,29 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
                     label,
                     crate::fonts::numeric(9.0),
                     theme::palette(ui.ctx()).text,
+                );
+            }
+        }
+        if let Some(labels) = spec.two_way_labels {
+            for (choice, position, align, label) in [
+                (spec.min, rect.left_top(), egui::Align2::LEFT_TOP, labels[0]),
+                (
+                    spec.max,
+                    rect.right_top(),
+                    egui::Align2::RIGHT_TOP,
+                    labels[1],
+                ),
+            ] {
+                painter.text(
+                    position,
+                    align,
+                    label,
+                    crate::fonts::numeric(9.0),
+                    if choice == *value {
+                        theme::accent(ui.ctx())
+                    } else {
+                        theme::palette(ui.ctx()).secondary
+                    },
                 );
             }
         }
@@ -981,11 +1042,13 @@ mod tests {
     fn stepped_keyboard_values_clamp_reset_and_ignore_disabled_input() {
         for spec in [
             KnobSpec::new("Waveform", 0.0..=3.0, 0.0, 1.0).stepped(1.0),
+            KnobSpec::new("Rate mode", 0.0..=1.0, 1.0, 1.0).two_way_labels("Hz", "Note"),
             KnobSpec::new("Pitch", -48.0..=48.0, 0.0, 1.0)
                 .stepped(1.0)
                 .bipolar(),
         ] {
             let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
             let mut value = spec.max;
             let point =
                 spec_frame(&ctx, &mut value, vec![], Default::default(), spec, true).center();
@@ -1051,6 +1114,7 @@ mod tests {
             );
             assert_eq!(value, spec.max - 1.0);
             let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
             let point =
                 spec_frame(&ctx, &mut value, vec![], Default::default(), spec, true).center();
             for _ in 0..2 {

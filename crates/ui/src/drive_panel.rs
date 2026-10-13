@@ -213,31 +213,8 @@ pub(super) fn show(
                                                     icons::COMPACT_BUTTON_SIZE
                                                 },
                                                 |ui| {
-                                                    let label = egui::RichText::new(name)
-                                                        .size(panels::HEADER_FONT_SIZE)
-                                                        .color(theme::palette(ui.ctx()).text);
-                                                    let width = ui
-                                                        .painter()
-                                                        .layout_no_wrap(
-                                                            name.into(),
-                                                            egui::FontId::proportional(
-                                                                panels::HEADER_FONT_SIZE,
-                                                            ),
-                                                            theme::palette(ui.ctx()).text,
-                                                        )
-                                                        .size()
-                                                        .x;
-                                                    ui.add_space(
-                                                        ((ui.available_width() - width) * 0.5)
-                                                            .max(0.0)
-                                                            .round(),
-                                                    );
-                                                    bounds.labels[index] = ui
-                                                        .add(
-                                                            egui::Label::new(label)
-                                                                .selectable(false),
-                                                        )
-                                                        .rect;
+                                                    bounds.labels[index] =
+                                                        rows::unit_label(ui, name).rect;
                                                 },
                                             );
                                         },
