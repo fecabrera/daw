@@ -50,7 +50,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/ui` | egui application state, interactions, previews, reusable controls, and presentation. |
 | `apps/desktop` | eframe startup, GPU backend selection, and native menu, window, and file-drag adapters. Windows uses Glow/OpenGL for native caption composition; macOS/Linux use wgpu. Keep OS-specific code here. |
 | `apps/cli` | clap arguments, diagnostics, and exit codes over the shared project/export APIs. Must remain usable without graphics or an audio device. |
-| `tools` | Demo generation, CLI smoke checks, and macOS packaging. |
+| `tools` | Demo generation, CLI smoke checks, and macOS/Windows packaging. |
 | `examples` | Tracked generated audio and demo project fixtures. |
 | `docs`, `specs` | Scope, requirements, and validation records. |
 | `work`, `target` | Ignored scratch files, dependency cache, logs, and build outputs. |
