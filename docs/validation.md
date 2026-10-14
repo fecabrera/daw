@@ -1737,3 +1737,19 @@ Completed checks:
 - Documentation links and `git diff HEAD --check`: passed.
 
 Native appearance and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only color change. The running DAW and user projects were not restarted or changed.
+
+## Click loop range to toggle — 2026-10-14
+
+A primary click on the existing loop-range body or either handle now toggles looping on release in Timeline and Editor. The ruler and toolbar share `toggle_looping`, preserving nonempty-range validation and dirty/playback synchronization. The range bounds and playhead stay unchanged. The ruler tooltip now describes click-to-toggle. Real drags, including those with unchanged bounds or no horizontal motion, retain their existing behavior and do not toggle looping. Empty upper-band clicks remain inactive.
+
+One new input test covers both views with horizontal scrolling: handle/body clicks, small pointer movement, activation on release, both toggle directions, endpoint/playhead preservation, dirty state, empty-space clicks, vertical drags without range movement, and a background job blocking activation between press and release. Existing ruler tests cover creation, movement, resizing, lower-band seeking, and interrupted drag restoration.
+
+Completed checks:
+
+- Focused click test and nine ruler-related checks: passed. Final click log: `work/loop-bar-click-focused.log`.
+- Formatting and strict locked offline workspace/all-target Clippy: passed. Log: `work/loop-bar-click-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **536 passed**, including **338 UI tests** and doc tests. Log: `work/loop-bar-click-workspace.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/loop-bar-click-package.log`. Bundle and build executables share SHA-256 `73d5d9f6bc325674a0ef61bfe6fa4e95bf5cf3253baf088de0b63455a2c42cfe`.
+- Documentation links and `git diff --check`: passed.
+
+Native mouse/trackpad behavior and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only change. The running DAW and user projects were not restarted or changed.

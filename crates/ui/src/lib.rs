@@ -1257,6 +1257,15 @@ impl DawUi {
             self.fail(e);
         }
     }
+    fn toggle_looping(&mut self) {
+        let region = &mut self.session.project.transport.r#loop;
+        if !region.enabled && region.end_frame <= region.start_frame {
+            self.fail("Drag on the time ruler to select a loop region");
+        } else {
+            region.enabled = !region.enabled;
+            self.changed();
+        }
+    }
     fn edit(&mut self, command: Edit) {
         match self.session.project.edit(command) {
             Ok(()) => {
@@ -2207,16 +2216,7 @@ impl DawUi {
                 self.stop();
             }
             if buttons.looping.clicked() {
-                let enabled = !enabled;
-                if enabled
-                    && self.session.project.transport.r#loop.end_frame
-                        <= self.session.project.transport.r#loop.start_frame
-                {
-                    self.fail("Drag on the time ruler to select a loop region");
-                } else {
-                    self.session.project.transport.r#loop.enabled = enabled;
-                    self.changed();
-                }
+                self.toggle_looping();
             }
             ui.add_enabled_ui(self.job.is_none(), |ui| self.time_control(ui));
             ui.add_enabled_ui(self.job.is_none(), |ui| self.musical_control(ui));
@@ -2855,6 +2855,13 @@ impl DawUi {
                 self.changed();
             }
         }
+        if selection.clicked_by(egui::PointerButton::Primary)
+            && self.loop_drag.is_none()
+            && let Some(pointer) = selection.interact_pointer_pos()
+            && !matches!(self.loop_drag_mode(rect, pointer), LoopDragMode::Create)
+        {
+            self.toggle_looping();
+        }
         if (playhead.clicked_by(egui::PointerButton::Primary)
             || playhead.dragged_by(egui::PointerButton::Primary)
             || playhead.drag_stopped_by(egui::PointerButton::Primary))
@@ -2910,7 +2917,7 @@ impl DawUi {
         let ticks = Rect::from_min_max(labels.left_bottom(), rect.max);
         let selection_response = ui.interact(
         labels, response.id.with("selection"), Sense::click_and_drag(),
-    ).on_hover_text("Drag empty space to select a loop range. Drag its edges to resize or its body to move. Hold Shift to bypass snapping.");
+    ).on_hover_text("Click the loop range to toggle looping. Drag empty space to select a loop range. Drag its edges to resize or its body to move. Hold Shift to bypass snapping.");
         let playhead_response = ui
             .interact(ticks, response.id.with("playhead"), Sense::click_and_drag())
             .on_hover_cursor(egui::CursorIcon::PointingHand)

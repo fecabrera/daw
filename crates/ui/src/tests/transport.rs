@@ -310,3 +310,96 @@ fn transport_loop_button_keeps_validity_dirty_state_and_workspace_geometry() {
     assert!(!app.session.project.transport.r#loop.enabled);
     assert!(app.dirty);
 }
+
+#[test]
+fn loop_bar_clicks_toggle_on_release_in_both_views_without_changing_the_range() {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_view_mode(view, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        app.set_view_zoom(70.0);
+        app.set_view_scroll(1.0);
+        app.session.project.transport.playhead_frame = frames(8.0);
+        app.session.project.transport.r#loop.start_frame = frames(2.0);
+        app.session.project.transport.r#loop.end_frame = frames(5.0);
+        frame(&mut app, &ctx, vec![]);
+        let ruler = if view == ViewMode::Timeline {
+            let lane = app.lane_bounds[&track];
+            Rect::from_min_size(
+                Pos2::new(lane.left(), lane.top() - RULER_HEIGHT),
+                Vec2::new(lane.width(), RULER_HEIGHT),
+            )
+        } else {
+            app.midi_editor.ruler_bounds
+        };
+        let point =
+            |seconds: f32| Pos2::new(ruler.left() + (seconds - 1.0) * 70.0, ruler.top() + 9.0);
+        // Click both handles and the body. Small pointer motion stays a click.
+        for seconds in [1.98, 3.5, 5.01] {
+            let start = point(seconds);
+            let end = start + Vec2::new(0.5, 0.0);
+            let before = app.session.project.transport.r#loop.enabled;
+            app.dirty = false;
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            assert_eq!(app.session.project.transport.r#loop.enabled, before);
+            assert!(!app.dirty);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            let region = &app.session.project.transport.r#loop;
+            assert_eq!(region.enabled, !before);
+            assert_eq!(
+                (region.start_frame, region.end_frame),
+                (frames(2.0), frames(5.0))
+            );
+            assert_eq!(app.session.project.transport.playhead_frame, frames(8.0));
+            assert!(app.dirty);
+            assert!(app.error.is_none());
+        }
+        let state = |app: &DawUi| {
+            let region = &app.session.project.transport.r#loop;
+            (region.enabled, region.start_frame, region.end_frame)
+        };
+        let before = state(&app);
+        app.dirty = false;
+        let blank = point(7.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(blank), button(blank, true)],
+        );
+        frame(&mut app, &ctx, vec![button(blank, false)]);
+        assert_eq!(state(&app), before);
+        assert!(!app.dirty);
+
+        // A real drag with no horizontal displacement must not become a toggle.
+        let start = point(3.5);
+        let end = start + Vec2::new(0.0, 15.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert_eq!(state(&app), before);
+        assert!(!app.dirty);
+
+        // Becoming busy between press and release cancels click activation.
+        let (sender, receiver) = mpsc::channel();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        app.job = Some(receiver);
+        frame(&mut app, &ctx, vec![button(start, false)]);
+        assert_eq!(state(&app), before);
+        assert!(!app.dirty);
+        drop(sender);
+    }
+}
