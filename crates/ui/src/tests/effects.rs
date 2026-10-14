@@ -2933,10 +2933,19 @@ fn timeline_track_click_switches_effect_chain_and_retains_state_across_view_chan
 }
 #[test]
 fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
-    for master in [false, true] {
-        let (mut app, track) = fixture();
+    for (view, master) in [
+        (ViewMode::Timeline, false),
+        (ViewMode::Timeline, true),
+        (ViewMode::Instrument, false),
+    ] {
+        let (mut app, mut track) = fixture();
+        if view == ViewMode::Instrument {
+            app = DawUi::default();
+            track = app.session.project.add_midi_track().unwrap();
+        }
         let ctx = context();
         app.select_track(track, false);
+        app.set_view_mode(view, &ctx);
         frame(&mut app, &ctx, vec![]);
         if master {
             let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
@@ -3618,4 +3627,80 @@ fn selecting_master_shows_its_independent_chain_and_restores_track_effects_in_th
     assert!(app.session.project.tracks.is_empty());
     assert_eq!(app.session.project.master.effects.len(), 1);
     assert!(app.dirty);
+}
+
+#[test]
+fn instrument_reuses_the_effects_toolbar_catalog_and_lane_with_shared_visibility() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let mut app = DawUi::default();
+        let track = app.session.project.add_midi_track().unwrap();
+        app.select_track(track, false);
+        app.session.project.tracks[0]
+            .effects
+            .push(daw_core::EffectInstance::drive());
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        assert!(!app.lane_bounds.is_empty());
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        app.dirty = false;
+        let rail = app.effects_bounds.toolbar;
+        let catalog = app.effects_bounds.library;
+        let lane = app.effects_bounds.strip;
+        let header = app.midi_editor.instrument_header_bounds;
+        assert_eq!(rail.width(), 38.0);
+        assert_eq!(app.effects_bounds.library_toggle.size(), Vec2::splat(24.0));
+        assert_eq!(app.effects_bounds.lane_toggle.size(), Vec2::splat(24.0));
+        assert_eq!(rail.right(), catalog.left());
+        assert_eq!(catalog.width(), TRACK_WIDTH);
+        assert_eq!(catalog.right(), header.left());
+        assert_eq!(lane.left(), rail.right());
+        assert_eq!(lane.top(), catalog.bottom());
+        assert_eq!(lane.bottom(), rail.bottom());
+        assert_eq!(app.effects_bounds.drive_units.len(), 1);
+        assert!(app.timeline_bounds == Rect::NOTHING && app.lane_bounds.is_empty());
+        assert!(app.file_drop_target.is_none());
+        let library = app.effects_bounds.library_toggle.center();
+        click(&mut app, &ctx, library);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.midi_editor.instrument_header_bounds.left(),
+            rail.right()
+        );
+        assert_eq!(app.effects_bounds.library, Rect::NOTHING);
+        let toggle = app.effects_bounds.lane_toggle.center();
+        click(&mut app, &ctx, toggle);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.effects_bounds.strip, Rect::NOTHING);
+        assert!(app.effects_bounds.chain.is_empty());
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert!(!app.timeline_catalog_visible && !app.timeline_effects_visible);
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        click(&mut app, &ctx, library);
+        click(&mut app, &ctx, toggle);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.effects_bounds.library, catalog);
+        assert_eq!(app.effects_bounds.strip, lane);
+        assert_eq!(app.midi_editor.instrument_header_bounds, header);
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+        let audio = app.session.project.add_track().unwrap();
+        app.select_track(audio, false);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.effects_target(), None);
+        assert!(app.effects_bounds.chain.is_empty());
+    }
 }

@@ -62,6 +62,18 @@ impl Default for EffectsUiBounds {
 
 impl DawUi {
     pub(super) fn effects_target(&self) -> Option<EffectTarget> {
+        if self.view_mode == ViewMode::Instrument {
+            return self
+                .selected_track
+                .filter(|id| {
+                    self.session
+                        .project
+                        .tracks
+                        .iter()
+                        .any(|track| track.id == *id && track.kind == daw_core::TrackKind::Midi)
+                })
+                .map(EffectTarget::Track);
+        }
         if self.master_selected {
             Some(EffectTarget::Master)
         } else {
@@ -143,10 +155,15 @@ impl DawUi {
             .hline(ui.max_rect().x_range(), ui.max_rect().top() + 0.5, border);
         ui.add_space(1.0);
         let bounds = Rect::from_min_max(ui.cursor().min, ui.max_rect().max);
-        let below_track = (bounds.height() - RULER_HEIGHT - track_overview::STRIP_HEIGHT).max(0.0);
+        let below_track = if self.view_mode == ViewMode::Instrument {
+            (bounds.height() - toolbars::HEIGHT).max(0.0)
+        } else {
+            (bounds.height() - RULER_HEIGHT - track_overview::STRIP_HEIGHT - SCROLLBAR_HEIGHT)
+                .max(0.0)
+        };
         let lane_visible = self.timeline_effects_visible;
         let strip_height = if lane_visible {
-            panels::unit_height(compact).min((below_track - SCROLLBAR_HEIGHT).max(0.0))
+            panels::unit_height(compact).min(below_track)
         } else {
             0.0
         };
@@ -317,22 +334,32 @@ impl DawUi {
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     ui.set_min_height(upper.height());
-                        let timeline_bounds = Rect::from_min_max(ui.max_rect().min, upper.max);
-                        let mut timeline_ui = ui.new_child(egui::UiBuilder::new()
-                            .id_salt("timeline-workspace")
-                            .max_rect(timeline_bounds)
-                            .layout(egui::Layout::top_down(egui::Align::Min)));
-                        timeline_ui.set_clip_rect(timeline_bounds.intersect(ui.clip_rect()));
-                        timeline_ui.add_enabled_ui(self.effects_drag.is_none(), |ui| self.timeline_workspace(ui));
-                        #[cfg(test)]
-                        { self.effects_bounds.scrollbar = self.scrollbar_bounds; }
+                    let content_bounds = Rect::from_min_max(ui.max_rect().min, upper.max);
+                    let mut content_ui = ui.new_child(egui::UiBuilder::new()
+                        .id_salt(("effects-workspace-content", self.view_mode.label()))
+                        .max_rect(content_bounds)
+                        .layout(egui::Layout::top_down(egui::Align::Min)));
+                    content_ui.set_clip_rect(content_bounds.intersect(ui.clip_rect()));
+                    content_ui.add_enabled_ui(self.effects_drag.is_none(), |ui| {
+                        if self.view_mode == ViewMode::Instrument {
+                            self.timeline_bounds = Rect::NOTHING;
+                            self.lane_bounds.clear();
+                            self.file_drop_target = None;
+                            self.instrument_view(ui);
+                        } else {
+                            self.timeline_workspace(ui);
+                        }
+                    });
+                    #[cfg(test)]
+                    { self.effects_bounds.scrollbar = if self.view_mode == ViewMode::Instrument { Rect::NOTHING } else { self.scrollbar_bounds }; }
+
                 },
             );
         });
         if let Some(library) = library {
             library.finish(ui);
         }
-        // Track-panel clicks can change the processing target while Timeline is drawn.
+        // Workspace controls can change the processing target while content is drawn.
         if self.effects_target() != selected {
             selected = self.effects_target();
             (compact, effects) = self.effects_state(selected);

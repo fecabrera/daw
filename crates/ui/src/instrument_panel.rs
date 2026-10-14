@@ -54,12 +54,6 @@ pub(crate) struct LayerUiBounds {
 impl DawUi {
     pub(super) fn instrument_view(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 0.0;
-        // Share one divider between the toolbar and workspace.
-        ui.painter().hline(
-            ui.max_rect().x_range(),
-            ui.max_rect().top() + 0.5,
-            Stroke::new(1.0, theme::palette(ui.ctx()).border),
-        );
         let Some(track) = self
             .session
             .project
@@ -99,10 +93,8 @@ impl DawUi {
             .inputs
             .retain(|id, _| settings.layers.iter().any(|layer| layer.id == *id));
         let mut remove_layer = None;
-        let mut column_bounds = ui.max_rect();
-        column_bounds.min.y += 1.0;
+        let column_bounds = ui.max_rect();
         let control_panel = panels::ControlPanel::begin(ui, column_bounds);
-        ui.add_space(1.0);
         ui.spacing_mut().item_spacing.y = -1.0;
         let header = control_panel.header(ui, "Layers", |ui| {
             let add = icons::button(

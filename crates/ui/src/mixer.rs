@@ -45,7 +45,7 @@ impl ViewMode {
     }
 
     pub(super) fn has_effects(self) -> bool {
-        self == Self::Timeline
+        matches!(self, Self::Timeline | Self::Instrument)
     }
 
     pub(super) fn has_track_overview(self) -> bool {

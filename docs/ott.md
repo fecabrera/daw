@@ -1,6 +1,6 @@
 # OTT
 
-OTT is a three-band upward/downward compressor. Add it from Timeline's Effects catalog by double-click, Enter with a selection, or a library drag. Each instance uses the shared header, whole-unit bypass, selection, group reorder, remove menu, compact mode, and saved collapse behavior.
+OTT is a three-band upward/downward compressor. Add it from Timeline or Instrument’s Effects catalog by double-click, Enter with a selection, or a library drag. Each instance uses the shared header, whole-unit bypass, selection, group reorder, remove menu, compact mode, and saved collapse behavior.
 
 ## Controls
 

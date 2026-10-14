@@ -1177,7 +1177,7 @@ fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
 }
 
 #[test]
-fn available_views_and_empty_states_keep_effects_in_timeline_only() {
+fn available_views_and_empty_states_keep_effects_in_timeline_and_instrument() {
     assert_eq!(
         ViewMode::ALL.map(ViewMode::label),
         ["Timeline", "Instrument", "Editor", "Mixer"]
@@ -1187,7 +1187,7 @@ fn available_views_and_empty_states_keep_effects_in_timeline_only() {
     for mode in ViewMode::ALL {
         app.set_view_mode(mode, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        if mode == ViewMode::Timeline {
+        if mode.has_effects() {
             assert!(app.effects_bounds.library.is_positive());
             assert!(app.effects_bounds.strip.is_positive());
         }

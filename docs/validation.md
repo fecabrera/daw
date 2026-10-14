@@ -1803,3 +1803,22 @@ Completed checks:
 - Documentation links and `git diff --check`: passed.
 
 Native menubar/key-equivalent interaction and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only change. The running DAW and user projects were not restarted or changed.
+
+## Instrument effects toolbar and shared workspace — 2026-10-14
+
+Instrument now uses Timeline's shared effects workspace and left toolbar. The 38-point rail spans playback to status, with the same 24×24 Library/Gallery Horizontal buttons, 16-point icons, styles, and guards. The catalog sits left of Layers, and the lane sits below the layer workspace. Independent catalog/lane visibility is shared UI state across Timeline and Instrument; hiding either returns its space without project edits. Instrument targets only its selected MIDI track's existing saved chain. Layer/source/envelope composition, the MIDI selector, processing, and saved schema retain their behavior.
+
+Catalog keyboard/multiple selection, drag/drop previews, unit controls, compact/collapse settings, group reorder/Delete, focus cleanup, and cancellation reuse existing handlers. Instrument clears stale Timeline lane geometry and file-drop targets. The shared workspace owns the single top divider; its instrument body no longer adds a duplicate divider or gap.
+
+One new UI test covers both themes, toolbar/button dimensions, catalog/Layers/lane adjacency, independent hiding/restoring, shared visibility across views, project preservation, and rejecting audio targets. Existing catalog drag/reorder/group-Delete coverage now also exercises Instrument with a MIDI track. Three layer tests were adapted to the new optional-pane layout: provide enough height for background geometry, hide the lane for full three-layer drag targets, and exclude toolbar-button fills when locating a unit header. Layer interaction and divider checks pass.
+
+Completed checks:
+
+- Focused Instrument geometry, shared effects interactions, layer reordering/layout, and header/divider checks: passed.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline -p daw-ui --lib`: **341 passed**. Log: `work/instrument-effects-ui.log`.
+- Formatting and strict locked offline workspace/all-target Clippy: passed. Log: `work/instrument-effects-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **543 passed**, including doc tests. Log: `work/instrument-effects-workspace.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/instrument-effects-package.log`. Bundle and build executables share SHA-256 `9a298a1683519d882455aed0d491ae7274bc287925b1578f17eddd7987ce02f6`.
+- Documentation links and `git diff --check`: passed.
+
+Native layout/gesture behavior and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only composition change. The running DAW and user projects were not restarted or changed.

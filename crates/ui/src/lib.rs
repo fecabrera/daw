@@ -1679,7 +1679,7 @@ impl DawUi {
                     |ui| match self.view_mode {
                         mixer::ViewMode::Timeline => self.workspace(ui),
                         mixer::ViewMode::Mixer => self.mixer(ui),
-                        mixer::ViewMode::Instrument => self.instrument_view(ui),
+                        mixer::ViewMode::Instrument => self.workspace(ui),
                         mixer::ViewMode::Edit => self.edit_view(ui),
                     },
                 );
@@ -1697,7 +1697,7 @@ impl DawUi {
         self.dialogs(&ctx);
         self.effects_catalog.clear_if_unfocused(
             &ctx,
-            (self.view_mode == ViewMode::Timeline && self.timeline_catalog_visible)
+            (self.view_mode.has_effects() && self.timeline_catalog_visible)
                 && ui.is_enabled()
                 && self.edit_environment_available(),
             self.effects_drag
@@ -2334,7 +2334,7 @@ impl DawUi {
         let content = Rect::from_min_max(rail.right_top(), bounds.max);
         let mut workspace = ui.new_child(
             egui::UiBuilder::new()
-                .id_salt("timeline-content")
+                .id_salt(("effects-content", self.view_mode.label()))
                 .max_rect(content)
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );

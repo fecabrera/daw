@@ -304,7 +304,7 @@ fn layer_headers_share_track_geometry_and_leave_the_header_workspace_dark() {
                 ..Default::default()
             },
         );
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(640.0, 1300.0));
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(640.0, 1600.0));
         let header = app.midi_editor.instrument_header_bounds;
         assert_eq!(header.width(), TRACK_WIDTH);
         let add = app.midi_editor.add_layer_bounds;
@@ -1166,6 +1166,8 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
     for area in ["grip", "name", "blank", "inset", "gutter", "body"] {
         for action in ["commit", "escape", "window", "outside", "same", "disabled"] {
             let (mut app, ctx, layers) = layer_header_fixture();
+            app.timeline_effects_visible = false;
+            frame(&mut app, &ctx, vec![]);
             app.dirty = false;
             let bounds = &app.midi_editor.layer_bounds[&layers[0].id];
             let start = match area {
@@ -2673,7 +2675,8 @@ fn unit_header_text_and_toolbar_divider_follow_the_accent_in_both_themes() {
                 .filter_map(|s| match &s.shape {
                     egui::Shape::Rect(r)
                         if r.fill == theme::unit_header_fill(&ctx, true)
-                            && r.rect.height() == 24.0 =>
+                            && r.rect.height() == 24.0
+                            && r.rect.width() > 24.0 =>
                     {
                         Some(r.rect)
                     }
