@@ -1066,6 +1066,7 @@ dependencies = [
  "daw-drive",
  "daw-envelope",
  "daw-equalizer",
+ "daw-limiter",
  "daw-media",
  "daw-oscillator",
  "daw-ott",
@@ -1086,6 +1087,13 @@ version = "0.1.0"
 dependencies = [
  "daw-unit-core",
  "fundsp",
+]
+
+[[package]]
+name = "daw-limiter"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
 ]
 
 [[package]]

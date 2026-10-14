@@ -42,6 +42,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
 | `crates/auto-filter` | Portable stereo filter and transport-locked LFO behind the shared effect API; keep FunDSP types private. |
 | `crates/ott` | Portable three-band upward/downward dynamics, phase-matched crossovers, and signed gain monitoring; keep FunDSP types private. |
+| `crates/limiter` | Portable stereo Peak/True Peak limiter, L/R and M/S dynamics, fixed latency, and gain-reduction monitoring; no DAW/UI/device dependencies. |
 | `crates/compressor` | Portable linked stereo dynamics and gain-reduction monitoring behind the shared effect API; keep FunDSP detector types private. |
 | `crates/envelope` | Reusable, allocation-free per-note ADSR modulator; no DAW, UI, or device dependencies. |
 | `crates/core` | Project entities, stable IDs, frame ranges, colors, validation, and transactional edit commands. No UI, device, or file-dialog dependencies. |
@@ -136,6 +137,8 @@ The audio callback must remain nonblocking and must not allocate or perform file
 
 - Auto-filter uses three strips: Cutoff, LFO, and Out. LFO is one strip with two control columns, equal inner/outer horizontal gaps, no internal divider, and one centered `rows::power_label` footer. Match the control inset of the 90-point single-column strips. Pass project frame and tempo to `AutoFilter::process_at` in playback/export; retain compatible histories and ramps. Follow [Auto-filter](docs/auto-filter.md) for rates, phases, smoothing, and saved state.
 - Compressor uses three strips: Comp (Threshold, Ratio, Peak/RMS), Response (Attack, Release, Knee), and Out (Level, Dry/Wet, read-only gain-reduction meter). Peak/RMS reuses Auto-filter's bounded two-way knob. Prepare meter handles on a control thread, publish actual processor reduction through atomics, and retain handles/history by stable effect ID. Follow [Compressor](docs/compressor.md) for detector timing, stereo linking, gain order, smoothing, defaults, and saved state.
+
+- Limiter uses Limit (Input, Release, Lookahead) and Out (Ceiling, Peak/True Peak, L/R/M/S) strips with a thin gain-reduction rail. Keep linked L/R, independent M/S plus linked final protection, fixed bypass latency, and shared engine alignment/preroll. Follow [Limiter](docs/limiter.md) for ranges, reconstruction limits, state migration, transport, and allocation-free processing.
 
 ## Persistence and export
 

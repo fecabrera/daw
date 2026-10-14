@@ -3064,3 +3064,73 @@ fn master_effects_save_open_rate_change_and_export_use_the_master_bus() {
     daw_engine::Renderer::new(restored.plan()).render_offline(&mut bypassed);
     assert_eq!(bypassed, dry_audio);
 }
+
+#[test]
+fn limiter_save_open_rate_change_and_export_keep_the_ceiling_and_exact_frame_count() {
+    use daw_core::{EffectInstance, EffectSettings, LimiterMode, LimiterRouting};
+    use daw_media::{ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let source = fixture.wav("limiter.wav", 48000, 2, 32, true);
+    let original = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let mut effect = EffectInstance::limiter();
+    let EffectSettings::Limiter(s) = &mut effect.unit else {
+        unreachable!()
+    };
+    s.input_db = 24.0;
+    s.ceiling_db = -6.0;
+    s.lookahead_ms = 10.0;
+    s.routing = LimiterRouting::MidSide;
+    s.mode = LimiterMode::TruePeak;
+    s.collapsed = true;
+    session
+        .project
+        .edit(Edit::SetMasterEffects {
+            effects: vec![effect.clone()],
+            compact: false,
+        })
+        .unwrap();
+    session.save(&fixture.0.join("limiter-first")).unwrap();
+    let mut loaded = Session::open(&fixture.0.join("limiter-first")).unwrap();
+    loaded.save(&fixture.0.join("limiter-second")).unwrap();
+    let loaded = Session::open(&fixture.0.join("limiter-second")).unwrap();
+    assert_eq!(loaded.project.master.effects, vec![effect.clone()]);
+    for loaded in [
+        loaded.clone(),
+        loaded.with_audio_settings(96000, 128).unwrap(),
+    ] {
+        assert_eq!(loaded.project.master.effects, vec![effect.clone()]);
+        let output = fixture
+            .0
+            .join(format!("limited-{}.wav", loaded.project.sample_rate_hz));
+        loaded
+            .export_with_settings(
+                &output,
+                false,
+                ExportSettings {
+                    wav_codec: WavCodec::Float32,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let exported: Vec<f32> = hound::WavReader::open(output)
+            .unwrap()
+            .samples::<f32>()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(exported.len(), loaded.project.end() as usize * 2);
+        assert!(
+            exported
+                .iter()
+                .all(|v| v.is_finite() && v.abs() <= 10_f32.powf(-6.0 / 20.0))
+        );
+        let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
+        daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
+        assert_eq!(
+            exported,
+            rendered.iter().flatten().copied().collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(fs::read(source).unwrap(), original);
+}

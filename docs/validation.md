@@ -1852,3 +1852,22 @@ Completed checks on the final source:
 - Documentation links and `git diff --check`: passed.
 
 Native appearance/gestures and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only change. The running DAW and user projects were not restarted or changed.
+
+## Limiter and compensated lookahead — 2026-10-14
+
+Added the portable `daw-limiter` crate, version-1 settings/validation and future-state preservation, engine/track/Master processing, shared meter handles, catalog entry, and two-strip UI. Limit contains Input/Release/Lookahead; Out contains Ceiling, Peak/True Peak, and L/R/M/S. The thin gain-reduction rail, two-way knobs, enable/collapse, compact mode, and catalog/lane actions reuse existing controls. True Peak uses an eight-phase/64-tap reconstruction guard with a 32-frame block and 0.175 dB estimation headroom; it does not claim ITU certification.
+
+Fixed instance latency includes the maximum 10 ms delay and reconstruction block even when bypassed. Prepared alignment delays, source read-ahead/preroll, serial Master accounting, and loop clock correction preserve arranged/export frame positions. Seeks, Stop, Pause/resume, and compatible plan replacement use the shared path. Zero-latency track additions retain the previous live pitch phase; a regression found during review was fixed before the final checks. See [Limiter](limiter.md) for processing and reconstruction limits.
+
+Completed checks on the final source:
+
+- Eight limiter DSP tests cover supported rates, finite/extreme input, linked sample ceilings, independent M/S behavior, bypass delay/reset, lookahead, release, quiet-signal transparency, retargeting, and an independent 16×/128-tap true-peak reconstruction of high-frequency stereo bursts.
+- Engine checks cover unequal serial track/Master delays, byte-identical bypass alignment, exact live/export output, seeks, loop/MIDI timing, frame-limit arithmetic, retained live pitch phase, meters, and allocation-free processing/reset/retarget/topology changes. Model and project checks cover atomic invalid edits, future data, duplication, Save/Open/Save As, rate changes, and exact float export frame count/ceiling.
+- Formatting and strict locked offline workspace/all-target Clippy: passed. Log: `work/limiter-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **561 passed**, including **343 UI tests** and doc tests. Log: `work/limiter-workspace.log`.
+- Locked offline CLI build and `python3 tools/check_cli.py`: passed. Logs: `work/limiter-cli-build.log`, `work/limiter-cli.log`.
+- Additional temporary-project CLI validate/render check: passed with True Peak, M/S, −6 dB ceiling, and exactly 4800 stereo frames. Log: `work/limiter-cli-unit.log`. User sources and tracked fixtures were not changed.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/limiter-package.log`. Bundle and build executables share SHA-256 `958697f248af45e9a5a024a971d3933e6486c9443cafde5a9adc6e9be3e337fd`.
+- Documentation file links and `git diff --check`: passed.
+
+Native appearance/gestures, listening quality, callback CPU/device stability, and Windows/Linux builds were not verified. The running DAW and user projects were not restarted or changed. Reconstruction checks establish the tested signals/rates; they do not establish a bound for every possible analog reconstruction.

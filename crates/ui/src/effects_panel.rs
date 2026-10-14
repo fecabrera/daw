@@ -20,6 +20,7 @@ pub(crate) struct EffectsUiBounds {
     pub auto_filter_entry: Rect,
     pub compressor_entry: Rect,
     pub ott_entry: Rect,
+    pub limiter_entry: Rect,
     pub lane_toolbar: Rect,
     pub lane_compact: Rect,
     pub chain: Vec<(Id, Rect)>,
@@ -30,6 +31,7 @@ pub(crate) struct EffectsUiBounds {
     pub auto_filter_units: Vec<crate::auto_filter_panel::Bounds>,
     pub compressor_units: Vec<crate::compressor_panel::Bounds>,
     pub ott_units: Vec<crate::ott_panel::Bounds>,
+    pub limiter_units: Vec<crate::limiter_panel::Bounds>,
 }
 
 #[cfg(test)]
@@ -48,6 +50,7 @@ impl Default for EffectsUiBounds {
             auto_filter_entry: Rect::NOTHING,
             compressor_entry: Rect::NOTHING,
             ott_entry: Rect::NOTHING,
+            limiter_entry: Rect::NOTHING,
             lane_toolbar: Rect::NOTHING,
             lane_compact: Rect::NOTHING,
             chain: vec![],
@@ -58,6 +61,7 @@ impl Default for EffectsUiBounds {
             auto_filter_units: vec![],
             compressor_units: vec![],
             ott_units: vec![],
+            limiter_units: vec![],
         }
     }
 }
@@ -151,6 +155,7 @@ impl DawUi {
             self.effects_bounds.auto_filter_units.clear();
             self.effects_bounds.compressor_units.clear();
             self.effects_bounds.ott_units.clear();
+            self.effects_bounds.limiter_units.clear();
         }
         let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
         ui.painter()
@@ -185,6 +190,7 @@ impl DawUi {
             self.effects_bounds.auto_filter_entry = Rect::NOTHING;
             self.effects_bounds.compressor_entry = Rect::NOTHING;
             self.effects_bounds.ott_entry = Rect::NOTHING;
+            self.effects_bounds.limiter_entry = Rect::NOTHING;
         }
         ui.horizontal_top(|ui| {
             if let Some(library) = library.as_ref() {
@@ -258,6 +264,8 @@ impl DawUi {
                         }
                         #[cfg(test)]
                         if type_id == daw_core::OTT_TYPE_ID { self.effects_bounds.ott_entry = response.rect; }
+                        #[cfg(test)]
+                        if type_id == daw_core::LIMITER_TYPE_ID { self.effects_bounds.limiter_entry = response.rect; }
                         #[cfg(test)]
                         if type_id == daw_core::COMPRESSOR_TYPE_ID {
                             self.effects_bounds.compressor_entry = response.rect;
@@ -481,6 +489,23 @@ impl DawUi {
                                                 let power = _bounds.power;
                                                 #[cfg(test)]
                                                 self.effects_bounds.ott_units.push(_bounds);
+                                                (header, power)
+                                            }
+                                            daw_core::EffectSettings::Limiter(settings) => {
+                                                let reduction =
+                                                    self.output.as_ref().map_or(0.0, |output| {
+                                                        output.gain_reduction_db(effect.id)
+                                                    });
+                                                let (_bounds, header) = crate::limiter_panel::show(
+                                                    ui,
+                                                    settings,
+                                                    compact,
+                                                    strip.height(),
+                                                    reduction,
+                                                );
+                                                let power = _bounds.power;
+                                                #[cfg(test)]
+                                                self.effects_bounds.limiter_units.push(_bounds);
                                                 (header, power)
                                             }
                                             daw_core::EffectSettings::Missing {

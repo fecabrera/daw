@@ -71,7 +71,12 @@ fn effect_meters(
 ) -> HashMap<Id, Arc<AtomicU32>> {
     plan.project
         .all_effects()
-        .filter(|effect| matches!(effect.unit, daw_core::EffectSettings::Compressor(_)))
+        .filter(|effect| {
+            matches!(
+                effect.unit,
+                daw_core::EffectSettings::Compressor(_) | daw_core::EffectSettings::Limiter(_)
+            )
+        })
         .map(|effect| {
             (
                 effect.id,

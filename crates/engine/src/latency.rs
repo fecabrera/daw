@@ -1,0 +1,151 @@
+//! Prepared alignment delays. No allocation on seek, loop, retarget, or sample processing.
+use daw_core::{EffectInstance, EffectSettings, Id, Project};
+
+pub(super) type Sample = ([f32; 2], bool);
+pub(super) struct Delay {
+    id: Id,
+    samples: Vec<Sample>,
+    index: usize,
+}
+impl Delay {
+    pub fn tick(&mut self, sample: Sample) -> Sample {
+        if self.samples.is_empty() {
+            return sample;
+        }
+        let output = self.samples[self.index];
+        self.samples[self.index] = sample;
+        self.index = (self.index + 1) % self.samples.len();
+        output
+    }
+}
+pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
+    effects
+        .iter()
+        .filter(|e| matches!(e.unit, EffectSettings::Limiter(_)))
+        .map(|_| u64::from(daw_limiter::Limiter::latency_for_rate(rate)))
+        .sum()
+}
+pub(super) struct Alignment {
+    pub tracks: Vec<Delay>,
+    pub track_max: u64,
+    pub total: u64,
+    pub live: bool,
+    pub previous_feed: Option<u64>,
+}
+impl Alignment {
+    pub fn new(project: &Project) -> Self {
+        let rate = project.sample_rate_hz;
+        let track_max = project
+            .tracks
+            .iter()
+            .map(|t| chain_frames(&t.effects, rate))
+            .max()
+            .unwrap_or(0);
+        let total = track_max + chain_frames(&project.master.effects, rate);
+        let tracks = project
+            .tracks
+            .iter()
+            .map(|t| Delay {
+                id: t.id,
+                samples: vec![
+                    ([0.0; 2], false);
+                    (track_max - chain_frames(&t.effects, rate)) as usize
+                ],
+                index: 0,
+            })
+            .collect();
+        Self {
+            tracks,
+            track_max,
+            total,
+            live: false,
+            previous_feed: None,
+        }
+    }
+    pub fn compatible(&self, old: &Self) -> bool {
+        // Adding/removing ordinary tracks must not reset existing zero-latency DSP.
+        if self.total == 0 && old.total == 0 {
+            return true;
+        }
+        self.total == old.total
+            && self.track_max == old.track_max
+            && self.tracks.len() == old.tracks.len()
+            && self.tracks.iter().all(|a| {
+                old.tracks
+                    .iter()
+                    .any(|b| a.id == b.id && a.samples.len() == b.samples.len())
+            })
+    }
+    pub fn inherit(&mut self, old: &mut Self) {
+        for a in &mut self.tracks {
+            if let Some(b) = old.tracks.iter_mut().find(|b| a.id == b.id) {
+                std::mem::swap(&mut a.samples, &mut b.samples);
+                a.index = b.index;
+            }
+        }
+        self.live = old.live;
+        self.previous_feed = old.previous_feed;
+    }
+    pub fn reset(&mut self) {
+        for delay in &mut self.tracks {
+            delay.samples.fill(([0.0; 2], false));
+            delay.index = 0;
+        }
+        self.previous_feed = None;
+    }
+}
+pub(super) fn wrapped_frame(frame: u64, region: Option<(u64, u64)>) -> u64 {
+    if let Some((start, end)) = region
+        && frame >= end
+    {
+        start + (frame - start) % (end - start)
+    } else {
+        frame
+    }
+}
+pub(super) fn delayed_frame(frame: u64, delay: u64, region: Option<(u64, u64)>) -> u64 {
+    if let Some((start, end)) = region
+        && frame >= start
+    {
+        let position = (frame - start) % (end - start);
+        let delay = delay % (end - start);
+        if position >= delay {
+            start + (position - delay)
+        } else {
+            end - (delay - position)
+        }
+    } else {
+        frame.saturating_sub(delay)
+    }
+}
+
+pub(super) fn advanced_frame(frame: u64, delay: u64, region: Option<(u64, u64)>) -> u64 {
+    if let Some((start, end)) = region
+        && frame >= start
+    {
+        start + ((u128::from(frame - start) + u128::from(delay)) % u128::from(end - start)) as u64
+    } else {
+        frame.saturating_add(delay)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn loop_clock_advance_and_delay_are_inverse_even_near_the_frame_limit() {
+        for start in [0, 1000, u64::MAX - 10_000] {
+            for length in [1, 17, 4096] {
+                let region = Some((start, start + length));
+                for offset in [0, length / 2, length - 1] {
+                    for delay in [0, 1, 5000, u64::MAX] {
+                        let frame = start + offset;
+                        let future = advanced_frame(frame, delay, region);
+                        assert!((start..start + length).contains(&future));
+                        assert_eq!(delayed_frame(future, delay, region), frame);
+                    }
+                }
+            }
+        }
+    }
+}

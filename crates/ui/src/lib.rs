@@ -42,6 +42,7 @@ pub mod fonts;
 pub mod icons;
 mod instrument_panel;
 pub mod knobs;
+mod limiter_panel;
 pub mod meters;
 mod mix_controls;
 mod mixer;

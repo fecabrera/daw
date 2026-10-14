@@ -1,4 +1,5 @@
 mod effects;
+mod latency;
 mod midi;
 use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
 use daw_media::AudioData;
@@ -55,7 +56,7 @@ impl RenderPlan {
     pub fn render(&self, start: u64, out: &mut [[f32; 2]]) {
         if self.project.all_effects().next().is_some() {
             let mut renderer = Renderer::new(self.clone());
-            renderer.playhead = 0;
+            renderer.seek(0);
             let mut scratch = [[0.0; 2]; 512];
             while renderer.playhead < start {
                 let frames = (start - renderer.playhead).min(scratch.len() as u64) as usize;
@@ -141,6 +142,7 @@ pub struct Renderer {
     gains: Vec<TrackGains>,
     effects: Vec<effects::EffectChain>,
     master_effects: effects::EffectChain,
+    alignment: latency::Alignment,
     midi: Vec<Option<midi::MidiTrackRuntime>>,
     master: f32,
     master_target: f32,
@@ -148,6 +150,7 @@ pub struct Renderer {
     transition: u32,
     transition_from: [f32; 2],
     previous: [f32; 2],
+    latent_held_mix: [f32; 2],
     source_fingerprint: u64,
 }
 struct TrackGains {
@@ -247,11 +250,16 @@ impl Renderer {
                     daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
                 }
                 daw_core::EffectSettings::Ott(_) => daw_unit_core::OTT_TYPE_ID.hash(&mut hash),
+                daw_core::EffectSettings::Limiter(_) => {
+                    daw_unit_core::LIMITER_TYPE_ID.hash(&mut hash)
+                }
                 daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
             }
         }
         let source_fingerprint = hash.finish();
-        Self {
+        let alignment = latency::Alignment::new(&plan.project);
+        let mut renderer = Self {
+            alignment,
             midi,
             effects,
             master_effects,
@@ -268,8 +276,11 @@ impl Renderer {
             transition: 0,
             transition_from: [0.0; 2],
             previous: [0.0; 2],
+            latent_held_mix: [0.0; 2],
             source_fingerprint,
-        }
+        };
+        renderer.prime_latency(false);
+        renderer
     }
     /// Attach prepared meter handles before publishing a renderer to the callback.
     pub fn set_effect_meter(
@@ -294,6 +305,13 @@ impl Renderer {
     }
     pub fn inherit(&mut self, old: &mut Self) {
         let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
+        let new_loop = &self.plan.project.transport.r#loop;
+        let old_loop = &old.plan.project.transport.r#loop;
+        let aligned = self.alignment.compatible(&old.alignment)
+            && (self.alignment.total == 0
+                || (new_loop.enabled == old_loop.enabled
+                    && new_loop.start_frame == old_loop.start_frame
+                    && new_loop.end_frame == old_loop.end_frame));
         self.playhead = old.playhead;
         self.playing = old.playing;
         self.paused = old.paused;
@@ -302,6 +320,7 @@ impl Renderer {
         self.master = old.master;
         self.master_remaining = fade_frames;
         self.previous = old.previous;
+        self.latent_held_mix = old.latent_held_mix;
         if self.source_fingerprint == old.source_fingerprint {
             self.transition_from = old.transition_from;
             self.transition = old.transition;
@@ -328,7 +347,8 @@ impl Renderer {
                 std::mem::swap(runtime, &mut old.midi[previous]);
             }
         }
-        if self.plan.project.sample_rate_hz == old.plan.project.sample_rate_hz {
+        if aligned && self.plan.project.sample_rate_hz == old.plan.project.sample_rate_hz {
+            self.alignment.inherit(&mut old.alignment);
             self.master_effects
                 .inherit_chain(&mut old.master_effects, &self.plan.project.master.effects);
             for (effects, track) in self.effects.iter_mut().zip(&self.plan.project.tracks) {
@@ -343,8 +363,35 @@ impl Renderer {
             }
             g.remaining = fade_frames;
         }
+        if !aligned {
+            self.reset_processing();
+            self.prime_latency(self.playing || self.paused);
+        }
     }
-    pub fn seek(&mut self, frame: u64) {
+    pub fn latency_frames(&self) -> u64 {
+        self.alignment.total
+    }
+    fn loop_region(&self, live: bool) -> Option<(u64, u64)> {
+        let region = &self.plan.project.transport.r#loop;
+        (live && region.enabled && region.end_frame > region.start_frame)
+            .then_some((region.start_frame, region.end_frame))
+    }
+    fn feed_frame(&mut self, frame: u64, live: bool) -> u64 {
+        let region = self.loop_region(live);
+        let frame = latency::wrapped_frame(frame, region);
+        if live
+            && self.alignment.total > 0
+            && self.alignment.previous_feed.is_some_and(|old| frame < old)
+        {
+            for runtime in self.midi.iter_mut().flatten() {
+                runtime.end_notes();
+            }
+        }
+        self.alignment.previous_feed = Some(frame);
+        frame
+    }
+    fn reset_processing(&mut self) {
+        self.alignment.reset();
         self.master_effects.reset();
         for effects in &mut self.effects {
             effects.reset();
@@ -352,7 +399,28 @@ impl Renderer {
         for runtime in self.midi.iter_mut().flatten() {
             runtime.reset();
         }
+    }
+    fn prime_latency(&mut self, live: bool) {
+        self.alignment.live = live;
+        if self.alignment.total == 0 {
+            return;
+        }
+        let mut start = self.playhead;
+        if let Some((first, end)) = self.loop_region(live)
+            && (start < first || start >= end)
+        {
+            start = first;
+        }
+        for offset in 0..self.alignment.total {
+            let future = latency::advanced_frame(start, offset, self.loop_region(live));
+            let frame = self.feed_frame(future, live);
+            self.offline_frame(frame, live);
+        }
+    }
+    pub fn seek(&mut self, frame: u64) {
+        self.reset_processing();
         self.playhead = frame;
+        self.prime_latency(self.playing || self.paused);
         self.transition_from = self.previous;
         self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
     }
@@ -360,6 +428,10 @@ impl Renderer {
         if self.plan.project.end() > 0 {
             if !self.playing && !self.paused {
                 self.playback_start = Some(self.playhead);
+            }
+            if !self.paused && self.alignment.total > 0 {
+                self.reset_processing();
+                self.prime_latency(true);
             }
             self.paused = false;
             self.playing = true;
@@ -386,38 +458,59 @@ impl Renderer {
         }
     }
     pub fn render_offline(&mut self, out: &mut [[f32; 2]]) {
+        if self.alignment.live && self.alignment.total > 0 {
+            self.reset_processing();
+            self.prime_latency(false);
+        }
         for sample in out {
-            let mut mix = [0.0; 2];
-            for ((track, midi), effects) in self
-                .plan
-                .project
-                .tracks
-                .iter()
-                .zip(&mut self.midi)
-                .zip(&mut self.effects)
-            {
-                let (source, mono) = if let Some(runtime) = midi {
-                    (runtime.sample(self.playhead), Some(true))
-                } else {
-                    audio_source(&self.plan, track, self.playhead)
-                };
-                let (source, mono) =
-                    effects.sample(source, mono, self.playhead, self.plan.project.tempo_bpm);
-                if self.plan.project.audible(track) {
-                    let pan = pan_coefficients(track.pan, mono);
-                    for ch in 0..2 {
-                        mix[ch] += source[ch] * linear_gain(track.gain_db) * pan[ch];
-                    }
+            let frame = self.feed_frame(self.playhead.saturating_add(self.alignment.total), false);
+            *sample = self.offline_frame(frame, false);
+            self.playhead = self.playhead.saturating_add(1);
+        }
+    }
+    fn offline_frame(&mut self, frame: u64, live: bool) -> [f32; 2] {
+        let mut mix = [0.0; 2];
+        let loop_region = self.loop_region(live);
+        for (index, ((track, midi), effects)) in self
+            .plan
+            .project
+            .tracks
+            .iter()
+            .zip(&mut self.midi)
+            .zip(&mut self.effects)
+            .enumerate()
+        {
+            let (source, mono) = if let Some(runtime) = midi {
+                (runtime.sample(frame), Some(true))
+            } else {
+                audio_source(&self.plan, track, frame)
+            };
+            let source = effects.sample(
+                source,
+                mono,
+                frame,
+                self.plan.project.tempo_bpm,
+                loop_region,
+            );
+            let (source, mono) = self.alignment.tracks[index].tick(source);
+            if self.plan.project.audible(track) {
+                let pan = pan_coefficients(track.pan, mono);
+                for ch in 0..2 {
+                    mix[ch] += source[ch] * linear_gain(track.gain_db) * pan[ch];
                 }
             }
-            let mix = self
-                .master_effects
-                .sample(mix, Some(false), self.playhead, self.plan.project.tempo_bpm)
-                .0;
-            let gain = linear_gain(self.plan.project.master.gain_db);
-            *sample = mix.map(|value| value * gain);
-            self.playhead += 1;
         }
+        let frame = latency::delayed_frame(frame, self.alignment.track_max, loop_region);
+        self.master_effects
+            .sample(
+                mix,
+                Some(false),
+                frame,
+                self.plan.project.tempo_bpm,
+                loop_region,
+            )
+            .0
+            .map(|value| value * linear_gain(self.plan.project.master.gain_db))
     }
     /// Reset once per output buffer, outside the per-sample loop.
     pub fn reset_track_peaks(&mut self) {
@@ -444,8 +537,10 @@ impl Renderer {
                 && l.enabled
                 && (self.playhead < l.start_frame || self.playhead >= l.end_frame)
             {
-                for runtime in self.midi.iter_mut().flatten() {
-                    runtime.end_notes();
+                if self.alignment.total == 0 {
+                    for runtime in self.midi.iter_mut().flatten() {
+                        runtime.end_notes();
+                    }
                 }
                 self.playhead = l.start_frame;
                 self.transition_from = self.previous;
@@ -454,46 +549,75 @@ impl Renderer {
             if self.playing && !l.enabled && self.playhead >= self.plan.project.end() {
                 self.playing = false;
             }
-            for (((track, g), midi), effects) in self
-                .plan
-                .project
-                .tracks
-                .iter()
-                .zip(&mut self.gains)
-                .zip(&mut self.midi)
-                .zip(&mut self.effects)
-            {
-                if g.remaining > 0 {
-                    for ch in 0..4 {
-                        g.value[ch] += (g.target[ch] - g.value[ch]) / g.remaining as f32;
-                    }
-                    g.remaining -= 1;
-                }
-                let (source, mono) = if let Some(runtime) = midi {
-                    (
-                        if self.playing {
-                            runtime.sample(self.playhead)
-                        } else {
-                            runtime.held_sample()
-                        },
-                        Some(true),
-                    )
+            if !self.playing && self.alignment.total > 0 {
+                mix = self.latent_held_mix;
+            } else {
+                let frame = if self.playing {
+                    let future = latency::advanced_frame(
+                        self.playhead,
+                        self.alignment.total,
+                        self.loop_region(true),
+                    );
+                    self.feed_frame(future, true)
                 } else {
-                    audio_source(&self.plan, track, self.playhead)
+                    self.playhead
                 };
-                let (source, mono) =
-                    effects.sample(source, mono, self.playhead, self.plan.project.tempo_bpm);
-                let base = if mono { 0 } else { 2 };
-                for ch in 0..2 {
-                    let sample = source[ch] * g.value[base + ch];
-                    mix[ch] += sample;
-                    g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
+                let loop_region = self.loop_region(true);
+                for (index, (((track, g), midi), effects)) in self
+                    .plan
+                    .project
+                    .tracks
+                    .iter()
+                    .zip(&mut self.gains)
+                    .zip(&mut self.midi)
+                    .zip(&mut self.effects)
+                    .enumerate()
+                {
+                    if g.remaining > 0 {
+                        for ch in 0..4 {
+                            g.value[ch] += (g.target[ch] - g.value[ch]) / g.remaining as f32;
+                        }
+                        g.remaining -= 1;
+                    }
+                    let (source, mono) = if let Some(runtime) = midi {
+                        (
+                            if self.playing {
+                                runtime.sample(frame)
+                            } else {
+                                runtime.held_sample()
+                            },
+                            Some(true),
+                        )
+                    } else {
+                        audio_source(&self.plan, track, frame)
+                    };
+                    let (source, mono) = effects.sample(
+                        source,
+                        mono,
+                        frame,
+                        self.plan.project.tempo_bpm,
+                        loop_region,
+                    );
+                    let (source, mono) = self.alignment.tracks[index].tick((source, mono));
+                    let base = if mono { 0 } else { 2 };
+                    for ch in 0..2 {
+                        let sample = source[ch] * g.value[base + ch];
+                        mix[ch] += sample;
+                        g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
+                    }
                 }
+                mix = self
+                    .master_effects
+                    .sample(
+                        mix,
+                        Some(false),
+                        latency::delayed_frame(frame, self.alignment.track_max, loop_region),
+                        self.plan.project.tempo_bpm,
+                        loop_region,
+                    )
+                    .0;
+                self.latent_held_mix = mix;
             }
-            mix = self
-                .master_effects
-                .sample(mix, Some(false), self.playhead, self.plan.project.tempo_bpm)
-                .0;
             if self.playing {
                 self.playhead = self.playhead.saturating_add(1);
             }

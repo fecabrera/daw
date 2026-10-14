@@ -500,3 +500,100 @@ mod master_tests {
         assert_eq!(serde_json::to_string(&project).unwrap(), encoded);
     }
 }
+
+#[cfg(test)]
+mod limiter_tests {
+    use crate::*;
+    #[test]
+    fn limiter_round_trips_on_track_and_master_and_future_state_is_preserved() {
+        let mut project = Project::default();
+        let track = project.add_track().unwrap();
+        let mut effect = EffectInstance::limiter();
+        let EffectSettings::Limiter(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.input_db = 18.0;
+        s.ceiling_db = -3.0;
+        s.lookahead_ms = 10.0;
+        s.release_ms = 500.0;
+        s.routing = LimiterRouting::MidSide;
+        s.mode = LimiterMode::TruePeak;
+        s.collapsed = true;
+        s.enabled = false;
+        project
+            .edit(Edit::SetEffects {
+                track_id: track,
+                effects: vec![effect.clone()],
+                compact: true,
+            })
+            .unwrap();
+        let mut master = effect.clone();
+        master.id = Id::new_v4();
+        project
+            .edit(Edit::SetMasterEffects {
+                effects: vec![master],
+                compact: false,
+            })
+            .unwrap();
+        let loaded: Project =
+            serde_json::from_value(serde_json::to_value(&project).unwrap()).unwrap();
+        loaded.validate().unwrap();
+        assert_eq!(
+            serde_json::to_value(loaded).unwrap(),
+            serde_json::to_value(&project).unwrap()
+        );
+        project
+            .edit(Edit::DuplicateTrack {
+                track_id: track,
+                new_track_id: Id::new_v4(),
+            })
+            .unwrap();
+        assert_eq!(project.tracks[1].effects[0].unit, effect.unit);
+        assert_ne!(project.tracks[1].effects[0].id, effect.id);
+        let encoded = serde_json::json!({"type_id": LIMITER_TYPE_ID, "state": {"version": 99, "future": [1, 2]}});
+        let future: EffectSettings = serde_json::from_value(encoded.clone()).unwrap();
+        assert!(future.valid());
+        assert_eq!(serde_json::to_value(future).unwrap(), encoded);
+    }
+    #[test]
+    fn invalid_limiter_parameters_reject_the_complete_transaction() {
+        let mut project = Project::default();
+        let track = project.add_track().unwrap();
+        let original = serde_json::to_string(&project).unwrap();
+        for field in 0..9 {
+            let mut effect = EffectInstance::limiter();
+            let EffectSettings::Limiter(s) = &mut effect.unit else {
+                unreachable!()
+            };
+            match field {
+                0 => s.input_db = -24.1,
+                1 => s.input_db = f32::NAN,
+                2 => s.release_ms = 0.0,
+                3 => s.release_ms = 2000.1,
+                4 => s.lookahead_ms = -0.1,
+                5 => s.lookahead_ms = 10.1,
+                6 => s.ceiling_db = 0.1,
+                7 => s.ceiling_db = f32::INFINITY,
+                _ => s.version = 0,
+            }
+            assert!(
+                project
+                    .edit(Edit::SetEffects {
+                        track_id: track,
+                        effects: vec![EffectInstance::drive(), effect.clone()],
+                        compact: true
+                    })
+                    .is_err()
+            );
+            assert!(
+                project
+                    .edit(Edit::SetMasterEffects {
+                        effects: vec![effect],
+                        compact: true
+                    })
+                    .is_err()
+            );
+            assert_eq!(serde_json::to_string(&project).unwrap(), original);
+        }
+    }
+}

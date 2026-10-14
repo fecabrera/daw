@@ -926,3 +926,128 @@ fn master_effect_history_meters_and_transport_survive_prepared_updates_without_a
     assert_eq!(meter.load(Ordering::Relaxed), 0);
     assert!(ott_meter.iter().all(|v| v.load(Ordering::Relaxed) == 0));
 }
+
+fn bypass_limiter() -> EffectInstance {
+    let mut effect = EffectInstance::limiter();
+    let EffectSettings::Limiter(s) = &mut effect.unit else {
+        unreachable!()
+    };
+    s.enabled = false;
+    effect
+}
+#[test]
+fn limiter_latency_compensation_preserves_tracks_master_export_seek_and_loop_alignment() {
+    for rate in SAMPLE_RATES {
+        let mut dry = plan(rate, false);
+        let mut second = dry.project.tracks[0].clone();
+        second.id = Id::new_v4();
+        second.clips[0].id = Id::new_v4();
+        second.pan = -0.3;
+        dry.project.tracks.push(second);
+        let mut wet = dry.clone();
+        wet.project.tracks[0].effects = vec![bypass_limiter(), bypass_limiter()];
+        wet.project.tracks[1].effects = vec![bypass_limiter()];
+        wet.project.master.effects = vec![bypass_limiter()];
+        let mut a = Renderer::new(dry.clone());
+        let mut b = Renderer::new(wet.clone());
+        assert!(b.latency_frames() > 0);
+        let mut expected = vec![[0.0; 2]; 8192];
+        let mut actual = expected.clone();
+        a.render_offline(&mut expected);
+        b.render_offline(&mut actual);
+        assert_eq!(actual, expected, "offline {rate}");
+        wet.project.transport.playhead_frame = 1234;
+        let mut direct = [[0.0; 2]; 7];
+        wet.render(500, &mut direct);
+        assert_eq!(&direct, &expected[500..507]);
+        b.seek(3400);
+        b.render_offline(&mut actual[..64]);
+        assert_eq!(&actual[..64], &expected[3400..3464]);
+        for looping in [false, true] {
+            for p in [&mut dry.project, &mut wet.project] {
+                p.transport.playhead_frame = 0;
+                p.transport.r#loop.enabled = looping;
+                p.transport.r#loop.start_frame = 1000;
+                p.transport.r#loop.end_frame = 1500;
+            }
+            let mut a = Renderer::new(dry.clone());
+            let mut b = Renderer::new(wet.clone());
+            a.play();
+            b.play();
+            a.ramp = 1.0;
+            b.ramp = 1.0;
+            for i in 0..2200 {
+                let expected = a.next_sample();
+                let actual = b.next_sample();
+                assert_eq!(
+                    actual, expected,
+                    "live rate={rate} loop={looping} frame={i}"
+                );
+                assert_eq!(a.playhead, b.playhead);
+            }
+        }
+    }
+}
+#[test]
+fn limiter_live_export_retarget_meter_and_reset_remain_allocation_free() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    let mut plan = plan(48_000, false);
+    let mut effect = EffectInstance::limiter();
+    let id = effect.id;
+    let EffectSettings::Limiter(s) = &mut effect.unit else {
+        unreachable!()
+    };
+    s.input_db = 18.0;
+    s.ceiling_db = -3.0;
+    s.routing = LimiterRouting::MidSide;
+    s.mode = LimiterMode::TruePeak;
+    plan.project.tracks[0].effects = vec![effect];
+    let meter = Arc::new(AtomicU32::new(0));
+    let mut a = Renderer::new(plan.clone());
+    let mut expected = vec![[0.0; 2]; 2048];
+    a.render_offline(&mut expected);
+    let mut b = Renderer::new(plan.clone());
+    b.set_effect_meter(id, meter.clone());
+    b.play();
+    b.ramp = 1.0;
+    for sample in &expected {
+        assert_eq!(*sample, b.next_sample());
+    }
+    assert!(f32::from_bits(meter.load(Ordering::Relaxed)) > 0.0);
+    let mut reference = Renderer::new(plan.clone());
+    reference.play();
+    reference.ramp = 1.0;
+    for _ in 0..2048 {
+        reference.next_sample();
+    }
+    plan.project.tracks[0].effects_compact = true;
+    let mut next = Renderer::new(plan.clone());
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    next.inherit(&mut b);
+    for _ in 0..500 {
+        assert_eq!(next.next_sample(), reference.next_sample());
+    }
+    next.pause();
+    for _ in 0..300 {
+        next.next_sample();
+    }
+    next.play();
+    next.seek(400);
+    next.stop();
+    next.play();
+    for _ in 0..600 {
+        next.next_sample();
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    // Changing the latency topology prepares new delays; the callback primes without allocating.
+    plan.project.master.effects.push(bypass_limiter());
+    let mut changed = Renderer::new(plan);
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    changed.inherit(&mut next);
+    changed.next_sample();
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}

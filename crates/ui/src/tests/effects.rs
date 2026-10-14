@@ -75,6 +75,11 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             (
                 egui::Key::ArrowDown,
                 true,
+                vec![entries[2], entries[3], entries[4], entries[5]],
+            ),
+            (
+                egui::Key::ArrowUp,
+                true,
                 vec![entries[2], entries[3], entries[4]],
             ),
             (egui::Key::ArrowUp, true, vec![entries[2], entries[3]]),
@@ -130,7 +135,7 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         let blank = Rect::from_min_max(
             Pos2::new(
                 app.effects_bounds.library.left(),
-                app.effects_bounds.ott_entry.bottom(),
+                app.effects_bounds.limiter_entry.bottom(),
             ),
             app.effects_bounds.library.max,
         );
@@ -3791,5 +3796,73 @@ fn effects_lane_toolbar_stays_pinned_and_edits_saved_compact_state() {
             click(&mut app, &ctx, toggle);
             assert!(app.effect_chain(owner).unwrap().1);
         }
+    }
+}
+
+#[test]
+fn limiter_uses_shared_controls_and_catalog_actions_in_both_themes() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.select_track(track, false);
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let point = app.effects_bounds.limiter_entry.center();
+        click(&mut app, &ctx, point);
+        library_key(&mut app, &ctx, egui::Key::Enter, false);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.session.project.tracks[0].effects.len(), 1);
+        let saved = app.session.project.tracks[0].effects[0].clone();
+        assert!(matches!(saved.unit, daw_core::EffectSettings::Limiter(_)));
+        let bounds = &app.effects_bounds.limiter_units[0];
+        assert_eq!(bounds.sections.len(), 2);
+        assert!(bounds.meter.is_positive());
+        for section in &bounds.controls {
+            for rect in section {
+                assert!(rect.is_positive());
+            }
+        }
+        let power = bounds.power.center();
+        for row in [1, 2] {
+            let point = app.effects_bounds.limiter_units[0].controls[1][row].center();
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::ArrowRight, false);
+        }
+        let daw_core::EffectSettings::Limiter(s) = &app.session.project.tracks[0].effects[0].unit
+        else {
+            unreachable!()
+        };
+        assert_eq!(s.mode, daw_core::LimiterMode::TruePeak);
+        assert_eq!(s.routing, daw_core::LimiterRouting::MidSide);
+        click(&mut app, &ctx, power);
+        frame(&mut app, &ctx, vec![]);
+        let daw_core::EffectSettings::Limiter(s) = &app.session.project.tracks[0].effects[0].unit
+        else {
+            unreachable!()
+        };
+        assert!(!s.enabled);
+        let compact = app.effects_bounds.lane_compact.center();
+        click(&mut app, &ctx, compact);
+        frame(&mut app, &ctx, vec![]);
+        assert!(
+            app.effects_bounds.limiter_units[0]
+                .controls
+                .iter()
+                .flatten()
+                .all(|rect| !rect.is_positive())
+        );
+        assert!(app.session.project.tracks[0].effects_compact);
+        let header = app.effects_bounds.limiter_units[0].header.center();
+        click(&mut app, &ctx, header);
+        library_key(&mut app, &ctx, egui::Key::Delete, false);
+        assert!(app.session.project.tracks[0].effects.is_empty());
     }
 }

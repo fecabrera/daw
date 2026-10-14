@@ -327,6 +327,38 @@ pub fn channel(ui: &mut Ui, label: &str, height: f32, peak: f32, clipped: bool) 
     })
 }
 
+/// Thin limiter monitor fits above the standard knob rows without changing unit height.
+pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reduction_db: f32) {
+    let db = if reduction_db.is_finite() {
+        reduction_db.max(0.0)
+    } else {
+        0.0
+    };
+    ui.painter()
+        .rect_filled(rail, 1.0, theme::palette(ui.ctx()).input);
+    ui.painter().rect_filled(
+        Rect::from_min_size(
+            rail.min,
+            Vec2::new(rail.width() * (db / 24.0).min(1.0), rail.height()),
+        ),
+        1.0,
+        theme::accent(ui.ctx()),
+    );
+    let response = ui.interact(rail, ui.id().with("limiter-reduction"), Sense::hover());
+    response.widget_info(|| {
+        let mut info = egui::WidgetInfo::labeled(
+            egui::WidgetType::ProgressIndicator,
+            ui.is_enabled(),
+            "Limiter gain reduction",
+        );
+        info.value = Some(f64::from(db));
+        info
+    });
+    response.on_hover_text(format!(
+        "Gain reduction: {db:.1} dB (display range 0–24 dB)"
+    ));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

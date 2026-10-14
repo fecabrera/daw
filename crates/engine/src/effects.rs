@@ -3,6 +3,7 @@ use daw_compressor::Compressor;
 use daw_core::{EffectInstance, EffectSettings, Id, Track};
 use daw_drive::Drive;
 use daw_equalizer::Equalizer;
+use daw_limiter::Limiter;
 use daw_ott::Ott;
 use daw_unit_core::{EffectUnit, ProcessingContext};
 use std::sync::{Arc, atomic::AtomicU32};
@@ -13,6 +14,7 @@ enum RuntimeEffect {
     AutoFilter(Box<AutoFilter>),
     Compressor(Box<Compressor>),
     Ott(Box<Ott>),
+    Limiter(Box<Limiter>),
 }
 impl RuntimeEffect {
     fn sample(&mut self, input: [f32; 2], frame: u64, tempo: f32) -> [f32; 2] {
@@ -22,6 +24,7 @@ impl RuntimeEffect {
             Self::AutoFilter(unit) => unit.process_at(input, frame, tempo),
             Self::Compressor(unit) => unit.process_sample(input),
             Self::Ott(unit) => unit.process_sample(input),
+            Self::Limiter(unit) => unit.process_sample(input),
         }
     }
     fn reset(&mut self) {
@@ -31,12 +34,14 @@ impl RuntimeEffect {
             Self::AutoFilter(unit) => unit.reset(),
             Self::Compressor(unit) => unit.reset(),
             Self::Ott(unit) => unit.reset(),
+            Self::Limiter(unit) => unit.reset(),
         }
     }
     fn retarget(&mut self, settings: &EffectSettings) -> bool {
         match (self, settings) {
             (Self::Eq3(unit), EffectSettings::Eq3(settings)) => unit.retarget(settings),
             (Self::Ott(unit), EffectSettings::Ott(settings)) => unit.retarget(settings),
+            (Self::Limiter(unit), EffectSettings::Limiter(settings)) => unit.retarget(settings),
             (Self::Drive(unit), EffectSettings::Drive(settings)) => unit.retarget(settings),
             (Self::Compressor(unit), EffectSettings::Compressor(settings)) => {
                 unit.retarget(settings)
@@ -97,6 +102,9 @@ impl EffectChain {
                             EffectSettings::Ott(settings) => {
                                 Some(RuntimeEffect::Ott(Box::new(Ott::new(context, settings))))
                             }
+                            EffectSettings::Limiter(settings) => Some(RuntimeEffect::Limiter(
+                                Box::new(Limiter::new(context, settings)),
+                            )),
                             EffectSettings::Missing { .. } => None,
                             EffectSettings::Compressor(settings) => {
                                 Some(RuntimeEffect::Compressor(Box::new(Compressor::new(
@@ -128,10 +136,14 @@ impl EffectChain {
         }
     }
     pub fn set_meter(&mut self, id: Id, meter: &Arc<AtomicU32>) {
-        if let Some((_, Some(RuntimeEffect::Compressor(unit)))) =
-            self.units.iter_mut().find(|(effect, _)| *effect == id)
-        {
-            unit.set_gain_reduction_meter(meter.clone());
+        match self.units.iter_mut().find(|(effect, _)| *effect == id) {
+            Some((_, Some(RuntimeEffect::Compressor(unit)))) => {
+                unit.set_gain_reduction_meter(meter.clone())
+            }
+            Some((_, Some(RuntimeEffect::Limiter(unit)))) => {
+                unit.set_gain_reduction_meter(meter.clone())
+            }
+            _ => {}
         }
     }
     pub fn set_ott_meter(&mut self, id: Id, meter: &Arc<[AtomicU32; 3]>) {
@@ -145,8 +157,9 @@ impl EffectChain {
         &mut self,
         mut input: [f32; 2],
         mono: Option<bool>,
-        frame: u64,
+        mut frame: u64,
         tempo: f32,
+        loop_region: Option<(u64, u64)>,
     ) -> ([f32; 2], bool) {
         if let Some(mono) = mono {
             self.mono = mono;
@@ -154,6 +167,13 @@ impl EffectChain {
         for (_, unit) in &mut self.units {
             if let Some(unit) = unit {
                 input = unit.sample(input, frame, tempo);
+                if let RuntimeEffect::Limiter(unit) = unit {
+                    frame = super::latency::delayed_frame(
+                        frame,
+                        u64::from(unit.latency_frames()),
+                        loop_region,
+                    );
+                }
             }
         }
         (input, self.mono)

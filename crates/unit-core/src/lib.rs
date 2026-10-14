@@ -2,6 +2,10 @@
 use serde::{Deserialize, Serialize};
 mod auto_filter;
 mod compressor;
+mod limiter;
+pub use limiter::{
+    LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterMode, LimiterRouting, LimiterSettings,
+};
 mod ott;
 pub use auto_filter::{
     AUTO_FILTER_STATE_VERSION, AUTO_FILTER_TYPE_ID, AutoFilterSettings, FilterShape, LfoRateMode,
@@ -357,6 +361,10 @@ pub trait SourceUnit: Send {
 
 /// A prepared stereo effect. All callback methods must be allocation-free and nonblocking.
 pub trait EffectUnit: Send {
+    /// Fixed processing delay. Hosts align parallel paths and prime this many frames.
+    fn latency_frames(&self) -> u32 {
+        0
+    }
     fn descriptor(&self) -> UnitDescriptor;
     fn reset(&mut self);
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2];

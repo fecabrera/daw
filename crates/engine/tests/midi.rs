@@ -1333,3 +1333,75 @@ fn midi_compressor_processes_the_instrument_bus_and_matches_export() {
         }
     }
 }
+
+#[test]
+fn limiter_alignment_preserves_midi_notes_and_loop_timing() {
+    for rate in [44_100, 96_000] {
+        let mut dry = plan(Waveform::Sine, rate);
+        let mut wet = dry.clone();
+        let mut effect = EffectInstance::limiter();
+        let EffectSettings::Limiter(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.enabled = false;
+        wet.project.tracks[0].effects.push(effect);
+        let mut expected = vec![[0.0; 2]; 5000];
+        let mut actual = expected.clone();
+        Renderer::new(dry.clone()).render_offline(&mut expected);
+        Renderer::new(wet.clone()).render_offline(&mut actual);
+        assert_eq!(actual, expected);
+        for p in [&mut dry.project, &mut wet.project] {
+            p.transport.r#loop.enabled = true;
+            p.transport.r#loop.start_frame = 0;
+            p.transport.r#loop.end_frame = 500;
+        }
+        let mut a = Renderer::new(dry);
+        let mut b = Renderer::new(wet);
+        a.play();
+        b.play();
+        a.ramp = 1.0;
+        b.ramp = 1.0;
+        for i in 0..2000 {
+            assert_eq!(a.next_sample(), b.next_sample(), "{rate}: {i}");
+        }
+    }
+}
+
+#[test]
+fn adding_a_zero_latency_track_keeps_the_existing_live_pitch_phase() {
+    let initial = plan(Waveform::Sine, 48_000);
+    let mut changed = initial.clone();
+    changed.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0]
+        .oscillators[0]
+        .transpose = 7;
+    let prepare = || {
+        let mut old = Renderer::new(initial.clone());
+        old.play();
+        old.ramp = 1.0;
+        for _ in 0..4000 {
+            old.next_sample();
+        }
+        let mut next = Renderer::new(changed.clone());
+        next.inherit(&mut old);
+        for _ in 0..1000 {
+            next.next_sample();
+        }
+        next
+    };
+    let mut current = prepare();
+    let mut reference = prepare();
+    changed.project.add_track().unwrap();
+    let mut added = Renderer::new(changed);
+    added.inherit(&mut current);
+    for i in 0..1000 {
+        let actual = added.next_sample();
+        let expected = reference.next_sample();
+        if i > 250 {
+            assert_eq!(actual, expected);
+        }
+    }
+}

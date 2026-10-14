@@ -49,7 +49,7 @@ Users build MIDI instruments in Instrument and configure track and Master effect
 | D22 | Support mono/stereo audio, modulation signals, and sample-timed note/control events (Q04). | Use the project rate and reject graph cycles; delay feedback stays inside the delay unit. |
 | D23 | Put effects before gain/pan on tracks and beat lanes; include serial Master effects before Master gain (Q05). | Defer sends and retain Mixer control of parent tracks. |
 | D24 | Use explicit transport, mute, bypass, and atomic graph-replacement rules (Q06). | Follow the accepted lifecycle below in playback and export. |
-| D25 | Initial units add no processing latency; export reported tails up to 10 seconds (Q07). | Warn if tails are truncated; defer automatic latency compensation. |
+| D25 | Earlier units add no latency. The Limiter adds fixed host-compensated latency (2026-10-14); export reported tails up to 10 seconds (Q07). | Align parallel tracks and Master; warn if tails are truncated. |
 | D26 | Version unit state and preserve missing-unit data; separate pattern content from track/lane processing (Q08). | Missing instruments render silence; missing effects pass audio through. Defer nested presets. |
 | D27 | Use FunDSP behind the shared unit API for the initial unit set and performance target (Q10). | Validate integration before expanding the set; keep backend types out of public and saved formats. |
 | D28 | Use one Editor view with an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. | Choose the editor from the clip type. Replace the earlier standalone Beat view. |
@@ -84,7 +84,7 @@ Accepted on 2026-10-11. Q01–Q10 are resolved for the MVP through D10 and D19�
 | Q04 | Mono/stereo audio, modulation signals, and sample-timed note/control events at the project rate. Reject graph cycles. Delay feedback is internal to the delay unit. | Graph-level feedback and additional port layouts. |
 | Q05 | Source/clip output → serial effects → gain/pan → track mix. Beat lanes pass through lane effects and lane gain/pan, then sum into parent effects and parent gain/pan. Serial Master effects precede Master gain and output meters. | Sends and advanced audio routing. |
 | Q06 | Stop and seek reset voices and effects. Pause preserves state. Loop boundaries end active notes while effects continue. Mute suppresses output while processing continues. Smooth bypass changes and publish prepared graph replacements atomically. | More advanced transport-state restoration. |
-| Q07 | Initial units add no processing latency. Musical delay and reverb are allowed. Export reported effect tails, capped at 10 seconds, and show a notice if the cap truncates a tail. | Automatic latency compensation. |
+| Q07 | Built-in Limiter latency is reported, aligned across tracks/Master, and primed for playback/export. Other current units add no latency. Musical delay/reverb remain allowed; reported tails are capped at 10 seconds with a notice on truncation. | Arbitrary third-party/plugin latency. |
 | Q08 | Versioned unit IDs, parameters, connections, and presets. Pattern sources hold immutable note/step data; tracks and lanes own instrument/effect setups. Preserve and report missing-unit data. Missing instruments render silence; missing effects pass audio through. | Nested presets. |
 | Q09 | Reusable Rust crates and standalone tools share DSP implementations; UI/device adapters stay separate. | Standalone interface and packaging details. |
 | Q10 | FunDSP behind our API. Initial units: oscillators, noise, sample playback, envelope, LFO, filter, gain, delay, and simple reverb. | SoundFont instruments, spectral effects, and convolution. |
@@ -271,7 +271,7 @@ MIDI tracks support polyphony under D29; Beat lanes retain one active voice each
 
 Process stateful units in sequence with the same event timing in both modes. Stop and seek reset voices and effects; pause preserves state. End active notes at loop boundaries while effects continue. Mute suppresses output but keeps processing active. Seed handling and exact state initialization remain implementation details for repeatable exports.
 
-Rebuild affected units when the processing rate changes, using the existing preparation and atomic-publication pattern. Smooth bypass transitions and publish prepared graph replacements atomically. Initial units must add no processing latency. Musical delay/reverb are allowed, but automatic latency compensation is deferred. Export reported tails up to 10 seconds and report truncation.
+Rebuild affected units when the processing rate changes, using the existing preparation and atomic-publication pattern. Smooth bypass transitions and publish prepared graph replacements atomically. Earlier units add no latency. Limiter reports a fixed delay and uses shared track/Master alignment and preroll; arbitrary plugin latency remains deferred. Musical delay/reverb are allowed. Export reported tails up to 10 seconds and report truncation.
 
 ## Library findings and recommendations
 
@@ -312,7 +312,7 @@ The Q01–Q10 scope choices were accepted on 2026-10-11. Preserve these IDs as d
 | Q04 | Resolved for MVP. | Initial ports, timing, rate, and cycle rules: D22. |
 | Q05 | Resolved for MVP. | Lane, track, and Master routing: D23. |
 | Q06 | Resolved for MVP. | Transport, mute, bypass, and graph publication: D24. |
-| Q07 | Resolved for MVP. | No added processing latency and capped export tails: D25. |
+| Q07 | Resolved for MVP. | Fixed Limiter latency with host compensation; earlier units add no latency; capped export tails: D25. |
 | Q08 | Resolved for MVP. | Versioned state, ownership, and missing-unit behavior: D26. |
 | Q09 | Resolved. | Rust crates and standalone tools: D10. |
 | Q10 | Resolved for MVP. | FunDSP, initial unit set, and performance target: D27. |
@@ -326,7 +326,7 @@ Remaining implementation details are:
 - FunDSP version/features and dependency/license checks; exact benchmark graph, named test hardware, memory measurements, and native-device validation.
 - Standalone interface, device support, and packaging.
 
-These details must preserve the accepted behavior. Specify future polyphony, nested editing/presets, advanced routing, and latency compensation when those features enter scope.
+These details must preserve the accepted behavior. Specify future polyphony, nested editing/presets, advanced routing, and arbitrary plugin latency when those features enter scope.
 
 ## Proposed implementation sequence
 
@@ -336,7 +336,7 @@ These details must preserve the accepted behavior. Specify future polyphony, nes
 4. Add the Units view and project persistence over that same model. Add Editor with editor selection by clip type. Implement the accepted beat pattern editor MVP scope over shared event scheduling and unit processing, after specifying its remaining implementation details.
 5. Package reusable Rust crates and add standalone tools after the unit contract works in both playback and export.
 
-Before expanding the unit set, check source rejection on audio tracks, invalid-graph rollback, parameter smoothing, event timing, every supported project rate/buffer size, variable block sizes, save/reopen, and playback/export consistency. Measure callback allocation and blocking behavior, CPU/memory use, and native-device stability. Verify independent MIDI voices and note-offs, Beat lane retrigger replacement, transport resets, preserved pause state, loop voice termination with continuing effects, mute processing, smooth bypass, and atomic graph replacement. Test the absence of added processing latency, tail rendering and truncation notices, missing-unit fallback/data preservation, and pattern-versus-track ownership. Verify that multiple oscillator units form one instrument with independent per-voice oscillator state, one aggregate output bus, and preserved routing/settings after save/reopen. Measure the accepted eight-voice workload and record its hardware and results.
+Before expanding the unit set, check source rejection on audio tracks, invalid-graph rollback, parameter smoothing, event timing, every supported project rate/buffer size, variable block sizes, save/reopen, and playback/export consistency. Measure callback allocation and blocking behavior, CPU/memory use, and native-device stability. Verify independent MIDI voices and note-offs, Beat lane retrigger replacement, transport resets, preserved pause state, loop voice termination with continuing effects, mute processing, smooth bypass, and atomic graph replacement. Test zero latency for earlier units and compensated Limiter timing, tail rendering and truncation notices, missing-unit fallback/data preservation, and pattern-versus-track ownership. Verify that multiple oscillator units form one instrument with independent per-voice oscillator state, one aggregate output bus, and preserved routing/settings after save/reopen. Measure the accepted eight-voice workload and record its hardware and results.
 
 Verify that audio, MIDI, and beat clips open their respective editors in Editor, including beat clips with mixed audio/MIDI lanes. Check clip/lane context retention across Timeline, Editor, and Units. Beat-specific validation criteria are recorded in the [beat pattern editor design](beat-editor.md#validation-criteria).
 
@@ -401,3 +401,7 @@ Master owns a saved `effects` list and `effects_compact` flag, both defaulted fo
 Instrument now shares Timeline’s left toolbar, effects catalog, and bottom effects lane through the same workspace composition. This extends the earlier Timeline-only placement. Instrument’s upper content remains the Layers/source/envelope workspace; its catalog is left of Layers and its lane is below the instrument content. Visibility is shared UI state across Timeline and Instrument, with independent catalog/lane toggles. The rail retains its full playback-to-status height and existing size/style.
 
 Instrument edits only the selected MIDI track’s existing serial chain. It reuses catalog selection/keyboard addition, drag previews/drop, unit editing, compact/collapse state, group reorder/removal, and focus/gesture guards. Its MIDI selector retains clip selection. Stale Timeline geometry/drop targets are cleared when Instrument renders. Pane changes do not alter instruments, effects, project data, or processing order; no DSP or saved-schema changes are introduced.
+
+## Limiter and compensated latency — 2026-10-14
+
+[Limiter](limiter.md) adds Input/Release/Lookahead and Ceiling/Mode/Routing strips, Peak/True Peak modes, linked L/R or independent M/S dynamics, and a linked output guard. Its fixed delay remains active during bypass; the shared engine aligns parallel track chains and serial Master processing, primes seeks, and preserves arranged/export frame positions. This supersedes the previous zero-latency-only requirement for built-in effects. Portable processing lives in `crates/limiter`; the host owns alignment and transport.
