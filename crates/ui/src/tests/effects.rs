@@ -2876,3 +2876,180 @@ fn drag_control(app: &mut DawUi, ctx: &egui::Context, start: Pos2, delta: Vec2) 
     frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
     frame(app, ctx, vec![button(end, false)]);
 }
+
+fn effect_delete_key(key: egui::Key, repeat: bool, modifiers: egui::Modifiers) -> egui::Event {
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat,
+        modifiers,
+    }
+}
+#[test]
+fn effect_delete_removes_selected_units_and_preserves_survivors_and_clips() {
+    for compact in [false, true] {
+        for collapsed in [false, true] {
+            for selected in [vec![0], vec![0, 2], vec![0, 1, 2]] {
+                for key in [egui::Key::Delete, egui::Key::Backspace] {
+                    let (mut app, track, ctx, ids) = chain_fixture(compact, collapsed);
+                    let original = app.session.project.tracks[0].clone();
+                    let clip = original.clips[0].id;
+                    app.selected_clip = Some(clip);
+                    app.selected_clips.insert(clip);
+                    for (index, unit) in selected.iter().enumerate() {
+                        let header = match unit {
+                            0 => app.effects_bounds.units[0].header,
+                            1 => app.effects_bounds.drive_units[0].header,
+                            _ => app.effects_bounds.units[1].header,
+                        };
+                        end_click_sequence(&mut app, &ctx);
+                        click_effect_with_shift(&mut app, &ctx, header.center(), index > 0);
+                    }
+                    assert_eq!(
+                        app.selected_effects,
+                        selected.iter().map(|i| ids[*i]).collect()
+                    );
+                    app.dirty = false;
+                    let modifiers = if selected.len() > 1 {
+                        egui::Modifiers::SHIFT
+                    } else {
+                        egui::Modifiers::NONE
+                    };
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![
+                            egui::Event::ModifiersChanged(modifiers),
+                            effect_delete_key(key, false, modifiers),
+                        ],
+                    );
+                    let expected: Vec<_> = original
+                        .effects
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| !selected.contains(i))
+                        .map(|(_, effect)| effect.clone())
+                        .collect();
+                    assert_eq!(app.session.project.tracks[0].effects, expected);
+                    assert!(app.selected_effects.is_empty());
+                    assert!(app.dirty);
+                    assert_eq!(
+                        serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
+                        serde_json::to_value(&original.clips).unwrap()
+                    );
+                    assert_eq!(app.selected_clip, Some(clip));
+                    assert_eq!(app.selected_track, Some(track));
+                    // A repeat after the focused unit disappears must not delete the clip.
+                    app.dirty = false;
+                    for _ in 0..3 {
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![effect_delete_key(key, true, egui::Modifiers::NONE)],
+                        );
+                    }
+                    assert_eq!(app.session.project.tracks[0].effects, expected);
+                    assert_eq!(
+                        serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
+                        serde_json::to_value(&original.clips).unwrap()
+                    );
+                    assert!(!app.dirty);
+                }
+            }
+        }
+    }
+}
+#[test]
+fn effect_delete_respects_focus_modifiers_modal_and_drag_guards() {
+    for guard in [
+        "catalog",
+        "outside",
+        "surrender",
+        "window",
+        "modal",
+        "disabled",
+        "drag",
+        "pointer",
+        "repeat",
+        "modifier",
+        "view",
+        "text",
+    ] {
+        let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        let point = app.effects_bounds.units[0].header.center();
+        click(&mut app, &ctx, point);
+        assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+        let original = app.session.project.clone();
+        app.dirty = false;
+        let mut modifiers = egui::Modifiers::NONE;
+        match guard {
+            "catalog" => {
+                let point = app.effects_bounds.entry.center();
+                click(&mut app, &ctx, point);
+            }
+            "outside" => {
+                let point = Pos2::new(
+                    app.effects_bounds.library.right() + 300.0,
+                    app.effects_bounds.library.center().y,
+                );
+                click(&mut app, &ctx, point);
+            }
+            "surrender" => {
+                let id = ctx.memory(|memory| memory.focused()).unwrap();
+                ctx.memory_mut(|memory| memory.surrender_focus(id));
+            }
+            "modal" => app.unsaved_prompt = true,
+            "drag" => begin_effect_drag(&mut app, &ctx, point, point + Vec2::new(50.0, 0.0)),
+            "pointer" => {
+                let point = app.effects_bounds.units[0].knobs[0][0].center();
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                );
+            }
+            "repeat" => {
+                ctx.input_mut(|input| {
+                    input.keys_down.insert(egui::Key::Delete);
+                });
+            }
+            "modifier" => modifiers = egui::Modifiers::CTRL,
+            "view" => app.set_view_mode(ViewMode::Mixer, &ctx),
+            "text" => {
+                app.track_name_edit = Some(TrackNameEdit {
+                    track: original.tracks[0].id,
+                    text: original.tracks[0].name.clone(),
+                    focus: false,
+                });
+            }
+            _ => {}
+        }
+        let events = vec![
+            egui::Event::ModifiersChanged(modifiers),
+            effect_delete_key(egui::Key::Delete, guard == "repeat", modifiers),
+        ];
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                focused: guard != "window",
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                events,
+                ..Default::default()
+            },
+            |ui| {
+                ui.add_enabled_ui(guard != "disabled", |ui| app.show(ui));
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(
+            app.session.project.tracks[0].effects, original.tracks[0].effects,
+            "{guard}"
+        );
+        assert_eq!(
+            serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
+            serde_json::to_value(&original.tracks[0].clips).unwrap(),
+            "{guard}"
+        );
+        assert!(!app.dirty, "{guard}");
+    }
+}

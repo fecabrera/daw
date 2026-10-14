@@ -1593,3 +1593,19 @@ Completed checks:
 - Documentation file links and `git diff HEAD --check`: passed. Existing FunDSP dependency/license notices are retained; no external dependency version changed.
 
 Native mouse/keyboard gestures, listening/device behavior, CPU performance, and Windows/Linux builds were not verified in this task. Automated checks do not establish those results. The existing user DAW process and projects were not restarted or modified.
+
+## Delete selected effect units — 2026-10-13
+
+With Effects lane focus, Delete or Backspace removes all selected installed effects through the existing single `Edit::SetEffects` transaction. Surviving units retain order, IDs, settings, and compact state; track/clip content and selection remain unchanged. Removal clears effect selection and retains a keyboard-only pane focus target. Held-key repeats are consumed so they cannot fall through to overview clip deletion. Shift may remain held after group selection; Ctrl/Command/Alt combinations are ignored. Other panes/text editing, window loss, unavailable/disabled editing, modal work, and pointer/drag gestures remain guarded.
+
+Two egui tests cover single, separated multiple, and complete-chain selections; Delete and Backspace; Shift-held groups; compact/collapsed combinations; survivor/clip preservation; held keys after the focused unit disappears; and focus, repeat, modifier, text, modal, disabled, view, and gesture guards. Existing Effects regression checks retain body/header/power/knob selection and drag behavior. An initial regression from querying provisional unit focus on ordinary click frames was corrected by limiting shortcut focus queries to deletion events. All affected checks pass on the final implementation.
+
+Completed checks:
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline -p daw-ui effects --lib`: **47 passed**, including the two new tests. Log: `work/effect-delete-ui.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **524 passed**, including **326 UI tests** and doc tests. Log: `work/effect-delete-workspace.log`.
+- `cargo fmt --all --check` and `CARGO_HOME="$PWD/work/cargo-home" cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: passed. Log: `work/effect-delete-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/effect-delete-package.log`. The app bundle executable matches `target/debug/daw-desktop`, SHA-256 `e728153e87664381c54783a540df70c0336f8083be65970ef27d723ad4d10f44`.
+- `git diff --check`: passed. CLI smoke checks were not repeated because this change is UI-only and does not change shared rendering/import/export.
+
+Native keyboard gestures and Windows/Linux builds were not verified. The running user DAW and project files were not restarted or changed.

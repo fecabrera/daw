@@ -365,6 +365,12 @@ impl DawUi {
         );
         lane.set_clip_rect(strip.intersect(ui.clip_rect()));
         self.effects_lane_focus.set(&lane, strip, true);
+        // A zero-area keyboard target retains pane focus without covering unit hits.
+        let keyboard_focus = lane.interact(
+            Rect::from_center_size(strip.center(), Vec2::ZERO),
+            lane.id().with("effect-lane-keyboard-focus"),
+            Sense::focusable_noninteractive(),
+        );
         let scrolled = lane
             .add_enabled_ui(allowed, |ui| {
                 egui::ScrollArea::horizontal()
@@ -541,6 +547,7 @@ impl DawUi {
         {
             self.selected_effects.clear();
         }
+        self.delete_effect_selection(&lane, effects, allowed, &keyboard_focus);
         self.finish_effect_drag(
             &lane,
             effects,
@@ -551,6 +558,54 @@ impl DawUi {
 
         if let Some(id) = remove {
             effects.retain(|effect| effect.id != id);
+        }
+    }
+
+    fn delete_effect_selection(
+        &mut self,
+        ui: &egui::Ui,
+        effects: &mut Vec<daw_core::EffectInstance>,
+        allowed: bool,
+        keyboard_focus: &egui::Response,
+    ) {
+        if !ui.input(|input| {
+            input.key_pressed(egui::Key::Delete) || input.key_pressed(egui::Key::Backspace)
+        }) || self.effects_drag.is_some()
+            || ui.input(|input| input.pointer.any_down())
+            || self.effects_lane_focus.lost(ui.ctx(), allowed, false)
+        {
+            return;
+        }
+        let delete = ui.input_mut(|input| {
+            let mut delete = false;
+            input.events.retain(|event| {
+                if let egui::Event::Key {
+                    key: egui::Key::Delete | egui::Key::Backspace,
+                    pressed: true,
+                    repeat,
+                    modifiers,
+                    ..
+                } = event
+                    && !modifiers.alt
+                    && !modifiers.ctrl
+                    && !modifiers.command
+                    && !modifiers.mac_cmd
+                {
+                    // Consume repeats too, so the same key cannot reach clip shortcuts.
+                    delete |= !repeat;
+                    return false;
+                }
+                true
+            });
+            delete
+        });
+        if delete && !self.selected_effects.is_empty() {
+            effects.retain(|effect| !self.selected_effects.contains(&effect.id));
+            self.selected_effects.clear();
+            // Keep focus on the pane after its focused unit disappears. A held Delete
+            // must not fall through to the selected clip in the track overview.
+            keyboard_focus.request_focus();
+            ui.ctx().request_repaint();
         }
     }
 }
