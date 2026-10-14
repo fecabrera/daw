@@ -118,10 +118,13 @@ impl DawUi {
                 |ui| {
                     ui.set_width(TRACK_WIDTH);
                     ui.set_min_height(upper.height());
+                    let catalog_rect = Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, upper.height()));
+                    self.effects_catalog.begin_frame(ui, catalog_rect);
+                    let mut compact_button = Rect::NOTHING;
                     let header = library.header(ui, "Effects", |ui| {
                         let response = ui
                             .add_enabled_ui(
-                                allowed && self.effects_drag.is_none() && selected.is_some(),
+                                allowed && self.effects_drag.as_ref().is_none_or(|drag| !drag.active) && selected.is_some(),
                                 |ui| {
                                     icons::button(
                                         ui,
@@ -141,7 +144,13 @@ impl DawUi {
                                 },
                             )
                             .inner;
-                        if response.clicked() {
+                        compact_button = response.rect;
+                        if (response.is_pointer_button_down_on() || response.clicked())
+                            && ui.rect_contains_pointer(response.rect)
+                        {
+                            response.request_focus();
+                        }
+                        if response.clicked() && ui.rect_contains_pointer(response.rect) {
                             compact = !compact;
                         }
                         #[cfg(test)]
@@ -150,48 +159,58 @@ impl DawUi {
                         }
                     });
                     panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
-                    for (type_id, name, make) in [
-                        (
-                            daw_core::EQ_TYPE_ID,
-                            "3-band EQ",
-                            daw_core::EffectInstance::equalizer as fn() -> daw_core::EffectInstance,
-                        ),
-                        (
-                            daw_core::DRIVE_TYPE_ID,
-                            "Drive",
-                            daw_core::EffectInstance::drive,
-                        ),
-                        (
-                            daw_core::AUTO_FILTER_TYPE_ID,
-                            "Auto-filter",
-                            daw_core::EffectInstance::auto_filter,
-                        ),
-                        (
-                            daw_core::COMPRESSOR_TYPE_ID,
-                            "Compressor",
-                            daw_core::EffectInstance::compressor,
-                        ),
-                    ] {
+                    let header_rect = header.response.rect;
+                    for (index, rect) in [
+                        Rect::from_min_max(header_rect.min, Pos2::new(compact_button.left(), header_rect.bottom())),
+                        Rect::from_min_max(Pos2::new(compact_button.right(), header_rect.top()), header_rect.max),
+                        Rect::from_min_max(Pos2::new(compact_button.left(), header_rect.top()), compact_button.right_top()),
+                        Rect::from_min_max(compact_button.left_bottom(), Pos2::new(compact_button.right(), header_rect.bottom())),
+                    ].into_iter().enumerate() {
+                        self.effects_catalog.empty_region(ui, rect.intersect(catalog_rect), index, allowed);
+                    }
+                    let catalog_allowed = allowed && self.effects_drag.is_none() && selected.is_some()
+                        && !ui.input(|input| input.pointer.primary_down());
+                    self.effects_catalog.retain_focus_filter(ui);
+                    let catalog_action = self.effects_catalog.keyboard(ui, catalog_allowed);
+                    if catalog_action == effects_catalog::Action::Add {
+                        effects.extend(effects_catalog::ENTRIES.iter()
+                            .filter(|(type_id, _, _)| self.effects_catalog.selection.contains(type_id))
+                            .map(|(_, _, make)| make()));
+                    }
+                    let mut entry_rects = [Rect::NOTHING; effects_catalog::ENTRIES.len()];
+                    for (index, (type_id, name, make)) in
+                        effects_catalog::ENTRIES.into_iter().enumerate()
+                    {
                         let response = ui
                             .add_enabled_ui(
-                                allowed && self.effects_drag.is_none() && selected.is_some(),
+                                allowed && self.effects_drag.as_ref().is_none_or(|drag| drag.is_library() && !drag.active) && selected.is_some(),
                                 |ui| {
                                     library
                                         .catalog_item(
                                             ui,
                                             name,
-                                            self.effects_catalog_selection == Some(type_id),
+                                            self.effects_catalog.selection.contains(type_id),
                                         )
                                         .on_hover_text(format!(
-                                            "Double-click to add {name} to this track."
+                                            "Double-click to add {name}. Enter adds selected effects. Shift+click toggles selection."
                                         ))
                                 },
                             )
                             .inner;
-                        if response.clicked() {
-                            self.effects_catalog_selection = Some(type_id);
+                        entry_rects[index] = response.rect;
+                        if allowed {
+                            self.start_library_effect_drag(ui, &response, selected.as_ref().map(|track| track.id), index, &effects);
                         }
-                        if response.double_clicked() {
+                        let pointer_clicked = response.clicked() && ui.rect_contains_pointer(response.rect) && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary));
+                        if pointer_clicked {
+                            self.effects_catalog
+                                .click(index, ui.input(|input| input.modifiers.shift));
+                            self.effects_catalog.focus_row(ui, &response);
+                        }
+                        if catalog_action == effects_catalog::Action::Move && self.effects_catalog.is_cursor(index) {
+                            self.effects_catalog.focus_row(ui, &response);
+                        }
+                        if pointer_clicked && response.double_clicked() {
                             effects.push(make());
                         }
                         #[cfg(test)]
@@ -210,6 +229,19 @@ impl DawUi {
                         if type_id == daw_core::COMPRESSOR_TYPE_ID {
                             self.effects_bounds.compressor_entry = response.rect;
                         }
+                    }
+                    let empty_body = Rect::from_min_max(
+                        Pos2::new(catalog_rect.left(), entry_rects.last().unwrap().bottom()), catalog_rect.max,
+                    );
+                    self.effects_catalog.empty_region(ui, empty_body, effects_catalog::ENTRIES.len(), allowed);
+                    if allowed && self.effects_drag.is_none()
+                        && ui.rect_contains_pointer(catalog_rect)
+                        && !ui.rect_contains_pointer(compact_button)
+                        && !entry_rects.iter().any(|rect| ui.rect_contains_pointer(*rect))
+                        && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary))
+                    {
+                        self.effects_catalog.clear();
+                        ui.ctx().request_repaint();
                     }
                     #[cfg(test)]
                     {
@@ -325,6 +357,7 @@ impl DawUi {
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
         lane.set_clip_rect(strip.intersect(ui.clip_rect()));
+        self.effects_lane_focus.set(&lane, strip, true);
         let scrolled = lane
             .add_enabled_ui(allowed, |ui| {
                 egui::ScrollArea::horizontal()
@@ -448,6 +481,9 @@ impl DawUi {
                                         effect.id,
                                         ui.input(|input| input.modifiers.shift),
                                     );
+                                    if !self.effects_lane_focus.owns(ui.ctx()) {
+                                        unit.response.request_focus();
+                                    }
                                 }
                                 slots.push((effect.id, rect));
                             }

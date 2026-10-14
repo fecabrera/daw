@@ -79,7 +79,7 @@ impl ControlPanel {
         );
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(self.rect.width() - 1.0, galley.size().y + 2.0 * padding),
-            egui::Sense::click(),
+            egui::Sense::click_and_drag(),
         );
         response.widget_info(|| {
             egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, name)

@@ -9,6 +9,629 @@ fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
     frame(app, ctx, vec![button(point, false)]);
 }
 
+fn library_key(app: &mut DawUi, ctx: &egui::Context, key: egui::Key, shift: bool) {
+    let modifiers = egui::Modifiers {
+        shift,
+        ..Default::default()
+    };
+    frame(
+        app,
+        ctx,
+        vec![
+            egui::Event::ModifiersChanged(modifiers),
+            egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            },
+        ],
+    );
+    frame(
+        app,
+        ctx,
+        vec![
+            egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers,
+            },
+            egui::Event::ModifiersChanged(Default::default()),
+        ],
+    );
+}
+
+#[test]
+fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        app.dirty = false;
+        let original = serde_json::to_string(&app.session.project).unwrap();
+        let entries = effects_catalog::ENTRIES.map(|entry| entry.0);
+        let point = app.effects_bounds.drive_entry.center();
+        click(&mut app, &ctx, point);
+        for (key, shift, expected) in [
+            (egui::Key::ArrowDown, false, vec![entries[2]]),
+            (egui::Key::ArrowDown, true, vec![entries[2], entries[3]]),
+            (egui::Key::ArrowDown, true, vec![entries[2], entries[3]]),
+            (egui::Key::ArrowUp, true, vec![entries[2]]),
+            (egui::Key::ArrowUp, true, vec![entries[1], entries[2]]),
+            (egui::Key::ArrowUp, false, vec![entries[0]]),
+            (egui::Key::ArrowUp, false, vec![entries[0]]),
+        ] {
+            library_key(&mut app, &ctx, key, shift);
+            assert_eq!(
+                app.effects_catalog.selection,
+                expected.into_iter().collect()
+            );
+        }
+        let point = app.effects_bounds.compressor_entry.center();
+        click_effect_with_shift(&mut app, &ctx, point, true);
+        assert_eq!(
+            app.effects_catalog.selection,
+            HashSet::from([entries[0], entries[3]])
+        );
+        click_effect_with_shift(&mut app, &ctx, point, true);
+        assert_eq!(app.effects_catalog.selection, HashSet::from([entries[0]]));
+        library_key(&mut app, &ctx, egui::Key::Escape, false);
+        assert!(app.effects_catalog.selection.is_empty());
+        library_key(&mut app, &ctx, egui::Key::ArrowDown, false);
+        library_key(&mut app, &ctx, egui::Key::Enter, false);
+        assert!(app.effects_catalog.selection.is_empty());
+        assert_eq!(
+            serde_json::to_string(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn effects_library_empty_space_clears_selection_on_release_without_project_edits() {
+    for (x, y) in [
+        (0.01, 0.01),
+        (0.99, 0.01),
+        (0.5, 0.5),
+        (0.01, 0.99),
+        (0.99, 0.99),
+    ] {
+        let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        let point = app.effects_bounds.entry.center();
+        click(&mut app, &ctx, point);
+        library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
+        assert_eq!(app.effects_catalog.selection.len(), 2);
+        app.selected_effects = HashSet::from([ids[0], ids[1]]);
+        app.dirty = false;
+        let original = serde_json::to_string(&app.session.project).unwrap();
+        let blank = Rect::from_min_max(
+            Pos2::new(
+                app.effects_bounds.library.left(),
+                app.effects_bounds.compressor_entry.bottom(),
+            ),
+            app.effects_bounds.library.max,
+        );
+        let point = Pos2::new(
+            egui::lerp(blank.x_range(), x),
+            egui::lerp(blank.y_range(), y),
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        assert_eq!(app.effects_catalog.selection.len(), 2);
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        assert!(
+            app.effects_catalog.selection.is_empty(),
+            "x={x} y={y} point={point:?} blank={blank:?}"
+        );
+        assert!(app.selected_effects.is_empty());
+        assert_eq!(
+            serde_json::to_string(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn effects_library_empty_click_respects_input_guards_and_other_catalog_controls() {
+    for guard in ["header", "compact", "secondary", "modal", "focus", "drag"] {
+        let (mut app, _, ctx, _) = chain_fixture(false, false);
+        let entry = app.effects_bounds.entry.center();
+        click(&mut app, &ctx, entry);
+        let selected = app.effects_catalog.selection.clone();
+        let blank = Pos2::new(
+            app.effects_bounds.library.center().x,
+            app.effects_bounds.library.bottom() - 8.0,
+        );
+        let point = match guard {
+            "header" => app.effects_bounds.header.center(),
+            "compact" => app.effects_bounds.compact.center(),
+            _ => blank,
+        };
+        if guard == "modal" {
+            app.unsaved_prompt = true;
+        }
+        if guard == "drag" {
+            begin_effect_drag(&mut app, &ctx, entry, blank);
+        }
+        for pressed in [true, false] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused: guard != "focus",
+                    events: vec![
+                        egui::Event::PointerMoved(point),
+                        egui::Event::PointerButton {
+                            pos: point,
+                            button: if guard == "secondary" {
+                                egui::PointerButton::Secondary
+                            } else {
+                                egui::PointerButton::Primary
+                            },
+                            pressed,
+                            modifiers: Default::default(),
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            output.textures_delta.clear();
+        }
+        if matches!(guard, "header" | "modal" | "focus") {
+            assert!(app.effects_catalog.selection.is_empty());
+        } else {
+            assert_eq!(app.effects_catalog.selection, selected, "guard={guard}");
+        }
+    }
+}
+
+#[test]
+fn effects_catalog_selection_clears_on_focus_loss_but_not_pointer_hover() {
+    for target in ["control", "surrender", "window", "view", "hover"] {
+        let (mut app, _, ctx, _) = chain_fixture(false, false);
+        let point = app.effects_bounds.entry.center();
+        click(&mut app, &ctx, point);
+        library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
+        assert_eq!(app.effects_catalog.selection.len(), 2);
+        let original = serde_json::to_string(&app.session.project).unwrap();
+        app.dirty = false;
+        match target {
+            "control" => {
+                let point = app.effects_bounds.units[0].knobs[0][0].center();
+                click(&mut app, &ctx, point);
+            }
+            "surrender" => {
+                let id = ctx.memory(|memory| memory.focused()).unwrap();
+                ctx.memory_mut(|memory| memory.surrender_focus(id));
+                frame(&mut app, &ctx, vec![]);
+            }
+            "window" => {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        focused: false,
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1280.0, 800.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| app.show(ui),
+                );
+                output.textures_delta.clear();
+            }
+            "view" => {
+                app.set_view_mode(ViewMode::Timeline, &ctx);
+                frame(&mut app, &ctx, vec![]);
+            }
+            _ => {
+                let point = app.effects_bounds.strip.center();
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(point)]);
+            }
+        }
+        assert_eq!(
+            app.effects_catalog.selection.len(),
+            if target == "hover" { 2 } else { 0 },
+            "target={target}"
+        );
+        assert_eq!(
+            serde_json::to_string(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn effects_lane_selection_clears_on_focus_loss_and_keeps_controls_in_the_lane() {
+    for target in [
+        "catalog",
+        "control",
+        "outside",
+        "surrender",
+        "window",
+        "view",
+        "hover",
+    ] {
+        let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        let point = app.effects_bounds.units[0].header.center();
+        click(&mut app, &ctx, point);
+        let point = app.effects_bounds.drive_units[0].header.center();
+        click_effect_with_shift(&mut app, &ctx, point, true);
+        assert_eq!(app.selected_effects, HashSet::from([ids[0], ids[1]]));
+        let original = serde_json::to_string(&app.session.project).unwrap();
+        app.dirty = false;
+        match target {
+            "catalog" => {
+                let point = app.effects_bounds.entry.center();
+                click(&mut app, &ctx, point);
+            }
+            "control" => {
+                let point = app.effects_bounds.units[0].knobs[0][0].center();
+                click(&mut app, &ctx, point);
+            }
+            "outside" => {
+                let point = Pos2::new(
+                    app.effects_bounds.library.right() + 300.0,
+                    app.effects_bounds.library.center().y,
+                );
+                click(&mut app, &ctx, point);
+            }
+            "surrender" => {
+                let id = ctx.memory(|memory| memory.focused()).unwrap();
+                ctx.memory_mut(|memory| memory.surrender_focus(id));
+                frame(&mut app, &ctx, vec![]);
+            }
+            "window" => {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        focused: false,
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1280.0, 800.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| app.show(ui),
+                );
+                output.textures_delta.clear();
+            }
+            "view" => {
+                app.set_view_mode(ViewMode::Mixer, &ctx);
+                frame(&mut app, &ctx, vec![]);
+            }
+            _ => {
+                let point = app.effects_bounds.entry.center();
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(point)]);
+            }
+        }
+        let expected = match target {
+            "hover" => HashSet::from([ids[0], ids[1]]),
+            "control" => HashSet::from([ids[0]]),
+            _ => HashSet::new(),
+        };
+        assert_eq!(app.selected_effects, expected, "target={target}");
+        assert_eq!(
+            serde_json::to_string(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn effects_library_enter_adds_all_selected_in_library_order_and_escape_keeps_units() {
+    let (mut app, _, ctx, ids) = chain_fixture(false, false);
+    app.selected_effects = HashSet::from([ids[0], ids[1]]);
+    let point = app.effects_bounds.compressor_entry.center();
+    click(&mut app, &ctx, point);
+    let point = app.effects_bounds.entry.center();
+    click_effect_with_shift(&mut app, &ctx, point, true);
+    let selected = app.effects_catalog.selection.clone();
+    library_key(&mut app, &ctx, egui::Key::Enter, false);
+    let effects = &app.session.project.tracks[0].effects;
+    assert_eq!(effects.len(), 5);
+    assert!(matches!(effects[3].unit, daw_core::EffectSettings::Eq3(_)));
+    assert!(matches!(
+        effects[4].unit,
+        daw_core::EffectSettings::Compressor(_)
+    ));
+    assert_eq!(
+        effects
+            .iter()
+            .map(|effect| effect.id)
+            .collect::<HashSet<_>>()
+            .len(),
+        5
+    );
+    assert_eq!(app.effects_catalog.selection, selected);
+    assert!(app.selected_effects.is_empty());
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+    );
+    assert_eq!(app.session.project.tracks[0].effects.len(), 7);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: true,
+            modifiers: Default::default(),
+        }],
+    );
+    assert_eq!(app.session.project.tracks[0].effects.len(), 7);
+    assert_eq!(app.effects_catalog.selection, selected);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+    );
+    app.dirty = false;
+    library_key(&mut app, &ctx, egui::Key::Escape, false);
+    assert!(app.effects_catalog.selection.is_empty());
+    assert!(app.selected_effects.is_empty());
+    assert_eq!(app.session.project.tracks[0].effects.len(), 7);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn effects_library_keys_respect_focus_track_and_modal_guards() {
+    for guard in 0..4 {
+        let (mut app, _, ctx, _) = chain_fixture(false, false);
+        let point = app.effects_bounds.drive_entry.center();
+        click(&mut app, &ctx, point);
+        match guard {
+            0 => app.selected_track = None,
+            1 => app.unsaved_prompt = true,
+            2 => {
+                ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("other control")));
+            }
+            _ => {
+                app.set_view_mode(ViewMode::Timeline, &ctx);
+            }
+        }
+        app.dirty = false;
+        for key in [egui::Key::ArrowDown, egui::Key::Enter, egui::Key::Escape] {
+            library_key(&mut app, &ctx, key, false);
+        }
+        assert!(app.effects_catalog.selection.is_empty());
+        assert_eq!(app.session.project.tracks[0].effects.len(), 3);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn effects_library_drag_uses_reorder_preview_and_inserts_group_on_release() {
+    for compact in [false, true] {
+        for index in [0, 1, 3] {
+            let (mut app, _, ctx, ids) = chain_fixture(compact, false);
+            let point = app.effects_bounds.compressor_entry.center();
+            click(&mut app, &ctx, point);
+            let start = app.effects_bounds.drive_entry.center();
+            click_effect_with_shift(&mut app, &ctx, start, true);
+            end_click_sequence(&mut app, &ctx);
+            app.dirty = false;
+            let selected = app.effects_catalog.selection.clone();
+            app.selected_effects = HashSet::from([ids[0]]);
+            let original = app.session.project.tracks[0].effects.clone();
+            let viewport = app.effects_bounds.lane_viewport;
+            let end = Pos2::new(
+                if index < 3 {
+                    app.effects_bounds.chain[index].1.left() + 5.0
+                } else {
+                    app.effects_bounds.chain[2].1.right() + 10.0
+                },
+                viewport.center().y,
+            );
+            begin_effect_drag(&mut app, &ctx, start, end);
+            assert!(
+                app.effects_drag
+                    .as_ref()
+                    .is_some_and(|drag| drag.active && drag.is_library())
+            );
+            assert_eq!(app.session.project.tracks[0].effects, original);
+            assert!(!app.dirty);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let expected_x = if index < 3 {
+                app.effects_bounds.chain[index].1.left()
+            } else {
+                app.effects_bounds.chain[2].1.right()
+            }
+            .clamp(viewport.left() + 1.0, viewport.right() - 1.0);
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::LineSegment { points, stroke } if points[0].x == expected_x && points[1].x == expected_x && *stroke == Stroke::new(2.0, theme::accent(&ctx)) && points[0].y == viewport.top() && points[1].y == viewport.bottom()
+            )));
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert!(app.effects_drag.is_none());
+            let effects = &app.session.project.tracks[0].effects;
+            assert_eq!(effects.len(), 5);
+            assert!(matches!(
+                effects[index].unit,
+                daw_core::EffectSettings::Drive(_)
+            ));
+            assert!(matches!(
+                effects[index + 1].unit,
+                daw_core::EffectSettings::Compressor(_)
+            ));
+            assert_eq!(
+                effects
+                    .iter()
+                    .filter(|effect| ids.contains(&effect.id))
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                original
+            );
+            assert_eq!(
+                effects
+                    .iter()
+                    .map(|effect| effect.id)
+                    .collect::<HashSet<_>>()
+                    .len(),
+                5
+            );
+            assert_eq!(app.effects_catalog.selection, selected);
+            assert!(app.selected_effects.is_empty());
+            assert!(app.dirty);
+        }
+    }
+}
+
+#[test]
+fn effects_library_drag_handles_empty_lanes_fast_release_and_cancellation() {
+    for cancel in [
+        "drop", "outside", "escape", "focus", "modal", "track", "view", "chain",
+    ] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let start = app.effects_bounds.drive_entry.center();
+        let end = app.effects_bounds.lane_viewport.center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        assert!(app.effects_drag.is_some());
+        if cancel == "drop" {
+            // A fast drag can move and release in the same next frame.
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(end), button(end, false)],
+            );
+            assert_eq!(app.session.project.tracks[0].effects.len(), 1);
+            assert!(matches!(
+                app.session.project.tracks[0].effects[0].unit,
+                daw_core::EffectSettings::Drive(_)
+            ));
+            library_key(&mut app, &ctx, egui::Key::Enter, false);
+            assert_eq!(app.session.project.tracks[0].effects.len(), 2);
+        } else {
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            match cancel {
+                "escape" => library_key(&mut app, &ctx, egui::Key::Escape, false),
+                "focus" => {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            focused: false,
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(1280.0, 800.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| app.show(ui),
+                    );
+                    output.textures_delta.clear();
+                }
+                "modal" => app.unsaved_prompt = true,
+                "track" => app.selected_track = Some(app.session.project.add_track().unwrap()),
+                "view" => app.view_mode = ViewMode::Timeline,
+                "chain" => app.session.project.tracks[0]
+                    .effects
+                    .push(daw_core::EffectInstance::equalizer()),
+                _ => {}
+            }
+            let point = if cancel == "outside" { start } else { end };
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point), button(point, false)],
+            );
+            assert_eq!(
+                app.session.project.tracks[0].effects.len(),
+                usize::from(cancel == "chain")
+            );
+        }
+        assert!(app.effects_drag.is_none());
+    }
+}
+
+#[test]
+fn effects_library_drag_scrolls_to_offscreen_insertion_slots() {
+    let (mut app, _, ctx, _) = chain_fixture(false, false);
+    for _ in 0..8 {
+        app.session.project.tracks[0]
+            .effects
+            .push(daw_core::EffectInstance::equalizer());
+    }
+    frame_sized(&mut app, &ctx, vec![], Vec2::new(640.0, 800.0));
+    let start = app.effects_bounds.drive_entry.center();
+    let viewport = app.effects_bounds.lane_viewport;
+    let end = Pos2::new(viewport.right() - 3.0, viewport.center().y);
+    let original = app.session.project.tracks[0].effects.clone();
+    frame_sized(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+        Vec2::new(640.0, 800.0),
+    );
+    frame_sized(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(end)],
+        Vec2::new(640.0, 800.0),
+    );
+    for _ in 0..50 {
+        frame_sized(&mut app, &ctx, vec![], Vec2::new(640.0, 800.0));
+    }
+    assert!(app.effects_bounds.lane_scroll > 0.0);
+    assert_eq!(app.session.project.tracks[0].effects, original);
+    let index = app
+        .effects_bounds
+        .chain
+        .iter()
+        .position(|(_, rect)| end.x < rect.center().x)
+        .unwrap_or(original.len());
+    frame_sized(
+        &mut app,
+        &ctx,
+        vec![button(end, false)],
+        Vec2::new(640.0, 800.0),
+    );
+    let effects = &app.session.project.tracks[0].effects;
+    assert_eq!(effects.len(), original.len() + 1);
+    assert!(matches!(
+        effects[index].unit,
+        daw_core::EffectSettings::Drive(_)
+    ));
+    assert!(app.effects_drag.is_none());
+}
+
 #[test]
 fn effects_lane_spans_the_window_with_one_status_separator_and_an_aligned_overview() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
@@ -305,7 +928,10 @@ fn effect_catalog_colors_follow_hover_and_selection_without_editing_the_project(
                 Vec2::new(1280.0, 800.0),
             );
             check(&shapes, app.effects_bounds.entry, palette.text, true);
-            assert_eq!(app.effects_catalog_selection, Some(daw_core::EQ_TYPE_ID));
+            assert_eq!(
+                app.effects_catalog.selection,
+                HashSet::from([daw_core::EQ_TYPE_ID])
+            );
             assert!(app.session.project.tracks[0].effects.is_empty());
             assert_eq!(
                 serde_json::to_string(&app.session.project).unwrap(),
@@ -557,7 +1183,10 @@ fn drive_catalog_adds_independent_units_and_keeps_the_existing_eq() {
     assert!(entry.y > app.effects_bounds.entry.bottom());
     app.dirty = false;
     click(&mut app, &ctx, entry);
-    assert_eq!(app.effects_catalog_selection, Some(daw_core::DRIVE_TYPE_ID));
+    assert_eq!(
+        app.effects_catalog.selection,
+        HashSet::from([daw_core::DRIVE_TYPE_ID])
+    );
     assert!(app.session.project.tracks[0].effects.is_empty());
     assert!(!app.dirty);
     click(&mut app, &ctx, entry);
@@ -840,7 +1469,7 @@ fn effect_headers_preview_and_commit_order_on_release_in_all_presentation_modes(
                 assert_eq!(
                     app.effects_drag
                         .as_ref()
-                        .map(|drag| (drag.track, drag.unit)),
+                        .map(|drag| (drag.track, drag.chain_unit().unwrap())),
                     Some((track, ids[source]))
                 );
                 assert!(!app.file_action_enabled(FileAction::Import));
@@ -1099,7 +1728,7 @@ fn effect_unit_click_selection_and_shift_toggle_share_the_track_outline_without_
     }
 }
 #[test]
-fn effect_body_selection_keeps_child_controls_and_survives_reordering_and_view_changes() {
+fn effect_body_selection_keeps_child_controls_and_reordering_and_clears_on_view_changes() {
     let (mut app, _, ctx, ids) = chain_fixture(false, false);
     let rect = app.effects_bounds.chain[0].1;
     let blank = Pos2::new(rect.left() + 6.0, rect.center().y);
@@ -1120,7 +1749,7 @@ fn effect_body_selection_keeps_child_controls_and_survives_reordering_and_view_c
     app.set_view_mode(ViewMode::Timeline, &ctx);
     app.set_view_mode(ViewMode::Effects, &ctx);
     frame(&mut app, &ctx, vec![]);
-    assert_eq!(app.selected_effects, selected);
+    assert!(app.selected_effects.is_empty());
     // A power click still changes enable state and selects its owning unit.
     let power = app.effects_bounds.drive_units[0].power.center();
     click(&mut app, &ctx, power);
@@ -1137,7 +1766,7 @@ fn effect_body_selection_keeps_child_controls_and_survives_reordering_and_view_c
     assert!(app.selected_effects.is_empty());
 }
 #[test]
-fn effect_unit_selection_ignores_disabled_and_unfocused_clicks() {
+fn effect_unit_selection_clears_when_disabled_or_unfocused_without_editing_units() {
     for unfocused in [false, true] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
         app.selected_effects.insert(ids[0]);
@@ -1158,7 +1787,7 @@ fn effect_unit_selection_ignores_disabled_and_unfocused_clicks() {
             );
             output.textures_delta.clear();
         }
-        assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+        assert!(app.selected_effects.is_empty());
         assert_eq!(
             format!("{:?}", app.session.project),
             format!("{original:?}")
@@ -1277,10 +1906,10 @@ fn empty_effects_lane_click_clears_unit_selection_without_editing_the_project() 
         let before = format!("{:?}", app.session.project);
         let strip = app.effects_bounds.strip;
         let empty = Pos2::new(strip.right() - 20.0, strip.center().y);
-        // Clicking the catalog or timeline workspace does not clear installed-unit selection.
+        // Moving focus to the catalog clears installed-unit selection.
         let catalog = app.effects_bounds.entry.center();
         click(&mut app, &ctx, catalog);
-        assert_eq!(app.selected_effects.len(), 2);
+        assert!(app.selected_effects.is_empty());
         click(&mut app, &ctx, empty);
         assert!(app.selected_effects.is_empty());
         assert_eq!(format!("{:?}", app.session.project), before);
@@ -1330,8 +1959,8 @@ fn auto_filter_catalog_adds_independent_saved_units_and_respects_guards() {
     app.dirty = false;
     click(&mut app, &ctx, entry);
     assert_eq!(
-        app.effects_catalog_selection,
-        Some(daw_core::AUTO_FILTER_TYPE_ID)
+        app.effects_catalog.selection,
+        HashSet::from([daw_core::AUTO_FILTER_TYPE_ID])
     );
     assert!(!app.dirty);
     click(&mut app, &ctx, entry);
@@ -1841,8 +2470,8 @@ fn compressor_catalog_adds_independent_units_and_blocks_without_a_track() {
     app.dirty = false;
     click(&mut app, &ctx, entry);
     assert_eq!(
-        app.effects_catalog_selection,
-        Some(daw_core::COMPRESSOR_TYPE_ID)
+        app.effects_catalog.selection,
+        HashSet::from([daw_core::COMPRESSOR_TYPE_ID])
     );
     assert!(!app.dirty);
     click(&mut app, &ctx, entry);

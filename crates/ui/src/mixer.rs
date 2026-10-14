@@ -76,6 +76,10 @@ impl DawUi {
             return;
         }
         self.view_mode = mode;
+        if mode != ViewMode::Effects {
+            self.effects_catalog.clear();
+            self.selected_effects.clear();
+        }
         self.midi_editor.cancel();
         self.instrument_ui.cancel();
         self.track_name_edit = None;

@@ -2,12 +2,34 @@ use super::*;
 
 pub(super) struct EffectDrag {
     pub track: Id,
-    pub unit: Id,
-    units: Vec<Id>,
+    source: DragSource,
     origin: Pos2,
+    focus: egui::Id,
     pub active: bool,
     // A changed chain invalidates the gesture; do not overwrite another edit on release.
     order: Vec<Id>,
+}
+enum DragSource {
+    Chain {
+        unit: Id,
+        units: Vec<Id>,
+    },
+    Library {
+        types: Vec<&'static str>,
+        index: usize,
+    },
+}
+impl EffectDrag {
+    pub fn is_library(&self) -> bool {
+        matches!(self.source, DragSource::Library { .. })
+    }
+    #[cfg(test)]
+    pub fn chain_unit(&self) -> Option<Id> {
+        match self.source {
+            DragSource::Chain { unit, .. } => Some(unit),
+            DragSource::Library { .. } => None,
+        }
+    }
 }
 impl DawUi {
     pub(super) fn select_effect(&mut self, id: Id, toggle: bool) {
@@ -42,6 +64,14 @@ impl DawUi {
                             .eq(drag.order.iter().copied())
                     })
         }) {
+            if ui.input(|input| input.focused && input.key_pressed(egui::Key::Escape))
+                && self.view_mode == ViewMode::Effects
+                && self.edit_environment_available()
+                && let Some(drag) = &self.effects_drag
+            {
+                ui.ctx()
+                    .memory_mut(|memory| memory.request_focus(drag.focus));
+            }
             self.effects_drag = None;
         }
     }
@@ -75,13 +105,53 @@ impl DawUi {
                 vec![unit]
             };
             // Arm on press so a fast motion+release cannot lose its origin between frames.
+            header.request_focus();
             self.effects_drag = Some(EffectDrag {
                 track,
-                unit,
-                units,
+                source: DragSource::Chain { unit, units },
                 origin,
+                focus: header.id,
                 active: false,
                 order: order.to_vec(),
+            });
+        }
+    }
+    pub(super) fn start_library_effect_drag(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        track: Option<Id>,
+        index: usize,
+        effects: &[daw_core::EffectInstance],
+    ) {
+        if self.effects_drag.is_none()
+            && response.is_pointer_button_down_on()
+            && ui.is_enabled()
+            && ui.input(|input| {
+                input.focused && input.pointer.button_pressed(egui::PointerButton::Primary)
+            })
+            && let Some(origin) = ui.input(|input| input.pointer.press_origin())
+            && response.rect.contains(origin)
+            && let Some(track) = track
+        {
+            self.effects_catalog.focus_row(ui, response);
+            let type_id = effects_catalog::ENTRIES[index].0;
+            let types = if self.effects_catalog.selection.contains(type_id) {
+                effects_catalog::ENTRIES
+                    .iter()
+                    .filter(|entry| self.effects_catalog.selection.contains(entry.0))
+                    .map(|entry| entry.0)
+                    .collect()
+            } else {
+                vec![type_id]
+            };
+            self.effects_drag = Some(EffectDrag {
+                track,
+                source: DragSource::Library { types, index },
+                origin,
+                focus: response.id,
+                active: false,
+                order: effects.iter().map(|effect| effect.id).collect(),
             });
         }
     }
@@ -109,9 +179,22 @@ impl DawUi {
                 .is_some_and(|pointer| pointer.distance(drag.origin) > threshold)
             {
                 drag.active = true;
-                let unit = drag.unit;
-                if !self.selected_effects.contains(&unit) {
-                    self.select_effect(unit, false);
+                match &drag.source {
+                    DragSource::Chain { unit, .. } => {
+                        let unit = *unit;
+                        if !self.selected_effects.contains(&unit) {
+                            self.select_effect(unit, false);
+                        }
+                    }
+                    DragSource::Library { index, .. } => {
+                        if !self
+                            .effects_catalog
+                            .selection
+                            .contains(effects_catalog::ENTRIES[*index].0)
+                        {
+                            self.effects_catalog.click(*index, false);
+                        }
+                    }
                 }
             } else {
                 if !ui.input(|input| input.pointer.primary_down()) {
@@ -121,7 +204,8 @@ impl DawUi {
             }
         }
         let drag = self.effects_drag.as_ref().unwrap();
-        if !effects.iter().any(|unit| unit.id == drag.unit) {
+        if matches!(&drag.source, DragSource::Chain { unit, .. } if !effects.iter().any(|effect| effect.id == *unit))
+        {
             self.effects_drag = None;
             return;
         }
@@ -133,26 +217,38 @@ impl DawUi {
                     .iter()
                     .position(|(_, rect)| pointer.x < rect.center().x)
                     .unwrap_or(slots.len());
-                let moving: HashSet<_> = drag.units.iter().copied().collect();
-                let index = slots[..slot]
-                    .iter()
-                    .filter(|(id, _)| !moving.contains(id))
-                    .count();
-                let mut order: Vec<_> = drag
-                    .order
-                    .iter()
-                    .copied()
-                    .filter(|id| !moving.contains(id))
-                    .collect();
-                order.splice(index..index, drag.units.iter().copied());
-                (slot, index, order != drag.order)
+                match &drag.source {
+                    DragSource::Library { .. } => (slot, slot, true),
+                    DragSource::Chain { units, .. } => {
+                        let moving: HashSet<_> = units.iter().copied().collect();
+                        let index = slots[..slot]
+                            .iter()
+                            .filter(|(id, _)| !moving.contains(id))
+                            .count();
+                        let mut order: Vec<_> = drag
+                            .order
+                            .iter()
+                            .copied()
+                            .filter(|id| !moving.contains(id))
+                            .collect();
+                        order.splice(index..index, units.iter().copied());
+                        (slot, index, order != drag.order)
+                    }
+                }
             });
         if let Some((slot, _, changed)) = target
             && changed
         {
             let x = slots
                 .get(slot)
-                .map_or_else(|| slots.last().unwrap().1.right(), |(_, rect)| rect.left())
+                .map_or_else(
+                    || {
+                        slots
+                            .last()
+                            .map_or(viewport.left(), |(_, rect)| rect.right())
+                    },
+                    |(_, rect)| rect.left(),
+                )
                 .clamp(viewport.left() + 1.0, viewport.right() - 1.0);
             ui.painter_at(viewport).vline(
                 x,
@@ -167,16 +263,29 @@ impl DawUi {
         });
         if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
             let drag = self.effects_drag.take().unwrap();
+            ui.ctx()
+                .memory_mut(|memory| memory.request_focus(drag.focus));
             if let Some((_, index, true)) = target {
-                // Partition in existing chain order, regardless of selection click order.
-                let moving: HashSet<_> = drag.units.into_iter().collect();
-                let (mut units, mut rest): (Vec<_>, Vec<_>) = effects
-                    .drain(..)
-                    .partition(|effect| moving.contains(&effect.id));
-                let mut after = rest.split_off(index);
-                rest.append(&mut units);
-                rest.append(&mut after);
-                *effects = rest;
+                match drag.source {
+                    DragSource::Library { types, .. } => {
+                        let added = effects_catalog::ENTRIES
+                            .iter()
+                            .filter(|entry| types.contains(&entry.0))
+                            .map(|entry| (entry.2)());
+                        effects.splice(index..index, added);
+                    }
+                    DragSource::Chain { units, .. } => {
+                        // Partition in existing chain order, regardless of selection click order.
+                        let moving: HashSet<_> = units.into_iter().collect();
+                        let (mut units, mut rest): (Vec<_>, Vec<_>) = effects
+                            .drain(..)
+                            .partition(|effect| moving.contains(&effect.id));
+                        let mut after = rest.split_off(index);
+                        rest.append(&mut units);
+                        rest.append(&mut after);
+                        *effects = rest;
+                    }
+                }
             }
         } else if !ui.input(|input| input.pointer.primary_down()) {
             self.effects_drag = None;

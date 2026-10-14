@@ -27,6 +27,7 @@ mod auto_filter_panel;
 mod compressor_panel;
 pub mod dialogs;
 mod drive_panel;
+mod effects_catalog;
 mod effects_panel;
 mod effects_reorder;
 mod empty_state;
@@ -51,6 +52,7 @@ pub mod panels;
 mod project_name_dialog;
 mod project_settings;
 pub mod rows;
+mod selection_focus;
 pub mod settings;
 pub mod theme;
 #[cfg(any(target_os = "windows", test))]
@@ -633,7 +635,8 @@ pub struct DawUi {
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
     instrument_ui: instrument_panel::InstrumentUi,
-    effects_catalog_selection: Option<&'static str>,
+    effects_catalog: effects_catalog::Catalog,
+    effects_lane_focus: selection_focus::SelectionFocus,
     effects_drag: Option<effects_reorder::EffectDrag>,
     selected_effects: HashSet<Id>,
     #[cfg(test)]
@@ -707,7 +710,8 @@ impl Default for DawUi {
     fn default() -> Self {
         Self {
             view_mode: mixer::ViewMode::default(),
-            effects_catalog_selection: None,
+            effects_catalog: Default::default(),
+            effects_lane_focus: Default::default(),
             effects_drag: None,
             selected_effects: HashSet::new(),
             midi_editor: Default::default(),
@@ -1662,6 +1666,29 @@ impl DawUi {
             }
         }
         self.dialogs(&ctx);
+        self.effects_catalog.clear_if_unfocused(
+            &ctx,
+            self.view_mode == ViewMode::Effects
+                && ui.is_enabled()
+                && self.edit_environment_available(),
+            self.effects_drag
+                .as_ref()
+                .is_some_and(|drag| drag.is_library()),
+        );
+        if !self.selected_effects.is_empty()
+            && self.effects_lane_focus.lost(
+                &ctx,
+                self.view_mode == ViewMode::Effects
+                    && ui.is_enabled()
+                    && self.edit_environment_available(),
+                self.effects_drag
+                    .as_ref()
+                    .is_some_and(|drag| !drag.is_library()),
+            )
+        {
+            self.selected_effects.clear();
+            ctx.request_repaint();
+        }
         self.clip_shortcuts(&ctx);
         if ui.is_enabled() {
             self.track_shortcuts(&ctx);
