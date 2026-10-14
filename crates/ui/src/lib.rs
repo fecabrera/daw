@@ -30,6 +30,7 @@ mod drive_panel;
 mod effects_catalog;
 mod effects_panel;
 mod effects_reorder;
+mod effects_toolbar;
 mod empty_state;
 mod envelope_panel;
 mod equalizer_panel;

@@ -20,7 +20,8 @@ pub(crate) struct EffectsUiBounds {
     pub auto_filter_entry: Rect,
     pub compressor_entry: Rect,
     pub ott_entry: Rect,
-    pub compact: Rect,
+    pub lane_toolbar: Rect,
+    pub lane_compact: Rect,
     pub chain: Vec<(Id, Rect)>,
     pub lane_viewport: Rect,
     pub lane_scroll: f32,
@@ -47,7 +48,8 @@ impl Default for EffectsUiBounds {
             auto_filter_entry: Rect::NOTHING,
             compressor_entry: Rect::NOTHING,
             ott_entry: Rect::NOTHING,
-            compact: Rect::NOTHING,
+            lane_toolbar: Rect::NOTHING,
+            lane_compact: Rect::NOTHING,
             chain: vec![],
             lane_viewport: Rect::NOTHING,
             lane_scroll: 0.0,
@@ -183,7 +185,6 @@ impl DawUi {
             self.effects_bounds.auto_filter_entry = Rect::NOTHING;
             self.effects_bounds.compressor_entry = Rect::NOTHING;
             self.effects_bounds.ott_entry = Rect::NOTHING;
-            self.effects_bounds.compact = Rect::NOTHING;
         }
         ui.horizontal_top(|ui| {
             if let Some(library) = library.as_ref() {
@@ -195,54 +196,9 @@ impl DawUi {
                     ui.set_min_height(upper.height());
                     let catalog_rect = Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, upper.height()));
                     self.effects_catalog.begin_frame(ui, catalog_rect);
-                    let mut compact_button = Rect::NOTHING;
-                    let header = library.header(ui, "Effects", |ui| {
-                        let response = ui
-                            .add_enabled_ui(
-                                allowed && self.effects_drag.as_ref().is_none_or(|drag| !drag.active) && selected.is_some(),
-                                |ui| {
-                                    icons::button(
-                                        ui,
-                                        if compact {
-                                            icons::Lucide::ArrowDownFromLine
-                                        } else {
-                                            icons::Lucide::ArrowUpFromLine
-                                        },
-                                        if compact {
-                                            "Expand effects"
-                                        } else {
-                                            "Collapse effects"
-                                        },
-                                        true,
-                                        theme::palette(ui.ctx()).text,
-                                    )
-                                },
-                            )
-                            .inner;
-                        compact_button = response.rect;
-                        if (response.is_pointer_button_down_on() || response.clicked())
-                            && ui.rect_contains_pointer(response.rect)
-                        {
-                            response.request_focus();
-                        }
-                        if response.clicked() && ui.rect_contains_pointer(response.rect) {
-                            compact = !compact;
-                        }
-                        #[cfg(test)]
-                        {
-                            self.effects_bounds.compact = response.rect;
-                        }
-                    });
+                    let header = library.header(ui, "Effects", |_| {});
                     panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
-                    let header_rect = header.response.rect;
-                    for (index, rect) in [
-                        Rect::from_min_max(header_rect.min, Pos2::new(compact_button.left(), header_rect.bottom())),
-                        Rect::from_min_max(Pos2::new(compact_button.right(), header_rect.top()), header_rect.max),
-                        Rect::from_min_max(Pos2::new(compact_button.left(), header_rect.top()), compact_button.right_top()),
-                        Rect::from_min_max(compact_button.left_bottom(), Pos2::new(compact_button.right(), header_rect.bottom())),
-                    ].into_iter().enumerate() {
-                        self.effects_catalog.empty_region(ui, rect.intersect(catalog_rect), index, allowed);
-                    }
+                    self.effects_catalog.empty_region(ui, header.response.rect.intersect(catalog_rect), 0, allowed);
                     let catalog_allowed = allowed && self.effects_drag.is_none() && selected.is_some()
                         && !ui.input(|input| input.pointer.primary_down());
                     self.effects_catalog.retain_focus_filter(ui);
@@ -313,7 +269,6 @@ impl DawUi {
                     self.effects_catalog.empty_region(ui, empty_body, effects_catalog::ENTRIES.len(), allowed);
                     if allowed && self.effects_drag.is_none()
                         && ui.rect_contains_pointer(catalog_rect)
-                        && !ui.rect_contains_pointer(compact_button)
                         && !entry_rects.iter().any(|rect| ui.rect_contains_pointer(*rect))
                         && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary))
                     {
@@ -374,6 +329,22 @@ impl DawUi {
                 .rect_filled(strip, 0.0, theme::palette(ui.ctx()).background);
             // The status panel owns the single separator below the effects lane.
             panels::ControlPanel::row_dividers(ui, strip, true, false);
+            let toolbar = effects_toolbar::bounds(strip);
+            let response = effects_toolbar::show(
+                ui,
+                toolbar,
+                &mut compact,
+                allowed
+                    && self.effects_drag.as_ref().is_none_or(|drag| !drag.active)
+                    && selected.is_some(),
+            );
+            #[cfg(test)]
+            {
+                self.effects_bounds.lane_toolbar = toolbar;
+                self.effects_bounds.lane_compact = response.rect;
+            }
+            #[cfg(not(test))]
+            let _ = response;
             self.effects_lane(ui, strip, selected, &mut effects, compact, allowed);
         }
         if let Some(target) = selected
@@ -393,6 +364,8 @@ impl DawUi {
             self.effects_bounds.strip = strip;
             if !lane_visible {
                 self.effects_bounds.strip = Rect::NOTHING;
+                self.effects_bounds.lane_toolbar = Rect::NOTHING;
+                self.effects_bounds.lane_compact = Rect::NOTHING;
                 self.effects_bounds.chain.clear();
                 self.effects_bounds.lane_viewport = Rect::NOTHING;
                 self.effects_bounds.lane_scroll = 0.0;
@@ -412,13 +385,14 @@ impl DawUi {
         let mut remove = None;
         let mut slots = Vec::with_capacity(effects.len());
         let order: Vec<_> = effects.iter().map(|effect| effect.id).collect();
+        let content = Rect::from_min_max(strip.min, effects_toolbar::bounds(strip).left_bottom());
         let mut lane = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt(("effects-lane", target))
-                .max_rect(strip)
+                .max_rect(content)
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
-        lane.set_clip_rect(strip.intersect(ui.clip_rect()));
+        lane.set_clip_rect(content.intersect(ui.clip_rect()));
         self.effects_lane_focus.set(&lane, strip, true);
         // A zero-area keyboard target retains pane focus without covering unit hits.
         let keyboard_focus = lane.interact(

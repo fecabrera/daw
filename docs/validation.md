@@ -1836,3 +1836,19 @@ Completed checks on the final source:
 - Documentation links and `git diff --check`: passed.
 
 Native scrollbar appearance and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only style change. The running DAW and user projects were not restarted or changed.
+
+## Pinned effects-lane toolbar — 2026-10-14
+
+Timeline and Instrument now reserve a 38-point toolbar at the effects lane's right edge, outside horizontal unit scrolling and drag/drop targets. Its borderless 24×24 button uses a 16-point Arrow Up From Line icon to expand the saved chain layout and Arrow Down From Line to collapse it. The catalog header is title-only; its former compact button was removed. The lane control remains available with the catalog hidden, uses the existing guarded effects edit for tracks and Master, and hides with the lane. Tooltips, accessibility, theme colors, pane focus, release-only commits, and unit settings/selection remain intact.
+
+One new egui interaction test covers both themes, Timeline track/Master and Instrument targets, fixed toolbar/button geometry while scrolling, release-only changes, preserved effects and lane selection, catalog visibility, and modal blocking. Existing compact-layout tests now use the pinned button. Catalog empty-header checks pass after removing the header action.
+
+Completed checks on the final source:
+
+- Formatting and strict locked offline workspace/all-target Clippy: passed. Log: `work/effects-toolbar-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline -p daw-ui --lib`: **342 passed**. Log: `work/effects-toolbar-ui.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **544 passed**, including doc tests. Log: `work/effects-toolbar-workspace.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/effects-toolbar-package.log`. Bundle and build executables share SHA-256 `74c9eeb691e10decf6be62bd3218d4ada31c86beaea235da952b6cf6384b8514`.
+- Documentation links and `git diff --check`: passed.
+
+Native appearance/gestures and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only change. The running DAW and user projects were not restarted or changed.

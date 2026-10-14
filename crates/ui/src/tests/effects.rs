@@ -160,7 +160,7 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
 
 #[test]
 fn effects_library_empty_click_respects_input_guards_and_other_catalog_controls() {
-    for guard in ["header", "compact", "secondary", "modal", "focus", "drag"] {
+    for guard in ["header", "secondary", "modal", "focus", "drag"] {
         let (mut app, _, ctx, _) = chain_fixture(false, false);
         let entry = app.effects_bounds.entry.center();
         click(&mut app, &ctx, entry);
@@ -171,7 +171,6 @@ fn effects_library_empty_click_respects_input_guards_and_other_catalog_controls(
         );
         let point = match guard {
             "header" => app.effects_bounds.header.center(),
-            "compact" => app.effects_bounds.compact.center(),
             _ => blank,
         };
         if guard == "modal" {
@@ -771,7 +770,7 @@ fn eq_catalog_adds_on_double_click_and_controls_save_independent_states() {
     click(&mut app, &ctx, power);
     assert!(!eq_settings(&app).enabled);
     assert!(!eq_settings(&app).bands[1].enabled);
-    let compact = app.effects_bounds.compact.center();
+    let compact = app.effects_bounds.lane_compact.center();
     click(&mut app, &ctx, compact);
     frame(&mut app, &ctx, vec![]);
     assert!(app.session.project.tracks[0].effects_compact);
@@ -2600,7 +2599,7 @@ fn ott_catalog_keyboard_add_layout_and_power_use_shared_effect_controls() {
         click(&mut app, &ctx, meter);
         assert_eq!(ott_settings(&app), &saved);
         assert!(!app.dirty);
-        let compact = app.effects_bounds.compact.center();
+        let compact = app.effects_bounds.lane_compact.center();
         end_click_sequence(&mut app, &ctx);
         click(&mut app, &ctx, compact);
         frame(&mut app, &ctx, vec![]);
@@ -2909,7 +2908,7 @@ fn timeline_track_click_switches_effect_chain_and_retains_state_across_view_chan
         original
     );
     assert!(!app.dirty);
-    let compact = app.effects_bounds.compact.center();
+    let compact = app.effects_bounds.lane_compact.center();
     click(&mut app, &ctx, compact);
     frame(&mut app, &ctx, vec![]);
     assert!(app.session.project.tracks[1].effects_compact);
@@ -3575,7 +3574,7 @@ fn selecting_master_shows_its_independent_chain_and_restores_track_effects_in_th
         );
         assert!(!app.dirty);
         frame(&mut app, &ctx, vec![button(point, false)]);
-        let compact = app.effects_bounds.compact.center();
+        let compact = app.effects_bounds.lane_compact.center();
         click(&mut app, &ctx, compact);
         assert!(!app.session.project.master.effects_compact);
         assert!(!app.session.project.tracks[0].effects_compact);
@@ -3702,5 +3701,95 @@ fn instrument_reuses_the_effects_toolbar_catalog_and_lane_with_shared_visibility
         frame(&mut app, &ctx, vec![]);
         assert_eq!(app.effects_target(), None);
         assert!(app.effects_bounds.chain.is_empty());
+    }
+}
+
+#[test]
+fn effects_lane_toolbar_stays_pinned_and_edits_saved_compact_state() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            let mut app = DawUi::default();
+            let track = app.session.project.add_midi_track().unwrap();
+            app.select_track(track, false);
+            let effects: Vec<_> = (0..10)
+                .map(|_| daw_core::EffectInstance::equalizer())
+                .collect();
+            if target == "master" {
+                app.session.project.master.effects = effects.clone();
+                app.master_selected = true;
+            } else {
+                app.session.project.tracks[0].effects = effects.clone();
+            }
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.set_view_mode(
+                if target == "instrument" {
+                    ViewMode::Instrument
+                } else {
+                    ViewMode::Timeline
+                },
+                &ctx,
+            );
+            frame(&mut app, &ctx, vec![]);
+            let owner = app.effects_target().unwrap();
+            let rail = app.effects_bounds.lane_toolbar;
+            let toggle = app.effects_bounds.lane_compact;
+            assert_eq!(rail.width(), toolbars::HEIGHT);
+            assert_eq!(rail.right(), app.effects_bounds.strip.right());
+            assert_eq!(toggle.size(), Vec2::splat(24.0));
+            assert_eq!(toggle.min, rail.min + Vec2::splat(7.0));
+            assert!(app.effects_bounds.lane_viewport.right() <= rail.left());
+            let point = app.effects_bounds.lane_viewport.center();
+            frame(
+                &mut app,
+                &ctx,
+                trackpad_scroll(point, Vec2::new(-500.0, 0.0)),
+            );
+            frame(&mut app, &ctx, vec![]);
+            assert!(app.effects_bounds.lane_scroll > 0.0);
+            assert_eq!(app.effects_bounds.lane_toolbar, rail);
+            assert_eq!(app.effects_bounds.lane_compact, toggle);
+            app.dirty = false;
+            app.selected_effects.insert(effects[0].id);
+            // Press does not commit; release changes only the saved chain presentation.
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(toggle.center()),
+                    button(toggle.center(), true),
+                ],
+            );
+            assert!(!app.effect_chain(owner).unwrap().1);
+            assert!(!app.dirty);
+            frame(&mut app, &ctx, vec![button(toggle.center(), false)]);
+            frame(&mut app, &ctx, vec![]);
+            assert!(app.effect_chain(owner).unwrap().1);
+            assert_eq!(app.effect_chain(owner).unwrap().0, effects);
+            assert!(app.selected_effects.contains(&effects[0].id));
+            assert!(app.dirty);
+            let toggle = app.effects_bounds.lane_compact.center();
+            click(&mut app, &ctx, toggle);
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.effect_chain(owner).unwrap().1);
+            let library = app.effects_bounds.library_toggle.center();
+            click(&mut app, &ctx, library);
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.timeline_catalog_visible);
+            let toggle = app.effects_bounds.lane_compact.center();
+            click(&mut app, &ctx, toggle);
+            assert!(app.effect_chain(owner).unwrap().1);
+            app.unsaved_prompt = true;
+            frame(&mut app, &ctx, vec![]);
+            let toggle = app.effects_bounds.lane_compact.center();
+            click(&mut app, &ctx, toggle);
+            assert!(app.effect_chain(owner).unwrap().1);
+        }
     }
 }
