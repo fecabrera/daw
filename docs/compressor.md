@@ -1,6 +1,6 @@
 # Compressor
 
-Double-click **Compressor** in the Effects catalog to append an independent instance to the selected audio or MIDI track. It uses the same unit header, power/bypass switch, selection outline, header reordering, removal menu, compact lane control, and saved horizontal collapse as the other effects.
+Double-click **Compressor** in Timeline's Effects catalog to append an independent instance to the selected audio or MIDI track. It uses the same unit header, power/bypass switch, selection outline, header reordering, removal menu, compact lane control, and saved horizontal collapse as the other effects.
 
 ## Controls
 

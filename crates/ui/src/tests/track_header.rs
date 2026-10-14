@@ -28,7 +28,10 @@ fn header_point(app: &DawUi, track: Id) -> Pos2 {
         let strip = app.mixer_bounds[&track];
         Pos2::new(strip.left() + 10.0, strip.top() + 12.0)
     } else {
-        Pos2::new(110.0, app.lane_bounds[&track].top() + 18.0)
+        Pos2::new(
+            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.lane_bounds[&track].top() + 18.0,
+        )
     }
 }
 
@@ -75,13 +78,14 @@ fn header_spacing_selects_clips_but_names_and_controls_keep_their_actions() {
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let y = app.lane_bounds[&tracks[0]].top() + 18.0;
-    double_click(&mut app, &ctx, Pos2::new(32.0, y)); // Gap after the grip.
+    let left = app.timeline_bounds.left() - TRACK_WIDTH;
+    double_click(&mut app, &ctx, Pos2::new(left + 32.0, y)); // Gap after the grip.
     assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[1]]));
     app.select_clip(ids[2], tracks[1], false);
-    double_click(&mut app, &ctx, Pos2::new(178.0, y)); // Mute button.
+    double_click(&mut app, &ctx, Pos2::new(left + 178.0, y)); // Mute button.
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
     assert!(!app.session.project.tracks[0].muted);
-    double_click(&mut app, &ctx, Pos2::new(50.0, y)); // Visible name text.
+    double_click(&mut app, &ctx, Pos2::new(left + 50.0, y)); // Visible name text.
     assert_eq!(app.track_name_edit.as_ref().unwrap().track, tracks[0]);
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
 }
@@ -227,7 +231,7 @@ fn timeline_row_dividers_share_track_panel_bounds_at_different_scales_and_scroll
                 },
             );
             let original = format!("{:?}", app.session.project);
-            let size = Vec2::new(900.0, 600.0);
+            let size = Vec2::new(900.0, 800.0);
             frame_shapes(&mut app, &ctx, vec![], size);
             let first = app.lane_bounds[&tracks[0]];
             for scroll in [false, true] {

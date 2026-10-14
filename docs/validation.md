@@ -1609,3 +1609,131 @@ Completed checks:
 - `git diff --check`: passed. CLI smoke checks were not repeated because this change is UI-only and does not change shared rendering/import/export.
 
 Native keyboard gestures and Windows/Linux builds were not verified. The running user DAW and project files were not restarted or changed.
+
+## Timeline catalog and effects lane — 2026-10-14
+
+Timeline now shows the shared Effects catalog to the left of Tracks and a full-width effects lane below its multi-track timeline. The grid ends at its scrollbar, directly above the lane; Master remains pinned above the lane, and the status panel supplies the single bottom separator. The existing Effects view and selected-track overview remain available. Both views edit the same track-owned chain and saved presentation settings through shared catalog/lane composition.
+
+Three added egui tests cover panel/scrollbar/grid alignment in both themes and compact states, one status separator, read-only layout, same-frame chain switching after a track click, presentation shared between Timeline and Effects, library group drag into an empty lane, chain reordering, and group Delete without clip changes. Existing Timeline input tests now derive track/header/file-drop coordinates from the shifted viewport and use enough viewport space for their scrolling/group-placement scenarios. Media-drop tests also reject the catalog and effects lane. Effect gestures retain their originating view and cancel if it changes; Timeline controls remain disabled during an effect drag. Existing Effects, clip, track, focus, keyboard, waveform, and ruler regression checks pass.
+
+Completed checks:
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline -p daw-ui --lib`: **329 passed**. Log: `work/timeline-effects-ui.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **527 passed**, including doc tests. Log: `work/timeline-effects-workspace.log`.
+- `cargo fmt --all --check` and `CARGO_HOME="$PWD/work/cargo-home" cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: passed. Log: `work/timeline-effects-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/timeline-effects-package.log`. The app bundle executable matches `target/debug/daw-desktop`, SHA-256 `c3d49e3ed838a388775fa3a6fa472711809eb5790607ae8c4130990cfac7d6fc`.
+- Documentation file links and `git diff --check`: passed. CLI smoke checks were not repeated because this change affects UI composition only; shared audio, persistence, and import/export implementations are unchanged.
+
+Native layout/gesture checks and Windows/Linux builds were not verified. The running user DAW and project files were not restarted or changed.
+
+## Timeline Library toolbar — 2026-10-14
+
+Timeline now has a 38-point left toolbar spanning playback to status beside both the catalog and effects lane. Its centered borderless Library button is 24×24 points, with a seven-point inset and the existing 16-point icon. The button toggles catalog visibility in UI state without changing project content or dirty state. It uses the active-view background when on, transparent fill when off, and the same neutral translucent hover overlay in both themes. The effects lane fills the width to the right of the rail; hiding the catalog expands the timeline viewport. The separate Effects view keeps its catalog.
+
+Four added egui tests cover geometry, expanded/compact layouts, both themes, on/off/hover painting, selection cleanup, project preservation, hidden-catalog keyboard guards, retained lane actions and Effects view, and disabled/modal/active-drag guards. The existing clip trim test uses a lower zoom so its target edge remains visible in the narrower viewport.
+
+Completed checks on the final 24×24 button:
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline -p daw-ui --lib`: **333 passed**. Log: `work/timeline-toolbar-ui.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **531 passed**, including doc tests. Log: `work/timeline-toolbar-workspace.log`.
+- `cargo fmt --all --check` and strict locked offline workspace/all-target Clippy: passed. Log: `work/timeline-toolbar-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/timeline-toolbar-package.log`. The bundle executable matches `target/debug/daw-desktop`, SHA-256 `b0e7dad7dc3911b9faaf5610542ecc931dcb863f0460cfa6ac524168cb45b1d5`.
+- Documentation file links and `git diff --check`: passed. CLI smoke checks were not repeated for this UI-only change.
+
+Native layout/gesture checks and Windows/Linux builds were not verified. The running user DAW and project files were not restarted or changed.
+
+## Timeline lane toggle and shared Tracks divider — 2026-10-14
+
+Added a bottom-aligned borderless Lucide Gallery Horizontal toggle to the Timeline toolbar. It uses the same 24×24-point button, 16-point icon, seven-point inset, selected/off/hover styles, and input guards as Library. Lane visibility starts on, remains independent UI state across view changes, and does not alter installed effects, processing, presentation settings, or project dirty state. Hiding the lane returns its height to Timeline and the visible catalog, clears unit selection and pending gestures, and removes its keyboard removal/drop target. Catalog addition remains available. Effects view always shows both panes.
+
+Removed redundant track-row and Master left borders. Their adjacent catalog or toolbar owns one continuous 1-point divider, with no gap. Track selection outlines, horizontal row separators, and Master's top separator remain.
+
+Three new egui tests cover bottom anchoring and resizing, catalog/lane combinations, expanded/compact presentation, project preservation, hidden-lane selection/removal/drop behavior, catalog Enter addition, restored units, and separate Effects view. Divider checks cover both themes, 1×/1.5×/2× scales, pane visibility combinations, and background alignment. Existing toggle style and disabled/modal/active-drag tests now exercise both buttons.
+
+Completed checks:
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline -p daw-ui --lib`: **336 passed**. Log: `work/timeline-lane-toggle-ui.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **534 passed**, including doc tests. Log: `work/timeline-lane-toggle-workspace.log`.
+- Formatting, strict locked offline workspace/all-target Clippy, documentation links, and `git diff --check`: passed. Log: `work/timeline-lane-toggle-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/timeline-lane-toggle-package.log`. The bundle executable matches `target/debug/daw-desktop`, SHA-256 `04c648bb07816fbbdf5e89d8aed3b74c55e1503cb7fe1cb8629ca6df818bbbe4`.
+
+CLI smoke checks were not repeated for these UI-only changes. Native layout/gesture checks and Windows/Linux builds were not verified. The running user DAW and project files were not restarted or changed.
+
+## Transport buttons and first-unit divider — 2026-10-14
+
+Play/Pause, Stop, and Loop now share the Timeline toggles' borderless 24×24-point design with centered 16×16-point icons. Playback uses seven-point padding and horizontal gaps, aligning Play with Library while retaining the 38-point toolbar height. The Play icon remains unchanged while playing; its tooltip/accessibility name still changes to Pause, and its action still pauses. Active Play and enabled Loop use Green 500 and Yellow 500 blended into the current theme panel at 18%, respectively. View controls and semantic transport fills share `theme::toggle_fill`; the configured accent remains independent. Transparent inactive fills, the shared gray hover overlay, contrasting active icons, input guards, Stop, keyboard activation, and empty-loop rejection remain.
+
+The first Timeline effect now shares the vertical toolbar's divider. A scoped shared-left-border tag tells `PanelStyle::unit_in_lane` to omit that duplicate stroke without changing unit geometry, other borders, controls, or selection outlines. The standalone Effects view retains its first-unit border.
+
+Four new egui tests cover both themes, independent playing/loop states, matching semantic tint through the standard accent-toggle style, painted 16×16 icon bounds, button size/gaps/padding and toolbar height, hover/border styling, pointer and keyboard actions, disabled controls, empty-loop validation, dirty-state behavior, Play/Library alignment, and first-unit border ownership in expanded/compact/collapsed presentations. The existing UI regression suite passes on the final muted-color implementation.
+
+Completed checks:
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline -p daw-ui --lib`: **340 passed**. Log: `work/transport-buttons-ui.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **538 passed**, including doc tests. Log: `work/transport-buttons-workspace.log`.
+- Formatting, strict locked offline workspace/all-target Clippy, documentation file links, and `git diff HEAD --check`: passed. Log: `work/transport-buttons-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/transport-buttons-package.log`. The app bundle executable matches `target/debug/daw-desktop`, SHA-256 `e1f1baad898ea1925de4c9822f7aea363f28e6203b553ce1578476775424f1e8`.
+
+CLI smoke checks were not repeated for these UI-only changes. Native appearance/gesture checks and Windows/Linux builds were not verified. The running user DAW and project files were not restarted or changed.
+
+## Stronger Loop yellow and shared view hover — 2026-10-14
+
+Loop now blends Yellow 500 into the current panel at 35%, producing a stronger muted yellow in both themes. Play retains its 18% green tint. Existing transport paint checks verify the final dark/light Loop colors, independent of the configured accent, along with the retained geometry, icon bounds, hover, and input behavior.
+
+View mode buttons now use the same shared `theme::TOOLBAR_HOVER_FILL` as borderless toolbar buttons for hover/press. Their selected accent background remains below the overlay. Backgrounds paint before labels, preserving text contrast, dimensions, corner radius, borderless framing, and view-switch guards. Disabled buttons do not draw the overlay. The existing titlebar/pointer-state regression test now checks exact shared hover fill, selected/unselected states, paint order, and hover exit across dark/light themes, two accents, all view modes, and both titlebar layouts.
+
+Completed checks on the final implementation:
+
+- Focused transport and view-style checks pass. Logs: `work/loop-yellow-focused.log` and `work/view-hover-focused.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline -p daw-ui --lib`: **340 passed**. Log: `work/view-hover-ui.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **538 passed**, including doc tests. Log: `work/view-hover-workspace.log`.
+- Formatting, strict locked offline workspace/all-target Clippy, documentation file links, and `git diff HEAD --check`: passed. Log: `work/view-hover-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/view-hover-package.log`. The bundle executable matches `target/debug/daw-desktop`, SHA-256 `35e480ed0cdf4f32f5a07002e290dc18d40ddc5b4332abe86c12a89ae210cae6`.
+
+CLI smoke checks were not repeated for these UI-only changes. Native appearance/gesture checks and Windows/Linux builds were not verified. The running user DAW and project files were not restarted or changed.
+
+## Timeline-only effects and transport colors — 2026-10-14
+
+Removed the dedicated Effects view from the view enum, buttons, menus, and workspace dispatch. Timeline retains the catalog/lane, independent visibility toggles, track-owned chains, unit settings, selection, keyboard actions, group removal/reorder, drag previews, and focus/gesture guards. Editor retains its selected-track overview. Three tests for the retired Effects overview were removed; surviving effect interaction tests now exercise Timeline and real view changes. The view/menu test verifies the four remaining views.
+
+Active transport backgrounds now use Play `#338555`, Stop `#C54E58` during playback, and enabled Loop `#AF8C3E`. Loop's final gold is slightly lighter and softer than the supplied swatch. All three active icons use the standard toolbar-toggle foreground. The transport tests inspect painted backgrounds and actual SVG texture pixels in both themes while retaining size, spacing, hover, input, and disabled-state checks. This supersedes the earlier blended green/yellow fills and separate Effects workspace placement.
+
+Completed checks on the final colors and view composition:
+
+- Formatting and strict locked offline workspace/all-target Clippy: passed. Log: `work/remove-effects-view-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline -p daw-ui --lib`: **337 passed**. Log: `work/remove-effects-view-ui.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **535 passed**, including doc tests. Log: `work/remove-effects-view-workspace.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/remove-effects-view-package.log`. The bundle executable matches `target/debug/daw-desktop`, SHA-256 `c8148c7aa6e8f71558766a30d1c5a2fcd6fa1ebfb68ccbd3fdad0e57fbf9c112`.
+- Documentation file links and `git diff HEAD --check`: passed.
+
+CLI smoke checks were not repeated for these UI-only changes. Native appearance/gesture checks and Windows/Linux builds were not verified. The running DAW and user project files were not restarted or changed.
+
+## Shared loop-range colors — 2026-10-14
+
+Timeline and Editor now share semantic loop-range colors through `theme::ruler_loop_colors`. Enabled handles match the Loop button's `theme::LOOP_COLOR` (`#AF8C3E`). Following the requested refinement from dimmer to lighter, the enabled bar uses opaque `#C3A96E`, blending the handle gold 25% toward white, with contrasting selected bar-number text. When looping is disabled, the bar uses the shared toolbar hover fill and the handles use the inactive, unhovered toolbar foreground. Accent changes do not alter these colors. Handle geometry, clipping, and loop/seek interactions remain unchanged.
+
+Updated existing transport paint checks to cover both handles, the range fill, and selected label contrast in both themes. Existing ruler interaction checks passed, including shared Timeline/Editor behavior; the accent-settings test now verifies semantic loop colors remain independent.
+
+Completed checks on the final lighter background:
+
+- Focused transport paint and ruler interaction checks: passed.
+- `cargo fmt --all --check` and strict locked offline workspace/all-target Clippy: passed. Log: `work/loop-range-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **535 passed**, including **337 UI tests** and doc tests. Log: `work/loop-range-workspace.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/loop-range-package.log`. The bundle executable matches `target/debug/daw-desktop`, SHA-256 `7ef490f405258a0f7a8a31a98e32951705e5c83bb70b8a0d4b858489b342945c`.
+- Documentation file links and `git diff HEAD --check`: passed.
+
+CLI smoke checks were not repeated for this UI-only change. Native appearance and Windows/Linux builds were not verified. The running DAW and user project files were not restarted or changed.
+
+## Loop background shade refinement — 2026-10-14
+
+The latest supplied gold swatch resolves to dominant sRGB `#C09C2E` after its embedded profile is converted to sRGB. The enabled loop-range background now uses `#D0AC3C`: HSL lightness raised by six percentage points, with hue and saturation retained. This supersedes the previous `#C3A96E` white blend. Handles, Loop button, contrasting selected ruler labels, disabled colors, and ruler interactions retain their existing behavior.
+
+Completed checks:
+
+- Existing transport paint/contrast check in both themes: passed. Log: `work/loop-gold-focused.log`.
+- `cargo fmt --all --check` and strict locked offline workspace/all-target Clippy: passed. Log: `work/loop-gold-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **535 passed**, including doc tests. Log: `work/loop-gold-workspace.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/loop-gold-package.log`. Bundle and build executables share SHA-256 `886cbcb2c79207891b02659fa09230aa266645f6500568fc4046e1b3bb18fb74`.
+- Documentation links and `git diff HEAD --check`: passed.
+
+Native appearance and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only color change. The running DAW and user projects were not restarted or changed.

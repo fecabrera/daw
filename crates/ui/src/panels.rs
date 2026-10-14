@@ -3,6 +3,8 @@ use egui::{Color32, Frame, Rect, Response, Stroke, Ui, Vec2};
 pub(super) const HEADER_HEIGHT: f32 = crate::toolbars::CONTROL_HEIGHT + 2.0;
 pub(super) const HEADER_FONT_SIZE: f32 = 11.0;
 pub(super) const UNIT_POWER_SIZE: f32 = 10.0;
+/// A neighboring panel supplies this unit's left divider.
+pub(super) const SHARED_LEFT_BORDER_TAG: &str = "shared-unit-left-border";
 
 /// Three shared knob rows and a footer, before the unit frame and header.
 pub(super) fn unit_control_height() -> f32 {
@@ -320,7 +322,13 @@ impl PanelStyle {
         if !bottom_border {
             let rect = result.response.rect.shrink(0.5);
             ui.painter().hline(rect.x_range(), rect.top(), outline);
-            ui.painter().vline(rect.left(), rect.y_range(), outline);
+            if !ui
+                .stack()
+                .iter()
+                .any(|node| node.tags().contains(SHARED_LEFT_BORDER_TAG))
+            {
+                ui.painter().vline(rect.left(), rect.y_range(), outline);
+            }
             ui.painter().vline(rect.right(), rect.y_range(), outline);
         }
         UnitResponse {

@@ -2,6 +2,8 @@ use egui::{Color32, Context, Response, Ui, Vec2};
 pub use egui_lucide::Lucide;
 
 pub const COMPACT_BUTTON_SIZE: f32 = 18.0;
+pub const TOOLBAR_BUTTON_SIZE: f32 = 24.0;
+pub const TOOLBAR_ICON_SIZE: f32 = 16.0;
 
 pub fn configure(ctx: &Context) {
     egui_extras::install_image_loaders(ctx);
@@ -49,6 +51,85 @@ pub fn reorder_grip(ui: &mut Ui, item: &str) -> Response {
 /// Shared icon button with a visible tooltip and an accessibility name.
 pub fn button(ui: &mut Ui, icon: Lucide, name: &str, enabled: bool, color: Color32) -> Response {
     draw_button(ui, icon, name, enabled, color, None)
+}
+
+/// Borderless toolbar toggle. A shared gray overlay changes contrast in either theme.
+pub fn borderless_toggle(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    selected: bool,
+    size: Vec2,
+) -> Response {
+    let fill = crate::theme::toggle_colors(ui.ctx(), true).0;
+    borderless_toggle_with_fill(ui, icon, name, selected, size, fill)
+}
+
+/// Borderless toggle with a semantic active-state fill and contrasting icon.
+pub fn borderless_toggle_with_fill(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    selected: bool,
+    size: Vec2,
+    active_fill: Color32,
+) -> Response {
+    borderless_toggle_with_colors(
+        ui,
+        icon,
+        name,
+        selected,
+        size,
+        (active_fill, crate::theme::contrast_color(active_fill)),
+    )
+}
+
+/// Borderless toggle with caller-supplied active background and foreground.
+pub fn borderless_toggle_with_colors(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    selected: bool,
+    size: Vec2,
+    active_colors: (Color32, Color32),
+) -> Response {
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if response.is_pointer_button_down_on() || response.clicked() {
+        response.request_focus();
+    }
+    let surface = rect;
+    let palette = crate::theme::palette(ui.ctx());
+    let (fill, mut color) = if selected {
+        active_colors
+    } else {
+        (Color32::TRANSPARENT, palette.secondary)
+    };
+    ui.painter().rect_filled(surface, 2.0, fill);
+    if ui.is_enabled() && (response.hovered() || response.is_pointer_button_down_on()) {
+        ui.painter()
+            .rect_filled(surface, 2.0, crate::theme::TOOLBAR_HOVER_FILL);
+        if !selected {
+            color = palette.text;
+        }
+    }
+    if !ui.is_enabled() {
+        color = palette.secondary;
+    }
+    icon.size(TOOLBAR_ICON_SIZE)
+        .stroke_width(2.0)
+        .color(color)
+        .image()
+        .alt_text(name)
+        .paint_at(
+            ui,
+            egui::Rect::from_center_size(rect.center(), Vec2::splat(TOOLBAR_ICON_SIZE)),
+        );
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, name)
+    });
+    response
+        .on_hover_text(name)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// Shared circular control with accent fill when on and matching icon/border colors when off.

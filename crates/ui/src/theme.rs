@@ -14,11 +14,13 @@ pub const SELECTION_OUTLINE: Stroke = Stroke {
     width: 2.0,
     color: ACCENT,
 };
-pub const SELECTED: Color32 = accent_tint(PANEL, 18);
+pub const SELECTED: Color32 = toggle_fill(PANEL, ACCENT);
 pub const GRID: Color32 = Color32::from_rgb(40, 40, 40);
 pub const GRID_SUBDIVISION: Color32 = Color32::from_rgb(28, 28, 28);
-pub const RULER_SELECTION: Color32 = accent_tint(BORDER, 35);
-pub const RULER_SELECTION_INACTIVE: Color32 = accent_tint(PANEL, 12);
+/// Loop button and enabled ruler handles share one semantic color.
+pub const LOOP_COLOR: Color32 = Color32::from_rgb(175, 140, 62);
+/// Lighter shade of the supplied gold, preserving its hue and saturation.
+const LOOP_RANGE_FILL: Color32 = Color32::from_rgb(208, 172, 60);
 pub const CLIP: Color32 = display_color(daw_core::LEGACY_CLIP_COLOR);
 pub const CLIP_HEADER: Color32 = Color32::from_rgb(35, 66, 83);
 pub const CLIP_CHANNEL: Color32 = Color32::from_rgb(47, 87, 105);
@@ -29,6 +31,7 @@ pub const WARNING: Color32 = Color32::from_rgb(213, 165, 89);
 pub const ERROR: Color32 = Color32::from_rgb(223, 100, 100);
 pub const METER: Color32 = Color32::from_rgb(92, 179, 80);
 pub const TOOLBAR_PADDING: i8 = 8;
+pub const TOOLBAR_HOVER_FILL: Color32 = Color32::from_rgba_unmultiplied_const(128, 128, 128, 40);
 
 /// Surface and foreground colors for custom painting. Clip palettes are independent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,6 +119,11 @@ pub fn toggle_colors(ctx: &Context, selected: bool) -> (Color32, Color32) {
     }
 }
 
+/// Shared muted active background for accent and semantic toolbar toggles.
+pub(crate) const fn toggle_fill(panel: Color32, color: Color32) -> Color32 {
+    blend(panel, color, 18)
+}
+
 /// Related clip colors resolved together for clips and their drag previews.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClipColors {
@@ -178,11 +186,6 @@ pub(crate) fn contrast_color(color: Color32) -> Color32 {
     }
 }
 
-/// Blend the shared accent into an opaque surface at the given percentage.
-const fn accent_tint(surface: Color32, percent: u8) -> Color32 {
-    blend(surface, ACCENT, percent)
-}
-
 /// The current accent belongs to this UI context, not to a global mutable value.
 pub fn accent(ctx: &Context) -> Color32 {
     ctx.global_style().visuals.hyperlink_color
@@ -192,16 +195,13 @@ pub fn selection_outline(ctx: &Context) -> Stroke {
     Stroke::new(2.0, accent(ctx))
 }
 
-pub fn ruler_selection(ctx: &Context, enabled: bool) -> Color32 {
-    blend(
-        if enabled {
-            palette(ctx).border
-        } else {
-            palette(ctx).panel
-        },
-        accent(ctx),
-        if enabled { 35 } else { 12 },
-    )
+/// Loop-range background and handles, independent of the configured accent.
+pub fn ruler_loop_colors(ctx: &Context, enabled: bool) -> (Color32, Color32) {
+    if enabled {
+        (LOOP_RANGE_FILL, LOOP_COLOR)
+    } else {
+        (TOOLBAR_HOVER_FILL, toggle_colors(ctx, false).1)
+    }
 }
 
 pub fn set_accent(ctx: &Context, color: Color32) {
@@ -213,7 +213,7 @@ pub fn set_accent(ctx: &Context, color: Color32) {
     let panel = palette(ctx).panel;
     ctx.style_mut_of(theme, |style| {
         let visuals = &mut style.visuals;
-        let selected = blend(panel, color, 18);
+        let selected = toggle_fill(panel, color);
         visuals.hyperlink_color = color;
         visuals.selection.bg_fill = selected;
         visuals.selection.stroke.color = color;
@@ -284,7 +284,7 @@ fn configure_style(ctx: &Context, theme: egui::Theme, colors: Palette) {
     visuals.window_stroke = Stroke::new(1.0_f32, colors.border);
     visuals.window_corner_radius = CornerRadius::same(2);
     visuals.menu_corner_radius = CornerRadius::same(2);
-    let selected = blend(colors.panel, ACCENT, 18);
+    let selected = toggle_fill(colors.panel, ACCENT);
     visuals.selection.bg_fill = selected;
     visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
     visuals.text_cursor.stroke = Stroke::new(1.0_f32, ACCENT);

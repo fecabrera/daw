@@ -53,21 +53,38 @@ pub struct Toolbar;
 
 impl Toolbar {
     pub fn show<R>(ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+        Self::show_with_control_height(ui, CONTROL_HEIGHT, content)
+    }
+
+    fn show_with_control_height<R>(
+        ui: &mut Ui,
+        height: f32,
+        content: impl FnOnce(&mut Ui) -> R,
+    ) -> InnerResponse<R> {
+        let padding = ((HEIGHT - height) * 0.5).max(0.0) as i8;
         Frame::new()
             .fill(theme::palette(ui.ctx()).panel)
-            .inner_margin(theme::TOOLBAR_PADDING)
+            .inner_margin(padding)
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
-                ui.set_min_height(CONTROL_HEIGHT);
-                ui.spacing_mut().item_spacing = Vec2::new(8.0, 5.0);
+                ui.set_min_height(height);
+                ui.spacing_mut().item_spacing = Vec2::new(f32::from(padding), 5.0);
                 ui.spacing_mut().interact_size.y = CONTROL_HEIGHT;
                 content(ui)
             })
     }
 
     pub fn row<R>(ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
-        Self::show(ui, |ui| {
-            crate::rows::centered(ui, CONTROL_HEIGHT, content).inner
+        Self::row_with_control_height(ui, CONTROL_HEIGHT, content)
+    }
+
+    pub fn row_with_control_height<R>(
+        ui: &mut Ui,
+        height: f32,
+        content: impl FnOnce(&mut Ui) -> R,
+    ) -> InnerResponse<R> {
+        Self::show_with_control_height(ui, height, |ui| {
+            crate::rows::centered(ui, height, content).inner
         })
     }
 }

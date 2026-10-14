@@ -83,7 +83,7 @@ fn editor_and_timeline_share_clip_painting_and_group_selection() {
             // Include selection membership without a primary clip, as with a group toggle.
             for selection in 0..3 {
                 let mut appearances = Vec::new();
-                for view in [ViewMode::Timeline, ViewMode::Edit, ViewMode::Effects] {
+                for view in [ViewMode::Timeline, ViewMode::Edit] {
                     app.set_view_mode(view, &ctx);
                     app.selected_track = Some(track);
                     app.selected_clip = (selection == 1).then_some(clip_id);
@@ -5531,7 +5531,7 @@ fn midi_clip_gestures_keep_timeline_editor_parity_and_cancel_without_changes() {
                 continue;
             }
             let mut outcomes = Vec::new();
-            for view in [ViewMode::Timeline, ViewMode::Edit, ViewMode::Effects] {
+            for view in [ViewMode::Timeline, ViewMode::Edit] {
                 for cancel in [false, true] {
                     let (mut app, track, clip, _) = fixture();
                     app.session.project.tracks[0].clips[0].start_frame = 48_000;
@@ -5676,7 +5676,7 @@ fn midi_clip_gestures_keep_timeline_editor_parity_and_cancel_without_changes() {
 
 #[test]
 fn empty_midi_editor_lane_creation_and_cross_view_clipboard_use_shared_actions() {
-    for view in [ViewMode::Timeline, ViewMode::Edit, ViewMode::Effects] {
+    for view in [ViewMode::Timeline, ViewMode::Edit] {
         let mut app = DawUi::default();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);

@@ -45,8 +45,10 @@ pub mod meters;
 mod mix_controls;
 mod mixer;
 mod ott_panel;
+mod timeline_toolbar;
 mod track_overview;
 mod track_selector;
+mod transport_controls;
 pub use mixer::ViewMode;
 mod musical_time;
 pub mod panels;
@@ -637,11 +639,15 @@ pub struct DawUi {
     midi_editor: midi_editor::MidiEditor,
     instrument_ui: instrument_panel::InstrumentUi,
     effects_catalog: effects_catalog::Catalog,
+    timeline_catalog_visible: bool,
+    timeline_effects_visible: bool,
     effects_lane_focus: selection_focus::SelectionFocus,
     effects_drag: Option<effects_reorder::EffectDrag>,
     selected_effects: HashSet<Id>,
     #[cfg(test)]
     effects_bounds: effects_panel::EffectsUiBounds,
+    #[cfg(test)]
+    transport_bounds: [Rect; 3],
     #[cfg(test)]
     mixer_bounds: HashMap<Id, Rect>,
     #[cfg(test)]
@@ -712,6 +718,8 @@ impl Default for DawUi {
         Self {
             view_mode: mixer::ViewMode::default(),
             effects_catalog: Default::default(),
+            timeline_catalog_visible: true,
+            timeline_effects_visible: true,
             effects_lane_focus: Default::default(),
             effects_drag: None,
             selected_effects: HashSet::new(),
@@ -719,6 +727,8 @@ impl Default for DawUi {
             instrument_ui: Default::default(),
             #[cfg(test)]
             effects_bounds: Default::default(),
+            #[cfg(test)]
+            transport_bounds: [Rect::NOTHING; 3],
             #[cfg(test)]
             mixer_bounds: HashMap::new(),
             #[cfg(test)]
@@ -1577,7 +1587,7 @@ impl DawUi {
             ))
             .show_separator_line(!matches!(
                 self.view_mode,
-                ViewMode::Mixer | ViewMode::Instrument | ViewMode::Effects
+                ViewMode::Timeline | ViewMode::Mixer | ViewMode::Instrument
             ))
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
@@ -1651,7 +1661,6 @@ impl DawUi {
                         mixer::ViewMode::Timeline => self.workspace(ui),
                         mixer::ViewMode::Mixer => self.mixer(ui),
                         mixer::ViewMode::Instrument => self.instrument_view(ui),
-                        mixer::ViewMode::Effects => self.effects_view(ui),
                         mixer::ViewMode::Edit => self.edit_view(ui),
                     },
                 );
@@ -1669,7 +1678,7 @@ impl DawUi {
         self.dialogs(&ctx);
         self.effects_catalog.clear_if_unfocused(
             &ctx,
-            self.view_mode == ViewMode::Effects
+            (self.view_mode == ViewMode::Timeline && self.timeline_catalog_visible)
                 && ui.is_enabled()
                 && self.edit_environment_available(),
             self.effects_drag
@@ -1679,7 +1688,8 @@ impl DawUi {
         if !self.selected_effects.is_empty()
             && self.effects_lane_focus.lost(
                 &ctx,
-                self.view_mode == ViewMode::Effects
+                self.view_mode.has_effects()
+                    && self.timeline_effects_visible
                     && ui.is_enabled()
                     && self.edit_environment_available(),
                 self.effects_drag
@@ -2175,44 +2185,28 @@ impl DawUi {
             ],
             Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
         );
-        toolbars::Toolbar::row(ui, |ui| {
+        toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
             let playing = self.is_playing();
-            if icons::button(
+            let enabled = self.session.project.transport.r#loop.enabled;
+            let buttons = transport_controls::show(
                 ui,
-                if playing {
-                    icons::Lucide::Pause
-                } else {
-                    icons::Lucide::Play
-                },
-                if playing { "Pause" } else { "Play" },
+                playing,
+                enabled,
                 playing || self.session.project.end() > 0,
-                theme::accent(ui.ctx()),
-            )
-            .clicked()
+                self.job.is_none(),
+            );
+            #[cfg(test)]
             {
+                self.transport_bounds =
+                    [buttons.play.rect, buttons.stop.rect, buttons.looping.rect];
+            }
+            if buttons.play.clicked() {
                 self.toggle_playback();
             }
-            if icons::button(
-                ui,
-                icons::Lucide::Square,
-                "Stop",
-                true,
-                theme::palette(ui.ctx()).text,
-            )
-            .clicked()
-            {
+            if buttons.stop.clicked() {
                 self.stop();
             }
-            let enabled = self.session.project.transport.r#loop.enabled;
-            if icons::toggle_button(
-                ui,
-                icons::Lucide::Repeat,
-                "Loop",
-                self.job.is_none(),
-                enabled,
-            )
-            .clicked()
-            {
+            if buttons.looping.clicked() {
                 let enabled = !enabled;
                 if enabled
                     && self.session.project.transport.r#loop.end_frame
@@ -2295,6 +2289,49 @@ impl DawUi {
         }
     }
     fn workspace(&mut self, ui: &mut egui::Ui) {
+        let bounds = ui.max_rect();
+        let rail = Rect::from_min_max(
+            bounds.min,
+            Pos2::new(bounds.left() + timeline_toolbar::WIDTH, bounds.bottom()),
+        );
+        let enabled = self.effects_editing_enabled(ui)
+            && self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
+        let toggles = timeline_toolbar::show(
+            ui,
+            rail,
+            self.timeline_catalog_visible,
+            self.timeline_effects_visible,
+            enabled,
+        );
+        if toggles.library.clicked() {
+            self.timeline_catalog_visible = !self.timeline_catalog_visible;
+            self.effects_catalog.clear();
+            ui.ctx().request_repaint();
+        }
+        if toggles.lane.clicked() {
+            self.timeline_effects_visible = !self.timeline_effects_visible;
+            self.selected_effects.clear();
+            self.effects_drag = None;
+            ui.ctx().request_repaint();
+        }
+        #[cfg(test)]
+        {
+            self.effects_bounds.toolbar = rail;
+            self.effects_bounds.library_toggle = toggles.library.rect;
+            self.effects_bounds.lane_toggle = toggles.lane.rect;
+        }
+        let content = Rect::from_min_max(rail.right_top(), bounds.max);
+        let mut workspace = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("timeline-content")
+                .max_rect(content)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        workspace.set_clip_rect(content.intersect(ui.clip_rect()));
+        self.effects_workspace(&mut workspace);
+    }
+
+    fn timeline_workspace(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         let bounds = ui.max_rect();
         let timeline_left = bounds.left() + TRACK_WIDTH;
@@ -2475,13 +2512,10 @@ impl DawUi {
         });
         // The status panel supplies the shared bottom divider.
         let rect = panel.response.rect.shrink(0.5);
-        for edge in [
+        ui.painter().line_segment(
             [rect.left_top(), rect.right_top()],
-            [rect.left_top(), rect.left_bottom()],
-        ] {
-            ui.painter()
-                .line_segment(edge, Stroke::new(1.0, theme::palette(ui.ctx()).border));
-        }
+            Stroke::new(1.0, theme::palette(ui.ctx()).border),
+        );
     }
     fn timeline_extent(&self) -> f64 {
         self.session
@@ -2888,13 +2922,14 @@ impl DawUi {
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
         painter.rect_filled(labels, 0.0, theme::palette(ui.ctx()).panel);
         let l = &self.session.project.transport.r#loop;
+        let (loop_fill, loop_handle) = theme::ruler_loop_colors(ui.ctx(), l.enabled);
         let (x1, x2) = self.loop_pixels(rect);
         if l.end_frame > l.start_frame && x2 > rect.left() && x1 < rect.right() {
             let band = Rect::from_min_max(
                 Pos2::new(x1.max(rect.left()), labels.top()),
                 Pos2::new(x2.min(rect.right()), labels.bottom()),
             );
-            painter.rect_filled(band, 0.0, theme::ruler_selection(ui.ctx(), l.enabled));
+            painter.rect_filled(band, 0.0, loop_fill);
             // Draw handles at the real endpoints, including when the range is scrolled.
             for x in [x1, x2] {
                 if (rect.left()..=rect.right()).contains(&x) {
@@ -2904,7 +2939,7 @@ impl DawUi {
                             Pos2::new(x + 1.5, labels.bottom() - 2.0),
                         ),
                         0.0,
-                        theme::accent(ui.ctx()),
+                        loop_handle,
                     );
                 }
             }
@@ -2952,7 +2987,9 @@ impl DawUi {
                     egui::Align2::LEFT_CENTER,
                     label,
                     egui::FontId::proportional(11.0),
-                    if selected && ui.visuals().dark_mode {
+                    if selected && l.enabled {
+                        theme::contrast_color(loop_fill)
+                    } else if selected && ui.visuals().dark_mode {
                         theme::CLIP_TEXT
                     } else {
                         theme::palette(ui.ctx()).text
@@ -3388,13 +3425,7 @@ impl DawUi {
                             self.select_track(track.id, toggle);
                         }
                     }
-                    let rect = inner.response.rect.shrink(0.5);
                     outlines.push((track.id, inner.response.rect));
-                    let painter = ui.painter();
-                    painter.line_segment(
-                        [rect.left_top(), rect.left_bottom()],
-                        Stroke::new(1.0, theme::palette(ui.ctx()).border),
-                    );
                     let context_click = ui.is_enabled()
                         && self.file_action_enabled(FileAction::Import)
                         && ui.rect_contains_pointer(inner.response.rect)
@@ -4480,6 +4511,7 @@ mod tests {
     mod resize_neighbors;
     mod track_header;
     mod track_shortcuts;
+    mod transport;
     mod trim_boundary;
     #[cfg(target_os = "windows")]
     mod windows_titlebar;
@@ -5302,6 +5334,9 @@ mod tests {
     }
     #[test]
     fn empty_timeline_clip_drag_previews_and_creates_tracks() {
+        fn frame(app: &mut DawUi, ctx: &egui::Context, events: Vec<egui::Event>) {
+            frame_sized(app, ctx, events, Vec2::new(1600.0, 1000.0));
+        }
         let wav = TestWav::new();
         let audio = daw_media::decode_wav(&wav.0).unwrap();
         for group in [false, true] {
@@ -5323,6 +5358,7 @@ mod tests {
                             frame(&mut app, &ctx, vec![]);
                             click_clip(&mut app, &ctx, ids[0], false);
                         }
+                        frame(&mut app, &ctx, vec![]);
                         let originals = app.selected_clip_snapshots();
                         let before = format!("{:?}", app.session.project);
                         let block = app.clip_block(
@@ -5358,7 +5394,7 @@ mod tests {
                                 egui::Event::ModifiersChanged(modifiers),
                                 egui::Event::PointerMoved(end),
                             ],
-                            Vec2::new(1280.0, 800.0),
+                            Vec2::new(1600.0, 1000.0),
                         );
                         let previews =
                             app.clip_drag_previews(app.drag.as_ref().unwrap(), end, shift);
@@ -7093,7 +7129,10 @@ mod tests {
             let token = app.clip_clipboard.as_ref().unwrap().token.clone();
             let before = app.session.project.clone();
             let master = app.master_bounds;
-            let start = Pos2::new(110.0, app.lane_bounds[&tracks[source]].top() + 18.0);
+            let start = Pos2::new(
+                app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+                app.lane_bounds[&tracks[source]].top() + 18.0,
+            );
             let slot = destination + usize::from(destination > source);
             let y = if destination > source {
                 app.lane_bounds[&tracks[destination]].bottom() - 10.0
@@ -7103,9 +7142,9 @@ mod tests {
             // Reordering can target either the panel or its timeline lane.
             let end = Pos2::new(
                 if source == 0 {
-                    TRACK_WIDTH + 100.0
+                    app.timeline_bounds.left() + 100.0
                 } else {
-                    110.0
+                    app.timeline_bounds.left() - TRACK_WIDTH + 110.0
                 },
                 y,
             );
@@ -7185,8 +7224,14 @@ mod tests {
             let (mut app, tracks, ids) = multi_clip_fixture();
             let ctx = context();
             select_group(&mut app, &ctx, [ids[0], ids[2]]);
-            let start = Pos2::new(110.0, app.lane_bounds[&tracks[0]].top() + 18.0);
-            let end = Pos2::new(110.0, app.lane_bounds[&tracks[2]].bottom() - 10.0);
+            let start = Pos2::new(
+                app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+                app.lane_bounds[&tracks[0]].top() + 18.0,
+            );
+            let end = Pos2::new(
+                app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+                app.lane_bounds[&tracks[2]].bottom() - 10.0,
+            );
             let before = format!("{:?}", app.session.project);
             frame(
                 &mut app,
@@ -7237,7 +7282,10 @@ mod tests {
         let (mut app, _) = fixture();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
-        let start = Pos2::new(110.0, app.lane_bounds.values().next().unwrap().top() + 18.0);
+        let start = Pos2::new(
+            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.lane_bounds.values().next().unwrap().top() + 18.0,
+        );
         frame(
             &mut app,
             &ctx,
@@ -7263,11 +7311,17 @@ mod tests {
             .map(|track| track.id)
             .collect();
         let ctx = context();
-        let size = Vec2::new(1280.0, 480.0);
+        let size = Vec2::new(1280.0, 800.0);
         frame_sized(&mut app, &ctx, vec![], size);
         let master = app.master_bounds;
-        let start = Pos2::new(110.0, app.lane_bounds[&first].top() + 18.0);
-        let end = Pos2::new(110.0, master.top() - 3.0);
+        let start = Pos2::new(
+            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.lane_bounds[&first].top() + 18.0,
+        );
+        let end = Pos2::new(
+            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            master.top() - 3.0,
+        );
         frame_sized(
             &mut app,
             &ctx,
@@ -7298,8 +7352,14 @@ mod tests {
         assert!(app.track_drag.is_none());
         // Scroll back to the top while dragging the same track upward.
         frame_sized(&mut app, &ctx, vec![], size);
-        let start = Pos2::new(110.0, app.lane_bounds[&first].top() + 18.0);
-        let end = Pos2::new(110.0, app.timeline_bounds.top() + 3.0);
+        let start = Pos2::new(
+            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.lane_bounds[&first].top() + 18.0,
+        );
+        let end = Pos2::new(
+            app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+            app.timeline_bounds.top() + 3.0,
+        );
         frame_sized(
             &mut app,
             &ctx,
@@ -7467,7 +7527,10 @@ mod tests {
         let (mut app, track) = fixture();
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
-        let name = Pos2::new(60.0, app.lane_bounds[&track].top() + 18.0);
+        let name = Pos2::new(
+            app.timeline_bounds.left() - TRACK_WIDTH + 60.0,
+            app.lane_bounds[&track].top() + 18.0,
+        );
         let key = |key| egui::Event::Key {
             key,
             physical_key: None,
@@ -9193,7 +9256,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let add = Pos2::new(
-            TRACK_WIDTH - 19.0 - 28.0 - f32::from(theme::TOOLBAR_PADDING),
+            app.timeline_bounds.left() - 19.0 - 28.0 - f32::from(theme::TOOLBAR_PADDING),
             app.lane_bounds[&track].top() - RULER_HEIGHT / 2.0,
         );
         for expected in 2..=8 {
@@ -9400,9 +9463,9 @@ mod tests {
                 Pos2::new(lane.left(), lane.top() - RULER_HEIGHT),
                 Pos2::new(point(3.0).x, lane.top() - 20.0),
             );
-            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == band && rect.fill == theme::RULER_SELECTION)));
-            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == theme::RULER_SELECTION && rect.rect.bottom() > lane.top() - 20.0)));
-            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == theme::ACCENT && rect.rect.width() == 3.0 && rect.rect.height() == 14.0)));
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == band && rect.fill == theme::ruler_loop_colors(&ctx, true).0)));
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == theme::ruler_loop_colors(&ctx, true).0 && rect.rect.bottom() > lane.top() - 20.0)));
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.fill == theme::LOOP_COLOR && rect.rect.width() == 3.0 && rect.rect.height() == 14.0)));
             assert_eq!(app.session.project.transport.playhead_frame, frames(8.0));
             assert!(app.session.project.transport.r#loop.enabled);
             assert_eq!(app.session.project.tracks[0].clips[0].start_frame, 0);
@@ -9952,7 +10015,7 @@ mod tests {
         frame(&mut app, &ctx, vec![]);
         for index in 0..2 {
             let point = Pos2::new(
-                TRACK_WIDTH + 140.0,
+                app.timeline_bounds.left() + 140.0,
                 if index == 0 {
                     app.timeline_bounds.top() + RULER_HEIGHT + 20.0
                 } else {
@@ -10042,7 +10105,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let point = Pos2::new(
-            TRACK_WIDTH + 210.0,
+            app.timeline_bounds.left() + 210.0,
             app.timeline_bounds.top() + RULER_HEIGHT + 20.0,
         );
         file_frame(&mut app, &ctx, &source.0, point, true);
@@ -10054,13 +10117,11 @@ mod tests {
         );
         app.scroll = 2.0;
         let lane = app.lane_bounds[&app.session.project.tracks[0].id];
-        file_frame(
-            &mut app,
-            &ctx,
-            &source.0,
-            Pos2::new(30.0, lane.center().y),
-            true,
+        let point = Pos2::new(
+            app.timeline_bounds.left() - TRACK_WIDTH + 30.0,
+            lane.center().y,
         );
+        file_frame(&mut app, &ctx, &source.0, point, true);
         finish_import(&mut app, &ctx);
         assert!(app.error.is_none());
         assert_eq!(app.session.project.tracks[0].clips.len(), 2);
@@ -10075,9 +10136,14 @@ mod tests {
         let master = app.master_bounds.center();
         for point in [
             Pos2::new(30.0, 20.0),
-            Pos2::new(30.0, lane.top() - 12.0),
+            Pos2::new(
+                app.timeline_bounds.left() - TRACK_WIDTH + 30.0,
+                lane.top() - 12.0,
+            ),
             Pos2::new(-10.0, lane.center().y),
             master,
+            app.effects_bounds.library.center(),
+            app.effects_bounds.strip.center(),
         ] {
             file_frame(&mut app, &ctx, &source.0, point, true);
             assert!(app.file_drop_target.is_none());
@@ -10096,7 +10162,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let point = Pos2::new(
-            TRACK_WIDTH + 140.0,
+            app.timeline_bounds.left() + 140.0,
             app.timeline_bounds.top() + RULER_HEIGHT + 20.0,
         );
         let shapes = ready_file_hover(&mut app, &ctx, &source.0, point);
@@ -11593,6 +11659,8 @@ mod tests {
             (false, 1.0, 0.0, 10.0, 20.0, (frames(1.0), 0, frames(10.0))),
         ] {
             let (mut app, track) = fixture();
+            // Keep the ten-second source edge visible beside the two panels and toolbar.
+            app.zoom = 60.0;
             let clip = &mut app.session.project.tracks[0].clips[0];
             clip.start_frame = frames(start_seconds);
             clip.source_offset_frame = frames(offset_seconds);

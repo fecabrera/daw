@@ -5,7 +5,7 @@ pub(super) const LABEL_WIDTH: f32 = 52.0;
 pub(super) const STRIP_HEIGHT: f32 = 56.0;
 
 impl DawUi {
-    /// Editor follows its active clip; Effects follows the selected processing track.
+    /// Editor follows its active clip, falling back to the selected track.
     pub(super) fn track_overview_content(&self, ui: &egui::Ui) -> (Option<Track>, Vec<Asset>) {
         let preview = self.clip_trim_preview_project(ui);
         let project = preview.as_ref().unwrap_or(&self.session.project);

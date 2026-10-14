@@ -1021,7 +1021,7 @@ fn copy_plus_header_button_is_disabled_without_selection_and_duplicates_the_grou
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let point = Pos2::new(
-        TRACK_WIDTH - 19.0,
+        app.timeline_bounds.left() - 19.0,
         app.lane_bounds[&tracks[0]].top() - RULER_HEIGHT / 2.0,
     );
     let before = format!("{:?}", app.session.project);

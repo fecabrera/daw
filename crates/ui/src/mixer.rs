@@ -25,22 +25,19 @@ pub enum ViewMode {
     #[default]
     Timeline,
     Instrument,
-    Effects,
     Edit,
     Mixer,
 }
 
 impl ViewMode {
-    pub const ALL: [Self; 5] = [
-        Self::Timeline,
-        Self::Instrument,
-        Self::Effects,
-        Self::Edit,
-        Self::Mixer,
-    ];
+    pub const ALL: [Self; 4] = [Self::Timeline, Self::Instrument, Self::Edit, Self::Mixer];
+
+    pub(super) fn has_effects(self) -> bool {
+        self == Self::Timeline
+    }
 
     pub(super) fn has_track_overview(self) -> bool {
-        matches!(self, Self::Edit | Self::Effects)
+        self == Self::Edit
     }
 
     pub(super) fn has_clip_lanes(self) -> bool {
@@ -52,7 +49,6 @@ impl ViewMode {
             Self::Timeline => "Timeline",
             Self::Mixer => "Mixer",
             Self::Instrument => "Instrument",
-            Self::Effects => "Effects",
             Self::Edit => "Editor",
         }
     }
@@ -76,10 +72,8 @@ impl DawUi {
             return;
         }
         self.view_mode = mode;
-        if mode != ViewMode::Effects {
-            self.effects_catalog.clear();
-            self.selected_effects.clear();
-        }
+        self.effects_catalog.clear();
+        self.selected_effects.clear();
         self.midi_editor.cancel();
         self.instrument_ui.cancel();
         self.track_name_edit = None;
@@ -134,7 +128,10 @@ impl DawUi {
             for mode in ViewMode::ALL {
                 let label = mode.label();
                 let selected = self.view_mode == mode;
-                if ui
+                // Reserve the backgrounds before the Button paints its text.
+                let background = ui.painter().add(egui::Shape::Noop);
+                let hover = ui.painter().add(egui::Shape::Noop);
+                let response = ui
                     .add_enabled(
                         enabled,
                         egui::Button::new(
@@ -143,19 +140,35 @@ impl DawUi {
                         )
                         .selected(selected)
                         .frame(true)
-                        .fill(if selected {
-                            selected_fill
-                        } else {
-                            egui::Color32::TRANSPARENT
-                        })
+                        .fill(egui::Color32::TRANSPARENT)
                         .stroke(Stroke::NONE)
                         .corner_radius(style.visuals.widgets.inactive.corner_radius)
                         .min_size(Vec2::new(0.0, toolbars::CONTROL_HEIGHT)),
                     )
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
-                    .on_hover_text(format!("Show {label} view"))
-                    .clicked()
+                    .on_hover_text(format!("Show {label} view"));
+                let radius = style.visuals.widgets.inactive.corner_radius;
+                ui.painter().set(
+                    background,
+                    egui::Shape::rect_filled(
+                        response.rect,
+                        radius,
+                        if selected {
+                            selected_fill
+                        } else {
+                            egui::Color32::TRANSPARENT
+                        },
+                    ),
+                );
+                if response.enabled()
+                    && (response.hovered() || response.is_pointer_button_down_on())
                 {
+                    ui.painter().set(
+                        hover,
+                        egui::Shape::rect_filled(response.rect, radius, theme::TOOLBAR_HOVER_FILL),
+                    );
+                }
+                if response.clicked() {
                     self.set_view_mode(mode, ui.ctx());
                 }
             }

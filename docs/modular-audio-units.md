@@ -255,7 +255,7 @@ Prepare memory and expensive resources outside processing. No file access, alloc
 
 ### Store editable graphs separately from running graphs
 
-Save unit identities, state, parameters, and connections in the project. Keep Instrument/Effects view positions separate from audio behavior. Build and validate a candidate runtime outside the callback, then publish the complete change at a processing boundary. Invalid connections or failed preparation retain the previous graph.
+Save unit identities, state, parameters, and connections in the project. Keep unit presentation and view state separate from audio behavior. Build and validate a candidate runtime outside the callback, then publish the complete change at a processing boundary. Invalid connections or failed preparation retain the previous graph.
 
 Enforce track restrictions in shared validation and host integration, as well as the UI. A disabled menu item alone is insufficient. Composite units must expose enough capability information to validate their use on a track.
 
@@ -370,3 +370,22 @@ The accepted [Compressor](compressor.md) has three strips: Comp (Threshold, Rati
 ## OTT — 2026-10-13
 
 The accepted [OTT](ott.md) adds three stereo-linked upward/downward compression bands. Each band is one two-column strip with rows Freq/Depth, Input/Output, and Attack/Release, plus a centered Power/name footer; Mid leaves Freq empty. Low/High default to 250 Hz/2.5 kHz. Knee is fixed and soft; Depth controls compression intensity independently of Dry/Wet. Out has Level, Dry/Wet, and the shared bounded Peak/RMS mode selector. Band off bypasses compression while preserving audio and Input/Output gains. Each band shows signed boost/reduction. Versioned state, existing chain interactions, shared playback/export processing, phase-matched Dry/Wet, compatible history, and callback-safe monitoring use the same unit architecture. The linked document specifies the implementation curves, ranges, defaults, and limits.
+
+## Timeline effects workspace — 2026-10-14
+
+Timeline owns the effects catalog and bottom lane; the dedicated Effects view is removed. Place the catalog to the left of Tracks; retain the Timeline ruler, grid, clips, scrolling, and pinned Master above the effects lane. The scrollbar stays directly above the lane, with one status separator below. Retain the track-owned chain, saved unit presentation, catalog/lane input handlers, selection/focus guards, and prepared audio updates. Track clicks switch the lane target immediately. This changes workspace composition only; the source-container and effect-processing contracts remain unchanged.
+
+## Timeline toolbar visibility — 2026-10-14
+
+Timeline adds a left toolbar spanning playback to status, beside both the catalog and effects lane. Its borderless Lucide Library toggle shows/hides the catalog without changing track effects or project state. The 38-point rail retains a centered 24-point button and 16-point icon. Use active-view fill on, transparent off, and one translucent gray hover overlay for both themes. The lane continues across the remaining width to the rail's right; hiding the catalog expands the upper timeline viewport. This updates the earlier full-window lane geometry by reserving the rail. A matching Gallery Horizontal button sits at the bottom with a seven-point inset and independently shows/hides the effects lane. Both toggles are 24×24 points with 16-point icons. Lane visibility starts on and remains UI state across view changes. Hiding the lane gives its height back to the timeline/catalog and clears unit selection and pending gestures; the hidden lane has no keyboard removal or drag/drop target. Catalog click/Enter addition remains available.
+
+
+Tracks and Master meet the catalog, or the toolbar when the catalog is hidden, with one shared 1-point divider and no gap. The catalog/toolbar owns that divider; individual track/Master rows do not draw another left border. Selected-track outlines remain available.
+
+
+The first installed Timeline effect shares the toolbar's left divider. The shared unit shell omits that first unit's duplicate left stroke through a scoped border-ownership tag; it keeps its top/right border, layout, controls, and selection outline. Other units retain their borders. Apply this to expanded, compact, and collapsed presentations without adding a gap.
+
+
+## Timeline-only effects
+
+On 2026-10-14, the dedicated Effects view was removed from the shared view enum, buttons, egui menu, and native menus. The remaining views are Timeline, Instrument, Editor, and Mixer. This supersedes D33/D34's separate Effects workspace placement. Timeline retains the catalog, lane, independent visibility toggles, selected audio/MIDI track chain, all unit controls and editing gestures, and saved presentation. Only Editor uses the selected-track overview and its separate zoom/scroll. View removal changes no project schema, effect IDs/settings, or audio processing.

@@ -16,7 +16,7 @@ impl DawUi {
                     .filter(|t| self.view_mode != ViewMode::Instrument || t.kind == TrackKind::Midi)
                     .map(|t| (t.id, t.name.clone()))
                     .collect();
-                // Edit follows the active clip when Instrument or Effects has selected another track.
+                // Editor follows the active clip when Instrument or Timeline has selected another track.
                 let current = if self.view_mode == ViewMode::Edit {
                     self.session
                         .project

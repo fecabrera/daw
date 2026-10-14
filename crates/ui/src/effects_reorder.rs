@@ -2,6 +2,7 @@ use super::*;
 
 pub(super) struct EffectDrag {
     pub track: Id,
+    view: ViewMode,
     source: DragSource,
     origin: Pos2,
     focus: egui::Id,
@@ -45,7 +46,9 @@ impl DawUi {
 
     pub(super) fn cancel_unavailable_effect_drag(&mut self, ui: &egui::Ui) {
         if self.effects_drag.as_ref().is_some_and(|drag| {
-            self.view_mode != ViewMode::Effects
+            !self.view_mode.has_effects()
+                || (self.view_mode == ViewMode::Timeline && !self.timeline_effects_visible)
+                || self.view_mode != drag.view
                 || self.selected_track != Some(drag.track)
                 || !ui.is_enabled()
                 || !self.edit_environment_available()
@@ -65,7 +68,7 @@ impl DawUi {
                     })
         }) {
             if ui.input(|input| input.focused && input.key_pressed(egui::Key::Escape))
-                && self.view_mode == ViewMode::Effects
+                && self.view_mode.has_effects()
                 && self.edit_environment_available()
                 && let Some(drag) = &self.effects_drag
             {
@@ -108,6 +111,7 @@ impl DawUi {
             header.request_focus();
             self.effects_drag = Some(EffectDrag {
                 track,
+                view: self.view_mode,
                 source: DragSource::Chain { unit, units },
                 origin,
                 focus: header.id,
@@ -147,6 +151,7 @@ impl DawUi {
             };
             self.effects_drag = Some(EffectDrag {
                 track,
+                view: self.view_mode,
                 source: DragSource::Library { types, index },
                 origin,
                 focus: response.id,

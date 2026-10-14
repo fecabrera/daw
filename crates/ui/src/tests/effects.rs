@@ -57,7 +57,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             },
         );
         app.select_track(track, false);
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
         app.dirty = false;
         let original = serde_json::to_string(&app.session.project).unwrap();
@@ -247,7 +247,7 @@ fn effects_catalog_selection_clears_on_focus_loss_but_not_pointer_hover() {
                 output.textures_delta.clear();
             }
             "view" => {
-                app.set_view_mode(ViewMode::Timeline, &ctx);
+                app.set_view_mode(ViewMode::Mixer, &ctx);
                 frame(&mut app, &ctx, vec![]);
             }
             _ => {
@@ -297,10 +297,7 @@ fn effects_lane_selection_clears_on_focus_loss_and_keeps_controls_in_the_lane() 
                 click(&mut app, &ctx, point);
             }
             "outside" => {
-                let point = Pos2::new(
-                    app.effects_bounds.library.right() + 300.0,
-                    app.effects_bounds.library.center().y,
-                );
+                let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
                 click(&mut app, &ctx, point);
             }
             "surrender" => {
@@ -429,7 +426,7 @@ fn effects_library_keys_respect_focus_track_and_modal_guards() {
                 ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("other control")));
             }
             _ => {
-                app.set_view_mode(ViewMode::Timeline, &ctx);
+                app.set_view_mode(ViewMode::Mixer, &ctx);
             }
         }
         app.dirty = false;
@@ -526,7 +523,7 @@ fn effects_library_drag_handles_empty_lanes_fast_release_and_cancellation() {
         let (mut app, track) = fixture();
         let ctx = context();
         app.select_track(track, false);
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
         let start = app.effects_bounds.drive_entry.center();
         let end = app.effects_bounds.lane_viewport.center();
@@ -570,7 +567,7 @@ fn effects_library_drag_handles_empty_lanes_fast_release_and_cancellation() {
                 }
                 "modal" => app.unsaved_prompt = true,
                 "track" => app.selected_track = Some(app.session.project.add_track().unwrap()),
-                "view" => app.view_mode = ViewMode::Timeline,
+                "view" => app.view_mode = ViewMode::Mixer,
                 "chain" => app.session.project.tracks[0]
                     .effects
                     .push(daw_core::EffectInstance::equalizer()),
@@ -642,223 +639,6 @@ fn effects_library_drag_scrolls_to_offscreen_insertion_slots() {
     assert!(app.effects_drag.is_none());
 }
 
-#[test]
-fn effects_lane_spans_the_window_with_one_status_separator_and_an_aligned_overview() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for size in [
-            Vec2::new(640.0, 260.0),
-            Vec2::new(640.0, 480.0),
-            Vec2::new(1280.0, 800.0),
-        ] {
-            let (mut app, track) = fixture();
-            let clip = app.session.project.tracks[0].clips[0].id;
-            let ctx = context();
-            app.set_settings(
-                &ctx,
-                settings::AppSettings {
-                    theme: color_theme,
-                    ..Default::default()
-                },
-            );
-            app.select_clip(clip, track, false);
-            app.set_view_mode(ViewMode::Edit, &ctx);
-            frame_sized(&mut app, &ctx, vec![], size);
-            let editor_ruler = app.midi_editor.ruler_bounds;
-            let editor_lane = app.lane_bounds[&track];
-            let original = format!("{:?}", app.session.project);
-            app.set_view_mode(ViewMode::Effects, &ctx);
-            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
-            let catalog = app.effects_bounds.library;
-            let header = app.effects_bounds.header;
-            let rack = app.effects_bounds.strip;
-            let scrollbar = app.effects_bounds.scrollbar;
-            let ruler = app.midi_editor.ruler_bounds;
-            let lane = app.lane_bounds[&track];
-            assert_eq!(catalog.width(), TRACK_WIDTH);
-            assert!((catalog.top() - header.top()).abs() < 0.1);
-            assert!((header.bottom() - ruler.bottom()).abs() < 0.1);
-            assert!(
-                (catalog.bottom() - rack.top()).abs() < 0.1,
-                "size={size:?} catalog={catalog:?} rack={rack:?} scrollbar={scrollbar:?}"
-            );
-            assert_eq!(rack.left(), catalog.left());
-            assert_eq!(rack.width(), size.x);
-            assert_eq!(rack.right(), editor_lane.right());
-            assert!(rack.top() >= lane.bottom());
-            if size.y >= 480.0 {
-                assert_eq!(rack.height(), panels::unit_height(false));
-                assert!(rack.top() > lane.bottom() + 20.0);
-            } else {
-                assert!(rack.height() > 0.0 && rack.height() < panels::unit_height(false));
-            }
-            assert_eq!(ruler.height(), editor_ruler.height());
-            assert_eq!(lane.height(), editor_lane.height());
-            assert!((ruler.left() - editor_ruler.left() - TRACK_WIDTH).abs() < 0.1);
-            assert_eq!(ruler.left(), lane.left());
-            assert_eq!(ruler.bottom(), lane.top());
-            assert_eq!(scrollbar.left(), ruler.left());
-            assert_eq!(scrollbar.right(), ruler.right());
-            assert_eq!(scrollbar.height(), SCROLLBAR_HEIGHT);
-            assert_eq!(scrollbar.bottom(), rack.top());
-            assert!(scrollbar.top() >= lane.bottom());
-            if scrollbar.top() > lane.bottom() {
-                for tick in app.musical_timeline().ticks(lane.width()) {
-                    let x = lane.left() + tick.x;
-                    if x < lane.left() || x > lane.right() {
-                        continue;
-                    }
-                    let line = [Pos2::new(x, lane.bottom()), Pos2::new(x, scrollbar.top())];
-                    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { points, .. } if *points == line)));
-                }
-            }
-            let palette = theme::palette(&ctx);
-            let line = [
-                Pos2::new(rack.left(), rack.top() + 0.5),
-                Pos2::new(rack.right(), rack.top() + 0.5),
-            ];
-            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment {points, stroke} if *points == line && *stroke == Stroke::new(1.0, palette.border))));
-            let bottom_lines = shapes
-                .iter()
-                .filter_map(|s| match &s.shape {
-                    egui::Shape::LineSegment { points, stroke }
-                        if points[0].x == rack.left()
-                            && points[1].x == rack.right()
-                            && points[0].y == points[1].y
-                            && (points[0].y - rack.bottom()).abs() <= 1.0 =>
-                    {
-                        Some((points, stroke))
-                    }
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            assert_eq!(
-                bottom_lines.len(),
-                1,
-                "one separator between the lane and status bar"
-            );
-            assert_eq!(*bottom_lines[0].1, Stroke::new(1.0, palette.border));
-            assert_eq!(bottom_lines[0].0[0].y, rack.bottom() + 0.5);
-            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rack && r.fill == palette.background)));
-            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == catalog && r.fill == palette.panel)));
-            let border = [
-                Pos2::new(catalog.right() - 0.5, catalog.top()),
-                Pos2::new(catalog.right() - 0.5, catalog.bottom()),
-            ];
-            assert_eq!(shapes.iter().filter(|s| matches!(&s.shape, egui::Shape::LineSegment { points, stroke } if *points == border && *stroke == Stroke::new(1.0, palette.border))).count(), 1);
-            assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Track effects are not available yet." || t.galley.text() == "Oscillator" || t.galley.text() == "Envelope")));
-            assert_eq!(format!("{:?}", app.session.project), original);
-            assert!(!app.dirty);
-        }
-    }
-}
-
-#[test]
-fn effects_overview_follows_the_processing_track_and_clears_missing_selection() {
-    let (mut app, audio) = fixture();
-    let audio_clip = app.session.project.tracks[0].clips[0].id;
-    let midi = app.session.project.add_midi_track().unwrap();
-    let midi_clip = app.session.project.add_midi_pattern(midi, 0).unwrap();
-    let ctx = context();
-    app.select_clip(audio_clip, audio, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
-    app.select_track(midi, false);
-    frame(&mut app, &ctx, vec![]);
-    assert_eq!(app.selected_clip, Some(audio_clip));
-    assert_eq!(app.lane_bounds.len(), 1);
-    assert!(app.lane_bounds.contains_key(&midi));
-    assert!(app.midi_editor.clip_bounds.contains_key(&midi_clip));
-    assert!(!app.midi_editor.clip_bounds.contains_key(&audio_clip));
-    app.selected_track = None;
-    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-    assert!(app.lane_bounds.is_empty());
-    assert_eq!(app.timeline_bounds, Rect::NOTHING);
-    assert!(app.midi_editor.clip_bounds.is_empty());
-    assert!(app.effects_bounds.strip.is_positive());
-    assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Select a track to configure its effects.")));
-    assert!(!app.dirty);
-}
-
-#[test]
-fn effects_ruler_seek_loop_and_zoom_use_the_overview_viewport() {
-    let (mut app, track) = fixture();
-    let ctx = context();
-    app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
-    frame(&mut app, &ctx, vec![]);
-    app.midi_editor.zoom = 240.0;
-    app.midi_editor.scroll = 0.5;
-    let timeline = (app.zoom, app.scroll);
-    frame(&mut app, &ctx, vec![]);
-    let ruler = app.midi_editor.ruler_bounds;
-    click(
-        &mut app,
-        &ctx,
-        Pos2::new(ruler.left() + 180.0, ruler.bottom() - 6.0),
-    );
-    assert_eq!(app.session.project.transport.playhead_frame, 60_000);
-    let start = Pos2::new(ruler.left() + 240.0, ruler.top() + 5.0);
-    let end = start + Vec2::new(240.0, 0.0);
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::PointerMoved(start), button(start, true)],
-    );
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-    frame(&mut app, &ctx, vec![button(end, false)]);
-    let region = &app.session.project.transport.r#loop;
-    assert_eq!((region.start_frame, region.end_frame), (72_000, 120_000));
-    assert!(app.dirty);
-    let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
-    let point = app.effects_bounds.strip.center();
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::PointerMoved(point), egui::Event::Zoom(2.0)],
-    );
-    assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), overview);
-    let point = app.lane_bounds[&track].left_center() + Vec2::new(120.0, 0.0);
-    let anchor = app.view_scroll() + 120.0 / f64::from(app.view_zoom());
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::PointerMoved(point), egui::Event::Zoom(2.0)],
-    );
-    assert_eq!(app.view_zoom(), 480.0);
-    assert!((app.view_scroll() + 120.0 / f64::from(app.view_zoom()) - anchor).abs() < 0.001);
-    let grid_point = Pos2::new(
-        point.x,
-        (app.lane_bounds[&track].bottom() + app.effects_bounds.scrollbar.top()) * 0.5,
-    );
-    frame(
-        &mut app,
-        &ctx,
-        vec![
-            egui::Event::PointerMoved(grid_point),
-            egui::Event::Zoom(1.25),
-        ],
-    );
-    assert_eq!(app.view_zoom(), 600.0);
-    app.set_view_scroll(0.0);
-    app.dirty = false;
-    frame(&mut app, &ctx, vec![]);
-    let lane = app.lane_bounds[&track];
-    let project = format!("{:?}", app.session.project);
-    let start = app.effects_bounds.scrollbar.left_center() + Vec2::new(30.0, -1.0);
-    let end = start + Vec2::new(80.0, 0.0);
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::PointerMoved(start), button(start, true)],
-    );
-    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-    frame(&mut app, &ctx, vec![button(end, false)]);
-    assert!(app.view_scroll() > 0.0);
-    assert_eq!(app.lane_bounds[&track], lane);
-    assert_eq!(format!("{:?}", app.session.project), project);
-    assert!(!app.dirty);
-    assert_eq!((app.zoom, app.scroll), timeline);
-}
-
 fn eq_settings(app: &DawUi) -> &daw_core::EqSettings {
     let daw_core::EffectSettings::Eq3(settings) = &app.session.project.tracks[0].effects[0].unit
     else {
@@ -885,7 +665,7 @@ fn effect_catalog_colors_follow_hover_and_selection_without_editing_the_project(
                 },
             );
             app.select_track(track, false);
-            app.set_view_mode(ViewMode::Effects, &ctx);
+            app.set_view_mode(ViewMode::Timeline, &ctx);
             let project = serde_json::to_string(&app.session.project).unwrap();
             app.dirty = false;
             let shapes = frame_shapes(
@@ -956,7 +736,7 @@ fn eq_catalog_adds_on_double_click_and_controls_save_independent_states() {
     let (mut app, track) = fixture();
     let ctx = context();
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     let entry = app.effects_bounds.entry.center();
     app.dirty = false;
@@ -1018,8 +798,8 @@ fn eq_catalog_adds_on_double_click_and_controls_save_independent_states() {
         app.session.project.tracks[0].effects
     );
     assert!(restored.tracks[0].effects_compact);
+    app.set_view_mode(ViewMode::Mixer, &ctx);
     app.set_view_mode(ViewMode::Timeline, &ctx);
-    app.set_view_mode(ViewMode::Effects, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert!(eq_settings(&app).collapsed);
     assert!(!eq_settings(&app).enabled);
@@ -1030,7 +810,7 @@ fn eq_addition_is_guarded_without_a_track_during_disabled_editing_and_focus_loss
         let (mut app, track) = fixture();
         let ctx = context();
         app.select_track(track, false);
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         if mode == 0 {
             app.selected_track = None;
         }
@@ -1081,7 +861,7 @@ fn eq_knobs_edit_saved_parameters_and_multiple_instances_have_distinct_identity(
     let (mut app, track) = fixture();
     let ctx = context();
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     app.session.project.tracks[0]
         .effects
         .push(daw_core::EffectInstance::equalizer());
@@ -1148,7 +928,7 @@ fn eq_footer_pairs_match_oscillator_spacing_in_both_modes_and_share_the_status_s
             .push(daw_core::EffectInstance::equalizer());
         app.session.project.tracks[0].effects_compact = compact;
         app.select_track(track, false);
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         for (index, label) in ["Low", "Mid", "High"].into_iter().enumerate() {
@@ -1187,7 +967,7 @@ fn drive_catalog_adds_independent_units_and_keeps_the_existing_eq() {
     let (mut app, track) = fixture();
     let ctx = context();
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     let entry = app.effects_bounds.drive_entry.center();
     assert!(entry.y > app.effects_bounds.entry.bottom());
@@ -1234,7 +1014,7 @@ fn drive_controls_edit_and_reset_saved_settings_and_off_color_retains_its_parame
         .effects
         .push(daw_core::EffectInstance::drive());
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     // Off prevents editing the two inactive color parameters.
     let before = drive_settings(&app).clone();
@@ -1328,7 +1108,7 @@ fn drive_labels_and_knobs_align_with_eq_and_both_presentation_modes_persist() {
             ];
             app.session.project.tracks[0].effects_compact = compact;
             app.select_track(track, false);
-            app.set_view_mode(ViewMode::Effects, &ctx);
+            app.set_view_mode(ViewMode::Timeline, &ctx);
             frame(&mut app, &ctx, vec![]);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let drive = &app.effects_bounds.drive_units[0];
@@ -1377,7 +1157,7 @@ fn drive_labels_and_knobs_align_with_eq_and_both_presentation_modes_persist() {
             );
             assert_eq!(restored.tracks[0].effects_compact, compact);
             app.set_view_mode(ViewMode::Timeline, &ctx);
-            app.set_view_mode(ViewMode::Effects, &ctx);
+            app.set_view_mode(ViewMode::Timeline, &ctx);
             frame(&mut app, &ctx, vec![]);
             assert!(drive_settings(&app).collapsed);
             assert!(!drive_settings(&app).enabled);
@@ -1390,7 +1170,7 @@ fn drive_catalog_is_guarded_without_selection_and_during_modal_work() {
         let (mut app, track) = fixture();
         let ctx = context();
         app.select_track(track, false);
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
         let entry = app.effects_bounds.drive_entry.center();
         if no_selection {
@@ -1431,7 +1211,7 @@ fn chain_fixture(compact: bool, collapsed: bool) -> (DawUi, Id, egui::Context, V
         .map(|unit| unit.id)
         .collect();
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     (app, track, ctx, ids)
@@ -1756,8 +1536,8 @@ fn effect_body_selection_keeps_child_controls_and_reordering_and_clears_on_view_
     frame(&mut app, &ctx, vec![button(end, false)]);
     assert_eq!(app.selected_effects, selected);
     assert_eq!(chain_ids(&app), [ids[2], ids[0], ids[1]]);
+    app.set_view_mode(ViewMode::Mixer, &ctx);
     app.set_view_mode(ViewMode::Timeline, &ctx);
-    app.set_view_mode(ViewMode::Effects, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert!(app.selected_effects.is_empty());
     // A power click still changes enable state and selects its owning unit.
@@ -1962,7 +1742,7 @@ fn auto_filter_catalog_adds_independent_saved_units_and_respects_guards() {
     let (mut app, track) = fixture();
     let ctx = context();
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     let entry = app.effects_bounds.auto_filter_entry.center();
     assert!(entry.y > app.effects_bounds.drive_entry.bottom());
@@ -1992,7 +1772,7 @@ fn auto_filter_catalog_adds_independent_saved_units_and_respects_guards() {
         let (mut app, track) = fixture();
         let ctx = context();
         app.select_track(track, false);
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         if blocked {
             app.unsaved_prompt = true;
         } else {
@@ -2024,7 +1804,7 @@ fn auto_filter_has_three_strips_with_evenly_spaced_lfo_columns_and_a_centered_fo
             ];
             app.session.project.tracks[0].effects_compact = compact;
             app.select_track(track, false);
-            app.set_view_mode(ViewMode::Effects, &ctx);
+            app.set_view_mode(ViewMode::Timeline, &ctx);
             frame(&mut app, &ctx, vec![]);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let bounds = &app.effects_bounds.auto_filter_units[0];
@@ -2110,7 +1890,7 @@ fn auto_filter_controls_edit_phases_depth_and_both_retained_rate_modes() {
         .effects
         .push(daw_core::EffectInstance::auto_filter());
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     for (strip, row) in [
         (0, 0),
@@ -2186,7 +1966,7 @@ fn auto_filter_note_rate_is_bounded_ordered_and_labeled_and_resets_to_a_quarter_
     settings.note_rate = daw_core::NoteRate(1); // Slowest: dotted 4 bars.
     app.session.project.tracks[0].effects.push(effect);
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     for label in ["4b D", "1/64 T"] {
@@ -2292,7 +2072,7 @@ fn auto_filter_diagrams_and_bounded_mode_selector_match_their_controls() {
             .effects
             .push(daw_core::EffectInstance::auto_filter());
         app.select_track(track, false);
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let bounds = &app.effects_bounds.auto_filter_units[0];
@@ -2473,7 +2253,7 @@ fn compressor_catalog_adds_independent_units_and_blocks_without_a_track() {
     let (mut app, track) = fixture();
     let ctx = context();
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     let entry = app.effects_bounds.compressor_entry.center();
     assert!(entry.y > app.effects_bounds.auto_filter_entry.bottom());
@@ -2503,7 +2283,7 @@ fn compressor_catalog_adds_independent_units_and_blocks_without_a_track() {
         let (mut app, track) = fixture();
         let ctx = context();
         app.select_track(track, false);
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         if blocked {
             app.unsaved_prompt = true;
         } else {
@@ -2532,7 +2312,7 @@ fn compressor_layout_compact_collapse_and_readonly_meter_follow_unit_conventions
             app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::compressor()];
             app.session.project.tracks[0].effects_compact = compact;
             app.select_track(track, false);
-            app.set_view_mode(ViewMode::Effects, &ctx);
+            app.set_view_mode(ViewMode::Timeline, &ctx);
             frame(&mut app, &ctx, vec![]);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let bounds = &app.effects_bounds.compressor_units[0];
@@ -2591,7 +2371,7 @@ fn compressor_controls_edit_in_the_agreed_order_and_peak_rms_is_bounded() {
     let ctx = context();
     app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::compressor()];
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     for (column, row, key) in [
         (0, 0, egui::Key::ArrowRight),
@@ -2694,7 +2474,7 @@ fn compressor_peak_rms_paint_uses_the_shared_neutral_arc_and_choice_labels() {
             settings.detection = detection;
             app.session.project.tracks[0].effects = vec![effect];
             app.select_track(track, false);
-            app.set_view_mode(ViewMode::Effects, &ctx);
+            app.set_view_mode(ViewMode::Timeline, &ctx);
             frame(&mut app, &ctx, vec![]);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let rect = app.effects_bounds.compressor_units[0].controls[0][2];
@@ -2773,7 +2553,7 @@ fn ott_catalog_keyboard_add_layout_and_power_use_shared_effect_controls() {
             },
         );
         app.select_track(track, false);
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
         let point = app.effects_bounds.ott_entry.center();
         click(&mut app, &ctx, point);
@@ -2842,7 +2622,7 @@ fn ott_knobs_change_values_bound_crossovers_and_do_not_wrap_detection() {
         .effects
         .push(daw_core::EffectInstance::ott());
     app.select_track(track, false);
-    app.set_view_mode(ViewMode::Effects, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     let point = app.effects_bounds.ott_units[0].controls[0][1][0].center();
     drag_control(&mut app, &ctx, point, Vec2::new(0.0, 60.0));
@@ -2989,10 +2769,7 @@ fn effect_delete_respects_focus_modifiers_modal_and_drag_guards() {
                 click(&mut app, &ctx, point);
             }
             "outside" => {
-                let point = Pos2::new(
-                    app.effects_bounds.library.right() + 300.0,
-                    app.effects_bounds.library.center().y,
-                );
+                let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
                 click(&mut app, &ctx, point);
             }
             "surrender" => {
@@ -3051,5 +2828,661 @@ fn effect_delete_respects_focus_modifiers_modal_and_drag_guards() {
             "{guard}"
         );
         assert!(!app.dirty, "{guard}");
+    }
+}
+
+#[test]
+fn timeline_places_catalog_left_of_tracks_and_lane_below_grid_in_both_themes() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.select_track(track, false);
+            app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::equalizer()];
+            app.session.project.tracks[0].effects_compact = compact;
+            app.dirty = false;
+            let original = serde_json::to_string(&app.session.project).unwrap();
+            for size in [Vec2::new(900.0, 650.0), Vec2::new(1280.0, 800.0)] {
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+                let bounds = &app.effects_bounds;
+                assert_eq!(app.view_mode, ViewMode::Timeline);
+                assert!(
+                    (bounds.library.right() - (app.timeline_bounds.left() - TRACK_WIDTH)).abs()
+                        < 0.1
+                );
+                assert_eq!(bounds.library.left(), bounds.strip.left());
+                assert_eq!(bounds.library.bottom(), bounds.strip.top());
+                assert_eq!(app.master_bounds.bottom(), bounds.strip.top());
+                assert_eq!(app.scrollbar_bounds.bottom(), bounds.strip.top());
+                assert_eq!(app.scrollbar_bounds.left(), app.timeline_bounds.left());
+                assert_eq!(app.timeline_bounds.bottom(), app.scrollbar_bounds.top());
+                assert!(bounds.strip.contains_rect(bounds.chain[0].1));
+                let bottom = bounds.strip.bottom();
+                let separators = shapes
+                    .iter()
+                    .filter(|shape| {
+                        matches!(&shape.shape, egui::Shape::LineSegment { points, stroke }
+                    if points[0].x <= bounds.strip.left() && points[1].x >= bounds.strip.right()
+                        && (points[0].y - bottom).abs() <= 1.0 && points[0].y == points[1].y
+                        && *stroke == Stroke::new(1.0, theme::palette(&ctx).border))
+                    })
+                    .count();
+                assert_eq!(separators, 1);
+            }
+            assert_eq!(
+                serde_json::to_string(&app.session.project).unwrap(),
+                original
+            );
+            assert!(!app.dirty);
+        }
+    }
+}
+#[test]
+fn timeline_track_click_switches_effect_chain_and_retains_state_across_view_changes() {
+    let (mut app, first) = fixture();
+    let ctx = context();
+    let second = app.session.project.add_track().unwrap();
+    app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::equalizer()];
+    app.session.project.tracks[1].effects = vec![daw_core::EffectInstance::drive()];
+    app.select_track(first, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.effects_bounds.units.len(), 1);
+    let original = serde_json::to_string(&app.session.project).unwrap();
+    app.dirty = false;
+    let point = Pos2::new(
+        app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
+        app.lane_bounds[&second].top() + 18.0,
+    );
+    click(&mut app, &ctx, point);
+    assert_eq!(app.selected_track, Some(second));
+    assert_eq!(app.effects_bounds.drive_units.len(), 1);
+    assert!(app.effects_bounds.units.is_empty());
+    assert_eq!(
+        serde_json::to_string(&app.session.project).unwrap(),
+        original
+    );
+    assert!(!app.dirty);
+    let compact = app.effects_bounds.compact.center();
+    click(&mut app, &ctx, compact);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.session.project.tracks[1].effects_compact);
+    assert!(!app.session.project.tracks[0].effects_compact);
+    app.set_view_mode(ViewMode::Mixer, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.effects_bounds.drive_units.len(), 1);
+    assert!(
+        app.effects_bounds.drive_units[0]
+            .knobs
+            .iter()
+            .flatten()
+            .all(|rect| !rect.is_positive())
+    );
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.selected_track, Some(second));
+    assert_eq!(app.effects_bounds.drive_units.len(), 1);
+}
+#[test]
+fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    frame(&mut app, &ctx, vec![]);
+    let start = app.effects_bounds.entry.center();
+    click(&mut app, &ctx, start);
+    library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
+    let end = app.effects_bounds.lane_viewport.center();
+    begin_effect_drag(&mut app, &ctx, start, end);
+    assert!(
+        app.effects_drag
+            .as_ref()
+            .is_some_and(|drag| drag.active && drag.is_library())
+    );
+    assert!(app.session.project.tracks[0].effects.is_empty());
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.session.project.tracks[0].effects.len(), 2);
+    let ids = chain_ids(&app);
+    assert!(matches!(
+        app.session.project.tracks[0].effects[0].unit,
+        daw_core::EffectSettings::Eq3(_)
+    ));
+    assert!(matches!(
+        app.session.project.tracks[0].effects[1].unit,
+        daw_core::EffectSettings::Drive(_)
+    ));
+    let start = app.effects_bounds.drive_units[0].header.center();
+    let end = Pos2::new(app.effects_bounds.chain[0].1.left() + 2.0, start.y);
+    begin_effect_drag(&mut app, &ctx, start, end);
+    assert!(
+        app.effects_drag
+            .as_ref()
+            .is_some_and(|drag| drag.active && !drag.is_library())
+    );
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(chain_ids(&app), [ids[1], ids[0]]);
+    let first = app.effects_bounds.drive_units[0].header.center();
+    let second = app.effects_bounds.units[0].header.center();
+    end_click_sequence(&mut app, &ctx);
+    click(&mut app, &ctx, first);
+    click_effect_with_shift(&mut app, &ctx, second, true);
+    assert_eq!(app.selected_effects.len(), 2);
+    let clips = serde_json::to_value(&app.session.project.tracks[0].clips).unwrap();
+    frame(
+        &mut app,
+        &ctx,
+        vec![effect_delete_key(
+            egui::Key::Delete,
+            false,
+            egui::Modifiers::NONE,
+        )],
+    );
+    assert!(app.session.project.tracks[0].effects.is_empty());
+    assert!(app.selected_effects.is_empty());
+    assert_eq!(
+        serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
+        clips
+    );
+}
+
+#[test]
+fn timeline_library_toolbar_spans_workspace_and_toggles_catalog_without_project_edits() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.select_track(track, false);
+            app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::equalizer()];
+            app.session.project.tracks[0].effects_compact = compact;
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let original = serde_json::to_string(&app.session.project).unwrap();
+            let rail = app.effects_bounds.toolbar;
+            let strip = app.effects_bounds.strip;
+            let left = app.timeline_bounds.left();
+            assert_eq!(rail.width(), crate::timeline_toolbar::WIDTH);
+            assert_eq!(rail.right(), app.effects_bounds.library.left());
+            assert_eq!(rail.right(), strip.left());
+            assert_eq!(rail.bottom(), strip.bottom());
+            assert!((rail.top() + 1.0 - app.effects_bounds.library.top()).abs() < 0.1);
+            assert_eq!(
+                app.effects_bounds.library_toggle.width(),
+                crate::timeline_toolbar::BUTTON_SIZE
+            );
+            assert_eq!(
+                app.effects_bounds.library_toggle.center().x,
+                rail.center().x
+            );
+            assert_eq!(
+                app.effects_bounds.library_toggle.top(),
+                rail.top() + (rail.width() - crate::timeline_toolbar::BUTTON_SIZE) * 0.5
+            );
+            let point = app.effects_bounds.entry.center();
+            click(&mut app, &ctx, point);
+            assert!(!app.effects_catalog.selection.is_empty());
+            let point = app.effects_bounds.library_toggle.center();
+            click(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.timeline_catalog_visible);
+            assert!(app.effects_catalog.selection.is_empty());
+            assert!(!app.effects_bounds.library.is_positive());
+            assert!(!app.effects_bounds.entry.is_positive());
+            assert_eq!(app.timeline_bounds.left(), left - TRACK_WIDTH);
+            assert_eq!(app.effects_bounds.strip, strip);
+            assert_eq!(app.effects_bounds.toolbar, rail);
+            assert_eq!(app.effects_bounds.units.len(), 1);
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert!(app.timeline_catalog_visible);
+            assert!(app.effects_bounds.library.is_positive());
+            assert_eq!(app.timeline_bounds.left(), left);
+            assert_eq!(
+                serde_json::to_string(&app.session.project).unwrap(),
+                original
+            );
+            assert!(!app.dirty);
+        }
+    }
+}
+#[test]
+fn timeline_library_button_is_borderless_with_active_fill_and_shared_theme_hover_overlay() {
+    let overlay = egui::Color32::from_rgba_unmultiplied(128, 128, 128, 40);
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, _) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        for lane_button in [false, true] {
+            for selected in [true, false] {
+                app.timeline_catalog_visible = selected;
+                app.timeline_effects_visible = selected;
+                let away = Pos2::new(1000.0, 300.0);
+                let shapes = frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(away)],
+                    Vec2::new(1280.0, 800.0),
+                );
+                let button = if lane_button {
+                    app.effects_bounds.lane_toggle
+                } else {
+                    app.effects_bounds.library_toggle
+                };
+                let surface = button;
+                let fill = theme::toggle_colors(&ctx, selected).0;
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == surface && rect.fill == fill && rect.stroke == Stroke::NONE)));
+                assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == surface && rect.fill == overlay)));
+                assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if (rect.rect == surface || rect.rect == button) && rect.stroke.width > 0.0)));
+                let shapes = frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(button.center())],
+                    Vec2::new(1280.0, 800.0),
+                );
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == surface && rect.fill == overlay && rect.stroke == Stroke::NONE)));
+                let background = if selected {
+                    fill
+                } else {
+                    theme::palette(&ctx).panel
+                };
+                for channel in &background.to_array()[..3] {
+                    let composited = 128.0 * (40.0 / 255.0) + f32::from(*channel) * (215.0 / 255.0);
+                    assert!(if color_theme == settings::ColorTheme::Dark {
+                        composited > f32::from(*channel)
+                    } else {
+                        composited < f32::from(*channel)
+                    });
+                }
+            }
+        }
+    }
+}
+#[test]
+fn hidden_timeline_catalog_keeps_lane_actions_and_visibility_across_views() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    app.session.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::equalizer());
+    frame(&mut app, &ctx, vec![]);
+    let point = app.effects_bounds.library_toggle.center();
+    click(&mut app, &ctx, point);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.timeline_catalog_visible);
+    let original = app.session.project.tracks[0].effects.clone();
+    // Leave the toggle's keyboard focus before testing hidden catalog shortcuts.
+    let focus = ctx.memory(|memory| memory.focused()).unwrap();
+    ctx.memory_mut(|memory| memory.surrender_focus(focus));
+    library_key(&mut app, &ctx, egui::Key::Enter, false);
+    assert_eq!(app.session.project.tracks[0].effects, original);
+    let point = app.effects_bounds.units[0].header.center();
+    click(&mut app, &ctx, point);
+    assert_eq!(app.selected_effects.len(), 1);
+    frame(
+        &mut app,
+        &ctx,
+        vec![effect_delete_key(
+            egui::Key::Delete,
+            false,
+            egui::Modifiers::NONE,
+        )],
+    );
+    assert!(app.session.project.tracks[0].effects.is_empty());
+    app.set_view_mode(ViewMode::Mixer, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.effects_bounds.library.is_positive());
+    assert!(app.effects_bounds.toolbar.is_positive());
+    assert!(!app.timeline_catalog_visible);
+    end_click_sequence(&mut app, &ctx);
+    let toggle = app.effects_bounds.library_toggle.center();
+    click(&mut app, &ctx, toggle);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.effects_bounds.library.is_positive());
+    let point = app.effects_bounds.entry.center();
+    click(&mut app, &ctx, point);
+    library_key(&mut app, &ctx, egui::Key::Enter, false);
+    assert_eq!(app.session.project.tracks[0].effects.len(), 1);
+    end_click_sequence(&mut app, &ctx);
+    click(&mut app, &ctx, toggle);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.effects_bounds.library.is_positive());
+    assert_eq!(app.effects_bounds.units.len(), 1);
+}
+#[test]
+fn timeline_library_toggle_respects_disabled_modal_and_effect_drag_guards() {
+    for lane_button in [false, true] {
+        for guard in ["disabled", "modal", "effect_drag"] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.select_track(track, false);
+            app.session.project.tracks[0]
+                .effects
+                .push(daw_core::EffectInstance::equalizer());
+            frame(&mut app, &ctx, vec![]);
+            let point = if lane_button {
+                app.effects_bounds.lane_toggle.center()
+            } else {
+                app.effects_bounds.library_toggle.center()
+            };
+            if guard == "modal" {
+                app.unsaved_prompt = true;
+            }
+            if guard == "effect_drag" {
+                let header = app.effects_bounds.units[0].header.center();
+                begin_effect_drag(&mut app, &ctx, header, header + Vec2::new(70.0, 0.0));
+            }
+            app.dirty = false;
+            let original = serde_json::to_string(&app.session.project).unwrap();
+            for pressed in [true, false] {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1280.0, 800.0),
+                        )),
+                        events: vec![egui::Event::PointerMoved(point), button(point, pressed)],
+                        ..Default::default()
+                    },
+                    |ui| {
+                        ui.add_enabled_ui(guard != "disabled", |ui| app.show(ui));
+                    },
+                );
+                output.textures_delta.clear();
+            }
+            assert!(app.timeline_catalog_visible, "{guard}");
+            assert!(app.timeline_effects_visible, "{guard}");
+            assert_eq!(
+                serde_json::to_string(&app.session.project).unwrap(),
+                original,
+                "{guard}"
+            );
+            assert!(!app.dirty, "{guard}");
+        }
+    }
+}
+
+#[test]
+fn timeline_lane_toggle_reclaims_height_and_preserves_effects_across_view_changes() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for catalog in [false, true] {
+                let (mut app, track) = fixture();
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                app.select_track(track, false);
+                app.timeline_catalog_visible = catalog;
+                app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::equalizer()];
+                app.session.project.tracks[0].effects_compact = compact;
+                frame(&mut app, &ctx, vec![]);
+                let rail = app.effects_bounds.toolbar;
+                let toggle = app.effects_bounds.lane_toggle;
+                assert_eq!(toggle.size(), Vec2::splat(24.0));
+                assert_eq!(toggle.center().x, rail.center().x);
+                assert_eq!(rail.bottom() - toggle.bottom(), 7.0);
+                assert!(!toggle.intersects(app.effects_bounds.library_toggle));
+                let lane = app.effects_bounds.strip;
+                let scrollbar = app.scrollbar_bounds;
+                let timeline = app.timeline_bounds;
+                let master = app.master_bounds;
+                let original = serde_json::to_string(&app.session.project).unwrap();
+                app.dirty = false;
+                let unit = app.effects_bounds.units[0].header.center();
+                click(&mut app, &ctx, unit);
+                assert_eq!(app.selected_effects.len(), 1);
+                end_click_sequence(&mut app, &ctx);
+                click(&mut app, &ctx, toggle.center());
+                frame(&mut app, &ctx, vec![]);
+                assert!(!app.timeline_effects_visible);
+                assert_eq!(app.timeline_catalog_visible, catalog);
+                assert!(app.selected_effects.is_empty());
+                assert!(app.effects_drag.is_none());
+                assert!(!app.effects_bounds.strip.is_positive());
+                assert!(app.effects_bounds.chain.is_empty());
+                assert!(app.effects_bounds.units.is_empty());
+                assert!(!app.effects_bounds.lane_viewport.is_positive());
+                assert_eq!(app.effects_bounds.toolbar, rail);
+                assert_eq!(app.effects_bounds.lane_toggle, toggle);
+                assert_eq!(app.timeline_bounds.left(), timeline.left());
+                assert!(
+                    (app.timeline_bounds.height() - timeline.height() - lane.height()).abs() < 0.1
+                );
+                assert!((app.scrollbar_bounds.top() - scrollbar.top() - lane.height()).abs() < 0.1);
+                assert!((app.master_bounds.bottom() - master.bottom() - lane.height()).abs() < 0.1);
+                assert_eq!(app.scrollbar_bounds.bottom(), rail.bottom());
+                assert_eq!(app.effects_bounds.library.is_positive(), catalog);
+                if catalog {
+                    assert_eq!(app.effects_bounds.library.bottom(), rail.bottom());
+                }
+                frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 600.0));
+                assert_eq!(
+                    app.effects_bounds.toolbar.bottom() - app.effects_bounds.lane_toggle.bottom(),
+                    7.0
+                );
+                assert_eq!(app.effects_bounds.lane_toggle.top(), toggle.top() - 200.0);
+                frame(&mut app, &ctx, vec![]);
+                library_key(&mut app, &ctx, egui::Key::Delete, false);
+                assert_eq!(
+                    serde_json::to_string(&app.session.project).unwrap(),
+                    original
+                );
+                assert!(!app.dirty);
+                app.set_view_mode(ViewMode::Mixer, &ctx);
+                frame(&mut app, &ctx, vec![]);
+                assert!(!app.mixer_bounds.is_empty());
+                assert!(!app.timeline_effects_visible);
+                assert_eq!(app.timeline_catalog_visible, catalog);
+                app.set_view_mode(ViewMode::Timeline, &ctx);
+                frame(&mut app, &ctx, vec![]);
+                assert!(!app.effects_bounds.strip.is_positive());
+                assert!(!app.timeline_effects_visible);
+                end_click_sequence(&mut app, &ctx);
+                click(&mut app, &ctx, toggle.center());
+                frame(&mut app, &ctx, vec![]);
+                assert!(app.timeline_effects_visible);
+                assert_eq!(app.effects_bounds.strip, lane);
+                assert_eq!(app.scrollbar_bounds, scrollbar);
+                assert_eq!(app.master_bounds, master);
+                assert_eq!(app.effects_bounds.units.len(), 1);
+                assert_eq!(
+                    serde_json::to_string(&app.session.project).unwrap(),
+                    original
+                );
+                assert!(!app.dirty);
+            }
+        }
+    }
+}
+
+#[test]
+fn hidden_timeline_lane_keeps_catalog_addition_without_dragging_into_stale_bounds() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.select_track(track, false);
+    frame(&mut app, &ctx, vec![]);
+    let destination = app.effects_bounds.lane_viewport.center();
+    let toggle = app.effects_bounds.lane_toggle.center();
+    click(&mut app, &ctx, toggle);
+    frame(&mut app, &ctx, vec![]);
+    let entry = app.effects_bounds.entry.center();
+    begin_effect_drag(&mut app, &ctx, entry, destination);
+    frame(&mut app, &ctx, vec![button(destination, false)]);
+    assert!(app.effects_drag.is_none());
+    assert!(app.session.project.tracks[0].effects.is_empty());
+    end_click_sequence(&mut app, &ctx);
+    click(&mut app, &ctx, entry);
+    library_key(&mut app, &ctx, egui::Key::Enter, false);
+    assert_eq!(app.session.project.tracks[0].effects.len(), 1);
+    assert!(!app.effects_bounds.strip.is_positive());
+    assert!(!app.timeline_effects_visible);
+    end_click_sequence(&mut app, &ctx);
+    click(&mut app, &ctx, toggle);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.effects_bounds.units.len(), 1);
+}
+
+#[test]
+fn timeline_tracks_share_one_left_divider_with_catalog_or_toolbar() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for scale in [1.0, 1.5, 2.0] {
+            for catalog in [false, true] {
+                for lane in [false, true] {
+                    let (mut app, _) = fixture();
+                    app.session.project.add_track().unwrap();
+                    app.selected_track = None;
+                    app.selected_tracks.clear();
+                    app.timeline_catalog_visible = catalog;
+                    app.timeline_effects_visible = lane;
+                    let ctx = context();
+                    ctx.set_pixels_per_point(scale);
+                    app.set_settings(
+                        &ctx,
+                        settings::AppSettings {
+                            theme: color_theme,
+                            ..Default::default()
+                        },
+                    );
+                    let size = Vec2::new(1280.0, 800.0);
+                    frame_shapes(&mut app, &ctx, vec![], size);
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+                    let palette = theme::palette(&ctx);
+                    let left = app.timeline_bounds.left() - TRACK_WIDTH;
+                    let adjacent = if catalog {
+                        app.effects_bounds.library
+                    } else {
+                        app.effects_bounds.toolbar
+                    };
+                    assert_eq!(adjacent.right(), left);
+                    assert_eq!(app.master_bounds.left(), left);
+                    let verticals: Vec<_> = shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::LineSegment { points, stroke }
+                                if points[0].x == points[1].x
+                                    && (points[0].x - left).abs() <= 1.0
+                                    && *stroke == Stroke::new(1.0, palette.border) =>
+                            {
+                                Some(*points)
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(
+                        verticals,
+                        vec![[
+                            Pos2::new(left - 0.5, adjacent.top()),
+                            Pos2::new(left - 0.5, adjacent.bottom()),
+                        ]]
+                    );
+                    for row in app
+                        .lane_bounds
+                        .values()
+                        .copied()
+                        .chain(std::iter::once(app.master_bounds))
+                    {
+                        assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+                            if rect.fill == palette.panel && rect.rect.left() == left
+                                && rect.rect.width() == TRACK_WIDTH && rect.rect.contains(Pos2::new(left + 0.5, row.center().y)))));
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn first_timeline_effect_shares_the_toolbar_divider_without_changing_other_unit_borders() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for collapsed in [false, true] {
+                let (mut app, track) = fixture();
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                app.select_track(track, false);
+                let mut eq = daw_core::EffectInstance::equalizer();
+                if let daw_core::EffectSettings::Eq3(settings) = &mut eq.unit {
+                    settings.collapsed = collapsed;
+                }
+                app.session.project.tracks[0].effects = vec![eq, daw_core::EffectInstance::drive()];
+                app.session.project.tracks[0].effects_compact = compact;
+                let original = serde_json::to_string(&app.session.project).unwrap();
+                app.dirty = false;
+                for view in [ViewMode::Timeline] {
+                    app.set_view_mode(view, &ctx);
+                    for catalog in [false, true] {
+                        app.timeline_catalog_visible = catalog;
+                        frame(&mut app, &ctx, vec![]);
+                        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                        let first = app.effects_bounds.chain[0].1;
+                        let stroke = Stroke::new(1.0, theme::palette(&ctx).border);
+                        let verticals: Vec<_> = shapes
+                            .iter()
+                            .filter_map(|shape| match &shape.shape {
+                                egui::Shape::LineSegment {
+                                    points,
+                                    stroke: painted,
+                                } if *painted == stroke
+                                    && points[0].x == points[1].x
+                                    && (points[0].x - first.left()).abs() <= 1.0 =>
+                                {
+                                    Some(*points)
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        assert_eq!(verticals.len(), 1);
+                        assert_eq!(first.left(), app.effects_bounds.toolbar.right());
+                        let expected_x = first.left() - 0.5;
+                        assert_eq!(verticals[0][0].x, expected_x);
+                        let second = app.effects_bounds.chain[1].1.shrink(0.5);
+                        assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { points, stroke: painted }
+                            if *painted == stroke && *points == [second.left_top(), second.left_bottom()])));
+                        assert_eq!(
+                            serde_json::to_string(&app.session.project).unwrap(),
+                            original
+                        );
+                        assert!(!app.dirty);
+                    }
+                }
+            }
+        }
     }
 }

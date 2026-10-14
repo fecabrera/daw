@@ -747,6 +747,37 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                                 "{label}: phase={phase}, hovered={hovered:?}, expected={expected:?}, fallback={:?}",
                                 text.fallback_color
                             );
+                            let center = text.pos + text.galley.rect.center().to_vec2();
+                            let hover_backgrounds: Vec<_> = shapes.iter().enumerate().filter(|(_, shape)| matches!(&shape.shape,
+                                egui::Shape::Rect(rect) if rect.fill == theme::TOOLBAR_HOVER_FILL && rect.rect.contains(center)
+                            )).collect();
+                            assert_eq!(
+                                hover_backgrounds.len(),
+                                usize::from(hovered == Some(label)),
+                                "{label}: hover phase {phase}"
+                            );
+                            if let Some((index, shape)) = hover_backgrounds.first() {
+                                let egui::Shape::Rect(rect) = &shape.shape else {
+                                    unreachable!()
+                                };
+                                assert_eq!(rect.stroke, egui::Stroke::NONE);
+                                assert_eq!(
+                                    rect.corner_radius,
+                                    ctx.global_style().visuals.widgets.inactive.corner_radius
+                                );
+                                let text_index = shapes
+                                    .iter()
+                                    .position(|shape| {
+                                        matches!(&shape.shape,
+                                            egui::Shape::Text(text) if text.galley.text() == label
+                                        )
+                                    })
+                                    .unwrap();
+                                assert!(
+                                    *index < text_index,
+                                    "Hover fill must stay behind the label"
+                                );
+                            }
                             if label == selected_label {
                                 let center = text.pos + text.galley.rect.center().to_vec2();
                                 let background = shapes
@@ -1082,7 +1113,7 @@ fn gain_and_peak_fields_align_with_marked_columns_in_tracks_and_master() {
 }
 
 #[test]
-fn instrument_and_effects_views_use_their_track_scope_without_project_changes() {
+fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, audio) = fixture();
         app.session.project.tracks[0].name = "Audio only".into();
@@ -1124,7 +1155,7 @@ fn instrument_and_effects_views_use_their_track_scope_without_project_changes() 
         assert!(has(&shapes, "Layers"));
         assert!(has(&shapes, "Add source"));
         assert!(!has(&shapes, "Units"));
-        app.set_view_mode(ViewMode::Effects, &ctx);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(!has(&shapes, "Track effects are not available yet."));
         assert!(app.effects_bounds.strip.is_positive());
@@ -1146,30 +1177,57 @@ fn instrument_and_effects_views_use_their_track_scope_without_project_changes() 
 }
 
 #[test]
-fn processing_view_names_and_empty_states_keep_their_responsibilities_separate() {
+fn available_views_and_empty_states_keep_effects_in_timeline_only() {
     assert_eq!(
         ViewMode::ALL.map(ViewMode::label),
-        ["Timeline", "Instrument", "Effects", "Editor", "Mixer"]
+        ["Timeline", "Instrument", "Editor", "Mixer"]
     );
     let mut app = DawUi::default();
     let ctx = context();
-    for (mode, prompt) in [
-        (
-            ViewMode::Instrument,
-            "Select a MIDI track to configure its instrument.",
-        ),
-        (
-            ViewMode::Effects,
-            "Select a track to configure its effects.",
-        ),
-    ] {
+    for mode in ViewMode::ALL {
         app.set_view_mode(mode, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        assert!(
-            shapes
-                .iter()
-                .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == prompt))
-        );
+        if mode == ViewMode::Timeline {
+            assert!(app.effects_bounds.library.is_positive());
+            assert!(app.effects_bounds.strip.is_positive());
+        }
+        if mode == ViewMode::Instrument {
+            assert!(
+                shapes
+                    .iter()
+                    .any(|s| matches!(&s.shape, egui::Shape::Text(t)
+                if t.galley.text() == "Select a MIDI track to configure its instrument."))
+            );
+        }
         assert!(!app.dirty);
     }
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+            ..Default::default()
+        },
+        |ui| {
+            ui.horizontal(|ui| app.view_controls(ui));
+            app.view_menu(ui);
+        },
+    );
+    let labels: Vec<_> = output
+        .shapes
+        .iter()
+        .filter_map(|s| match &s.shape {
+            egui::Shape::Text(text) => Some(text.galley.text()),
+            _ => None,
+        })
+        .collect();
+    assert!(!labels.contains(&"Effects"));
+    for mode in ViewMode::ALL {
+        assert_eq!(
+            labels
+                .iter()
+                .filter(|label| **label == mode.label())
+                .count(),
+            2
+        );
+    }
+    output.textures_delta.clear();
 }

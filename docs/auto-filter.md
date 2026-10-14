@@ -1,6 +1,6 @@
 # Auto-filter
 
-Double-click **Auto-filter** in the Effects catalog to append an independent instance to the selected audio or MIDI track. It uses the shared unit panel, header power, saved horizontal collapse, compact lane control, selection border, header reordering, and removal menu. Changes use the shared core validation and project save format.
+Double-click **Auto-filter** in Timeline's Effects catalog to append an independent instance to the selected audio or MIDI track. It uses the shared unit panel, header power, saved horizontal collapse, compact lane control, selection border, header reordering, and removal menu. Changes use the shared core validation and project save format.
 
 ## Controls
 

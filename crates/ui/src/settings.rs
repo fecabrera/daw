@@ -547,7 +547,7 @@ mod tests {
         let b = Context::default();
         crate::theme::configure(&a);
         crate::theme::configure(&b);
-        let initial = crate::theme::ruler_selection(&a, true);
+        let initial = crate::theme::ruler_loop_colors(&a, true);
         crate::theme::set_accent(&a, AccentColor::Teal.color());
         let visuals = a.global_style().visuals.clone();
         assert_eq!(visuals.hyperlink_color, AccentColor::Teal.color());
@@ -565,7 +565,7 @@ mod tests {
             crate::theme::selection_outline(&a).color,
             AccentColor::Teal.color()
         );
-        assert_ne!(crate::theme::ruler_selection(&a, true), initial);
+        assert_eq!(crate::theme::ruler_loop_colors(&a, true), initial);
         assert_eq!(crate::theme::accent(&b), AccentColor::Purple.color());
     }
 

@@ -3,6 +3,9 @@ use super::*;
 #[cfg(test)]
 pub(crate) struct EffectsUiBounds {
     pub library: Rect,
+    pub toolbar: Rect,
+    pub library_toggle: Rect,
+    pub lane_toggle: Rect,
     pub header: Rect,
     pub strip: Rect,
     pub scrollbar: Rect,
@@ -27,6 +30,9 @@ impl Default for EffectsUiBounds {
     fn default() -> Self {
         Self {
             library: Rect::NOTHING,
+            toolbar: Rect::NOTHING,
+            library_toggle: Rect::NOTHING,
+            lane_toggle: Rect::NOTHING,
             header: Rect::NOTHING,
             strip: Rect::NOTHING,
             scrollbar: Rect::NOTHING,
@@ -49,32 +55,9 @@ impl Default for EffectsUiBounds {
 }
 
 impl DawUi {
-    pub(super) fn effects_view(&mut self, ui: &mut egui::Ui) {
-        ui.spacing_mut().item_spacing = Vec2::ZERO;
-        self.selected_effects.retain(|id| {
-            self.session
-                .project
-                .tracks
-                .iter()
-                .any(|track| track.effects.iter().any(|effect| effect.id == *id))
-        });
-        let selected = self
-            .selected_track
-            .and_then(|id| {
-                self.session
-                    .project
-                    .tracks
-                    .iter()
-                    .find(|track| track.id == id)
-            })
-            .cloned();
-        let mut compact = selected.as_ref().is_some_and(|track| track.effects_compact);
-        let mut effects = selected
-            .as_ref()
-            .map(|track| track.effects.clone())
-            .unwrap_or_default();
-        // Knob focus must remain editable; text editors and other active gestures still block changes.
-        let allowed = ui.is_enabled()
+    pub(super) fn effects_editing_enabled(&self, ui: &egui::Ui) -> bool {
+        // Knob focus remains editable; text editors and other active gestures block changes.
+        ui.is_enabled()
             && self.edit_environment_available()
             && self.drag.is_none()
             && self.track_drag.is_none()
@@ -89,9 +72,36 @@ impl DawUi {
             && self.loop_drag.is_none()
             && self.marquee.is_none()
             && self.selection_drag.iter().all(Option::is_none)
-            && self.file_hover.is_none();
-        let original_compact = compact;
-        let original_effects = effects.clone();
+            && self.file_hover.is_none()
+    }
+
+    pub(super) fn effects_workspace(&mut self, ui: &mut egui::Ui) {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        self.selected_effects.retain(|id| {
+            self.session
+                .project
+                .tracks
+                .iter()
+                .any(|track| track.effects.iter().any(|effect| effect.id == *id))
+        });
+        let mut selected = self
+            .selected_track
+            .and_then(|id| {
+                self.session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|track| track.id == id)
+            })
+            .cloned();
+        let mut compact = selected.as_ref().is_some_and(|track| track.effects_compact);
+        let mut effects = selected
+            .as_ref()
+            .map(|track| track.effects.clone())
+            .unwrap_or_default();
+        let allowed = self.effects_editing_enabled(ui);
+        let mut original_compact = compact;
+        let mut original_effects = effects.clone();
         #[cfg(test)]
         {
             self.effects_bounds.units.clear();
@@ -106,17 +116,32 @@ impl DawUi {
         ui.add_space(1.0);
         let bounds = Rect::from_min_max(ui.cursor().min, ui.max_rect().max);
         let below_track = (bounds.height() - RULER_HEIGHT - track_overview::STRIP_HEIGHT).max(0.0);
-        let strip_height =
-            panels::unit_height(compact).min((below_track - SCROLLBAR_HEIGHT).max(0.0));
+        let lane_visible = self.timeline_effects_visible;
+        let strip_height = if lane_visible {
+            panels::unit_height(compact).min((below_track - SCROLLBAR_HEIGHT).max(0.0))
+        } else {
+            0.0
+        };
         let strip = Rect::from_min_max(
             Pos2::new(bounds.left(), bounds.bottom() - strip_height),
             bounds.max,
         );
         let upper = Rect::from_min_max(bounds.min, Pos2::new(bounds.right(), strip.top()));
-        let library = panels::ControlPanel::begin(ui, upper);
-        let (track, assets) = self.track_overview_content(ui);
-        self.prepare_track_overview(track.as_ref());
+        let catalog_visible = self.timeline_catalog_visible;
+        let library = catalog_visible.then(|| panels::ControlPanel::begin(ui, upper));
+        #[cfg(test)]
+        if !catalog_visible {
+            self.effects_bounds.library = Rect::NOTHING;
+            self.effects_bounds.header = Rect::NOTHING;
+            self.effects_bounds.entry = Rect::NOTHING;
+            self.effects_bounds.drive_entry = Rect::NOTHING;
+            self.effects_bounds.auto_filter_entry = Rect::NOTHING;
+            self.effects_bounds.compressor_entry = Rect::NOTHING;
+            self.effects_bounds.ott_entry = Rect::NOTHING;
+            self.effects_bounds.compact = Rect::NOTHING;
+        }
         ui.horizontal_top(|ui| {
+            if let Some(library) = library.as_ref() {
             ui.allocate_ui_with_layout(
                 Vec2::new(TRACK_WIDTH, upper.height()),
                 egui::Layout::top_down(egui::Align::Min),
@@ -203,7 +228,7 @@ impl DawUi {
                             )
                             .inner;
                         entry_rects[index] = response.rect;
-                        if allowed {
+                        if allowed && lane_visible {
                             self.start_library_effect_drag(ui, &response, selected.as_ref().map(|track| track.id), index, &effects);
                         }
                         let pointer_clicked = response.clicked() && ui.rect_contains_pointer(response.rect) && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary));
@@ -258,78 +283,64 @@ impl DawUi {
                     }
                 },
             );
+            }
             ui.allocate_ui_with_layout(
                 Vec2::new(ui.available_width(), upper.height()),
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     ui.set_min_height(upper.height());
-                    let overview = Rect::from_min_size(
-                        ui.max_rect().min + Vec2::new(track_overview::LABEL_WIDTH, 0.0),
-                        Vec2::new(
-                            (ui.available_width() - track_overview::LABEL_WIDTH).max(0.0),
-                            (upper.height() - SCROLLBAR_HEIGHT).max(0.0),
-                        ),
-                    );
-                    self.timeline_pinch(ui, overview);
-                    self.timeline_swipe(ui, overview);
-                    self.track_overview_ruler(ui);
-                    if let Some(track) = &track {
-                        self.track_overview_strip(ui, track, &assets);
-                    } else {
-                        self.lane_bounds.clear();
-                        self.timeline_bounds = Rect::NOTHING;
+                        let timeline_bounds = Rect::from_min_max(ui.max_rect().min, upper.max);
+                        let mut timeline_ui = ui.new_child(egui::UiBuilder::new()
+                            .id_salt("timeline-workspace")
+                            .max_rect(timeline_bounds)
+                            .layout(egui::Layout::top_down(egui::Align::Min)));
+                        timeline_ui.set_clip_rect(timeline_bounds.intersect(ui.clip_rect()));
+                        timeline_ui.add_enabled_ui(self.effects_drag.is_none(), |ui| self.timeline_workspace(ui));
                         #[cfg(test)]
-                        {
-                            self.midi_editor.track_bounds = Rect::NOTHING;
-                            self.midi_editor.clip_bounds.clear();
-                        }
-                        rows::centered(ui, track_overview::STRIP_HEIGHT, |ui| {
-                            ui.add_space(track_overview::LABEL_WIDTH);
-                            ui.label("Select a track to configure its effects.");
-                        });
-                    }
-                    self.finish_clip_drag(ui);
-                    let (remaining, _) = ui.allocate_exact_size(
-                        Vec2::new(ui.available_width(), ui.available_height().max(0.0)),
-                        Sense::hover(),
-                    );
-                    let scrollbar = Rect::from_min_max(
-                        Pos2::new(
-                            remaining.left() + track_overview::LABEL_WIDTH,
-                            strip.top() - SCROLLBAR_HEIGHT,
-                        ),
-                        Pos2::new(remaining.right(), strip.top()),
-                    );
-                    let grid = Rect::from_min_max(
-                        Pos2::new(scrollbar.left(), remaining.top()),
-                        scrollbar.right_top(),
-                    );
-                    if grid.is_positive() {
-                        let painter = ui.painter_at(grid);
-                        self.paint_grid(&painter, grid);
-                        self.paint_track_overview_playhead(&painter, grid);
-                    }
-                    self.timeline_scrollbar_at(ui, scrollbar, "effects_timeline_scrollbar");
-                    #[cfg(test)]
-                    {
-                        self.effects_bounds.scrollbar = scrollbar;
-                    }
+                        { self.effects_bounds.scrollbar = self.scrollbar_bounds; }
                 },
             );
         });
-        library.finish(ui);
-        ui.painter()
-            .rect_filled(strip, 0.0, theme::palette(ui.ctx()).background);
-        // The status panel owns the single separator below the effects lane.
-        panels::ControlPanel::row_dividers(ui, strip, true, false);
-        self.effects_lane(
-            ui,
-            strip,
-            selected.as_ref().map(|track| track.id),
-            &mut effects,
-            compact,
-            allowed,
-        );
+        if let Some(library) = library {
+            library.finish(ui);
+        }
+        // Track-panel clicks can change the processing target while Timeline is drawn.
+        if self.selected_track != selected.as_ref().map(|track| track.id) {
+            selected = self
+                .selected_track
+                .and_then(|id| {
+                    self.session
+                        .project
+                        .tracks
+                        .iter()
+                        .find(|track| track.id == id)
+                })
+                .cloned();
+            compact = selected.as_ref().is_some_and(|track| track.effects_compact);
+            effects = selected
+                .as_ref()
+                .map(|track| track.effects.clone())
+                .unwrap_or_default();
+            original_compact = compact;
+            original_effects = effects.clone();
+            self.selected_effects.clear();
+            self.effects_catalog.clear();
+            self.effects_drag = None;
+        }
+        if lane_visible {
+            ui.painter()
+                .rect_filled(strip, 0.0, theme::palette(ui.ctx()).background);
+            // The status panel owns the single separator below the effects lane.
+            panels::ControlPanel::row_dividers(ui, strip, true, false);
+            self.effects_lane(
+                ui,
+                strip,
+                selected.as_ref().map(|track| track.id),
+                &mut effects,
+                compact,
+                allowed,
+            );
+        }
         if let Some(track) = selected
             && (effects != original_effects || compact != original_compact)
         {
@@ -342,6 +353,12 @@ impl DawUi {
         #[cfg(test)]
         {
             self.effects_bounds.strip = strip;
+            if !lane_visible {
+                self.effects_bounds.strip = Rect::NOTHING;
+                self.effects_bounds.chain.clear();
+                self.effects_bounds.lane_viewport = Rect::NOTHING;
+                self.effects_bounds.lane_scroll = 0.0;
+            }
         }
     }
 
@@ -385,7 +402,14 @@ impl DawUi {
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = -1.0;
                             for effect in effects.iter_mut() {
-                                let unit = ui.push_id(effect.id, |ui| {
+                                let mut unit_scope = egui::UiBuilder::new().id_salt(effect.id);
+                                if slots.is_empty() {
+                                    unit_scope = unit_scope.ui_stack_info(
+                                        egui::UiStackInfo::default()
+                                            .with_tag(panels::SHARED_LEFT_BORDER_TAG),
+                                    );
+                                }
+                                let unit = ui.scope_builder(unit_scope, |ui| {
                                     let interactive =
                                         self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
                                     let (header, power) = ui
