@@ -1753,3 +1753,17 @@ Completed checks:
 - Documentation links and `git diff --check`: passed.
 
 Native mouse/trackpad behavior and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only change. The running DAW and user projects were not restarted or changed.
+
+## White active transport icons in light mode — 2026-10-14
+
+Play, Stop, and Loop now use white icons on their active colored backgrounds in both themes. This supersedes the theme-dependent active transport foreground, which produced dark icons in light mode. Inactive and disabled colors, hover overlays, fills, sizes, and actions retain their behavior. The existing paint test checks actual SVG pixel colors against white for all three active icons in both themes.
+
+Completed checks:
+
+- Focused transport paint check: passed. Log: `work/light-transport-icons-focused.log`.
+- Formatting and strict locked offline workspace/all-target Clippy: passed. Log: `work/light-transport-icons-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **536 passed**, including doc tests. Log: `work/light-transport-icons-workspace.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/light-transport-icons-package.log`. Bundle and build executables share SHA-256 `f8613525d210adeff6e991b74fdb9358e461af38f4bfc0cbad3ae3af4dca0149`.
+- Documentation links and `git diff --check`: passed.
+
+Native appearance and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only change. The running DAW and user projects were not restarted or changed.

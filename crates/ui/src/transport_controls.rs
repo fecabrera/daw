@@ -18,7 +18,7 @@ pub(super) fn show(
     can_loop: bool,
 ) -> Buttons {
     let size = Vec2::splat(icons::TOOLBAR_BUTTON_SIZE);
-    let foreground = theme::toggle_colors(ui.ctx(), true).1;
+    let foreground = egui::Color32::WHITE;
     let play = ui
         .add_enabled_ui(can_play, |ui| {
             icons::borderless_toggle_with_colors(

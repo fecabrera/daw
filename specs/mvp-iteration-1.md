@@ -544,3 +544,7 @@ Timeline and Editor use the same loop-range colors. When Loop is enabled, both r
 ## Click the loop range to toggle looping — 2026-10-14
 
 In Timeline and Editor, a primary click on an existing loop-range body or either handle toggles Loop on release through the same action as the toolbar button. Preserve the range endpoints and playhead, mark the change as modified, and sync playback. Retain the standard click/drag threshold so small pointer motion can still count as a click. A real drag, including one with unchanged snapped bounds or no horizontal displacement, must not toggle looping. Empty upper-band clicks do not toggle or change the range; empty-space drags still create it. Lower-band clicks/drags still seek. Retain nonempty-range validation, input guards, and focus/disabled cancellation. Update the ruler tooltip with the click action.
+
+## Light transport icons in light mode — 2026-10-14
+
+Keep Play, Stop, and Loop icons white on their active colored backgrounds in both light and dark modes, independent of the configured accent. This supersedes using the theme-dependent active foreground for these three transport buttons. Preserve inactive and disabled styling, hover behavior, dimensions, fills, and transport actions.

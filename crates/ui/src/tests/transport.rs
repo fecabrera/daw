@@ -81,7 +81,7 @@ fn transport_buttons_share_size_hover_and_semantic_active_colors_in_both_themes(
         let play_fill = egui::Color32::from_rgb(51, 133, 85);
         let stop_fill = egui::Color32::from_rgb(197, 78, 88);
         let loop_fill = egui::Color32::from_rgb(175, 140, 62);
-        let foreground = theme::toggle_colors(&ctx, true).1;
+        let foreground = egui::Color32::WHITE;
         let mut checked_icons = [false; 3];
         for playing in [false, true] {
             for looping in [false, true] {
