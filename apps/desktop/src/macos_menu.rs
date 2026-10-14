@@ -37,6 +37,13 @@ define_class!(
         // SAFETY: The selector takes an NSMenuItem sender and returns void.
         #[unsafe(method(performViewAction:))]
         fn perform_view_action(&self, item: &NSMenuItem) {
+            let mtm = MainThreadMarker::from(self);
+            if NSApplication::sharedApplication(mtm).currentEvent().is_some_and(|event| {
+                event.r#type() == NSEventType::KeyDown
+                    && (event.isARepeat() || self.ivars().context.input(|input| !input.focused || input.pointer.any_down()))
+            }) {
+                return;
+            }
             if let Ok(index) = usize::try_from(item.tag())
                 && let Some(mode) = ViewMode::ALL.get(index)
             {
@@ -251,15 +258,17 @@ impl NativeMenu {
         let view_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("View"));
         view_menu.setAutoenablesItems(false);
         for (index, mode) in ViewMode::ALL.into_iter().enumerate() {
+            let key = mode.shortcut().logical_key.name().to_lowercase();
             // SAFETY: The selector is defined above with an NSMenuItem argument.
             let item = unsafe {
                 NSMenuItem::initWithTitle_action_keyEquivalent(
                     NSMenuItem::alloc(mtm),
                     &NSString::from_str(mode.label()),
                     Some(sel!(performViewAction:)),
-                    ns_string!(""),
+                    &NSString::from_str(&key),
                 )
             };
+            item.setKeyEquivalentModifierMask(NSEventModifierFlags::Command);
             item.setTag(index as isize);
             item.setState(if mode == ViewMode::default() {
                 NSControlStateValueOn
@@ -291,7 +300,15 @@ impl NativeMenu {
                 MenuAction::ProjectSettings => ui.open_project_settings(),
                 MenuAction::File(action) => ui.perform_file_action(action),
                 MenuAction::Clip(action) => ui.perform_clip_action(action, ctx),
-                MenuAction::View(mode) => ui.set_view_mode(mode, ctx),
+                MenuAction::View(mode) => {
+                    ui.set_view_mode(mode, ctx);
+                    let shortcut = mode.shortcut();
+                    // The native key equivalent owns a press also forwarded by winit.
+                    ctx.input_mut(|input| input.events.retain(|event| {
+                        !matches!(event, egui::Event::Key { key, pressed: true, modifiers, .. }
+                            if *key == shortcut.logical_key && modifiers.matches_exact(shortcut.modifiers))
+                    }));
+                }
                 MenuAction::Track(action) => {
                     ui.perform_track_action(action, ctx);
                     // The native key equivalent owns this press if winit also forwards it.

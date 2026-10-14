@@ -1231,3 +1231,127 @@ fn available_views_and_empty_states_keep_effects_in_timeline_only() {
     }
     output.textures_delta.clear();
 }
+
+#[test]
+fn numbered_view_shortcuts_switch_with_exact_modifiers_and_preserve_project_state() {
+    for os in [
+        egui::os::OperatingSystem::Mac,
+        egui::os::OperatingSystem::Windows,
+        egui::os::OperatingSystem::Nix,
+    ] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        ctx.set_os(os);
+        let modifiers = if os.is_mac() {
+            egui::Modifiers {
+                mac_cmd: true,
+                command: true,
+                ..Default::default()
+            }
+        } else {
+            egui::Modifiers {
+                ctrl: true,
+                command: true,
+                ..Default::default()
+            }
+        };
+        let event = |mode: ViewMode, repeat, modifiers| egui::Event::Key {
+            key: mode.shortcut().logical_key,
+            physical_key: None,
+            pressed: true,
+            repeat,
+            modifiers,
+        };
+        let press = |app: &mut DawUi, mode: ViewMode, repeat, modifiers| {
+            frame(app, &ctx, vec![event(mode, repeat, modifiers)]);
+            let mut release = event(mode, false, modifiers);
+            if let egui::Event::Key { pressed, .. } = &mut release {
+                *pressed = false;
+            }
+            frame(app, &ctx, vec![release]);
+        };
+        assert_eq!(
+            ViewMode::ALL.map(|mode| mode.shortcut().logical_key),
+            [
+                egui::Key::Num1,
+                egui::Key::Num2,
+                egui::Key::Num3,
+                egui::Key::Num4
+            ]
+        );
+        let clip = app.session.project.tracks[0].clips[0].id;
+        app.select_clip(clip, track, false);
+        app.zoom = 123.0;
+        app.scroll = 7.0;
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        for mode in ViewMode::ALL.into_iter().chain([ViewMode::Timeline]) {
+            press(&mut app, mode, false, modifiers);
+            assert_eq!(app.view_mode(), mode);
+            assert_eq!(
+                serde_json::to_value(&app.session.project).unwrap(),
+                original
+            );
+            assert_eq!(app.selected_clip, Some(clip));
+            assert!(app.track_selected(track));
+            assert_eq!((app.zoom, app.scroll), (123.0, 7.0));
+            assert!(!app.dirty);
+        }
+        for rejected in [
+            egui::Modifiers::NONE,
+            modifiers | egui::Modifiers::SHIFT,
+            modifiers | egui::Modifiers::ALT,
+        ] {
+            press(&mut app, ViewMode::Mixer, false, rejected);
+            assert_eq!(app.view_mode(), ViewMode::Timeline);
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![event(ViewMode::Mixer, false, modifiers)],
+        );
+        assert_eq!(app.view_mode(), ViewMode::Mixer);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        frame(
+            &mut app,
+            &ctx,
+            vec![event(ViewMode::Mixer, true, modifiers)],
+        );
+        assert_eq!(app.view_mode(), ViewMode::Timeline);
+        let mut release = event(ViewMode::Mixer, false, modifiers);
+        if let egui::Event::Key { pressed, .. } = &mut release {
+            *pressed = false;
+        }
+        frame(&mut app, &ctx, vec![release]);
+        app.settings_open = true;
+        press(&mut app, ViewMode::Mixer, false, modifiers);
+        assert_eq!(app.view_mode(), ViewMode::Timeline);
+        app.settings_open = false;
+        app.track_drag = Some(track);
+        press(&mut app, ViewMode::Mixer, false, modifiers);
+        assert_eq!(app.view_mode(), ViewMode::Timeline);
+        app.track_drag = None;
+        app.track_name_edit = Some(TrackNameEdit {
+            track,
+            text: "Uncommitted".into(),
+            focus: true,
+        });
+        press(&mut app, ViewMode::Mixer, false, modifiers);
+        assert_eq!(app.view_mode(), ViewMode::Mixer);
+        assert!(app.track_name_edit.is_none());
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original
+        );
+        app.use_native_menu();
+        press(&mut app, ViewMode::Timeline, false, modifiers);
+        assert_eq!(
+            app.view_mode(),
+            ViewMode::Mixer,
+            "Native menu owns this key press"
+        );
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        press(&mut app, ViewMode::Mixer, false, modifiers);
+        assert_eq!(app.view_mode(), ViewMode::Timeline);
+        assert!(!app.dirty);
+    }
+}

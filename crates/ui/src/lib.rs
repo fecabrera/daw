@@ -1591,6 +1591,9 @@ impl DawUi {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         self.update_window_title(&ctx);
+        if ui.is_enabled() {
+            self.view_shortcuts(&ctx);
+        }
         egui::Panel::top("toolbar")
             .frame(egui::Frame::new().fill(
                 if cfg!(target_os = "windows")

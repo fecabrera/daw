@@ -1786,3 +1786,20 @@ Completed checks:
 - Documentation links and `git diff --check`: passed.
 
 Native selection/drag behavior, device playback, and Windows/Linux builds were not verified. The running DAW and user projects were not restarted or changed. Export still uses the arranged duration; automatic tails and beat-lane routing remain pending.
+
+## Numbered view shortcuts and menubar bindings — 2026-10-14
+
+Added Command+1/2/3/4 on macOS and Ctrl+1/2/3/4 on Windows/Linux for Timeline, Instrument, Editor, and Mixer. `ViewMode::shortcut` supplies both keyboard routing and menu labels. The egui View menu retains its active-view checkmark and displays shortcut text with the shared platform/font helper. The native macOS View menu registers matching Command key equivalents. Keyboard routing uses the existing view-switch guard and draft cleanup, ignores extra modifiers and repeated presses, and protects focus and active pointer gestures. The native handler owns its key equivalents and removes forwarded duplicate presses.
+
+One new input test covers the mapping, all views on Mac/Windows/Linux contexts, project/clip/track/viewport preservation, exact modifiers, held-key repeat suppression, modal/drag guards, draft cancellation, and native-menu ownership. Existing menu label/font checks now include View shortcuts in both themes on all three OS contexts; checkmark/menu switching checks also pass.
+
+Completed checks:
+
+- Focused numbered-shortcut test and 17 menu-related checks: passed.
+- `cargo fmt --all --check` and strict locked offline workspace/all-target Clippy: passed. Log: `work/view-shortcuts-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **542 passed**, including **340 UI tests** and doc tests. Log: `work/view-shortcuts-workspace.log`.
+- After the final native keyboard focus/pointer guard refinement, strict Clippy and locked offline desktop tests passed. Desktop test log: `work/view-shortcuts-desktop.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed on the final source. Log: `work/view-shortcuts-package.log`. Bundle and build executables share SHA-256 `695fe03c577d59fea93b32cd3a2ab73cd0833740f1d4b3a93607388eb1a2ee70`.
+- Documentation links and `git diff --check`: passed.
+
+Native menubar/key-equivalent interaction and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only change. The running DAW and user projects were not restarted or changed.

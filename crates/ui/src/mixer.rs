@@ -32,6 +32,18 @@ pub enum ViewMode {
 impl ViewMode {
     pub const ALL: [Self; 4] = [Self::Timeline, Self::Instrument, Self::Edit, Self::Mixer];
 
+    pub fn shortcut(self) -> egui::KeyboardShortcut {
+        egui::KeyboardShortcut::new(
+            egui::Modifiers::COMMAND,
+            match self {
+                Self::Timeline => egui::Key::Num1,
+                Self::Instrument => egui::Key::Num2,
+                Self::Edit => egui::Key::Num3,
+                Self::Mixer => egui::Key::Num4,
+            },
+        )
+    }
+
     pub(super) fn has_effects(self) -> bool {
         self == Self::Timeline
     }
@@ -55,6 +67,40 @@ impl ViewMode {
 }
 
 impl DawUi {
+    pub(super) fn view_shortcuts(&mut self, ctx: &egui::Context) {
+        if self.native_menu
+            || !self.view_switch_enabled()
+            || ctx.input(|input| !input.focused || input.pointer.any_down())
+        {
+            return;
+        }
+        let mode = ctx.input_mut(|input| {
+            let mut selected = None;
+            input.events.retain(|event| {
+                if let egui::Event::Key {
+                    key,
+                    pressed: true,
+                    repeat: false,
+                    modifiers,
+                    ..
+                } = event
+                    && let Some(mode) = ViewMode::ALL.into_iter().find(|mode| {
+                        let shortcut = mode.shortcut();
+                        *key == shortcut.logical_key && modifiers.matches_exact(shortcut.modifiers)
+                    })
+                {
+                    selected = Some(mode);
+                    return false;
+                }
+                true
+            });
+            selected
+        });
+        if let Some(mode) = mode {
+            self.set_view_mode(mode, ctx);
+        }
+    }
+
     pub fn view_mode(&self) -> ViewMode {
         self.view_mode
     }
@@ -92,7 +138,14 @@ impl DawUi {
             if ui
                 .add_enabled(
                     self.view_switch_enabled(),
-                    egui::Checkbox::new(&mut selected, mode.label()),
+                    egui::Checkbox::new(
+                        &mut selected,
+                        (
+                            mode.label(),
+                            egui::Atom::grow(),
+                            toolbars::menu_shortcut_text(ui.ctx(), &mode.shortcut()).weak(),
+                        ),
+                    ),
                 )
                 .clicked()
             {
