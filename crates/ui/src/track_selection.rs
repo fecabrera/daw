@@ -6,6 +6,7 @@ impl DawUi {
     }
 
     pub(super) fn select_track(&mut self, id: Id, toggle: bool) {
+        self.master_selected = false;
         if toggle {
             if let Some(primary) = self.selected_track {
                 self.selected_tracks.insert(primary);
@@ -26,6 +27,29 @@ impl DawUi {
             self.selected_tracks.clear();
             self.selected_tracks.insert(id);
             self.selected_track = Some(id);
+        }
+    }
+
+    fn select_master(&mut self) {
+        self.master_selected = true;
+        self.selected_track = None;
+        self.selected_tracks.clear();
+        self.selected_effects.clear();
+        self.effects_catalog.clear();
+        self.effects_drag = None;
+    }
+
+    pub(super) fn master_selection(&mut self, ui: &egui::Ui, rect: Rect) {
+        if ui.is_enabled()
+            && self.file_action_enabled(FileAction::Import)
+            && ui.rect_contains_pointer(rect)
+            && ui.input(|input| input.focused && input.pointer.primary_pressed())
+            && !self.master_selected
+        {
+            self.select_master();
+        }
+        if self.master_selected {
+            panels::selection_border(ui, rect);
         }
     }
 

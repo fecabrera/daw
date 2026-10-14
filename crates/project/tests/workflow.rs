@@ -2970,3 +2970,97 @@ fn ott_save_open_save_as_rate_change_and_export_keep_settings_and_audio() {
     );
     assert_eq!(fs::read(source).unwrap(), original);
 }
+
+#[test]
+fn master_effects_save_open_rate_change_and_export_use_the_master_bus() {
+    use daw_core::{CompressorDetection, EffectInstance, EffectSettings};
+    use daw_media::{ExportSettings, WavCodec};
+    let fixture = Fixture::new();
+    let source = fixture.wav("compressor-source.wav", 48000, 2, 32, true);
+    let original = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let mut effect = EffectInstance::compressor();
+    let EffectSettings::Compressor(settings) = &mut effect.unit else {
+        unreachable!()
+    };
+    settings.threshold_db = -36.0;
+    settings.detection = CompressorDetection::Rms;
+    settings.attack_ms = 0.1;
+    settings.knee_db = 12.0;
+    settings.level_db = 3.0;
+    settings.dry_wet = 0.75;
+    settings.collapsed = true;
+    session
+        .project
+        .edit(Edit::SetMasterEffects {
+            effects: vec![effect.clone()],
+            compact: true,
+        })
+        .unwrap();
+    let first = fixture.0.join("compressor-first");
+    session.save(&first).unwrap();
+    let mut loaded = Session::open(&first).unwrap();
+    assert_eq!(loaded.project.master.effects, vec![effect.clone()]);
+    assert!(loaded.project.master.effects_compact);
+    let second = fixture.0.join("compressor-second");
+    loaded.save(&second).unwrap();
+    let loaded = Session::open(&second).unwrap();
+    assert_eq!(loaded.project.master.effects, vec![effect.clone()]);
+    let changed = loaded.with_audio_settings(96000, 128).unwrap();
+    assert_eq!(changed.project.master.effects, vec![effect]);
+    let output = fixture.0.join("compressed.wav");
+    loaded
+        .export_with_settings(
+            &output,
+            false,
+            ExportSettings {
+                wav_codec: WavCodec::Float32,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let exported: Vec<f32> = hound::WavReader::open(output)
+        .unwrap()
+        .samples::<f32>()
+        .map(Result::unwrap)
+        .collect();
+    let mut rendered = vec![[0.0; 2]; loaded.project.end() as usize];
+    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
+    assert_eq!(
+        exported,
+        rendered.iter().flatten().copied().collect::<Vec<_>>()
+    );
+    let mut dry = loaded;
+    dry.project.master.effects.clear();
+    let mut dry_audio = vec![[0.0; 2]; rendered.len()];
+    daw_engine::Renderer::new(dry.plan()).render_offline(&mut dry_audio);
+    assert!(
+        rendered
+            .iter()
+            .zip(&dry_audio)
+            .any(|(a, b)| (a[0] - b[0]).abs() > 0.01)
+    );
+    assert_eq!(fs::read(source).unwrap(), original);
+    let missing = EffectInstance {
+        id: daw_core::Id::new_v4(),
+        unit: EffectSettings::Missing {
+            type_id: "future.master".into(),
+            state: serde_json::json!({"control": 7}),
+        },
+    };
+    dry.project.master.effects.push(missing.clone());
+    let future = fixture.0.join("future-master");
+    dry.save(&future).unwrap();
+    let restored = Session::open(&future).unwrap();
+    assert_eq!(restored.project.master.effects, [missing]);
+    assert!(
+        restored
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("future.master on Master"))
+    );
+    let mut bypassed = vec![[0.0; 2]; dry_audio.len()];
+    daw_engine::Renderer::new(restored.plan()).render_offline(&mut bypassed);
+    assert_eq!(bypassed, dry_audio);
+}

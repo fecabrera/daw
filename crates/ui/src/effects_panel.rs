@@ -1,5 +1,11 @@
 use super::*;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) enum EffectTarget {
+    Track(Id),
+    Master,
+}
+
 #[cfg(test)]
 pub(crate) struct EffectsUiBounds {
     pub library: Rect,
@@ -55,6 +61,42 @@ impl Default for EffectsUiBounds {
 }
 
 impl DawUi {
+    pub(super) fn effects_target(&self) -> Option<EffectTarget> {
+        if self.master_selected {
+            Some(EffectTarget::Master)
+        } else {
+            self.selected_track
+                .filter(|id| self.session.project.tracks.iter().any(|t| t.id == *id))
+                .map(EffectTarget::Track)
+        }
+    }
+
+    pub(super) fn effect_chain(
+        &self,
+        target: EffectTarget,
+    ) -> Option<(&[daw_core::EffectInstance], bool)> {
+        match target {
+            EffectTarget::Master => Some((
+                &self.session.project.master.effects,
+                self.session.project.master.effects_compact,
+            )),
+            EffectTarget::Track(id) => self
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == id)
+                .map(|t| (t.effects.as_slice(), t.effects_compact)),
+        }
+    }
+
+    fn effects_state(&self, target: Option<EffectTarget>) -> (bool, Vec<daw_core::EffectInstance>) {
+        target
+            .and_then(|target| self.effect_chain(target))
+            .map(|(effects, compact)| (compact, effects.to_vec()))
+            .unwrap_or_default()
+    }
+
     pub(super) fn effects_editing_enabled(&self, ui: &egui::Ui) -> bool {
         // Knob focus remains editable; text editors and other active gestures block changes.
         ui.is_enabled()
@@ -80,25 +122,11 @@ impl DawUi {
         self.selected_effects.retain(|id| {
             self.session
                 .project
-                .tracks
-                .iter()
-                .any(|track| track.effects.iter().any(|effect| effect.id == *id))
+                .all_effects()
+                .any(|effect| effect.id == *id)
         });
-        let mut selected = self
-            .selected_track
-            .and_then(|id| {
-                self.session
-                    .project
-                    .tracks
-                    .iter()
-                    .find(|track| track.id == id)
-            })
-            .cloned();
-        let mut compact = selected.as_ref().is_some_and(|track| track.effects_compact);
-        let mut effects = selected
-            .as_ref()
-            .map(|track| track.effects.clone())
-            .unwrap_or_default();
+        let mut selected = self.effects_target();
+        let (mut compact, mut effects) = self.effects_state(selected);
         let allowed = self.effects_editing_enabled(ui);
         let mut original_compact = compact;
         let mut original_effects = effects.clone();
@@ -229,7 +257,7 @@ impl DawUi {
                             .inner;
                         entry_rects[index] = response.rect;
                         if allowed && lane_visible {
-                            self.start_library_effect_drag(ui, &response, selected.as_ref().map(|track| track.id), index, &effects);
+                            self.start_library_effect_drag(ui, &response, selected, index, &effects);
                         }
                         let pointer_clicked = response.clicked() && ui.rect_contains_pointer(response.rect) && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary));
                         if pointer_clicked {
@@ -305,22 +333,9 @@ impl DawUi {
             library.finish(ui);
         }
         // Track-panel clicks can change the processing target while Timeline is drawn.
-        if self.selected_track != selected.as_ref().map(|track| track.id) {
-            selected = self
-                .selected_track
-                .and_then(|id| {
-                    self.session
-                        .project
-                        .tracks
-                        .iter()
-                        .find(|track| track.id == id)
-                })
-                .cloned();
-            compact = selected.as_ref().is_some_and(|track| track.effects_compact);
-            effects = selected
-                .as_ref()
-                .map(|track| track.effects.clone())
-                .unwrap_or_default();
+        if self.effects_target() != selected {
+            selected = self.effects_target();
+            (compact, effects) = self.effects_state(selected);
             original_compact = compact;
             original_effects = effects.clone();
             self.selected_effects.clear();
@@ -332,22 +347,18 @@ impl DawUi {
                 .rect_filled(strip, 0.0, theme::palette(ui.ctx()).background);
             // The status panel owns the single separator below the effects lane.
             panels::ControlPanel::row_dividers(ui, strip, true, false);
-            self.effects_lane(
-                ui,
-                strip,
-                selected.as_ref().map(|track| track.id),
-                &mut effects,
-                compact,
-                allowed,
-            );
+            self.effects_lane(ui, strip, selected, &mut effects, compact, allowed);
         }
-        if let Some(track) = selected
+        if let Some(target) = selected
             && (effects != original_effects || compact != original_compact)
         {
-            self.edit(Edit::SetEffects {
-                track_id: track.id,
-                effects,
-                compact,
+            self.edit(match target {
+                EffectTarget::Track(track_id) => Edit::SetEffects {
+                    track_id,
+                    effects,
+                    compact,
+                },
+                EffectTarget::Master => Edit::SetMasterEffects { effects, compact },
             });
         }
         #[cfg(test)]
@@ -366,7 +377,7 @@ impl DawUi {
         &mut self,
         ui: &mut egui::Ui,
         strip: Rect,
-        track: Option<Id>,
+        target: Option<EffectTarget>,
         effects: &mut Vec<daw_core::EffectInstance>,
         compact: bool,
         allowed: bool,
@@ -376,7 +387,7 @@ impl DawUi {
         let order: Vec<_> = effects.iter().map(|effect| effect.id).collect();
         let mut lane = ui.new_child(
             egui::UiBuilder::new()
-                .id_salt(("effects-lane", track))
+                .id_salt(("effects-lane", target))
                 .max_rect(strip)
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
@@ -504,7 +515,7 @@ impl DawUi {
                                         .inner;
                                     if allowed && interactive {
                                         self.start_effect_drag(
-                                            ui, &header, power, track, effect.id, &order,
+                                            ui, &header, power, target, effect.id, &order,
                                         );
                                         header
                                             .on_hover_cursor(egui::CursorIcon::Grab)

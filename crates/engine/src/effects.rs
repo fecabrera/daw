@@ -1,6 +1,6 @@
 use daw_auto_filter::AutoFilter;
 use daw_compressor::Compressor;
-use daw_core::{EffectSettings, Id, Track};
+use daw_core::{EffectInstance, EffectSettings, Id, Track};
 use daw_drive::Drive;
 use daw_equalizer::Equalizer;
 use daw_ott::Ott;
@@ -50,22 +50,34 @@ impl RuntimeEffect {
     }
 }
 
-pub(super) struct TrackEffects {
-    id: Id,
+pub(super) struct EffectChain {
+    id: Option<Id>,
     mono: bool,
     units: Vec<(Id, Option<RuntimeEffect>)>,
 }
-impl TrackEffects {
+impl EffectChain {
     pub fn new(track: &Track, sample_rate_hz: u32, max_block_frames: u32) -> Self {
+        Self::chain(
+            Some(track.id),
+            &track.effects,
+            sample_rate_hz,
+            max_block_frames,
+        )
+    }
+    pub fn chain(
+        id: Option<Id>,
+        effects: &[EffectInstance],
+        sample_rate_hz: u32,
+        max_block_frames: u32,
+    ) -> Self {
         let context = ProcessingContext {
             sample_rate_hz,
             max_block_frames,
         };
         Self {
-            id: track.id,
+            id,
             mono: false,
-            units: track
-                .effects
+            units: effects
                 .iter()
                 .map(|effect| {
                     (
@@ -101,8 +113,11 @@ impl TrackEffects {
         let Some(previous) = old.iter_mut().find(|item| item.id == self.id) else {
             return;
         };
+        self.inherit_chain(previous, &track.effects);
+    }
+    pub fn inherit_chain(&mut self, previous: &mut Self, settings: &[EffectInstance]) {
         self.mono = previous.mono;
-        for ((id, next), settings) in self.units.iter_mut().zip(&track.effects) {
+        for ((id, next), settings) in self.units.iter_mut().zip(settings) {
             if let Some((_, Some(previous))) =
                 previous.units.iter_mut().find(|(old_id, _)| id == old_id)
                 && let Some(next) = next

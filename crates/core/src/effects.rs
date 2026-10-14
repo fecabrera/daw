@@ -416,3 +416,87 @@ mod ott_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod master_tests {
+    use crate::*;
+
+    #[test]
+    fn master_effects_migrate_round_trip_and_validate_atomically() {
+        let mut project = Project::default();
+        let track = project.add_track().unwrap();
+        let mut legacy = serde_json::to_value(&project).unwrap();
+        legacy["master"].as_object_mut().unwrap().remove("effects");
+        legacy["master"]
+            .as_object_mut()
+            .unwrap()
+            .remove("effects_compact");
+        let legacy: Project = serde_json::from_value(legacy).unwrap();
+        assert!(legacy.master.effects.is_empty());
+        assert!(!legacy.master.effects_compact);
+        legacy.validate().unwrap();
+        let chain = vec![
+            EffectInstance::equalizer(),
+            EffectInstance::drive(),
+            EffectInstance::auto_filter(),
+            EffectInstance::compressor(),
+            EffectInstance::ott(),
+            EffectInstance {
+                id: Id::new_v4(),
+                unit: EffectSettings::Missing {
+                    type_id: "future.master".into(),
+                    state: serde_json::json!({"state": [1, 2]}),
+                },
+            },
+        ];
+        project
+            .edit(Edit::SetMasterEffects {
+                effects: chain.clone(),
+                compact: true,
+            })
+            .unwrap();
+        let encoded = serde_json::to_string(&project).unwrap();
+        let loaded: Project = serde_json::from_str(&encoded).unwrap();
+        loaded.validate().unwrap();
+        assert_eq!(loaded.master.effects, chain);
+        assert!(loaded.master.effects_compact);
+        assert!(loaded.tracks[0].effects.is_empty());
+        let mut bad = EffectInstance::compressor();
+        let EffectSettings::Compressor(settings) = &mut bad.unit else {
+            unreachable!()
+        };
+        settings.ratio = 0.0;
+        for effects in [vec![bad], vec![chain[0].clone(), chain[0].clone()]] {
+            assert!(
+                project
+                    .edit(Edit::SetMasterEffects {
+                        effects,
+                        compact: false
+                    })
+                    .is_err()
+            );
+            assert_eq!(serde_json::to_string(&project).unwrap(), encoded);
+        }
+        assert!(
+            project
+                .edit(Edit::SetEffects {
+                    track_id: track,
+                    effects: vec![chain[0].clone()],
+                    compact: false
+                })
+                .is_err()
+        );
+        assert_eq!(serde_json::to_string(&project).unwrap(), encoded);
+        let mut duplicate_track = chain[0].clone();
+        duplicate_track.id = track;
+        assert!(
+            project
+                .edit(Edit::SetMasterEffects {
+                    effects: vec![duplicate_track],
+                    compact: false
+                })
+                .is_err()
+        );
+        assert_eq!(serde_json::to_string(&project).unwrap(), encoded);
+    }
+}

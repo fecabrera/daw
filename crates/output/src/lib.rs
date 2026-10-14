@@ -70,9 +70,7 @@ fn effect_meters(
     previous: &HashMap<Id, Arc<AtomicU32>>,
 ) -> HashMap<Id, Arc<AtomicU32>> {
     plan.project
-        .tracks
-        .iter()
-        .flat_map(|track| &track.effects)
+        .all_effects()
         .filter(|effect| matches!(effect.unit, daw_core::EffectSettings::Compressor(_)))
         .map(|effect| {
             (
@@ -92,9 +90,7 @@ fn ott_meters(
     previous: &HashMap<Id, Arc<[AtomicU32; 3]>>,
 ) -> HashMap<Id, Arc<[AtomicU32; 3]>> {
     plan.project
-        .tracks
-        .iter()
-        .flat_map(|track| &track.effects)
+        .all_effects()
         .filter(|effect| matches!(effect.unit, daw_core::EffectSettings::Ott(_)))
         .map(|effect| {
             (
@@ -846,50 +842,50 @@ mod compressor_meter_tests {
 
     #[test]
     fn effect_meter_handles_follow_ids_and_report_callback_compression() {
-        let mut plan = crate::tests::transport_plan();
-        let mut effect = daw_core::EffectInstance::compressor();
-        let daw_core::EffectSettings::Compressor(settings) = &mut effect.unit else {
-            unreachable!()
-        };
-        settings.threshold_db = -36.0;
-        settings.attack_ms = 0.1;
-        let id = effect.id;
-        plan.project.tracks[0].effects.push(effect.clone());
-        let meters = effect_meters(&plan, &HashMap::new());
-        let (producer, consumer) = RingBuffer::new(32);
-        let (retire, _retired) = RingBuffer::new(64);
-        let status = Arc::new(Status::default());
-        let tracks = track_meters(&plan, &HashMap::new());
-        let mut callback =
-            Callback::new(plan.clone(), &tracks, consumer, retire, status, 48_000).unwrap();
-        bind_effect_meters(&mut callback.renderer, &meters);
-        let mut producer = producer;
-        producer
-            .push(Command::Play)
-            .unwrap_or_else(|_| panic!("queue"));
-        callback.update();
-        for _ in 0..2000 {
-            callback.next();
+        for master in [false, true] {
+            let mut plan = crate::tests::transport_plan();
+            let mut effect = daw_core::EffectInstance::compressor();
+            let daw_core::EffectSettings::Compressor(settings) = &mut effect.unit else {
+                unreachable!()
+            };
+            settings.threshold_db = -36.0;
+            settings.attack_ms = 0.1;
+            let id = effect.id;
+            effect_test_chain(&mut plan, master).push(effect.clone());
+            let meters = effect_meters(&plan, &HashMap::new());
+            let (producer, consumer) = RingBuffer::new(32);
+            let (retire, _retired) = RingBuffer::new(64);
+            let status = Arc::new(Status::default());
+            let tracks = track_meters(&plan, &HashMap::new());
+            let mut callback =
+                Callback::new(plan.clone(), &tracks, consumer, retire, status, 48_000).unwrap();
+            bind_effect_meters(&mut callback.renderer, &meters);
+            let mut producer = producer;
+            producer
+                .push(Command::Play)
+                .unwrap_or_else(|_| panic!("queue"));
+            callback.update();
+            for _ in 0..2000 {
+                callback.next();
+            }
+            assert!(f32::from_bits(meters[&id].load(Ordering::Relaxed)) > 10.0);
+            let mut other = effect;
+            other.id = Id::new_v4();
+            let second = other.id;
+            effect_test_chain(&mut plan, master).insert(0, other);
+            let updated = effect_meters(&plan, &meters);
+            assert!(Arc::ptr_eq(&updated[&id], &meters[&id]));
+            assert!(!Arc::ptr_eq(&updated[&second], &meters[&id]));
+            effect_test_chain(&mut plan, master).retain(|effect| effect.id != id);
+            let removed = effect_meters(&plan, &updated);
+            assert!(!removed.contains_key(&id));
+            assert!(Arc::ptr_eq(&removed[&second], &updated[&second]));
+            producer
+                .push(Command::Stop)
+                .unwrap_or_else(|_| panic!("queue"));
+            callback.update();
+            assert_eq!(meters[&id].load(Ordering::Relaxed), 0);
         }
-        assert!(f32::from_bits(meters[&id].load(Ordering::Relaxed)) > 10.0);
-        let mut other = effect;
-        other.id = Id::new_v4();
-        let second = other.id;
-        plan.project.tracks[0].effects.insert(0, other);
-        let updated = effect_meters(&plan, &meters);
-        assert!(Arc::ptr_eq(&updated[&id], &meters[&id]));
-        assert!(!Arc::ptr_eq(&updated[&second], &meters[&id]));
-        plan.project.tracks[0]
-            .effects
-            .retain(|effect| effect.id != id);
-        let removed = effect_meters(&plan, &updated);
-        assert!(!removed.contains_key(&id));
-        assert!(Arc::ptr_eq(&removed[&second], &updated[&second]));
-        producer
-            .push(Command::Stop)
-            .unwrap_or_else(|_| panic!("queue"));
-        callback.update();
-        assert_eq!(meters[&id].load(Ordering::Relaxed), 0);
     }
 }
 
@@ -899,56 +895,65 @@ mod ott_meter_tests {
 
     #[test]
     fn effect_meter_handles_follow_ids_and_report_callback_compression() {
-        let mut plan = crate::tests::transport_plan();
-        let mut effect = daw_core::EffectInstance::ott();
-        let daw_core::EffectSettings::Ott(settings) = &mut effect.unit else {
-            unreachable!()
-        };
-        settings.bands[0].attack_ms = 0.1;
-        let id = effect.id;
-        plan.project.tracks[0].effects.push(effect.clone());
-        let meters = ott_meters(&plan, &HashMap::new());
-        let (producer, consumer) = RingBuffer::new(32);
-        let (retire, _retired) = RingBuffer::new(64);
-        let status = Arc::new(Status::default());
-        let tracks = track_meters(&plan, &HashMap::new());
-        let mut callback =
-            Callback::new(plan.clone(), &tracks, consumer, retire, status, 48_000).unwrap();
-        bind_ott_meters(&mut callback.renderer, &meters);
-        let mut producer = producer;
-        producer
-            .push(Command::Play)
-            .unwrap_or_else(|_| panic!("queue"));
-        callback.update();
-        for _ in 0..2000 {
-            callback.next();
+        for master in [false, true] {
+            let mut plan = crate::tests::transport_plan();
+            let mut effect = daw_core::EffectInstance::ott();
+            let daw_core::EffectSettings::Ott(settings) = &mut effect.unit else {
+                unreachable!()
+            };
+            settings.bands[0].attack_ms = 0.1;
+            let id = effect.id;
+            effect_test_chain(&mut plan, master).push(effect.clone());
+            let meters = ott_meters(&plan, &HashMap::new());
+            let (producer, consumer) = RingBuffer::new(32);
+            let (retire, _retired) = RingBuffer::new(64);
+            let status = Arc::new(Status::default());
+            let tracks = track_meters(&plan, &HashMap::new());
+            let mut callback =
+                Callback::new(plan.clone(), &tracks, consumer, retire, status, 48_000).unwrap();
+            bind_ott_meters(&mut callback.renderer, &meters);
+            let mut producer = producer;
+            producer
+                .push(Command::Play)
+                .unwrap_or_else(|_| panic!("queue"));
+            callback.update();
+            for _ in 0..2000 {
+                callback.next();
+            }
+            assert!(
+                meters[&id]
+                    .iter()
+                    .any(|m| f32::from_bits(m.load(Ordering::Relaxed)).abs() > 1.0)
+            );
+            let mut other = effect;
+            other.id = Id::new_v4();
+            let second = other.id;
+            effect_test_chain(&mut plan, master).insert(0, other);
+            let updated = ott_meters(&plan, &meters);
+            assert!(Arc::ptr_eq(&updated[&id], &meters[&id]));
+            assert!(!Arc::ptr_eq(&updated[&second], &meters[&id]));
+            effect_test_chain(&mut plan, master).retain(|effect| effect.id != id);
+            let removed = ott_meters(&plan, &updated);
+            assert!(!removed.contains_key(&id));
+            assert!(Arc::ptr_eq(&removed[&second], &updated[&second]));
+            producer
+                .push(Command::Stop)
+                .unwrap_or_else(|_| panic!("queue"));
+            callback.update();
+            assert!(
+                meters[&id]
+                    .iter()
+                    .all(|m| f32::from_bits(m.load(Ordering::Relaxed)) == 0.0)
+            );
         }
-        assert!(
-            meters[&id]
-                .iter()
-                .any(|m| f32::from_bits(m.load(Ordering::Relaxed)).abs() > 1.0)
-        );
-        let mut other = effect;
-        other.id = Id::new_v4();
-        let second = other.id;
-        plan.project.tracks[0].effects.insert(0, other);
-        let updated = ott_meters(&plan, &meters);
-        assert!(Arc::ptr_eq(&updated[&id], &meters[&id]));
-        assert!(!Arc::ptr_eq(&updated[&second], &meters[&id]));
-        plan.project.tracks[0]
-            .effects
-            .retain(|effect| effect.id != id);
-        let removed = ott_meters(&plan, &updated);
-        assert!(!removed.contains_key(&id));
-        assert!(Arc::ptr_eq(&removed[&second], &updated[&second]));
-        producer
-            .push(Command::Stop)
-            .unwrap_or_else(|_| panic!("queue"));
-        callback.update();
-        assert!(
-            meters[&id]
-                .iter()
-                .all(|m| f32::from_bits(m.load(Ordering::Relaxed)) == 0.0)
-        );
+    }
+}
+
+#[cfg(test)]
+fn effect_test_chain(plan: &mut RenderPlan, master: bool) -> &mut Vec<daw_core::EffectInstance> {
+    if master {
+        &mut plan.project.master.effects
+    } else {
+        &mut plan.project.tracks[0].effects
     }
 }

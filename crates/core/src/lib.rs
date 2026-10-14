@@ -143,6 +143,10 @@ pub struct Project {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Master {
     pub gain_db: f32,
+    #[serde(default)]
+    pub effects: Vec<EffectInstance>,
+    #[serde(default)]
+    pub effects_compact: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Asset {
@@ -303,7 +307,11 @@ impl Default for Project {
             sample_rate_hz: SAMPLE_RATE,
             buffer_size_frames: default_buffer_size(),
             tempo_bpm: DEFAULT_TEMPO_BPM,
-            master: Master { gain_db: 0.0 },
+            master: Master {
+                gain_db: 0.0,
+                effects: vec![],
+                effects_compact: false,
+            },
             assets: vec![],
             tracks: vec![],
             transport: Transport::default(),
@@ -390,6 +398,13 @@ pub fn seconds(frames: u64) -> f64 {
 }
 
 impl Project {
+    /// Track and Master instances share validation, monitoring, and missing-unit handling.
+    pub fn all_effects(&self) -> impl Iterator<Item = &EffectInstance> {
+        self.tracks
+            .iter()
+            .flat_map(|track| &track.effects)
+            .chain(&self.master.effects)
+    }
     pub fn frames(&self, seconds: f64) -> u64 {
         (seconds.max(0.0) * f64::from(self.sample_rate_hz)).round() as u64
     }
@@ -429,6 +444,11 @@ impl Project {
         }
         let mut ids = std::collections::HashSet::<Uuid>::new();
         ids.insert(self.project_id);
+        for effect in self.all_effects() {
+            if effect.id.is_nil() || !ids.insert(effect.id) || !effect.unit.valid() {
+                return Err(invalid("Invalid effect settings or duplicate effect ID"));
+            }
+        }
         for a in &self.assets {
             if !ids.insert(a.id) {
                 return Err(invalid("Duplicate asset ID"));
@@ -487,11 +507,6 @@ impl Project {
                 return Err(invalid(
                     "Invalid instrument or source instrument on an audio track",
                 ));
-            }
-            for effect in &t.effects {
-                if effect.id.is_nil() || !ids.insert(effect.id) || !effect.unit.valid() {
-                    return Err(invalid("Invalid effect settings or duplicate effect ID"));
-                }
             }
             let mut previous_end = 0;
             let mut clips = t.clips.iter().collect::<Vec<_>>();
@@ -578,6 +593,10 @@ impl Project {
 
     fn apply_edit(&mut self, command: Edit) -> Result<()> {
         match command {
+            Edit::SetMasterEffects { effects, compact } => {
+                self.master.effects = effects;
+                self.master.effects_compact = compact;
+            }
             Edit::SetEffects {
                 track_id,
                 effects,
@@ -818,6 +837,10 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    SetMasterEffects {
+        effects: Vec<EffectInstance>,
+        compact: bool,
+    },
     SetEffects {
         track_id: Id,
         effects: Vec<EffectInstance>,

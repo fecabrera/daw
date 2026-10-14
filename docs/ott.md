@@ -51,3 +51,5 @@ Parameters and bypass changes transition over 5 ms. Frequency and timing control
 Processing, reset, and retargeting do not allocate, block, log, or perform I/O. Three atomic meter values per instance share a handle prepared on the control thread and retired with the renderer. Non-finite input becomes zero; pathological filter and detector inputs are bounded separately, and outputs stay within the finite float range.
 
 State uses `daw.ott`, version 1. Settings, presentation, and IDs survive save/open, Save As, and processing-rate changes. Track duplication creates new instance IDs. Future versions retain their opaque state and pass through using the shared missing-effect behavior.
+
+Master supports this unit through the same Timeline catalog and controls. Its independent saved chain processes the summed track bus before Master gain and output meters; see [Master effects](modular-audio-units.md#master-effects-implementation--2026-10-14).

@@ -1,6 +1,6 @@
 # Auto-filter
 
-Double-click **Auto-filter** in Timeline's Effects catalog to append an independent instance to the selected audio or MIDI track. It uses the shared unit panel, header power, saved horizontal collapse, compact lane control, selection border, header reordering, and removal menu. Changes use the shared core validation and project save format.
+Double-click **Auto-filter** in Timeline's Effects catalog to append an independent instance to the selected audio/MIDI track or Master. It uses the shared unit panel, header power, saved horizontal collapse, compact lane control, selection border, header reordering, and removal menu. Changes use the shared core validation and project save format.
 
 ## Controls
 
@@ -37,3 +37,5 @@ Live parameter changes, filter/wave choices, LFO power, output gain, Dry/Wet, an
 Dry/Wet blends dry and filtered samples linearly, then Level scales the blend. Header off passes the unscaled dry signal. Bypassed processing continues so re-enabling has valid filter history. Playback, sequential export, and random-access rendering use the same processor and host frame/tempo. Export retains the existing arranged duration; no extra resonant tail is appended.
 
 Saved state uses type ID `daw.auto-filter`, version 1. Core rejects invalid finite ranges, note-rate indices, and versions atomically. IDs and all controls/presentation states survive save/open and rate changes; track duplication creates new IDs. Unknown/future-version effect payloads remain opaque and bypassed with the existing unavailable-effect warning. Processing, reset, and compatible retargeting do not allocate or perform I/O.
+
+Master supports this unit through the same Timeline catalog and controls. Its independent saved chain processes the summed track bus before Master gain and output meters; see [Master effects](modular-audio-units.md#master-effects-implementation--2026-10-14).

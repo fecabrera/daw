@@ -1,6 +1,6 @@
 # Compressor
 
-Double-click **Compressor** in Timeline's Effects catalog to append an independent instance to the selected audio or MIDI track. It uses the same unit header, power/bypass switch, selection outline, header reordering, removal menu, compact lane control, and saved horizontal collapse as the other effects.
+Double-click **Compressor** in Timeline's Effects catalog to append an independent instance to the selected audio/MIDI track or Master. It uses the same unit header, power/bypass switch, selection outline, header reordering, removal menu, compact lane control, and saved horizontal collapse as the other effects.
 
 ## Controls
 
@@ -40,3 +40,5 @@ Dry/Wet blends the original and compressed signals linearly. Level scales the co
 Processing, reset, and compatible retargeting do not allocate, perform I/O, or acquire locks. Meter handles are attached on a control thread and are retired with their renderer. Non-finite input samples become zero; extreme finite output is bounded to the finite float range. RMS detector input is bounded separately to prevent square overflow.
 
 State uses type ID `daw.compressor`, version 1. Core validation rejects non-finite/out-of-range controls atomically. Settings, IDs, and presentation survive save/open, Save As, and project rate changes. Track copies receive new effect IDs. Unknown future versions retain their opaque payload and bypass with the shared unavailable-effect warning. Lookahead, automatic makeup gain, external sidechain routing, and detector high-pass controls are outside this version.
+
+Master supports this unit through the same Timeline catalog and controls. Its independent saved chain processes the summed track bus before Master gain and output meters; see [Master effects](modular-audio-units.md#master-effects-implementation--2026-10-14).

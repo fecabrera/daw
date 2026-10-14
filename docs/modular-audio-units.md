@@ -1,8 +1,8 @@
 # Modular audio units design and decisions
 
-Status: design baseline; implementation pending. Last updated: 2026-10-13.
+Status: design baseline with implemented track/Master effects and MIDI sources; graph and beat work pending. Last updated: 2026-10-14.
 
-Users build MIDI instruments in Instrument and will configure track effect chains in Effects. These replace the earlier combined Units view. The planned track types are audio, MIDI, and beat. Audio tracks will accept effects; MIDI tracks will accept sources and effects. A future Editor view will provide an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor will provide step toggles in audio or MIDI lanes, each with its own sources and effects. Every unit will use a shared core and support independent distribution. These are confirmed requirements. The Units MVP scope below is accepted. Detailed API, layout, and packaging choices remain proposals or implementation details.
+Users build MIDI instruments in Instrument and configure track and Master effect chains in Timeline. These replace the earlier combined Units view. The planned track types are audio, MIDI, and beat. Audio tracks will accept effects; MIDI tracks will accept sources and effects. A future Editor view will provide an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor will provide step toggles in audio or MIDI lanes, each with its own sources and effects. Every unit will use a shared core and support independent distribution. These are confirmed requirements. The Units MVP scope below is accepted. Detailed API, layout, and packaging choices remain proposals or implementation details.
 
 ## Terms
 
@@ -27,7 +27,7 @@ Users build MIDI instruments in Instrument and will configure track effect chain
 | --- | --- | --- |
 | D01 | Units must be modular so users can build synths and effect chains. | Avoid monolithic instruments or effects that cannot expose reusable components. |
 | D02 | Add the Units view for audio sources and processing. | Users can add oscillators, effects, and other units through this view. Its layout remains open. |
-| D03 | Audio tracks accept effects only. MIDI tracks accept sources and effects. | Track capabilities must constrain unit placement. Basic MIDI tracks and oscillator instruments are implemented; serial track EQ chains are implemented; Master/lane effects remain pending. |
+| D03 | Audio tracks accept effects only. MIDI tracks accept sources and effects. | Track capabilities must constrain unit placement. Basic MIDI tracks and oscillator instruments are implemented; serial track EQ chains are implemented; Master effects are implemented; beat-lane effects remain pending. |
 | D04 | All units share a base core and can ship independently. | Separate common contracts from individual implementations and DAW integration. Distribution targets are defined in D10. |
 | D05 | Add a beat pattern editor in the Editor view with lanes and step toggles for easy beat creation. | Keep step editing distinct from unit/source/effect configuration. |
 | D06 | Support three track types: audio, MIDI, and beat. | Keep track identity separate from editor view mode. |
@@ -389,3 +389,9 @@ The first installed Timeline effect shares the toolbar's left divider. The share
 ## Timeline-only effects
 
 On 2026-10-14, the dedicated Effects view was removed from the shared view enum, buttons, egui menu, and native menus. The remaining views are Timeline, Instrument, Editor, and Mixer. This supersedes D33/D34's separate Effects workspace placement. Timeline retains the catalog, lane, independent visibility toggles, selected audio/MIDI track chain, all unit controls and editing gestures, and saved presentation. Only Editor uses the selected-track overview and its separate zoom/scroll. View removal changes no project schema, effect IDs/settings, or audio processing.
+
+## Master effects implementation — 2026-10-14
+
+Master owns a saved `effects` list and `effects_compact` flag, both defaulted for legacy projects. It accepts the same EQ, Drive, Auto-filter, Compressor, and OTT units as tracks. The Timeline effects lane follows a typed track/Master target; Master selection in Timeline or Mixer preserves clips while clearing track and effect selections. Catalog selection/add/drop, unit presentation/editing, group movement/removal, focus guards, and visibility reuse the shared lane. Master is available even without tracks, and selecting it does not modify project content. New/open/close resets its UI selection.
+
+`Project::all_effects` centralizes instance validation and meter discovery. `Edit::SetMasterEffects` validates and publishes a complete chain atomically, including global ID uniqueness. Runtime `EffectChain` serves both tracks and Master. Serial Master processing receives the stereo sum after track effects and gain/pan, before Master gain and output meters. Persistent rendering, direct render helpers, live playback, and export share this processing order. Prepared updates retain compatible histories and stable compressor/OTT meter handles without callback allocation; seek/stop reset, pause retains settled state, and loop boundaries retain effects. Missing Master units bypass, retain serialized settings, and produce a load warning. No new latency or export-tail policy is introduced.

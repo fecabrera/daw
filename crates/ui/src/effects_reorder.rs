@@ -1,7 +1,8 @@
 use super::*;
+use crate::effects_panel::EffectTarget;
 
 pub(super) struct EffectDrag {
-    pub track: Id,
+    pub target: EffectTarget,
     view: ViewMode,
     source: DragSource,
     origin: Pos2,
@@ -49,23 +50,16 @@ impl DawUi {
             !self.view_mode.has_effects()
                 || (self.view_mode == ViewMode::Timeline && !self.timeline_effects_visible)
                 || self.view_mode != drag.view
-                || self.selected_track != Some(drag.track)
+                || self.effects_target() != Some(drag.target)
                 || !ui.is_enabled()
                 || !self.edit_environment_available()
                 || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape))
-                || !self
-                    .session
-                    .project
-                    .tracks
-                    .iter()
-                    .find(|track| track.id == drag.track)
-                    .is_some_and(|track| {
-                        track
-                            .effects
-                            .iter()
-                            .map(|unit| unit.id)
-                            .eq(drag.order.iter().copied())
-                    })
+                || !self.effect_chain(drag.target).is_some_and(|(effects, _)| {
+                    effects
+                        .iter()
+                        .map(|unit| unit.id)
+                        .eq(drag.order.iter().copied())
+                })
         }) {
             if ui.input(|input| input.focused && input.key_pressed(egui::Key::Escape))
                 && self.view_mode.has_effects()
@@ -83,7 +77,7 @@ impl DawUi {
         ui: &egui::Ui,
         header: &egui::Response,
         power: Rect,
-        track: Option<Id>,
+        target: Option<EffectTarget>,
         unit: Id,
         order: &[Id],
     ) {
@@ -96,7 +90,7 @@ impl DawUi {
             })
             && let Some(origin) = ui.input(|input| input.pointer.press_origin())
             && !power.contains(origin)
-            && let Some(track) = track
+            && let Some(target) = target
         {
             let units = if self.selected_effects.contains(&unit) {
                 order
@@ -110,7 +104,7 @@ impl DawUi {
             // Arm on press so a fast motion+release cannot lose its origin between frames.
             header.request_focus();
             self.effects_drag = Some(EffectDrag {
-                track,
+                target,
                 view: self.view_mode,
                 source: DragSource::Chain { unit, units },
                 origin,
@@ -124,7 +118,7 @@ impl DawUi {
         &mut self,
         ui: &egui::Ui,
         response: &egui::Response,
-        track: Option<Id>,
+        target: Option<EffectTarget>,
         index: usize,
         effects: &[daw_core::EffectInstance],
     ) {
@@ -136,7 +130,7 @@ impl DawUi {
             })
             && let Some(origin) = ui.input(|input| input.pointer.press_origin())
             && response.rect.contains(origin)
-            && let Some(track) = track
+            && let Some(target) = target
         {
             self.effects_catalog.focus_row(ui, response);
             let type_id = effects_catalog::ENTRIES[index].0;
@@ -150,7 +144,7 @@ impl DawUi {
                 vec![type_id]
             };
             self.effects_drag = Some(EffectDrag {
-                track,
+                target,
                 view: self.view_mode,
                 source: DragSource::Library { types, index },
                 origin,

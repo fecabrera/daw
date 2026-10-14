@@ -150,6 +150,13 @@ impl Session {
             folder: Some(folder),
             warnings: vec![],
         };
+        for effect in &session.project.master.effects {
+            if let daw_core::EffectSettings::Missing { type_id, .. } = &effect.unit {
+                session.warnings.push(format!(
+                    "Unavailable effect {type_id} on Master; bypassed with settings retained"
+                ));
+            }
+        }
         for track in &session.project.tracks {
             for effect in &track.effects {
                 if let daw_core::EffectSettings::Missing { type_id, .. } = &effect.unit {

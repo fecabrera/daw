@@ -18,12 +18,7 @@ impl RenderPlan {
         }
     }
     pub fn sample_at(&self, frame: u64) -> [f32; 2] {
-        if self
-            .project
-            .tracks
-            .iter()
-            .any(|track| !track.effects.is_empty())
-        {
+        if self.project.all_effects().next().is_some() {
             let mut output = [[0.0; 2]];
             self.render(frame, &mut output);
             return output[0];
@@ -58,12 +53,7 @@ impl RenderPlan {
         [mix[0] * gain, mix[1] * gain]
     }
     pub fn render(&self, start: u64, out: &mut [[f32; 2]]) {
-        if self
-            .project
-            .tracks
-            .iter()
-            .any(|track| !track.effects.is_empty())
-        {
+        if self.project.all_effects().next().is_some() {
             let mut renderer = Renderer::new(self.clone());
             renderer.playhead = 0;
             let mut scratch = [[0.0; 2]; 512];
@@ -149,7 +139,8 @@ pub struct Renderer {
     playback_start: Option<u64>,
     pub ramp: f32,
     gains: Vec<TrackGains>,
-    effects: Vec<effects::TrackEffects>,
+    effects: Vec<effects::EffectChain>,
+    master_effects: effects::EffectChain,
     midi: Vec<Option<midi::MidiTrackRuntime>>,
     master: f32,
     master_target: f32,
@@ -200,13 +191,19 @@ impl Renderer {
             .tracks
             .iter()
             .map(|track| {
-                effects::TrackEffects::new(
+                effects::EffectChain::new(
                     track,
                     plan.project.sample_rate_hz,
                     plan.project.buffer_size_frames,
                 )
             })
             .collect();
+        let master_effects = effects::EffectChain::chain(
+            None,
+            &plan.project.master.effects,
+            plan.project.sample_rate_hz,
+            plan.project.buffer_size_frames,
+        );
         let master = linear_gain(plan.project.master.gain_db);
         let playhead = plan.project.transport.playhead_frame;
         let midi: Vec<_> = plan
@@ -222,23 +219,7 @@ impl Renderer {
         plan.project.sample_rate_hz.hash(&mut hash);
         for (track, runtime) in plan.project.tracks.iter().zip(&midi) {
             track.id.hash(&mut hash);
-            for effect in &track.effects {
-                effect.id.hash(&mut hash);
-                match &effect.unit {
-                    daw_core::EffectSettings::Eq3(_) => daw_unit_core::EQ_TYPE_ID.hash(&mut hash),
-                    daw_core::EffectSettings::Drive(_) => {
-                        daw_unit_core::DRIVE_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::AutoFilter(_) => {
-                        daw_unit_core::AUTO_FILTER_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Compressor(_) => {
-                        daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
-                    }
-                    daw_core::EffectSettings::Ott(_) => daw_unit_core::OTT_TYPE_ID.hash(&mut hash),
-                    daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
-                }
-            }
+            track.effects.len().hash(&mut hash);
             if let Some(runtime) = runtime {
                 Some(runtime.fingerprint()).hash(&mut hash);
             } else {
@@ -253,10 +234,27 @@ impl Renderer {
                 }
             }
         }
+        plan.project.master.effects.len().hash(&mut hash);
+        for effect in plan.project.all_effects() {
+            effect.id.hash(&mut hash);
+            match &effect.unit {
+                daw_core::EffectSettings::Eq3(_) => daw_unit_core::EQ_TYPE_ID.hash(&mut hash),
+                daw_core::EffectSettings::Drive(_) => daw_unit_core::DRIVE_TYPE_ID.hash(&mut hash),
+                daw_core::EffectSettings::AutoFilter(_) => {
+                    daw_unit_core::AUTO_FILTER_TYPE_ID.hash(&mut hash)
+                }
+                daw_core::EffectSettings::Compressor(_) => {
+                    daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
+                }
+                daw_core::EffectSettings::Ott(_) => daw_unit_core::OTT_TYPE_ID.hash(&mut hash),
+                daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
+            }
+        }
         let source_fingerprint = hash.finish();
         Self {
             midi,
             effects,
+            master_effects,
             plan,
             playhead,
             playing: false,
@@ -279,6 +277,7 @@ impl Renderer {
         id: Id,
         meter: std::sync::Arc<std::sync::atomic::AtomicU32>,
     ) {
+        self.master_effects.set_meter(id, &meter);
         for effects in &mut self.effects {
             effects.set_meter(id, &meter);
         }
@@ -288,6 +287,7 @@ impl Renderer {
         id: Id,
         meter: std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>,
     ) {
+        self.master_effects.set_ott_meter(id, &meter);
         for effects in &mut self.effects {
             effects.set_ott_meter(id, &meter);
         }
@@ -329,6 +329,8 @@ impl Renderer {
             }
         }
         if self.plan.project.sample_rate_hz == old.plan.project.sample_rate_hz {
+            self.master_effects
+                .inherit_chain(&mut old.master_effects, &self.plan.project.master.effects);
             for (effects, track) in self.effects.iter_mut().zip(&self.plan.project.tracks) {
                 effects.inherit(&mut old.effects, track);
             }
@@ -343,6 +345,7 @@ impl Renderer {
         }
     }
     pub fn seek(&mut self, frame: u64) {
+        self.master_effects.reset();
         for effects in &mut self.effects {
             effects.reset();
         }
@@ -369,6 +372,7 @@ impl Renderer {
         self.playing = false;
     }
     pub fn stop(&mut self) {
+        self.master_effects.reset();
         for effects in &mut self.effects {
             effects.reset();
         }
@@ -406,6 +410,10 @@ impl Renderer {
                     }
                 }
             }
+            let mix = self
+                .master_effects
+                .sample(mix, Some(false), self.playhead, self.plan.project.tempo_bpm)
+                .0;
             let gain = linear_gain(self.plan.project.master.gain_db);
             *sample = mix.map(|value| value * gain);
             self.playhead += 1;
@@ -482,6 +490,10 @@ impl Renderer {
                     g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
                 }
             }
+            mix = self
+                .master_effects
+                .sample(mix, Some(false), self.playhead, self.plan.project.tempo_bpm)
+                .0;
             if self.playing {
                 self.playhead = self.playhead.saturating_add(1);
             }

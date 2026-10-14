@@ -200,6 +200,7 @@ impl DawUi {
         );
         master_ui.set_clip_rect(master_rect.intersect(ui.clip_rect()));
         self.mixer_strip(&mut master_ui, master_rect, None);
+        self.master_selection(&master_ui, master_rect);
 
         let tracks_rect = Rect::from_min_max(bounds.min, Pos2::new(master_left, bounds.bottom()));
         let mut tracks_ui = ui.new_child(

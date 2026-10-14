@@ -548,3 +548,9 @@ In Timeline and Editor, a primary click on an existing loop-range body or either
 ## Light transport icons in light mode — 2026-10-14
 
 Keep Play, Stop, and Loop icons white on their active colored backgrounds in both light and dark modes, independent of the configured accent. This supersedes using the theme-dependent active foreground for these three transport buttons. Preserve inactive and disabled styling, hover behavior, dimensions, fills, and transport actions.
+
+## Master effects lane — 2026-10-14
+
+Master owns an independent serial chain and compact state. Select Master in Timeline or Mixer to show its chain in Timeline’s existing effects lane; selecting an audio/MIDI track restores its own chain. Master works in empty projects. Selection clears track/catalog/unit selections and pending effect gestures while retaining clip selection and project data. Use the shared selection outline and existing input guards. Reuse catalog keyboard/multi-selection/add/drop, unit controls, compact/collapse presentation, group reorder/Delete, and visibility/focus behavior.
+
+Save `master.effects` and `master.effects_compact`, with empty/false legacy defaults. Validate settings and unique nonnil instance IDs across Master and tracks through transactional `Edit::SetMasterEffects`. Shared runtime order is track effects → track gain/pan → stereo sum → Master effects → Master gain → output meters. Playback, export, and random-access render helpers must agree. Prepare runtime units/meters outside the callback; preserve compatible histories by stable IDs across updates; seek/stop reset while loops retain history. Unknown Master effects bypass with their state retained and a load warning. Preserve existing export duration and latency policy.

@@ -797,3 +797,132 @@ fn ott_matches_live_export_blocks_and_preserves_history_without_allocations() {
         }
     }
 }
+
+#[test]
+fn master_effects_process_the_stereo_sum_before_gain_and_match_live_export_and_seek() {
+    use daw_unit_core::{EffectUnit, ProcessingContext};
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        let mut source = plan(rate, false);
+        let mut second = source.project.tracks[0].clone();
+        second.id = Id::new_v4();
+        second.clips[0].id = Id::new_v4();
+        second.gain_db = -3.0;
+        second.pan = -0.4;
+        source.project.tracks.push(second);
+        source.project.tracks[0].pan = 0.25;
+        let context = ProcessingContext {
+            sample_rate_hz: rate,
+            max_block_frames: 512,
+        };
+        let mut drive = EffectInstance::drive();
+        let EffectSettings::Drive(drive_settings) = &mut drive.unit else {
+            unreachable!()
+        };
+        drive_settings.gain = 0.6;
+        let mut manual_drive = daw_drive::Drive::new(context, drive_settings);
+        let mut comp = EffectInstance::compressor();
+        let EffectSettings::Compressor(comp_settings) = &mut comp.unit else {
+            unreachable!()
+        };
+        comp_settings.threshold_db = -36.0;
+        comp_settings.attack_ms = 0.1;
+        let mut manual_comp = daw_compressor::Compressor::new(context, comp_settings);
+        let mut processed = source.clone();
+        processed.project.master.effects = vec![drive, comp];
+        processed.project.master.gain_db = -6.0;
+        processed.project.validate().unwrap();
+        let mut expected = vec![[0.0; 2]; 4096];
+        source.render(0, &mut expected);
+        for sample in &mut expected {
+            *sample = manual_comp
+                .process_sample(manual_drive.process_sample(*sample))
+                .map(|v| v * linear_gain(-6.0));
+        }
+        let mut offline = Renderer::new(processed.clone());
+        let mut actual = vec![[0.0; 2]; expected.len()];
+        for block in actual.chunks_mut(37) {
+            offline.render_offline(block);
+        }
+        let mut live = Renderer::new(processed.clone());
+        live.play();
+        let fade = (rate / 200) as usize;
+        for (index, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
+            for ch in 0..2 {
+                assert!((actual[ch] - expected[ch]).abs() < 2e-6);
+            }
+            let sample = live.next_sample();
+            if index > fade {
+                for ch in 0..2 {
+                    assert!((sample[ch] - expected[ch]).abs() < 2e-6);
+                }
+            }
+        }
+        let mut random = [[0.0; 2]; 37];
+        processed.render(1000, &mut random);
+        assert_eq!(random.as_slice(), &actual[1000..1037]);
+        assert_eq!(processed.sample_at(1500), actual[1500]);
+        offline.seek(0);
+        offline.render_offline(&mut random);
+        assert_eq!(random.as_slice(), &actual[..37]);
+    }
+}
+
+#[test]
+fn master_effect_history_meters_and_transport_survive_prepared_updates_without_allocation() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    let mut plan = plan(48000, false);
+    let mut comp = EffectInstance::compressor();
+    let EffectSettings::Compressor(settings) = &mut comp.unit else {
+        unreachable!()
+    };
+    settings.threshold_db = -48.0;
+    settings.attack_ms = 0.1;
+    let id = comp.id;
+    plan.project.master.effects = vec![
+        EffectInstance::equalizer(),
+        comp,
+        EffectInstance::auto_filter(),
+        EffectInstance::ott(),
+    ];
+    let meter = Arc::new(AtomicU32::new(0));
+    let ott_meter = Arc::new(std::array::from_fn(|_| AtomicU32::new(0)));
+    let ott_id = plan.project.master.effects.last().unwrap().id;
+    let mut old = Renderer::new(plan.clone());
+    old.set_effect_meter(id, meter.clone());
+    old.set_ott_meter(ott_id, ott_meter.clone());
+    old.play();
+    for _ in 0..2000 {
+        old.next_sample();
+    }
+    assert!(f32::from_bits(meter.load(Ordering::Relaxed)) > 10.0);
+    assert!(ott_meter.iter().any(|v| v.load(Ordering::Relaxed) != 0));
+    let mut reference = Renderer::new(plan.clone());
+    reference.play();
+    for _ in 0..2000 {
+        reference.next_sample();
+    }
+    plan.project.master.effects_compact = true;
+    let mut next = Renderer::new(plan.clone());
+    next.set_effect_meter(id, meter.clone());
+    next.set_ott_meter(ott_id, ott_meter.clone());
+    ALLOCATIONS.with(|n| n.set(0));
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+    next.inherit(&mut old);
+    let mut error = 0.0_f32;
+    for _ in 0..512 {
+        let a = next.next_sample();
+        let b = reference.next_sample();
+        error = error.max((a[0] - b[0]).abs()).max((a[1] - b[1]).abs());
+    }
+    next.pause();
+    for _ in 0..512 {
+        next.next_sample();
+    }
+    next.stop();
+    next.seek(0);
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(error < 1e-6, "history changed: {error}");
+    assert_eq!(meter.load(Ordering::Relaxed), 0);
+    assert!(ott_meter.iter().all(|v| v.load(Ordering::Relaxed) == 0));
+}

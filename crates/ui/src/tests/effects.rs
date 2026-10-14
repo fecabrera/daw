@@ -1259,8 +1259,8 @@ fn effect_headers_preview_and_commit_order_on_release_in_all_presentation_modes(
                 assert_eq!(
                     app.effects_drag
                         .as_ref()
-                        .map(|drag| (drag.track, drag.chain_unit().unwrap())),
-                    Some((track, ids[source]))
+                        .map(|drag| (drag.target, drag.chain_unit().unwrap())),
+                    Some((effects_panel::EffectTarget::Track(track), ids[source]))
                 );
                 assert!(!app.file_action_enabled(FileAction::Import));
                 assert!(!app.view_switch_enabled());
@@ -2933,66 +2933,97 @@ fn timeline_track_click_switches_effect_chain_and_retains_state_across_view_chan
 }
 #[test]
 fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
-    let (mut app, track) = fixture();
-    let ctx = context();
-    app.select_track(track, false);
-    frame(&mut app, &ctx, vec![]);
-    let start = app.effects_bounds.entry.center();
-    click(&mut app, &ctx, start);
-    library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
-    let end = app.effects_bounds.lane_viewport.center();
-    begin_effect_drag(&mut app, &ctx, start, end);
-    assert!(
-        app.effects_drag
-            .as_ref()
-            .is_some_and(|drag| drag.active && drag.is_library())
-    );
-    assert!(app.session.project.tracks[0].effects.is_empty());
-    frame(&mut app, &ctx, vec![button(end, false)]);
-    frame(&mut app, &ctx, vec![]);
-    assert_eq!(app.session.project.tracks[0].effects.len(), 2);
-    let ids = chain_ids(&app);
-    assert!(matches!(
-        app.session.project.tracks[0].effects[0].unit,
-        daw_core::EffectSettings::Eq3(_)
-    ));
-    assert!(matches!(
-        app.session.project.tracks[0].effects[1].unit,
-        daw_core::EffectSettings::Drive(_)
-    ));
-    let start = app.effects_bounds.drive_units[0].header.center();
-    let end = Pos2::new(app.effects_bounds.chain[0].1.left() + 2.0, start.y);
-    begin_effect_drag(&mut app, &ctx, start, end);
-    assert!(
-        app.effects_drag
-            .as_ref()
-            .is_some_and(|drag| drag.active && !drag.is_library())
-    );
-    frame(&mut app, &ctx, vec![button(end, false)]);
-    frame(&mut app, &ctx, vec![]);
-    assert_eq!(chain_ids(&app), [ids[1], ids[0]]);
-    let first = app.effects_bounds.drive_units[0].header.center();
-    let second = app.effects_bounds.units[0].header.center();
-    end_click_sequence(&mut app, &ctx);
-    click(&mut app, &ctx, first);
-    click_effect_with_shift(&mut app, &ctx, second, true);
-    assert_eq!(app.selected_effects.len(), 2);
-    let clips = serde_json::to_value(&app.session.project.tracks[0].clips).unwrap();
-    frame(
-        &mut app,
-        &ctx,
-        vec![effect_delete_key(
-            egui::Key::Delete,
-            false,
-            egui::Modifiers::NONE,
-        )],
-    );
-    assert!(app.session.project.tracks[0].effects.is_empty());
-    assert!(app.selected_effects.is_empty());
-    assert_eq!(
-        serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
-        clips
-    );
+    for master in [false, true] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.select_track(track, false);
+        frame(&mut app, &ctx, vec![]);
+        if master {
+            let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
+            click(&mut app, &ctx, point);
+            assert!(app.master_selected);
+        }
+        let ids_of = |app: &DawUi| {
+            app.effect_chain(app.effects_target().unwrap())
+                .unwrap()
+                .0
+                .iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>()
+        };
+        let start = app.effects_bounds.entry.center();
+        click(&mut app, &ctx, start);
+        library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
+        let end = app.effects_bounds.lane_viewport.center();
+        begin_effect_drag(&mut app, &ctx, start, end);
+        assert!(
+            app.effects_drag
+                .as_ref()
+                .is_some_and(|drag| drag.active && drag.is_library())
+        );
+        assert!(
+            app.effect_chain(app.effects_target().unwrap())
+                .unwrap()
+                .0
+                .is_empty()
+        );
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.effect_chain(app.effects_target().unwrap())
+                .unwrap()
+                .0
+                .len(),
+            2
+        );
+        let ids = ids_of(&app);
+        assert!(matches!(
+            app.effect_chain(app.effects_target().unwrap()).unwrap().0[0].unit,
+            daw_core::EffectSettings::Eq3(_)
+        ));
+        assert!(matches!(
+            app.effect_chain(app.effects_target().unwrap()).unwrap().0[1].unit,
+            daw_core::EffectSettings::Drive(_)
+        ));
+        let start = app.effects_bounds.drive_units[0].header.center();
+        let end = Pos2::new(app.effects_bounds.chain[0].1.left() + 2.0, start.y);
+        begin_effect_drag(&mut app, &ctx, start, end);
+        assert!(
+            app.effects_drag
+                .as_ref()
+                .is_some_and(|drag| drag.active && !drag.is_library())
+        );
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(ids_of(&app), [ids[1], ids[0]]);
+        let first = app.effects_bounds.drive_units[0].header.center();
+        let second = app.effects_bounds.units[0].header.center();
+        end_click_sequence(&mut app, &ctx);
+        click(&mut app, &ctx, first);
+        click_effect_with_shift(&mut app, &ctx, second, true);
+        assert_eq!(app.selected_effects.len(), 2);
+        let clips = serde_json::to_value(&app.session.project.tracks[0].clips).unwrap();
+        frame(
+            &mut app,
+            &ctx,
+            vec![effect_delete_key(
+                egui::Key::Delete,
+                false,
+                egui::Modifiers::NONE,
+            )],
+        );
+        assert!(
+            app.effect_chain(app.effects_target().unwrap())
+                .unwrap()
+                .0
+                .is_empty()
+        );
+        assert!(app.selected_effects.is_empty());
+        assert_eq!(
+            serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
+            clips
+        );
+    }
 }
 
 #[test]
@@ -3485,4 +3516,106 @@ fn first_timeline_effect_shares_the_toolbar_divider_without_changing_other_unit_
             }
         }
     }
+}
+
+#[test]
+fn selecting_master_shows_its_independent_chain_and_restores_track_effects_in_the_same_frame() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.select_track(track, false);
+        let track_effect = daw_core::EffectInstance::drive();
+        let master_effect = daw_core::EffectInstance::compressor();
+        app.session.project.tracks[0].effects = vec![track_effect.clone()];
+        app.session.project.master.effects = vec![master_effect.clone()];
+        app.session.project.master.effects_compact = true;
+        let clip = app.session.project.tracks[0].clips[0].id;
+        app.selected_clip = Some(clip);
+        app.selected_clips.insert(clip);
+        frame(&mut app, &ctx, vec![]);
+        app.dirty = false;
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        assert!(app.master_selected);
+        assert_eq!(
+            app.effects_bounds
+                .chain
+                .iter()
+                .map(|e| e.0)
+                .collect::<Vec<_>>(),
+            [master_effect.id]
+        );
+        assert_eq!(app.selected_track, None);
+        assert!(app.selected_tracks.is_empty());
+        assert_eq!(app.selected_clip, Some(clip));
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        let compact = app.effects_bounds.compact.center();
+        click(&mut app, &ctx, compact);
+        assert!(!app.session.project.master.effects_compact);
+        assert!(!app.session.project.tracks[0].effects_compact);
+        assert!(app.dirty);
+        app.dirty = false;
+        let lane = app.lane_bounds[&track];
+        let track_point = Pos2::new(lane.left() - 100.0, lane.top() + 16.0);
+        click(&mut app, &ctx, track_point);
+        assert!(!app.master_selected);
+        assert_eq!(app.selected_track, Some(track));
+        assert_eq!(
+            app.effects_bounds
+                .chain
+                .iter()
+                .map(|e| e.0)
+                .collect::<Vec<_>>(),
+            [track_effect.id]
+        );
+        assert!(!app.dirty);
+        app.set_view_mode(ViewMode::Mixer, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let point = app.master_bounds.center_top() + Vec2::new(0.0, 10.0);
+        click(&mut app, &ctx, point);
+        assert!(app.master_selected);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.effects_bounds
+                .chain
+                .iter()
+                .map(|e| e.0)
+                .collect::<Vec<_>>(),
+            [master_effect.id]
+        );
+        app.pending = Some(Action::CloseProject);
+        app.perform_pending();
+        assert!(!app.master_selected);
+        assert!(app.session.project.master.effects.is_empty());
+    }
+    let mut app = DawUi::default();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
+    click(&mut app, &ctx, point);
+    let entry = app.effects_bounds.drive_entry.center();
+    click(&mut app, &ctx, entry);
+    library_key(&mut app, &ctx, egui::Key::Enter, false);
+    assert!(app.master_selected);
+    assert!(app.session.project.tracks.is_empty());
+    assert_eq!(app.session.project.master.effects.len(), 1);
+    assert!(app.dirty);
 }

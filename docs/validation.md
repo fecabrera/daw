@@ -1767,3 +1767,22 @@ Completed checks:
 - Documentation links and `git diff --check`: passed.
 
 Native appearance and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only change. The running DAW and user projects were not restarted or changed.
+
+## Independent Master effects lane — 2026-10-14
+
+Master now owns saved effects and compact presentation with legacy empty/false defaults. Select Master in Timeline or Mixer to direct Timeline's shared effects lane to its independent chain; selecting a track restores that track's chain. Master selection uses the shared outline, clears track/catalog/unit selection and effect gestures, retains clips, and does not modify project content. Catalog keyboard add/drop, unit settings, compact/collapse presentation, group reorder/Delete, focus guards, and visibility use the existing handlers with a typed track/Master target. Master can receive effects without any tracks.
+
+Core commits Master edits atomically through `Edit::SetMasterEffects`; `Project::all_effects` includes every owner for global ID validation and meter discovery. Shared `EffectChain` processing applies Master effects after summed post-fader tracks and before Master gain/output meters in live playback, export, and direct render helpers. Prepared updates retain compatible histories and meter handles without callback allocation. Stop/seek reset Master effects, settled pause preserves them, and loops retain history. Unknown Master effects bypass with retained serialized state and a load warning.
+
+Added checks cover legacy migration, save round trips, invalid settings/duplicate ID rejection without partial edits, stereo mix placement and live/export/random-access agreement at all six project rates, allocation-free state inheritance, reset and actual compressor/OTT monitoring, save/save-as/rate changes/float export, and unknown-unit warnings/bypass. UI checks cover Master selection and chain switching in the same frame, clip preservation, independent compact state, Mixer selection, project closure, and addition to an empty project. Existing catalog drag/reorder/group-Delete and callback meter tests now exercise both track and Master owners.
+
+Completed checks:
+
+- Focused core, engine, UI, output meter, and project integration checks: passed.
+- `cargo fmt --all --check` and strict locked offline workspace/all-target Clippy: passed. Log: `work/master-effects-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **541 passed**, including **339 UI tests** and doc tests. Log: `work/master-effects-workspace.log`.
+- Locked offline CLI build and `python3 tools/check_cli.py`: passed. Logs: `work/master-effects-cli-build.log` and `work/master-effects-cli.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/master-effects-package.log`. Bundle and build executables share SHA-256 `8335369df07a46cd2bc71798f53ff1a5c32a9101899809608bb11f3088d36818`.
+- Documentation links and `git diff --check`: passed.
+
+Native selection/drag behavior, device playback, and Windows/Linux builds were not verified. The running DAW and user projects were not restarted or changed. Export still uses the arranged duration; automatic tails and beat-lane routing remain pending.

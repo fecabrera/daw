@@ -639,6 +639,7 @@ pub struct DawUi {
     midi_editor: midi_editor::MidiEditor,
     instrument_ui: instrument_panel::InstrumentUi,
     effects_catalog: effects_catalog::Catalog,
+    master_selected: bool,
     timeline_catalog_visible: bool,
     timeline_effects_visible: bool,
     effects_lane_focus: selection_focus::SelectionFocus,
@@ -720,6 +721,7 @@ impl Default for DawUi {
             effects_catalog: Default::default(),
             timeline_catalog_visible: true,
             timeline_effects_visible: true,
+            master_selected: false,
             effects_lane_focus: Default::default(),
             effects_drag: None,
             selected_effects: HashSet::new(),
@@ -928,6 +930,7 @@ impl DawUi {
                 self.musical_drag = None;
                 self.time_drag = None;
                 self.selection_drag = [None, None];
+                self.master_selected = false;
                 self.selected_track = None;
                 self.selected_tracks.clear();
                 self.selected_clip = None;
@@ -1140,6 +1143,7 @@ impl DawUi {
                     self.loop_drag = None;
                     self.track_drag = None;
                     if !dirty {
+                        self.master_selected = false;
                         self.selected_track = None;
                         self.selected_tracks.clear();
                         self.project_name_dialog = None;
@@ -1166,10 +1170,13 @@ impl DawUi {
                     self.notices = session.warnings.clone();
                     self.session = session;
                     self.prune_clip_selection();
-                    self.selected_track = self
-                        .selected_track
-                        .filter(|id| self.session.project.tracks.iter().any(|t| t.id == *id))
-                        .or_else(|| self.session.project.tracks.first().map(|t| t.id));
+                    self.selected_track = if self.master_selected {
+                        None
+                    } else {
+                        self.selected_track
+                            .filter(|id| self.session.project.tracks.iter().any(|t| t.id == *id))
+                            .or_else(|| self.session.project.tracks.first().map(|t| t.id))
+                    };
                     self.prune_track_selection();
                     self.dirty = dirty;
                     self.sync_needed = true;
@@ -1725,6 +1732,7 @@ impl DawUi {
             {
                 let path = dropped.path().to_path_buf();
                 let prepared = self.file_hover.take().filter(|hover| hover.path == path);
+                self.master_selected = false;
                 self.selected_track = target.track;
                 self.selected_tracks.clear();
                 if let Some(track) = target.track {
@@ -2516,6 +2524,7 @@ impl DawUi {
             [rect.left_top(), rect.right_top()],
             Stroke::new(1.0, theme::palette(ui.ctx()).border),
         );
+        self.master_selection(ui, panel.response.rect);
     }
     fn timeline_extent(&self) -> f64 {
         self.session
