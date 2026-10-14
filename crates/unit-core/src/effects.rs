@@ -2,6 +2,7 @@ use crate::{
     AUTO_FILTER_STATE_VERSION, AUTO_FILTER_TYPE_ID, AutoFilterSettings, COMPRESSOR_STATE_VERSION,
     COMPRESSOR_TYPE_ID, CompressorSettings, DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveSettings,
 };
+use crate::{OTT_STATE_VERSION, OTT_TYPE_ID, OttSettings};
 use serde::{Deserialize, Serialize};
 
 pub const EQ_TYPE_ID: &str = "daw.eq3";
@@ -62,6 +63,7 @@ pub enum EffectSettings {
     Drive(DriveSettings),
     AutoFilter(AutoFilterSettings),
     Compressor(CompressorSettings),
+    Ott(OttSettings),
     Missing {
         type_id: String,
         state: serde_json::Value,
@@ -75,6 +77,10 @@ struct StoredEffect {
 impl Serialize for EffectSettings {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let stored = match self {
+            Self::Ott(settings) => StoredEffect {
+                type_id: OTT_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
             Self::Compressor(settings) => StoredEffect {
                 type_id: COMPRESSOR_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
@@ -102,7 +108,17 @@ impl Serialize for EffectSettings {
 impl<'de> Deserialize<'de> for EffectSettings {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let stored = StoredEffect::deserialize(deserializer)?;
-        if stored.type_id == EQ_TYPE_ID
+        if stored.type_id == OTT_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|version| version <= u64::from(OTT_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::Ott)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == EQ_TYPE_ID
             && stored
                 .state
                 .get("version")
@@ -157,12 +173,14 @@ impl EffectSettings {
             Self::Drive(drive) => drive.valid(),
             Self::AutoFilter(settings) => settings.valid(),
             Self::Compressor(settings) => settings.valid(),
+            Self::Ott(settings) => settings.valid(),
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
                     EQ_TYPE_ID => Some(EQ_STATE_VERSION),
                     DRIVE_TYPE_ID => Some(DRIVE_STATE_VERSION),
                     AUTO_FILTER_TYPE_ID => Some(AUTO_FILTER_STATE_VERSION),
                     COMPRESSOR_TYPE_ID => Some(COMPRESSOR_STATE_VERSION),
+                    OTT_TYPE_ID => Some(OTT_STATE_VERSION),
                     _ => None,
                 };
                 !type_id.trim().is_empty()
@@ -182,6 +200,12 @@ pub struct EffectInstance {
     pub unit: EffectSettings,
 }
 impl EffectInstance {
+    pub fn ott() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::Ott(OttSettings::default()),
+        }
+    }
     pub fn compressor() -> Self {
         Self {
             id: uuid::Uuid::new_v4(),

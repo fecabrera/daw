@@ -41,6 +41,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/equalizer` | Reusable stereo 3-band EQ behind the shared effect API; keep FunDSP types private. |
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
 | `crates/auto-filter` | Portable stereo filter and transport-locked LFO behind the shared effect API; keep FunDSP types private. |
+| `crates/ott` | Portable three-band upward/downward dynamics, phase-matched crossovers, and signed gain monitoring; keep FunDSP types private. |
 | `crates/compressor` | Portable linked stereo dynamics and gain-reduction monitoring behind the shared effect API; keep FunDSP detector types private. |
 | `crates/envelope` | Reusable, allocation-free per-note ADSR modulator; no DAW, UI, or device dependencies. |
 | `crates/core` | Project entities, stable IDs, frame ranges, colors, validation, and transactional edit commands. No UI, device, or file-dialog dependencies. |

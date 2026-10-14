@@ -87,6 +87,28 @@ fn bind_effect_meters(renderer: &mut Renderer, meters: &HashMap<Id, Arc<AtomicU3
         renderer.set_effect_meter(*id, meter.clone());
     }
 }
+fn ott_meters(
+    plan: &RenderPlan,
+    previous: &HashMap<Id, Arc<[AtomicU32; 3]>>,
+) -> HashMap<Id, Arc<[AtomicU32; 3]>> {
+    plan.project
+        .tracks
+        .iter()
+        .flat_map(|track| &track.effects)
+        .filter(|effect| matches!(effect.unit, daw_core::EffectSettings::Ott(_)))
+        .map(|effect| {
+            (
+                effect.id,
+                previous.get(&effect.id).cloned().unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+fn bind_ott_meters(renderer: &mut Renderer, meters: &HashMap<Id, Arc<[AtomicU32; 3]>>) {
+    for (id, meter) in meters {
+        renderer.set_ott_meter(*id, meter.clone());
+    }
+}
 enum Command {
     Plan(Box<PreparedRenderer>),
     Play,
@@ -109,6 +131,7 @@ pub struct AudioOutput {
     pub description: String,
     track_meters: HashMap<Id, Arc<StereoMeter>>,
     effect_meters: HashMap<Id, Arc<AtomicU32>>,
+    ott_meters: HashMap<Id, Arc<[AtomicU32; 3]>>,
 }
 impl AudioOutput {
     pub fn new(plan: RenderPlan) -> Result<Self, String> {
@@ -140,6 +163,7 @@ impl AudioOutput {
         let status = Arc::new(Status::default());
         let meters = track_meters(&plan, &HashMap::new());
         let reductions = effect_meters(&plan, &HashMap::new());
+        let changes = ott_meters(&plan, &HashMap::new());
         // Retried stream construction happens before playback; each attempt receives fresh queues.
         let build = |cfg: &cpal::StreamConfig| -> Result<BuiltStream, String> {
             let (commands, consumer) = RingBuffer::new(32);
@@ -153,6 +177,7 @@ impl AudioOutput {
                 rate,
             )?;
             bind_effect_meters(&mut state.renderer, &reductions);
+            bind_ott_meters(&mut state.renderer, &changes);
             macro_rules! stream {
                 ($t:ty) => {
                     build_stream::<$t>(&device, cfg, state, status.clone())
@@ -201,6 +226,7 @@ impl AudioOutput {
             description,
             track_meters: meters,
             effect_meters: reductions,
+            ott_meters: changes,
         })
     }
     fn send(&mut self, command: Command) -> Result<(), String> {
@@ -217,11 +243,14 @@ impl AudioOutput {
         }
         let meters = track_meters(&plan, &self.track_meters);
         let reductions = effect_meters(&plan, &self.effect_meters);
+        let changes = ott_meters(&plan, &self.ott_meters);
         let mut prepared = PreparedRenderer::new(plan, &meters);
         bind_effect_meters(&mut prepared, &reductions);
+        bind_ott_meters(&mut prepared, &changes);
         self.send(Command::Plan(Box::new(prepared)))?;
         self.track_meters = meters;
         self.effect_meters = reductions;
+        self.ott_meters = changes;
         Ok(())
     }
     pub fn track_meter(&self, id: Id) -> Option<&StereoMeter> {
@@ -234,6 +263,14 @@ impl AudioOutput {
         self.effect_meters
             .get(&id)
             .map_or(0.0, |meter| f32::from_bits(meter.load(Ordering::Relaxed)))
+    }
+    pub fn ott_gain_change_db(&self, id: Id) -> [f32; 3] {
+        if !self.status.playing.load(Ordering::Relaxed) {
+            return [0.0; 3];
+        }
+        self.ott_meters.get(&id).map_or([0.0; 3], |meter| {
+            std::array::from_fn(|i| f32::from_bits(meter[i].load(Ordering::Relaxed)))
+        })
     }
     pub fn play(&mut self) -> Result<(), String> {
         self.send(Command::Play)
@@ -853,5 +890,65 @@ mod compressor_meter_tests {
             .unwrap_or_else(|_| panic!("queue"));
         callback.update();
         assert_eq!(meters[&id].load(Ordering::Relaxed), 0);
+    }
+}
+
+#[cfg(test)]
+mod ott_meter_tests {
+    use super::*;
+
+    #[test]
+    fn effect_meter_handles_follow_ids_and_report_callback_compression() {
+        let mut plan = crate::tests::transport_plan();
+        let mut effect = daw_core::EffectInstance::ott();
+        let daw_core::EffectSettings::Ott(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        settings.bands[0].attack_ms = 0.1;
+        let id = effect.id;
+        plan.project.tracks[0].effects.push(effect.clone());
+        let meters = ott_meters(&plan, &HashMap::new());
+        let (producer, consumer) = RingBuffer::new(32);
+        let (retire, _retired) = RingBuffer::new(64);
+        let status = Arc::new(Status::default());
+        let tracks = track_meters(&plan, &HashMap::new());
+        let mut callback =
+            Callback::new(plan.clone(), &tracks, consumer, retire, status, 48_000).unwrap();
+        bind_ott_meters(&mut callback.renderer, &meters);
+        let mut producer = producer;
+        producer
+            .push(Command::Play)
+            .unwrap_or_else(|_| panic!("queue"));
+        callback.update();
+        for _ in 0..2000 {
+            callback.next();
+        }
+        assert!(
+            meters[&id]
+                .iter()
+                .any(|m| f32::from_bits(m.load(Ordering::Relaxed)).abs() > 1.0)
+        );
+        let mut other = effect;
+        other.id = Id::new_v4();
+        let second = other.id;
+        plan.project.tracks[0].effects.insert(0, other);
+        let updated = ott_meters(&plan, &meters);
+        assert!(Arc::ptr_eq(&updated[&id], &meters[&id]));
+        assert!(!Arc::ptr_eq(&updated[&second], &meters[&id]));
+        plan.project.tracks[0]
+            .effects
+            .retain(|effect| effect.id != id);
+        let removed = ott_meters(&plan, &updated);
+        assert!(!removed.contains_key(&id));
+        assert!(Arc::ptr_eq(&removed[&second], &updated[&second]));
+        producer
+            .push(Command::Stop)
+            .unwrap_or_else(|_| panic!("queue"));
+        callback.update();
+        assert!(
+            meters[&id]
+                .iter()
+                .all(|m| f32::from_bits(m.load(Ordering::Relaxed)) == 0.0)
+        );
     }
 }

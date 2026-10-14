@@ -3,6 +3,7 @@ use daw_compressor::Compressor;
 use daw_core::{EffectSettings, Id, Track};
 use daw_drive::Drive;
 use daw_equalizer::Equalizer;
+use daw_ott::Ott;
 use daw_unit_core::{EffectUnit, ProcessingContext};
 use std::sync::{Arc, atomic::AtomicU32};
 
@@ -11,6 +12,7 @@ enum RuntimeEffect {
     Drive(Box<Drive>),
     AutoFilter(Box<AutoFilter>),
     Compressor(Box<Compressor>),
+    Ott(Box<Ott>),
 }
 impl RuntimeEffect {
     fn sample(&mut self, input: [f32; 2], frame: u64, tempo: f32) -> [f32; 2] {
@@ -19,6 +21,7 @@ impl RuntimeEffect {
             Self::Drive(unit) => unit.process_sample(input),
             Self::AutoFilter(unit) => unit.process_at(input, frame, tempo),
             Self::Compressor(unit) => unit.process_sample(input),
+            Self::Ott(unit) => unit.process_sample(input),
         }
     }
     fn reset(&mut self) {
@@ -27,11 +30,13 @@ impl RuntimeEffect {
             Self::Drive(unit) => unit.reset(),
             Self::AutoFilter(unit) => unit.reset(),
             Self::Compressor(unit) => unit.reset(),
+            Self::Ott(unit) => unit.reset(),
         }
     }
     fn retarget(&mut self, settings: &EffectSettings) -> bool {
         match (self, settings) {
             (Self::Eq3(unit), EffectSettings::Eq3(settings)) => unit.retarget(settings),
+            (Self::Ott(unit), EffectSettings::Ott(settings)) => unit.retarget(settings),
             (Self::Drive(unit), EffectSettings::Drive(settings)) => unit.retarget(settings),
             (Self::Compressor(unit), EffectSettings::Compressor(settings)) => {
                 unit.retarget(settings)
@@ -77,6 +82,9 @@ impl TrackEffects {
                                     context, settings,
                                 ))))
                             }
+                            EffectSettings::Ott(settings) => {
+                                Some(RuntimeEffect::Ott(Box::new(Ott::new(context, settings))))
+                            }
                             EffectSettings::Missing { .. } => None,
                             EffectSettings::Compressor(settings) => {
                                 Some(RuntimeEffect::Compressor(Box::new(Compressor::new(
@@ -109,6 +117,13 @@ impl TrackEffects {
             self.units.iter_mut().find(|(effect, _)| *effect == id)
         {
             unit.set_gain_reduction_meter(meter.clone());
+        }
+    }
+    pub fn set_ott_meter(&mut self, id: Id, meter: &Arc<[AtomicU32; 3]>) {
+        if let Some((_, Some(RuntimeEffect::Ott(unit)))) =
+            self.units.iter_mut().find(|(effect, _)| *effect == id)
+        {
+            unit.set_gain_change_meter(meter.clone());
         }
     }
     pub fn sample(

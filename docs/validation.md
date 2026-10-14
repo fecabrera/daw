@@ -1571,3 +1571,25 @@ The existing both-theme layout check now measures all three gaps for each contro
 - Catalog and installed-unit selections now clear when their pane loses focus: clicks elsewhere, keyboard focus leaving the pane, window deactivation, dialogs/disabled editing, and view changes. `selection_focus.rs` shares pane/layer ownership checks. Controls inside the pane retain normal selection and parameter behavior. Offscreen controls remain owned by the horizontal effects lane. Active drags retain their selection; completion and Escape cancellation restore the gesture's focus. This supersedes the earlier behavior that retained unit selection across view changes or catalog clicks. Selection changes do not edit effects, audio, or project data.
 - Four new egui tests and updated focus expectations cover empty-region corners/edges and release timing, blank headers, compact-button interaction, input guards, direct focus surrender, window/view changes, both directions of pane focus transfer, controls within the lane, and hover without focus changes. All 42 Effects UI tests pass. Final verification passes all 506 workspace tests, including 322 UI tests (`CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`), formatting, strict locked workspace/all-target Clippy, and diff checks.
 - Rebuilt `target/debug/DAW.app`; its executable hash matches the desktop build. Logs: `work/effects-selection-focus-ui.log`, `work/effects-selection-focus-workspace.log`, `work/effects-selection-focus-clippy.log`, and `work/effects-selection-focus-package.log`. Native gestures and Windows/Linux checks were not run for this change.
+
+## OTT unit — 2026-10-13
+
+Implemented the accepted [OTT design](ott.md) in the reusable `daw-ott` crate and the Effects catalog/lane. Low/Mid/High each use one two-column strip, fixed soft knees, Input/Output/Depth/Attack/Release, a centered band bypass footer, and a signed gain meter. Low/High frequencies default to 250 Hz/2.5 kHz; Mid inherits their boundaries. Out reuses Level, Dry/Wet, and the bounded Peak/RMS mode knob. State uses `daw.ott` version 1 and the existing chain/presentation/edit guards.
+
+Automated coverage:
+
+- Nine DSP tests cover flat crossover magnitude and phase-matched Dry/Wet at all six project rates, per-band upward/downward compression in both detector modes, stereo linking, band bypass with retained gains, exact silence/output-level/global bypass, signed meters/reset, attack/release time constants, Depth, soft knees/gain bounds, history/ramp retention, ordered consecutive crossover edits, and extreme/non-finite inputs.
+- Shared core tests cover complete settings round-trip, independent duplicate IDs, future-version preservation, and atomic rejection of invalid band/crossover controls. Project workflow tests cover save/open, Save As, rate changes, Float32 export versus the shared renderer, and unchanged source recordings.
+- Engine checks cover live/offline parity, all supported rates and block sizes, random-access rendering, compatible history, meter reset, and zero callback allocations during processing, reset, inheritance, and retargeting. Output tests verify meter ownership by instance ID and actual callback gain changes.
+- egui checks cover catalog keyboard addition, both themes, equal inner/outer column gaps, aligned controls, strip containment, band/header bypass, read-only meters, compact presentation, Depth editing, bounded detection selection, and crossover clamping. Existing selection, keyboard range, focus, and drag tests include the expanded catalog.
+
+Completed checks:
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **522 passed**, including **324 UI tests** and doc tests. Log: `work/ott-workspace-final.log`. An earlier overlapping build/test run completed runtime tests but rustdoc reported stale `daw_engine` dependency metadata (E0463); the final sequential workspace run passed and supersedes that result.
+- `cargo fmt --all --check`: passed.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo clippy --locked --offline --workspace --all-targets -- -D warnings`: passed. Log: `work/ott-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo build --locked --offline -p daw-cli` and `python3 tools/check_cli.py`: passed WAV/MP3 codecs/bitrates, repeatability, missing-source handling, eight-track projects, overwrite, and exit-code checks. Logs: `work/ott-package.log`, `work/ott-cli.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. The app bundle executable and `target/debug/daw-desktop` have SHA-256 `36b75b6834390f2a4a9b467b8a1cb1e08ce8c0de09e9852753a6b544860d51bd`.
+- Documentation file links and `git diff HEAD --check`: passed. Existing FunDSP dependency/license notices are retained; no external dependency version changed.
+
+Native mouse/keyboard gestures, listening/device behavior, CPU performance, and Windows/Linux builds were not verified in this task. Automated checks do not establish those results. The existing user DAW process and projects were not restarted or modified.

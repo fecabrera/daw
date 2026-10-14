@@ -11,6 +11,44 @@ const MARKS: [i32; 15] = [
     0, -3, -6, -9, -12, -15, -18, -21, -24, -30, -35, -40, -45, -50, -60,
 ];
 
+/// Signed band gain monitor. Center is unity; left is reduction, right is boost.
+pub fn gain_change(ui: &mut Ui, rail: Rect, name: &str, gain_db: f32) {
+    let db = if gain_db.is_finite() { gain_db } else { 0.0 };
+    let palette = theme::palette(ui.ctx());
+    let painter = ui.painter();
+    painter.rect_filled(rail, 1.0, palette.input);
+    let x = rail.center().x + rail.width() * 0.5 * (db / 24.0).clamp(-1.0, 1.0);
+    let fill = Rect::from_min_max(
+        Pos2::new(x.min(rail.center().x), rail.top()),
+        Pos2::new(x.max(rail.center().x), rail.bottom()),
+    );
+    painter.rect_filled(
+        fill,
+        1.0,
+        if db > 0.0 {
+            palette.meter
+        } else {
+            theme::accent(ui.ctx())
+        },
+    );
+    painter.vline(
+        rail.center().x,
+        rail.y_range(),
+        Stroke::new(1.0, palette.secondary),
+    );
+    let response = ui.interact(rail, ui.id().with(("gain-change", name)), Sense::hover());
+    response.widget_info(|| {
+        let mut info = egui::WidgetInfo::labeled(
+            egui::WidgetType::ProgressIndicator,
+            ui.is_enabled(),
+            format!("{name} gain change"),
+        );
+        info.value = Some(f64::from(db));
+        info
+    });
+    response.on_hover_text(format!("{name} compression gain: {db:+.1} dB. Left: reduction; right: boost. Display ±24 dB; before Dry/Wet."));
+}
+
 /// Read-only compression monitor. The rail covers 0–24 dB; the number retains larger readings.
 pub fn gain_reduction(ui: &mut Ui, reduction_db: f32) -> Response {
     let db = if reduction_db.is_finite() {

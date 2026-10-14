@@ -326,3 +326,93 @@ mod auto_filter_tests {
         assert_eq!(serde_json::to_value(future).unwrap(), encoded);
     }
 }
+
+#[cfg(test)]
+mod ott_tests {
+    use crate::*;
+    #[test]
+    fn ott_settings_roundtrip_duplicate_and_future_state_survive() {
+        let mut project = Project::default();
+        let track = project.add_track().unwrap();
+        let mut effect = EffectInstance::ott();
+        let EffectSettings::Ott(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.enabled = false;
+        s.collapsed = true;
+        s.detection = CompressorDetection::Rms;
+        s.low_frequency_hz = 100.0;
+        s.high_frequency_hz = 10_000.0;
+        s.bands[0].depth = 0.2;
+        s.bands[1].enabled = false;
+        s.bands[2].output_db = -12.0;
+        s.bands[2].attack_ms = 0.1;
+        s.bands[0].release_ms = 2000.0;
+        s.level_db = SILENT_GAIN_DB;
+        s.dry_wet = 0.25;
+        project
+            .edit(Edit::SetEffects {
+                track_id: track,
+                effects: vec![effect.clone()],
+                compact: true,
+            })
+            .unwrap();
+        let loaded: Project =
+            serde_json::from_str(&serde_json::to_string(&project).unwrap()).unwrap();
+        loaded.validate().unwrap();
+        assert_eq!(loaded.tracks[0].effects, vec![effect.clone()]);
+        project
+            .edit(Edit::DuplicateTrack {
+                track_id: track,
+                new_track_id: Id::new_v4(),
+            })
+            .unwrap();
+        assert_eq!(project.tracks[1].effects[0].unit, effect.unit);
+        assert_ne!(project.tracks[1].effects[0].id, effect.id);
+        let encoded =
+            serde_json::json!({"type_id": OTT_TYPE_ID, "state": {"version": 99, "future": [1, 2]}});
+        let unknown: EffectSettings = serde_json::from_value(encoded.clone()).unwrap();
+        assert!(unknown.valid());
+        assert!(matches!(unknown, EffectSettings::Missing { .. }));
+        assert_eq!(serde_json::to_value(unknown).unwrap(), encoded);
+    }
+    #[test]
+    fn ott_invalid_band_and_crossover_values_roll_back_chain_atomically() {
+        let mut project = Project::default();
+        let track = project.add_track().unwrap();
+        let before = serde_json::to_value(&project).unwrap();
+        for parameter in 0..12 {
+            let mut effect = EffectInstance::ott();
+            let EffectSettings::Ott(s) = &mut effect.unit else {
+                unreachable!()
+            };
+            match parameter {
+                0 => s.low_frequency_hz = 0.0,
+                1 => s.high_frequency_hz = f32::NAN,
+                2 => {
+                    s.low_frequency_hz = 2000.0;
+                    s.high_frequency_hz = 2000.0;
+                }
+                3 => s.bands[0].depth = 1.1,
+                4 => s.bands[1].input_db = 24.1,
+                5 => s.bands[2].output_db = -24.1,
+                6 => s.bands[1].attack_ms = 0.0,
+                7 => s.bands[2].release_ms = f32::INFINITY,
+                8 => s.level_db = 12.1,
+                9 => s.dry_wet = -0.1,
+                10 => s.version = 0,
+                _ => s.bands[0].depth = f32::NAN,
+            }
+            assert!(
+                project
+                    .edit(Edit::SetEffects {
+                        track_id: track,
+                        effects: vec![EffectInstance::drive(), effect],
+                        compact: true
+                    })
+                    .is_err()
+            );
+            assert_eq!(serde_json::to_value(&project).unwrap(), before);
+        }
+    }
+}

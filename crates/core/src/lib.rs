@@ -4,8 +4,9 @@ pub use daw_unit_core::{
     CompressorSettings, CurveShape, DRIVE_TYPE_ID, DriveColorShape, DriveSettings, EQ_TYPE_ID,
     EffectInstance, EffectSettings, EnvelopeSettings, EnvelopeStageSettings, EqBandSettings,
     EqSettings, FilterShape, INSTRUMENT_STATE_VERSION, InstrumentLayerSettings, InstrumentSettings,
-    LfoRateMode, LfoWave, MAX_ENVELOPE_TIME_MS, NoteRate, OscillatorInstrumentSettings,
-    OscillatorSettings, SILENT_GAIN_DB, Waveform,
+    LfoRateMode, LfoWave, MAX_ENVELOPE_TIME_MS, NoteRate, OTT_TYPE_ID,
+    OscillatorInstrumentSettings, OscillatorSettings, OttBandSettings, OttSettings, SILENT_GAIN_DB,
+    Waveform,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
 mod audio_settings;

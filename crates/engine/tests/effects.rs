@@ -701,3 +701,99 @@ fn compressor_inherits_history_and_meter_without_callback_allocations() {
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     assert!(f32::from_bits(meter.load(Ordering::Relaxed)) > 3.0);
 }
+
+#[test]
+fn ott_matches_live_export_blocks_and_preserves_history_without_allocations() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    for rate in SAMPLE_RATES {
+        for detection in [CompressorDetection::Peak, CompressorDetection::Rms] {
+            let mut plan = plan(rate, false);
+            let mut effect = EffectInstance::ott();
+            let EffectSettings::Ott(s) = &mut effect.unit else {
+                unreachable!()
+            };
+            s.detection = detection;
+            s.bands[1].depth = 0.6;
+            s.dry_wet = 0.7;
+            let id = effect.id;
+            plan.project.tracks[0].effects.push(effect);
+            let mut expected = vec![[0.0; 2]; 8192];
+            Renderer::new(plan.clone()).render_offline(&mut expected);
+            let mut live = Renderer::new(plan.clone());
+            live.play();
+            for (frame, sample) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if frame >= rate as usize / 200 {
+                    for channel in 0..2 {
+                        assert!((actual[channel] - sample[channel]).abs() < 1e-6);
+                    }
+                }
+            }
+            for block in BUFFER_SIZES {
+                let mut output = vec![[0.0; 2]; 8192];
+                let mut renderer = Renderer::new(plan.clone());
+                for chunk in output.chunks_mut(block as usize) {
+                    renderer.render_offline(chunk);
+                }
+                assert_eq!(output, expected);
+            }
+            let mut range = [[0.0; 2]; 64];
+            plan.render(1000, &mut range);
+            assert_eq!(range.as_slice(), &expected[1000..1064]);
+            let meter = Arc::new(std::array::from_fn(|_| AtomicU32::new(0)));
+            let mut current = Renderer::new(plan.clone());
+            current.set_ott_meter(id, meter.clone());
+            current.play();
+            let mut reference = Renderer::new(plan.clone());
+            reference.play();
+            for _ in 0..1000 {
+                assert_eq!(current.next_sample(), reference.next_sample());
+            }
+            plan.project.tracks[0].effects_compact = true;
+            let EffectSettings::Ott(s) = &mut plan.project.tracks[0].effects[0].unit else {
+                unreachable!()
+            };
+            s.collapsed = true;
+            let mut next = Renderer::new(plan.clone());
+            next.set_ott_meter(id, meter.clone());
+            ALLOCATIONS.with(|v| v.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            next.inherit(&mut current);
+            for _ in 0..1000 {
+                assert_eq!(next.next_sample(), reference.next_sample());
+            }
+            next.seek(1000);
+            assert!(
+                meter
+                    .iter()
+                    .all(|m| f32::from_bits(m.load(Ordering::Relaxed)) == 0.0)
+            );
+            next.next_sample();
+            next.stop();
+            assert!(
+                meter
+                    .iter()
+                    .all(|m| f32::from_bits(m.load(Ordering::Relaxed)) == 0.0)
+            );
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            let EffectSettings::Ott(s) = &mut plan.project.tracks[0].effects[0].unit else {
+                unreachable!()
+            };
+            s.low_frequency_hz = 500.0;
+            s.high_frequency_hz = 5000.0;
+            s.bands[0].enabled = false;
+            let mut updated = Renderer::new(plan);
+            updated.set_ott_meter(id, meter.clone());
+            ALLOCATIONS.with(|v| v.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            updated.inherit(&mut next);
+            updated.play();
+            for _ in 0..1000 {
+                assert!(updated.next_sample().iter().all(|x| x.is_finite()));
+            }
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        }
+    }
+}

@@ -44,6 +44,7 @@ pub mod knobs;
 pub mod meters;
 mod mix_controls;
 mod mixer;
+mod ott_panel;
 mod track_overview;
 mod track_selector;
 pub use mixer::ViewMode;

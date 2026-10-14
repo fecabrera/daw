@@ -235,6 +235,7 @@ impl Renderer {
                     daw_core::EffectSettings::Compressor(_) => {
                         daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::Ott(_) => daw_unit_core::OTT_TYPE_ID.hash(&mut hash),
                     daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
                 }
             }
@@ -280,6 +281,15 @@ impl Renderer {
     ) {
         for effects in &mut self.effects {
             effects.set_meter(id, &meter);
+        }
+    }
+    pub fn set_ott_meter(
+        &mut self,
+        id: Id,
+        meter: std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>,
+    ) {
+        for effects in &mut self.effects {
+            effects.set_ott_meter(id, &meter);
         }
     }
     pub fn inherit(&mut self, old: &mut Self) {

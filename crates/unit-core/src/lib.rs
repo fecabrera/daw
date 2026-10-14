@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 mod auto_filter;
 mod compressor;
+mod ott;
 pub use auto_filter::{
     AUTO_FILTER_STATE_VERSION, AUTO_FILTER_TYPE_ID, AutoFilterSettings, FilterShape, LfoRateMode,
     LfoWave, NoteRate,
@@ -9,6 +10,7 @@ pub use auto_filter::{
 pub use compressor::{
     COMPRESSOR_STATE_VERSION, COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings,
 };
+pub use ott::{OTT_STATE_VERSION, OTT_TYPE_ID, OttBandSettings, OttSettings};
 mod drive;
 pub use drive::{DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveColorShape, DriveSettings};
 mod effects;

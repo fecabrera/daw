@@ -67,7 +67,17 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
         for (key, shift, expected) in [
             (egui::Key::ArrowDown, false, vec![entries[2]]),
             (egui::Key::ArrowDown, true, vec![entries[2], entries[3]]),
-            (egui::Key::ArrowDown, true, vec![entries[2], entries[3]]),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![entries[2], entries[3], entries[4]],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![entries[2], entries[3], entries[4]],
+            ),
+            (egui::Key::ArrowUp, true, vec![entries[2], entries[3]]),
             (egui::Key::ArrowUp, true, vec![entries[2]]),
             (egui::Key::ArrowUp, true, vec![entries[1], entries[2]]),
             (egui::Key::ArrowUp, false, vec![entries[0]]),
@@ -120,7 +130,7 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         let blank = Rect::from_min_max(
             Pos2::new(
                 app.effects_bounds.library.left(),
-                app.effects_bounds.compressor_entry.bottom(),
+                app.effects_bounds.ott_entry.bottom(),
             ),
             app.effects_bounds.library.max,
         );
@@ -2742,4 +2752,127 @@ fn compressor_peak_rms_paint_uses_the_shared_neutral_arc_and_choice_labels() {
             assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment {points,..} if points.iter().all(|point| rect.contains(*point)) && points[0].distance(points[1]) <= 3.1)));
         }
     }
+}
+
+fn ott_settings(app: &DawUi) -> &daw_core::OttSettings {
+    let daw_core::EffectSettings::Ott(s) = &app.session.project.tracks[0].effects[0].unit else {
+        panic!("expected OTT")
+    };
+    s
+}
+#[test]
+fn ott_catalog_keyboard_add_layout_and_power_use_shared_effect_controls() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.select_track(track, false);
+        app.set_view_mode(ViewMode::Effects, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let point = app.effects_bounds.ott_entry.center();
+        click(&mut app, &ctx, point);
+        library_key(&mut app, &ctx, egui::Key::Enter, false);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(ott_settings(&app), &daw_core::OttSettings::default());
+        let bounds = &app.effects_bounds.ott_units[0];
+        for (i, section) in bounds.sections.iter().enumerate() {
+            let expected = if i < 3 {
+                2.0 * knobs::CHOICE_SIZE
+                    + 3.0 * ((crate::midi_editor::UNIT_STRIP_WIDTH - knobs::CHOICE_SIZE) * 0.5)
+            } else {
+                crate::midi_editor::UNIT_STRIP_WIDTH
+            };
+            assert!((section.width() - expected).abs() < 0.1);
+            if i > 0 {
+                assert!((section.left() - bounds.sections[i - 1].right()).abs() < 0.1);
+            }
+            if i < 3 {
+                let a = bounds.controls[i][0][0];
+                let b = bounds.controls[i][1][0];
+                assert!((a.left() - section.left() - (b.left() - a.right())).abs() < 0.1);
+                assert!((section.right() - b.right() - (b.left() - a.right())).abs() < 0.1);
+                assert!(section.contains_rect(bounds.meters[i]));
+                for column in 0..2 {
+                    for row in 0..3 {
+                        assert!(section.contains_rect(bounds.controls[i][column][row]));
+                    }
+                }
+            }
+        }
+        let power = bounds.bands[1].center();
+        end_click_sequence(&mut app, &ctx);
+        click(&mut app, &ctx, power);
+        assert!(!ott_settings(&app).bands[1].enabled);
+        let power = app.effects_bounds.ott_units[0].power.center();
+        end_click_sequence(&mut app, &ctx);
+        click(&mut app, &ctx, power);
+        assert!(!ott_settings(&app).enabled);
+        let meter = app.effects_bounds.ott_units[0].meters[0].center();
+        app.dirty = false;
+        let saved = ott_settings(&app).clone();
+        end_click_sequence(&mut app, &ctx);
+        click(&mut app, &ctx, meter);
+        assert_eq!(ott_settings(&app), &saved);
+        assert!(!app.dirty);
+        let compact = app.effects_bounds.compact.center();
+        end_click_sequence(&mut app, &ctx);
+        click(&mut app, &ctx, compact);
+        frame(&mut app, &ctx, vec![]);
+        assert!(
+            app.effects_bounds.ott_units[0]
+                .controls
+                .iter()
+                .flatten()
+                .flatten()
+                .all(|rect| !rect.is_positive())
+        );
+    }
+}
+#[test]
+fn ott_knobs_change_values_bound_crossovers_and_do_not_wrap_detection() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    app.session.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::ott());
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Effects, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let point = app.effects_bounds.ott_units[0].controls[0][1][0].center();
+    drag_control(&mut app, &ctx, point, Vec2::new(0.0, 60.0));
+    assert!(ott_settings(&app).bands[0].depth < 1.0);
+    let point = app.effects_bounds.ott_units[0].controls[3][0][2].center();
+    drag_control(&mut app, &ctx, point, Vec2::new(0.0, -300.0));
+    assert_eq!(
+        ott_settings(&app).detection,
+        daw_core::CompressorDetection::Rms
+    );
+    drag_control(&mut app, &ctx, point, Vec2::new(0.0, -300.0));
+    assert_eq!(
+        ott_settings(&app).detection,
+        daw_core::CompressorDetection::Rms
+    );
+    // High's lower limit stays above Low, including a reset/keyboard/drag change.
+    let point = app.effects_bounds.ott_units[0].controls[2][0][0].center();
+    drag_control(&mut app, &ctx, point, Vec2::new(0.0, 500.0));
+    assert!(ott_settings(&app).low_frequency_hz < ott_settings(&app).high_frequency_hz);
+    assert!(ott_settings(&app).valid());
+}
+
+fn drag_control(app: &mut DawUi, ctx: &egui::Context, start: Pos2, delta: Vec2) {
+    end_click_sequence(app, ctx);
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+    );
+    let end = start + delta;
+    frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(app, ctx, vec![button(end, false)]);
 }

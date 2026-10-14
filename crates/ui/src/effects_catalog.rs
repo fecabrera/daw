@@ -2,7 +2,7 @@ use egui::{EventFilter, Key, Modifiers, Response, Ui};
 use std::collections::HashSet;
 
 type Entry = (&'static str, &'static str, fn() -> daw_core::EffectInstance);
-pub(super) const ENTRIES: [Entry; 4] = [
+pub(super) const ENTRIES: [Entry; 5] = [
     (
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -23,6 +23,7 @@ pub(super) const ENTRIES: [Entry; 4] = [
         "Compressor",
         daw_core::EffectInstance::compressor,
     ),
+    (daw_core::OTT_TYPE_ID, "OTT", daw_core::EffectInstance::ott),
 ];
 
 /// Library selection is UI state, separate from installed units and project data.

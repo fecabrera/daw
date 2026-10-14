@@ -10,6 +10,7 @@ pub(crate) struct EffectsUiBounds {
     pub drive_entry: Rect,
     pub auto_filter_entry: Rect,
     pub compressor_entry: Rect,
+    pub ott_entry: Rect,
     pub compact: Rect,
     pub chain: Vec<(Id, Rect)>,
     pub lane_viewport: Rect,
@@ -18,6 +19,7 @@ pub(crate) struct EffectsUiBounds {
     pub drive_units: Vec<crate::drive_panel::Bounds>,
     pub auto_filter_units: Vec<crate::auto_filter_panel::Bounds>,
     pub compressor_units: Vec<crate::compressor_panel::Bounds>,
+    pub ott_units: Vec<crate::ott_panel::Bounds>,
 }
 
 #[cfg(test)]
@@ -32,6 +34,7 @@ impl Default for EffectsUiBounds {
             drive_entry: Rect::NOTHING,
             auto_filter_entry: Rect::NOTHING,
             compressor_entry: Rect::NOTHING,
+            ott_entry: Rect::NOTHING,
             compact: Rect::NOTHING,
             chain: vec![],
             lane_viewport: Rect::NOTHING,
@@ -40,6 +43,7 @@ impl Default for EffectsUiBounds {
             drive_units: vec![],
             auto_filter_units: vec![],
             compressor_units: vec![],
+            ott_units: vec![],
         }
     }
 }
@@ -94,6 +98,7 @@ impl DawUi {
             self.effects_bounds.drive_units.clear();
             self.effects_bounds.auto_filter_units.clear();
             self.effects_bounds.compressor_units.clear();
+            self.effects_bounds.ott_units.clear();
         }
         let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
         ui.painter()
@@ -225,6 +230,8 @@ impl DawUi {
                         if type_id == daw_core::AUTO_FILTER_TYPE_ID {
                             self.effects_bounds.auto_filter_entry = response.rect;
                         }
+                        #[cfg(test)]
+                        if type_id == daw_core::OTT_TYPE_ID { self.effects_bounds.ott_entry = response.rect; }
                         #[cfg(test)]
                         if type_id == daw_core::COMPRESSOR_TYPE_ID {
                             self.effects_bounds.compressor_entry = response.rect;
@@ -413,6 +420,25 @@ impl DawUi {
                                                 let power = _bounds.power;
                                                 #[cfg(test)]
                                                 self.effects_bounds.auto_filter_units.push(_bounds);
+                                                (header, power)
+                                            }
+                                            daw_core::EffectSettings::Ott(settings) => {
+                                                let gains = self
+                                                    .output
+                                                    .as_ref()
+                                                    .map_or([0.0; 3], |output| {
+                                                        output.ott_gain_change_db(effect.id)
+                                                    });
+                                                let (_bounds, header) = crate::ott_panel::show(
+                                                    ui,
+                                                    settings,
+                                                    compact,
+                                                    strip.height(),
+                                                    gains,
+                                                );
+                                                let power = _bounds.power;
+                                                #[cfg(test)]
+                                                self.effects_bounds.ott_units.push(_bounds);
                                                 (header, power)
                                             }
                                             daw_core::EffectSettings::Missing {
