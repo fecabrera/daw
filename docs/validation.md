@@ -1822,3 +1822,17 @@ Completed checks:
 - Documentation links and `git diff --check`: passed.
 
 Native layout/gesture behavior and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only composition change. The running DAW and user projects were not restarted or changed.
+
+## Standard scrollbar palette — 2026-10-14
+
+The shared theme now makes every scrollbar use the surface-color palette already used by Timeline. This includes the effects lane, Instrument layer lanes, lists, and dialogs in both themes. Scrollbar thumbs use themed widget background colors instead of foreground colors, removing the bright foreground hover color. Existing track colors, scrollbar dimensions, floating/fading behavior, and interactions remain in place.
+
+Completed checks on the final source:
+
+- `cargo fmt --all --check`: passed.
+- Strict locked offline workspace/all-target Clippy: passed. Log: `work/effects-scrollbar-clippy.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --locked --offline --workspace`: **543 passed**, including **341 UI tests** and doc tests. Log: `work/effects-scrollbar-workspace.log`.
+- `CARGO_HOME="$PWD/work/cargo-home" CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug`: passed. Log: `work/effects-scrollbar-package.log`. Bundle and build executables share SHA-256 `744b5fb94456bba578561a6eb634d798c33e1a0362ed66878b4bd1d38c0af4cd`.
+- Documentation links and `git diff --check`: passed.
+
+Native scrollbar appearance and Windows/Linux builds were not verified. CLI smoke checks were not repeated for this UI-only style change. The running DAW and user projects were not restarted or changed.

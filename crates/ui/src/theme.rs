@@ -332,6 +332,8 @@ fn configure_style(ctx: &Context, theme: egui::Theme, colors: Palette) {
         style.spacing.item_spacing = Vec2::new(8.0, 5.0);
         style.spacing.button_padding = Vec2::new(7.0, 3.0);
         style.spacing.interact_size.y = 22.0;
+        // All scrollbars share Timeline's surface palette; retain their geometry/fading.
+        style.spacing.scroll.foreground_color = false;
         style
             .text_styles
             .insert(TextStyle::Body, FontId::proportional(13.0));
