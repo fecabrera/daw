@@ -157,11 +157,6 @@ impl ProjectSettings {
                 "Buffer duration: {:.2} ms",
                 self.buffer_size_frames as f64 * 1000.0 / self.sample_rate_hz as f64
             ));
-            if self.stretch_engine.id == daw_core::StretchEngineId::Integrated
-                && self.stretch_engine.revision < daw_core::StretchEngine::INTEGRATED.revision
-            {
-                ui.label("This project uses the earlier Integrated engine. Select Integrated again to update it.");
-            }
             ui.label("Applying audio settings stops playback.");
             if let Err(message) = valid_name(&self.name) {
                 ui.colored_label(crate::theme::palette(ctx).error, message);

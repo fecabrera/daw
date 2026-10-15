@@ -65,11 +65,11 @@ The processor must:
 
 Published spectral and time-domain methods may be combined. Method choice does not exempt stereo coherence, transient handling, or short-input behavior. Neither Rubber Band's internal structure nor sample-exact output is a requirement.
 
-## Experimental revision 2
+## Experimental engine
 
-Revision 2 fixes phase continuity when spectral peaks change and protects detected attacks during expansion. The attack detector uses shared stereo energy. Short regions around detected attacks retain their original speed and phase; gaps absorb the remaining requested duration. Onsets stay anchored to the global ratio, and the exact output-length contract remains unchanged. Compression uses a linear time map with corrected phase continuity. See the [independent design record](../crates/timestretch/PROVENANCE.md#revision-2-phase-continuity-and-attack-preservation) for equations, thresholds, sources, and limits.
+The engine maintains phase continuity when spectral peaks change and protects detected attacks during expansion. The attack detector uses shared stereo energy. Short regions around detected attacks retain their original speed and phase; gaps absorb the remaining requested duration. Onsets stay anchored to the global ratio, and the exact output-length contract remains unchanged. Compression uses a linear time map with the same phase-continuity rule. See the [independent design record](../crates/timestretch/PROVENANCE.md#phase-continuity-and-attack-preservation) for equations, thresholds, sources, and limits.
 
-The engine applies no automatic gain matching or normalization. Attack protection can reduce average level on sparse percussion as the interval between intact pulses increases. Missed/masked attacks, dense events, source-wide window choice, and cymbal-tail quality remain listening targets. Revision 1 remains available for reproduction; selecting revision 2 is explicit for an existing project.
+The engine applies no automatic gain matching or normalization. Attack protection can reduce average level on sparse percussion as the interval between intact pulses increases. Missed/masked attacks, dense events, source-wide window choice, and cymbal-tail quality remain listening targets.
 
 ## Resources and failure handling
 
@@ -87,7 +87,7 @@ The following commands are implemented by the standalone `timestretch` binary in
 
 | Engine ID | Processing configuration |
 | --- | --- |
-| `timestretch` | New Rust engine, processing revision 2 by default; revision 1 retained |
+| `timestretch` | Independent Rust engine, current implementation |
 | `rubberband-r2` | Rubber Band R2/Faster, offline, linked stereo, pitch factor 1, internal threading disabled |
 | `rubberband-r3` | Rubber Band R3/Finer, offline, linked stereo, pitch factor 1, internal threading disabled |
 
@@ -121,11 +121,11 @@ Also provide `timestretch process` for diagnostics and benchmark orchestration:
 ```sh
 # Command; individual processing remains available for each engine.
 timestretch process --input input.wav --output integrated.wav \
-  --engine timestretch --revision 2 --ratio 3/2 --sample-rate 48000 \
+  --engine timestretch --ratio 3/2 --sample-rate 48000 \
   --report integrated.json
 ```
 
-Require `--input`, `--output`, `--engine`, `--ratio`, and `--report`; use the same rates/formats/ratio rules as `compare`. Accepted engine IDs are the three above. `--revision` defaults to the latest revision for the selected engine: Integrated 2, Rubber Band 1. Explicit Integrated revision 1 retains the original DSP. Reports record the actual selected revision; Rubber Band revision 2 is rejected. `--overwrite` permits output/report replacement after successful staging, but never source replacement. Backend dispatch is shared by `process`, `compare`, and benchmarks. Do not introduce a `daw-cli stretch` dependency or duplicate the new engine's DSP in tools.
+Require `--input`, `--output`, `--engine`, `--ratio`, and `--report`; use the same rates/formats/ratio rules as `compare`. Accepted engine IDs are the three above. Each engine runs its current implementation. Reports record the processing identity and build metadata. `--overwrite` permits output/report replacement after successful staging, but never source replacement. Backend dispatch is shared by `process`, `compare`, and benchmarks. Do not introduce a `daw-cli stretch` dependency or duplicate the new engine's DSP in tools.
 
 ### Scripts and reports
 
@@ -176,9 +176,9 @@ Add **Time stretch engine** to **Project Settings**, beside the project audio co
 
 Rubber Band R2 is a required standalone comparison reference, not an additional DAW dropdown requirement in this version. The portable engine and command tool do not read or write project settings. The following persistence and cache requirements apply only to the DAW adapter.
 
-Save the engine ID and positive processing revision at project level. Initial revision is 1 for each backend. Missing legacy fields select `rubberband-r3`, revision 1. Behavior-changing algorithm updates require a new processing revision and explicit migration decision; a dependency update must not silently reinterpret a saved revision. Reports also record concrete library/build versions.
+Save the engine ID and positive processing revision at project level. Missing legacy fields select the default Rubber Band identity. Behavior-changing algorithm updates require a new processing revision and explicit migration decision; a dependency update must not silently reinterpret a saved revision. Reports also record concrete library/build versions.
 
-Expose the selectable Integrated (experimental) item only after real DSP passes the automated engine/integration gates. Builds without it identify it as unavailable. Unknown IDs/revisions or unavailable backends cause actionable preparation/open errors, retaining the current session and leaving the saved file untouched. Do not silently substitute another backend. Migration of unavailable engines remains outside this version. Supported Integrated revision-1 projects keep their saved DSP when opened or when unchanged Settings are applied. To opt into revision 2, select Integrated (experimental) again and Apply. Settings shows this instruction for revision-1 projects. The normal worker transaction rebuilds buffers, retains the old session on failure/cancellation, and saves revision 2 only after success.
+Expose the selectable Integrated (experimental) item only after real DSP passes the automated engine/integration gates. Builds without it identify it as unavailable. Unknown IDs/revisions or unavailable backends cause actionable preparation/open errors, retaining the current session and leaving the saved file untouched. Do not silently substitute another backend. Migration of unavailable engines remains outside this version. Each backend accepts only its current processing identity. The normal worker transaction rebuilds buffers when the engine changes and retains the current session on failure or cancellation.
 
 Applying a choice follows the current project audio-settings transaction:
 

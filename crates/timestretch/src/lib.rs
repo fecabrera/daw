@@ -2,17 +2,16 @@
 //! Call on a worker: processing allocates and blocks. No files, devices, or threads.
 #![forbid(unsafe_code)]
 mod spectral;
-mod spectral_v1;
 mod transients;
 use std::{fmt, ops::ControlFlow, str::FromStr};
 
+/// Processing identity for caches and reports; requests always use this implementation.
 pub const REVISION: u32 = 2;
 pub const SAMPLE_RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     InvalidRatio,
-    UnsupportedRevision,
     InvalidRate,
     InvalidLayout,
     NonfiniteInput,
@@ -24,7 +23,6 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::UnsupportedRevision => "unsupported time stretch processing revision",
             Self::InvalidRatio => "duration ratio must be between 1/8 and 8",
             Self::InvalidRate => "unsupported sample rate",
             Self::InvalidLayout => "expected complete interleaved mono or stereo frames",
@@ -115,8 +113,6 @@ impl FromStr for Ratio {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Request {
-    /// Revision 1 retains its original DSP. New requests default to REVISION.
-    pub revision: u32,
     pub sample_rate: u32,
     pub channels: usize,
     pub ratio: Ratio,
@@ -127,15 +123,11 @@ pub struct Request {
 impl Request {
     pub fn new(sample_rate: u32, channels: usize, ratio: Ratio) -> Self {
         Self {
-            revision: REVISION,
             sample_rate,
             channels,
             ratio,
             memory_limit_bytes: 1024 * 1024 * 1024,
         }
-    }
-    pub fn with_revision(self, revision: u32) -> Self {
-        Self { revision, ..self }
     }
     pub fn process(self, input: &[f32]) -> Result<Vec<f32>, Error> {
         self.process_with_progress(input, |_| ControlFlow::Continue(()))
@@ -147,9 +139,6 @@ impl Request {
         mut progress: impl FnMut(f32) -> ControlFlow<()>,
     ) -> Result<Vec<f32>, Error> {
         checkpoint(&mut progress, 0.0)?;
-        if !(1..=REVISION).contains(&self.revision) {
-            return Err(Error::UnsupportedRevision);
-        }
         if !SAMPLE_RATES.contains(&self.sample_rate) {
             return Err(Error::InvalidRate);
         }
@@ -163,13 +152,9 @@ impl Request {
             .ok_or(Error::ResourceLimit)?;
         // f64 overlap accumulation, final f32 output, bounded FFT workspace,
         // and worst-case transient observations/regions (one per 30 ms).
-        let transient_storage = if self.revision >= 2 {
-            (frames / (self.sample_rate as usize * 30 / 1000) + 1)
-                .checked_mul(32)
-                .ok_or(Error::ResourceLimit)?
-        } else {
-            0
-        };
+        let transient_storage = (frames / (self.sample_rate as usize * 30 / 1000) + 1)
+            .checked_mul(32)
+            .ok_or(Error::ResourceLimit)?;
         let storage = samples
             .checked_mul(12)
             .and_then(|n| n.checked_add(8 * 1024 * 1024))
@@ -220,10 +205,7 @@ impl Request {
             checkpoint(&mut progress, 1.0)?;
             return Ok(output);
         }
-        match self.revision {
-            1 => spectral_v1::process(self, input, output_frames, &mut progress),
-            _ => spectral::process(self, input, output_frames, &mut progress),
-        }
+        spectral::process(self, input, output_frames, &mut progress)
     }
 }
 fn checkpoint(progress: &mut impl FnMut(f32) -> ControlFlow<()>, value: f32) -> Result<(), Error> {

@@ -40,6 +40,6 @@ Keep sibling `timestretch` and `timestretch-cli` directories when extracting the
 
 Original tool/adapters are BSD-2-Clause. Reference-enabled distributions include GPL-2.0-or-later Rubber Band dependencies; ship [notices](licenses) with the binary and retain the applicable obligations. The reference option does not change the standalone core's dependency graph. Reference adapters use public APIs; no Rubber Band implementation material is incorporated in the new engine. See the engine's [provenance record](../timestretch/PROVENANCE.md).
 
-## Processing revisions
+## Processing identity
 
-`process` and `compare` use Integrated revision 2 and Rubber Band revision 1 by default. For a reproducible earlier Integrated render, pass `process --engine timestretch --revision 1`. Integrated accepts revisions 1 and 2; Rubber Band accepts revision 1. Invalid combinations fail before processing or publication. Each report records the actual revision. Engine output is raw: no loudness matching, normalization, or limiting.
+Each engine runs its current implementation. Reports record its processing identity and build metadata for reproducibility. Engine output is raw: no loudness matching, normalization, or limiting.

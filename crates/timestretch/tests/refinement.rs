@@ -15,15 +15,12 @@ fn noise(frames: usize) -> Vec<f32> {
 }
 
 #[test]
-fn moving_spectral_peaks_keep_more_energy_without_gain_matching() {
+fn moving_spectral_peaks_preserve_energy_without_gain_matching() {
     let input = noise(48000);
     for (p, q) in [(1, 2), (3, 2), (2, 1)] {
         let request = Request::new(48000, 1, Ratio::new(p, q).unwrap());
-        let old = request.with_revision(1).process(&input).unwrap();
         let new = request.process(&input).unwrap();
-        let old_db = 10. * (power(&old) / power(&input)).log10();
         let new_db = 10. * (power(&new) / power(&input)).log10();
-        assert!(new_db > old_db + 0.75, "{p}/{q}: {old_db} -> {new_db}");
         assert!(new_db.abs() < if p < q { 2.3 } else { 0.9 }, "{new_db}");
         // Shared phase decisions, not a nonlinear level normalizer or peak clamp.
         let doubled: Vec<_> = input.iter().map(|s| s * 2.).collect();
@@ -69,7 +66,6 @@ fn expansion_retains_attacks_on_kicks_noise_and_mixed_material() {
             for (p, q) in [(3, 2), (2, 1), (8, 1)] {
                 let request = Request::new(rate, 1, Ratio::new(p, q).unwrap());
                 let new = request.process(&input).unwrap();
-                let old = request.with_revision(1).process(&input).unwrap();
                 let onset = rate as usize / 5;
                 let target = onset * p as usize / q as usize;
                 let length = rate as usize / if noisy { 2000 } else { 100 };
@@ -87,7 +83,6 @@ fn expansion_retains_attacks_on_kicks_noise_and_mixed_material() {
                     "attack {rate} {noisy} {background} {p}/{q}: {}",
                     residual(&new)
                 );
-                assert!(residual(&new) < residual(&old) * 0.1);
                 if !background {
                     let pre = power(&new[target - length..target]);
                     assert!(pre < power(reference) * 0.002, "pre-echo: {pre}");
@@ -125,14 +120,6 @@ fn transient_processing_preserves_stereo_gain_and_cancellation() {
                 Err(Error::Cancelled)
             );
         }
-    }
-    for revision in [0, 3, u32::MAX] {
-        assert_eq!(
-            Request::new(48000, 1, Ratio::new(1, 1).unwrap())
-                .with_revision(revision)
-                .process(&[0.]),
-            Err(Error::UnsupportedRevision)
-        );
     }
 }
 

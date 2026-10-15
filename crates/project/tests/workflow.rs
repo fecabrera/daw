@@ -3166,31 +3166,6 @@ fn stretch_engine_switch_is_atomic_saved_and_cache_scoped() {
         &session.stretched_audio[&key].samples,
         &integrated.stretched_audio[&key].samples
     ));
-    let legacy_identity = StretchEngine {
-        revision: 1,
-        ..StretchEngine::INTEGRATED
-    };
-    let mut legacy = integrated
-        .with_processing_settings(48000, 512, legacy_identity)
-        .unwrap();
-    assert!(!Arc::ptr_eq(
-        &legacy.stretched_audio[&key].samples,
-        &integrated.stretched_audio[&key].samples
-    ));
-    legacy.save(&fixture.0.join("legacy-integrated")).unwrap();
-    let legacy_loaded = Session::open(&fixture.0.join("legacy-integrated")).unwrap();
-    assert_eq!(legacy_loaded.project.stretch_engine, legacy_identity);
-    assert_eq!(
-        *legacy_loaded.stretched_audio[&key].samples,
-        *legacy.stretched_audio[&key].samples
-    );
-    let upgraded = legacy_loaded
-        .with_processing_settings(48000, 512, StretchEngine::INTEGRATED)
-        .unwrap();
-    assert_eq!(
-        *upgraded.stretched_audio[&key].samples,
-        *integrated.stretched_audio[&key].samples
-    );
     let prepared = integrated.stretched_audio[&key].samples.clone();
     integrated.prepare_stretches().unwrap();
     assert!(Arc::ptr_eq(
