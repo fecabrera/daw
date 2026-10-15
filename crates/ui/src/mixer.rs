@@ -119,6 +119,7 @@ impl DawUi {
         }
         self.view_mode = mode;
         self.effects_catalog.clear();
+        self.instrument_catalog.clear();
         self.selected_effects.clear();
         self.midi_editor.cancel();
         self.instrument_ui.cancel();

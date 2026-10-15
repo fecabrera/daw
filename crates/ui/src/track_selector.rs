@@ -6,7 +6,8 @@ impl DawUi {
         ui.add_enabled_ui(
             !self.midi_editor.dragging()
                 && !self.instrument_ui.dragging()
-                && self.effects_drag.is_none(),
+                && self.effects_drag.is_none()
+                && self.component_drag.is_none(),
             |ui| {
                 let tracks: Vec<_> = self
                     .session

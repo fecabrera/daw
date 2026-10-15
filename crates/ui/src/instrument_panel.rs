@@ -7,6 +7,7 @@ const LAYER_HEADER_WIDTH: f32 = TRACK_WIDTH;
 #[derive(Default)]
 pub(super) struct InstrumentUi {
     pub(super) track: Option<Id>,
+    pub(super) selected_layer: Option<Id>,
     name_edit: Option<LayerNameEdit>,
     drag: Option<Id>,
     inputs: HashMap<Id, Inputs>,
@@ -18,7 +19,9 @@ struct LayerNameEdit {
 }
 impl InstrumentUi {
     pub(super) fn cancel(&mut self) {
-        *self = Self::default();
+        self.name_edit = None;
+        self.drag = None;
+        self.inputs.clear();
     }
     pub(super) fn dragging(&self) -> bool {
         self.drag.is_some()
@@ -54,6 +57,7 @@ pub(crate) struct LayerUiBounds {
 impl DawUi {
     pub(super) fn instrument_view(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 0.0;
+        self.activate_component_drag(ui);
         let Some(track) = self
             .session
             .project
@@ -80,6 +84,15 @@ impl DawUi {
         if self.instrument_ui.track != Some(track.id) {
             self.instrument_ui.cancel();
             self.instrument_ui.track = Some(track.id);
+            self.instrument_ui.selected_layer = None;
+            self.instrument_catalog.clear();
+        }
+        if !settings
+            .layers
+            .iter()
+            .any(|layer| Some(layer.id) == self.instrument_ui.selected_layer)
+        {
+            self.instrument_ui.selected_layer = settings.layers.first().map(|layer| layer.id);
         }
         if self
             .instrument_ui
@@ -101,7 +114,7 @@ impl DawUi {
                 ui,
                 icons::Lucide::Plus,
                 "Add layer",
-                true,
+                self.component_drag.is_none(),
                 theme::palette(ui.ctx()).text,
             );
             #[cfg(test)]
@@ -122,6 +135,7 @@ impl DawUi {
                     }
                     number += 1;
                 }
+                self.instrument_ui.selected_layer = Some(layer.id);
                 settings.layers.push(layer);
             }
             add.rect.width()
@@ -146,7 +160,9 @@ impl DawUi {
                     ui.set_min_width(ui.available_width());
                     // Adjacent rows share one border pixel.
                     ui.spacing_mut().item_spacing.y = -1.0;
-                    if self.instrument_ui.dragging() {
+                    if self.instrument_ui.dragging()
+                        || self.component_drag.as_ref().is_some_and(|drag| drag.active)
+                    {
                         self.scroll_layer_drag(ui);
                     }
                     for layer in &mut settings.layers {
@@ -154,172 +170,195 @@ impl DawUi {
                             // Use one presentation snapshot for the entire frame.
                             let compact = layer.collapsed;
                             let height = panels::unit_height(compact);
-                            let row = ui.horizontal_top(|ui| {
-                                ui.spacing_mut().item_spacing.x = if layer.oscillators.is_empty() {
-                                    0.0
-                                } else {
-                                    -1.0
-                                };
-                                ui.spacing_mut().item_spacing.y = 0.0;
-                                let (label, response) = ui.allocate_exact_size(
-                                    Vec2::new(LAYER_HEADER_WIDTH, height),
-                                    Sense::click_and_drag(),
-                                );
-                                ui.painter().rect_filled(
-                                    label,
-                                    0.0,
-                                    theme::palette(ui.ctx()).panel,
-                                );
-                                let mut header_ui = ui.new_child(
-                                    egui::UiBuilder::new()
-                                        .max_rect(Rect::from_min_size(
-                                            label.min + Vec2::splat(7.0),
-                                            Vec2::new(
-                                                label.width() - 14.0,
-                                                toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE,
-                                            ),
-                                        ))
-                                        .layout(egui::Layout::top_down(egui::Align::Min)),
-                                );
-                                header_ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                                let mixing_enabled = !self.instrument_ui.dragging()
-                                    && !self.instrument_ui.editing_name();
-                                let header = rows::centered(
-                                    &mut header_ui,
-                                    toolbars::CONTROL_HEIGHT,
-                                    |ui| {
-                                        let buttons_width = 2.0 * toolbars::CONTROL_HEIGHT
-                                            + layer_action_width
-                                            + 2.0 * ui.spacing().item_spacing.x;
-                                        let name_width = (ui.available_width()
-                                            - toolbars::CONTROL_HEIGHT
-                                            - buttons_width
-                                            - 2.0 * ui.spacing().item_spacing.x)
-                                            .max(1.0);
-                                        let grip = icons::reorder_grip(ui, "layer");
-                                        self.start_layer_drag(ui, &grip, layer.id);
-                                        let name = ui
-                                            .allocate_ui_with_layout(
-                                                Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
-                                                egui::Layout::left_to_right(egui::Align::Center),
-                                                |ui| {
-                                                    // Short names must still reserve the full name column.
-                                                    ui.set_min_width(name_width);
-                                                    self.layer_name(ui, layer)
-                                                },
-                                            )
-                                            .inner;
-                                        let toggles = ui
-                                            .add_enabled_ui(mixing_enabled, |ui| {
-                                                mix_controls::mute_solo(
+                            let row = ui
+                                .add_enabled_ui(self.component_drag.is_none(), |ui| {
+                                    ui.horizontal_top(|ui| {
+                                        ui.spacing_mut().item_spacing.x =
+                                            if layer.oscillators.is_empty() {
+                                                0.0
+                                            } else {
+                                                -1.0
+                                            };
+                                        ui.spacing_mut().item_spacing.y = 0.0;
+                                        let (label, response) = ui.allocate_exact_size(
+                                            Vec2::new(LAYER_HEADER_WIDTH, height),
+                                            Sense::click_and_drag(),
+                                        );
+                                        ui.painter().rect_filled(
+                                            label,
+                                            0.0,
+                                            theme::palette(ui.ctx()).panel,
+                                        );
+                                        let mut header_ui = ui.new_child(
+                                            egui::UiBuilder::new()
+                                                .max_rect(Rect::from_min_size(
+                                                    label.min + Vec2::splat(7.0),
+                                                    Vec2::new(
+                                                        label.width() - 14.0,
+                                                        toolbars::CONTROL_HEIGHT
+                                                            + 4.0
+                                                            + knobs::SIZE,
+                                                    ),
+                                                ))
+                                                .layout(egui::Layout::top_down(egui::Align::Min)),
+                                        );
+                                        header_ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                                        let mixing_enabled = !self.instrument_ui.dragging()
+                                            && !self.instrument_ui.editing_name();
+                                        let header = rows::centered(
+                                            &mut header_ui,
+                                            toolbars::CONTROL_HEIGHT,
+                                            |ui| {
+                                                let buttons_width = 2.0 * toolbars::CONTROL_HEIGHT
+                                                    + layer_action_width
+                                                    + 2.0 * ui.spacing().item_spacing.x;
+                                                let name_width = (ui.available_width()
+                                                    - toolbars::CONTROL_HEIGHT
+                                                    - buttons_width
+                                                    - 2.0 * ui.spacing().item_spacing.x)
+                                                    .max(1.0);
+                                                let grip = icons::reorder_grip(ui, "layer");
+                                                self.start_layer_drag(ui, &grip, layer.id);
+                                                let name = ui
+                                                    .allocate_ui_with_layout(
+                                                        Vec2::new(
+                                                            name_width,
+                                                            toolbars::CONTROL_HEIGHT,
+                                                        ),
+                                                        egui::Layout::left_to_right(
+                                                            egui::Align::Center,
+                                                        ),
+                                                        |ui| {
+                                                            // Short names must still reserve the full name column.
+                                                            ui.set_min_width(name_width);
+                                                            self.layer_name(ui, layer)
+                                                        },
+                                                    )
+                                                    .inner;
+                                                let toggles = ui
+                                                    .add_enabled_ui(mixing_enabled, |ui| {
+                                                        mix_controls::mute_solo(
+                                                            ui,
+                                                            &mut layer.muted,
+                                                            &mut layer.soloed,
+                                                            [
+                                                                "Mute layer",
+                                                                "Solo layer within this instrument",
+                                                            ],
+                                                        )
+                                                    })
+                                                    .inner;
+                                                let collapse = icons::button(
                                                     ui,
-                                                    &mut layer.muted,
-                                                    &mut layer.soloed,
-                                                    [
-                                                        "Mute layer",
-                                                        "Solo layer within this instrument",
-                                                    ],
+                                                    if compact {
+                                                        icons::Lucide::ArrowDownFromLine
+                                                    } else {
+                                                        icons::Lucide::ArrowUpFromLine
+                                                    },
+                                                    if compact {
+                                                        "Expand layer"
+                                                    } else {
+                                                        "Collapse layer"
+                                                    },
+                                                    mixing_enabled
+                                                        && ui.input(|input| input.focused),
+                                                    theme::palette(ui.ctx()).text,
+                                                );
+                                                (
+                                                    grip.rect,
+                                                    name,
+                                                    toggles.map(|response| response.rect),
+                                                    collapse,
+                                                )
+                                            },
+                                        )
+                                        .inner;
+                                        let collapse = header.3;
+                                        if collapse.clicked() {
+                                            layer.collapsed = !compact;
+                                            ui.ctx().request_repaint();
+                                        }
+                                        let inputs = self
+                                            .instrument_ui
+                                            .inputs
+                                            .entry(layer.id)
+                                            .or_insert_with(|| Inputs {
+                                                gain: faders::format_gain(layer.gain_db),
+                                                pan: format!("{:.2}", layer.pan),
+                                            });
+                                        let mixing = header_ui
+                                            .add_enabled_ui(mixing_enabled, |ui| {
+                                                mix_controls::gain_pan(
+                                                    ui,
+                                                    &mut layer.gain_db,
+                                                    &mut layer.pan,
+                                                    inputs,
                                                 )
                                             })
                                             .inner;
-                                        let collapse = icons::button(
-                                            ui,
-                                            if compact {
-                                                icons::Lucide::ArrowDownFromLine
-                                            } else {
-                                                icons::Lucide::ArrowUpFromLine
-                                            },
-                                            if compact {
-                                                "Expand layer"
-                                            } else {
-                                                "Collapse layer"
-                                            },
-                                            mixing_enabled && ui.input(|input| input.focused),
-                                            theme::palette(ui.ctx()).text,
-                                        );
-                                        (
-                                            grip.rect,
-                                            name,
-                                            toggles.map(|response| response.rect),
-                                            collapse,
-                                        )
-                                    },
-                                )
-                                .inner;
-                                let collapse = header.3;
-                                if collapse.clicked() {
-                                    layer.collapsed = !compact;
-                                    ui.ctx().request_repaint();
-                                }
-                                let inputs =
-                                    self.instrument_ui.inputs.entry(layer.id).or_insert_with(
-                                        || Inputs {
-                                            gain: faders::format_gain(layer.gain_db),
-                                            pan: format!("{:.2}", layer.pan),
-                                        },
-                                    );
-                                let mixing = header_ui
-                                    .add_enabled_ui(mixing_enabled, |ui| {
-                                        mix_controls::gain_pan(
-                                            ui,
-                                            &mut layer.gain_db,
-                                            &mut layer.pan,
-                                            inputs,
-                                        )
-                                    })
-                                    .inner;
-                                if let Some(error) = mixing.error {
-                                    self.fail(error);
-                                }
-                                let controls = (header.0, header.1);
-                                let mixing_bounds = [
-                                    header.2[0],
-                                    header.2[1],
-                                    mixing.bounds[0],
-                                    mixing.bounds[1],
-                                    mixing.bounds[2],
-                                    mixing.bounds[3],
-                                ];
-                                // Click-only buttons can pass a drag to the background. Exclude
-                                // controls at the press origin, even when the pointer leaves them.
-                                let control_press = ui.input(|input| {
-                                    input.pointer.press_origin().is_some_and(|point| {
-                                        collapse.rect.contains(point)
-                                            || mixing_bounds.iter().any(|rect| rect.contains(point))
-                                    })
-                                });
-                                if !control_press {
-                                    self.start_layer_drag(ui, &response, layer.id);
-                                }
-                                let response = response.on_hover_cursor(egui::CursorIcon::Grab);
-                                response.context_menu(|ui| {
-                                    if ui
-                                        .add_enabled(
-                                            count > 1 && !self.instrument_ui.dragging(),
-                                            egui::Button::new("Remove layer"),
-                                        )
-                                        .clicked()
-                                    {
-                                        remove_layer = Some(layer.id);
-                                        ui.close();
-                                    }
-                                });
-                                let mut source_empty_state = Rect::NOTHING;
-                                let mut envelope_empty_state = Rect::NOTHING;
-                                let mut add_source = Rect::NOTHING;
-                                let mut add_envelope = Rect::NOTHING;
-                                let mut oscillator_panel = None;
-                                let mut oscillator_header = Rect::NOTHING;
-                                let mut oscillator_power = Rect::NOTHING;
-                                let mut envelope_header = Rect::NOTHING;
-                                let mut envelope_power = Rect::NOTHING;
-                                let mut envelope_stages = [Rect::NOTHING; 4];
-                                let mut envelope_rect = Rect::NOTHING;
-                                egui::ScrollArea::horizontal()
-                                    .id_salt("layer-units")
-                                    .auto_shrink([false, true])
-                                    .show(ui, |ui| {
-                                        ui.horizontal_top(|ui| {
+                                        if let Some(error) = mixing.error {
+                                            self.fail(error);
+                                        }
+                                        let controls = (header.0, header.1);
+                                        let mixing_bounds = [
+                                            header.2[0],
+                                            header.2[1],
+                                            mixing.bounds[0],
+                                            mixing.bounds[1],
+                                            mixing.bounds[2],
+                                            mixing.bounds[3],
+                                        ];
+                                        // Click-only buttons can pass a drag to the background. Exclude
+                                        // controls at the press origin, even when the pointer leaves them.
+                                        let control_press = ui.input(|input| {
+                                            input.pointer.press_origin().is_some_and(|point| {
+                                                collapse.rect.contains(point)
+                                                    || mixing_bounds
+                                                        .iter()
+                                                        .any(|rect| rect.contains(point))
+                                            })
+                                        });
+                                        if !control_press {
+                                            self.start_layer_drag(ui, &response, layer.id);
+                                        }
+                                        response.widget_info(|| {
+                                            egui::WidgetInfo::selected(
+                                                egui::WidgetType::Button,
+                                                ui.is_enabled(),
+                                                self.instrument_ui.selected_layer == Some(layer.id),
+                                                format!("Select layer {}", layer.name),
+                                            )
+                                        });
+                                        let response =
+                                            response.on_hover_cursor(egui::CursorIcon::Grab);
+                                        response.context_menu(|ui| {
+                                            if ui
+                                                .add_enabled(
+                                                    count > 1 && !self.instrument_ui.dragging(),
+                                                    egui::Button::new("Remove layer"),
+                                                )
+                                                .clicked()
+                                            {
+                                                remove_layer = Some(layer.id);
+                                                ui.close();
+                                            }
+                                        });
+                                        let mut source_empty_state = Rect::NOTHING;
+                                        let mut envelope_empty_state = Rect::NOTHING;
+                                        let mut add_source = Rect::NOTHING;
+                                        let mut add_envelope = Rect::NOTHING;
+                                        let mut oscillator_panel = None;
+                                        let mut oscillator_header = Rect::NOTHING;
+                                        let mut oscillator_power = Rect::NOTHING;
+                                        let mut envelope_header = Rect::NOTHING;
+                                        let mut envelope_power = Rect::NOTHING;
+                                        let mut envelope_stages = [Rect::NOTHING; 4];
+                                        let mut envelope_rect = Rect::NOTHING;
+                                        egui::ScrollArea::horizontal()
+                                            .id_salt("layer-units")
+                                            .auto_shrink([false, true])
+                                            .show(ui, |ui| {
+                                                ui.horizontal_top(|ui| {
                                             ui.spacing_mut().item_spacing.x =
                                                 if !layer.oscillators.is_empty()
                                                     && layer.has_envelope
@@ -370,7 +409,8 @@ impl DawUi {
                                                     )
                                                     .clicked()
                                                 {
-                                                    layer.oscillators.push(Default::default());
+                                                    instrument_catalog::Component::Oscillator
+                                                        .add_to(layer);
                                                 }
                                             }
                                             if layer.has_envelope {
@@ -430,66 +470,101 @@ impl DawUi {
                                                     )
                                                     .clicked()
                                                 {
-                                                    layer.has_envelope = true;
+                                                    instrument_catalog::Component::Envelope
+                                                        .add_to(layer);
                                                 }
                                             }
                                         });
-                                    });
-                                #[cfg(test)]
-                                {
-                                    self.midi_editor.envelope_panel_bounds = envelope_rect;
-                                    self.midi_editor.envelope_stage_bounds = envelope_stages;
-                                    if oscillator_panel.is_none() {
-                                        self.midi_editor.add_oscillator_bounds = add_source;
-                                    }
-                                    self.midi_editor.layer_bounds.insert(
-                                        layer.id,
-                                        LayerUiBounds {
-                                            row: label,
-                                            label,
-                                            grip: controls.0,
-                                            name: controls.1,
-                                            mix_controls: mixing_bounds,
-                                            collapse: collapse.rect,
-                                            add_source,
-                                            add_envelope,
-                                            source_empty_state,
-                                            envelope_empty_state,
-                                            oscillator_panel: oscillator_panel
-                                                .unwrap_or(Rect::NOTHING),
-                                            oscillator_header,
-                                            oscillator_power,
-                                            envelope_panel: envelope_rect,
-                                            envelope_header,
-                                            envelope_power,
-                                            oscillators: self.midi_editor.oscillator_bounds.clone(),
-                                            source_powers: self
-                                                .midi_editor
-                                                .oscillator_power_bounds
-                                                .clone(),
-                                            envelope_stages,
-                                        },
-                                    );
-                                }
-                                #[cfg(not(test))]
-                                {
-                                    let _ = (
-                                        add_source,
-                                        add_envelope,
-                                        envelope_stages,
-                                        controls,
-                                        mixing_bounds,
-                                        source_empty_state,
-                                        envelope_empty_state,
-                                        oscillator_header,
-                                        oscillator_power,
-                                        envelope_header,
-                                        envelope_power,
-                                    );
-                                }
-                            });
+                                            });
+                                        #[cfg(test)]
+                                        {
+                                            self.midi_editor.envelope_panel_bounds = envelope_rect;
+                                            self.midi_editor.envelope_stage_bounds =
+                                                envelope_stages;
+                                            if oscillator_panel.is_none() {
+                                                self.midi_editor.add_oscillator_bounds = add_source;
+                                            }
+                                            self.midi_editor.layer_bounds.insert(
+                                                layer.id,
+                                                LayerUiBounds {
+                                                    row: label,
+                                                    label,
+                                                    grip: controls.0,
+                                                    name: controls.1,
+                                                    mix_controls: mixing_bounds,
+                                                    collapse: collapse.rect,
+                                                    add_source,
+                                                    add_envelope,
+                                                    source_empty_state,
+                                                    envelope_empty_state,
+                                                    oscillator_panel: oscillator_panel
+                                                        .unwrap_or(Rect::NOTHING),
+                                                    oscillator_header,
+                                                    oscillator_power,
+                                                    envelope_panel: envelope_rect,
+                                                    envelope_header,
+                                                    envelope_power,
+                                                    oscillators: self
+                                                        .midi_editor
+                                                        .oscillator_bounds
+                                                        .clone(),
+                                                    source_powers: self
+                                                        .midi_editor
+                                                        .oscillator_power_bounds
+                                                        .clone(),
+                                                    envelope_stages,
+                                                },
+                                            );
+                                        }
+                                        #[cfg(not(test))]
+                                        {
+                                            let _ = (
+                                                add_source,
+                                                add_envelope,
+                                                envelope_stages,
+                                                controls,
+                                                mixing_bounds,
+                                                source_empty_state,
+                                                envelope_empty_state,
+                                                oscillator_header,
+                                                oscillator_power,
+                                                envelope_header,
+                                                envelope_power,
+                                            );
+                                        }
+                                    })
+                                })
+                                .inner;
+                            if ui.is_enabled()
+                                && self.component_drag.is_none()
+                                && self.edit_environment_available()
+                                && ui.input(|input| {
+                                    input.focused
+                                        && input
+                                            .pointer
+                                            .button_pressed(egui::PointerButton::Primary)
+                                        && input.pointer.press_origin().is_some_and(|point| {
+                                            row.response
+                                                .rect
+                                                .intersect(ui.clip_rect())
+                                                .contains(point)
+                                        })
+                                })
+                            {
+                                self.instrument_ui.selected_layer = Some(layer.id);
+                                ui.ctx().request_repaint();
+                            }
                             layer_rows.push((layer.id, row.response.rect));
                             panels::ControlPanel::row_dividers(ui, row.response.rect, true, true);
+                            if self.instrument_ui.selected_layer == Some(layer.id) {
+                                panels::selection_border(
+                                    ui,
+                                    Rect::from_min_size(
+                                        row.response.rect.min,
+                                        Vec2::new(LAYER_HEADER_WIDTH, height),
+                                    ),
+                                );
+                            }
                             #[cfg(test)]
                             {
                                 self.midi_editor
@@ -503,6 +578,12 @@ impl DawUi {
                 });
             });
         control_panel.finish(ui);
+        #[cfg(test)]
+        {
+            self.instrument_catalog_bounds.layer_viewport = scroll.inner_rect;
+            self.instrument_catalog_bounds.layer_scroll = scroll.state.offset.y;
+        }
+        self.finish_component_drag(ui, track.id, &mut settings, &layer_rows, scroll.inner_rect);
         self.layer_reorder(ui, &mut settings, &layer_rows, scroll.inner_rect);
         if let Some(id) = remove_layer {
             if self
@@ -514,6 +595,9 @@ impl DawUi {
                 self.instrument_ui.name_edit = None;
             }
             settings.layers.retain(|layer| layer.id != id);
+            if self.instrument_ui.selected_layer == Some(id) {
+                self.instrument_ui.selected_layer = settings.layers.first().map(|layer| layer.id);
+            }
         }
         if Some(&settings) != track.instrument.as_ref() {
             self.edit(Edit::SetInstrument {
@@ -601,6 +685,7 @@ impl DawUi {
             && self.edit_environment_available()
             && !self.instrument_ui.editing_name()
         {
+            self.instrument_ui.selected_layer = Some(layer);
             self.instrument_ui.drag = Some(layer);
         }
     }
@@ -668,34 +753,8 @@ impl DawUi {
     }
 
     fn scroll_layer_drag(&self, ui: &egui::Ui) {
-        if !ui.is_enabled()
-            || !self.edit_environment_available()
-            || ui.input(|input| {
-                !input.focused
-                    || !input.pointer.primary_down()
-                    || input.key_pressed(egui::Key::Escape)
-            })
-        {
-            return;
-        }
-        if let Some(pointer) = ui.input(|input| input.pointer.latest_pos())
-            && ui.clip_rect().contains(pointer)
-        {
-            let viewport = ui.clip_rect();
-            let direction = if pointer.y < viewport.top() + 24.0 {
-                1.0
-            } else if pointer.y > viewport.bottom() - 24.0 {
-                -1.0
-            } else {
-                0.0
-            };
-            if direction != 0.0 {
-                ui.scroll_with_delta(Vec2::new(
-                    0.0,
-                    direction * 240.0 * ui.input(|input| input.stable_dt),
-                ));
-                ui.ctx().request_repaint();
-            }
+        if self.edit_environment_available() {
+            drag::scroll_near_edges(ui, drag::Axis::Vertical, 240.0);
         }
     }
 

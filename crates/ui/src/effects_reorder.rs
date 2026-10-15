@@ -123,37 +123,24 @@ impl DawUi {
         effects: &[daw_core::EffectInstance],
     ) {
         if self.effects_drag.is_none()
-            && response.is_pointer_button_down_on()
-            && ui.is_enabled()
-            && ui.input(|input| {
-                input.focused && input.pointer.button_pressed(egui::PointerButton::Primary)
-            })
-            && let Some(origin) = ui.input(|input| input.pointer.press_origin())
-            && response.rect.contains(origin)
             && let Some(target) = target
+            && let Some(start) = self.effects_catalog.start_drag(ui, response, index)
         {
-            self.effects_catalog.focus_row(ui, response);
-            let type_id = effects_catalog::ENTRIES[index].0;
-            let types = if self.effects_catalog.selection.contains(type_id) {
-                effects_catalog::ENTRIES
-                    .iter()
-                    .filter(|entry| self.effects_catalog.selection.contains(entry.0))
-                    .map(|entry| entry.0)
-                    .collect()
-            } else {
-                vec![type_id]
-            };
             self.effects_drag = Some(EffectDrag {
                 target,
                 view: self.view_mode,
-                source: DragSource::Library { types, index },
-                origin,
-                focus: response.id,
+                source: DragSource::Library {
+                    types: start.types,
+                    index: start.index,
+                },
+                origin: start.origin,
+                focus: start.focus,
                 active: false,
                 order: effects.iter().map(|effect| effect.id).collect(),
             });
         }
     }
+
     pub(super) fn finish_effect_drag(
         &mut self,
         ui: &egui::Ui,
@@ -170,13 +157,7 @@ impl DawUi {
             return;
         };
         if !drag.active {
-            let threshold = ui
-                .ctx()
-                .options(|options| options.input_options.max_click_dist);
-            if ui
-                .input(|input| input.pointer.latest_pos())
-                .is_some_and(|pointer| pointer.distance(drag.origin) > threshold)
-            {
+            if drag::crossed_threshold(ui, drag.origin) {
                 drag.active = true;
                 match &drag.source {
                     DragSource::Chain { unit, .. } => {
@@ -186,13 +167,7 @@ impl DawUi {
                         }
                     }
                     DragSource::Library { index, .. } => {
-                        if !self
-                            .effects_catalog
-                            .selection
-                            .contains(effects_catalog::ENTRIES[*index].0)
-                        {
-                            self.effects_catalog.click(*index, false);
-                        }
+                        self.effects_catalog.select_dragged(*index);
                     }
                 }
             } else {
@@ -262,8 +237,7 @@ impl DawUi {
         });
         if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
             let drag = self.effects_drag.take().unwrap();
-            ui.ctx()
-                .memory_mut(|memory| memory.request_focus(drag.focus));
+            drag::restore_focus(ui.ctx(), drag.focus);
             if let Some((_, index, true)) = target {
                 match drag.source {
                     DragSource::Library { types, .. } => {
@@ -291,38 +265,8 @@ impl DawUi {
         }
     }
     pub(super) fn scroll_effect_drag(&self, ui: &egui::Ui) {
-        if self.effects_drag.as_ref().is_none_or(|drag| !drag.active)
-            || !ui.is_enabled()
-            || ui.input(|input| {
-                !input.focused
-                    || !input.pointer.primary_down()
-                    || input.key_pressed(egui::Key::Escape)
-            })
-        {
-            return;
+        if self.effects_drag.as_ref().is_some_and(|drag| drag.active) {
+            drag::scroll_near_edges(ui, drag::Axis::Horizontal, 360.0);
         }
-        let viewport = ui.clip_rect();
-        let Some(pointer) = ui
-            .input(|input| input.pointer.latest_pos())
-            .filter(|pointer| viewport.contains(*pointer))
-        else {
-            return;
-        };
-        let edge = 24.0_f32.min(viewport.width() / 2.0);
-        let direction = if pointer.x < viewport.left() + edge {
-            1.0
-        } else if pointer.x > viewport.right() - edge {
-            -1.0
-        } else {
-            return;
-        };
-        ui.scroll_with_delta_animation(
-            Vec2::new(
-                direction * 360.0 * ui.input(|input| input.stable_dt.min(0.05)),
-                0.0,
-            ),
-            egui::style::ScrollAnimation::none(),
-        );
-        ui.ctx().request_repaint();
     }
 }

@@ -6,6 +6,7 @@ pub(super) const BUTTON_SIZE: f32 = icons::TOOLBAR_BUTTON_SIZE;
 
 pub(super) struct Buttons {
     pub library: egui::Response,
+    pub components: Option<egui::Response>,
     pub lane: egui::Response,
 }
 
@@ -13,6 +14,7 @@ pub(super) fn show(
     ui: &mut Ui,
     bounds: Rect,
     catalog_visible: bool,
+    components_visible: Option<bool>,
     lane_visible: bool,
     enabled: bool,
 ) -> Buttons {
@@ -47,6 +49,17 @@ pub(super) fn show(
             catalog_visible,
             enabled,
         ),
+        components: components_visible.map(|selected| {
+            toggle_at(
+                &mut rail,
+                top + Vec2::new(0.0, BUTTON_SIZE + padding),
+                "instrument-components",
+                icons::Lucide::Piano,
+                "Show instrument components catalog",
+                selected,
+                enabled,
+            )
+        }),
         lane: toggle_at(
             &mut rail,
             bottom,

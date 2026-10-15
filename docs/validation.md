@@ -1952,3 +1952,40 @@ Completed checks:
 - `sh tools/package_macos.sh debug`: passed and rebuilt `target/debug/DAW.app`.
 
 Native appearance and gestures were not checked in the running app. Windows/Linux builds were not run for this layout fix.
+
+## Instrument component catalog and selected layer — 2026-10-15
+
+Added an Instrument-only Piano toolbar toggle below the Effects catalog toggle. Both reuse the standard 24-point borderless button and 16-point icon. Opening either catalog closes the other, and closing the active catalog leaves both hidden. Oscillator and Envelope use the same 250-point ControlPanel sidebar as Effects.
+
+Extracted catalog painting, mouse/Shift selection, bounded arrow/range selection, Enter-without-repeat, Escape/blank-space clearing, and pane focus into `catalog.rs`. Effect entries and existing drag adapters remain separate from instrument component entries and target-layer additions. The shared blank-region hit areas retain their enabled state during library clicks; clearing remains guarded separately, preserving secondary-click focus behavior.
+
+Instrument now keeps a stable selected-layer target in UI state and paints its label with the shared selection border. Click a layer label or content to select it. The first layer is the initial target; rename/reorder/view changes retain identity, track changes choose the first layer, removing the target falls back to the first surviving layer, and replacing the project resets it. Catalog focus does not clear the layer target.
+
+Double-click adds a component; Enter adds selected components in catalog order through one `Edit::SetInstrument`. Oscillator appends a default source. Envelope installs the optional amplitude envelope, retaining settings and enabled/collapsed state; adding an existing envelope alone is a clean no-op. Existing empty-state Add source/Add envelope actions use the same component helper. Invalid/non-MIDI targets, modal work, text edits, drags, disabled UI, and window focus loss retain the existing add guards.
+
+Completed checks:
+
+- `cargo test -p daw-ui`: passed all 351 tests. Six new groups cover both-theme toggle placement and catalog exclusion, multi-selection and additions to the selected layer, repeat suppression, no-op envelope installation, double-click behavior, focus/empty-space clearing, target guards, saved-model round-trip, stable rename/reorder/view identity, removal/project replacement, and the visible selection outline. Existing Effects selection/keyboard/drag/reorder and layer gesture tests also passed.
+- `cargo fmt --all --check` and strict workspace Clippy passed.
+- `cargo test --workspace`: passed. The two expanded DSP matrices remain explicitly ignored in this command; no DSP changed for this feature.
+- `sh tools/package_macos.sh debug`: passed and rebuilt `target/debug/DAW.app`.
+- 125 local documentation file links, the new component-catalog anchor, and `git diff --check`: passed.
+
+Native appearance/gestures and device playback were not checked in the running app. Windows/Linux builds were not run for this feature. No project format or audio-processing changes were added.
+
+## Instrument catalog drag/drop — 2026-10-15
+
+Instrument catalog rows now drag onto any visible layer label or body, including collapsed or empty layers. A selected row carries the selected types in catalog order; an unselected row becomes the sole dragged selection after the shared movement threshold. Press-time capture also handles a move and release delivered together. The hovered layer is outlined without changing selection or project data; valid release adds the group through the existing component helper and selects that layer. Existing-envelope drops retain all settings and stay clean when no component changes.
+
+Catalog press/selection capture now lives in `Catalog::start_drag` and `select_dragged`, shared with the Effects catalog. `drag.rs` shares pointer checks, movement thresholds, focus restoration, and bounded horizontal/vertical edge scrolling. The layer list reuses its existing reorder scroll path for component drops. Layer/effect controls, catalog/track/view switches, and file actions are guarded while armed. No component is created before valid release. Escape, window focus loss, disabled/modal work, hidden catalog, track/view/project changes, changed instrument settings, and invalid/header/blank-space drops cancel without edits. The captured project/track/settings identity prevents a stale drop from replacing another edit.
+
+Completed checks:
+
+- Ten focused instrument-catalog test groups passed. Four new groups cover both themes, expanded/collapsed layers, label/body destinations, multi-selection, unselected-source dragging, clean previews, fast release, focus/selection retention, no-op Envelope drops, thirteen cancellation/invalidation contexts, and vertical scrolling to an offscreen layer.
+- `cargo test -p daw-ui`: passed all 355 tests, including existing Effects library drag/reorder/scroll, catalog click/keyboard/focus, and layer gestures.
+- Formatting and strict workspace Clippy passed.
+- `cargo test --workspace`: passed. The two expanded DSP matrices remain explicitly ignored; this feature changes no DSP.
+- `sh tools/package_macos.sh debug`: passed and rebuilt `target/debug/DAW.app`.
+- 125 local documentation file links and `git diff --check`: passed.
+
+Native pointer gestures, appearance, and device playback were not checked in the running app. Windows/Linux builds were not run for this feature. No project format or audio-processing changes were added.

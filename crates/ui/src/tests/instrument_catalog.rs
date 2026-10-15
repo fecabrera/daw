@@ -1,0 +1,661 @@
+use super::*;
+
+fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2, shift: bool) {
+    let modifiers = egui::Modifiers {
+        shift,
+        ..Default::default()
+    };
+    frame(
+        app,
+        ctx,
+        vec![
+            egui::Event::ModifiersChanged(modifiers),
+            egui::Event::PointerMoved(point),
+            egui::Event::PointerButton {
+                pos: point,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers,
+            },
+        ],
+    );
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers,
+        }],
+    );
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::ModifiersChanged(Default::default())],
+    );
+}
+
+fn key(app: &mut DawUi, ctx: &egui::Context, key: egui::Key, shift: bool, repeat: bool) {
+    let modifiers = egui::Modifiers {
+        shift,
+        ..Default::default()
+    };
+    frame(
+        app,
+        ctx,
+        vec![
+            egui::Event::ModifiersChanged(modifiers),
+            egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat,
+                modifiers,
+            },
+        ],
+    );
+    frame(
+        app,
+        ctx,
+        vec![
+            egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers,
+            },
+            egui::Event::ModifiersChanged(Default::default()),
+        ],
+    );
+}
+
+fn fixture(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id, [Id; 2]) {
+    let mut app = DawUi::default();
+    let track = app.session.project.add_midi_track().unwrap();
+    let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    instrument.layers[0].collapsed = true;
+    instrument.layers.push(daw_core::InstrumentLayerSettings {
+        collapsed: true,
+        ..Default::default()
+    });
+    let layers = [instrument.layers[0].id, instrument.layers[1].id];
+    app.select_track(track, false);
+    let ctx = context();
+    app.set_settings(
+        &ctx,
+        settings::AppSettings {
+            theme,
+            ..Default::default()
+        },
+    );
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    app.dirty = false;
+    (app, ctx, track, layers)
+}
+
+fn open(app: &mut DawUi, ctx: &egui::Context) {
+    let point = app.instrument_catalog_bounds.toggle.center();
+    click(app, ctx, point, false);
+    assert!(app.instrument_catalog_visible);
+}
+
+#[test]
+fn instrument_catalog_is_exclusive_and_reuses_the_control_panel_in_both_themes() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _, _) = fixture(theme);
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        let effects = app.effects_bounds.library;
+        let toggle = app.instrument_catalog_bounds.toggle;
+        assert_eq!(toggle.size(), Vec2::splat(24.0));
+        assert_eq!(toggle.left(), app.effects_bounds.library_toggle.left());
+        assert_eq!(
+            toggle.top() - app.effects_bounds.library_toggle.bottom(),
+            7.0
+        );
+        open(&mut app, &ctx);
+        assert!(!app.timeline_catalog_visible);
+        assert_eq!(app.effects_bounds.library, Rect::NOTHING);
+        assert_eq!(app.instrument_catalog_bounds.library, effects);
+        assert_eq!(
+            app.midi_editor.instrument_header_bounds.left(),
+            effects.right()
+        );
+        let point = app.effects_bounds.library_toggle.center();
+        click(&mut app, &ctx, point, false);
+        assert!(app.timeline_catalog_visible);
+        assert!(!app.instrument_catalog_visible);
+        assert_eq!(app.instrument_catalog_bounds.library, Rect::NOTHING);
+        open(&mut app, &ctx);
+        let point = app.instrument_catalog_bounds.toggle.center();
+        click(&mut app, &ctx, point, false);
+        assert!(!app.instrument_catalog_visible && !app.timeline_catalog_visible);
+        assert_eq!(
+            app.midi_editor.instrument_header_bounds.left(),
+            app.effects_bounds.toolbar.right()
+        );
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.instrument_catalog_bounds.toggle, Rect::NOTHING);
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn catalog_keyboard_adds_selected_components_only_to_the_selected_layer() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, track, layers) = fixture(theme);
+        assert_eq!(app.instrument_ui.selected_layer, Some(layers[0]));
+        let point = app.midi_editor.layer_bounds[&layers[1]].name.center();
+        click(&mut app, &ctx, point, false);
+        assert_eq!(app.instrument_ui.selected_layer, Some(layers[1]));
+        assert!(!app.dirty);
+        open(&mut app, &ctx);
+        let point = app.instrument_catalog_bounds.entries[0].center();
+        click(&mut app, &ctx, point, false);
+        key(&mut app, &ctx, egui::Key::ArrowDown, true, false);
+        assert_eq!(app.instrument_catalog.selection.len(), 2);
+        assert!(!app.dirty);
+        key(&mut app, &ctx, egui::Key::Enter, false, false);
+        let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+        assert!(instrument.layers[0].oscillators.is_empty() && !instrument.layers[0].has_envelope);
+        assert_eq!(instrument.layers[1].oscillators.len(), 1);
+        assert!(instrument.layers[1].has_envelope);
+        assert_eq!(instrument.layers[1].id, layers[1]);
+        assert!(app.session.project.tracks[0].effects.is_empty());
+        assert_eq!(app.selected_track, Some(track));
+        assert!(app.dirty);
+        let saved = serde_json::to_value(&app.session.project).unwrap();
+        let loaded: daw_core::Project = serde_json::from_value(saved.clone()).unwrap();
+        loaded.validate().unwrap();
+        assert_eq!(serde_json::to_value(&loaded).unwrap(), saved);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        let held = serde_json::to_value(&app.session.project).unwrap();
+        app.dirty = false;
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: true,
+                modifiers: Default::default(),
+            }],
+        );
+        assert_eq!(serde_json::to_value(&app.session.project).unwrap(), held);
+        assert!(!app.dirty);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        // Reinstalling an existing envelope must not reset it or mark a no-op dirty.
+        app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[1]
+            .envelope
+            .release
+            .time_ms = 777.0;
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        let point = app.instrument_catalog_bounds.entries[1].center();
+        click(&mut app, &ctx, point, false);
+        key(&mut app, &ctx, egui::Key::Enter, false, false);
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn component_double_click_adds_once_and_catalog_focus_and_selection_follow_shared_rules() {
+    let (mut app, ctx, _, layers) = fixture(settings::ColorTheme::Dark);
+    open(&mut app, &ctx);
+    let oscillator = app.instrument_catalog_bounds.entries[0].center();
+    // Separate the double-click from the preceding toolbar click.
+    for _ in 0..40 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    click(&mut app, &ctx, oscillator, false);
+    assert!(!app.dirty);
+    click(&mut app, &ctx, oscillator, false);
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .oscillators
+            .len(),
+        1
+    );
+    app.dirty = false;
+    let envelope = app.instrument_catalog_bounds.entries[1].center();
+    click(&mut app, &ctx, envelope, true);
+    assert_eq!(app.instrument_catalog.selection.len(), 2);
+    key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+    assert_eq!(
+        app.instrument_catalog.selection,
+        HashSet::from([crate::instrument_catalog::ENTRIES[0].0])
+    );
+    key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+    assert_eq!(app.instrument_catalog.selection.len(), 1);
+    key(&mut app, &ctx, egui::Key::Escape, false, false);
+    assert!(app.instrument_catalog.selection.is_empty());
+    click(&mut app, &ctx, envelope, false);
+    let blank = app.instrument_catalog_bounds.header.center();
+    click(&mut app, &ctx, blank, false);
+    assert!(app.instrument_catalog.selection.is_empty());
+    click(&mut app, &ctx, oscillator, false);
+    let point = app.midi_editor.layer_bounds[&layers[1]].name.center();
+    click(&mut app, &ctx, point, false);
+    assert!(app.instrument_catalog.selection.is_empty());
+    assert_eq!(app.instrument_ui.selected_layer, Some(layers[1]));
+    assert!(!app.dirty);
+}
+
+#[test]
+fn component_addition_is_blocked_without_a_midi_target_and_during_modal_work() {
+    for guard in ["none", "audio", "no-instrument", "modal"] {
+        let (mut app, ctx, _, _) = fixture(settings::ColorTheme::Dark);
+        open(&mut app, &ctx);
+        let point = app.instrument_catalog_bounds.entries[0].center();
+        click(&mut app, &ctx, point, false);
+        match guard {
+            "none" => app.selected_track = None,
+            "audio" => {
+                let audio = app.session.project.add_track().unwrap();
+                app.select_track(audio, false);
+            }
+            "no-instrument" => app.session.project.tracks[0].instrument = None,
+            "modal" => app.settings_open = true,
+            _ => unreachable!(),
+        }
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        frame(&mut app, &ctx, vec![]);
+        key(&mut app, &ctx, egui::Key::Enter, false, false);
+        let point = app.instrument_catalog_bounds.entries[0].center();
+        click(&mut app, &ctx, point, false);
+        click(&mut app, &ctx, point, false);
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original,
+            "{guard}"
+        );
+        assert!(!app.dirty, "{guard}");
+    }
+}
+
+#[test]
+fn selected_layer_identity_survives_reordering_and_views_and_recovers_after_removal() {
+    let (mut app, ctx, track, layers) = fixture(settings::ColorTheme::Dark);
+    let point = app.midi_editor.layer_bounds[&layers[1]].name.center();
+    click(&mut app, &ctx, point, false);
+    let mut settings = app.session.project.tracks[0].instrument.clone().unwrap();
+    settings.layers[1].name = "Target".into();
+    settings.layers.reverse();
+    app.session
+        .project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(settings),
+        })
+        .unwrap();
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.instrument_ui.selected_layer, Some(layers[1]));
+    open(&mut app, &ctx);
+    let point = app.instrument_catalog_bounds.entries[0].center();
+    click(&mut app, &ctx, point, false);
+    key(&mut app, &ctx, egui::Key::Enter, false, false);
+    let settings = app.session.project.tracks[0].instrument.as_ref().unwrap();
+    assert_eq!(settings.layers[0].id, layers[1]);
+    assert_eq!(settings.layers[0].oscillators.len(), 1);
+    assert!(settings.layers[1].oscillators.is_empty());
+    let mut settings = settings.clone();
+    settings.layers.remove(0);
+    app.session
+        .project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(settings),
+        })
+        .unwrap();
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.instrument_ui.selected_layer, Some(layers[0]));
+    app.pending = Some(Action::CloseProject);
+    app.dirty = false;
+    app.perform_pending();
+    assert_eq!(app.instrument_ui.selected_layer, None);
+    assert!(app.instrument_catalog.selection.is_empty());
+}
+
+#[test]
+fn layer_target_resets_when_tracks_change_and_remains_visible_when_catalog_has_focus() {
+    let (mut app, ctx, track, layers) = fixture(settings::ColorTheme::Light);
+    let point = app.midi_editor.layer_bounds[&layers[1]].name.center();
+    click(&mut app, &ctx, point, false);
+    open(&mut app, &ctx);
+    let point = app.instrument_catalog_bounds.entries[0].center();
+    click(&mut app, &ctx, point, false);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let label = app.midi_editor.layer_bounds[&layers[1]].label;
+    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::Rect(rect) if rect.rect == label && rect.stroke == theme::selection_outline(&ctx))));
+    let other = app.session.project.add_midi_track().unwrap();
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    app.select_track(other, false);
+    frame(&mut app, &ctx, vec![]);
+    app.select_track(track, false);
+    frame(&mut app, &ctx, vec![]);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.instrument_ui.selected_layer, Some(layers[0]));
+    assert!(app.instrument_catalog.selection.is_empty());
+}
+
+fn start_component_drag(app: &mut DawUi, ctx: &egui::Context, index: usize) {
+    let source = app.instrument_catalog_bounds.entries[index].center();
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::PointerMoved(source), button(source, true)],
+    );
+    assert!(app.component_drag.is_some());
+}
+
+#[test]
+fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_layer() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for expanded in [false, true] {
+            for fast in [false, true] {
+                for label in [false, true] {
+                    let (mut app, ctx, _, layers) = fixture(theme);
+                    app.timeline_effects_visible = false;
+                    for layer in &mut app.session.project.tracks[0]
+                        .instrument
+                        .as_mut()
+                        .unwrap()
+                        .layers
+                    {
+                        layer.collapsed = !expanded;
+                    }
+                    frame(&mut app, &ctx, vec![]);
+                    open(&mut app, &ctx);
+                    let source = app.instrument_catalog_bounds.entries[0].center();
+                    click(&mut app, &ctx, source, false);
+                    let envelope = app.instrument_catalog_bounds.entries[1].center();
+                    click(&mut app, &ctx, envelope, true);
+                    let original = serde_json::to_value(&app.session.project).unwrap();
+                    let viewport = app.instrument_catalog_bounds.layer_viewport;
+                    let target = &app.midi_editor.layer_bounds[&layers[1]];
+                    let end = if label {
+                        target.label.center()
+                    } else {
+                        Pos2::new(viewport.right() - 20.0, target.row.center().y)
+                    };
+                    assert!(viewport.contains(end));
+                    start_component_drag(&mut app, &ctx, 0);
+                    assert!(!app.file_action_enabled(FileAction::Save));
+                    assert!(!app.view_switch_enabled());
+                    assert_eq!(
+                        serde_json::to_value(&app.session.project).unwrap(),
+                        original
+                    );
+                    if !fast {
+                        let shapes = frame_shapes(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(end)],
+                            Vec2::new(1280.0, 800.0),
+                        );
+                        assert!(app.component_drag.as_ref().unwrap().active);
+                        assert_eq!(app.instrument_catalog_bounds.drop_target, Some(layers[1]));
+                        let preview = app.instrument_catalog_bounds.drop_bounds;
+                        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::Rect(rect) if rect.rect == preview && rect.stroke == theme::selection_outline(&ctx))));
+                        assert_eq!(app.instrument_catalog.selection.len(), 2);
+                        assert_eq!(app.instrument_ui.selected_layer, Some(layers[0]));
+                        assert_eq!(
+                            serde_json::to_value(&app.session.project).unwrap(),
+                            original
+                        );
+                        assert!(!app.dirty);
+                    }
+                    // A move and release together must retain the armed source and group.
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(end), button(end, false)],
+                    );
+                    assert!(app.component_drag.is_none());
+                    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+                    assert!(
+                        instrument.layers[0].oscillators.is_empty()
+                            && !instrument.layers[0].has_envelope
+                    );
+                    assert_eq!(instrument.layers[1].oscillators.len(), 1);
+                    assert!(instrument.layers[1].has_envelope);
+                    assert_eq!(app.instrument_ui.selected_layer, Some(layers[1]));
+                    assert_eq!(app.instrument_catalog.selection.len(), 2);
+                    assert!(app.session.project.tracks[0].effects.is_empty());
+                    assert!(app.dirty);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn dragging_an_unselected_component_replaces_library_selection_and_existing_envelope_drop_stays_clean()
+ {
+    let (mut app, ctx, _, layers) = fixture(settings::ColorTheme::Dark);
+    open(&mut app, &ctx);
+    let envelope = app.instrument_catalog_bounds.entries[1].center();
+    click(&mut app, &ctx, envelope, false);
+    start_component_drag(&mut app, &ctx, 0);
+    let end = app.midi_editor.layer_bounds[&layers[1]].label.center();
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    assert_eq!(
+        app.instrument_catalog.selection,
+        HashSet::from([crate::instrument_catalog::ENTRIES[0].0])
+    );
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    let target = &app.session.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .layers[1];
+    assert_eq!(target.oscillators.len(), 1);
+    assert!(!target.has_envelope);
+    // A drop onto an installed, disabled/collapsed envelope must retain all settings.
+    let target = &mut app.session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[1];
+    target.has_envelope = true;
+    target.envelope_enabled = false;
+    target.envelope_collapsed = true;
+    target.envelope.release.time_ms = 777.0;
+    frame(&mut app, &ctx, vec![]);
+    app.dirty = false;
+    let original = serde_json::to_value(&app.session.project).unwrap();
+    start_component_drag(&mut app, &ctx, 1);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    assert_eq!(
+        serde_json::to_value(&app.session.project).unwrap(),
+        original
+    );
+    assert!(!app.dirty);
+    assert!(app.component_drag.is_none());
+}
+
+#[test]
+fn component_drags_cancel_without_project_edits_on_invalid_context_or_drop() {
+    for guard in [
+        "escape", "focus", "disabled", "modal", "outside", "header", "empty", "hidden", "view",
+        "track", "project", "changed", "removed",
+    ] {
+        let (mut app, ctx, _, layers) = fixture(settings::ColorTheme::Dark);
+        let other = app.session.project.add_midi_track().unwrap();
+        open(&mut app, &ctx);
+        start_component_drag(&mut app, &ctx, 0);
+        let mut end = app.midi_editor.layer_bounds[&layers[1]].label.center();
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert!(app.component_drag.as_ref().unwrap().active);
+        match guard {
+            "modal" => app.unsaved_prompt = true,
+            "outside" => end = app.effects_bounds.strip.center(),
+            "header" => end = app.midi_editor.instrument_header_bounds.center(),
+            "empty" => {
+                end = app.instrument_catalog_bounds.layer_viewport.center_bottom()
+                    - Vec2::new(0.0, 5.0)
+            }
+            "hidden" => app.instrument_catalog_visible = false,
+            "view" => app.view_mode = ViewMode::Timeline,
+            "track" => app.selected_track = Some(other),
+            "project" => app.session = Session::default(),
+            "changed" => {
+                app.session.project.tracks[0]
+                    .instrument
+                    .as_mut()
+                    .unwrap()
+                    .layers[0]
+                    .envelope
+                    .release
+                    .time_ms = 731.0
+            }
+            "removed" => {
+                app.session.project.tracks[0]
+                    .instrument
+                    .as_mut()
+                    .unwrap()
+                    .layers
+                    .remove(1);
+            }
+            _ => {}
+        }
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        let mut events = vec![egui::Event::PointerMoved(end), button(end, false)];
+        if guard == "escape" {
+            events.push(egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            });
+        }
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                focused: guard != "focus",
+                events,
+                ..Default::default()
+            },
+            |ui| {
+                if guard == "disabled" {
+                    ui.disable();
+                }
+                app.show(ui);
+            },
+        );
+        output.textures_delta.clear();
+        assert!(app.component_drag.is_none(), "{guard}");
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original,
+            "{guard}"
+        );
+        assert!(!app.dirty, "{guard}");
+    }
+}
+
+#[test]
+fn component_catalog_drag_scrolls_to_an_offscreen_layer_and_keeps_preview_clean() {
+    let (mut app, ctx, _, _) = fixture(settings::ColorTheme::Light);
+    let layers = &mut app.session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers;
+    for _ in 0..10 {
+        layers.push(daw_core::InstrumentLayerSettings {
+            collapsed: true,
+            ..Default::default()
+        });
+    }
+    let last = layers.last().unwrap().id;
+    frame(&mut app, &ctx, vec![]);
+    open(&mut app, &ctx);
+    let viewport = app.instrument_catalog_bounds.layer_viewport;
+    assert!(app.midi_editor.layer_bounds[&last].row.top() >= viewport.bottom());
+    start_component_drag(&mut app, &ctx, 0);
+    let edge = Pos2::new(viewport.right() - 20.0, viewport.bottom() - 3.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(edge)]);
+    let original = serde_json::to_value(&app.session.project).unwrap();
+    for _ in 0..180 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    assert!(app.instrument_catalog_bounds.layer_scroll > 0.0);
+    let visible = app.midi_editor.layer_bounds[&last]
+        .row
+        .intersect(app.instrument_catalog_bounds.layer_viewport);
+    assert!(
+        visible.is_positive(),
+        "last layer did not scroll into view: {visible:?}"
+    );
+    assert_eq!(
+        serde_json::to_value(&app.session.project).unwrap(),
+        original
+    );
+    assert!(!app.dirty);
+    let end = visible.center();
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    assert_eq!(app.instrument_catalog_bounds.drop_target, Some(last));
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    let layers = &app.session.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .layers;
+    assert!(
+        layers
+            .iter()
+            .filter(|layer| layer.id != last)
+            .all(|layer| layer.oscillators.is_empty())
+    );
+    assert_eq!(layers.last().unwrap().oscillators.len(), 1);
+    assert_eq!(app.instrument_ui.selected_layer, Some(last));
+    assert!(app.dirty);
+}

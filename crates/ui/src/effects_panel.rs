@@ -145,7 +145,7 @@ impl DawUi {
         });
         let mut selected = self.effects_target();
         let (mut compact, mut effects) = self.effects_state(selected);
-        let allowed = self.effects_editing_enabled(ui);
+        let allowed = self.effects_editing_enabled(ui) && self.component_drag.is_none();
         let mut original_compact = compact;
         let mut original_effects = effects.clone();
         #[cfg(test)]
@@ -179,10 +179,12 @@ impl DawUi {
             bounds.max,
         );
         let upper = Rect::from_min_max(bounds.min, Pos2::new(bounds.right(), strip.top()));
-        let catalog_visible = self.timeline_catalog_visible;
+        let components_visible =
+            self.view_mode == ViewMode::Instrument && self.instrument_catalog_visible;
+        let catalog_visible = self.timeline_catalog_visible || components_visible;
         let library = catalog_visible.then(|| panels::ControlPanel::begin(ui, upper));
         #[cfg(test)]
-        if !catalog_visible {
+        if !self.timeline_catalog_visible {
             self.effects_bounds.library = Rect::NOTHING;
             self.effects_bounds.header = Rect::NOTHING;
             self.effects_bounds.entry = Rect::NOTHING;
@@ -194,103 +196,97 @@ impl DawUi {
         }
         ui.horizontal_top(|ui| {
             if let Some(library) = library.as_ref() {
-            ui.allocate_ui_with_layout(
-                Vec2::new(TRACK_WIDTH, upper.height()),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| {
-                    ui.set_width(TRACK_WIDTH);
-                    ui.set_min_height(upper.height());
-                    let catalog_rect = Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, upper.height()));
-                    self.effects_catalog.begin_frame(ui, catalog_rect);
-                    let header = library.header(ui, "Effects", |_| {});
-                    panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
-                    self.effects_catalog.empty_region(ui, header.response.rect.intersect(catalog_rect), 0, allowed);
-                    let catalog_allowed = allowed && self.effects_drag.is_none() && selected.is_some()
-                        && !ui.input(|input| input.pointer.primary_down());
-                    self.effects_catalog.retain_focus_filter(ui);
-                    let catalog_action = self.effects_catalog.keyboard(ui, catalog_allowed);
-                    if catalog_action == effects_catalog::Action::Add {
-                        effects.extend(effects_catalog::ENTRIES.iter()
-                            .filter(|(type_id, _, _)| self.effects_catalog.selection.contains(type_id))
-                            .map(|(_, _, make)| make()));
-                    }
-                    let mut entry_rects = [Rect::NOTHING; effects_catalog::ENTRIES.len()];
-                    for (index, (type_id, name, make)) in
-                        effects_catalog::ENTRIES.into_iter().enumerate()
-                    {
-                        let response = ui
-                            .add_enabled_ui(
-                                allowed && self.effects_drag.as_ref().is_none_or(|drag| drag.is_library() && !drag.active) && selected.is_some(),
-                                |ui| {
-                                    library
-                                        .catalog_item(
-                                            ui,
-                                            name,
-                                            self.effects_catalog.selection.contains(type_id),
-                                        )
-                                        .on_hover_text(format!(
-                                            "Double-click to add {name}. Enter adds selected effects. Shift+click toggles selection."
-                                        ))
-                                },
-                            )
-                            .inner;
-                        entry_rects[index] = response.rect;
-                        if allowed && lane_visible {
-                            self.start_library_effect_drag(ui, &response, selected, index, &effects);
-                        }
-                        let pointer_clicked = response.clicked() && ui.rect_contains_pointer(response.rect) && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary));
-                        if pointer_clicked {
-                            self.effects_catalog
-                                .click(index, ui.input(|input| input.modifiers.shift));
-                            self.effects_catalog.focus_row(ui, &response);
-                        }
-                        if catalog_action == effects_catalog::Action::Move && self.effects_catalog.is_cursor(index) {
-                            self.effects_catalog.focus_row(ui, &response);
-                        }
-                        if pointer_clicked && response.double_clicked() {
-                            effects.push(make());
-                        }
-                        #[cfg(test)]
-                        if type_id == daw_core::EQ_TYPE_ID {
-                            self.effects_bounds.entry = response.rect;
-                        }
-                        #[cfg(test)]
-                        if type_id == daw_core::DRIVE_TYPE_ID {
-                            self.effects_bounds.drive_entry = response.rect;
-                        }
-                        #[cfg(test)]
-                        if type_id == daw_core::AUTO_FILTER_TYPE_ID {
-                            self.effects_bounds.auto_filter_entry = response.rect;
-                        }
-                        #[cfg(test)]
-                        if type_id == daw_core::OTT_TYPE_ID { self.effects_bounds.ott_entry = response.rect; }
-                        #[cfg(test)]
-                        if type_id == daw_core::LIMITER_TYPE_ID { self.effects_bounds.limiter_entry = response.rect; }
-                        #[cfg(test)]
-                        if type_id == daw_core::COMPRESSOR_TYPE_ID {
-                            self.effects_bounds.compressor_entry = response.rect;
-                        }
-                    }
-                    let empty_body = Rect::from_min_max(
-                        Pos2::new(catalog_rect.left(), entry_rects.last().unwrap().bottom()), catalog_rect.max,
-                    );
-                    self.effects_catalog.empty_region(ui, empty_body, effects_catalog::ENTRIES.len(), allowed);
-                    if allowed && self.effects_drag.is_none()
-                        && ui.rect_contains_pointer(catalog_rect)
-                        && !entry_rects.iter().any(|rect| ui.rect_contains_pointer(*rect))
-                        && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary))
-                    {
-                        self.effects_catalog.clear();
-                        ui.ctx().request_repaint();
-                    }
-                    #[cfg(test)]
-                    {
-                        self.effects_bounds.library =
+                ui.allocate_ui_with_layout(
+                    Vec2::new(TRACK_WIDTH, upper.height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(TRACK_WIDTH);
+                        ui.set_min_height(upper.height());
+                        let catalog_rect =
                             Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, upper.height()));
-                        self.effects_bounds.header = header.response.rect;
-                    }
-                },
-            );
+                        if components_visible {
+                            self.instrument_catalog_panel(
+                                ui,
+                                library,
+                                catalog_rect,
+                                self.effects_editing_enabled(ui),
+                            );
+                        } else {
+                            let output = self.effects_catalog.show(
+                                ui,
+                                library,
+                                catalog_rect,
+                                "Effects",
+                                "effects",
+                                catalog::Interaction {
+                                    rows_enabled: allowed
+                                        && self
+                                            .effects_drag
+                                            .as_ref()
+                                            .is_none_or(|drag| drag.is_library() && !drag.active)
+                                        && selected.is_some(),
+                                    keyboard_enabled: allowed
+                                        && self.effects_drag.is_none()
+                                        && selected.is_some()
+                                        && !ui.input(|input| input.pointer.primary_down()),
+                                    clear_on_empty: allowed && self.effects_drag.is_none(),
+                                    empty_enabled: allowed,
+                                },
+                            );
+                            if output.add_selected {
+                                effects.extend(
+                                    effects_catalog::ENTRIES
+                                        .iter()
+                                        .filter(|(type_id, _, _)| {
+                                            self.effects_catalog.selection.contains(type_id)
+                                        })
+                                        .map(|(_, _, make)| make()),
+                                );
+                            }
+                            if let Some(index) = output.double_clicked {
+                                effects.push((effects_catalog::ENTRIES[index].2)());
+                            }
+                            for (index, response) in output.rows.iter().enumerate() {
+                                if allowed && lane_visible {
+                                    self.start_library_effect_drag(
+                                        ui, response, selected, index, &effects,
+                                    );
+                                }
+                                #[cfg(test)]
+                                match effects_catalog::ENTRIES[index].0 {
+                                    daw_core::EQ_TYPE_ID => {
+                                        self.effects_bounds.entry = response.rect
+                                    }
+                                    daw_core::DRIVE_TYPE_ID => {
+                                        self.effects_bounds.drive_entry = response.rect
+                                    }
+                                    daw_core::AUTO_FILTER_TYPE_ID => {
+                                        self.effects_bounds.auto_filter_entry = response.rect
+                                    }
+                                    daw_core::COMPRESSOR_TYPE_ID => {
+                                        self.effects_bounds.compressor_entry = response.rect
+                                    }
+                                    daw_core::OTT_TYPE_ID => {
+                                        self.effects_bounds.ott_entry = response.rect
+                                    }
+                                    daw_core::LIMITER_TYPE_ID => {
+                                        self.effects_bounds.limiter_entry = response.rect
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            #[cfg(test)]
+                            {
+                                self.effects_bounds.library = catalog_rect;
+                                self.effects_bounds.header = output.header;
+                            }
+                            #[cfg(not(test))]
+                            {
+                                let _ = output.header;
+                            }
+                        }
+                    },
+                );
             }
             ui.allocate_ui_with_layout(
                 Vec2::new(ui.available_width(), upper.height()),
@@ -298,10 +294,12 @@ impl DawUi {
                 |ui| {
                     ui.set_min_height(upper.height());
                     let content_bounds = Rect::from_min_max(ui.max_rect().min, upper.max);
-                    let mut content_ui = ui.new_child(egui::UiBuilder::new()
-                        .id_salt(("effects-workspace-content", self.view_mode.label()))
-                        .max_rect(content_bounds)
-                        .layout(egui::Layout::top_down(egui::Align::Min)));
+                    let mut content_ui = ui.new_child(
+                        egui::UiBuilder::new()
+                            .id_salt(("effects-workspace-content", self.view_mode.label()))
+                            .max_rect(content_bounds)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                    );
                     content_ui.set_clip_rect(content_bounds.intersect(ui.clip_rect()));
                     content_ui.add_enabled_ui(self.effects_drag.is_none(), |ui| {
                         if self.view_mode == ViewMode::Instrument {
@@ -314,8 +312,13 @@ impl DawUi {
                         }
                     });
                     #[cfg(test)]
-                    { self.effects_bounds.scrollbar = if self.view_mode == ViewMode::Instrument { Rect::NOTHING } else { self.scrollbar_bounds }; }
-
+                    {
+                        self.effects_bounds.scrollbar = if self.view_mode == ViewMode::Instrument {
+                            Rect::NOTHING
+                        } else {
+                            self.scrollbar_bounds
+                        };
+                    }
                 },
             );
         });
