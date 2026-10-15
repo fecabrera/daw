@@ -102,6 +102,35 @@ fn open(app: &mut DawUi, ctx: &egui::Context) {
     assert!(app.instrument_catalog_visible);
 }
 
+// Install through the catalog when a unit-control test needs an absent component.
+pub(super) fn add_component(app: &mut DawUi, ctx: &egui::Context, layer: Id, index: usize) {
+    if app.instrument_ui.selected_layer != Some(layer) {
+        let point = app.midi_editor.layer_bounds[&layer].name.center();
+        click(app, ctx, point, false);
+    }
+    let was_open = app.instrument_catalog_visible;
+    let effects_was_open = app.timeline_catalog_visible;
+    if !was_open {
+        open(app, ctx);
+    }
+    // Separate this click from earlier button and context-menu clicks.
+    for _ in 0..40 {
+        frame(app, ctx, vec![]);
+    }
+    let point = app.instrument_catalog_bounds.entries[index].center();
+    click(app, ctx, point, false);
+    key(app, ctx, egui::Key::Enter, false, false);
+    if !was_open {
+        let point = if effects_was_open {
+            app.effects_bounds.library_toggle.center()
+        } else {
+            app.instrument_catalog_bounds.toggle.center()
+        };
+        click(app, ctx, point, false);
+    }
+    frame(app, ctx, vec![]);
+}
+
 #[test]
 fn instrument_catalog_is_exclusive_and_reuses_the_control_panel_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {

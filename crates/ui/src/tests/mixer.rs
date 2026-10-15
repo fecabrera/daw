@@ -1153,7 +1153,9 @@ fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
         assert_eq!(app.selected_clip, Some(clip));
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(has(&shapes, "Layers"));
-        assert!(has(&shapes, "Add source"));
+        assert!(!has(&shapes, "Add source"));
+        assert!(!has(&shapes, "Add envelope"));
+        assert!(app.instrument_catalog_bounds.toggle.is_positive());
         assert!(!has(&shapes, "Units"));
         app.set_view_mode(ViewMode::Timeline, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));

@@ -1989,3 +1989,17 @@ Completed checks:
 - 125 local documentation file links and `git diff --check`: passed.
 
 Native pointer gestures, appearance, and device playback were not checked in the running app. Windows/Linux builds were not run for this feature. No project format or audio-processing changes were added.
+
+## Remove Instrument empty cards — 2026-10-15
+
+Removed the missing-source and missing-envelope cards, including their text, outlines, Add buttons, and reserved widths. This supersedes the earlier card requirements and checks. Missing components now leave workspace background; installed components begin beside the Layers column and share their existing dividers. Expanded and compact layer heights, full-width catalog drop targets, and the populated Oscillator Plus strip remain available. Components are added through the Instrument catalog. The unused card renderer was removed, and current requirements were updated.
+
+Completed checks:
+
+- `cargo test -p daw-ui`: all 355 tests passed. Updated checks cover blank empty layers in both themes, absent card text/outlines/buttons, unchanged expanded/compact heights, unit alignment without placeholder columns, catalog additions after removal, and retained source controls. Existing catalog keyboard, double-click, drag/drop, cancellation, and edge-scroll checks passed.
+- `cargo fmt --all --check` and strict workspace Clippy passed.
+- `cargo test --workspace`: passed. The two expanded DSP matrices remain explicitly ignored; this change does not alter DSP.
+- `sh tools/package_macos.sh debug`: passed and rebuilt `target/debug/DAW.app`.
+- 131 local documentation links and `git diff --check` passed.
+
+Native appearance/gestures and device playback were not checked in the running app. Windows/Linux builds were not run. No project format or audio processing changed.

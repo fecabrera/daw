@@ -329,10 +329,20 @@ fn layer_headers_share_track_geometry_and_leave_the_header_workspace_dark() {
             let full_height = app.midi_editor.layer_bounds[&layers[0].id].row.height();
             assert_eq!(bounds.row.height(), full_height, "{}", layer.name);
             assert_eq!(bounds.label.height(), full_height, "{}", layer.name);
-            for area in [bounds.source_empty_state, bounds.envelope_empty_state] {
-                if area != Rect::NOTHING {
-                    assert_eq!(area.height(), full_height);
-                }
+            // Missing units do not reserve a placeholder column before installed units.
+            let first_unit = if bounds.oscillator_panel != Rect::NOTHING {
+                bounds.oscillator_panel
+            } else {
+                bounds.envelope_panel
+            };
+            if first_unit != Rect::NOTHING {
+                assert!(
+                    (first_unit.left() - bounds.label.right() + 1.0).abs() < 0.01,
+                    "{}: unit {} label {}",
+                    layer.name,
+                    first_unit.left(),
+                    bounds.label.right()
+                );
             }
             assert_eq!(bounds.label.width(), TRACK_WIDTH);
             assert_eq!(bounds.label.right(), header.right());
@@ -1347,7 +1357,7 @@ fn dragging_layers_scrolls_the_rows_while_the_instrument_header_stays_fixed() {
 }
 
 #[test]
-fn instrument_rows_start_empty_and_add_independent_sources_envelopes_and_layers() {
+fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let mut app = DawUi::default();
         let track = app.session.project.add_midi_track().unwrap();
@@ -1362,21 +1372,20 @@ fn instrument_rows_start_empty_and_add_independent_sources_envelopes_and_layers(
         );
         app.set_view_mode(ViewMode::Instrument, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        for text in ["Layers", "Layer 1"] {
+            assert!(shapes.iter().any(|s| matches!(&s.shape,
+                egui::Shape::Text(t) if t.galley.text() == text)));
+        }
         for text in [
-            "Layers",
-            "Layer 1",
             "No source",
-            "Generate sound with an oscillator.",
-            "Add source",
             "No envelope",
-            "Shape this layer’s volume over time.",
+            "Add source",
             "Add envelope",
+            "Generate sound with an oscillator.",
+            "Shape this layer’s volume over time.",
         ] {
-            assert!(
-                shapes
-                    .iter()
-                    .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == text))
-            );
+            assert!(!shapes.iter().any(|s| matches!(&s.shape,
+                egui::Shape::Text(t) if t.galley.text() == text)));
         }
         let first = app.session.project.tracks[0]
             .instrument
@@ -1386,25 +1395,10 @@ fn instrument_rows_start_empty_and_add_independent_sources_envelopes_and_layers(
             .id;
         let bounds = &app.midi_editor.layer_bounds[&first];
         assert_eq!(bounds.label.left(), bounds.row.left());
-        assert!((bounds.label.right() - bounds.source_empty_state.left()).abs() < 0.01);
-        assert_eq!(
-            bounds.source_empty_state.right() - crate::empty_state::MARGIN,
-            bounds.envelope_empty_state.left()
-        );
-        let source_card = bounds.source_empty_state.shrink(crate::empty_state::MARGIN);
-        let envelope_card = bounds
-            .envelope_empty_state
-            .shrink(crate::empty_state::MARGIN);
-        assert_eq!(source_card.left() - bounds.label.right(), 20.0);
-        assert_eq!(envelope_card.left() - source_card.right(), 20.0);
-        for (area, card) in [
-            (bounds.source_empty_state, source_card),
-            (bounds.envelope_empty_state, envelope_card),
-        ] {
-            assert_eq!(card.top() - area.top(), 20.0);
-            assert_eq!(area.bottom() - card.bottom(), 20.0);
-            assert_eq!(area.right() - card.right(), 20.0);
-        }
+        assert_eq!(bounds.row.height(), panels::unit_height(false));
+        assert_eq!(bounds.oscillator_panel, Rect::NOTHING);
+        assert_eq!(bounds.envelope_panel, Rect::NOTHING);
+        assert_eq!(app.midi_editor.add_oscillator_bounds, Rect::NOTHING);
         assert!(bounds.oscillators.is_empty());
         assert!(bounds.envelope_stages.iter().all(|r| *r == Rect::NOTHING));
         assert!(
@@ -1416,79 +1410,26 @@ fn instrument_rows_start_empty_and_add_independent_sources_envelopes_and_layers(
             app.midi_editor.add_layer_bounds.size(),
             Vec2::new(30.0, toolbars::CONTROL_HEIGHT)
         );
-        let blank = Pos2::new(bounds.row.right() - 10.0, bounds.row.center().y);
-        assert!(!shapes.iter().any(|s| matches!(&s.shape,
-            egui::Shape::Rect(r) if r.rect.contains(blank) && r.fill == theme::palette(&ctx).panel)),
-            "Unused layer space must retain the workspace background");
-        let mut inactive_points = Vec::new();
-        for (area, action, title) in [
-            (bounds.source_empty_state, bounds.add_source, "No source"),
-            (
-                bounds.envelope_empty_state,
-                bounds.add_envelope,
-                "No envelope",
+        let blank = Rect::from_min_max(
+            Pos2::new(bounds.label.right(), bounds.row.top()),
+            Pos2::new(
+                app.instrument_catalog_bounds.layer_viewport.right(),
+                bounds.row.bottom(),
             ),
-        ] {
-            let card = area.shrink(crate::empty_state::MARGIN);
-            assert!(card.contains_rect(action));
-            assert_eq!(action.height(), toolbars::CONTROL_HEIGHT);
-            assert!(!shapes.iter().any(|s| matches!(&s.shape,
-                egui::Shape::Rect(r) if r.rect.contains_rect(card) && r.fill != egui::Color32::TRANSPARENT
-                    && r.fill != theme::palette(&ctx).background)),
-                "Empty cards must not paint a background");
-            // Dashed outlines are short strokes with visible gaps, not a solid frame.
-            let dashes = shapes.iter().filter(|s| matches!(&s.shape,
-                egui::Shape::LineSegment { points, stroke } if card.contains(points[0]) && card.contains(points[1])
-                    && stroke.color == theme::palette(&ctx).border && stroke.width == 1.0
-                    && points[0].distance(points[1]) <= 6.1)).count();
-            assert!(dashes > 20);
-            let label = shapes
-                .iter()
-                .find_map(|s| match &s.shape {
-                    egui::Shape::Text(t) if t.galley.text() == title => {
-                        Some(t.galley.rect.translate(t.pos.to_vec2()))
-                    }
-                    _ => None,
-                })
-                .unwrap();
-            assert!(card.contains_rect(label));
-            assert!((label.center().x - card.center().x).abs() < 1.0);
-            assert!((action.center().x - card.center().x).abs() < 1.0);
-            let outer_margin = Pos2::new(area.left() + 2.0, area.center().y);
-            assert!(!shapes.iter().any(|s| matches!(&s.shape,
-                egui::Shape::Rect(r) if r.rect.contains(outer_margin) && r.fill == theme::palette(&ctx).panel)));
-            inactive_points.extend([outer_margin, label.center()]);
-        }
-        let point = bounds.add_source.center();
+        )
+        .shrink(2.0);
+        assert!(!shapes.iter().any(|s| matches!(&s.shape,
+            egui::Shape::Rect(r) if r.rect.intersects(blank) && r.fill == theme::palette(&ctx).panel)),
+            "Empty layer bodies retain the workspace background");
+        assert!(!shapes.iter().any(|s| matches!(&s.shape,
+            egui::Shape::LineSegment { points, .. } if blank.contains(points[0]) && blank.contains(points[1]))),
+            "Empty layer bodies have no card outlines");
         let before = app.session.project.tracks[0].instrument.clone();
-        for inactive in inactive_points {
-            click_note_or_lane(&mut app, &ctx, inactive);
-            assert_eq!(app.session.project.tracks[0].instrument, before);
-            assert!(!app.dirty);
-        }
-        frame(
-            &mut app,
-            &ctx,
-            vec![egui::Event::PointerMoved(point), button(point, true)],
-        );
-        assert!(
-            app.session.project.tracks[0]
-                .instrument
-                .as_ref()
-                .unwrap()
-                .layers[0]
-                .oscillators
-                .is_empty()
-        );
-        frame(&mut app, &ctx, vec![button(point, false)]);
-        frame(&mut app, &ctx, vec![]);
-        assert_eq!(
-            app.midi_editor.layer_bounds[&first].add_source,
-            Rect::NOTHING
-        );
-        let envelope = app.midi_editor.layer_bounds[&first].add_envelope.center();
-        click_note_or_lane(&mut app, &ctx, envelope);
-        frame(&mut app, &ctx, vec![]);
+        click_note_or_lane(&mut app, &ctx, blank.center());
+        assert_eq!(app.session.project.tracks[0].instrument, before);
+        assert!(!app.dirty);
+        super::instrument_catalog::add_component(&mut app, &ctx, first, 0);
+        super::instrument_catalog::add_component(&mut app, &ctx, first, 1);
         assert!(
             app.session.project.tracks[0]
                 .instrument
@@ -1525,9 +1466,7 @@ fn instrument_rows_start_empty_and_add_independent_sources_envelopes_and_layers(
                 .abs()
                 < 0.01
         );
-        let source = app.midi_editor.layer_bounds[&second].add_source.center();
-        click_note_or_lane(&mut app, &ctx, source);
-        frame(&mut app, &ctx, vec![]);
+        super::instrument_catalog::add_component(&mut app, &ctx, second, 0);
         let layers = &app.session.project.tracks[0]
             .instrument
             .as_ref()
@@ -1640,9 +1579,7 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
         assert!(!layers[0].has_envelope);
         assert_eq!(layers[0].envelope.attack.time_ms, 75.0);
         assert_eq!(layers[1], before.layers[1]);
-        let add = app.midi_editor.layer_bounds[&first].add_envelope.center();
-        click_note_or_lane(&mut app, &ctx, add);
-        frame(&mut app, &ctx, vec![]);
+        super::instrument_catalog::add_component(&mut app, &ctx, first, 1);
         assert_eq!(
             app.session.project.tracks[0].instrument.as_ref(),
             Some(&before)
@@ -2189,9 +2126,14 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
             );
         }
         assert!(app.midi_editor.oscillator_bounds.is_empty());
-        let add = app.midi_editor.add_oscillator_bounds.center();
-        click_note_or_lane(&mut app, &ctx, add);
-        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.midi_editor.add_oscillator_bounds, Rect::NOTHING);
+        let layer = app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .id;
+        super::instrument_catalog::add_component(&mut app, &ctx, layer, 0);
         assert_eq!(
             app.session.project.tracks[0]
                 .instrument
@@ -5892,12 +5834,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
             assert!(bounds.label.contains_rect(bounds.collapse));
             assert_eq!(bounds.oscillator_panel.width(), widths[index].0);
             assert_eq!(bounds.envelope_panel.width(), widths[index].1);
-            for panel in [
-                bounds.oscillator_panel,
-                bounds.envelope_panel,
-                bounds.source_empty_state,
-                bounds.envelope_empty_state,
-            ] {
+            for panel in [bounds.oscillator_panel, bounds.envelope_panel] {
                 if panel != Rect::NOTHING {
                     assert_eq!(panel.height(), ROW_HEIGHT);
                 }
@@ -5924,15 +5861,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
                 );
             }
         }
-        for label in [
-            "Osc 1",
-            "Attack",
-            "Decay",
-            "Sustain",
-            "Release",
-            "Add source",
-            "Add envelope",
-        ] {
+        for label in ["Osc 1", "Attack", "Decay", "Sustain", "Release"] {
             assert!(
                 shapes
                     .iter()
@@ -5941,7 +5870,11 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
             );
         }
         assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "5.0 ms" || t.galley.text() == "No source")));
-        // Compact footers and empty cards retain their actions without resizing the layer.
+        for label in ["No source", "No envelope", "Add source", "Add envelope"] {
+            assert!(!shapes.iter().any(|s| matches!(&s.shape,
+                egui::Shape::Text(t) if t.galley.text() == label)));
+        }
+        // Compact footers and catalog additions do not resize the layer.
         let source_power = app.midi_editor.layer_bounds[&layers[0].id].source_powers[0].center();
         click_note_or_lane(&mut app, &ctx, source_power);
         frame(&mut app, &ctx, vec![]);
@@ -5955,15 +5888,8 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
                 .muted
         );
         let empty = layers[2].id;
-        for source in [true, false] {
-            let bounds = &app.midi_editor.layer_bounds[&empty];
-            let point = if source {
-                bounds.add_source.center()
-            } else {
-                bounds.add_envelope.center()
-            };
-            click_note_or_lane(&mut app, &ctx, point);
-            frame(&mut app, &ctx, vec![]);
+        for component in [0, 1] {
+            super::instrument_catalog::add_component(&mut app, &ctx, empty, component);
             assert_eq!(
                 app.midi_editor.layer_bounds[&empty].row.height(),
                 ROW_HEIGHT
