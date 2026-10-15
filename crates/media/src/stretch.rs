@@ -1,12 +1,113 @@
 use crate::{AudioData, Error, Result};
-use daw_core::ClipStretch;
 #[cfg(test)]
 use daw_core::SAMPLE_RATE;
+use daw_core::{ClipStretch, StretchEngine, StretchEngineId};
 use rubberband::{Options, Stretcher};
 use std::sync::Arc;
 
+/// A prepared buffer retains its source allocation, so pointer identity cannot be reused.
+/// Matching also checks processing identity; stale buffers are never served as another engine.
+#[derive(Clone)]
+pub struct PreparedStretch {
+    pub audio: AudioData,
+    source: Arc<Vec<[f32; 2]>>,
+    sample_rate_hz: u32,
+    engine: StretchEngine,
+    ratio: ClipStretch,
+}
+impl PreparedStretch {
+    pub fn new(source: &AudioData, ratio: ClipStretch, engine: StretchEngine) -> Result<Self> {
+        Self::new_cancellable(source, ratio, engine, &|| false)
+    }
+    pub fn new_cancellable(
+        source: &AudioData,
+        ratio: ClipStretch,
+        engine: StretchEngine,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Self> {
+        Ok(Self {
+            audio: stretch_audio_with_engine_cancellable(source, ratio, engine, cancelled)?,
+            source: source.samples.clone(),
+            sample_rate_hz: source.sample_rate_hz,
+            engine,
+            ratio,
+        })
+    }
+    pub fn matches(&self, source: &AudioData, ratio: ClipStretch, engine: StretchEngine) -> bool {
+        Arc::ptr_eq(&self.source, &source.samples)
+            && self.sample_rate_hz == source.sample_rate_hz
+            && self.engine == engine
+            && self.ratio == ratio
+    }
+}
+impl std::ops::Deref for PreparedStretch {
+    type Target = AudioData;
+    fn deref(&self) -> &AudioData {
+        &self.audio
+    }
+}
+
+pub fn stretch_audio_with_engine(
+    audio: &AudioData,
+    ratio: ClipStretch,
+    engine: StretchEngine,
+) -> Result<AudioData> {
+    stretch_audio_with_engine_cancellable(audio, ratio, engine, &|| false)
+}
+
+fn stretch_audio_with_engine_cancellable(
+    audio: &AudioData,
+    ratio: ClipStretch,
+    engine: StretchEngine,
+    cancelled: &impl Fn() -> bool,
+) -> Result<AudioData> {
+    if cancelled() {
+        return Err(Error("Time stretch cancelled".into()));
+    }
+    engine.validate().map_err(|e| Error(e.to_string()))?;
+    match engine.id {
+        StretchEngineId::RubberBand => stretch_audio_cancellable(audio, ratio, cancelled),
+        StretchEngineId::Integrated => {
+            let ratio = timestretch::Ratio::new(ratio.output_frames, ratio.source_frames)
+                .map_err(|e| Error(e.to_string()))?;
+            let mut input = Vec::new();
+            input
+                .try_reserve_exact(
+                    audio
+                        .samples
+                        .len()
+                        .checked_mul(2)
+                        .ok_or_else(|| Error("Source too long".into()))?,
+                )
+                .map_err(|e| Error(e.to_string()))?;
+            input.extend(audio.samples.iter().flatten().copied());
+            let output = timestretch::Request::new(audio.sample_rate_hz, 2, ratio)
+                .process_with_progress(&input, |_| {
+                    if cancelled() {
+                        std::ops::ControlFlow::Break(())
+                    } else {
+                        std::ops::ControlFlow::Continue(())
+                    }
+                })
+                .map_err(|e| Error(e.to_string()))?;
+            let samples: Vec<_> = output.chunks_exact(2).map(|s| [s[0], s[1]]).collect();
+            Ok(prepared_audio(audio, samples))
+        }
+    }
+}
+
 /// Offline R3 processing. Call on a worker, never from an audio callback.
 pub fn stretch_audio(audio: &AudioData, ratio: ClipStretch) -> Result<AudioData> {
+    stretch_audio_cancellable(audio, ratio, &|| false)
+}
+fn stretch_audio_cancellable(
+    audio: &AudioData,
+    ratio: ClipStretch,
+    cancelled: &impl Fn() -> bool,
+) -> Result<AudioData> {
+    if cancelled() {
+        return Err(Error("Time stretch cancelled".into()));
+    }
     if !ratio.valid() {
         return Err(Error("Unsupported clip stretch ratio".into()));
     }
@@ -45,6 +146,9 @@ pub fn stretch_audio(audio: &AudioData, ratio: ClipStretch) -> Result<AudioData>
         let mut left = vec![0.0; BLOCK];
         let mut right = vec![0.0; BLOCK];
         for (index, block) in audio.samples.chunks(BLOCK).enumerate() {
+            if cancelled() {
+                return Err(Error("Time stretch cancelled".into()));
+            }
             for (i, sample) in block.iter().enumerate() {
                 if sample.iter().any(|value| !value.is_finite()) {
                     return Err(Error("Source contains invalid samples".into()));
@@ -60,6 +164,9 @@ pub fn stretch_audio(audio: &AudioData, ratio: ClipStretch) -> Result<AudioData>
         let mut out_left = vec![0.0; BLOCK];
         let mut out_right = vec![0.0; BLOCK];
         for (index, block) in audio.samples.chunks(BLOCK).enumerate() {
+            if cancelled() {
+                return Err(Error("Time stretch cancelled".into()));
+            }
             for (i, sample) in block.iter().enumerate() {
                 left[i] = sample[0];
                 right[i] = sample[1];
@@ -99,6 +206,10 @@ pub fn stretch_audio(audio: &AudioData, ratio: ClipStretch) -> Result<AudioData>
         )));
     }
     samples.resize(expected, [0.0; 2]);
+    Ok(prepared_audio(audio, samples))
+}
+
+fn prepared_audio(audio: &AudioData, samples: Vec<[f32; 2]>) -> AudioData {
     let peaks = samples
         .chunks(256)
         .map(|chunk| {
@@ -112,12 +223,12 @@ pub fn stretch_audio(audio: &AudioData, ratio: ClipStretch) -> Result<AudioData>
             peak
         })
         .collect();
-    Ok(AudioData {
+    AudioData {
         sample_rate_hz: audio.sample_rate_hz,
         samples: Arc::new(samples),
         peaks: Arc::new(peaks),
         metadata: audio.metadata.clone(),
-    })
+    }
 }
 
 #[cfg(test)]

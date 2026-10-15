@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+timestretch.workspace = true
 daw-core.workspace = true
 symphonia.workspace = true
 hound.workspace = true

@@ -9,12 +9,20 @@ use std::collections::HashMap;
 pub struct RenderPlan {
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
-    pub stretched_audio: HashMap<(Id, ClipStretch), AudioData>,
+    pub stretched_audio: HashMap<(Id, ClipStretch), daw_media::PreparedStretch>,
 }
 impl RenderPlan {
     pub fn audio_for_clip(&self, clip: &Clip) -> Option<&AudioData> {
         match clip.stretch {
-            Some(stretch) => self.stretched_audio.get(&(clip.asset_id, stretch)),
+            Some(stretch) => self
+                .stretched_audio
+                .get(&(clip.asset_id, stretch))
+                .filter(|prepared| {
+                    self.audio.get(&clip.asset_id).is_some_and(|source| {
+                        prepared.matches(source, stretch, self.project.stretch_engine)
+                    })
+                })
+                .map(|prepared| &prepared.audio),
             None => self.audio.get(&clip.asset_id),
         }
     }

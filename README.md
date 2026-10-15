@@ -130,6 +130,7 @@ Workers also upload command logs as `logs-test-<OS>-<architecture>` and `logs-bu
 - [Project scope](docs/MVP.md) and [implementation specification](specs/mvp-iteration-1.md).
 - [Modular audio units](docs/modular-audio-units.md) and [beat pattern editor](docs/beat-editor.md) designs and decisions.
 - [MIDI patterns and oscillators](docs/midi-patterns.md), including current controls and limits.
+- [Experimental Timestretch engine](docs/timestretch.md) and [acceptance plan](specs/timestretch-acceptance.md): reusable BSD-2-Clause Rust crate, standalone comparisons against Rubber Band R2/R3, and optional DAW engine selection. The engine, tool, and saved Project Settings selector are implemented. Rubber Band remains the default. See the [standalone tool guide](crates/timestretch-cli/README.md) and validation limits.
 - [Validation records](docs/validation.md).
 - [Contribution and development instructions](AGENTS.md), including architecture, documentation rules, and checks.
 

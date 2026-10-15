@@ -10,6 +10,8 @@ pub use daw_unit_core::{
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
 mod audio_settings;
+mod stretch_engine;
+pub use stretch_engine::{StretchEngine, StretchEngineId};
 mod boundary;
 mod effects;
 mod looping;
@@ -126,6 +128,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Project {
+    #[serde(default)]
+    pub stretch_engine: StretchEngine,
     pub project_id: Id,
     pub name: String,
     pub sample_rate_hz: u32,
@@ -302,6 +306,7 @@ pub struct Loop {
 impl Default for Project {
     fn default() -> Self {
         Self {
+            stretch_engine: StretchEngine::default(),
             project_id: Id::new_v4(),
             name: "Untitled".into(),
             sample_rate_hz: SAMPLE_RATE,
@@ -429,6 +434,7 @@ impl Project {
         )
     }
     pub fn validate(&self) -> Result<()> {
+        self.stretch_engine.validate()?;
         let invalid = |text: &str| Error(text.into());
         if !SAMPLE_RATES.contains(&self.sample_rate_hz) {
             return Err(invalid("Unsupported project sample rate"));

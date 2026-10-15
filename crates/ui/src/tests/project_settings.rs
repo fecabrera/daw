@@ -272,7 +272,7 @@ fn settings_dialog_fields_share_left_and_right_edges() {
             );
             let labels = if project_settings {
                 app.open_project_settings();
-                vec!["Untitled", "48000 Hz", "512 samples"]
+                vec!["Untitled", "48000 Hz", "512 samples", "Rubber Band"]
             } else {
                 app.settings_open = true;
                 vec![
@@ -319,4 +319,73 @@ fn settings_dialog_fields_share_left_and_right_edges() {
             }
         }
     }
+}
+
+#[test]
+fn engine_selector_draft_cancel_apply_and_noop() {
+    for theme in [ColorTheme::Dark, ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        app.selected_track = Some(track);
+        app.selected_tracks.insert(track);
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            AppSettings {
+                theme,
+                ..Default::default()
+            },
+        );
+        app.open_project_settings();
+        assert_eq!(
+            app.project_settings.as_ref().unwrap().stretch_engine,
+            daw_core::StretchEngine::RUBBER_BAND
+        );
+        app.project_settings.as_mut().unwrap().stretch_engine = daw_core::StretchEngine::INTEGRATED;
+        frame(&mut app, &ctx, vec![]);
+        click_dialog(&mut app, &ctx, "Cancel");
+        assert_eq!(
+            app.session.project.stretch_engine,
+            daw_core::StretchEngine::RUBBER_BAND
+        );
+        assert!(!app.dirty);
+        app.open_project_settings();
+        app.project_settings.as_mut().unwrap().stretch_engine = daw_core::StretchEngine::INTEGRATED;
+        frame(&mut app, &ctx, vec![]);
+        click_dialog(&mut app, &ctx, "Apply");
+        assert!(app.job.is_some());
+        wait_for_save(&mut app);
+        assert!(app.error.is_none());
+        assert_eq!(
+            app.session.project.stretch_engine,
+            daw_core::StretchEngine::INTEGRATED
+        );
+        assert_eq!(app.selected_track, Some(track));
+        assert!(app.dirty);
+        app.dirty = false;
+        app.open_project_settings();
+        frame(&mut app, &ctx, vec![]);
+        click_dialog(&mut app, &ctx, "Apply");
+        assert!(app.job.is_none());
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn cancelling_settings_worker_discards_late_publication() {
+    let (mut app, _) = fixture();
+    let before = format!("{:?}", app.session.project);
+    let ctx = context();
+    app.open_project_settings();
+    app.project_settings.as_mut().unwrap().stretch_engine = daw_core::StretchEngine::INTEGRATED;
+    frame(&mut app, &ctx, vec![]);
+    click_dialog(&mut app, &ctx, "Apply");
+    let token = app.settings_cancel.take().unwrap();
+    token.store(true, Ordering::Relaxed);
+    app.job = None;
+    app.busy.clear();
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    assert_eq!(format!("{:?}", app.session.project), before);
+    assert!(!app.dirty);
 }
