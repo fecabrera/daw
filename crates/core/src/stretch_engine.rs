@@ -30,7 +30,7 @@ impl StretchEngine {
     };
     pub const INTEGRATED: Self = Self {
         id: StretchEngineId::Integrated,
-        revision: 1,
+        revision: 2,
     };
     pub fn label(self) -> &'static str {
         match self.id {
@@ -39,7 +39,7 @@ impl StretchEngine {
         }
     }
     pub fn validate(self) -> crate::Result<()> {
-        if self.revision != 1 {
+        if !(self.revision == 1 || self.id == StretchEngineId::Integrated && self.revision == 2) {
             return Err(crate::Error(format!(
                 "Unsupported time stretch revision {} for {}",
                 self.revision,
@@ -60,9 +60,15 @@ mod tests {
         assert_eq!(legacy.stretch_engine, StretchEngine::RUBBER_BAND);
         saved["stretch_engine"] = serde_json::json!({"id":"timestretch","revision":1});
         let integrated: crate::Project = serde_json::from_value(saved.clone()).unwrap();
-        assert_eq!(integrated.stretch_engine, StretchEngine::INTEGRATED);
+        assert_eq!(integrated.stretch_engine.revision, 1);
+        assert_eq!(integrated.stretch_engine.id, StretchEngineId::Integrated);
         integrated.validate().unwrap();
         saved["stretch_engine"]["revision"] = serde_json::json!(2);
+        serde_json::from_value::<crate::Project>(saved.clone())
+            .unwrap()
+            .validate()
+            .unwrap();
+        saved["stretch_engine"]["revision"] = serde_json::json!(3);
         assert!(
             serde_json::from_value::<crate::Project>(saved.clone())
                 .unwrap()

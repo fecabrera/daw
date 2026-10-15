@@ -55,6 +55,7 @@ fn process_paths_identity_ratios_and_failures() {
         String::from_utf8_lossy(&success.stderr)
     );
     let report: Value = serde_json::from_slice(&fs::read(dir.join("out.json")).unwrap()).unwrap();
+    assert_eq!(report["revision"], timestretch::REVISION);
     assert_eq!(report["output_frames"], 36000);
     assert_eq!(report["channels"], 2);
     assert_eq!(report["ratio"]["numerator"], 3);
@@ -116,6 +117,9 @@ fn comparison_requires_all_three_engines_and_matching_inputs() {
             assert_eq!(report["prepared_sha256"], reports[0]["prepared_sha256"]);
             assert_eq!(report["output_frames"], 36000);
         }
+        assert_eq!(reports[0]["revision"], timestretch::REVISION);
+        assert_eq!(reports[1]["revision"], 1);
+        assert_eq!(reports[2]["revision"], 1);
         assert_eq!(reports[1]["backend"]["engine_version"], 2);
         assert_eq!(reports[2]["backend"]["engine_version"], 3);
     } else {
@@ -140,4 +144,68 @@ fn comparison_requires_all_three_engines_and_matching_inputs() {
         .code(),
         Some(2)
     );
+}
+
+#[test]
+fn revision_selection_reports_actual_backend_and_rejects_unknown_versions() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path();
+    wav(&dir.join("source.wav"));
+    for revision in ["1", "2"] {
+        let out = run(
+            dir,
+            &[
+                "process",
+                "--input",
+                "source.wav",
+                "--output",
+                "out.wav",
+                "--report",
+                "out.json",
+                "--engine",
+                "timestretch",
+                "--ratio",
+                "3/2",
+                "--revision",
+                revision,
+                "--overwrite",
+            ],
+        );
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let report: Value =
+            serde_json::from_slice(&fs::read(dir.join("out.json")).unwrap()).unwrap();
+        assert_eq!(report["revision"], revision.parse::<u32>().unwrap());
+        assert_eq!(report["backend"]["revision"], report["revision"]);
+    }
+    for (engine, revision) in [
+        ("timestretch", "3"),
+        ("rubberband-r2", "2"),
+        ("rubberband-r3", "2"),
+    ] {
+        let out = run(
+            dir,
+            &[
+                "process",
+                "--input",
+                "source.wav",
+                "--output",
+                "bad.wav",
+                "--report",
+                "bad.json",
+                "--engine",
+                engine,
+                "--ratio",
+                "1",
+                "--revision",
+                revision,
+            ],
+        );
+        assert_eq!(out.status.code(), Some(2));
+        assert!(!dir.join("bad.wav").exists());
+        assert!(!dir.join("bad.json").exists());
+    }
 }

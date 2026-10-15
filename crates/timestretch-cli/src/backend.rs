@@ -2,21 +2,20 @@ use crate::audio::{Audio, Result};
 use serde_json::{Value, json};
 use timestretch::{Ratio, Request};
 pub const ENGINES: [&str; 3] = ["timestretch", "rubberband-r2", "rubberband-r3"];
-pub fn process(audio: &Audio, ratio: Ratio, engine: &str) -> Result<(Audio, Value)> {
+pub fn process(audio: &Audio, ratio: Ratio, engine: &str, revision: u32) -> Result<(Audio, Value)> {
     let (samples, details) = if engine == "timestretch" {
-        let output = Request::new(audio.rate, audio.channels, ratio).process_with_progress(
-            &audio.samples,
-            |_| {
+        let output = Request::new(audio.rate, audio.channels, ratio)
+            .with_revision(revision)
+            .process_with_progress(&audio.samples, |_| {
                 if crate::cancelled() {
                     std::ops::ControlFlow::Break(())
                 } else {
                     std::ops::ControlFlow::Continue(())
                 }
-            },
-        )?;
+            })?;
         (
             output,
-            json!({"algorithm":"linked-phase-vocoder", "revision":timestretch::REVISION, "threads":1}),
+            json!({"algorithm":"linked-phase-vocoder", "revision":revision, "threads":1}),
         )
     } else {
         reference(audio, ratio, engine)?

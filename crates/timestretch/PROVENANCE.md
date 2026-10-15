@@ -1,6 +1,6 @@
 # Independent implementation record
 
-Date: 2026-10-14. Processing revision: 1. Status: experimental.
+Initial implementation: 2026-10-14. Revision 2: 2026-10-15. Current processing revision: 2. Revision 1 remains available unchanged. Status: experimental.
 
 The mandatory rule in `docs/timestretch.md` applies: under no circumstances take code directly from Rubber Band. Copies, ports, translations, adaptations, mechanical rewrites, and indirect reuse are prohibited. No Rubber Band DSP implementation source was consulted for this implementation. The new engine and tests were written in this task from the mathematical design below. This is a provenance record, not a certification of formal clean-room development or legal clearance.
 
@@ -19,6 +19,18 @@ Prior exposure: the existing DAW Rust adapter was read. Earlier specification wo
 Stereo analysis sums per-channel complex cross-products between consecutive spectra. It never sums L/R samples, so an anti-phase signal does not cancel. Both channels receive the same rotation. Local spectral maxima define nearest-peak regions for identity phase locking. Both analysis and synthesis hops are bounded by W/8. Window length scales with sample rate. Windows extend beyond output bounds and normalize by their squared overlap weights, stored in one periodic hop-sized table; source endpoints use zero extension. Exact constant signals use a direct DC path. There is no resampling fallback. Identity requests bypass DSP after validation and preserve bits. Tests independently generate sines and use interpolated crossings to estimate pitch.
 
 The analysis pass selects a short (about 2–3 ms) window for broadband material, using energy-weighted geometric/arithmetic spectral flatness above 0.15. Tonal material uses a longer (about 40–46 ms) window. This independent design choice improves attack localization in noise-like material. Selection applies to the complete source: mixed tonal/percussive material still requires listening evaluation. Neither audio similarity nor quality parity with Rubber Band is claimed.
+
+## Revision 2: phase continuity and attack preservation
+
+The original independent revision-1 processor is retained in `src/spectral_v1.rs` for saved requests. Revision 2 carries each bin's actual locked synthesis rotation into the next frame. The previous version advanced an independent rotation even while that bin used a neighboring peak's rotation; becoming a peak could therefore resume an inconsistent phase. The correction addresses overlap cancellation without output normalization, gain matching, limiting, or clipping.
+
+Research context added for this revision: Axel Röbel, [A new approach to transient processing in the phase vocoder](https://www.dafx.de/paper-archive/2003/pdfs/dafx32.pdf), DAFx 2003. The paper discusses phase coherence at attacks and the problems with early phase resets. No source code or Rubber Band implementation material was consulted. The following energy detector and guarded time map were independently written here; they are not the paper's per-bin detector.
+
+`src/transients.rs` measures linked channel power in approximately 1 ms blocks. An attack exceeds six times the preceding eight-block mean and twice the maximum of the preceding two blocks, with a 30 ms refractory period. These relative comparisons preserve amplitude scaling and polarity invariance. During expansion only, detected onset positions remain anchored to the requested global ratio. Small source regions around them run at unit speed with original spectral phases. Guards cover half an analysis window plus 2 ms before and up to 10 ms after the onset; the extra post-onset time is capped at one quarter window to retain broadband decay energy; neighboring guards are capped at one third of their source separation. The intervening segments absorb the extra duration. This is a monotonic piecewise-linear time map, with rounded source centers and exact requested output length. Repeated centers retain the previous frequency estimate. Compression keeps the original linear time map and receives the phase-continuity correction only.
+
+Revision 2 also measures flatness within the band containing the middle 90% of spectral energy when it spans at least one eighth of the analyzed bins. This avoids classifying band-limited cymbal/noise material as tonal solely because its low or high frequency margins are empty. Narrow tonal peaks retain the long-window path.
+
+This is transient protection, not whole-file loudness normalization. Short pulses can have lower whole-file RMS after expansion because their attacks retain their duration while the spacing increases. The detector can miss attacks masked by a louder sustained signal. Dense events shorten the guard regions. Source-wide window selection remains a limitation, and sustained cymbal tails still need listening assessment. No subjective equivalence with R3 is claimed.
 
 ## Dependencies and reuse
 

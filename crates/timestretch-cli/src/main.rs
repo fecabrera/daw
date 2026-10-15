@@ -33,10 +33,10 @@ fn rate(text: &str) -> std::result::Result<u32, String> {
         .ok_or_else(|| "unsupported sample rate".into())
 }
 fn revision(text: &str) -> std::result::Result<u32, String> {
-    if text == "1" {
-        Ok(1)
+    if text == "1" || text == "2" {
+        Ok(text.parse().expect("validated revision"))
     } else {
-        Err("only processing revision 1 is available".into())
+        Err("available processing revisions: Integrated 1/2, Rubber Band 1".into())
     }
 }
 #[derive(clap::Args)]
@@ -56,8 +56,8 @@ struct Process {
     output: PathBuf,
     #[arg(long,value_parser=backend::ENGINES)]
     engine: String,
-    #[arg(long,default_value="1",value_parser=revision)]
-    revision: u32,
+    #[arg(long,value_parser=revision)]
+    revision: Option<u32>,
     #[arg(long)]
     report: PathBuf,
     #[arg(long)]
@@ -158,12 +158,20 @@ fn publish(temp: tempfile::NamedTempFile, path: &Path, overwrite: bool) -> Resul
 }
 fn process(p: Process) -> Result<()> {
     let wall = Instant::now();
+    let revision = p.revision.unwrap_or(if p.engine == "timestretch" {
+        timestretch::REVISION
+    } else {
+        1
+    });
+    if p.engine != "timestretch" && revision != 1 {
+        return Err("arguments: Rubber Band supports processing revision 1 only".into());
+    }
     validate_paths(&p)?;
     let source_hash = audio::file_hash(&p.input.input)?;
     let (input, decode, conversion) = audio::read(&p.input.input, p.input.sample_rate)?;
     let prepared_hash = input.hash();
     let engine_start = Instant::now();
-    let (output, details) = backend::process(&input, p.input.ratio, &p.engine)?;
+    let (output, details) = backend::process(&input, p.input.ratio, &p.engine, revision)?;
     let engine_seconds = engine_start.elapsed().as_secs_f64();
     let analysis_start = Instant::now();
     let diagnostics = metrics::diagnostics(&output);
@@ -179,7 +187,7 @@ fn process(p: Process) -> Result<()> {
     audio::write(audio_temp.path(), &output)?;
     let encoding = encoding_start.elapsed().as_secs_f64();
     let output_hash = audio::file_hash(audio_temp.path())?;
-    let report = json!({"schema_version":1,"status":"complete","engine":p.engine,"revision":p.revision,"backend":details,
+    let report = json!({"schema_version":1,"status":"complete","engine":p.engine,"revision":revision,"backend":details,
         "file_sha256":source_hash,"prepared_sha256":prepared_hash,"output_file_sha256":output_hash,"output_sample_sha256":output.hash(),
         "sample_rate":input.rate,"channels":input.channels,"input_frames":input.frames(),"output_frames":output.frames(),"expected_frames":p.input.ratio.output_frames(input.frames())?,
         "ratio":{"numerator":p.input.ratio.numerator(),"denominator":p.input.ratio.denominator()},

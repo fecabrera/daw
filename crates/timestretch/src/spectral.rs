@@ -19,6 +19,8 @@ pub(crate) fn process(
     let tonal_width =
         ((request.sample_rate as usize * 40 / 1000).next_power_of_two()).clamp(1024, 8192);
     let width = analysis_width(request, input, tonal_width, progress)?;
+    let mut timing =
+        crate::transients::Timing::analyze(request, input, width, frames_out, progress)?;
     let bins = width / 2 + 1;
     let half = (width / 2) as i64;
     // Limit both analysis and synthesis advances to 1/8 window, even at extremes.
@@ -39,6 +41,10 @@ pub(crate) fn process(
     let mut previous = buffer(channels * bins, Complex::default())?;
     let mut rotations = buffer(bins, 0.0)?;
     let mut magnitudes = buffer(bins, 0.0)?;
+    let mut locked_rotations = buffer(bins, 0.0)?;
+    let mut frequencies: Vec<_> = (0..bins)
+        .map(|bin| TAU * bin as f64 / width as f64)
+        .collect();
     let mut peaks = Vec::with_capacity(bins);
     let mut accum = buffer(frames_out * channels, 0.0f64)?;
     // Every synthesis center is a multiple of hop. With padded centers at both
@@ -58,7 +64,7 @@ pub(crate) fn process(
             progress,
             0.15 + 0.75 * (center - start) as f32 / (end - start) as f32,
         )?;
-        let source = (center as f64 / ratio).round() as i64;
+        let (source, attack) = timing.at(center);
         for channel in 0..channels {
             let spectrum = &mut spectra[channel * width..(channel + 1) * width];
             for (i, value) in spectrum.iter_mut().enumerate() {
@@ -83,12 +89,23 @@ pub(crate) fn process(
                 previous[channel * bins + bin] = value;
             }
             magnitudes[bin] = energy;
-            if !first {
+            if !first && source > last_source {
                 let advance = (source - last_source) as f64;
                 let expected = TAU * bin as f64 / width as f64;
                 let frequency = expected + wrap(correlation.arg() - expected * advance) / advance;
-                rotations[bin] = wrap(rotations[bin] + frequency * (hop as f64 - advance));
+                frequencies[bin] = frequency;
             }
+            if !first {
+                rotations[bin] = wrap(
+                    rotations[bin]
+                        + frequencies[bin] * (hop as f64 - (source - last_source) as f64),
+                );
+            }
+        }
+        // Unit-speed attack regions use original phases. Their guards include
+        // overlapping windows so resynthesis preserves the attack waveform.
+        if attack {
+            rotations.fill(0.0);
         }
         peaks.clear();
         for bin in 1..bins - 1 {
@@ -105,6 +122,7 @@ pub(crate) fn process(
                 peak_index += 1;
             }
             let phase = rotations[peaks.get(peak_index).copied().unwrap_or(bin)];
+            locked_rotations[bin] = phase;
             let rotation = Complex::from_polar(1.0, phase);
             for channel in 0..channels {
                 let spectrum = &mut spectra[channel * width..(channel + 1) * width];
@@ -123,6 +141,9 @@ pub(crate) fn process(
                 }
             }
         }
+        // Carry the rotation actually used in synthesis. A bin that becomes a
+        // peak next frame must not resume a stale, independently advanced phase.
+        rotations.copy_from_slice(&locked_rotations);
         first = false;
         last_source = source;
         center += hop as i64;
@@ -166,7 +187,7 @@ fn analysis_width(
     let mut weighted_flatness = 0.0;
     let mut total_energy = 0.0;
     for start in (0..frames).step_by(width / 2) {
-        checkpoint(progress, 0.05 + 0.1 * start as f32 / frames as f32)?;
+        checkpoint(progress, 0.05 + 0.05 * start as f32 / frames as f32)?;
         power.fill(0.0);
         for channel in 0..channels {
             for (i, bin) in spectrum.iter_mut().enumerate() {
@@ -187,12 +208,30 @@ fn analysis_width(
         let energy: f64 = power.iter().sum();
         if energy > 0.0 {
             let mean = energy / power.len() as f64;
-            let flatness = (power
-                .iter()
-                .map(|p| (p / mean).max(1e-30).ln())
-                .sum::<f64>()
-                / power.len() as f64)
-                .exp();
+            let mut flatness = spectral_flatness(&power, mean);
+            // A cymbal/noise band need not occupy the whole Nyquist interval.
+            // Ignore empty frequency margins, but require a broad occupied band
+            // so a narrow sinusoidal peak cannot select the short window.
+            let mut cumulative = 0.0;
+            let mut lo = 0;
+            let mut hi = power.len();
+            for (bin, value) in power.iter().enumerate() {
+                cumulative += value;
+                if cumulative < energy * 0.05 {
+                    lo = bin + 1;
+                }
+                if cumulative >= energy * 0.95 {
+                    hi = bin + 1;
+                    break;
+                }
+            }
+            if hi - lo >= power.len() / 8 {
+                let band = &power[lo..hi];
+                flatness = flatness.max(spectral_flatness(
+                    band,
+                    band.iter().sum::<f64>() / band.len() as f64,
+                ));
+            }
             weighted_flatness += energy * flatness;
             total_energy += energy;
         }
@@ -206,4 +245,13 @@ fn analysis_width(
             width
         },
     )
+}
+
+fn spectral_flatness(power: &[f64], mean: f64) -> f64 {
+    (power
+        .iter()
+        .map(|p| (p / mean).max(1e-30).ln())
+        .sum::<f64>()
+        / power.len() as f64)
+        .exp()
 }

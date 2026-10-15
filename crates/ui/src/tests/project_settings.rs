@@ -389,3 +389,31 @@ fn cancelling_settings_worker_discards_late_publication() {
     assert_eq!(format!("{:?}", app.session.project), before);
     assert!(!app.dirty);
 }
+
+#[test]
+fn legacy_integrated_settings_keep_revision_until_explicit_selection() {
+    let (mut app, _) = fixture();
+    let legacy = daw_core::StretchEngine {
+        revision: 1,
+        ..daw_core::StretchEngine::INTEGRATED
+    };
+    app.session.project.stretch_engine = legacy;
+    let ctx = context();
+    app.open_project_settings();
+    frame(&mut app, &ctx, vec![]);
+    click_dialog(&mut app, &ctx, "Apply");
+    assert_eq!(app.session.project.stretch_engine, legacy);
+    assert!(app.job.is_none());
+    assert!(!app.dirty);
+    app.open_project_settings();
+    frame(&mut app, &ctx, vec![]);
+    app.project_settings.as_mut().unwrap().stretch_engine = daw_core::StretchEngine::INTEGRATED;
+    click_dialog(&mut app, &ctx, "Apply");
+    wait_for_save(&mut app);
+    assert!(app.error.is_none());
+    assert_eq!(
+        app.session.project.stretch_engine,
+        daw_core::StretchEngine::INTEGRATED
+    );
+    assert!(app.dirty);
+}

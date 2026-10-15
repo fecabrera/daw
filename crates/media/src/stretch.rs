@@ -82,6 +82,7 @@ fn stretch_audio_with_engine_cancellable(
                 .map_err(|e| Error(e.to_string()))?;
             input.extend(audio.samples.iter().flatten().copied());
             let output = timestretch::Request::new(audio.sample_rate_hz, 2, ratio)
+                .with_revision(engine.revision)
                 .process_with_progress(&input, |_| {
                     if cancelled() {
                         std::ops::ControlFlow::Break(())
