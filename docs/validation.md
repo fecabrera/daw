@@ -1871,3 +1871,36 @@ Completed checks on the final source:
 - Documentation file links and `git diff --check`: passed.
 
 Native appearance/gestures, listening quality, callback CPU/device stability, and Windows/Linux builds were not verified. The running DAW and user projects were not restarted or changed. Reconstruction checks establish the tested signals/rates; they do not establish a bound for every possible analog reconstruction.
+
+## Experimental Timestretch engine and comparison tool — 2026-10-14
+
+Implemented an independent BSD-2-Clause `crates/timestretch` library, a DAW-independent `crates/timestretch-cli` tool, Python comparison/benchmark wrappers, and the saved Project Settings engine selector. The two labels are **Rubber Band** and **Integrated (experimental)**. Rubber Band R3 remains the default for new and legacy projects. R2 is a standalone comparison reference.
+
+The engine uses a linked stereo phase vocoder with shared peak phase rotations and source-wide spectral-flatness window selection. Original implementation provenance, mathematical basis, prior API/adapter exposure, dependency licenses, and the mandatory no-Rubber-Band-code rule are recorded in [PROVENANCE.md](../crates/timestretch/PROVENANCE.md). No Rubber Band implementation source was consulted or copied for this DSP. The core dependency graph contains no DAW or Rubber Band dependency. The tool's separately licensed reference adapters call the public R2/R3 API.
+
+Settings changes prepare complete buffers/peaks on a worker and publish them together. Failure or Cancel retains the old session. A cancelled receiver cannot accept late results. Cache entries retain their source allocation and check source identity, sample rate, reduced ratio, engine, and processing revision. Rendering and waveform lookup reject mismatched entries. Source allocations stay immutable while cached; replacing one invalidates its prepared audio.
+
+### Completed focused checks
+
+| Area / acceptance IDs | Evidence and scope |
+| --- | --- |
+| IP-01/IP-02 | Reviewed independent source/provenance and resolved dependency graphs. Extracted core/tool packages built outside the workspace; core consumer and reference-disabled tool tests passed. This is not a formal clean-room or legal-clearance certification. |
+| TS-01/02/03/04/11/14/16 | Typed request errors, rational rounding/overflow, exact identity bits including signed zero, constant/silent inputs, deterministic repeat calls, finite output/headroom, configured memory-limit rejection, and a minimal external consumer passed. Release short-layout matrix covers 6 rates × 11 ratios × 14 lengths × 2 channel counts (1,848 cases), using nonconstant asymmetric inputs. OS allocator-failure injection and exhaustive platform determinism remain unverified. |
+| TS-05/08 | Release tone matrix covers 6 rates × 11 ratios × 5 frequencies (330 cases). Pitch/level limits passed. This does not establish harmonic-stack or arbitrary-music quality. |
+| TS-06/07/08 | Mono equivalence, dual mono, anti-phase, proportional/silent channels, channel swap, phase fixtures, and amplitude homogeneity passed at the tested 48 kHz ratios. Full cross-product stereo coverage remains open. |
+| TS-09/10/12 | Independent 48 kHz burst onset/energy-width tests, start/end impulse probes, and a short tonal burst passed at the tested normal/extreme ratios. Mixed-material transient listening and exhaustive boundary/rate coverage remain open. |
+| TS-13 | Immediate and synthesis cancellation plus monotonic progress passed; bounded checkpoints were inspected. The tool's timeout/cancellation supervision was exercised separately. A designated-host 250 ms latency distribution has not been measured. |
+| TS-15 / TT-06 | Independent tool analyzers reject deliberate octave shifts, doubled gain, channel reversal/collapse, missing output frames, silence, NaN, and delayed events. Versioned fixture metadata must match prepared SHA-256 input. Unsupported/unprovided measurements are not reported as passes. |
+| TI-01/02/03/04/05/08 | Saved/legacy/unknown identity checks, A→B→A rebuilds, source-allocation invalidation, deterministic save/reopen rendering, cancellation/failure retention, selector draft/cancel/apply/no-op, and row alignment in both themes passed. Native device playback and full edit-scenario parity remain separate checks. |
+| TT-01/02/03/04/05/08/09/10 | Three-engine WAV/JSON comparison, native R2/R3 identity, shared prepared hashes, decimal/fraction equivalence, invalid options, existing destinations, literal metacharacter paths, hard-link/symlink source protection, optional-reference failures, and extracted package execution passed. Windows file identity/native execution remains unverified. |
+| TT-07 | Benchmark smoke ran all three engines serially at 48 kHz and ratios 1/2, 3/2, and 8, with one warmup and five measured runs. JSON/CSV summaries completed without failures. A known timing sequence verified median/min/max/MAD aggregation. These short synthetic cases do not establish the full performance gate. |
+
+`cargo test -p timestretch --release -- --include-ignored` passed all nine test groups, including both expanded matrices. Standard `cargo test` leaves the two expanded matrices explicitly ignored for separate release-mode execution. The initial full workspace run found a test setup error: the new selection-preservation test expected a track selection it had not established. The test now selects a track before applying settings; focused Project Settings tests passed afterward.
+
+Additional local comparisons used audio from the user's **local Splice library**, read-only. All three engines completed 12 file/ratio cases with matching prepared-input hashes. Source hashes remained unchanged. Outputs and reports stay in ignored scratch storage; no recordings or per-file inventory were added to the repository. This is a processing smoke test, not a listening panel or permission to redistribute the material.
+
+The final `cargo test --workspace` run passed (the two expanded engine matrices remain explicitly ignored there and passed separately in release mode). Strict workspace Clippy, formatting, documentation links, and whitespace checks passed. Later CLI signal-supervision changes passed focused tool tests. After replacing the full-length normalization buffer with a periodic hop-sized table, the expanded engine suite, project workflows, Settings tests, tool tests, strict Clippy, and macOS rebuild passed again. The DAW CLI WAV/MP3 smoke checks passed. The macOS debug app bundle was rebuilt at `target/debug/DAW.app`. No native app/device audition or Windows/Linux run was performed.
+
+### Remaining acceptance limits
+
+This is an initial experimental implementation, not full acceptance or Rubber Band equivalence. Keep the existing numeric targets. Mixed tonal/percussive material uses one window-size decision for the complete source and needs listening review. Peak process RSS is reported as unavailable; engine scratch accounting, the full 60-second corpus benchmark, designated-host latency measurements, three-listener evaluation, exhaustive cross-product checks, and native checks on all supported platforms remain open. Sample comparisons do not waive any failed or untested gate. Rubber Band remains the default.

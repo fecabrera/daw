@@ -698,6 +698,7 @@ pub struct DawUi {
     sync_needed: bool,
     job: Option<mpsc::Receiver<Result<Job, String>>>,
     busy: String,
+    settings_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     notices: Vec<String>,
     error: Option<String>,
     pending: Option<Action>,
@@ -780,6 +781,7 @@ impl Default for DawUi {
             sync_needed: false,
             job: None,
             busy: String::new(),
+            settings_cancel: None,
             notices: vec![],
             error: None,
             pending: None,
@@ -859,18 +861,27 @@ impl DawUi {
         let project = &self.session.project;
         if values.sample_rate_hz == project.sample_rate_hz
             && values.buffer_size_frames == project.buffer_size_frames
+            && values.stretch_engine == project.stretch_engine
         {
             self.rename_project(values.name);
             return;
         }
         let session = self.session.clone();
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_cancel = cancel.clone();
         self.run_job("Preparing project audio settings", move || {
             let mut next = session
-                .with_audio_settings(values.sample_rate_hz, values.buffer_size_frames)
+                .with_processing_settings_cancellable(
+                    values.sample_rate_hz,
+                    values.buffer_size_frames,
+                    values.stretch_engine,
+                    &|| worker_cancel.load(Ordering::Relaxed),
+                )
                 .map_err(|error| error.to_string())?;
             next.project.name = project_settings::valid_name(&values.name)?.to_owned();
             Ok(Job::AudioSettings(next))
         });
+        self.settings_cancel = Some(cancel);
     }
 
     /// Let the desktop adapter provide file menus and their keyboard shortcuts.
@@ -893,6 +904,9 @@ impl DawUi {
         self.sync_needed = true;
     }
     fn run_job(&mut self, label: &str, job: impl FnOnce() -> Result<Job, String> + Send + 'static) {
+        if let Some(cancel) = self.settings_cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
         let (tx, rx) = mpsc::channel();
         self.job = Some(rx);
         self.busy = label.into();
@@ -1120,6 +1134,7 @@ impl DawUi {
         if let Some(message) = message {
             self.job = None;
             self.busy.clear();
+            self.settings_cancel = None;
             match message {
                 Ok(Job::AudioSettings(mut session)) => {
                     let old_rate = self.session.project.sample_rate_hz;
@@ -1629,6 +1644,14 @@ impl DawUi {
                     if self.job.is_some() {
                         ui.spinner();
                         ui.label(&self.busy);
+                        if self.settings_cancel.is_some() && ui.button("Cancel").clicked() {
+                            if let Some(cancel) = self.settings_cancel.take() {
+                                cancel.store(true, Ordering::Relaxed);
+                            }
+                            // Drop this receiver: a cancelled worker can never publish a late result.
+                            self.job = None;
+                            self.busy.clear();
+                        }
                     } else {
                         ui.label(if self.dirty {
                             "Unsaved changes"

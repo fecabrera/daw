@@ -56,7 +56,7 @@ pub fn project_folder_name(name: &str) -> Result<&str> {
 pub struct Session {
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
-    pub stretched_audio: HashMap<(Id, ClipStretch), AudioData>,
+    pub stretched_audio: HashMap<(Id, ClipStretch), daw_media::PreparedStretch>,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
 }
@@ -67,16 +67,56 @@ impl Session {
         sample_rate_hz: u32,
         buffer_size_frames: u32,
     ) -> Result<Self> {
-        let project = self
+        self.with_processing_settings(
+            sample_rate_hz,
+            buffer_size_frames,
+            self.project.stretch_engine,
+        )
+    }
+
+    /// Prepare rate and engine changes together before publishing any project data.
+    pub fn with_processing_settings(
+        &self,
+        sample_rate_hz: u32,
+        buffer_size_frames: u32,
+        engine: daw_core::StretchEngine,
+    ) -> Result<Self> {
+        self.with_processing_settings_cancellable(
+            sample_rate_hz,
+            buffer_size_frames,
+            engine,
+            &|| false,
+        )
+    }
+    pub fn with_processing_settings_cancellable(
+        &self,
+        sample_rate_hz: u32,
+        buffer_size_frames: u32,
+        engine: daw_core::StretchEngine,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Self> {
+        if cancelled() {
+            return Err(error("Audio preparation cancelled"));
+        }
+        engine.validate().map_err(error)?;
+        let mut project = self
             .project
             .with_audio_settings(sample_rate_hz, buffer_size_frames)
             .map_err(error)?;
+        project.stretch_engine = engine;
         let mut next = self.clone();
         next.project = project;
         if sample_rate_hz == self.project.sample_rate_hz {
+            if engine != self.project.stretch_engine {
+                next.stretched_audio.clear();
+                next.prepare_stretches_cancellable(cancelled)?;
+            }
             return Ok(next);
         }
         for asset in &self.project.assets {
+            if cancelled() {
+                return Err(error("Audio preparation cancelled"));
+            }
             if asset.midi_pattern.is_some() {
                 continue;
             }
@@ -96,7 +136,7 @@ impl Session {
             next.audio.insert(asset.id, audio);
         }
         next.stretched_audio.clear();
-        next.prepare_stretches()?;
+        next.prepare_stretches_cancellable(cancelled)?;
         Ok(next)
     }
 
@@ -109,16 +149,30 @@ impl Session {
     }
     pub fn audio_for_clip(&self, clip: &Clip) -> Option<&AudioData> {
         match clip.stretch {
-            Some(stretch) => self.stretched_audio.get(&(clip.asset_id, stretch)),
+            Some(stretch) => self
+                .stretched_audio
+                .get(&(clip.asset_id, stretch))
+                .filter(|prepared| {
+                    self.audio.get(&clip.asset_id).is_some_and(|source| {
+                        prepared.matches(source, stretch, self.project.stretch_engine)
+                    })
+                })
+                .map(|prepared| &prepared.audio),
             None => self.audio.get(&clip.asset_id),
         }
     }
 
     /// Build missing stretch buffers on a worker. Original audio remains untouched.
     pub fn prepare_stretches(&mut self) -> Result<()> {
+        self.prepare_stretches_cancellable(&|| false)
+    }
+    fn prepare_stretches_cancellable(&mut self, cancelled: &impl Fn() -> bool) -> Result<()> {
         self.project.validate().map_err(error)?;
         let mut prepared = HashMap::new();
         for clip in self.project.tracks.iter().flat_map(|track| &track.clips) {
+            if cancelled() {
+                return Err(error("Audio preparation cancelled"));
+            }
             let Some(stretch) = clip.stretch else {
                 continue;
             };
@@ -126,14 +180,27 @@ impl Session {
             if prepared.contains_key(&key) {
                 continue;
             }
-            if let Some(audio) = self.stretched_audio.get(&key) {
+            if let Some(audio) = self.stretched_audio.get(&key).filter(|prepared| {
+                self.audio.get(&clip.asset_id).is_some_and(|source| {
+                    prepared.matches(source, stretch, self.project.stretch_engine)
+                })
+            }) {
                 prepared.insert(key, audio.clone());
             } else if let Some(audio) = self.audio.get(&clip.asset_id) {
                 prepared.insert(
                     key,
-                    daw_media::stretch_audio(audio, stretch).map_err(error)?,
+                    daw_media::PreparedStretch::new_cancellable(
+                        audio,
+                        stretch,
+                        self.project.stretch_engine,
+                        cancelled,
+                    )
+                    .map_err(error)?,
                 );
             }
+        }
+        if cancelled() {
+            return Err(error("Audio preparation cancelled"));
         }
         self.stretched_audio = prepared;
         Ok(())

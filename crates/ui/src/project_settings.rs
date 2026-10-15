@@ -7,6 +7,7 @@ pub enum Action {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Values {
     pub name: String,
+    pub stretch_engine: daw_core::StretchEngine,
     pub sample_rate_hz: u32,
     pub buffer_size_frames: u32,
 }
@@ -14,6 +15,7 @@ pub struct Values {
 /// Draft project metadata. Apply commits it; cancellation discards it.
 pub struct ProjectSettings {
     pub name: String,
+    pub stretch_engine: daw_core::StretchEngine,
     pub sample_rate_hz: u32,
     pub buffer_size_frames: u32,
     focus: bool,
@@ -34,6 +36,7 @@ impl ProjectSettings {
     pub fn new(project: &daw_core::Project) -> Self {
         Self {
             name: project.name.clone(),
+            stretch_engine: project.stretch_engine,
             sample_rate_hz: project.sample_rate_hz,
             buffer_size_frames: project.buffer_size_frames,
             focus: true,
@@ -51,7 +54,7 @@ impl ProjectSettings {
             let label_width = ui
                 .painter()
                 .layout_no_wrap(
-                    "Project name".into(),
+                    "Time stretch engine".into(),
                     egui::TextStyle::Body.resolve(ui.style()),
                     crate::theme::palette(ctx).text,
                 )
@@ -126,6 +129,30 @@ impl ProjectSettings {
                         });
                 },
             );
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Time stretch engine");
+                },
+                |ui| {
+                    egui::ComboBox::from_id_salt("project_stretch_engine")
+                        .selected_text(self.stretch_engine.label())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for engine in [
+                                daw_core::StretchEngine::RUBBER_BAND,
+                                daw_core::StretchEngine::INTEGRATED,
+                            ] {
+                                ui.selectable_value(
+                                    &mut self.stretch_engine,
+                                    engine,
+                                    engine.label(),
+                                );
+                            }
+                        });
+                },
+            );
             ui.label(format!(
                 "Buffer duration: {:.2} ms",
                 self.buffer_size_frames as f64 * 1000.0 / self.sample_rate_hz as f64
@@ -144,6 +171,7 @@ impl ProjectSettings {
             return valid_name(&self.name).ok().map(|name| {
                 Action::Apply(Values {
                     name: name.to_owned(),
+                    stretch_engine: self.stretch_engine,
                     sample_rate_hz: self.sample_rate_hz,
                     buffer_size_frames: self.buffer_size_frames,
                 })

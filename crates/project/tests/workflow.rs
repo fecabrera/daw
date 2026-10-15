@@ -3134,3 +3134,118 @@ fn limiter_save_open_rate_change_and_export_keep_the_ceiling_and_exact_frame_cou
     }
     assert_eq!(fs::read(source).unwrap(), original);
 }
+
+#[test]
+fn stretch_engine_switch_is_atomic_saved_and_cache_scoped() {
+    use daw_core::StretchEngine;
+    use std::sync::Arc;
+    let fixture = Fixture::new();
+    let source = fixture.wav("engine.wav", 48000, 2, 32, true);
+    let original = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let clip = &mut session.project.tracks[0].clips[0];
+    clip.stretch = daw_core::ClipStretch::new(2, 3);
+    session.prepare_stretches().unwrap();
+    let clip = session.project.tracks[0].clips[0].clone();
+    let key = (clip.asset_id, clip.stretch.unwrap());
+    let mut integrated = session
+        .with_processing_settings(48000, 512, StretchEngine::INTEGRATED)
+        .unwrap();
+    assert_eq!(session.project.stretch_engine, StretchEngine::RUBBER_BAND);
+    assert_eq!(integrated.project.stretch_engine, StretchEngine::INTEGRATED);
+    assert_eq!(
+        format!("{:?}", session.project.tracks),
+        format!("{:?}", integrated.project.tracks)
+    );
+    assert!(Arc::ptr_eq(
+        &session.audio[&clip.asset_id].samples,
+        &integrated.audio[&clip.asset_id].samples
+    ));
+    assert!(!Arc::ptr_eq(
+        &session.stretched_audio[&key].samples,
+        &integrated.stretched_audio[&key].samples
+    ));
+    let prepared = integrated.stretched_audio[&key].samples.clone();
+    integrated.prepare_stretches().unwrap();
+    assert!(Arc::ptr_eq(
+        &prepared,
+        &integrated.stretched_audio[&key].samples
+    ));
+    let mut first = vec![[0.0; 2]; 4800];
+    integrated.plan().render(0, &mut first);
+    integrated.save(&fixture.0.join("integrated")).unwrap();
+    let reopened = Session::open(&fixture.0.join("integrated")).unwrap();
+    assert_eq!(reopened.project.stretch_engine, StretchEngine::INTEGRATED);
+    let mut rendered = vec![[0.0; 2]; 4800];
+    reopened.plan().render(0, &mut rendered);
+    assert_eq!(first, rendered);
+    let back = integrated
+        .with_processing_settings(48000, 512, StretchEngine::RUBBER_BAND)
+        .unwrap();
+    assert_eq!(
+        *session.stretched_audio[&key].samples,
+        *back.stretched_audio[&key].samples
+    );
+    // A changed source allocation invalidates even an otherwise identical cache key.
+    integrated.audio.get_mut(&clip.asset_id).unwrap().samples = Arc::new(vec![[0.0; 2]; 4800]);
+    assert!(integrated.audio_for_clip(&clip).is_none());
+    assert!(integrated.plan().audio_for_clip(&clip).is_none());
+    integrated.prepare_stretches().unwrap();
+    assert!(
+        integrated
+            .audio_for_clip(&clip)
+            .unwrap()
+            .samples
+            .iter()
+            .all(|s| *s == [0.0; 2])
+    );
+    let before = format!("{:?}", session.project);
+    assert!(
+        session
+            .with_processing_settings(
+                48000,
+                512,
+                StretchEngine {
+                    revision: 2,
+                    ..StretchEngine::INTEGRATED
+                }
+            )
+            .is_err()
+    );
+    assert_eq!(format!("{:?}", session.project), before);
+    assert_eq!(fs::read(source).unwrap(), original);
+}
+
+#[test]
+fn cancelled_engine_preparation_retains_all_original_buffers() {
+    use std::cell::Cell;
+    let fixture = Fixture::new();
+    let source = fixture.wav("cancel.wav", 48000, 2, 32, true);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    session.project.tracks[0].clips[0].stretch = daw_core::ClipStretch::new(2, 3);
+    session.prepare_stretches().unwrap();
+    let clip = session.project.tracks[0].clips[0].clone();
+    let key = (clip.asset_id, clip.stretch.unwrap());
+    let buffer = session.stretched_audio[&key].samples.clone();
+    let calls = Cell::new(0);
+    let result = session.with_processing_settings_cancellable(
+        48000,
+        512,
+        daw_core::StretchEngine::INTEGRATED,
+        &|| {
+            calls.set(calls.get() + 1);
+            calls.get() > 6
+        },
+    );
+    assert!(result.is_err());
+    assert_eq!(
+        session.project.stretch_engine,
+        daw_core::StretchEngine::RUBBER_BAND
+    );
+    assert!(std::sync::Arc::ptr_eq(
+        &buffer,
+        &session.stretched_audio[&key].samples
+    ));
+}

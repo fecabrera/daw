@@ -1,6 +1,6 @@
 # Timestretch acceptance plan
 
-Status: planned, 2026-10-14. This is the future verification contract for the [functional specification](../docs/timestretch.md). No engine, selector, tests, or scripts described here have been implemented or passed. Numeric limits are initial project acceptance targets, not measured results or claims about Rubber Band.
+Status: acceptance contract with initial implementation evidence, 2026-10-14. This is the verification contract for the [functional specification](../docs/timestretch.md). The engine, selector, tools, and initial automated tests are implemented; see the [validation record](../docs/validation.md#experimental-timestretch-engine-and-comparison-tool--2026-10-14) for actual coverage. No full-gate or listening acceptance is implied. Numeric limits are initial project acceptance targets, not measured results or claims about Rubber Band.
 
 ## Policy
 
@@ -97,7 +97,7 @@ Native Settings navigation, job progress/cancellation, successful-switch stop be
 
 ## Console tools gate
 
-The [console interfaces](../docs/timestretch.md#console-tools) are future requirements. Their examples are not completed checks.
+The [console interfaces](../docs/timestretch.md#console-tools) are implemented interfaces. Their examples alone are not completed checks.
 
 | ID | Test and pass condition |
 | --- | --- |
@@ -143,7 +143,7 @@ Initial promotion requirements:
 
 An experimental standalone release needs automated engine/tool gates and an experimental status; a stable standalone release additionally needs performance, full listening acceptance, and portable checks on macOS/Windows/Linux. DAW-specific gates are not prerequisites for other consumers. Exposing the experimental DAW item also needs its integration gate. Changing the DAW default additionally needs native DAW checks on all three platforms and an explicit validation decision. Missing material/listeners mean incomplete acceptance, not approval.
 
-## Planned test locations and evidence
+## Test locations and evidence
 
 | Location | Responsibility |
 | --- | --- |
@@ -155,4 +155,4 @@ An experimental standalone release needs automated engine/tool gates and an expe
 | `apps/cli` tests | Optional DAW project validate/render/export regression checks; no dependency from standalone tooling |
 | Ignored `work/timestretch-*` | Local renders, benchmarks, corpus metadata, and listening evidence |
 
-At implementation, add portable package tests first, then applicable formatting, strict Clippy, independent package builds, reference/tool tests, and platform checks. Only DAW adapter changes require DAW workspace/CLI smoke, packaging, and native integration checks. The core crate must test without Rubber Band/C++/libclang; reference-enabled tooling may need native prerequisites. Record commands, artifacts, gates, coverage, and unresolved cases in [validation](../docs/validation.md) while housed here; standalone release evidence must remain usable after extraction. This plan supplies no implementation result.
+Run portable package tests first, then applicable formatting, strict Clippy, independent package builds, reference/tool tests, and platform checks. Only DAW adapter changes require DAW workspace/CLI smoke, packaging, and native integration checks. The core crate must test without Rubber Band/C++/libclang; reference-enabled tooling may need native prerequisites. Record commands, artifacts, gates, coverage, and unresolved cases in [validation](../docs/validation.md) while housed here; standalone release evidence must remain usable after extraction. The validation record supplies implementation results and limits.

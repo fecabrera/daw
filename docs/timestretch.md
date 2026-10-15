@@ -1,6 +1,6 @@
 # Timestretch: functional specification
 
-Status: planned, 2026-10-14. This document and the [acceptance plan](../specs/timestretch-acceptance.md) define future work. The engine, Settings selector, CLI commands, and scripts described here are not implemented. Rubber Band remains the current backend. This specification does not certify independent authorship or legal clearance.
+Status: experimental implementation, 2026-10-14. The engine, Settings selector, CLI commands, and scripts exist. This document and the [acceptance plan](../specs/timestretch-acceptance.md) remain the target contract. See [validation](validation.md#experimental-timestretch-engine-and-comparison-tool--2026-10-14) for completed checks and remaining coverage. Rubber Band remains the default backend. This specification does not certify independent authorship or legal clearance.
 
 ## Mandatory independent implementation rule
 
@@ -73,7 +73,7 @@ Provide caller-controlled progress/cancellation with bounded checkpoints during 
 
 ## Console tools
 
-All commands below are proposed interfaces and are not runnable today. Implement the standalone `timestretch` binary in `crates/timestretch-cli`. It accepts ordinary audio files and parameters, without projects, DAW crates, DAW configuration, or a DAW installation. The portable library does not depend on this tool.
+The following commands are implemented by the standalone `timestretch` binary in `crates/timestretch-cli`. It accepts ordinary audio files and parameters, without projects, DAW crates, DAW configuration, or a DAW installation. The portable library does not depend on this tool.
 
 ### Three-engine comparison
 
@@ -88,7 +88,7 @@ All commands below are proposed interfaces and are not runnable today. Implement
 Use an explicit engine selection in the reference API and verify the reported engine version. Never label an R3 result R2 or let either reference silently fall back. Pin the native Rubber Band/binding versions and record all actual options, including defaults, in reports. Keep native reference dependencies and notices isolated from the BSD engine crate. A standard comparison build includes both reference engines. A build lacking a reference fails comparison clearly instead of producing an incomplete success.
 
 ```sh
-# Proposed command; runs Timestretch, R2, and R3 on the same audio.
+# Command; runs Timestretch, R2, and R3 on the same audio.
 timestretch compare --input input.wav --ratio 3/2 --sample-rate 48000 \
   --output-dir comparison
 ```
@@ -113,7 +113,7 @@ The orchestrator may use isolated child invocations of its own `process` command
 Also provide `timestretch process` for diagnostics and benchmark orchestration:
 
 ```sh
-# Proposed command; individual processing remains available for each engine.
+# Command; individual processing remains available for each engine.
 timestretch process --input input.wav --output integrated.wav \
   --engine timestretch --revision 1 --ratio 3/2 --sample-rate 48000 \
   --report integrated.json
@@ -126,7 +126,7 @@ Require `--input`, `--output`, `--engine`, `--ratio`, and `--report`; use the sa
 Ship portable Python batch wrappers with the standalone tool sources at `crates/timestretch-cli/scripts/compare.py` and `crates/timestretch-cli/scripts/benchmark.py`. They accept an explicit prebuilt `--binary` and work from any directory. They must not find/build `daw-cli`, assume a DAW project, or download dependencies. Keep external script dependencies explicit and pinned; use argument arrays for child processes.
 
 ```sh
-# Proposed wrapper interfaces; script paths may be absolute or installed elsewhere.
+# Wrapper interfaces; script paths may be absolute or installed elsewhere.
 python3 /path/to/timestretch-cli/scripts/compare.py --binary /path/to/timestretch \
   --input input.wav --ratio 3/2 --sample-rate 48000 --output-dir comparison
 
@@ -196,11 +196,11 @@ Rate changes convert originals first and rebuild the selected backend. Engine ch
 2. Prototype real DSP in `crates/timestretch`. Test short sources and extremes early; meet the engine gate before selectable integration.
 3. Add the standalone three-engine command tool and portable scripts; pass its gate without any DAW dependencies. Separately add the DAW adapter, saved identity/caches, and transactional Settings. Keep Rubber Band the DAW default.
 4. Complete portable correctness/performance/listening gates and, separately, DAW integration/native checks. Publish failures by signal/rate/ratio. Other projects can use the library/tool without completing DAW-specific gates.
-5. Consider a stable standalone release or repository extraction after portable acceptance. Consider changing the DAW default separately, after its integration/native gates. None of these actions is included in this documentation step.
+5. Consider a stable standalone release or repository extraction after portable acceptance. Consider changing the DAW default separately, after its integration/native gates. Full acceptance and changing the default require separate validation decisions.
 
 ## Research provenance
 
-At implementation, maintain `crates/timestretch/PROVENANCE.md` with papers, equations/methods, independent design choices, dependencies/licenses, and any reused permissive material/notices. Record prior exposure to relevant implementation source honestly. Rust/new-crate status alone does not establish clean-room development. Document a formal source/specification/implementation separation separately if adopted.
+Maintain [crates/timestretch/PROVENANCE.md](../crates/timestretch/PROVENANCE.md) with papers, equations/methods, independent design choices, dependencies/licenses, and any reused permissive material/notices. Record prior exposure to relevant implementation source honestly. Rust/new-crate status alone does not establish clean-room development. Document a formal source/specification/implementation separation separately if adopted.
 
 Follow the [mandatory independent implementation rule](#mandatory-independent-implementation-rule) for all engine, test, and tool work. Independently generate tests and metrics. Keep Rubber Band reference tooling outside the standalone crate's ordinary build/test graph.
 
