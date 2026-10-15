@@ -10,7 +10,7 @@ See RubberBand-GPL.txt, RubberBand-KissFFT.txt, and RubberBand-Speex.txt.
 The GPL applies to this bundled library and the combined executable;
 the repository's BSD license applies to its original code.
 
-Rust wrapper: rubberband 0.1.5, MIT
+Rust wrapper: rubberband 0.1.5, GPL-2.0-or-later
 https://github.com/jefflongo/rubberband-rs
 https://crates.io/crates/rubberband/0.1.5
 See RubberBand-Rust-Bindings.txt.
