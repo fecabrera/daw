@@ -1937,3 +1937,18 @@ Completed checks:
 - `sh tools/package_macos.sh debug` passed and rebuilt `target/debug/DAW.app`.
 
 Native UI/device playback and Windows/Linux checks were not run for this cleanup. The running app and user projects were not changed.
+
+## Timeline and Editor clip height parity — 2026-10-15
+
+The Editor track strip now derives its height from the Timeline row. Both use a 68-point clip shell with the shared 22-point header and a 46-point body. Audio and MIDI clips use the same renderer and strip bounds. The retained overview-layout calculations also use this shared height.
+
+Extended the existing painted-clip parity check to compare header and body heights across Timeline and Editor, in both themes, with inherited/overridden colors and unselected/primary/group selection. The check failed on the previous geometry before the height change.
+
+Completed checks:
+
+- `cargo test -p daw-ui`: passed all 345 tests, including painted header/body height parity and existing Editor clip/note gestures.
+- `cargo fmt --all --check`, strict workspace Clippy, 62 local documentation file links, and `git diff --check`: passed.
+- `cargo test --workspace`: passed. The two expanded DSP matrices remain explicitly ignored in this command; no DSP changed in this layout fix.
+- `sh tools/package_macos.sh debug`: passed and rebuilt `target/debug/DAW.app`.
+
+Native appearance and gestures were not checked in the running app. Windows/Linux builds were not run for this layout fix.

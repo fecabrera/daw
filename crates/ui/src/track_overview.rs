@@ -2,7 +2,7 @@ use super::*;
 use daw_core::{Asset, Track};
 
 pub(super) const LABEL_WIDTH: f32 = 52.0;
-pub(super) const STRIP_HEIGHT: f32 = 56.0;
+pub(super) const STRIP_HEIGHT: f32 = ROW_HEIGHT;
 
 impl DawUi {
     /// Editor follows its active clip, falling back to the selected track.
