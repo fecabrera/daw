@@ -56,35 +56,8 @@ impl Waveform {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct OscillatorSettings {
-    pub version: u32,
-    pub waveform: Waveform,
-    /// Semitone transposition. Host MIDI pitch remains separate from source state.
-    pub transpose: i8,
-    pub gain_db: f32,
-    #[serde(default)]
-    pub muted: bool,
-}
-impl Default for OscillatorSettings {
-    fn default() -> Self {
-        Self {
-            version: UNIT_STATE_VERSION,
-            waveform: Waveform::Sine,
-            transpose: 0,
-            gain_db: -12.0,
-            muted: false,
-        }
-    }
-}
-impl OscillatorSettings {
-    pub fn valid(&self) -> bool {
-        self.version == UNIT_STATE_VERSION
-            && (-48..=48).contains(&self.transpose)
-            && self.gain_db.is_finite()
-            && (SILENT_GAIN_DB..=12.0).contains(&self.gain_db)
-    }
-}
+mod oscillator;
+pub use oscillator::OscillatorSettings;
 
 pub const INSTRUMENT_STATE_VERSION: u32 = 3;
 
@@ -103,6 +76,8 @@ pub struct InstrumentLayerSettings {
     /// Unit enable states retain individual source switches and envelope settings.
     pub oscillator_enabled: bool,
     pub oscillator_collapsed: bool,
+    pub oscillator_modulation_open: bool,
+    pub oscillator_modulations: Vec<Modulation>,
     pub envelopes: Vec<EnvelopeInstance>,
     pub lfos: Vec<LfoInstance>,
     pub amplitude: AmplitudeSettings,
@@ -120,6 +95,8 @@ impl Default for InstrumentLayerSettings {
             oscillators: Vec::new(),
             oscillator_enabled: true,
             oscillator_collapsed: false,
+            oscillator_modulation_open: false,
+            oscillator_modulations: Vec::new(),
             envelopes: (1..=2)
                 .map(|id| EnvelopeInstance {
                     id: uuid::Uuid::from_u128(id),
@@ -141,6 +118,11 @@ impl InstrumentLayerSettings {
             && (-1.0..=1.0).contains(&self.pan)
             && self.oscillators.iter().all(OscillatorSettings::valid)
             && self.amplitude.valid()
+            && ModulationDestinationSettings::valid_modulations(self)
+            && {
+                let mut ids = std::collections::HashSet::new();
+                self.oscillators.iter().all(|s| ids.insert(s.id))
+            }
             && {
                 let mut ids = std::collections::HashSet::new();
                 self.envelopes
@@ -151,6 +133,13 @@ impl InstrumentLayerSettings {
                         .iter()
                         .all(|l| !l.id.is_nil() && ids.insert(l.id) && l.settings.valid())
             }
+    }
+    /// Remove only this destination and its connections; surviving IDs never change.
+    pub fn remove_oscillator(&mut self, id: uuid::Uuid) -> Option<OscillatorSettings> {
+        let index = self.oscillators.iter().position(|s| s.id == id)?;
+        let removed = self.oscillators.remove(index);
+        self.oscillator_modulations.retain(|r| r.target != Some(id));
+        Some(removed)
     }
     /// Compatibility constructor: the former amplitude envelope becomes an explicit connection.
     pub fn install_amplitude_envelope(&mut self) {
@@ -189,6 +178,7 @@ struct SavedLayer {
     gain_db: f32,
     #[serde(default)]
     pan: f32,
+    #[serde(deserialize_with = "oscillator::saved_oscillators")]
     oscillators: Vec<OscillatorSettings>,
     #[serde(default = "default_unit_enabled")]
     oscillator_enabled: bool,
@@ -196,6 +186,10 @@ struct SavedLayer {
     envelope_enabled: bool,
     #[serde(default)]
     oscillator_collapsed: bool,
+    #[serde(default)]
+    oscillator_modulation_open: bool,
+    #[serde(default)]
+    oscillator_modulations: Vec<Modulation>,
     #[serde(default)]
     envelope_collapsed: bool,
     #[serde(default)]
@@ -247,6 +241,8 @@ impl SavedLayer {
             oscillators: self.oscillators,
             oscillator_enabled: self.oscillator_enabled,
             oscillator_collapsed: self.oscillator_collapsed,
+            oscillator_modulation_open: self.oscillator_modulation_open,
+            oscillator_modulations: self.oscillator_modulations,
             envelopes: self.envelopes.unwrap_or_else(|| {
                 vec![
                     EnvelopeInstance {
@@ -354,6 +350,8 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
             layers: Option<Vec<InstrumentLayerSettings>>,
             #[serde(default, deserialize_with = "sources")]
             oscillators: Option<Vec<OscillatorSettings>>,
+            #[serde(default, deserialize_with = "oscillator::saved_id")]
+            id: Option<uuid::Uuid>,
             waveform: Option<Waveform>,
             transpose: Option<i8>,
             gain_db: Option<f32>,
@@ -384,7 +382,7 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
         fn sources<'de, D: serde::Deserializer<'de>>(
             d: D,
         ) -> Result<Option<Vec<OscillatorSettings>>, D::Error> {
-            Vec::deserialize(d).map(Some)
+            oscillator::saved_oscillators(d).map(Some)
         }
         let saved = Saved::deserialize(deserializer)?;
         if let Some(layers) = saved.layers {
@@ -410,6 +408,7 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
             sources
         } else {
             vec![OscillatorSettings {
+                id: saved.id.unwrap_or(uuid::Uuid::from_u128(1)),
                 version: saved.version,
                 waveform: saved
                     .waveform

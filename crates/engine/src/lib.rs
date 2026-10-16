@@ -28,8 +28,16 @@ impl RenderPlan {
             None => self.audio.get(&clip.asset_id),
         }
     }
+    fn needs_stateful_render(&self) -> bool {
+        self.project.all_effects().next().is_some()
+            || self
+                .project
+                .tracks
+                .iter()
+                .any(|t| t.kind == daw_core::TrackKind::Midi)
+    }
     pub fn sample_at(&self, frame: u64) -> [f32; 2] {
-        if self.project.all_effects().next().is_some() {
+        if self.needs_stateful_render() {
             let mut output = [[0.0; 2]];
             self.render(frame, &mut output);
             return output[0];
@@ -64,7 +72,7 @@ impl RenderPlan {
         [mix[0] * gain, mix[1] * gain]
     }
     pub fn render(&self, start: u64, out: &mut [[f32; 2]]) {
-        if self.project.all_effects().next().is_some() {
+        if self.needs_stateful_render() {
             let mut renderer = Renderer::new(self.clone());
             renderer.seek(0);
             let mut scratch = [[0.0; 2]; 512];
@@ -146,7 +154,15 @@ pub fn pan_coefficients(pan: f32, mono: bool) -> [f32; 2] {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModulationTarget {
     Effect(Id),
-    Amplitude { track: Id, layer: Id },
+    Oscillator {
+        track: Id,
+        layer: Id,
+        oscillator: Id,
+    },
+    Amplitude {
+        track: Id,
+        layer: Id,
+    },
 }
 
 pub struct Renderer {
@@ -311,6 +327,31 @@ impl Renderer {
                         .iter()
                         .find_map(|chain| chain.modulation_values(id))
                 })
+            }
+            ModulationTarget::Oscillator {
+                track,
+                layer,
+                oscillator,
+            } => {
+                let index = self
+                    .plan
+                    .project
+                    .tracks
+                    .iter()
+                    .position(|t| t.id == track)?;
+                if !self.plan.project.tracks[index]
+                    .instrument
+                    .as_ref()?
+                    .layers
+                    .iter()
+                    .any(|l| l.id == layer && l.oscillators.iter().any(|s| s.id == oscillator))
+                {
+                    return None;
+                }
+                let [min, max] = self.midi[index]
+                    .as_ref()?
+                    .oscillator_pitch(layer, oscillator);
+                Some([min, max, f32::NAN, f32::NAN, f32::NAN])
             }
             ModulationTarget::Amplitude { track, layer } => {
                 let index = self

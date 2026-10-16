@@ -387,7 +387,7 @@ impl DawUi {
                                                             let (rect, header, power) = self
                                                                 .oscillator_unit(
                                                                     ui, track.id, layer, height,
-                                                                    compact,
+                                                                    compact, &modulation_sources,
                                                                 );
                                                             oscillator_panel = Some(rect);
                                                             oscillator_header = header;
@@ -802,9 +802,24 @@ impl DawUi {
         layer: &mut InstrumentLayerSettings,
         height: f32,
         compact: bool,
+        sources: &[crate::modulation_panel::Source],
     ) -> (Rect, Rect, Rect) {
+        let layer_id = layer.id;
+        let targets: Vec<_> = layer
+            .oscillators
+            .iter()
+            .enumerate()
+            .map(|(i, s)| crate::modulation_panel::Target {
+                parameter: daw_core::ModulationParameter::Pitch,
+                id: Some(s.id),
+                label: format!("Osc {} · Pitch", i + 1),
+            })
+            .collect();
+        let unit_enabled = layer.oscillator_enabled;
         let InstrumentLayerSettings {
             oscillators,
+            oscillator_modulations: routes,
+            oscillator_modulation_open: modulation_open,
             oscillator_enabled: enabled,
             oscillator_collapsed: collapsed,
             ..
@@ -823,7 +838,8 @@ impl DawUi {
             self.midi_editor.add_oscillator_bounds = Rect::NOTHING;
             self.midi_editor.add_oscillator_strip_bounds = Rect::NOTHING;
         }
-        let result = panels::PanelStyle { margin: 0, ..panel }.unit(
+        let open = *modulation_open;
+        let result = ui.scope_builder(egui::UiBuilder::new().ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")), |ui| panels::PanelStyle { margin: 0, ..panel }.unit(
             ui,
             ("Oscillator", compact),
             height,
@@ -834,9 +850,14 @@ impl DawUi {
                     ui.spacing_mut().item_spacing = Vec2::new(0.0, theme::TOOLBAR_PADDING as f32);
                     let mut previous_column: Option<Rect> = None;
                     for (index, oscillator) in oscillators.iter_mut().enumerate() {
+                        let target_routes: Vec<_> = routes.iter().filter(|r| r.target == Some(oscillator.id)).copied().collect();
+                        let live = self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Oscillator { track, layer: layer_id, oscillator: oscillator.id }))
+                            .map_or([None; 2], |v| [v[0], v[1]].map(|v| v.is_finite().then_some(v)));
+                        let marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::Pitch,
+                            f32::from(oscillator.transpose), unit_enabled && !oscillator.muted, None, live);
                         let strip = ui.scope_builder(
                             egui::UiBuilder::new()
-                                .id_salt(("oscillator-strip", track, index))
+                                .id_salt(("oscillator-strip", track, oscillator.id))
                                 .sense(Sense::click()),
                             |ui| {
                                 egui::Frame::new()
@@ -844,7 +865,7 @@ impl DawUi {
                                     .show(ui, |ui| {
                                         ui.scope_builder(
                                             egui::UiBuilder::new()
-                                                .id_salt(("oscillator-settings", track, index))
+                                                .id_salt(("oscillator-settings", track, oscillator.id))
                                                 .layout(egui::Layout::top_down(egui::Align::Min))
                                                 .sense(Sense::click()),
                                             |ui| {
@@ -862,7 +883,12 @@ impl DawUi {
                                                             ui,
                                                             &mut oscillator.transpose,
                                                             knobs::CHOICE_SIZE,
-                                                            knobs::pitch,
+                                                            |ui, value| {
+                                                                let mut scalar = f32::from(*value);
+                                                                let response = ui.add(knobs::Knob::new(&mut scalar, knobs::pitch_spec()).modulated(marker.as_ref(), modulation_open));
+                                                                if response.changed() { *value = scalar as i8; }
+                                                                response
+                                                            },
                                                         ),
                                                         knobs::row(
                                                             ui,
@@ -971,15 +997,21 @@ impl DawUi {
                         self.midi_editor.add_oscillator_strip_bounds = add_strip.response.rect;
                     }
                     add = add_strip.inner.clicked();
+                    if open {
+                        panels::unit_divider(ui, add_strip.response.rect.right(), add_strip.response.rect.y_range().into());
+                        crate::modulation_panel::targeted_body(ui, routes, sources, &targets, daw_unit_core::ModulationScope::PerNote, compact);
+                    }
                 });
             },
-        );
+        )).inner;
+        crate::modulation_panel::toggle(ui, &result.header, *collapsed, modulation_open);
 
-        if let Some(index) = remove {
-            oscillators.remove(index);
-        }
+        let remove_id = remove.map(|index| oscillators[index].id);
         if add {
             oscillators.push(Default::default());
+        }
+        if let Some(id) = remove_id {
+            layer.remove_oscillator(id);
         }
         #[cfg(test)]
         {

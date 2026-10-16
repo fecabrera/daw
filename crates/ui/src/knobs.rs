@@ -318,26 +318,26 @@ pub fn pan(ui: &mut Ui, value: &mut f32) -> Response {
 }
 pub fn pitch(ui: &mut Ui, value: &mut i8) -> Response {
     let mut scalar = f32::from(*value);
-    let response = ui.add(Knob::new(
-        &mut scalar,
-        KnobSpec::new("Pitch", -48.0..=48.0, 0.0, 1.0)
-            .stepped(1.0)
-            .reference_step(12.0)
-            .value_label(|value| {
-                if value > 0.0 {
-                    format!("+{value:.0}")
-                } else {
-                    format!("{value:.0}")
-                }
-            })
-            .endpoint_labels("−48", "+48")
-            .bipolar()
-            .format(|value| format!("{value:.0} semitones")),
-    ));
+    let response = ui.add(Knob::new(&mut scalar, pitch_spec()));
     if response.changed() {
         *value = scalar as i8;
     }
     response
+}
+pub(super) fn pitch_spec() -> KnobSpec {
+    KnobSpec::new("Pitch", -48.0..=48.0, 0.0, 1.0)
+        .stepped(1.0)
+        .reference_step(12.0)
+        .value_label(|value| {
+            if value > 0.0 {
+                format!("+{value:.0}")
+            } else {
+                format!("{value:.0}")
+            }
+        })
+        .endpoint_labels("−48", "+48")
+        .bipolar()
+        .format(|value| format!("{value:.0} semitones"))
 }
 pub fn waveform(ui: &mut Ui, value: &mut daw_core::Waveform) -> Response {
     let mut scalar = daw_core::Waveform::ALL

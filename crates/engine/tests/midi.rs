@@ -2241,3 +2241,206 @@ fn main_gain_precedes_nonlinear_track_effects() {
             .any(|(a, b)| (a[0] - b[0] * linear_gain(-12.0)).abs() > 0.01)
     );
 }
+
+fn pitch_plan(rate: u32, shared: bool) -> (RenderPlan, [daw_engine::ModulationTarget; 2]) {
+    let mut p = plan(Waveform::Sine, rate);
+    let track = p.project.tracks[0].id;
+    let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
+    instrument.layers[0].oscillators.push(OscillatorSettings {
+        transpose: -12,
+        ..Default::default()
+    });
+    let source = if shared {
+        let mut lfo = LfoInstance::default();
+        lfo.settings.rate_mode = LfoRateMode::Hz;
+        lfo.settings.rate_hz = 3.0;
+        lfo.settings.polarity = LfoPolarity::Bipolar;
+        lfo.settings.restart = LfoRestart::Retrigger;
+        let source = ModulationSourceId {
+            layer: instrument.main.id,
+            unit: lfo.id,
+        };
+        instrument.main.lfos.push(lfo);
+        source
+    } else {
+        let l = &mut instrument.layers[0];
+        let e = &mut l.envelopes[1];
+        e.present = true;
+        e.settings.attack.time_ms = 400.0;
+        e.settings.attack.shape = CurveShape::Linear;
+        e.settings.decay.time_ms = 0.0;
+        e.settings.sustain = 1.0;
+        ModulationSourceId {
+            layer: l.id,
+            unit: e.id,
+        }
+    };
+    let layer = &mut instrument.layers[0];
+    let targets = std::array::from_fn(|index| {
+        let mut route = Modulation::new(ModulationParameter::Pitch);
+        route.source = Some(source);
+        route.target = Some(layer.oscillators[index].id);
+        route.amount = if index == 0 { 12.0 } else { -6.0 };
+        layer.oscillator_modulations.push(route);
+        daw_engine::ModulationTarget::Oscillator {
+            track,
+            layer: layer.id,
+            oscillator: layer.oscillators[index].id,
+        }
+    });
+    p.project.validate().unwrap();
+    (p, targets)
+}
+
+#[test]
+fn oscillator_pitch_targets_share_local_envelopes_and_main_lfos_with_live_export_and_seek_parity() {
+    for rate in SAMPLE_RATES {
+        for shared in [false, true] {
+            let (p, targets) = pitch_plan(rate, shared);
+            let count = (rate as f32 * 0.4) as usize;
+            let mut expected = vec![[0.0; 2]; count];
+            Renderer::new(p.clone()).render_offline(&mut expected);
+            let mut live = Renderer::new(p.clone());
+            live.play();
+            for (i, sample) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if i >= (rate / 200) as usize {
+                    assert_eq!(actual, *sample);
+                }
+            }
+            let a = live.modulation_values(targets[0]).unwrap();
+            let b = live.modulation_values(targets[1]).unwrap();
+            if shared {
+                assert!((a[0] - a[1]).abs() < 1e-4);
+                assert!((a[0] + 2.0 * (b[0] + 12.0)).abs() < 1e-4, "{a:?} {b:?}");
+                assert!(a[0].abs() > 0.5);
+            } else {
+                // Overlapping notes have different contour ages, not a single bus pitch.
+                assert!(a[1] - a[0] > 7.0, "{a:?}");
+                assert!((a[0] + 2.0 * (b[1] + 12.0)).abs() < 1e-4, "{a:?} {b:?}");
+                assert!((a[1] + 2.0 * (b[0] + 12.0)).abs() < 1e-4, "{a:?} {b:?}");
+            }
+            let mut blocked = vec![[0.0; 2]; count];
+            let mut renderer = Renderer::new(p.clone());
+            for block in blocked.chunks_mut(127) {
+                renderer.render_offline(block);
+            }
+            assert_eq!(blocked, expected);
+            let start = count as u64 - 1000;
+            let mut sought = [[0.0; 2]; 128];
+            p.render(start, &mut sought);
+            assert_eq!(&sought[..], &expected[start as usize..start as usize + 128]);
+            live.pause();
+            let held = live.modulation_values(targets[0]).unwrap();
+            for _ in 0..300 {
+                live.next_sample();
+            }
+            assert_eq!(
+                &live.modulation_values(targets[0]).unwrap()[..2],
+                &held[..2]
+            );
+            live.stop();
+            assert!(live.modulation_values(targets[0]).unwrap()[0].is_nan());
+            // Continuous or pitch-only contour sources cannot extend the voice's amplitude gate.
+            let mut tail = [[0.0; 2]; 128];
+            p.render(u64::from(rate) * 3 / 2, &mut tail);
+            assert!(tail.iter().all(|s| *s == [0.0; 2]));
+        }
+    }
+}
+
+#[test]
+fn pitch_routing_retargets_by_oscillator_id_without_resetting_phase_or_allocating() {
+    let (p, targets) = pitch_plan(48_000, true);
+    let mut current = Renderer::new(p.clone());
+    let mut reference = Renderer::new(p.clone());
+    current.play();
+    reference.play();
+    for _ in 0..13000 {
+        current.next_sample();
+        reference.next_sample();
+    }
+    let mut reordered = p.clone();
+    let layer = &mut reordered.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.oscillators.reverse();
+    layer.oscillator_modulations.reverse();
+    layer.oscillator_modulation_open = true;
+    let mut next = Renderer::new(reordered.clone());
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    next.inherit(&mut current);
+    for _ in 0..1500 {
+        assert_eq!(next.next_sample(), reference.next_sample());
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(
+        &next.modulation_values(targets[0]).unwrap()[..2],
+        &reference.modulation_values(targets[0]).unwrap()[..2]
+    );
+    // Disable routing, preserving the base transpose, voices, and source phase.
+    let layer = &mut reordered.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    for route in &mut layer.oscillator_modulations {
+        route.enabled = false;
+    }
+    let mut off = Renderer::new(reordered);
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    off.inherit(&mut next);
+    for _ in 0..2000 {
+        assert!(off.next_sample().iter().all(|v| v.is_finite()));
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(off.modulation_values(targets[0]).unwrap()[0].abs() < 1e-4);
+    assert!((off.modulation_values(targets[1]).unwrap()[0] + 12.0).abs() < 1e-4);
+    assert_eq!(
+        off.plan.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .oscillators[1]
+            .transpose,
+        0
+    );
+}
+
+#[test]
+fn pitch_modulation_repeats_deterministically_at_loop_boundaries_without_callback_allocation() {
+    let (mut p, _) = pitch_plan(48_000, true);
+    p.project.transport.r#loop = Loop {
+        enabled: true,
+        start_frame: 0,
+        end_frame: 24000,
+    };
+    let mut live = Renderer::new(p);
+    live.play();
+    live.ramp = 1.0;
+    let mut first = vec![[0.0; 2]; 24000];
+    for sample in &mut first {
+        *sample = live.next_sample();
+    }
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    for (i, expected) in first.iter().enumerate() {
+        let actual = live.next_sample();
+        if i > 2400 {
+            assert!((actual[0] - expected[0]).abs() < 1e-5, "{i}");
+        }
+    }
+    live.seek(12000);
+    for _ in 0..1000 {
+        assert!(live.next_sample().iter().all(|v| v.is_finite()));
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}

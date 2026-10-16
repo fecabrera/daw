@@ -621,3 +621,117 @@ fn drive_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() 
         assert!(reopened.effects_bounds.drive_units[0].header.width() > header.width());
     }
 }
+
+#[test]
+fn oscillator_pitch_uses_shared_modulation_controls_markers_and_saved_expansion() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, layer) = fixture(theme);
+        add_component(&mut app, &ctx, layer, 0);
+        add_component(&mut app, &ctx, layer, 0);
+        add_component(&mut app, &ctx, layer, 1);
+        let header = app.midi_editor.layer_bounds[&layer].oscillator_header;
+        let regular = app.midi_editor.oscillator_strip_bounds.clone();
+        app.dirty = false;
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new(header.right() - 13.0, header.center().y),
+            false,
+        );
+        assert!(app.dirty);
+        let l = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0];
+        assert!(l.oscillator_modulation_open && l.oscillator_enabled && !l.oscillator_collapsed);
+        assert_eq!(app.midi_editor.oscillator_strip_bounds, regular);
+        assert!(
+            app.midi_editor.layer_bounds[&layer]
+                .oscillator_header
+                .width()
+                > header.width()
+        );
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new(header.right() + 18.0, header.bottom() + 109.0),
+            false,
+        );
+        let l = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0];
+        assert_eq!(l.oscillator_modulations.len(), 1);
+        assert_eq!(
+            l.oscillator_modulations[0].parameter,
+            daw_core::ModulationParameter::Pitch
+        );
+        assert_eq!(
+            l.oscillator_modulations[0].target,
+            Some(l.oscillators[0].id)
+        );
+        // The same parameter picker presents concrete instances by stable ID.
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new(
+                header.right() + 45.0,
+                header.bottom()
+                    + 10.0
+                    + knobs::CHOICE_SIZE * 1.5
+                    + f32::from(theme::TOOLBAR_PADDING),
+            ),
+            false,
+        );
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let second = label(&shapes, "Osc 2 · Pitch");
+        click(&mut app, &ctx, second, false);
+        let l = &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        assert_eq!(
+            l.oscillator_modulations[0].target,
+            Some(l.oscillators[1].id)
+        );
+        l.oscillator_modulations[0].source = Some(daw_core::ModulationSourceId {
+            layer: l.id,
+            unit: l.envelopes[0].id,
+        });
+        l.oscillator_modulations[0].amount = 0.25;
+        l.oscillator_modulation_open = false;
+        let original = l.clone();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let second = app.midi_editor.oscillator_strip_bounds[1];
+        let marker = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Circle(c)
+                    if (c.radius - 1.5).abs() < 1e-4 && second.contains(c.center) =>
+                {
+                    Some(c.center)
+                }
+                _ => None,
+            })
+            .expect("Pitch assignment marker");
+        click(&mut app, &ctx, marker, false);
+        let l = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0];
+        let mut expected = original;
+        expected.oscillator_modulation_open = true;
+        assert_eq!(l, &expected);
+        let saved = serde_json::to_value(&app.session.project).unwrap();
+        let restored: daw_core::Project = serde_json::from_value(saved).unwrap();
+        restored.validate().unwrap();
+        assert_eq!(
+            restored.tracks[0].instrument,
+            app.session.project.tracks[0].instrument
+        );
+    }
+}

@@ -77,6 +77,12 @@ pub(super) fn toggle(
     }
     rect
 }
+/// One parameter choice, optionally scoped to a stable repeated destination.
+pub(super) struct Target {
+    pub parameter: ModulationParameter,
+    pub id: Option<daw_core::Id>,
+    pub label: String,
+}
 pub(super) fn body(
     ui: &mut Ui,
     routes: &mut Vec<Modulation>,
@@ -85,6 +91,27 @@ pub(super) fn body(
     scope: ModulationScope,
     compact: bool,
 ) {
+    let targets: Vec<_> = parameters
+        .iter()
+        .map(|p| Target {
+            parameter: *p,
+            id: None,
+            label: p.label().into(),
+        })
+        .collect();
+    targeted_body(ui, routes, sources, &targets, scope, compact);
+}
+pub(super) fn targeted_body(
+    ui: &mut Ui,
+    routes: &mut Vec<Modulation>,
+    sources: &[Source],
+    targets: &[Target],
+    scope: ModulationScope,
+    compact: bool,
+) {
+    if targets.is_empty() {
+        return;
+    }
     let mut remove = None;
     let mut add = false;
     ui.horizontal_top(|ui| {
@@ -131,22 +158,15 @@ pub(super) fn body(
                             rows::centered(ui, knobs::CHOICE_SIZE, |ui| {
                                 ui.set_min_height(knobs::CHOICE_SIZE);
                                 egui::ComboBox::from_id_salt("parameter")
-                                    .selected_text(egui::RichText::new(route.parameter.label()).size(panels::HEADER_FONT_SIZE))
+                                    .selected_text(egui::RichText::new(targets.iter().find(|t| t.parameter == route.parameter && t.id == route.target).map_or("Unavailable", |t| t.label.as_str())).size(panels::HEADER_FONT_SIZE))
                                     .width(65.0)
                                     .truncate()
                                     .show_ui(ui, |ui| {
-                                        for parameter in parameters {
-                                            if ui
-                                                .selectable_value(
-                                                    &mut route.parameter,
-                                                    *parameter,
-                                                    parameter.label(),
-                                                )
-                                                .changed()
-                                            {
-                                                route.amount = route
-                                                    .amount
-                                                    .clamp(-parameter.limit(), parameter.limit());
+                                        for target in targets {
+                                            if ui.selectable_label(route.parameter == target.parameter && route.target == target.id, &target.label).clicked() {
+                                                route.parameter = target.parameter;
+                                                route.target = target.id;
+                                                route.amount = route.amount.clamp(-target.parameter.limit(), target.parameter.limit());
                                             }
                                         }
                                     })
@@ -154,9 +174,12 @@ pub(super) fn body(
                                     .on_hover_text("Destination parameter")
                             });
                             let limit = route.parameter.limit();
-                            let spec = KnobSpec::new(
-                                "Modulation amount", -limit..=limit, 0.0, limit / 100.0,
-                            ).centered(0.0).bipolar().value_label(|v| format!("{v:+.2}"));
+                            let spec = if route.parameter == ModulationParameter::Pitch {
+                                knobs::pitch_spec().named("Modulation amount")
+                            } else {
+                                KnobSpec::new("Modulation amount", -limit..=limit, 0.0, limit / 100.0)
+                                    .centered(0.0).bipolar()
+                            }.value_label(|v| format!("{v:+.2}"));
                             knobs::row(ui, &mut route.amount, knobs::CHOICE_SIZE, |ui, value| {
                                 ui.add(Knob::new(value, spec))
                             }).on_hover_text(format!("{} {}", route.amount, route.parameter.unit()));
@@ -217,7 +240,9 @@ pub(super) fn body(
         routes.remove(index);
     }
     if add {
-        routes.push(Modulation::new(parameters[0]));
+        let mut route = Modulation::new(targets[0].parameter);
+        route.target = targets[0].id;
+        routes.push(route);
     }
 }
 
@@ -258,8 +283,10 @@ pub(super) fn marker(
             "source unavailable"
         } else if !source.unwrap().enabled {
             "source off"
-        } else if parameter != ModulationParameter::Amplitude
-            && source.unwrap().scope == ModulationScope::PerNote
+        } else if !matches!(
+            parameter,
+            ModulationParameter::Amplitude | ModulationParameter::Pitch
+        ) && source.unwrap().scope == ModulationScope::PerNote
         {
             "requires shared source"
         } else {
@@ -327,6 +354,7 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::Pitch => offsets.map(|o| base + o.clamp(-96.0, 96.0)),
         ModulationParameter::Frequency => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(20.0, 20_000.0))
         }
@@ -364,12 +392,18 @@ pub(super) fn marker(
     lines.push("Outer arc: possible held-note range, limited to the knob scale. Pointer and readout: base value.".into());
     if parameter == ModulationParameter::Amplitude {
         lines.push("Moving dot: highest active voice gain, including note gate and bypass smoothing; voice sum excluded.".into());
+    } else if parameter == ModulationParameter::Pitch {
+        lines.push(
+            "Moving dots: lowest and highest active voice transpose, excluding MIDI note pitch."
+                .into(),
+        );
     } else if parameter == ModulationParameter::Frequency {
         lines.push("Moving dot: processed value; Frequency shows both stereo channels.".into());
     } else {
         lines.push("Moving dot: processed value.".into());
     }
     let format_value = |value: f32| match parameter {
+        ModulationParameter::Pitch => format!("{value:+.2} semitones"),
         ModulationParameter::Frequency | ModulationParameter::ColorFrequency => {
             knobs::format_frequency(value)
         }

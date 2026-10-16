@@ -435,3 +435,8 @@ Implement independent shared LFOs in each instrument layer through the existing 
 ## Instrument Main bus — 2026-10-16
 
 Add one fixed [Main bus](instrument-main.md) per instrument, separate from regular layers and project Master. Pin its row below the vertical layer viewport and above the effects lane. Apply its shared gain/pan after the stereo layer sum and before track effects. Reuse shared mix controls, unit panels, catalog actions, provider discovery, and modulation publication/resolution. Main hosts independent shared Envelope/LFO sources; it has no oscillator or Amplitude stage, and no per-note provider mode. Save identity, controls, and presentation with neutral legacy defaults. Preserve stable sources, voices, and allocation-free retargeting.
+
+
+## Oscillator pitch modulation — 2026-10-16
+
+Implement [per-oscillator pitch modulation](oscillator-modulation.md) with stable source and destination identities. Extend the shared typed resolver and controls with an optional target ID instead of interpreting list indices or adding a separate routing path. Accept per-note envelopes and shared Envelope/LFO sources, including Main. Keep semitone amounts independent of base transpose, retain phase on compatible edits, save routing/open state, and preserve legacy unmodulated sound. Removing a source must not redirect surviving connections. All existing destinations also share the route-history retarget helper.

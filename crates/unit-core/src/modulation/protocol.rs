@@ -213,6 +213,9 @@ impl Default for ModulationContext {
 /// Audio remains unit-specific (mono or stereo). Bounds and unit-specific DSP stay in the unit.
 pub trait ModulationDestination: Send {
     type Audio;
+    fn modulation_target(&self) -> Option<ModulationTargetId> {
+        None
+    }
     const MODULATION_PARAMETERS: &'static [ModulationParameter];
     const MODULATION_SCOPE: ModulationScope;
     fn process_with_modulation(
@@ -261,5 +264,20 @@ impl UnitDescriptor {
     }
     pub fn consumes_modulation(&self) -> bool {
         self.inputs.contains(&PortKind::Modulation)
+    }
+}
+
+impl ModulationDestinationSettings for crate::InstrumentLayerSettings {
+    const MODULATION_PARAMETERS: &'static [ModulationParameter] = &[ModulationParameter::Pitch];
+    const MODULATION_SCOPE: ModulationScope = ModulationScope::PerNote;
+    fn modulations(&self) -> &[Modulation] {
+        &self.oscillator_modulations
+    }
+    fn valid_modulations(&self) -> bool {
+        valid_targeted_modulations(
+            self.modulations(),
+            Self::MODULATION_PARAMETERS,
+            &self.oscillators.iter().map(|s| s.id).collect::<Vec<_>>(),
+        )
     }
 }

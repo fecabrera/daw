@@ -1648,7 +1648,7 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
             let mut settings = app.session.project.tracks[0].instrument.clone().unwrap();
             settings.layers[0]
                 .oscillators
-                .resize(count, daw_core::OscillatorSettings::default());
+                .resize_with(count, daw_core::OscillatorSettings::default);
             (
                 settings.layers[0].envelopes[0].settings.attack.time_ms,
                 settings.layers[0].envelopes[0].settings.sustain,
@@ -2163,14 +2163,20 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
             .layers[0]
             .id;
         super::instrument_catalog::add_component(&mut app, &ctx, layer, 0);
+        let added = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .oscillators;
+        assert_eq!(added.len(), 1);
+        assert!(!added[0].id.is_nil());
         assert_eq!(
-            app.session.project.tracks[0]
-                .instrument
-                .as_ref()
-                .unwrap()
-                .layers[0]
-                .oscillators,
-            vec![Default::default()]
+            added[0],
+            daw_core::OscillatorSettings {
+                id: added[0].id,
+                ..Default::default()
+            }
         );
         assert_eq!(
             serde_json::to_value(&app.session.project.assets).unwrap(),
@@ -5771,7 +5777,7 @@ fn midi_clip_context_menus_split_and_delete_in_both_views() {
 fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, mut layers) = layer_header_fixture();
-        layers[0].oscillators.resize(12, Default::default());
+        layers[0].oscillators.resize_with(12, Default::default);
         layers.push(daw_core::InstrumentLayerSettings {
             name: "Envelope only".into(),
             envelopes: vec![daw_core::EnvelopeInstance::default()],

@@ -96,13 +96,13 @@ impl ModulationRoute {
 /// Amplitude uses the note gate with no routes. Resolve once for each destination sample.
 #[derive(Clone, Copy, Debug)]
 pub struct ModulationInputs {
-    offsets: [f32; 9],
+    offsets: [f32; 10],
     amplitude: f32,
 }
 impl ModulationInputs {
     pub fn neutral(note_gate: f32) -> Self {
         Self {
-            offsets: [0.0; 9],
+            offsets: [0.0; 10],
             amplitude: note_gate,
         }
     }
@@ -122,6 +122,16 @@ impl ModulationInputs {
         shared: &[ModulationValue],
         context: ModulationContext,
     ) -> Self {
+        Self::resolve_target(routes, parameters, None, local, shared, context)
+    }
+    pub fn resolve_target(
+        routes: &mut [ModulationRoute],
+        parameters: &[ModulationParameter],
+        target: Option<ModulationTargetId>,
+        local: &[ModulationValue],
+        shared: &[ModulationValue],
+        context: ModulationContext,
+    ) -> Self {
         let gate = context.note_gate;
         let mut inputs = Self::neutral(gate);
         let mut per_note_delta = [0.0; 2];
@@ -133,7 +143,7 @@ impl ModulationInputs {
         for route in routes {
             // Advance every route ramp once even if a caller supplies an unsupported target.
             let sample = route.sample(local, shared);
-            if !parameters.contains(&route.settings.parameter) {
+            if route.settings.target != target || !parameters.contains(&route.settings.parameter) {
                 continue;
             }
             if let Some((value, amount, per_note, range, behavior)) = sample {
@@ -189,6 +199,7 @@ impl ModulationParameter {
     fn offset_index(self) -> Option<usize> {
         match self {
             Self::Amplitude => None,
+            Self::Pitch => Some(9),
             Self::Frequency => Some(0),
             Self::Resonance => Some(1),
             Self::Level => Some(2),
@@ -246,7 +257,41 @@ pub fn process_modulation<D: ModulationDestination>(
     } else {
         &[]
     };
-    let inputs =
-        ModulationInputs::resolve(routes, D::MODULATION_PARAMETERS, local, shared, context);
+    let inputs = ModulationInputs::resolve_target(
+        routes,
+        D::MODULATION_PARAMETERS,
+        destination.modulation_target(),
+        local,
+        shared,
+        context,
+    );
     destination.process_with_modulation(input, &inputs, context)
+}
+
+/// Prepare one repeated destination on the control thread. Each route ramp advances once per sample.
+pub fn prepare_target_routes(
+    routes: &[Modulation],
+    target: ModulationTargetId,
+    rate: u32,
+) -> Vec<ModulationRoute> {
+    routes
+        .iter()
+        .filter(|r| r.target == Some(target))
+        .map(|r| ModulationRoute::new(*r, rate))
+        .collect()
+}
+/// Move compatible route history into prepared storage without allocation or destruction.
+pub fn retarget_modulation_routes(
+    current: &mut Vec<ModulationRoute>,
+    prepared: &mut Vec<ModulationRoute>,
+) {
+    for next in prepared.iter_mut() {
+        if let Some(route) = current.iter_mut().find(|r| {
+            r.settings.id == next.settings.id && r.settings.target == next.settings.target
+        }) {
+            route.retarget(next);
+            std::mem::swap(route, next);
+        }
+    }
+    std::mem::swap(current, prepared);
 }

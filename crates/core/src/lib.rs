@@ -529,19 +529,19 @@ impl Project {
                     "Invalid instrument or source instrument on an audio track",
                 ));
             }
-            for route in t
-                .instrument
-                .iter()
-                .flat_map(|i| &i.layers)
-                .flat_map(|l| &l.amplitude.modulations)
-            {
+            for route in t.instrument.iter().flat_map(|i| &i.layers).flat_map(|l| {
+                l.amplitude
+                    .modulations
+                    .iter()
+                    .chain(&l.oscillator_modulations)
+            }) {
                 if route.source.is_some_and(|source| {
                     !t.instrument
                         .as_ref()
                         .is_some_and(|i| i.modulation_source(source).is_some())
                 }) {
                     return Err(invalid(
-                        "Amplitude modulation source does not exist in this instrument",
+                        "Instrument modulation source does not exist in this instrument",
                     ));
                 }
             }

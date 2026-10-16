@@ -58,6 +58,7 @@ pub struct ModulationSourceId {
 #[serde(rename_all = "snake_case")]
 pub enum ModulationParameter {
     Amplitude,
+    Pitch,
     Frequency,
     Resonance,
     Level,
@@ -80,6 +81,7 @@ impl ModulationParameter {
     pub fn label(self) -> &'static str {
         match self {
             Self::Amplitude => "Amplitude",
+            Self::Pitch => "Pitch",
             Self::Frequency => "Frequency",
             Self::Resonance => "Resonance",
             Self::Level => "Level",
@@ -93,6 +95,7 @@ impl ModulationParameter {
     }
     pub fn limit(self) -> f32 {
         match self {
+            Self::Pitch => 48.0,
             Self::Frequency => 6.0,
             Self::ColorFrequency => 3.0,
             Self::Resonance => 10.0,
@@ -102,6 +105,7 @@ impl ModulationParameter {
     }
     pub fn unit(self) -> &'static str {
         match self {
+            Self::Pitch => "semitones",
             Self::Frequency | Self::ColorFrequency => "oct",
             Self::Resonance => "Q",
             Self::Level | Self::Volume => "dB",
@@ -109,11 +113,15 @@ impl ModulationParameter {
         }
     }
 }
+/// Optional instance identity for destinations that own repeated units.
+pub type ModulationTargetId = Uuid;
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Modulation {
     pub id: Uuid,
     pub source: Option<ModulationSourceId>,
     pub parameter: ModulationParameter,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<ModulationTargetId>,
     pub amount: f32,
     pub enabled: bool,
 }
@@ -123,12 +131,14 @@ impl Modulation {
             id: Uuid::new_v4(),
             source: None,
             parameter,
+            target: None,
             amount: 0.0,
             enabled: true,
         }
     }
     pub fn valid(&self) -> bool {
         !self.id.is_nil()
+            && self.target.is_none_or(|id| !id.is_nil())
             && self.amount.is_finite()
             && self.amount.abs() <= self.parameter.limit()
             && self
@@ -138,9 +148,23 @@ impl Modulation {
 }
 pub fn valid_modulations(routes: &[Modulation], parameters: &[ModulationParameter]) -> bool {
     let mut ids = std::collections::HashSet::new();
-    routes
-        .iter()
-        .all(|r| r.valid() && parameters.contains(&r.parameter) && ids.insert(r.id))
+    routes.iter().all(|r| {
+        r.valid() && r.target.is_none() && parameters.contains(&r.parameter) && ids.insert(r.id)
+    })
+}
+/// Validate repeated destinations without interpreting instance IDs as list positions.
+pub fn valid_targeted_modulations(
+    routes: &[Modulation],
+    parameters: &[ModulationParameter],
+    targets: &[ModulationTargetId],
+) -> bool {
+    let mut ids = std::collections::HashSet::new();
+    routes.iter().all(|r| {
+        r.valid()
+            && parameters.contains(&r.parameter)
+            && r.target.is_some_and(|id| targets.contains(&id))
+            && ids.insert(r.id)
+    })
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AmplitudeSettings {

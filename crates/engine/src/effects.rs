@@ -191,16 +191,7 @@ impl EffectChain {
                 | (RuntimeEffect::Drive(_, old_routes), RuntimeEffect::Drive(_, new_routes)) =
                     (&mut *previous, &mut *next)
                 {
-                    for new in new_routes.iter_mut() {
-                        if let Some(old) = old_routes
-                            .iter_mut()
-                            .find(|r| r.settings.id == new.settings.id)
-                        {
-                            old.retarget(new);
-                            std::mem::swap(old, new);
-                        }
-                    }
-                    std::mem::swap(old_routes, new_routes);
+                    daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
                 }
                 if previous.retarget(&settings.unit) {
                     std::mem::swap(next, previous);

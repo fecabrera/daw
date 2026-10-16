@@ -1224,3 +1224,54 @@ fn drive_modulation_validates_targets_bounds_and_shared_source_scope_atomically(
             .is_err()
     );
 }
+
+#[test]
+fn oscillator_modulation_targets_and_provider_references_validate_as_one_transaction() {
+    let (mut project, track, _) = fixture();
+    let mut instrument = project.tracks[0].instrument.clone().unwrap();
+    let layer = &mut instrument.layers[0];
+    let mut route = Modulation::new(ModulationParameter::Pitch);
+    route.target = Some(layer.oscillators[0].id);
+    route.source = Some(ModulationSourceId {
+        layer: layer.id,
+        unit: layer.envelopes[0].id,
+    });
+    route.amount = 0.25;
+    layer.oscillator_modulations.push(route);
+    project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument.clone()),
+        })
+        .unwrap();
+    let before = serde_json::to_value(&project).unwrap();
+    for fault in 0..5 {
+        let mut invalid = instrument.clone();
+        let l = &mut invalid.layers[0];
+        match fault {
+            0 => l.oscillator_modulations[0].target = Some(Id::new_v4()),
+            1 => l.oscillator_modulations[0].source.as_mut().unwrap().unit = Id::new_v4(),
+            2 => l.oscillator_modulations[0].source.as_mut().unwrap().layer = Id::new_v4(),
+            3 => l.oscillator_modulations[0].amount = 49.0,
+            _ => l.oscillators.push(l.oscillators[0].clone()),
+        }
+        assert!(
+            project
+                .edit(Edit::SetInstrument {
+                    track_id: track,
+                    instrument: Some(invalid)
+                })
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&project).unwrap(), before);
+    }
+    let id = instrument.layers[0].oscillators[0].id;
+    instrument.layers[0].remove_oscillator(id).unwrap();
+    assert!(instrument.layers[0].oscillator_modulations.is_empty());
+    project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        })
+        .unwrap();
+}

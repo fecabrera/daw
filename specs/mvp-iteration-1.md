@@ -615,3 +615,10 @@ Follow [LFO component](../docs/lfo.md) for controls, defaults, timing, persisten
 ## Instrument Main bus acceptance — 2026-10-16
 
 Follow [Instrument Main bus](../docs/instrument-main.md). Verify bottom pinning independently of vertical layer scrolling, compact/expanded heights, horizontal component scrolling, shared gain/pan controls, catalog keyboard/double-click/drop behavior, unsupported-component no-ops, shared-only Envelope modes, generic source discovery and same-instrument validation, and retained presentation/identities. Verify post-layer/pre-effect audio ordering, all processing rates, neutral legacy audio, shared-source fan-out and release ownership, playback/export equivalence, and compatible live edits without callback allocation. Save/reopen, Save As, duplication, sample-rate changes, and regular layer reordering must preserve Main settings and references. Main cannot be removed or reordered.
+
+
+## Per-oscillator pitch modulation acceptance — 2026-10-16
+
+Follow [Oscillator pitch modulation](../docs/oscillator-modulation.md). Each oscillator has a stable UUID and a separate Pitch target through the shared modulation interface and controls. Accept voice-local Envelopes and shared Envelope/LFO sources, including Main. Use signed fractional semitone amounts bounded to ±48 per route, a summed smoothed offset bounded to ±96, shared route and offset smoothing, and safe Nyquist behavior. Preserve base settings and live source phase on compatible edits; source removal must remove only that target's routes. Save routing and open state with deterministic legacy ID migration and reject invalid references atomically.
+
+Validate measured fractional pitch and neutral equivalence at all processing rates, signed cancellation, target isolation, independent overlapping-note contours, Main-source fan-out, live/export/block/random-access/loop parity, pause/stop behavior, compatible identity-based retargeting, callback allocation, save/reopen/Save As, track duplication, and sample-rate changes. Exercise the shared target picker, expansion dot, and parameter markers in both themes. Keep existing destination behavior and project compatibility.

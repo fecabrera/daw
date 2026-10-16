@@ -162,8 +162,22 @@ fn modulation_meters(
                 })
         })
     });
+    let oscillators = plan.project.tracks.iter().flat_map(|track| {
+        track.instrument.iter().flat_map(move |i| {
+            i.layers.iter().flat_map(move |l| {
+                l.oscillators
+                    .iter()
+                    .map(move |s| ModulationTarget::Oscillator {
+                        track: track.id,
+                        layer: l.id,
+                        oscillator: s.id,
+                    })
+            })
+        })
+    });
     effects
         .chain(amplitudes)
+        .chain(oscillators)
         .map(|key| {
             let handle = previous.get(&key).cloned().unwrap_or_else(|| {
                 Arc::new(std::array::from_fn(|_| AtomicU32::new(f32::NAN.to_bits())))
@@ -1068,8 +1082,14 @@ mod modulation_meter_tests {
             track,
             layer: layer.id,
         };
+        layer.oscillators.push(Default::default());
+        let oscillator = ModulationTarget::Oscillator {
+            track,
+            layer: layer.id,
+            oscillator: layer.oscillators[0].id,
+        };
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 3);
+        assert_eq!(handles.len(), 4);
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1096,7 +1116,9 @@ mod modulation_meter_tests {
             renderer.modulation_values(drive_key).unwrap(),
             std::array::from_fn(|i| f32::from_bits(handles[&drive_key][i].load(Ordering::Relaxed)))
         );
+        assert!(f32::from_bits(handles[&oscillator][0].load(Ordering::Relaxed)).is_nan());
         let next = modulation_meters(&plan, &handles);
+        assert!(Arc::ptr_eq(&next[&oscillator], &handles[&oscillator]));
         assert!(Arc::ptr_eq(&next[&key], &handles[&key]));
         plan.project.tracks.reverse();
         assert!(Arc::ptr_eq(
@@ -1107,5 +1129,10 @@ mod modulation_meter_tests {
         let removed = modulation_meters(&plan, &handles);
         assert!(!removed.contains_key(&key));
         assert!(removed.contains_key(&amplitude));
+        assert!(Arc::ptr_eq(&removed[&oscillator], &handles[&oscillator]));
+        plan.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+            .oscillators
+            .clear();
+        assert!(!modulation_meters(&plan, &handles).contains_key(&oscillator));
     }
 }

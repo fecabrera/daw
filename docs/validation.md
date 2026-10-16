@@ -2172,3 +2172,27 @@ Main's header inherited the surrounding horizontal layout. Its name/button row c
 The existing both-theme Main test now checks containment of every mix control inside the label panel and vertical separation below the header at both heights. The new containment check failed before the fix and passed afterward. Audio processing and saved settings are unchanged.
 
 For this layout fix, `cargo fmt --all --check`, strict workspace Clippy, and `cargo test --workspace` passed with the workspace Cargo cache selected: 653 passed, zero failed, and the two existing expanded time-stretch matrices ignored. All 376 UI tests passed. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Whitespace and local documentation target checks passed. Native visual/pointer checks and Windows/Linux builds were not run. CLI checks were not repeated for this UI-only change.
+
+## Per-oscillator pitch modulation — 2026-10-16
+
+Each oscillator now has a saved stable UUID and a separate Pitch target through the shared modulation interface and controls. Amounts use signed fractional semitones. Local Envelope contours remain independent for overlapping notes; shared Envelope/LFO values, including Main providers, fan out through the existing cached output path. The portable oscillator applies common additive smoothing without changing base transpose or restarting phase. The shared target resolver, instance validation, route preparation, and route-history retarget helper also preserve existing Amplitude/Auto-filter/Drive behavior. Removing an oscillator removes only its routes.
+
+The Oscillator header reveals shared modulation strips beside its regular controls. Tests exercise target selection, markers, click-to-open, and saved expansion in both themes. Save/reopen, Save As, track duplication, and sample-rate changes retain IDs and routing. Legacy lists receive repeatable unique IDs; invalid IDs, targets, amounts, and source references fail validation. Legacy UI fixtures now create distinct oscillator IDs instead of cloning one instance into multiple positions.
+
+New engine/DSP tests cover measured quarter-semitone shifts, neutral audio, signed cancellation, target isolation, Nyquist silence/recovery, overlapping-note pitch extrema, Main LFO fan-out, live/export/block/random-access parity, loop behavior, pause/stop, and identity-based live retargeting without callback allocation. A new random-access test exposed an existing MIDI-only rendering bug: without effects, `RenderPlan::render` used the audio-only sample path and returned silence. MIDI plans now use the same stateful renderer for random access with or without effects.
+
+Checks with the workspace Cargo cache selected:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --workspace`: 662 passed, zero failed, two ignored. Includes 377 UI tests, 38 engine MIDI tests, 50 project workflow tests, 20 core MIDI tests, and 13 unit-core tests. The existing expanded time-stretch acceptance matrices remain ignored.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Local documentation file targets and `git diff --check`: passed.
+
+Native UI/pointer checks, device playback/listening, and Windows/Linux builds were not run. See [Oscillator pitch modulation](oscillator-modulation.md) for controls, bounds, persistence, and API details.
+
+## Pitch modulation amount steps — 2026-10-16
+
+The pitch modulation amount knob now reuses `knobs::pitch_spec`, including one-semitone input steps, octave reference marks, ±48 bounds, and shared Shift-drag sensitivity. Other modulation amounts keep their existing controls. Saved fractional amounts remain intact until the user adjusts the knob; model validation and audio processing are unchanged. The controls are documented in [Oscillator pitch modulation](oscillator-modulation.md).
+
+Formatting, strict workspace Clippy, `cargo test --workspace` (662 passed, zero failed, two existing ignored tests, including all 377 UI tests), and `sh tools/package_macos.sh debug` passed with the workspace Cargo cache selected. The macOS app bundle was rebuilt. Native UI/device checks and Windows/Linux builds were not run. CLI smoke checks were not repeated for this UI-only change.

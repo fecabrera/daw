@@ -43,6 +43,8 @@ struct Voice {
     release_frames: u64,
 }
 struct OscillatorVoice {
+    id: Id,
+    routes: Vec<Route>,
     source: Oscillator,
     gain: f32,
     gain_target: f32,
@@ -79,6 +81,9 @@ impl Voice {
         self.pitch = pitch;
         for oscillator in self.layers.iter_mut().flat_map(|layer| &mut layer.sources) {
             oscillator.source.reset();
+            for route in &mut oscillator.routes {
+                route.reset();
+            }
             oscillator.frequency = note_frequency(pitch, oscillator.transpose);
             oscillator.frequency_target = oscillator.frequency;
             oscillator.frequency_remaining = 0;
@@ -115,6 +120,9 @@ impl Voice {
         self.transition = 0;
         for oscillator in self.layers.iter_mut().flat_map(|layer| &mut layer.sources) {
             oscillator.source.reset();
+            for route in &mut oscillator.routes {
+                route.reset();
+            }
         }
     }
     fn advance_envelopes(&mut self, frames: u64) {
@@ -217,7 +225,8 @@ impl LayerVoice {
                     s.gain += (s.gain_target - s.gain) / s.gain_remaining as f32;
                     s.gain_remaining -= 1;
                 }
-                s.source.next_sample() * s.gain
+                process_modulation(&mut s.source, &mut s.routes, 0.0, local, shared, context)
+                    * s.gain
             })
             .sum::<f32>();
         let shaped = process_modulation(
@@ -347,8 +356,10 @@ impl MidiTrackRuntime {
         // Stable layer IDs preserve independent controls and identify topology changes.
         for layer in &layers {
             layer.id.hash(&mut hash);
-            layer.oscillators.len().hash(&mut hash);
-            for settings in &layer.oscillators {
+            let mut sources: Vec<_> = layer.oscillators.iter().collect();
+            sources.sort_by_key(|s| s.id);
+            for settings in sources {
+                settings.id.hash(&mut hash);
                 format!("{:?}", settings.waveform).hash(&mut hash);
             }
         }
@@ -395,8 +406,14 @@ impl MidiTrackRuntime {
                                 .oscillators
                                 .iter()
                                 .map(|settings| OscillatorVoice {
-                                    source: Oscillator::new(
-                                        settings.waveform,
+                                    id: settings.id,
+                                    routes: daw_unit_core::prepare_target_routes(
+                                        &layer.oscillator_modulations,
+                                        settings.id,
+                                        project.sample_rate_hz,
+                                    ),
+                                    source: Oscillator::from_settings(
+                                        settings,
                                         ProcessingContext {
                                             sample_rate_hz: project.sample_rate_hz,
                                             max_block_frames: project.buffer_size_frames,
@@ -620,17 +637,10 @@ impl MidiTrackRuntime {
                     .iter()
                     .any(|v| v.owns_release(Some(voice.release_frames)));
             for (layer, next_layer) in voice.layers.iter_mut().zip(&mut next.layers) {
-                for n in &mut next_layer.routes {
-                    if let Some(r) = layer
-                        .routes
-                        .iter_mut()
-                        .find(|r| r.settings.id == n.settings.id)
-                    {
-                        r.retarget(n);
-                        std::mem::swap(r, n);
-                    }
-                }
-                std::mem::swap(&mut layer.routes, &mut next_layer.routes);
+                daw_unit_core::retarget_modulation_routes(
+                    &mut layer.routes,
+                    &mut next_layer.routes,
+                );
                 layer.amplitude.retarget(&next_layer.amplitude);
                 if idle {
                     layer.amplitude.reset();
@@ -645,17 +655,33 @@ impl MidiTrackRuntime {
                         layer.gain_remaining = fade_frames;
                     }
                 }
-                for (source, target) in layer.sources.iter_mut().zip(&next_layer.sources) {
-                    if source.transpose != target.transpose {
-                        source.transpose = target.transpose;
-                        source.frequency_target = note_frequency(voice.pitch, source.transpose);
-                        source.frequency_remaining = fade_frames;
-                    }
-                    if source.gain_target != target.gain_target {
-                        source.gain_target = target.gain_target;
-                        source.gain_remaining = fade_frames;
+                for target in &mut next_layer.sources {
+                    if let Some(source) = layer.sources.iter_mut().find(|s| s.id == target.id) {
+                        daw_unit_core::retarget_modulation_routes(
+                            &mut source.routes,
+                            &mut target.routes,
+                        );
+                        if source.transpose != target.transpose {
+                            source.transpose = target.transpose;
+                            source.frequency_target = note_frequency(voice.pitch, source.transpose);
+                            source.frequency_remaining = fade_frames;
+                        }
+                        if source.gain_target != target.gain_target {
+                            source.gain_target = target.gain_target;
+                            source.gain_remaining = fade_frames;
+                        }
+                        std::mem::swap(source, target);
+                    } else {
+                        target.frequency = note_frequency(voice.pitch, target.transpose);
+                        target.frequency_target = target.frequency;
+                        target.source.set_frequency(target.frequency);
+                        if !idle {
+                            target.gain = 0.0;
+                            target.gain_remaining = fade_frames;
+                        }
                     }
                 }
+                std::mem::swap(&mut layer.sources, &mut next_layer.sources);
             }
         }
     }
@@ -704,6 +730,24 @@ impl MidiTrackRuntime {
             .filter_map(|voice| voice.layers.iter().find(|l| l.id == layer))
             .map(|l| l.amplitude.effective_gain())
             .fold(0.0, f32::max)
+    }
+    /// Active-voice transpose extrema, excluding MIDI note pitch. No UI-side clock or synthesis.
+    pub fn oscillator_pitch(&self, layer: Id, oscillator: Id) -> [f32; 2] {
+        let mut range = [f32::INFINITY, f32::NEG_INFINITY];
+        for voice in self.voices.iter().filter(|v| v.active_last_sample) {
+            if let Some(source) = voice
+                .layers
+                .iter()
+                .find(|l| l.id == layer)
+                .and_then(|l| l.sources.iter().find(|s| s.id == oscillator))
+            {
+                let pitch = 12.0 * (source.frequency / note_frequency(voice.pitch, 0)).log2()
+                    + source.source.pitch_offset();
+                range[0] = range[0].min(pitch);
+                range[1] = range[1].max(pitch);
+            }
+        }
+        range.map(|v| if v.is_finite() { v } else { f32::NAN })
     }
     pub fn sample(&mut self, frame: u64) -> [f32; 2] {
         let sample = if let Some(prepared) = self

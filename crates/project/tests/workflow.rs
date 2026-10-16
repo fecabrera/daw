@@ -3511,3 +3511,54 @@ fn instrument_main_bus_and_shared_source_connections_survive_save_as_and_duplica
         copy.project.tracks[0].instrument
     );
 }
+
+#[test]
+fn oscillator_pitch_ids_routes_and_open_controls_survive_save_as_duplicate_and_rate_changes() {
+    use daw_core::{
+        LfoInstance, Modulation, ModulationParameter, ModulationSourceId, OscillatorSettings,
+    };
+    let f = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let i = session.project.tracks[0].instrument.as_mut().unwrap();
+    i.main.lfos.push(LfoInstance::default());
+    let source = ModulationSourceId {
+        layer: i.main.id,
+        unit: i.main.lfos[0].id,
+    };
+    let l = &mut i.layers[0];
+    l.oscillator_modulation_open = true;
+    for amount in [0.25, -12.5] {
+        let s = OscillatorSettings::default();
+        let mut r = Modulation::new(ModulationParameter::Pitch);
+        r.source = Some(source);
+        r.target = Some(s.id);
+        r.amount = amount;
+        l.oscillators.push(s);
+        l.oscillator_modulations.push(r);
+    }
+    session.save(&f.0.join("pitch")).unwrap();
+    let mut opened = Session::open(&f.0.join("pitch")).unwrap();
+    opened.save(&f.0.join("pitch-copy")).unwrap();
+    let mut copy = Session::open(&f.0.join("pitch-copy")).unwrap();
+    assert_eq!(
+        copy.project.tracks[0].instrument,
+        session.project.tracks[0].instrument
+    );
+    copy.project
+        .edit(Edit::DuplicateTrack {
+            track_id: track,
+            new_track_id: daw_core::Id::new_v4(),
+        })
+        .unwrap();
+    copy.project.validate().unwrap();
+    assert_eq!(
+        copy.project.tracks[0].instrument,
+        copy.project.tracks[1].instrument
+    );
+    let changed = copy.with_audio_settings(96000, 256).unwrap();
+    assert_eq!(
+        changed.project.tracks[0].instrument,
+        copy.project.tracks[0].instrument
+    );
+}
