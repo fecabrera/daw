@@ -173,7 +173,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         assert_eq!(settings.amplitude.modulations[0].amount, 0.0);
         // Destination controls keep independent route state and use the shared knob/power gestures.
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let amount = label(&shapes, "+0.00") + Vec2::new(0.0, 20.0);
+        let amount = label(&shapes, "+0.0%") + Vec2::new(0.0, 20.0);
         click(&mut app, &ctx, amount, false);
         key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
         assert!(
@@ -185,8 +185,8 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
                 .amplitude
                 .modulations[0]
                 .amount
-                - 0.01)
-                .abs()
+                - (1.0 - 10.0_f32.powf(-0.1 / 20.0)))
+            .abs()
                 < 1e-6
         );
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));

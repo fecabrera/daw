@@ -1,7 +1,7 @@
 //! Shared destination-owned modulation strips and header expansion control.
 use crate::{
     icons,
-    knobs::{self, Knob, KnobSpec},
+    knobs::{self, Knob},
     panels, rows, theme,
 };
 use daw_core::{InstrumentSettings, Modulation, ModulationParameter, ModulationSourceId};
@@ -173,16 +173,10 @@ pub(super) fn targeted_body(
                                     .response
                                     .on_hover_text("Destination parameter")
                             });
-                            let limit = route.parameter.limit();
-                            let spec = if route.parameter == ModulationParameter::Pitch {
-                                knobs::pitch_spec().named("Modulation amount")
-                            } else {
-                                KnobSpec::new("Modulation amount", -limit..=limit, 0.0, limit / 100.0)
-                                    .centered(0.0).bipolar()
-                            }.value_label(|v| format!("{v:+.2}"));
+                            let spec = crate::parameter_knobs::amount(route.parameter);
                             knobs::row(ui, &mut route.amount, knobs::CHOICE_SIZE, |ui, value| {
                                 ui.add(Knob::new(value, spec))
-                            }).on_hover_text(format!("{} {}", route.amount, route.parameter.unit()));
+                            });
                         }
                         rows::centered(
                             ui,

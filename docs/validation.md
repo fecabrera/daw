@@ -2196,3 +2196,18 @@ Native UI/pointer checks, device playback/listening, and Windows/Linux builds we
 The pitch modulation amount knob now reuses `knobs::pitch_spec`, including one-semitone input steps, octave reference marks, ±48 bounds, and shared Shift-drag sensitivity. Other modulation amounts keep their existing controls. Saved fractional amounts remain intact until the user adjusts the knob; model validation and audio processing are unchanged. The controls are documented in [Oscillator pitch modulation](oscillator-modulation.md).
 
 Formatting, strict workspace Clippy, `cargo test --workspace` (662 passed, zero failed, two existing ignored tests, including all 377 UI tests), and `sh tools/package_macos.sh debug` passed with the workspace Cargo cache selected. The macOS app bundle was rebuilt. Native UI/device checks and Windows/Linux builds were not run. CLI smoke checks were not repeated for this UI-only change.
+
+## Destination-matched modulation amount controls — 2026-10-16
+
+Regular controls and modulation amount controls now share destination definitions in `parameter_knobs.rs`. Amplitude, Auto-filter, and Drive read those definitions directly; oscillator pitch uses the same existing Pitch specification. The shared base knob's amount adapter retains native scale/keyboard functions, reference marks, and mouse/Shift sensitivity while preserving signed amount domains. Amount readouts now show percentages, Q, dB, octaves, or semitones. Route meanings, finite bounds, neutral-zero reset, saved fields/values, and audio processing are unchanged. See [the mappings](modulation.md#destination-matched-amount-knobs).
+
+Three new automated tests cover all 11 targets: monotonic signed round trips and exact endpoints; native-domain keyboard and pointer-travel equivalence; and actual egui input for idle fractional values, keyboard changes, disabled guards, reset, and accumulated Shift drags. The existing Amplitude strip test now selects its percentage readout and checks the native gain step converted to envelope depth.
+
+Checks with the workspace Cargo cache selected:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --workspace`: 665 passed, zero failed, two existing ignored time-stretch matrices. All 380 UI tests passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Local documentation file targets and `git diff --check`: passed.
+
+Native UI/pointer checks, device playback/listening, and Windows/Linux builds were not run. CLI smoke checks were not repeated for this UI-only change.

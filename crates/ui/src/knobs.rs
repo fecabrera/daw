@@ -1,4 +1,8 @@
+mod amount;
+#[cfg(test)]
+mod amount_tests;
 use crate::theme;
+pub(super) use amount::AmountMapping;
 use egui::{Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2, Widget};
 use std::{f32::consts::PI, ops::RangeInclusive};
 
@@ -29,6 +33,7 @@ pub struct KnobSpec {
     two_way_labels: Option<[&'static str; 2]>,
     center: Option<f32>,
     scale: Option<ParameterScale>,
+    amount_scale: Option<amount::AmountScale>,
     bipolar: bool,
     cyclic: bool,
     diagram: Option<fn(f32) -> Vec<Vec2>>,
@@ -57,6 +62,7 @@ impl KnobSpec {
             two_way_labels: None,
             center: None,
             scale: None,
+            amount_scale: None,
             bipolar: false,
             cyclic: false,
             diagram: None,
@@ -143,6 +149,11 @@ impl KnobSpec {
     }
 
     fn normalized(self, value: f32) -> f32 {
+        if let Some(scale) = self.amount_scale {
+            return scale
+                .position(value.clamp(self.min, self.max))
+                .clamp(0.0, 1.0);
+        }
         if let Some(scale) = self.scale {
             return (scale.position)(value).clamp(0.0, 1.0);
         }
@@ -158,6 +169,11 @@ impl KnobSpec {
     }
 
     fn value(self, normalized: f32) -> f32 {
+        if let Some(scale) = self.amount_scale {
+            return scale
+                .value(normalized.clamp(0.0, 1.0))
+                .clamp(self.min, self.max);
+        }
         if let Some(scale) = self.scale {
             return (scale.value)(normalized.clamp(0.0, 1.0)).clamp(self.min, self.max);
         }
@@ -179,10 +195,22 @@ impl KnobSpec {
             .clamp(self.min, self.max)
     }
 
+    fn keyboard_value(self, value: f32, change: f32) -> f32 {
+        if let Some(scale) = self.amount_scale {
+            return scale.step(value, change * self.keyboard_step);
+        }
+        self.scale.map_or_else(
+            || (value / self.keyboard_step + change).round() * self.keyboard_step,
+            |scale| (scale.step)(value, change * self.keyboard_step),
+        )
+    }
     fn period(self) -> f32 {
         self.max - self.min + self.discrete_step.unwrap()
     }
 
+    fn drag_factor(self) -> f32 {
+        self.amount_scale.map_or(1.0, |scale| scale.drag_factor())
+    }
     fn drag_position(self, position: f32) -> f32 {
         if self.cyclic {
             position.rem_euclid(1.0)
@@ -603,7 +631,9 @@ fn base_knob(
                 let current = data
                     .get_temp::<f32>(drag_id)
                     .unwrap_or_else(|| spec.normalized(*value));
-                let next = spec.drag_position(current + (delta.x - delta.y) * fine / 150.0);
+                let next = spec.drag_position(
+                    current + (delta.x - delta.y) * fine * spec.drag_factor() / 150.0,
+                );
                 // Keep fractional movement between frames so stepped knobs respond to slow drags.
                 data.insert_temp(drag_id, next);
                 next
@@ -633,10 +663,7 @@ fn base_knob(
                 )
             });
             if change != 0.0 {
-                let adjusted = spec.scale.map_or_else(
-                    || (*value / spec.keyboard_step + change).round() * spec.keyboard_step,
-                    |scale| (scale.step)(*value, change * spec.keyboard_step),
-                );
+                let adjusted = spec.keyboard_value(*value, change);
                 *value = spec.value(spec.normalized(adjusted));
                 ui.ctx()
                     .data_mut(|data| data.insert_temp(drag_id, spec.normalized(*value)));
@@ -752,8 +779,21 @@ fn base_knob(
                     painter.add(Shape::line(points, Stroke::new(1.25, color)));
                 }
             } else if let Some(values) = spec.reference_values {
-                for &value in values {
-                    if value.is_finite() && (spec.min..=spec.max).contains(&value) {
+                for (index, &value) in values.iter().enumerate() {
+                    if let Some(scale) = spec.amount_scale {
+                        if let Some(magnitude) = scale.reference_amount(value) {
+                            if values[..index]
+                                .iter()
+                                .any(|v| scale.reference_amount(*v) == Some(magnitude))
+                            {
+                                continue;
+                            }
+                            mark(spec.normalized(magnitude), magnitude != 0.0);
+                            if magnitude > 0.0 {
+                                mark(spec.normalized(-magnitude), true);
+                            }
+                        }
+                    } else if value.is_finite() && (spec.min..=spec.max).contains(&value) {
                         mark(spec.normalized(value), value != spec.reset);
                     }
                 }
@@ -845,7 +885,7 @@ mod tests {
         spec_frame(ctx, value, events, modifiers, gain_spec(), true)
     }
 
-    fn spec_frame(
+    pub(super) fn spec_frame(
         ctx: &egui::Context,
         value: &mut f32,
         mut events: Vec<egui::Event>,
@@ -867,7 +907,7 @@ mod tests {
         rect
     }
 
-    fn pointer(pos: Pos2, pressed: bool) -> egui::Event {
+    pub(super) fn pointer(pos: Pos2, pressed: bool) -> egui::Event {
         egui::Event::PointerButton {
             pos,
             button: egui::PointerButton::Primary,

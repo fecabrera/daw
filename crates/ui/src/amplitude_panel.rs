@@ -54,7 +54,7 @@ pub(super) fn unit(
                                             ui.add(
                                                 knobs::Knob::new(
                                                     &mut s.level_db,
-                                                    knobs::marked_gain_spec(),
+                                                    crate::parameter_knobs::destination(daw_core::ModulationParameter::Amplitude),
                                                 )
                                                 .modulated(marker.as_ref(), &mut s.modulation_open),
                                             )

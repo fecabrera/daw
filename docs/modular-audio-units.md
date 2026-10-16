@@ -440,3 +440,8 @@ Add one fixed [Main bus](instrument-main.md) per instrument, separate from regul
 ## Oscillator pitch modulation — 2026-10-16
 
 Implement [per-oscillator pitch modulation](oscillator-modulation.md) with stable source and destination identities. Extend the shared typed resolver and controls with an optional target ID instead of interpreting list indices or adding a separate routing path. Accept per-note envelopes and shared Envelope/LFO sources, including Main. Keep semitone amounts independent of base transpose, retain phase on compatible edits, save routing/open state, and preserve legacy unmodulated sound. Removing a source must not redirect surviving connections. All existing destinations also share the route-history retarget helper.
+
+
+## Destination-matched modulation controls — 2026-10-16
+
+All destination-owned amount knobs use the same [parameter profile](modulation.md#destination-matched-amount-knobs) as their regular destination control. Reuse native scale, reference marks, keyboard operation, and mouse/Shift sensitivity through a signed amount adapter. Keep existing amount units, bounds, project data, and audio behavior. Use percent, Q, dB, octave, or semitone readouts as appropriate; do not add independent generic amount knobs in unit panels.

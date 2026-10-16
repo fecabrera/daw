@@ -1,10 +1,11 @@
+use crate::parameter_knobs;
 use crate::{
     icons,
     knobs::{self, Knob, KnobSpec},
     midi_editor::UNIT_STRIP_WIDTH,
     panels, rows, theme,
 };
-use daw_core::{DriveColorShape, DriveSettings};
+use daw_core::{DriveColorShape, DriveSettings, ModulationParameter as Parameter};
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
@@ -12,15 +13,6 @@ pub(super) struct Bounds {
     pub power: Rect,
     pub knobs: [[Rect; 3]; 2],
     pub labels: [Rect; 2],
-}
-fn percentage(value: f32) -> String {
-    format!("{:.0}%", value * 100.0)
-}
-fn percent_spec(name: &'static str, reset: f32) -> KnobSpec {
-    KnobSpec::new(name, 0.0..=1.0, reset, 0.01)
-        .value_label(percentage)
-        .format(percentage)
-        .endpoint_labels("0", "100")
 }
 fn shape(value: f32) -> DriveColorShape {
     DriveColorShape::ALL[value.round().clamp(0.0, 3.0) as usize]
@@ -37,18 +29,6 @@ fn shape_diagram(value: f32) -> Vec<Vec2> {
         .map(|(index, y)| Vec2::new(index as f32 / 4.0 - 0.5, y - 0.5))
         .collect()
 }
-fn frequency_spec() -> KnobSpec {
-    KnobSpec::new("Color frequency", 250.0..=2000.0, 750.0, 1.0)
-        .scale(
-            |value| (value / 250.0).log2() / 3.0,
-            |position| 250.0 * 8_f32.powf(position),
-            |value, delta| value * 2_f32.powf(delta / 24.0),
-        )
-        .value_label(knobs::format_frequency)
-        .format(knobs::format_frequency)
-        .endpoint_labels("250", "2k")
-}
-
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut DriveSettings,
@@ -148,8 +128,7 @@ fn show_inner(
                                                                 ui.add(
                                                                     Knob::new(
                                                                         value,
-                                                                        knobs::marked_gain_spec()
-                                                                            .named("Drive volume"),
+                                                                        parameter_knobs::destination(Parameter::Volume),
                                                                     )
                                                                     .modulated(
                                                                         markers[0].as_ref(),
@@ -167,10 +146,7 @@ fn show_inner(
                                                                 ui.add(
                                                                     Knob::new(
                                                                         value,
-                                                                        percent_spec(
-                                                                            "Drive gain",
-                                                                            0.2,
-                                                                        ),
+                                                                        parameter_knobs::destination(Parameter::DriveGain),
                                                                     )
                                                                     .modulated(
                                                                         markers[1].as_ref(),
@@ -188,13 +164,7 @@ fn show_inner(
                                                                 ui.add(
                                                                     Knob::new(
                                                                         value,
-                                                                        percent_spec(
-                                                                            "Drive tone",
-                                                                            0.5,
-                                                                        )
-                                                                        .centered(0.5)
-                                                                        .bipolar()
-                                                                        .endpoint_labels("−", "+"),
+                                                                        parameter_knobs::destination(Parameter::Tone),
                                                                     )
                                                                     .modulated(
                                                                         markers[2].as_ref(),
@@ -245,10 +215,7 @@ fn show_inner(
                                                                     ui.add(
                                                                         Knob::new(
                                                                             value,
-                                                                            percent_spec(
-                                                                                "Color strength",
-                                                                                0.5,
-                                                                            ),
+                                                                            parameter_knobs::destination(Parameter::ColorStrength),
                                                                         )
                                                                         .modulated(
                                                                             markers[3].as_ref(),
@@ -266,7 +233,7 @@ fn show_inner(
                                                                     ui.add(
                                                                         Knob::new(
                                                                             value,
-                                                                            frequency_spec(),
+                                                                            parameter_knobs::destination(Parameter::ColorFrequency),
                                                                         )
                                                                         .modulated(
                                                                             markers[4].as_ref(),

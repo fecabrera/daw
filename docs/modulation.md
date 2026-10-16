@@ -70,3 +70,22 @@ Oscillator uses the same destination interface with `Pitch` in semitones and `Pe
 The UI's `targeted_body` accepts parameter/ID/label choices. The original `body` is an adapter with no instance IDs, so all destinations still use one connection widget. Parameter indicators use the same marker builder with the relevant instance's routes. `retarget_modulation_routes` moves route history by route and target IDs; Oscillator, Amplitude, Auto-filter, and Drive use this helper during compatible renderer updates. Each route vector is processed once per destination sample. Do not pass one shared mutable ramp vector successively to multiple instances.
 
 `Oscillator::from_settings` installs its instance identity. `SourceUnit::set_frequency` sets its unmodulated frequency; `process_modulation` generates the next mono sample (there is no input audio). Standalone callers using `Oscillator::new` retain an unscoped destination and the unmodulated `SourceUnit::next_sample` API. See [pitch behavior, limits, and migration](oscillator-modulation.md).
+
+## Destination-matched amount knobs
+
+All destination-owned modulation amount strips use `parameter_knobs.rs`. Its `destination` function is the normal knob definition used by Amplitude, Auto-filter, and Drive; Pitch returns the same `knobs::pitch_spec` used by oscillators. Its `amount` function derives the signed amount control from that definition. New targets must register both their destination definition and their amount-unit mapping here. Do not create an unrelated generic amount knob in a unit panel.
+
+Amounts retain their existing stored units, bounds, and routing meaning. Zero remains neutral and double-click resets to zero. Endpoint labels and signed readouts show amount units, so a Frequency amount never pretends to be an absolute Hz setting. Idle rendering does not round saved fractional values.
+
+| Target | Saved amount range | Shared style and interaction |
+| --- | --- | --- |
+| Pitch | ±48 semitones | Same one-semitone steps and octave marks as Pitch. Existing fractional values remain visible until edited. |
+| Frequency / Color frequency | ±6 / ±3 octaves | Derive the octave coordinate from the native logarithmic frequency scale. The native frequency keyboard operation becomes 1/24 octave per key press. |
+| Resonance | ±10 Q | Mirror the native logarithmic Q curve around neutral; zero magnitude starts at the native 0.1 Q minimum. Reuse the native multiplicative keyboard operation. |
+| Level / Volume | ±24 dB | Mirror the native gain attenuation curve and gain reference marks, retaining 0.1 dB keyboard steps. Bounds stay finite rather than adding an infinity amount. |
+| Amplitude | ±1 envelope depth | Reuse the gain curve in depth coordinates, displayed as ±100%. A magnitude `d` maps to native attenuation `20 × log10(1 − d)`; full depth maps to exact silence on that control scale. This is a UI mapping, not a change to envelope routing. |
+| Dry/Wet / Drive Gain / Tone / Color strength | ±1 normalized offset | Reuse the native percentage profile and one-percentage-point keyboard steps. Display signed percentages and ±100 endpoint labels. |
+
+The adapter in `knobs/amount.rs` uses the destination's scale and keyboard function. It adjusts normalized drag travel so the same pointer distance covers the same native-scale distance, including the shared tenfold Shift slowdown. Native gain marks are mapped and mirrored into the signed amount domain, omitting duplicate and out-of-range marks. Painting, focus, disabled behavior, drag accumulation, bounds, keyboard input, reset, fonts, and theme colors remain in the base `Knob` widget.
+
+These are UI definitions. The portable modulation protocol, source publication, signed amounts, smoothing, validation, saved project fields, and audio processing remain unchanged.

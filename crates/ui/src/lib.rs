@@ -54,6 +54,7 @@ mod mix_controls;
 mod mixer;
 mod modulation_panel;
 mod ott_panel;
+mod parameter_knobs;
 mod timeline_toolbar;
 mod track_overview;
 mod track_selector;

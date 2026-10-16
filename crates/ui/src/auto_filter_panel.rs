@@ -1,11 +1,12 @@
 use crate::lfo_controls::{choice as float_choice, phase_spec as phase};
+use crate::parameter_knobs;
 use crate::{
     icons,
     knobs::{self, Knob, KnobSpec},
     midi_editor::UNIT_STRIP_WIDTH,
     panels, rows, theme,
 };
-use daw_core::{AutoFilterSettings, FilterShape};
+use daw_core::{AutoFilterSettings, FilterShape, ModulationParameter as Parameter};
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
@@ -33,17 +34,6 @@ fn filter_diagram(value: f32) -> Vec<Vec2> {
         .collect()
 }
 
-fn frequency() -> KnobSpec {
-    KnobSpec::new("Filter frequency", 20.0..=20_000.0, 1000.0, 1.0)
-        .scale(
-            |v| (v / 20.0).log10() / 3.0,
-            |p| 20.0 * 1000_f32.powf(p),
-            |v, d| v * 2_f32.powf(d / 24.0),
-        )
-        .value_label(knobs::format_frequency)
-        .format(knobs::format_frequency)
-        .endpoint_labels("20", "20k")
-}
 fn row(
     ui: &mut Ui,
     settings: &mut AutoFilterSettings,
@@ -64,28 +54,15 @@ fn row(
                     .format(|v| FilterShape::ALL[v as usize].name().into()),
             ),
             (0, 1) => ui.add(
-                Knob::new(&mut s.frequency_hz, frequency())
-                    .modulated(markers[0].as_ref(), &mut s.modulation_open),
+                Knob::new(
+                    &mut s.frequency_hz,
+                    parameter_knobs::destination(Parameter::Frequency),
+                )
+                .modulated(markers[0].as_ref(), &mut s.modulation_open),
             ),
             (0, 2) => ui.add(
-                Knob::new(
-                    &mut s.q,
-                    KnobSpec::new(
-                        "Resonance",
-                        0.1..=10.0,
-                        std::f32::consts::FRAC_1_SQRT_2,
-                        0.01,
-                    )
-                    .scale(
-                        |v| (v / 0.1).log10() / 2.0,
-                        |p| 0.1 * 100_f32.powf(p),
-                        |v, d| v * 2_f32.powf(d / 24.0),
-                    )
-                    .value_label(|v| format!("Q {v:.2}"))
-                    .format(|v| format!("Q {v:.2}"))
-                    .endpoint_labels("0.1", "10"),
-                )
-                .modulated(markers[1].as_ref(), &mut s.modulation_open),
+                Knob::new(&mut s.q, parameter_knobs::destination(Parameter::Resonance))
+                    .modulated(markers[1].as_ref(), &mut s.modulation_open),
             ),
             (1, 0) => crate::lfo_controls::wave(ui, &mut s.wave),
             (1, 1) => crate::lfo_controls::mode(ui, &mut s.rate_mode),
@@ -109,17 +86,14 @@ fn row(
             (3, 0) => ui.add(
                 Knob::new(
                     &mut s.level_db,
-                    knobs::marked_gain_spec().named("Filter output level"),
+                    parameter_knobs::destination(Parameter::Level),
                 )
                 .modulated(markers[2].as_ref(), &mut s.modulation_open),
             ),
             (3, 1) => ui.add(
                 Knob::new(
                     &mut s.dry_wet,
-                    KnobSpec::new("Dry/wet", 0.0..=1.0, 1.0, 0.01)
-                        .value_label(|v| format!("{:.0}%", v * 100.0))
-                        .format(|v| format!("{:.0}%", v * 100.0))
-                        .endpoint_labels("Dry", "Wet"),
+                    parameter_knobs::destination(Parameter::DryWet),
                 )
                 .modulated(markers[3].as_ref(), &mut s.modulation_open),
             ),

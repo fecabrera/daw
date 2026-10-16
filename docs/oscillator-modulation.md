@@ -9,7 +9,7 @@ Implemented on 2026-10-16. Each oscillator is a separate pitch destination. Enve
 3. Add a connection with Plus. Select its source and an `Osc N · Pitch` target. Set a signed amount in semitones. Each new connection targets the first oscillator, starts enabled, has no source, and has zero amount.
 4. Add more connections to modulate other oscillators or combine sources on one oscillator. Use the connection's power control to disable it, or its context menu to remove it.
 
-The amount knob reuses the base Pitch knob’s one-semitone steps and octave reference marks across −48 to +48 semitones. Shift slows dragging while retaining whole-semitone steps. Existing saved or programmatic fractional amounts remain supported and are retained until adjusted; +0.25 is +25 cents. Modulation never writes the base Pitch setting.
+Like every [destination-matched modulation amount knob](modulation.md#destination-matched-amount-knobs), the amount knob reuses the base Pitch knob’s one-semitone steps and octave reference marks across −48 to +48 semitones. Shift slows dragging while retaining whole-semitone steps. Existing saved or programmatic fractional amounts remain supported and are retained until adjusted; +0.25 is +25 cents. Modulation never writes the base Pitch setting.
 
 A Per note Envelope supplies an independent contour for every voice. Retrigger/Legato Envelopes and LFOs supply shared values. Shared sources in Main can also feed oscillator pitch. Connections remain inside the same instrument. Pitch routes do not control note length or amplitude; use Amplitude for that behavior.
 
