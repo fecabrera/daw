@@ -5,19 +5,28 @@ use super::*;
 pub(super) enum Component {
     Oscillator,
     Envelope,
+    Amplitude,
 }
 
-pub(super) const ENTRIES: [(&str, &str, Component); 2] = [
+pub(super) const ENTRIES: [(&str, &str, Component); 3] = [
     ("daw.oscillator", "Oscillator", Component::Oscillator),
     ("daw.envelope", "Envelope", Component::Envelope),
+    ("daw.amplitude", "Amplitude", Component::Amplitude),
 ];
 
 impl Component {
     pub(super) fn add_to(self, layer: &mut daw_core::InstrumentLayerSettings) {
         match self {
             Self::Oscillator => layer.oscillators.push(Default::default()),
-            // One amplitude envelope per layer. Re-adding retains its saved settings.
-            Self::Envelope => layer.has_envelope = true,
+            // Each Envelope is independent; Amplitude is a single retained audio stage.
+            Self::Envelope => {
+                if let Some(e) = layer.envelopes.iter_mut().find(|e| !e.present) {
+                    e.present = true;
+                } else {
+                    layer.envelopes.push(Default::default());
+                }
+            }
+            Self::Amplitude => layer.amplitude.present = true,
         }
     }
 }
@@ -49,7 +58,7 @@ pub(crate) struct Bounds {
     pub toggle: Rect,
     pub library: Rect,
     pub header: Rect,
-    pub entries: [Rect; 2],
+    pub entries: [Rect; ENTRIES.len()],
     pub drop_target: Option<Id>,
     pub drop_bounds: Rect,
     pub layer_viewport: Rect,
@@ -63,7 +72,7 @@ impl Default for Bounds {
             toggle: Rect::NOTHING,
             library: Rect::NOTHING,
             header: Rect::NOTHING,
-            entries: [Rect::NOTHING; 2],
+            entries: [Rect::NOTHING; ENTRIES.len()],
             drop_target: None,
             drop_bounds: Rect::NOTHING,
             layer_viewport: Rect::NOTHING,

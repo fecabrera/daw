@@ -1,5 +1,5 @@
 use crate::theme;
-use egui::{Pos2, Response, Sense, Shape, Stroke, Ui, Vec2, Widget};
+use egui::{Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2, Widget};
 use std::{f32::consts::PI, ops::RangeInclusive};
 
 pub const SIZE: f32 = 28.0;
@@ -100,6 +100,11 @@ impl KnobSpec {
         self.reference_values = Some(values);
         self
     }
+    /// Retain a parameter-specific accessible name when reusing a scale.
+    pub(super) fn named(mut self, name: &'static str) -> Self {
+        self.name = name;
+        self
+    }
     /// Show the current value centered above the knob using a compact formatter.
     pub fn value_label(mut self, format: fn(f32) -> String) -> Self {
         self.value_label = Some(format);
@@ -187,19 +192,42 @@ impl KnobSpec {
     }
 }
 
+/// Decoration uses parameter units; the base scale maps all marks consistently.
+#[derive(Clone, Debug)]
+pub(super) struct ModulationMarker {
+    pub active: bool,
+    pub range: [f32; 2],
+    pub live: [Option<f32>; 2],
+    pub tooltip: String,
+}
 /// Standard knob face, focus, drag accumulation, Shift sensitivity, keys, bounds/wrap, and reset.
 pub struct Knob<'a> {
     value: &'a mut f32,
     spec: KnobSpec,
+    modulation: Option<(&'a ModulationMarker, &'a mut bool)>,
 }
 impl<'a> Knob<'a> {
     pub fn new(value: &'a mut f32, spec: KnobSpec) -> Self {
-        Self { value, spec }
+        Self {
+            value,
+            spec,
+            modulation: None,
+        }
+    }
+}
+impl<'a> Knob<'a> {
+    pub(super) fn modulated(
+        mut self,
+        marker: Option<&'a ModulationMarker>,
+        open: &'a mut bool,
+    ) -> Self {
+        self.modulation = marker.map(|m| (m, open));
+        self
     }
 }
 impl Widget for Knob<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        base_knob(ui, self.value, self.spec)
+        base_knob(ui, self.value, self.spec, self.modulation)
     }
 }
 
@@ -258,7 +286,7 @@ fn pan_spec() -> KnobSpec {
 pub fn gain(ui: &mut Ui, value: &mut f32) -> Response {
     ui.add(Knob::new(value, gain_spec()))
 }
-fn marked_gain_spec() -> KnobSpec {
+pub(super) fn marked_gain_spec() -> KnobSpec {
     gain_spec()
         .reference_values(&crate::faders::GAIN_MARKS)
         .value_label(|value| format!("{} dB", crate::faders::format_gain(value)))
@@ -496,7 +524,19 @@ pub fn row<T>(
     .inner
 }
 
-fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
+pub(super) fn modulation_marker_rect(knob: Rect) -> Rect {
+    Rect::from_center_size(
+        knob.right_top() + Vec2::new(-3.0, 6.0),
+        Vec2::new(10.0, 12.0),
+    )
+}
+
+fn base_knob(
+    ui: &mut Ui,
+    value: &mut f32,
+    spec: KnobSpec,
+    mut modulation: Option<(&ModulationMarker, &mut bool)>,
+) -> Response {
     let size = if spec.diagram.is_some()
         || spec.value_label.is_some()
         || spec.endpoint_labels.is_some()
@@ -507,9 +547,44 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
         SIZE
     };
     let (rect, mut response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
+    let marker_rect = modulation_marker_rect(rect);
+    let marker_response = modulation.as_ref().map(|(marker, _)| {
+        let response = ui.interact(
+            marker_rect,
+            response.id.with("modulation-marker"),
+            Sense::click(),
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Button,
+                ui.is_enabled(),
+                marker.active,
+                format!("{} modulation; open controls", spec.name),
+            )
+        });
+        response
+            .on_hover_text(&marker.tooltip)
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+    });
+    if marker_response.as_ref().is_some_and(|r| r.clicked())
+        && ui.is_enabled()
+        && ui.input(|i| i.focused)
+    {
+        if let Some((_, open)) = modulation.as_mut() {
+            **open = true;
+        }
+        ui.ctx().request_repaint();
+    }
+    // A marker press never starts a knob drag or a double-click reset.
+    let marker_press = marker_response.is_some()
+        && ui.input(|i| {
+            i.pointer
+                .press_origin()
+                .is_some_and(|p| marker_rect.contains(p))
+        });
     let previous = *value;
     let drag_id = response.id.with("knob-drag");
-    if ui.is_enabled() && ui.input(|input| input.focused) {
+    if !marker_press && ui.is_enabled() && ui.input(|input| input.focused) {
         if response.clicked()
             || response.drag_started()
             || (response.is_pointer_button_down_on()
@@ -603,6 +678,24 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
                 .collect();
             painter.add(Shape::line(points, Stroke::new(2.0, color)));
         };
+        if let Some((marker, _)) = &modulation {
+            let color = theme::palette(ui.ctx()).secondary;
+            if marker.active {
+                let [from, to] = marker.range.map(|v| spec.normalized(v));
+                let points = (0..=48)
+                    .map(|i| point(from + (to - from) * i as f32 / 48.0, radius + 4.0))
+                    .collect();
+                painter.add(Shape::line(
+                    points,
+                    Stroke::new(1.0, color.gamma_multiply(0.7)),
+                ));
+                for value in marker.live.into_iter().flatten().filter(|v| v.is_finite()) {
+                    painter.circle_filled(point(spec.normalized(value), radius + 4.0), 2.0, color);
+                }
+            }
+            let hit = marker_response.as_ref().unwrap();
+            crate::icons::paint_dot_toggle(ui, hit, 4.0, marker.active, color);
+        }
         let origin = if spec.bipolar {
             spec.normalized(spec.reset)
         } else {
@@ -727,7 +820,16 @@ fn base_knob(ui: &mut Ui, value: &mut f32, spec: KnobSpec) -> Response {
             Stroke::new(1.5, theme::palette(ui.ctx()).text),
         );
     }
-    response.on_hover_text(format!("{}: {}. Drag up or right to increase. Hold Shift for fine adjustment. Use arrow keys for small steps. Double-click to reset.", spec.name, (spec.format)(*value)))
+    let mut tooltip = format!(
+        "{}: {}. Drag up or right to increase. Hold Shift for fine adjustment. Use arrow keys for small steps. Double-click to reset.",
+        spec.name,
+        (spec.format)(*value)
+    );
+    if let Some((marker, _)) = &modulation {
+        tooltip.push('\n');
+        tooltip.push_str(&marker.tooltip);
+    }
+    response.on_hover_text(tooltip)
 }
 
 #[cfg(test)]
@@ -1273,5 +1375,73 @@ mod tests {
             );
         }
         assert_eq!(value, 0.0);
+    }
+    #[test]
+    fn modulation_decoration_keeps_base_value_and_separates_marker_clicks_from_knob_drags() {
+        for enabled in [true, false] {
+            let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
+            let marker = ModulationMarker {
+                active: true,
+                range: [-24.0, 0.0],
+                live: [Some(-18.0), None],
+                tooltip: "Envelope 1".into(),
+            };
+            let mut value = -6.0;
+            let mut open = false;
+            let mut rect = Rect::NOTHING;
+            let mut draw = |events| {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::splat(300.0))),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        rect = ui
+                            .add_enabled(
+                                enabled,
+                                Knob::new(&mut value, marked_gain_spec())
+                                    .modulated(Some(&marker), &mut open),
+                            )
+                            .rect;
+                    },
+                );
+                output.textures_delta.clear();
+                (rect, output.shapes)
+            };
+            let (rect, shapes) = draw(vec![]);
+            let live = rect.center()
+                + Vec2::angled(0.75 * PI + marked_gain_spec().normalized(-18.0) * 1.5 * PI) * 16.0;
+            assert!(shapes.iter().any(|s| matches!(&s.shape,Shape::Circle(c) if c.radius==2.0 && c.center.distance(live)<1e-4)));
+            let point = modulation_marker_rect(rect).center();
+            draw(vec![egui::Event::PointerMoved(point), pointer(point, true)]);
+            draw(vec![egui::Event::PointerMoved(
+                point + Vec2::new(0.0, -20.0),
+            )]);
+            draw(vec![pointer(point, false)]);
+            assert_eq!(value, -6.0);
+            // Draw a clean press/release after the moved gesture.
+            let mut draw = |events| {
+                let mut out = ctx.run_ui(
+                    egui::RawInput {
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        ui.add_enabled(
+                            enabled,
+                            Knob::new(&mut value, marked_gain_spec())
+                                .modulated(Some(&marker), &mut open),
+                        );
+                    },
+                );
+                out.textures_delta.clear();
+            };
+            draw(vec![egui::Event::PointerMoved(point), pointer(point, true)]);
+            draw(vec![pointer(point, false)]);
+            assert_eq!(open, enabled);
+            assert_eq!(value, -6.0);
+        }
     }
 }

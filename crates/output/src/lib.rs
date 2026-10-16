@@ -1,6 +1,6 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use daw_core::Id;
-use daw_engine::{RenderPlan, Renderer};
+use daw_engine::{ModulationTarget, RenderPlan, Renderer};
 use rtrb::{Consumer, Producer, RingBuffer};
 use rubato::Resampler;
 use std::collections::HashMap;
@@ -24,6 +24,7 @@ pub struct Status {
 struct PreparedRenderer {
     renderer: Renderer,
     meters: Vec<Arc<StereoMeter>>,
+    modulation: Vec<(ModulationTarget, Arc<[AtomicU32; 5]>)>,
 }
 impl PreparedRenderer {
     fn new(plan: RenderPlan, meters: &HashMap<Id, Arc<StereoMeter>>) -> Self {
@@ -36,9 +37,25 @@ impl PreparedRenderer {
         Self {
             renderer: Renderer::new(plan),
             meters: handles,
+            modulation: Vec::new(),
         }
     }
+    fn bind_modulation(&mut self, meters: &HashMap<ModulationTarget, Arc<[AtomicU32; 5]>>) {
+        self.modulation = meters
+            .iter()
+            .map(|(key, meter)| (*key, meter.clone()))
+            .collect();
+    }
     fn publish_track_peaks(&self) {
+        for (key, meter) in &self.modulation {
+            let values = self
+                .renderer
+                .modulation_values(*key)
+                .unwrap_or([f32::NAN; 5]);
+            for (cell, value) in meter.iter().zip(values) {
+                cell.store(value.to_bits(), Ordering::Relaxed);
+            }
+        }
         for (meter, peaks) in self.meters.iter().zip(self.renderer.track_peaks()) {
             meter.publish_peaks(peaks);
         }
@@ -110,6 +127,37 @@ fn bind_ott_meters(renderer: &mut Renderer, meters: &HashMap<Id, Arc<[AtomicU32;
         renderer.set_ott_meter(*id, meter.clone());
     }
 }
+fn modulation_meters(
+    plan: &RenderPlan,
+    previous: &HashMap<ModulationTarget, Arc<[AtomicU32; 5]>>,
+) -> HashMap<ModulationTarget, Arc<[AtomicU32; 5]>> {
+    let effects = plan
+        .project
+        .all_effects()
+        .filter(|e| matches!(e.unit, daw_core::EffectSettings::AutoFilter(_)))
+        .map(|e| ModulationTarget::Effect(e.id));
+    let amplitudes = plan.project.tracks.iter().flat_map(|track| {
+        track.instrument.iter().flat_map(move |instrument| {
+            instrument
+                .layers
+                .iter()
+                .filter(|l| l.amplitude.present)
+                .map(move |layer| ModulationTarget::Amplitude {
+                    track: track.id,
+                    layer: layer.id,
+                })
+        })
+    });
+    effects
+        .chain(amplitudes)
+        .map(|key| {
+            let handle = previous.get(&key).cloned().unwrap_or_else(|| {
+                Arc::new(std::array::from_fn(|_| AtomicU32::new(f32::NAN.to_bits())))
+            });
+            (key, handle)
+        })
+        .collect()
+}
 enum Command {
     Plan(Box<PreparedRenderer>),
     Play,
@@ -133,6 +181,7 @@ pub struct AudioOutput {
     track_meters: HashMap<Id, Arc<StereoMeter>>,
     effect_meters: HashMap<Id, Arc<AtomicU32>>,
     ott_meters: HashMap<Id, Arc<[AtomicU32; 3]>>,
+    modulation_meters: HashMap<ModulationTarget, Arc<[AtomicU32; 5]>>,
 }
 impl AudioOutput {
     pub fn new(plan: RenderPlan) -> Result<Self, String> {
@@ -165,6 +214,7 @@ impl AudioOutput {
         let meters = track_meters(&plan, &HashMap::new());
         let reductions = effect_meters(&plan, &HashMap::new());
         let changes = ott_meters(&plan, &HashMap::new());
+        let modulation = modulation_meters(&plan, &HashMap::new());
         // Retried stream construction happens before playback; each attempt receives fresh queues.
         let build = |cfg: &cpal::StreamConfig| -> Result<BuiltStream, String> {
             let (commands, consumer) = RingBuffer::new(32);
@@ -179,6 +229,7 @@ impl AudioOutput {
             )?;
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_ott_meters(&mut state.renderer, &changes);
+            state.renderer.bind_modulation(&modulation);
             macro_rules! stream {
                 ($t:ty) => {
                     build_stream::<$t>(&device, cfg, state, status.clone())
@@ -228,6 +279,7 @@ impl AudioOutput {
             track_meters: meters,
             effect_meters: reductions,
             ott_meters: changes,
+            modulation_meters: modulation,
         })
     }
     fn send(&mut self, command: Command) -> Result<(), String> {
@@ -245,17 +297,29 @@ impl AudioOutput {
         let meters = track_meters(&plan, &self.track_meters);
         let reductions = effect_meters(&plan, &self.effect_meters);
         let changes = ott_meters(&plan, &self.ott_meters);
+        let modulation = modulation_meters(&plan, &self.modulation_meters);
         let mut prepared = PreparedRenderer::new(plan, &meters);
         bind_effect_meters(&mut prepared, &reductions);
         bind_ott_meters(&mut prepared, &changes);
+        prepared.bind_modulation(&modulation);
         self.send(Command::Plan(Box::new(prepared)))?;
         self.track_meters = meters;
         self.effect_meters = reductions;
         self.ott_meters = changes;
+        self.modulation_meters = modulation;
         Ok(())
     }
     pub fn track_meter(&self, id: Id) -> Option<&StereoMeter> {
         self.track_meters.get(&id).map(AsRef::as_ref)
+    }
+    /// Display-only block snapshots. No synthetic animation when playback is stopped.
+    pub fn modulation_values(&self, key: ModulationTarget) -> Option<[f32; 5]> {
+        if !self.status.playing.load(Ordering::Relaxed) {
+            return None;
+        }
+        let meter = self.modulation_meters.get(&key)?;
+        let values = std::array::from_fn(|i| f32::from_bits(meter[i].load(Ordering::Relaxed)));
+        values[0].is_finite().then_some(values)
     }
     pub fn gain_reduction_db(&self, id: Id) -> f32 {
         if !self.status.playing.load(Ordering::Relaxed) {
@@ -960,5 +1024,59 @@ fn effect_test_chain(plan: &mut RenderPlan, master: bool) -> &mut Vec<daw_core::
         &mut plan.project.master.effects
     } else {
         &mut plan.project.tracks[0].effects
+    }
+}
+
+#[cfg(test)]
+mod modulation_meter_tests {
+    use super::*;
+    #[test]
+    fn processed_parameter_snapshots_publish_without_advancing_dsp_and_follow_unit_identity() {
+        let mut plan = crate::tests::transport_plan();
+        let effect = daw_core::EffectInstance::auto_filter();
+        let key = ModulationTarget::Effect(effect.id);
+        plan.project.tracks[0].effects.push(effect);
+        let track = plan.project.add_midi_track().unwrap();
+        let layer = &mut plan.project.tracks[1].instrument.as_mut().unwrap().layers[0];
+        layer.amplitude.present = true;
+        let amplitude = ModulationTarget::Amplitude {
+            track,
+            layer: layer.id,
+        };
+        let handles = modulation_meters(&plan, &HashMap::new());
+        assert_eq!(handles.len(), 2);
+        assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
+        let tracks = track_meters(&plan, &HashMap::new());
+        let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
+        renderer.bind_modulation(&handles);
+        renderer.play();
+        for _ in 0..512 {
+            renderer.next_sample();
+        }
+        let expected = renderer.modulation_values(key).unwrap();
+        let frame = renderer.playhead;
+        renderer.publish_track_peaks();
+        renderer.publish_track_peaks();
+        assert_eq!(renderer.playhead, frame);
+        assert_eq!(expected, renderer.modulation_values(key).unwrap());
+        assert_eq!(
+            expected,
+            std::array::from_fn(|i| f32::from_bits(handles[&key][i].load(Ordering::Relaxed)))
+        );
+        assert_eq!(
+            f32::from_bits(handles[&amplitude][0].load(Ordering::Relaxed)),
+            daw_core::SILENT_GAIN_DB
+        );
+        let next = modulation_meters(&plan, &handles);
+        assert!(Arc::ptr_eq(&next[&key], &handles[&key]));
+        plan.project.tracks.reverse();
+        assert!(Arc::ptr_eq(
+            &modulation_meters(&plan, &handles)[&amplitude],
+            &handles[&amplitude]
+        ));
+        plan.project.tracks[1].effects.clear();
+        let removed = modulation_meters(&plan, &handles);
+        assert!(!removed.contains_key(&key));
+        assert!(removed.contains_key(&amplitude));
     }
 }

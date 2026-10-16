@@ -2003,3 +2003,70 @@ Completed checks:
 - 131 local documentation links and `git diff --check` passed.
 
 Native appearance/gestures and device playback were not checked in the running app. Windows/Linux builds were not run. No project format or audio processing changed.
+
+## Amplitude Envelope and unconnected Filter Envelope — 2026-10-15
+
+Renamed the existing instrument Envelope to Amplitude Envelope in the catalog, installed headers, power/collapse accessibility text, and removal menu. Kept its saved field names, catalog identity, and audio behavior. Added Filter Envelope as an independent optional component per layer, with retained ADSR settings and enable/collapse state. Both roles reuse the same unit frame and envelope controls. Their control IDs include the envelope role and existing track/layer scopes. Catalog double-click, Enter, and drag/drop use the existing component addition path, with one instance of each envelope per layer.
+
+Filter Envelope is saved and editable but unconnected. Its header tooltip explains that state. No Auto-filter API, modulation connection, sidechain, routing UI, or filter runtime was added. Installed order is Oscillator, Amplitude Envelope, Filter Envelope, omitting missing components; compact strip titles use Amp... and Fil.... Instrument version 2 has optional filter-envelope fields with defaults for older projects. Shared validation checks both retained envelopes even when absent.
+
+Completed checks:
+
+- `cargo test -p daw-ui`: all 359 tests passed. New groups cover both-theme unit titles, independent controls/power/collapse, aligned geometry, filter-only placement, removal/re-addition and no-op retention, saved-state restoration, compact footers/title, and catalog double-click. The existing expanded/compact, label/body, normal/fast drag matrix now carries all three component types.
+- Focused core and engine MIDI suites passed (16 and 25 tests). Checks include filter-field round-trip, missing-field defaults, malformed-field rejection, transactional validation of both envelopes, and preservation of audio/live voices without callback allocations when the unconnected filter envelope changes.
+- Formatting and strict workspace Clippy passed.
+- `cargo test --workspace`: passed. The two expanded DSP matrices remain explicitly ignored.
+- `sh tools/package_macos.sh debug`: passed and rebuilt `target/debug/DAW.app`.
+- 133 local documentation links, including the envelope-components anchor, and `git diff --check` passed.
+
+Native appearance/gestures and device playback were not checked in the running app. Windows/Linux builds were not run. Filter modulation routing remains intentionally unimplemented.
+
+## Generic Envelope, Amplitude, and modulation — 2026-10-15
+
+This replaces the role-specific envelope design above. Layers now contain independent generic Envelope instances and one optional Amplitude audio unit. Envelopes support Per note, Retrigger, and Legato. Amplitude and Auto-filter reuse the same destination-owned Source/Parameter/Amount strips, Power/Mod N footer, Plus strip, and removal menu. Their 18-point circular header button uses ChevronRight to reveal modulation strips on the right while keeping regular controls visible, and ChevronLeft to hide only those strips. Visibility is UI state; connections are saved project data. Full and compact heights, footer alignment, unit collapse, and header gesture boundaries remain intact.
+
+Instrument version 3 saves stable envelope identities and explicit Amplitude connections. Legacy amplitude ADSR settings migrate into Envelope plus Amplitude with a full-depth connection. Previously unconnected filter envelopes become additional generic instances. Auto-filter accepts shared envelopes in its own MIDI track; Amplitude accepts per-note/shared sources in its instrument. Removed components retain their settings. Core rejects invalid sources, targets, amounts, identities, and incompatible modes atomically.
+
+The engine evaluates each source once per sample and reuses cached values across destinations. Compatible edits retain live state using prepared storage. Parameter/power ramps remain allocation-free. Shared amplitude releases retain the final notes without reviving earlier notes; partial depths fade to zero instead of ending with a step. Auto-filter's portable external-offset API retains the independent internal LFO.
+
+Completed checks:
+
+- `cargo test --workspace`: passed, including 18 core MIDI tests, 27 engine MIDI tests, shared-mode/fan-out tests, and 359 UI tests. The two existing expanded time-stretch DSP matrices remain explicitly ignored.
+- After final UI layout adjustments, `cargo test -p daw-ui` passed all 359 tests again. Coverage includes both themes, independent Envelope state, catalog additions/drop, regular-control visibility, expansion width and clean toggles, source selection/scope, Amount keyboard adjustment, Power, multiple connections, removal, aligned footers, compact height, and saved-state restoration.
+- The focused portable Auto-filter external-offset check passed for all four targets, target bounds, static-control equivalence, and nonfinite inputs. Engine checks cover audible routing, overlapping notes, partial/full shared release, playback/export equality, random-access rendering, compatible updates, and callback allocation.
+- Final formatting and strict workspace Clippy passed.
+- The separate CLI build and `tools/check_cli.py` passed. The smoke check covers WAV/MP3 formats and bitrates, deterministic output, missing sources, eight-track projects, overwrite, and exit codes.
+- `sh tools/package_macos.sh debug` passed after the final layout changes and rebuilt `target/debug/DAW.app`.
+- 174 local documentation file links and `git diff --check` passed.
+
+Native appearance, pointer gestures, listening, and device playback were not checked in the running app. Windows/Linux builds were not run. Cross-track modulation, per-note aggregation into shared effects, audio sidechains, and unrestricted graph routing remain outside this implementation.
+
+## Compact unit selector text and modulation buttons — 2026-10-15
+
+Closed Source and Parameter selectors in Auto-filter and Amplitude now use the shared 11-point unit font. The Envelope note-mode selector uses the same size. Both modulation expand/collapse buttons now paint the same 10-point outer diameter as the header enable circle, with the same 22-point click target. This supersedes the earlier 18-point modulation button requirement. Existing shared circle/icon painting, chevron directions, unit expansion, focus guards, and regular-control visibility remain in use.
+
+Formatting, strict workspace Clippy, and the workspace tests passed. The two existing expanded time-stretch DSP matrices remain ignored. After the final Envelope/button adjustments, all 359 UI tests passed again, and the macOS debug bundle was rebuilt with `sh tools/package_macos.sh debug`. `git diff --check` passed. No DSP or project-format behavior changed. Native appearance/pointer checks and Windows/Linux builds were not run for this change.
+
+## Filled modulation header buttons — 2026-10-15
+
+Auto-filter and Amplitude now use filled, borderless circles for their modulation chevrons. Closed uses the theme's secondary color; expanded uses the accent color. The chevron uses the shared contrasting foreground color. Hover/focus paints a circular halo. Both buttons retain the 10-point outer diameter, 22-point click target, and existing expansion behavior. A reusable filled variant shares icon painting and accessibility with the existing circular controls.
+
+All 359 UI tests, formatting, strict workspace Clippy, and workspace tests passed. The two existing expanded time-stretch DSP matrices remain ignored. The macOS debug app was rebuilt. `git diff --check` passed. Native appearance and pointer checks were not run; no audio behavior or project format changed.
+
+## Modulation visibility dot — 2026-10-15
+
+This supersedes the chevron and permanently filled-button designs above. Auto-filter and Amplitude now use an icon-free dot to toggle modulation visibility. It shares the enable control's painter, 10-point outer diameter, 22-point click target, filled/expanded and hollow/collapsed states, disabled dimming, and circular hover/focus halo. The modulation dot uses the theme's secondary color to distinguish it from audio enable. Tooltips and accessible state identify Expand/Collapse modulation controls. The temporary filled-icon variant was removed; other circular icon controls retain their existing style.
+
+All 359 UI tests, formatting, strict workspace Clippy, and the workspace suite passed. The two existing expanded time-stretch DSP matrices remain ignored. The macOS debug app was rebuilt, and `git diff --check` passed. Native appearance/pointer checks were not run. No audio behavior or project format changed.
+
+## Saved modulation visibility and parameter indicators — 2026-10-15
+
+This supersedes the earlier UI-only modulation expansion state. Amplitude and Auto-filter save `modulation_open` per unit through the normal instrument/effect edits. Toggling visibility marks the project modified. Older settings default closed without a version bump; malformed explicit values fail deserialization. Removed/re-added units retain this field. Fresh windows and replacement projects use the saved values rather than egui temporary state.
+
+Assigned Amplitude and Auto-filter parameter knobs now share status dots, source/amount tooltips, click-to-open controls, possible-range arcs, and live processed-value dots. Filled status means active modulation; hollow means assigned but inactive. Connections to the same source combine before range calculation. The base pointer, accent arc, and numeric readout retain their original value. Frequency includes the internal LFO and left/right processed cutoff. Amplitude shows the highest active voice gain before velocity, layer mix, and voice summing. The range describes held-note values; live markers also follow gates and release. Indicators fit the existing knob rows without changing unit dimensions.
+
+Telemetry reads the actual DSP state, including parameter ramps, external smoothing, bounds, and bypass/gate behavior. The output layer publishes block snapshots through prepared atomics. No UI envelope clock, callback allocation, locking, or project edits are used for live display. Values outside the knob scale remain available in hover text. Live dots appear during playback.
+
+Focused automated checks passed for both themes, independent visibility per unit, project replacement, save/reopen/Save As and legacy defaults, all four Auto-filter marker clicks and Amplitude clicks, preserved base values, disabled/drag guards, correlated-route cancellation, signed/clamped ranges, inactive assignments, stereo LFO values, note-driven telemetry, deterministic audio, pause/Stop, stable meter identities, and allocation-free telemetry reads. The portable Auto-filter test checks smoothed values and the rate-dependent cutoff bound. These checks use egui input/shape tests and device-free render/output tests.
+
+Final checks passed: `cargo fmt --all --check`, strict workspace Clippy (`cargo clippy --workspace --all-targets -- -D warnings`), `cargo test --workspace`, `sh tools/package_macos.sh debug`, `cargo build -p daw-cli`, and `python3 tools/check_cli.py`, with the workspace Cargo cache selected. All 364 UI tests passed. The two existing expanded time-stretch matrices remain ignored. The macOS debug bundle is rebuilt at `target/debug/DAW.app`. `git diff --check` passed. Native appearance, device playback, and Windows/Linux builds were not checked for this change.

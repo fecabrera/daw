@@ -37,7 +37,7 @@ fn oscillator_collections_migrate_legacy_state_and_validate_atomically() {
     saved.as_object_mut().unwrap().remove("muted");
     let migrated: OscillatorInstrumentSettings = serde_json::from_value(saved.clone()).unwrap();
     assert_eq!(migrated.layers[0].oscillators, vec![legacy]);
-    assert!(!migrated.layers[0].oscillator_collapsed && !migrated.layers[0].envelope_collapsed);
+    assert!(!migrated.layers[0].oscillator_collapsed && !migrated.layers[0].envelopes[0].collapsed);
     let older_collection: OscillatorInstrumentSettings =
         serde_json::from_value(serde_json::json!({
             "version": 1, "oscillators": [saved.clone()]
@@ -91,14 +91,17 @@ fn oscillator_collections_migrate_legacy_state_and_validate_atomically() {
 #[test]
 fn envelope_settings_round_trip_and_missing_envelopes_preserve_legacy_sound() {
     let mut instrument = OscillatorInstrumentSettings::default();
-    assert_eq!(instrument.layers[0].envelope, EnvelopeSettings::default());
+    assert_eq!(
+        instrument.layers[0].envelopes[0].settings,
+        EnvelopeSettings::default()
+    );
     for shape in CurveShape::ALL {
-        instrument.layers[0].envelope.attack.shape = shape;
-        instrument.layers[0].envelope.decay.shape = shape;
-        instrument.layers[0].envelope.release.shape = shape;
-        instrument.layers[0].envelope.attack.amount = 0.0;
-        instrument.layers[0].envelope.decay.amount = 1.0;
-        instrument.layers[0].envelope.release.time_ms = MAX_ENVELOPE_TIME_MS;
+        instrument.layers[0].envelopes[0].settings.attack.shape = shape;
+        instrument.layers[0].envelopes[0].settings.decay.shape = shape;
+        instrument.layers[0].envelopes[0].settings.release.shape = shape;
+        instrument.layers[0].envelopes[0].settings.attack.amount = 0.0;
+        instrument.layers[0].envelopes[0].settings.decay.amount = 1.0;
+        instrument.layers[0].envelopes[0].settings.release.time_ms = MAX_ENVELOPE_TIME_MS;
         let saved = serde_json::to_value(&instrument).unwrap();
         let restored: OscillatorInstrumentSettings = serde_json::from_value(saved).unwrap();
         assert_eq!(restored, instrument);
@@ -109,22 +112,31 @@ fn envelope_settings_round_trip_and_missing_envelopes_preserve_legacy_sound() {
         "oscillators": [OscillatorSettings::default()]
     });
     let restored: OscillatorInstrumentSettings = serde_json::from_value(saved.clone()).unwrap();
-    assert_eq!(restored.layers[0].envelope, EnvelopeSettings::legacy());
+    assert_eq!(
+        restored.layers[0].envelopes[0].settings,
+        EnvelopeSettings::legacy()
+    );
     saved["envelope"] = serde_json::Value::Null;
     assert!(serde_json::from_value::<OscillatorInstrumentSettings>(saved).is_err());
     let legacy: InstrumentSettings = serde_json::from_value(serde_json::json!({
         "version": 1,
         "oscillators": [OscillatorSettings::default()],
-        "envelope": instrument.layers[0].envelope,
+        "envelope": instrument.layers[0].envelopes[0].settings,
     }))
     .unwrap();
-    assert!(legacy.layers[0].has_envelope);
-    assert!(legacy.layers[0].oscillator_enabled && legacy.layers[0].envelope_enabled);
-    assert_eq!(legacy.layers[0].envelope, instrument.layers[0].envelope);
+    assert!(legacy.layers[0].envelopes[0].present);
+    assert!(legacy.layers[0].oscillator_enabled && legacy.layers[0].envelopes[0].enabled);
+    assert_eq!(
+        legacy.layers[0].envelopes[0].settings,
+        instrument.layers[0].envelopes[0].settings
+    );
     let restored: OscillatorInstrumentSettings =
         serde_json::from_value(serde_json::to_value(OscillatorSettings::default()).unwrap())
             .unwrap();
-    assert_eq!(restored.layers[0].envelope, EnvelopeSettings::legacy());
+    assert_eq!(
+        restored.layers[0].envelopes[0].settings,
+        EnvelopeSettings::legacy()
+    );
 }
 
 #[test]
@@ -135,10 +147,12 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
     assert_eq!(instrument.version, INSTRUMENT_STATE_VERSION);
     assert_eq!(instrument.layers.len(), 1);
     assert!(instrument.layers[0].oscillators.is_empty());
-    assert!(!instrument.layers[0].has_envelope);
+    assert!(!instrument.layers[0].envelopes[0].present);
     assert!(!instrument.layers[0].collapsed);
-    assert!(instrument.layers[0].oscillator_enabled && instrument.layers[0].envelope_enabled);
-    assert!(!instrument.layers[0].oscillator_collapsed && !instrument.layers[0].envelope_collapsed);
+    assert!(instrument.layers[0].oscillator_enabled && instrument.layers[0].envelopes[0].enabled);
+    assert!(
+        !instrument.layers[0].oscillator_collapsed && !instrument.layers[0].envelopes[0].collapsed
+    );
     assert!(!instrument.layers[0].muted && !instrument.layers[0].soloed);
     assert_eq!(instrument.layers[0].gain_db, 0.0);
     assert_eq!(instrument.layers[0].pan, 0.0);
@@ -146,7 +160,7 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
     instrument.layers[1]
         .oscillators
         .push(OscillatorSettings::default());
-    instrument.layers[1].has_envelope = true;
+    instrument.layers[1].install_amplitude_envelope();
     project
         .edit(Edit::SetInstrument {
             track_id: track,
@@ -158,10 +172,14 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
     instrument.layers[1].gain_db = -6.0;
     instrument.layers[1].pan = -0.7;
     instrument.layers[0].oscillator_enabled = false;
-    instrument.layers[1].envelope_enabled = false;
+    instrument.layers[1].envelopes[0].enabled = false;
     instrument.layers[0].collapsed = true;
     instrument.layers[0].oscillator_collapsed = true;
-    instrument.layers[1].envelope_collapsed = true;
+    instrument.layers[1].envelopes[0].collapsed = true;
+    instrument.layers[1].envelopes[1].present = true;
+    instrument.layers[1].envelopes[1].settings.attack.time_ms = 731.0;
+    instrument.layers[1].envelopes[1].enabled = false;
+    instrument.layers[1].envelopes[1].collapsed = true;
     project
         .edit(Edit::SetInstrument {
             track_id: track,
@@ -176,7 +194,12 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
         .as_array_mut()
         .unwrap()
     {
-        layer.as_object_mut().unwrap().remove("name");
+        let fields = layer.as_object_mut().unwrap();
+        let envelopes = fields.remove("envelopes").unwrap();
+        fields.remove("amplitude");
+        fields.insert("has_envelope".into(), envelopes[0]["present"].clone());
+        fields.insert("envelope".into(), envelopes[0]["settings"].clone());
+        fields.remove("name");
         for field in [
             "collapsed",
             "muted",
@@ -187,6 +210,10 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
             "envelope_enabled",
             "oscillator_collapsed",
             "envelope_collapsed",
+            "has_filter_envelope",
+            "filter_envelope",
+            "filter_envelope_enabled",
+            "filter_envelope_collapsed",
         ] {
             layer.as_object_mut().unwrap().remove(field);
         }
@@ -196,13 +223,15 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
     assert!(
         older_layers
             .iter()
-            .all(|layer| layer.oscillator_enabled && layer.envelope_enabled)
+            .all(|layer| layer.oscillator_enabled && layer.envelopes[0].enabled)
     );
-    assert!(
-        older_layers.iter().all(|layer| !layer.collapsed
-            && !layer.oscillator_collapsed
-            && !layer.envelope_collapsed)
-    );
+    assert!(older_layers.iter().all(|layer| !layer.collapsed
+        && !layer.oscillator_collapsed
+        && !layer.envelopes[0].collapsed));
+    assert!(older_layers.iter().all(|layer| !layer.envelopes[1].present
+        && layer.envelopes[1].enabled
+        && !layer.envelopes[1].collapsed
+        && layer.envelopes[1].settings == EnvelopeSettings::default()));
     assert_eq!(older_layers[0].name, "Layer 1");
     assert_eq!(older_layers[1].name, "Layer 2");
     assert_eq!(older_layers[1].id, instrument.layers[1].id);
@@ -215,7 +244,15 @@ fn new_instruments_start_empty_and_layer_edits_validate_atomically() {
         older_layers[1].oscillators,
         instrument.layers[1].oscillators
     );
-    for field in ["collapsed", "oscillator_collapsed", "envelope_collapsed"] {
+    for field in [
+        "collapsed",
+        "oscillator_collapsed",
+        "envelope_collapsed",
+        "has_filter_envelope",
+        "filter_envelope",
+        "filter_envelope_enabled",
+        "filter_envelope_collapsed",
+    ] {
         let mut malformed = before.clone();
         malformed["tracks"][0]["instrument"]["layers"][0][field] = serde_json::Value::Null;
         assert!(serde_json::from_value::<Project>(malformed).is_err());
@@ -303,9 +340,16 @@ fn invalid_envelope_edits_reject_the_entire_transaction() {
         version: 2,
         ..Default::default()
     });
-    for envelope in invalid {
+    for (envelope, filter) in invalid
+        .into_iter()
+        .flat_map(|value| [(value, false), (value, true)])
+    {
         let mut instrument = project.tracks[0].instrument.clone().unwrap();
-        instrument.layers[0].envelope = envelope;
+        if filter {
+            instrument.layers[0].envelopes[1].settings = envelope;
+        } else {
+            instrument.layers[0].envelopes[0].settings = envelope;
+        }
         assert!(
             project
                 .edit(Edit::Batch(vec![
@@ -966,4 +1010,130 @@ fn shared_body_trim_resolves_selected_source_neighbors_once_in_direction_order()
         next.validate().unwrap();
         assert_eq!(project.tracks[0].clips[0].asset_id, original.asset_id);
     }
+}
+
+#[test]
+fn version_two_envelopes_migrate_to_generic_sources_and_an_explicit_amplitude_connection() {
+    let id = Id::from_u128(91);
+    let legacy = serde_json::json!({"version":2,"layers":[{
+        "id":id,"name":"Lead","oscillators":[OscillatorSettings::default()],
+        "has_envelope":true,"envelope":EnvelopeSettings::default(),"envelope_enabled":false,"envelope_collapsed":true,
+        "has_filter_envelope":true,"filter_envelope":EnvelopeSettings{release:EnvelopeStageSettings{time_ms:777.0,..EnvelopeSettings::default().release},..Default::default()}
+    }]});
+    let migrated: InstrumentSettings = serde_json::from_value(legacy).unwrap();
+    assert!(migrated.valid());
+    assert_eq!(migrated.version, 3);
+    let l = &migrated.layers[0];
+    assert!(l.amplitude.present && l.amplitude.enabled);
+    assert!(l.envelopes[0].present && !l.envelopes[0].enabled && l.envelopes[0].collapsed);
+    assert!(l.envelopes[1].present);
+    assert_eq!(l.envelopes[1].settings.release.time_ms, 777.0);
+    assert_eq!(l.amplitude.modulations.len(), 1);
+    assert_eq!(l.amplitude.modulations[0].amount, 1.0);
+    assert_eq!(
+        l.amplitude.modulations[0].source,
+        Some(EnvelopeSource {
+            layer: id,
+            envelope: l.envelopes[0].id
+        })
+    );
+    let saved = serde_json::to_value(&migrated).unwrap();
+    assert!(saved["layers"][0].get("envelope").is_none());
+    let reopened: InstrumentSettings = serde_json::from_value(saved).unwrap();
+    assert_eq!(reopened, migrated);
+}
+#[test]
+fn modulation_routes_validate_scope_parameter_amount_and_shared_note_modes_atomically() {
+    let (mut project, track, _) = fixture();
+    let source = EnvelopeSource {
+        layer: project.tracks[0].instrument.as_ref().unwrap().layers[0].id,
+        envelope: project.tracks[0].instrument.as_ref().unwrap().layers[0].envelopes[0].id,
+    };
+    let mut effect = EffectInstance::auto_filter();
+    let EffectSettings::AutoFilter(filter) = &mut effect.unit else {
+        panic!()
+    };
+    let mut route = Modulation::new(ModulationParameter::Frequency);
+    route.source = Some(source);
+    route.amount = 4.0;
+    filter.modulations.push(route);
+    let before = serde_json::to_value(&project).unwrap();
+    assert!(
+        project
+            .edit(Edit::SetEffects {
+                compact: false,
+                track_id: track,
+                effects: vec![effect.clone()]
+            })
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(&project).unwrap(), before);
+    let mut instrument = project.tracks[0].instrument.clone().unwrap();
+    instrument.layers[0].envelopes[0].mode = EnvelopeMode::Legato;
+    project
+        .edit(Edit::Batch(vec![
+            Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(instrument),
+            },
+            Edit::SetEffects {
+                compact: false,
+                track_id: track,
+                effects: vec![effect.clone()],
+            },
+        ]))
+        .unwrap();
+    let valid = serde_json::to_value(&project).unwrap();
+    for bad in [f32::NAN, 6.1, f32::INFINITY] {
+        let mut effects = vec![effect.clone()];
+        let EffectSettings::AutoFilter(f) = &mut effects[0].unit else {
+            panic!()
+        };
+        f.modulations[0].amount = bad;
+        assert!(
+            project
+                .edit(Edit::SetEffects {
+                    compact: false,
+                    track_id: track,
+                    effects
+                })
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&project).unwrap(), valid);
+    }
+    let mut instrument = project.tracks[0].instrument.clone().unwrap();
+    instrument.layers[0].envelopes[0].mode = EnvelopeMode::PerNote;
+    assert!(
+        project
+            .edit(Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(instrument)
+            })
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(&project).unwrap(), valid);
+    let mut missing = effect.clone();
+    let EffectSettings::AutoFilter(f) = &mut missing.unit else {
+        panic!()
+    };
+    f.modulations[0].source.as_mut().unwrap().envelope = Id::new_v4();
+    assert!(
+        project
+            .edit(Edit::SetEffects {
+                compact: false,
+                track_id: track,
+                effects: vec![missing]
+            })
+            .is_err()
+    );
+    let mut instrument = project.tracks[0].instrument.clone().unwrap();
+    instrument.layers[0].amplitude.modulations.push(route);
+    assert!(
+        project
+            .edit(Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(instrument)
+            })
+            .is_err()
+    );
 }

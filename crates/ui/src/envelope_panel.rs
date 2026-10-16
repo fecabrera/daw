@@ -4,6 +4,75 @@ use egui::{Rect, Sense, Ui, Vec2};
 
 use panels::unit_control_height as control_height;
 
+/// A generic note-driven modulator. Connections belong to the receiving unit.
+pub(super) fn unit(
+    ui: &mut Ui,
+    envelope: &mut daw_core::EnvelopeInstance,
+    number: usize,
+    shared_only: bool,
+    height: f32,
+    compact: bool,
+) -> Option<panels::UnitResponse<[Rect; 4]>> {
+    if !envelope.present {
+        return None;
+    }
+    let name = format!("Envelope {number}");
+    let result = ui
+        .scope_builder(
+            egui::UiBuilder::new()
+                .id_salt(envelope.id)
+                .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-note-selector")),
+            |ui| {
+                panels::PanelStyle {
+                    margin: 0,
+                    ..Default::default()
+                }
+                .unit(
+                    ui,
+                    (&name, compact),
+                    height,
+                    &mut envelope.enabled,
+                    &mut envelope.collapsed,
+                    |ui| body(ui, &mut envelope.settings, 10, compact),
+                )
+            },
+        )
+        .inner;
+    result.header.context_menu(|ui| {
+        if ui.button("Remove envelope").clicked() {
+            envelope.present = false;
+            ui.close();
+        }
+    });
+    if !envelope.collapsed {
+        let rect = Rect::from_min_max(
+            egui::pos2(
+                result.header.rect.right() - 88.0,
+                result.header.rect.top() + 2.0,
+            ),
+            egui::pos2(
+                result.header.rect.right() - 2.0,
+                result.header.rect.top() + panels::HEADER_HEIGHT - 1.0,
+            ),
+        );
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(rect)
+                .id_salt((envelope.id, "note-mode")),
+        );
+        egui::ComboBox::from_id_salt("mode")
+            .selected_text(egui::RichText::new(envelope.mode.label()).size(panels::HEADER_FONT_SIZE)).width(80.0).truncate()
+            .show_ui(&mut child, |ui| {
+                for mode in daw_core::EnvelopeMode::ALL {
+                    ui.add_enabled_ui(!shared_only || mode!=daw_core::EnvelopeMode::PerNote, |ui| {
+                        ui.selectable_value(&mut envelope.mode, mode, mode.label())
+                    }).inner.on_disabled_hover_text("Disconnect this envelope from Auto-filter before selecting Per note.");
+                }
+            }).response.on_hover_text("Per note: independent ADSR. Retrigger: restart on every note. Legato: restart only for the first held note. Shared modes release after the last held note.");
+    }
+    Some(result)
+}
+
 pub(super) fn body_height(compact: bool) -> f32 {
     if compact {
         crate::ROW_HEIGHT

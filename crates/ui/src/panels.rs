@@ -219,8 +219,27 @@ impl PanelStyle {
                 .inner
             })
         };
-        let header = ui.interact(
-            header_rect,
+        let reserved = if is_collapsed {
+            0.0
+        } else if ui
+            .stack()
+            .iter()
+            .any(|n| n.tags().contains("unit-note-selector"))
+        {
+            90.0
+        } else if ui
+            .stack()
+            .iter()
+            .any(|n| n.tags().contains("unit-modulation-button"))
+        {
+            26.0
+        } else {
+            0.0
+        };
+        let mut interaction_rect = header_rect;
+        interaction_rect.max.x -= reserved;
+        let mut header = ui.interact(
+            interaction_rect,
             id,
             if bottom_border {
                 egui::Sense::click()
@@ -228,6 +247,7 @@ impl PanelStyle {
                 egui::Sense::click_and_drag()
             },
         );
+        header.rect = header_rect;
         let power_rect = Rect::from_min_size(
             header_rect.min + Vec2::splat(1.0),
             Vec2::splat(HEADER_HEIGHT - 2.0),
@@ -279,28 +299,7 @@ impl PanelStyle {
         } else {
             header_text
         };
-        let color = if ui.is_enabled() {
-            color
-        } else {
-            color.gamma_multiply(0.5)
-        };
-        if power.hovered() || power.has_focus() {
-            ui.painter().circle_filled(
-                power_rect.center(),
-                UNIT_POWER_SIZE * 0.5 + 3.0,
-                color.gamma_multiply(0.15),
-            );
-        }
-        ui.painter().circle(
-            power_rect.center(),
-            (UNIT_POWER_SIZE - 1.0) * 0.5,
-            if *enabled {
-                color
-            } else {
-                Color32::TRANSPARENT
-            },
-            Stroke::new(1.0, color),
-        );
+        crate::icons::paint_dot_toggle(ui, &power, UNIT_POWER_SIZE, *enabled, color);
         let action = if is_collapsed { "Expand" } else { "Collapse" };
         header.widget_info(|| {
             egui::WidgetInfo::labeled(

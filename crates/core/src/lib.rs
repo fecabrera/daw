@@ -8,6 +8,10 @@ pub use daw_unit_core::{
     MAX_ENVELOPE_TIME_MS, NoteRate, OTT_TYPE_ID, OscillatorInstrumentSettings, OscillatorSettings,
     OttBandSettings, OttSettings, SILENT_GAIN_DB, Waveform,
 };
+pub use daw_unit_core::{
+    AmplitudeSettings, EnvelopeInstance, EnvelopeMode, EnvelopeSource, Modulation,
+    ModulationParameter, ModulationValue,
+};
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
 mod audio_settings;
 mod stretch_engine;
@@ -450,6 +454,14 @@ impl Project {
         }
         let mut ids = std::collections::HashSet::<Uuid>::new();
         ids.insert(self.project_id);
+        if self.master.effects.iter().any(|e| match &e.unit {
+            EffectSettings::AutoFilter(s) => s.modulations.iter().any(|r| r.source.is_some()),
+            _ => false,
+        }) {
+            return Err(invalid(
+                "Master effects cannot reference instrument envelopes",
+            ));
+        }
         for effect in self.all_effects() {
             if effect.id.is_nil() || !ids.insert(effect.id) || !effect.unit.valid() {
                 return Err(invalid("Invalid effect settings or duplicate effect ID"));
@@ -513,6 +525,44 @@ impl Project {
                 return Err(invalid(
                     "Invalid instrument or source instrument on an audio track",
                 ));
+            }
+            for route in t
+                .instrument
+                .iter()
+                .flat_map(|i| &i.layers)
+                .flat_map(|l| &l.amplitude.modulations)
+            {
+                if route.source.is_some_and(|source| {
+                    !t.instrument
+                        .as_ref()
+                        .is_some_and(|i| i.layers.iter().any(|l| l.envelope(source).is_some()))
+                }) {
+                    return Err(invalid(
+                        "Amplitude modulation source does not exist in this instrument",
+                    ));
+                }
+            }
+            for route in t
+                .effects
+                .iter()
+                .filter_map(|e| match &e.unit {
+                    EffectSettings::AutoFilter(s) => Some(&s.modulations),
+                    _ => None,
+                })
+                .flatten()
+            {
+                if route.source.is_some_and(|source| {
+                    !t.instrument.as_ref().is_some_and(|i| {
+                        i.layers
+                            .iter()
+                            .filter_map(|l| l.envelope(source))
+                            .any(|e| e.mode != EnvelopeMode::PerNote)
+                    })
+                }) {
+                    return Err(invalid(
+                        "Auto-filter modulation requires a shared envelope in the same MIDI track",
+                    ));
+                }
             }
             let mut previous_end = 0;
             let mut clips = t.clips.iter().collect::<Vec<_>>();

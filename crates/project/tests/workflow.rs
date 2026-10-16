@@ -2294,7 +2294,8 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
         .as_mut()
         .unwrap()
         .layers[0]
-        .envelope;
+        .envelopes[0]
+        .settings;
     envelope.attack.time_ms = 37.0;
     envelope.attack.shape = daw_core::CurveShape::Logarithmic;
     envelope.attack.amount = 0.7;
@@ -2312,9 +2313,9 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
         gain_db: -18.0,
         ..Default::default()
     });
-    second_layer.has_envelope = true;
-    second_layer.envelope.attack.time_ms = 25.0;
-    second_layer.envelope.release.time_ms = 700.0;
+    second_layer.install_amplitude_envelope();
+    second_layer.envelopes[0].settings.attack.time_ms = 25.0;
+    second_layer.envelopes[0].settings.release.time_ms = 700.0;
     session.project.tracks[0]
         .instrument
         .as_mut()
@@ -2342,11 +2343,11 @@ fn midi_patterns_instruments_and_mixed_audio_round_trip_and_export_without_sourc
     layers[0].soloed = true;
     layers[1].soloed = true;
     layers[2].muted = true;
-    layers[0].envelope_enabled = false;
+    layers[0].envelopes[0].enabled = false;
     layers[1].oscillator_enabled = false;
     layers[0].collapsed = true;
     layers[0].oscillator_collapsed = true;
-    layers[1].envelope_collapsed = true;
+    layers[1].envelopes[0].collapsed = true;
     layers.swap(0, 1);
     let clip = session.project.add_midi_pattern(track, 0).unwrap();
     session
@@ -3248,4 +3249,73 @@ fn cancelled_engine_preparation_retains_all_original_buffers() {
         &buffer,
         &session.stretched_audio[&key].samples
     ));
+}
+
+#[test]
+fn modulation_visibility_survives_save_reopen_save_as_and_legacy_defaults() {
+    use daw_core::{
+        AmplitudeSettings, AutoFilterSettings, EffectInstance, EffectSettings,
+        InstrumentLayerSettings,
+    };
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    session.project.add_midi_track().unwrap();
+    let layers = &mut session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers;
+    layers[0].amplitude.present = true;
+    layers[0].amplitude.modulation_open = true;
+    layers[0].amplitude.collapsed = true;
+    layers.push(InstrumentLayerSettings::default());
+    layers[1].amplitude.present = true;
+    let mut open = EffectInstance::auto_filter();
+    let EffectSettings::AutoFilter(settings) = &mut open.unit else {
+        unreachable!()
+    };
+    settings.modulation_open = true;
+    settings.collapsed = true;
+    session.project.tracks[0].effects = vec![open.clone(), EffectInstance::auto_filter()];
+    open.id = daw_core::Id::new_v4();
+    session.project.master.effects.push(open);
+    let first = fixture.0.join("modulation-first");
+    session.save(&first).unwrap();
+    let mut reopened = Session::open(&first).unwrap();
+    let second = fixture.0.join("modulation-copy");
+    reopened.save(&second).unwrap();
+    let copied = Session::open(&second).unwrap();
+    for loaded in [&reopened, &copied] {
+        assert_eq!(
+            loaded.project.tracks[0].instrument,
+            session.project.tracks[0].instrument
+        );
+        assert_eq!(
+            loaded.project.tracks[0].effects,
+            session.project.tracks[0].effects
+        );
+        assert_eq!(
+            loaded.project.master.effects,
+            session.project.master.effects
+        );
+    }
+    // Older unit payloads omit the presentation field and must start closed.
+    let mut amplitude = serde_json::to_value(AmplitudeSettings::default()).unwrap();
+    amplitude.as_object_mut().unwrap().remove("modulation_open");
+    assert!(
+        !serde_json::from_value::<AmplitudeSettings>(amplitude.clone())
+            .unwrap()
+            .modulation_open
+    );
+    amplitude["modulation_open"] = serde_json::Value::String("open".into());
+    assert!(serde_json::from_value::<AmplitudeSettings>(amplitude).is_err());
+    let mut filter = serde_json::to_value(AutoFilterSettings::default()).unwrap();
+    filter.as_object_mut().unwrap().remove("modulation_open");
+    assert!(
+        !serde_json::from_value::<AutoFilterSettings>(filter.clone())
+            .unwrap()
+            .modulation_open
+    );
+    filter["modulation_open"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<AutoFilterSettings>(filter).is_err());
 }

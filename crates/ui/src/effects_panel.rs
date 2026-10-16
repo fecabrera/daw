@@ -393,6 +393,21 @@ impl DawUi {
         compact: bool,
         allowed: bool,
     ) {
+        let modulation_sources = crate::modulation_panel::sources(target.and_then(|target| {
+            match target {
+                EffectTarget::Track(id) => self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|t| t.id == id)
+                    .and_then(|t| t.instrument.as_ref()),
+                EffectTarget::Master => None,
+            }
+        }))
+        .into_iter()
+        .filter(|s| s.mode != daw_core::EnvelopeMode::PerNote)
+        .collect::<Vec<_>>();
         let mut remove = None;
         let mut slots = Vec::with_capacity(effects.len());
         let order: Vec<_> = effects.iter().map(|effect| effect.id).collect();
@@ -469,6 +484,9 @@ impl DawUi {
                                                         settings,
                                                         compact,
                                                         strip.height(),
+                                                        &modulation_sources,
+                                                        self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Effect(effect.id))),
+                                                        self.session.project.sample_rate_hz,
                                                     );
                                                 let power = _bounds.power;
                                                 #[cfg(test)]

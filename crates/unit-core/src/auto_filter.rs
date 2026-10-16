@@ -60,6 +60,9 @@ pub struct AutoFilterSettings {
     pub version: u32,
     pub enabled: bool,
     pub collapsed: bool,
+    /// Saved visibility of this destination's modulation controls.
+    #[serde(default)]
+    pub modulation_open: bool,
     pub shape: FilterShape,
     pub frequency_hz: f32,
     pub q: f32,
@@ -76,6 +79,8 @@ pub struct AutoFilterSettings {
     pub stereo_phase_degrees: f32,
     pub level_db: f32,
     pub dry_wet: f32,
+    #[serde(default)]
+    pub modulations: Vec<crate::Modulation>,
 }
 impl Default for AutoFilterSettings {
     fn default() -> Self {
@@ -83,6 +88,7 @@ impl Default for AutoFilterSettings {
             version: AUTO_FILTER_STATE_VERSION,
             enabled: true,
             collapsed: false,
+            modulation_open: false,
             shape: FilterShape::LowPass,
             frequency_hz: 1000.0,
             q: std::f32::consts::FRAC_1_SQRT_2,
@@ -96,6 +102,7 @@ impl Default for AutoFilterSettings {
             stereo_phase_degrees: 0.0,
             level_db: 0.0,
             dry_wet: 1.0,
+            modulations: Vec::new(),
         }
     }
 }
@@ -114,5 +121,6 @@ impl AutoFilterSettings {
             && bounded(self.stereo_phase_degrees, -180.0, 180.0)
             && bounded(self.level_db, crate::SILENT_GAIN_DB, 12.0)
             && bounded(self.dry_wet, 0.0, 1.0)
+            && crate::valid_modulations(&self.modulations, &crate::ModulationParameter::FILTER)
     }
 }

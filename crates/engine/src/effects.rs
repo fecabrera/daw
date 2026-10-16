@@ -11,17 +11,37 @@ use std::sync::{Arc, atomic::AtomicU32};
 enum RuntimeEffect {
     Eq3(Box<Equalizer>),
     Drive(Box<Drive>),
-    AutoFilter(Box<AutoFilter>),
+    AutoFilter(Box<AutoFilter>, Vec<super::modulation::Route>),
     Compressor(Box<Compressor>),
     Ott(Box<Ott>),
     Limiter(Box<Limiter>),
 }
 impl RuntimeEffect {
-    fn sample(&mut self, input: [f32; 2], frame: u64, tempo: f32) -> [f32; 2] {
+    fn sample(
+        &mut self,
+        input: [f32; 2],
+        frame: u64,
+        tempo: f32,
+        values: &[daw_core::ModulationValue],
+    ) -> [f32; 2] {
         match self {
             Self::Eq3(unit) => unit.process_sample(input),
             Self::Drive(unit) => unit.process_sample(input),
-            Self::AutoFilter(unit) => unit.process_at(input, frame, tempo),
+            Self::AutoFilter(unit, routes) => {
+                let mut offsets = [0.0; 4];
+                for r in routes {
+                    if let Some((v, a, _)) = r.sample(&[], values) {
+                        let i = match r.settings.parameter {
+                            daw_core::ModulationParameter::Frequency => 0,
+                            daw_core::ModulationParameter::Resonance => 1,
+                            daw_core::ModulationParameter::Level => 2,
+                            _ => 3,
+                        };
+                        offsets[i] += v * a;
+                    }
+                }
+                unit.process_modulated_at(input, frame, tempo, offsets)
+            }
             Self::Compressor(unit) => unit.process_sample(input),
             Self::Ott(unit) => unit.process_sample(input),
             Self::Limiter(unit) => unit.process_sample(input),
@@ -31,7 +51,12 @@ impl RuntimeEffect {
         match self {
             Self::Eq3(unit) => unit.reset(),
             Self::Drive(unit) => unit.reset(),
-            Self::AutoFilter(unit) => unit.reset(),
+            Self::AutoFilter(unit, routes) => {
+                unit.reset();
+                for r in routes {
+                    r.reset();
+                }
+            }
             Self::Compressor(unit) => unit.reset(),
             Self::Ott(unit) => unit.reset(),
             Self::Limiter(unit) => unit.reset(),
@@ -46,7 +71,7 @@ impl RuntimeEffect {
             (Self::Compressor(unit), EffectSettings::Compressor(settings)) => {
                 unit.retarget(settings)
             }
-            (Self::AutoFilter(unit), EffectSettings::AutoFilter(settings)) => {
+            (Self::AutoFilter(unit, _), EffectSettings::AutoFilter(settings)) => {
                 unit.retarget(settings)
             }
             _ => return false,
@@ -95,9 +120,19 @@ impl EffectChain {
                                 Box::new(Drive::new(context, settings)),
                             )),
                             EffectSettings::AutoFilter(settings) => {
-                                Some(RuntimeEffect::AutoFilter(Box::new(AutoFilter::new(
-                                    context, settings,
-                                ))))
+                                Some(RuntimeEffect::AutoFilter(
+                                    Box::new(AutoFilter::new(context, settings)),
+                                    settings
+                                        .modulations
+                                        .iter()
+                                        .map(|r| {
+                                            super::modulation::Route::new(
+                                                *r,
+                                                context.sample_rate_hz,
+                                            )
+                                        })
+                                        .collect(),
+                                ))
                             }
                             EffectSettings::Ott(settings) => {
                                 Some(RuntimeEffect::Ott(Box::new(Ott::new(context, settings))))
@@ -129,10 +164,35 @@ impl EffectChain {
             if let Some((_, Some(previous))) =
                 previous.units.iter_mut().find(|(old_id, _)| id == old_id)
                 && let Some(next) = next
-                && previous.retarget(&settings.unit)
             {
-                std::mem::swap(next, previous);
+                if let (
+                    RuntimeEffect::AutoFilter(_, old_routes),
+                    RuntimeEffect::AutoFilter(_, new_routes),
+                ) = (&mut *previous, &mut *next)
+                {
+                    for new in new_routes.iter_mut() {
+                        if let Some(old) = old_routes
+                            .iter_mut()
+                            .find(|r| r.settings.id == new.settings.id)
+                        {
+                            old.retarget(new);
+                            std::mem::swap(old, new);
+                        }
+                    }
+                    std::mem::swap(old_routes, new_routes);
+                }
+                if previous.retarget(&settings.unit) {
+                    std::mem::swap(next, previous);
+                }
             }
+        }
+    }
+    pub fn modulation_values(&self, id: Id) -> Option<[f32; 5]> {
+        match self.units.iter().find(|(effect, _)| *effect == id) {
+            Some((_, Some(RuntimeEffect::AutoFilter(unit, _)))) => {
+                Some(unit.effective_parameters())
+            }
+            _ => None,
         }
     }
     pub fn set_meter(&mut self, id: Id, meter: &Arc<AtomicU32>) {
@@ -160,13 +220,14 @@ impl EffectChain {
         mut frame: u64,
         tempo: f32,
         loop_region: Option<(u64, u64)>,
+        values: &[daw_core::ModulationValue],
     ) -> ([f32; 2], bool) {
         if let Some(mono) = mono {
             self.mono = mono;
         }
         for (_, unit) in &mut self.units {
             if let Some(unit) = unit {
-                input = unit.sample(input, frame, tempo);
+                input = unit.sample(input, frame, tempo, values);
                 if let RuntimeEffect::Limiter(unit) = unit {
                     frame = super::latency::delayed_frame(
                         frame,

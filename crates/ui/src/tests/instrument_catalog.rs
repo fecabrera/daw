@@ -1,6 +1,6 @@
 use super::*;
 
-fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2, shift: bool) {
+pub(super) fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2, shift: bool) {
     let modifiers = egui::Modifiers {
         shift,
         ..Default::default()
@@ -36,7 +36,7 @@ fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2, shift: bool) {
     );
 }
 
-fn key(app: &mut DawUi, ctx: &egui::Context, key: egui::Key, shift: bool, repeat: bool) {
+pub(super) fn key(app: &mut DawUi, ctx: &egui::Context, key: egui::Key, shift: bool, repeat: bool) {
     let modifiers = egui::Modifiers {
         shift,
         ..Default::default()
@@ -193,9 +193,12 @@ fn catalog_keyboard_adds_selected_components_only_to_the_selected_layer() {
         assert!(!app.dirty);
         key(&mut app, &ctx, egui::Key::Enter, false, false);
         let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-        assert!(instrument.layers[0].oscillators.is_empty() && !instrument.layers[0].has_envelope);
+        assert!(
+            instrument.layers[0].oscillators.is_empty()
+                && !instrument.layers[0].envelopes[0].present
+        );
         assert_eq!(instrument.layers[1].oscillators.len(), 1);
-        assert!(instrument.layers[1].has_envelope);
+        assert!(instrument.layers[1].envelopes[0].present);
         assert_eq!(instrument.layers[1].id, layers[1]);
         assert!(app.session.project.tracks[0].effects.is_empty());
         assert_eq!(app.selected_track, Some(track));
@@ -241,19 +244,18 @@ fn catalog_keyboard_adds_selected_components_only_to_the_selected_layer() {
                 modifiers: Default::default(),
             }],
         );
-        // Reinstalling an existing envelope must not reset it or mark a no-op dirty.
+        // Amplitude is a single retained audio stage; another Envelope is a new modulator.
         app.session.project.tracks[0]
             .instrument
             .as_mut()
             .unwrap()
             .layers[1]
-            .envelope
-            .release
-            .time_ms = 777.0;
+            .amplitude
+            .level_db = -6.0;
+        add_component(&mut app, &ctx, layers[1], 2);
+        app.dirty = false;
         let original = serde_json::to_value(&app.session.project).unwrap();
-        let point = app.instrument_catalog_bounds.entries[1].center();
-        click(&mut app, &ctx, point, false);
-        key(&mut app, &ctx, egui::Key::Enter, false, false);
+        add_component(&mut app, &ctx, layers[1], 2);
         assert_eq!(
             serde_json::to_value(&app.session.project).unwrap(),
             original
@@ -443,6 +445,8 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                     click(&mut app, &ctx, source, false);
                     let envelope = app.instrument_catalog_bounds.entries[1].center();
                     click(&mut app, &ctx, envelope, true);
+                    let filter = app.instrument_catalog_bounds.entries[2].center();
+                    click(&mut app, &ctx, filter, true);
                     let original = serde_json::to_value(&app.session.project).unwrap();
                     let viewport = app.instrument_catalog_bounds.layer_viewport;
                     let target = &app.midi_editor.layer_bounds[&layers[1]];
@@ -471,7 +475,7 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                         let preview = app.instrument_catalog_bounds.drop_bounds;
                         assert!(shapes.iter().any(|shape| matches!(&shape.shape,
                             egui::Shape::Rect(rect) if rect.rect == preview && rect.stroke == theme::selection_outline(&ctx))));
-                        assert_eq!(app.instrument_catalog.selection.len(), 2);
+                        assert_eq!(app.instrument_catalog.selection.len(), 3);
                         assert_eq!(app.instrument_ui.selected_layer, Some(layers[0]));
                         assert_eq!(
                             serde_json::to_value(&app.session.project).unwrap(),
@@ -489,12 +493,14 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                     let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
                     assert!(
                         instrument.layers[0].oscillators.is_empty()
-                            && !instrument.layers[0].has_envelope
+                            && !instrument.layers[0].envelopes[0].present
+                            && !instrument.layers[0].envelopes[1].present
                     );
                     assert_eq!(instrument.layers[1].oscillators.len(), 1);
-                    assert!(instrument.layers[1].has_envelope);
+                    assert!(instrument.layers[1].envelopes[0].present);
+                    assert!(instrument.layers[1].amplitude.present);
                     assert_eq!(app.instrument_ui.selected_layer, Some(layers[1]));
-                    assert_eq!(app.instrument_catalog.selection.len(), 2);
+                    assert_eq!(app.instrument_catalog.selection.len(), 3);
                     assert!(app.session.project.tracks[0].effects.is_empty());
                     assert!(app.dirty);
                 }
@@ -524,21 +530,21 @@ fn dragging_an_unselected_component_replaces_library_selection_and_existing_enve
         .unwrap()
         .layers[1];
     assert_eq!(target.oscillators.len(), 1);
-    assert!(!target.has_envelope);
+    assert!(!target.envelopes[0].present);
     // A drop onto an installed, disabled/collapsed envelope must retain all settings.
     let target = &mut app.session.project.tracks[0]
         .instrument
         .as_mut()
         .unwrap()
         .layers[1];
-    target.has_envelope = true;
-    target.envelope_enabled = false;
-    target.envelope_collapsed = true;
-    target.envelope.release.time_ms = 777.0;
+    target.amplitude.present = true;
+    target.amplitude.enabled = false;
+    target.amplitude.collapsed = true;
+    target.amplitude.level_db = -7.0;
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     let original = serde_json::to_value(&app.session.project).unwrap();
-    start_component_drag(&mut app, &ctx, 1);
+    start_component_drag(&mut app, &ctx, 2);
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
     frame(&mut app, &ctx, vec![button(end, false)]);
     assert_eq!(
@@ -580,7 +586,8 @@ fn component_drags_cancel_without_project_edits_on_invalid_context_or_drop() {
                     .as_mut()
                     .unwrap()
                     .layers[0]
-                    .envelope
+                    .envelopes[0]
+                    .settings
                     .release
                     .time_ms = 731.0
             }
@@ -687,4 +694,27 @@ fn component_catalog_drag_scrolls_to_an_offscreen_layer_and_keeps_preview_clean(
     assert_eq!(layers.last().unwrap().oscillators.len(), 1);
     assert_eq!(app.instrument_ui.selected_layer, Some(last));
     assert!(app.dirty);
+}
+
+#[test]
+fn amplitude_double_click_adds_once_to_the_selected_layer() {
+    let (mut app, ctx, _, layers) = fixture(settings::ColorTheme::Dark);
+    open(&mut app, &ctx);
+    for _ in 0..40 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    let point = app.instrument_catalog_bounds.entries[2].center();
+    click(&mut app, &ctx, point, false);
+    assert!(!app.dirty);
+    click(&mut app, &ctx, point, false);
+    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+    assert!(instrument.layers[0].amplitude.present);
+    assert!(
+        !instrument.layers[0].envelopes[0].present && instrument.layers[0].oscillators.is_empty()
+    );
+    assert!(!instrument.layers[1].amplitude.present);
+    assert_eq!(app.instrument_ui.selected_layer, Some(layers[0]));
+    app.dirty = false;
+    key(&mut app, &ctx, egui::Key::Enter, false, false);
+    assert!(!app.dirty);
 }

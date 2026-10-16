@@ -1,6 +1,7 @@
 mod effects;
 mod latency;
 mod midi;
+mod modulation;
 use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
 use daw_media::AudioData;
 use std::collections::HashMap;
@@ -138,6 +139,13 @@ pub fn pan_coefficients(pan: f32, mono: bool) -> [f32; 2] {
     } else {
         [1.0 - pan.max(0.0), 1.0 + pan.min(0.0)]
     }
+}
+
+/// Stable identity for UI parameter telemetry. Layer IDs are scoped to their track.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ModulationTarget {
+    Effect(Id),
+    Amplitude { track: Id, layer: Id },
 }
 
 pub struct Renderer {
@@ -290,6 +298,49 @@ impl Renderer {
         renderer.prime_latency(false);
         renderer
     }
+    /// Read the last processed parameters without advancing DSP or allocating.
+    /// Effects return cutoff L/R Hz, Q, level dB, wet fraction. Amplitude returns
+    /// the highest voice gain in dB in slot 0; unused slots are zero.
+    pub fn modulation_values(&self, target: ModulationTarget) -> Option<[f32; 5]> {
+        match target {
+            ModulationTarget::Effect(id) => {
+                self.master_effects.modulation_values(id).or_else(|| {
+                    self.effects
+                        .iter()
+                        .find_map(|chain| chain.modulation_values(id))
+                })
+            }
+            ModulationTarget::Amplitude { track, layer } => {
+                let index = self
+                    .plan
+                    .project
+                    .tracks
+                    .iter()
+                    .position(|t| t.id == track)?;
+                if !self.plan.project.tracks[index]
+                    .instrument
+                    .as_ref()?
+                    .layers
+                    .iter()
+                    .any(|l| l.id == layer && l.amplitude.present)
+                {
+                    return None;
+                }
+                let gain = self.midi[index].as_ref()?.amplitude_gain(layer);
+                Some([
+                    if gain > 0.0 {
+                        20.0 * gain.log10()
+                    } else {
+                        daw_core::SILENT_GAIN_DB
+                    },
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ])
+            }
+        }
+    }
     /// Attach prepared meter handles before publishing a renderer to the callback.
     pub fn set_effect_meter(
         &mut self,
@@ -349,7 +400,7 @@ impl Renderer {
                     .zip(old.midi[previous].as_ref())
                     .is_some_and(|(a, b)| a.compatible(b))
             {
-                if let Some((next, previous)) = runtime.as_ref().zip(old.midi[previous].as_mut()) {
+                if let Some((next, previous)) = runtime.as_mut().zip(old.midi[previous].as_mut()) {
                     previous.retarget_controls(next);
                 }
                 std::mem::swap(runtime, &mut old.midi[previous]);
@@ -499,6 +550,7 @@ impl Renderer {
                 frame,
                 self.plan.project.tempo_bpm,
                 loop_region,
+                midi.as_ref().map_or(&[], |r| r.modulation_values()),
             );
             let (source, mono) = self.alignment.tracks[index].tick(source);
             if self.plan.project.audible(track) {
@@ -516,6 +568,7 @@ impl Renderer {
                 frame,
                 self.plan.project.tempo_bpm,
                 loop_region,
+                &[],
             )
             .0
             .map(|value| value * linear_gain(self.plan.project.master.gain_db))
@@ -605,6 +658,7 @@ impl Renderer {
                         frame,
                         self.plan.project.tempo_bpm,
                         loop_region,
+                        midi.as_ref().map_or(&[], |r| r.modulation_values()),
                     );
                     let (source, mono) = self.alignment.tracks[index].tick((source, mono));
                     let base = if mono { 0 } else { 2 };
@@ -622,6 +676,7 @@ impl Renderer {
                         latency::delayed_frame(frame, self.alignment.track_max, loop_region),
                         self.plan.project.tempo_bpm,
                         loop_region,
+                        &[],
                     )
                     .0;
                 self.latent_held_mix = mix;

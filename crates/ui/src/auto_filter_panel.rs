@@ -117,14 +117,20 @@ fn phase(name: &'static str) -> KnobSpec {
         .format(|v| format!("{v:.0}°"))
         .endpoint_labels("−180", "+180")
 }
-fn row(ui: &mut Ui, settings: &mut AutoFilterSettings, strip: usize, index: usize) -> Rect {
+fn row(
+    ui: &mut Ui,
+    settings: &mut AutoFilterSettings,
+    strip: usize,
+    index: usize,
+    markers: &[Option<knobs::ModulationMarker>; 4],
+) -> Rect {
     knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
         match (strip, index) {
             (0, 0) => float_choice(ui, &mut s.shape, FilterShape::ALL,
                 KnobSpec::new("Filter shape", 0.0..=3.0, 0.0, 1.0)
                     .stepped(1.0).cyclic().diagrams(filter_diagram)
                     .format(|v| FilterShape::ALL[v as usize].name().into())),
-            (0, 1) => ui.add(Knob::new(&mut s.frequency_hz, frequency())),
+            (0, 1) => ui.add(Knob::new(&mut s.frequency_hz, frequency()).modulated(markers[0].as_ref(), &mut s.modulation_open)),
             (0, 2) => ui.add(Knob::new(
                 &mut s.q,
                 KnobSpec::new(
@@ -141,7 +147,7 @@ fn row(ui: &mut Ui, settings: &mut AutoFilterSettings, strip: usize, index: usiz
                 .value_label(|v| format!("Q {v:.2}"))
                 .format(|v| format!("Q {v:.2}"))
                 .endpoint_labels("0.1", "10"),
-            )),
+            ).modulated(markers[1].as_ref(), &mut s.modulation_open)),
             (1, 0) => float_choice(ui, &mut s.wave, LfoWave::ALL,
                 KnobSpec::new("LFO wave", 0.0..=4.0, 0.0, 1.0)
                     .stepped(1.0).cyclic().diagrams(lfo_diagram)
@@ -196,22 +202,28 @@ fn row(ui: &mut Ui, settings: &mut AutoFilterSettings, strip: usize, index: usiz
                 &mut s.stereo_phase_degrees,
                 phase("LFO stereo phase"),
             )),
-            (3, 0) => knobs::gain_with_markers_named(ui, &mut s.level_db, "Filter output level"),
+            (3, 0) => ui.add(Knob::new(&mut s.level_db, knobs::marked_gain_spec().named("Filter output level")).modulated(markers[2].as_ref(), &mut s.modulation_open)),
             (3, 1) => ui.add(Knob::new(
                 &mut s.dry_wet,
                 KnobSpec::new("Dry/wet", 0.0..=1.0, 1.0, 0.01)
                     .value_label(|v| format!("{:.0}%", v * 100.0))
                     .format(|v| format!("{:.0}%", v * 100.0))
                     .endpoint_labels("Dry", "Wet"),
-            )),
+            ).modulated(markers[3].as_ref(), &mut s.modulation_open)),
             _ => ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), egui::Sense::hover()),
         }
     })
     .rect
 }
-fn controls(ui: &mut Ui, settings: &mut AutoFilterSettings, strip: usize, bounds: &mut Bounds) {
+fn controls(
+    ui: &mut Ui,
+    settings: &mut AutoFilterSettings,
+    strip: usize,
+    bounds: &mut Bounds,
+    markers: &[Option<knobs::ModulationMarker>; 4],
+) {
     for index in 0..3 {
-        bounds.knobs[strip][index] = row(ui, settings, strip, index);
+        bounds.knobs[strip][index] = row(ui, settings, strip, index, markers);
     }
 }
 fn footer(ui: &mut Ui, name: &str, compact: bool) {
@@ -232,7 +244,19 @@ pub(super) fn show(
     settings: &mut AutoFilterSettings,
     compact: bool,
     height: f32,
+    sources: &[crate::modulation_panel::Source],
+    live: Option<[f32; 5]>,
+    sample_rate_hz: u32,
 ) -> (Bounds, egui::Response) {
+    ui.scope_builder(egui::UiBuilder::new().ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),|ui| {
+    let modulation_open=settings.modulation_open;
+    let bases = [settings.frequency_hz, settings.q, settings.level_db, settings.dry_wet];
+    let mut markers: [Option<knobs::ModulationMarker>; 4] = std::array::from_fn(|i| crate::modulation_panel::marker(
+        &settings.modulations, sources, daw_core::ModulationParameter::FILTER[i], bases[i], settings.enabled,
+        (i==0).then_some((settings.lfo_enabled, settings.strength_octaves)),
+        [live.map(|v| v[if i==0 {0}else{i+1}]), if i==0 {live.map(|v|v[1])}else{None}],
+    ));
+    if let Some(marker) = &mut markers[0] { marker.range = marker.range.map(|v| v.min(sample_rate_hz as f32 * 0.45)); }
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
         header: Rect::NOTHING,
@@ -268,10 +292,10 @@ pub(super) fn show(
                                     ui.add_space(column_padding - f32::from(panel.margin));
                                     for strip in 1..=2 { ui.push_id(strip, |ui| ui.allocate_ui_with_layout(Vec2::new(column_width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
                                         ui.set_width(column_width);
-                                        controls(ui, settings, strip, &mut bounds);
+                                        controls(ui, settings, strip, &mut bounds, &markers);
                                     })); }
                                 });
-                            } else { controls(ui, settings, if section == 0 { 0 } else { 3 }, &mut bounds); }
+                            } else { controls(ui, settings, if section == 0 { 0 } else { 3 }, &mut bounds, &markers); }
                         }
                         if section == 1 {
                             rows::centered(ui, if compact { crate::envelope_panel::body_height(true) } else { icons::COMPACT_BUTTON_SIZE }, |ui| {
@@ -285,13 +309,20 @@ pub(super) fn show(
                 bounds.sections[section] = rect;
                 if section > 0 { panels::unit_divider(ui, rect.left(), rect.y_range().into()); }
             }
+            if modulation_open {
+                let rect = bounds.sections[2];
+                panels::unit_divider(ui, rect.right(), rect.y_range().into());
+                crate::modulation_panel::body(ui, &mut settings.modulations, sources, &daw_core::ModulationParameter::FILTER, compact);
+            }
         });
     });
     settings.enabled = enabled;
     settings.collapsed = collapsed;
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
+    crate::modulation_panel::toggle(ui,&result.header,settings.collapsed,&mut settings.modulation_open);
     (bounds, result.header)
+    }).inner
 }
 
 #[cfg(test)]

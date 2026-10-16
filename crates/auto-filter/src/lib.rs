@@ -115,6 +115,8 @@ pub struct AutoFilter {
     modulation_initialized: bool,
     modulation_alpha: f64,
     standalone_frame: u64,
+    external: [f64; 4],
+    effective: [f32; 5],
 }
 impl AutoFilter {
     pub fn new(context: ProcessingContext, settings: &AutoFilterSettings) -> Self {
@@ -146,7 +148,22 @@ impl AutoFilter {
             modulation_initialized: false,
             modulation_alpha: 1.0 - (-1.0 / (0.001 * sample_rate)).exp(),
             standalone_frame: 0,
+            external: [0.0; 4],
+            effective: [
+                settings.frequency_hz,
+                settings.frequency_hz,
+                settings.q,
+                10.0_f32.powf(settings.level_db / 20.0),
+                settings.dry_wet,
+            ],
         }
+    }
+    /// Last processed cutoff L/R (Hz), resonance (Q), output level (dB), and wet fraction.
+    /// These include parameter ramps, external smoothing, bounds, and the stereo LFO.
+    pub fn effective_parameters(&self) -> [f32; 5] {
+        let mut values = self.effective;
+        values[3] = 20.0 * values[3].log10();
+        values
     }
     /// Called on compatible state publication; histories and unrelated ramps remain intact.
     pub fn retarget(&mut self, settings: &AutoFilterSettings) {
@@ -207,17 +224,43 @@ impl AutoFilter {
     }
     /// Explicit host position makes seeks, loop wraps and export phase deterministic.
     pub fn process_at(&mut self, input: [f32; 2], frame: u64, tempo_bpm: f32) -> [f32; 2] {
+        self.process_modulated_at(input, frame, tempo_bpm, [0.0; 4])
+    }
+    /// External offsets: cutoff octaves, Q, output dB, wet fraction. The internal LFO remains independent.
+    pub fn process_modulated_at(
+        &mut self,
+        input: [f32; 2],
+        frame: u64,
+        tempo_bpm: f32,
+        offsets: [f32; 4],
+    ) -> [f32; 2] {
+        for (value, target) in self.external.iter_mut().zip(offsets) {
+            let target = if target.is_finite() {
+                f64::from(target)
+            } else {
+                0.0
+            };
+            *value += self.modulation_alpha * (target - *value);
+        }
+        let offsets = self.external;
         let phase = self.phase(frame, tempo_bpm);
         let frequency = self.frequency_log.next();
-        let q = self.q.next();
+        let q = (self.q.next() + offsets[1]).clamp(0.1, 10.0);
         let depth = self.depth.next() * self.lfo_mix.next();
         let sync = self.sync_phase.next();
         let stereo = self.stereo_phase.next();
         let shapes = std::array::from_fn(|i| self.shapes[i].next());
         let waves: [f64; 5] = std::array::from_fn(|i| self.waves[i].next());
         let level = self.level.next();
-        let wet = self.wet.next();
+        let level = if offsets[2] == 0.0 {
+            level
+        } else {
+            (level * 10.0_f64.powf(offsets[2].clamp(-96.0, 96.0) / 20.0))
+                .min(10.0_f64.powf(12.0 / 20.0))
+        };
+        let wet = (self.wet.next() + offsets[3]).clamp(0.0, 1.0);
         let mix = self.mix.next();
+        self.effective[2..].copy_from_slice(&[q as f32, level as f32, wet as f32]);
         let mut output = [0.0; 2];
         for ch in 0..2 {
             let channel_phase = phase + sync + if ch == 1 { stereo } else { 0.0 };
@@ -232,8 +275,9 @@ impl AutoFilter {
                 self.modulation[ch] += self.modulation_alpha * (modulation - self.modulation[ch]);
             }
             let cutoff = 2_f64
-                .powf(frequency + depth * self.modulation[ch])
+                .powf(frequency + depth * self.modulation[ch] + offsets[0])
                 .clamp(20.0, (self.sample_rate * 0.45).min(20_000.0));
+            self.effective[ch] = cutoff as f32;
             let dry = f64::from(input[ch]);
             let filtered = self.filters[ch].sample(dry, cutoff, q, self.sample_rate, shapes);
             let processed = (dry + (filtered - dry) * wet) * level;
@@ -275,6 +319,14 @@ impl EffectUnit for AutoFilter {
         self.phase_correction = 0.0;
         self.phase_remaining = 0;
         self.modulation_initialized = false;
+        self.external = [0.0; 4];
+        self.effective = [
+            2.0_f64.powf(self.frequency_log.value) as f32,
+            2.0_f64.powf(self.frequency_log.value) as f32,
+            self.q.value as f32,
+            self.level.value as f32,
+            self.wet.value as f32,
+        ];
         self.standalone_frame = 0;
     }
     /// Standalone hosts without a transport use 120 BPM and an advancing frame counter.
@@ -475,6 +527,7 @@ mod tests {
         }
         let remaining = filter.frequency_log.remaining;
         settings.collapsed = true;
+        settings.modulation_open = true;
         filter.retarget(&settings);
         assert_eq!(filter.frequency_log.remaining, remaining);
         settings.enabled = false;
@@ -510,6 +563,58 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+    #[test]
+    fn external_offsets_match_static_controls_and_neutralize_nonfinite_inputs() {
+        let settings = AutoFilterSettings {
+            lfo_enabled: false,
+            frequency_hz: 200.0,
+            q: 0.7,
+            level_db: -6.0,
+            dry_wet: 0.6,
+            ..Default::default()
+        };
+        for (offsets, frequency_hz, q, level_db, dry_wet) in [
+            ([2.0, 1.0, 3.0, -0.2], 800.0, 1.7, -3.0, 0.4),
+            ([6.0, 10.0, 24.0, 1.0], 12_800.0, 10.0, 12.0, 1.0),
+            ([-6.0, -10.0, -24.0, -1.0], 20.0, 0.1, -30.0, 0.0),
+        ] {
+            let mut modulated = unit(48_000, &settings);
+            let mut reference = unit(
+                48_000,
+                &AutoFilterSettings {
+                    frequency_hz,
+                    q,
+                    level_db,
+                    dry_wet,
+                    ..settings.clone()
+                },
+            );
+            for frame in 0..24_000 {
+                let input = [
+                    (frame as f32 * 0.031).sin() * 0.25,
+                    (frame as f32 * 0.047).cos() * 0.25,
+                ];
+                let actual = modulated.process_modulated_at(input, frame, 120.0, offsets);
+                let expected = reference.process_at(input, frame, 120.0);
+                if frame > 12_000 {
+                    assert!((0..2).all(|ch| (actual[ch] - expected[ch]).abs() < 1e-5));
+                }
+            }
+        }
+        let mut modulated = unit(48_000, &settings);
+        let mut reference = unit(48_000, &settings);
+        for frame in 0..512 {
+            assert_eq!(
+                modulated.process_modulated_at(
+                    [0.25, -0.5],
+                    frame,
+                    120.0,
+                    [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, f32::NAN]
+                ),
+                reference.process_at([0.25, -0.5], frame, 120.0)
+            );
         }
     }
 }
@@ -584,5 +689,59 @@ mod sweep_tests {
             }
         }
         assert!(power[1] > power[0] * 100.0);
+    }
+    #[test]
+    fn effective_parameters_follow_smoothed_offsets_stereo_lfo_and_dsp_bounds() {
+        let settings = AutoFilterSettings {
+            lfo_enabled: false,
+            frequency_hz: 1000.0,
+            q: 1.0,
+            level_db: 0.0,
+            dry_wet: 0.5,
+            ..Default::default()
+        };
+        let mut filter = AutoFilter::new(
+            ProcessingContext {
+                sample_rate_hz: 48000,
+                max_block_frames: 512,
+            },
+            &settings,
+        );
+        filter.process_modulated_at([0.0; 2], 0, 120.0, [2.0, 1.0, -6.0, 0.25]);
+        let initial = filter.effective_parameters();
+        assert!((1000.0..1100.0).contains(&initial[0]));
+        for frame in 1..2000 {
+            filter.process_modulated_at([0.0; 2], frame, 120.0, [2.0, 1.0, -6.0, 0.25]);
+        }
+        let effective = filter.effective_parameters();
+        for (actual, expected) in effective.into_iter().zip([4000.0, 4000.0, 2.0, -6.0, 0.75]) {
+            assert!((actual - expected).abs() < 1e-4, "{effective:?}");
+        }
+        filter.reset();
+        assert_eq!(
+            filter.effective_parameters(),
+            [1000.0, 1000.0, 1.0, 0.0, 0.5]
+        );
+        let stereo = AutoFilterSettings {
+            lfo_enabled: true,
+            strength_octaves: 6.0,
+            stereo_phase_degrees: 180.0,
+            ..settings
+        };
+        let mut filter = AutoFilter::new(
+            ProcessingContext {
+                sample_rate_hz: 44100,
+                max_block_frames: 512,
+            },
+            &stereo,
+        );
+        for frame in 0..1000 {
+            filter.process_at([0.0; 2], frame, 120.0);
+        }
+        let values = filter.effective_parameters();
+        assert_ne!(values[0], values[1]);
+        for value in &values[..2] {
+            assert!((20.0..=19845.0).contains(value));
+        }
     }
 }

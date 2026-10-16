@@ -21,6 +21,7 @@ use std::{
     time::Duration,
 };
 
+mod amplitude_panel;
 #[cfg(any(target_os = "windows", target_os = "linux", test))]
 mod application_menu;
 mod auto_filter_panel;
@@ -48,6 +49,7 @@ mod limiter_panel;
 pub mod meters;
 mod mix_controls;
 mod mixer;
+mod modulation_panel;
 mod ott_panel;
 mod timeline_toolbar;
 mod track_overview;
@@ -4604,6 +4606,7 @@ impl DawUi {
 mod tests {
     mod clip_duplication;
     mod effects;
+    mod envelope_units;
     mod group_looping;
     mod group_stretch;
     mod instrument_catalog;

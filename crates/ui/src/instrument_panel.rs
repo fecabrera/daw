@@ -1,4 +1,5 @@
 use super::*;
+use crate::envelope_panel;
 use daw_core::{InstrumentLayerSettings, TrackKind};
 use midi_editor::OSCILLATOR_STRIP_WIDTH;
 
@@ -48,6 +49,13 @@ pub(crate) struct LayerUiBounds {
     pub oscillators: Vec<Rect>,
     pub source_powers: Vec<Rect>,
     pub envelope_stages: [Rect; 4],
+    pub amplitude_panel: Rect,
+    pub amplitude_header: Rect,
+
+    pub filter_envelope_panel: Rect,
+    pub filter_envelope_header: Rect,
+    pub filter_envelope_power: Rect,
+    pub filter_envelope_stages: [Rect; 4],
 }
 
 impl DawUi {
@@ -101,6 +109,7 @@ impl DawUi {
         self.instrument_ui
             .inputs
             .retain(|id, _| settings.layers.iter().any(|layer| layer.id == *id));
+        let modulation_sources = crate::modulation_panel::sources(Some(&settings));
         let mut remove_layer = None;
         let column_bounds = ui.max_rect();
         let control_panel = panels::ControlPanel::begin(ui, column_bounds);
@@ -169,15 +178,15 @@ impl DawUi {
                             let row = ui
                                 .add_enabled_ui(self.component_drag.is_none(), |ui| {
                                     ui.horizontal_top(|ui| {
-                                        ui.spacing_mut().item_spacing.x = if layer
-                                            .oscillators
-                                            .is_empty()
-                                            && !layer.has_envelope
-                                        {
-                                            0.0
-                                        } else {
-                                            -1.0
-                                        };
+                                        ui.spacing_mut().item_spacing.x =
+                                            if layer.oscillators.is_empty()
+                                                && !layer.envelopes.iter().any(|e| e.present)
+                                                && !layer.amplitude.present
+                                            {
+                                                0.0
+                                            } else {
+                                                -1.0
+                                            };
                                         ui.spacing_mut().item_spacing.y = 0.0;
                                         let (label, response) = ui.allocate_exact_size(
                                             Vec2::new(LAYER_HEADER_WIDTH, height),
@@ -342,6 +351,8 @@ impl DawUi {
                                                 ui.close();
                                             }
                                         });
+                                        #[cfg(test)]
+                                        let mut amplitude_bounds = (Rect::NOTHING, Rect::NOTHING);
                                         let mut oscillator_panel = None;
                                         let mut oscillator_header = Rect::NOTHING;
                                         let mut oscillator_power = Rect::NOTHING;
@@ -349,90 +360,130 @@ impl DawUi {
                                         let mut envelope_power = Rect::NOTHING;
                                         let mut envelope_stages = [Rect::NOTHING; 4];
                                         let mut envelope_rect = Rect::NOTHING;
+                                        #[cfg(test)]
+                                        let mut filter_envelope = (
+                                            Rect::NOTHING,
+                                            Rect::NOTHING,
+                                            Rect::NOTHING,
+                                            [Rect::NOTHING; 4],
+                                        );
                                         egui::ScrollArea::horizontal()
                                             .id_salt("layer-units")
                                             .auto_shrink([false, true])
                                             .show(ui, |ui| {
                                                 ui.horizontal_top(|ui| {
-                                                    ui.spacing_mut().item_spacing.x =
-                                                        if !layer.oscillators.is_empty()
-                                                            && layer.has_envelope
-                                                        {
-                                                            -1.0
+                                                        ui.spacing_mut().item_spacing.x = -1.0;
+                                                        if !layer.oscillators.is_empty() {
+                                                            let (rect, header, power) = self
+                                                                .oscillator_unit(
+                                                                    ui, track.id, layer, height,
+                                                                    compact,
+                                                                );
+                                                            oscillator_panel = Some(rect);
+                                                            oscillator_header = header;
+                                                            oscillator_power = power;
                                                         } else {
-                                                            0.0
-                                                        };
-                                                    if !layer.oscillators.is_empty() {
-                                                        let (rect, header, power) = self
-                                                            .oscillator_unit(
-                                                                ui, track.id, layer, height,
-                                                                compact,
-                                                            );
-                                                        oscillator_panel = Some(rect);
-                                                        oscillator_header = header;
-                                                        oscillator_power = power;
-                                                    } else {
-                                                        #[cfg(test)]
-                                                        {
-                                                            self.midi_editor
-                                                                .oscillator_bounds
-                                                                .clear();
-                                                            self.midi_editor
-                                                                .oscillator_strip_bounds
-                                                                .clear();
-                                                            self.midi_editor
-                                                                .oscillator_power_bounds
-                                                                .clear();
-                                                            self.midi_editor
-                                                                .oscillator_panel_bounds =
-                                                                Rect::NOTHING;
+                                                            #[cfg(test)]
+                                                            {
+                                                                self.midi_editor
+                                                                    .oscillator_bounds
+                                                                    .clear();
+                                                                self.midi_editor
+                                                                    .oscillator_strip_bounds
+                                                                    .clear();
+                                                                self.midi_editor
+                                                                    .oscillator_power_bounds
+                                                                    .clear();
+                                                                self.midi_editor
+                                                                    .oscillator_panel_bounds =
+                                                                    Rect::NOTHING;
+                                                            }
                                                         }
-                                                    }
-                                                    if layer.has_envelope {
-                                                        let panel = panels::PanelStyle {
-                                                            margin: 0,
-                                                            ..Default::default()
-                                                        };
-                                                        let envelope = panel.unit(
-                                                            ui,
-                                                            ("Envelope", compact),
-                                                            height,
-                                                            &mut layer.envelope_enabled,
-                                                            &mut layer.envelope_collapsed,
-                                                            |ui| {
-                                                                crate::envelope_panel::body(
+                                                        let mut previous = oscillator_panel;
+                                                        for (index, instance) in
+                                                            layer.envelopes.iter_mut().enumerate()
+                                                        {
+                                                            let shared_only=track.effects.iter().any(|effect|matches!(&effect.unit,daw_core::EffectSettings::AutoFilter(filter) if filter.modulations.iter().any(|r|r.source==Some(daw_core::EnvelopeSource{layer:layer.id,envelope:instance.id}))));
+                                                            if let Some(envelope) =
+                                                                envelope_panel::unit(
                                                                     ui,
-                                                                    &mut layer.envelope,
-                                                                    10,
+                                                                    instance,
+                                                                    index + 1,
+                                                                    shared_only,
+                                                                    height,
                                                                     compact,
                                                                 )
-                                                            },
-                                                        );
-                                                        envelope_rect = envelope.response.rect;
-                                                        envelope_stages = envelope
-                                                            .inner
-                                                            .unwrap_or([Rect::NOTHING; 4]);
-                                                        envelope_header = envelope.header.rect;
-                                                        envelope_power = envelope.power.rect;
-                                                        envelope.header.context_menu(|ui| {
-                                                            if ui
-                                                                .button("Remove envelope")
-                                                                .clicked()
                                                             {
-                                                                layer.has_envelope = false;
-                                                                ui.close();
+                                                                let rect = envelope.response.rect;
+                                                                if let Some(previous) = previous {
+                                                                    ui.painter().vline(
+                                                                        previous.right() - 0.5,
+                                                                        previous.top()
+                                                                            ..=rect.bottom(),
+                                                                        egui::Stroke::new(
+                                                                            1.0,
+                                                                            crate::theme::palette(
+                                                                                ui.ctx(),
+                                                                            )
+                                                                            .border,
+                                                                        ),
+                                                                    );
+                                                                }
+                                                                previous = Some(rect);
+                                                                if index == 0 {
+                                                                    envelope_rect = rect;
+                                                                    envelope_header =
+                                                                        envelope.header.rect;
+                                                                    envelope_power =
+                                                                        envelope.power.rect;
+                                                                    envelope_stages =
+                                                                        envelope.inner.unwrap_or(
+                                                                            [Rect::NOTHING; 4],
+                                                                        );
+                                                                }
+                                                                #[cfg(test)]
+                                                                if index == 1 {
+                                                                    filter_envelope = (
+                                                                        rect,
+                                                                        envelope.header.rect,
+                                                                        envelope.power.rect,
+                                                                        envelope.inner.unwrap_or(
+                                                                            [Rect::NOTHING; 4],
+                                                                        ),
+                                                                    );
+                                                                }
                                                             }
-                                                        });
-                                                        if let Some(oscillator) = oscillator_panel {
-                                                            ui.painter().vline(
-                                                                oscillator.right() - 0.5,
-                                                                oscillator.top()
-                                                                    ..=envelope_rect.bottom(),
-                                                                panel.frame(ui.ctx(), false).stroke,
-                                                            );
                                                         }
-                                                    }
-                                                });
+                                                        if let Some(amplitude) =
+                                                            crate::amplitude_panel::unit(
+                                                                ui,
+                                                                &mut layer.amplitude,
+                                                                &modulation_sources,
+                                                                height,
+                                                                compact,
+                                                                self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Amplitude {track: track.id, layer: layer.id})).map(|v|v[0]),
+                                                            )
+                                                        {
+                                                            if let Some(previous) = previous {
+                                                                panels::unit_divider(
+                                                                    ui,
+                                                                    previous.right() - 0.5,
+                                                                    previous.top()
+                                                                        ..=amplitude
+                                                                            .response
+                                                                            .rect
+                                                                            .bottom(),
+                                                                );
+                                                            }
+                                                            #[cfg(test)]
+                                                            {
+                                                                amplitude_bounds = (
+                                                                    amplitude.response.rect,
+                                                                    amplitude.header.rect,
+                                                                );
+                                                            }
+                                                        }
+                                                    });
                                             });
                                         #[cfg(test)]
                                         {
@@ -468,6 +519,12 @@ impl DawUi {
                                                         .oscillator_power_bounds
                                                         .clone(),
                                                     envelope_stages,
+                                                    amplitude_panel: amplitude_bounds.0,
+                                                    amplitude_header: amplitude_bounds.1,
+                                                    filter_envelope_panel: filter_envelope.0,
+                                                    filter_envelope_header: filter_envelope.1,
+                                                    filter_envelope_power: filter_envelope.2,
+                                                    filter_envelope_stages: filter_envelope.3,
                                                 },
                                             );
                                         }

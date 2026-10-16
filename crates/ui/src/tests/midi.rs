@@ -292,7 +292,7 @@ fn layer_headers_share_track_geometry_and_leave_the_header_workspace_dark() {
         let (mut app, ctx, mut layers) = layer_header_fixture();
         let envelope_only = daw_core::InstrumentLayerSettings {
             name: "Envelope only".into(),
-            has_envelope: true,
+            envelopes: vec![daw_core::EnvelopeInstance::default()],
             ..Default::default()
         };
         layers.push(envelope_only);
@@ -366,7 +366,7 @@ fn layer_headers_share_track_geometry_and_leave_the_header_workspace_dark() {
         }
     }
 }
-fn double_click_unit_header(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
+pub(super) fn double_click_unit_header(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
     let mut output = ctx.run_ui(
         egui::RawInput {
             time: Some(ctx.input(|input| input.time) + 0.6),
@@ -444,7 +444,7 @@ fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
                     let on = if oscillator {
                         before.layers[0].oscillator_enabled
                     } else {
-                        before.layers[0].envelope_enabled
+                        before.layers[0].envelopes[0].enabled
                     };
                     let fill = theme::unit_header_fill(&ctx, on);
                     if on {
@@ -475,7 +475,11 @@ fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
                         assert!(shapes.iter().any(|shape| matches!(&shape.shape,
                             egui::Shape::Rect(rect) if rect.rect == panel && rect.fill == theme::palette(&ctx).panel)));
                     }
-                    let name = if oscillator { "Oscillator" } else { "Envelope" };
+                    let name = if oscillator {
+                        "Oscillator"
+                    } else {
+                        "Envelope 1"
+                    };
                     let title = shapes
                         .iter()
                         .find_map(|shape| match &shape.shape {
@@ -521,7 +525,7 @@ fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
                     if oscillator {
                         expected.layers[0].oscillator_enabled = !on;
                     } else {
-                        expected.layers[0].envelope_enabled = !on;
+                        expected.layers[0].envelopes[0].enabled = !on;
                     }
                     assert_eq!(
                         app.session.project.tracks[0].instrument.as_ref().unwrap(),
@@ -692,7 +696,7 @@ fn unit_headers_save_collapse_independently_without_changing_audio_settings_or_l
                     bounds.oscillator_panel,
                     bounds.oscillator_header,
                 ),
-                ("Envelope", bounds.envelope_panel, bounds.envelope_header),
+                ("Envelope 1", bounds.envelope_panel, bounds.envelope_header),
             ] {
                 assert!(shapes.iter().any(|shape| matches!(&shape.shape,
                     egui::Shape::Rect(rect) if rect.rect == panel && rect.fill == theme::palette(&ctx).panel)));
@@ -737,7 +741,8 @@ fn unit_headers_save_collapse_independently_without_changing_audio_settings_or_l
             }
             let mut saved = before.clone();
             saved["tracks"][0]["instrument"]["layers"][0]["oscillator_collapsed"] = true.into();
-            saved["tracks"][0]["instrument"]["layers"][0]["envelope_collapsed"] = true.into();
+            saved["tracks"][0]["instrument"]["layers"][0]["envelopes"][0]["collapsed"] =
+                true.into();
             assert_eq!(serde_json::to_value(&app.session.project).unwrap(), saved);
             assert!(app.dirty);
             app.dirty = false;
@@ -1436,7 +1441,8 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
                 .as_ref()
                 .unwrap()
                 .layers[0]
-                .has_envelope
+                .envelopes[0]
+                .present
         );
         assert!(
             app.midi_editor.layer_bounds[&first]
@@ -1457,7 +1463,7 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
         assert_eq!(layers[0].id, first);
         let second = layers[1].id;
         assert_ne!(first, second);
-        assert!(!layers[1].has_envelope);
+        assert!(!layers[1].envelopes[0].present);
         assert!(layers[1].oscillators.is_empty());
         assert!(
             (app.midi_editor.layer_bounds[&first].row.bottom()
@@ -1474,7 +1480,7 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
             .layers;
         assert_eq!(layers[0].oscillators.len(), 1);
         assert_eq!(layers[1].oscillators.len(), 1);
-        assert!(!layers[1].has_envelope);
+        assert!(!layers[1].envelopes[0].present);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(!shapes.iter().any(|s| matches!(&s.shape,
             egui::Shape::Text(t) if t.galley.text() == "Add source")));
@@ -1536,7 +1542,7 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
     for collapsed in [false, true] {
         let (mut app, _, _, _) = fixture();
         let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
-        settings.layers[0].envelope.attack.time_ms = 75.0;
+        settings.layers[0].envelopes[0].settings.attack.time_ms = 75.0;
         settings
             .layers
             .push(daw_core::InstrumentLayerSettings::default());
@@ -1576,8 +1582,8 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
             .as_ref()
             .unwrap()
             .layers;
-        assert!(!layers[0].has_envelope);
-        assert_eq!(layers[0].envelope.attack.time_ms, 75.0);
+        assert!(!layers[0].envelopes[0].present);
+        assert_eq!(layers[0].envelopes[0].settings.attack.time_ms, 75.0);
         assert_eq!(layers[1], before.layers[1]);
         super::instrument_catalog::add_component(&mut app, &ctx, first, 1);
         assert_eq!(
@@ -1630,18 +1636,21 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
                 .oscillators
                 .resize(count, daw_core::OscillatorSettings::default());
             (
-                settings.layers[0].envelope.attack.time_ms,
-                settings.layers[0].envelope.sustain,
+                settings.layers[0].envelopes[0].settings.attack.time_ms,
+                settings.layers[0].envelopes[0].settings.sustain,
             ) = match count {
                 0 => (5.0, 0.8),
                 1 => (1200.0, 0.2),
                 _ => (10_000.0, 0.99),
             };
             let readouts = [
-                knobs::format_time(settings.layers[0].envelope.attack.time_ms),
-                knobs::format_time(settings.layers[0].envelope.decay.time_ms),
-                format!("{:.0}%", settings.layers[0].envelope.sustain * 100.0),
-                knobs::format_time(settings.layers[0].envelope.release.time_ms),
+                knobs::format_time(settings.layers[0].envelopes[0].settings.attack.time_ms),
+                knobs::format_time(settings.layers[0].envelopes[0].settings.decay.time_ms),
+                format!(
+                    "{:.0}%",
+                    settings.layers[0].envelopes[0].settings.sustain * 100.0
+                ),
+                knobs::format_time(settings.layers[0].envelopes[0].settings.release.time_ms),
             ];
             app.edit(Edit::SetInstrument {
                 track_id: track,
@@ -1834,7 +1843,7 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
             let header = shapes
                 .iter()
                 .find_map(|shape| match &shape.shape {
-                    egui::Shape::Text(text) if text.galley.text() == "Envelope" => Some(text),
+                    egui::Shape::Text(text) if text.galley.text() == "Envelope 1" => Some(text),
                     _ => None,
                 })
                 .unwrap();
@@ -1895,7 +1904,8 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .as_ref()
             .unwrap()
             .layers[0]
-            .envelope
+            .envelopes[0]
+            .settings
             .attack
             .amount,
         0.5
@@ -1909,7 +1919,8 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .as_ref()
             .unwrap()
             .layers[0]
-            .envelope
+            .envelopes[0]
+            .settings
             .attack
             .shape,
         CurveShape::Exponential
@@ -1923,7 +1934,8 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .as_ref()
             .unwrap()
             .layers[0]
-            .envelope
+            .envelopes[0]
+            .settings
             .attack
             .amount
             - 0.51)
@@ -1939,7 +1951,8 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .as_ref()
             .unwrap()
             .layers[0]
-            .envelope
+            .envelopes[0]
+            .settings
             .attack
             .time_ms
             - 6.0)
@@ -1955,7 +1968,8 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .as_ref()
             .unwrap()
             .layers[0]
-            .envelope
+            .envelopes[0]
+            .settings
             .sustain
             - 0.79)
             .abs()
@@ -1969,7 +1983,8 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
             .as_ref()
             .unwrap()
             .layers[0]
-            .envelope
+            .envelopes[0]
+            .settings
             .attack
             .shape,
         CurveShape::Linear
@@ -1977,7 +1992,7 @@ fn envelope_controls_edit_only_the_instrument_and_linear_retains_disabled_amount
     click_note_or_lane(&mut app, &ctx, disabled);
     arrow(&mut app, egui::Key::ArrowUp);
     let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-    assert!((instrument.layers[0].envelope.attack.amount - 0.51).abs() < 1e-6);
+    assert!((instrument.layers[0].envelopes[0].settings.attack.amount - 0.51).abs() < 1e-6);
     assert_eq!(instrument.layers[0].oscillators, sources);
     assert_eq!(
         serde_json::to_value(&app.session.project.assets).unwrap(),
@@ -5745,7 +5760,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
         layers[0].oscillators.resize(12, Default::default());
         layers.push(daw_core::InstrumentLayerSettings {
             name: "Envelope only".into(),
-            has_envelope: true,
+            envelopes: vec![daw_core::EnvelopeInstance::default()],
             ..Default::default()
         });
         app.session.project.tracks[0]
@@ -5901,7 +5916,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
             .unwrap()
             .layers[2];
         assert_eq!(added.oscillators.len(), 1);
-        assert!(added.has_envelope);
+        assert!(added.envelopes[0].present);
         let saved = serde_json::to_vec(&app.session.project).unwrap();
         let mut reopened = DawUi::default();
         reopened.session.project = serde_json::from_slice(&saved).unwrap();
@@ -5940,7 +5955,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
 fn compact_layer_collapse_is_guarded_and_preserves_independent_unit_states_and_order() {
     let (mut app, ctx, mut layers) = layer_header_fixture();
     layers[0].oscillator_collapsed = true;
-    layers[0].envelope_collapsed = true;
+    layers[0].envelopes[0].collapsed = true;
     layers[0].collapsed = true;
     layers[2].collapsed = true;
     app.session.project.tracks[0]

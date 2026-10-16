@@ -1,0 +1,8 @@
+[package]
+name = "daw-amplitude"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+[dependencies]
+daw-unit-core.workspace = true

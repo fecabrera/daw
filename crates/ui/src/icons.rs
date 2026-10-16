@@ -163,6 +163,57 @@ pub fn circular_strip_button(
     draw_circular_button(ui, icon, name, None, circle, response)
 }
 
+/// Header dot toggle with the same painting as unit enable controls.
+pub fn dot_toggle(
+    ui: &mut Ui,
+    name: &str,
+    selected: bool,
+    hit_size: Vec2,
+    diameter: f32,
+    color: egui::Color32,
+) -> Response {
+    let (_, response) = ui.allocate_exact_size(hit_size, egui::Sense::click());
+    paint_dot_toggle(ui, &response, diameter, selected, color);
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, name)
+    });
+    response
+        .on_hover_text(name)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Paint into an existing response so unit shells retain their stable interaction IDs.
+pub fn paint_dot_toggle(
+    ui: &Ui,
+    response: &Response,
+    diameter: f32,
+    selected: bool,
+    color: egui::Color32,
+) {
+    let color = if ui.is_enabled() {
+        color
+    } else {
+        color.gamma_multiply(0.5)
+    };
+    if response.hovered() || response.has_focus() {
+        ui.painter().circle_filled(
+            response.rect.center(),
+            diameter * 0.5 + 3.0,
+            color.gamma_multiply(0.15),
+        );
+    }
+    ui.painter().circle(
+        response.rect.center(),
+        (diameter - 1.0) * 0.5,
+        if selected {
+            color
+        } else {
+            egui::Color32::TRANSPARENT
+        },
+        egui::Stroke::new(1.0, color),
+    );
+}
+
 fn draw_circular_button(
     ui: &mut Ui,
     icon: Lucide,

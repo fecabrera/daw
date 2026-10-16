@@ -1,6 +1,8 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
 use serde::{Deserialize, Serialize};
 mod auto_filter;
+mod modulation;
+pub use modulation::*;
 mod compressor;
 mod limiter;
 pub use limiter::{
@@ -80,7 +82,7 @@ impl OscillatorSettings {
     }
 }
 
-pub const INSTRUMENT_STATE_VERSION: u32 = 2;
+pub const INSTRUMENT_STATE_VERSION: u32 = 3;
 
 /// A parallel instrument layer. Settings are shared by notes; runtime state is per voice.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -96,13 +98,9 @@ pub struct InstrumentLayerSettings {
     pub oscillators: Vec<OscillatorSettings>,
     /// Unit enable states retain individual source switches and envelope settings.
     pub oscillator_enabled: bool,
-    pub envelope_enabled: bool,
-    /// Saved unit presentation; collapse does not change audio processing.
     pub oscillator_collapsed: bool,
-    pub envelope_collapsed: bool,
-    /// Presence is separate from retained settings so removing a unit keeps its defaults reusable.
-    pub has_envelope: bool,
-    pub envelope: EnvelopeSettings,
+    pub envelopes: Vec<EnvelopeInstance>,
+    pub amplitude: AmplitudeSettings,
 }
 impl Default for InstrumentLayerSettings {
     fn default() -> Self {
@@ -116,11 +114,15 @@ impl Default for InstrumentLayerSettings {
             pan: 0.0,
             oscillators: Vec::new(),
             oscillator_enabled: true,
-            envelope_enabled: true,
             oscillator_collapsed: false,
-            envelope_collapsed: false,
-            has_envelope: false,
-            envelope: EnvelopeSettings::default(),
+            envelopes: (1..=2)
+                .map(|id| EnvelopeInstance {
+                    id: uuid::Uuid::from_u128(id),
+                    present: false,
+                    ..Default::default()
+                })
+                .collect(),
+            amplitude: AmplitudeSettings::default(),
         }
     }
 }
@@ -132,16 +134,37 @@ impl InstrumentLayerSettings {
             && 10.0_f32.powf(self.gain_db / 20.0).is_finite()
             && (-1.0..=1.0).contains(&self.pan)
             && self.oscillators.iter().all(OscillatorSettings::valid)
-            && self.envelope.valid()
+            && self.amplitude.valid()
+            && {
+                let mut ids = std::collections::HashSet::new();
+                self.envelopes
+                    .iter()
+                    .all(|e| !e.id.is_nil() && ids.insert(e.id) && e.settings.valid())
+            }
     }
-    /// Retained ADSR settings, independent of its enable state. The renderer crossfades
-    /// bypass to the short note gate; unassigned envelopes use that gate for both paths.
-    pub fn effective_envelope(&self) -> EnvelopeSettings {
-        if self.has_envelope {
-            self.envelope
-        } else {
-            EnvelopeSettings::legacy()
+    /// Compatibility constructor: the former amplitude envelope becomes an explicit connection.
+    pub fn install_amplitude_envelope(&mut self) {
+        if self.envelopes.is_empty() {
+            self.envelopes.push(EnvelopeInstance::default());
         }
+        let e = &mut self.envelopes[0];
+        e.present = true;
+        self.amplitude.present = true;
+        if self.amplitude.modulations.is_empty() {
+            let mut route = Modulation::new(ModulationParameter::Amplitude);
+            route.id = uuid::Uuid::from_u128(1);
+            route.source = Some(EnvelopeSource {
+                layer: self.id,
+                envelope: e.id,
+            });
+            route.amount = 1.0;
+            self.amplitude.modulations.push(route);
+        }
+    }
+    pub fn envelope(&self, source: EnvelopeSource) -> Option<&EnvelopeInstance> {
+        (source.layer == self.id)
+            .then(|| self.envelopes.iter().find(|e| e.id == source.envelope))
+            .flatten()
     }
 }
 
@@ -170,8 +193,32 @@ struct SavedLayer {
     oscillator_collapsed: bool,
     #[serde(default)]
     envelope_collapsed: bool,
+    #[serde(default)]
     has_envelope: bool,
+    #[serde(default)]
     envelope: EnvelopeSettings,
+    #[serde(default)]
+    has_filter_envelope: bool,
+    #[serde(default)]
+    filter_envelope: EnvelopeSettings,
+    #[serde(default = "default_unit_enabled")]
+    filter_envelope_enabled: bool,
+    #[serde(default)]
+    filter_envelope_collapsed: bool,
+    #[serde(default, deserialize_with = "saved_envelopes")]
+    envelopes: Option<Vec<EnvelopeInstance>>,
+    #[serde(default, deserialize_with = "saved_amplitude")]
+    amplitude: Option<AmplitudeSettings>,
+}
+fn saved_envelopes<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Vec<EnvelopeInstance>>, D::Error> {
+    Vec::deserialize(d).map(Some)
+}
+fn saved_amplitude<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<AmplitudeSettings>, D::Error> {
+    AmplitudeSettings::deserialize(d).map(Some)
 }
 fn saved_layer_name<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     String::deserialize(d).map(Some)
@@ -181,7 +228,8 @@ fn default_unit_enabled() -> bool {
 }
 impl SavedLayer {
     fn into_settings(self, index: usize) -> InstrumentLayerSettings {
-        InstrumentLayerSettings {
+        let legacy = self.envelopes.is_none();
+        let mut layer = InstrumentLayerSettings {
             id: self.id,
             name: self.name.unwrap_or_else(|| format!("Layer {}", index + 1)),
             collapsed: self.collapsed,
@@ -191,12 +239,33 @@ impl SavedLayer {
             pan: self.pan,
             oscillators: self.oscillators,
             oscillator_enabled: self.oscillator_enabled,
-            envelope_enabled: self.envelope_enabled,
             oscillator_collapsed: self.oscillator_collapsed,
-            envelope_collapsed: self.envelope_collapsed,
-            has_envelope: self.has_envelope,
-            envelope: self.envelope,
+            envelopes: self.envelopes.unwrap_or_else(|| {
+                vec![
+                    EnvelopeInstance {
+                        id: uuid::Uuid::from_u128(1),
+                        present: self.has_envelope,
+                        enabled: self.envelope_enabled,
+                        collapsed: self.envelope_collapsed,
+                        settings: self.envelope,
+                        ..Default::default()
+                    },
+                    EnvelopeInstance {
+                        id: uuid::Uuid::from_u128(2),
+                        present: self.has_filter_envelope,
+                        enabled: self.filter_envelope_enabled,
+                        collapsed: self.filter_envelope_collapsed,
+                        settings: self.filter_envelope,
+                        ..Default::default()
+                    },
+                ]
+            }),
+            amplitude: self.amplitude.unwrap_or_default(),
+        };
+        if legacy && self.has_envelope {
+            layer.install_amplitude_envelope();
         }
+        layer
     }
 }
 impl<'de> Deserialize<'de> for InstrumentLayerSettings {
@@ -226,7 +295,7 @@ impl From<OscillatorSettings> for InstrumentSettings {
         let mut instrument = Self::default();
         let layer = &mut instrument.layers[0];
         layer.oscillators.push(oscillator);
-        layer.has_envelope = true;
+        layer.install_amplitude_envelope();
         instrument
     }
 }
@@ -280,7 +349,11 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
         let saved = Saved::deserialize(deserializer)?;
         if let Some(layers) = saved.layers {
             return Ok(Self {
-                version: saved.version,
+                version: if saved.version == 2 {
+                    INSTRUMENT_STATE_VERSION
+                } else {
+                    saved.version
+                },
                 layers,
             });
         }
@@ -306,25 +379,16 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
                 muted: saved.muted,
             }]
         };
+        let mut layer = InstrumentLayerSettings {
+            id: uuid::Uuid::from_u128(1),
+            oscillators,
+            ..Default::default()
+        };
+        layer.envelopes[0].settings = saved.envelope;
+        layer.install_amplitude_envelope();
         Ok(Self {
             version: INSTRUMENT_STATE_VERSION,
-            layers: vec![InstrumentLayerSettings {
-                // Deterministic within the migrated instrument; widget scopes also include the track ID.
-                id: uuid::Uuid::from_u128(1),
-                name: "Layer 1".into(),
-                collapsed: false,
-                muted: false,
-                soloed: false,
-                gain_db: 0.0,
-                pan: 0.0,
-                oscillators,
-                oscillator_enabled: true,
-                envelope_enabled: true,
-                oscillator_collapsed: false,
-                envelope_collapsed: false,
-                has_envelope: true,
-                envelope: saved.envelope,
-            }],
+            layers: vec![layer],
         })
     }
 }

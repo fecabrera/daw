@@ -1,4 +1,6 @@
+use super::modulation::{Control, Route, SharedControls};
 use daw_core::{Clip, Id, Project, Track, TrackKind, linear_gain};
+use daw_core::{EnvelopeMode, EnvelopeSource, ModulationValue};
 use daw_envelope::Envelope;
 use daw_oscillator::Oscillator;
 use daw_unit_core::{ProcessingContext, SourceUnit};
@@ -14,18 +16,20 @@ struct PatternClip {
     events: Vec<NoteEvent>,
 }
 struct LayerVoice {
+    id: Id,
     sources: Vec<OscillatorVoice>,
-    envelope: Envelope,
     gate: Envelope,
-    envelope_mix: f32,
-    envelope_mix_target: f32,
-    envelope_mix_remaining: u32,
+    amplitude: daw_amplitude::Amplitude,
+    routes: Vec<Route>,
     gain: [f32; 2],
     gain_target: [f32; 2],
     gain_remaining: u32,
 }
 struct Voice {
+    active_last_sample: bool,
     layers: Vec<LayerVoice>,
+    controls: Vec<Control>,
+    values: Vec<ModulationValue>,
     current: Option<Id>,
     velocity: f32,
     pitch: u8,
@@ -34,6 +38,8 @@ struct Voice {
     transition_from: [f32; 2],
     transition: u32,
     fade_frames: u32,
+    held_frames: u64,
+    release_frames: u64,
 }
 struct OscillatorVoice {
     source: Oscillator,
@@ -47,20 +53,25 @@ struct OscillatorVoice {
 }
 impl Voice {
     fn note_on(&mut self, id: Id, pitch: u8, velocity: u8) {
-        let idle = self.transition == 0 && self.layers.iter().all(LayerVoice::is_idle);
+        let idle = self.transition == 0
+            && self.layers.iter().all(LayerVoice::is_idle)
+            && self.controls.iter().all(|e| e.envelope.is_idle());
         if idle {
             for layer in &mut self.layers {
                 layer.gain = layer.gain_target;
                 layer.gain_remaining = 0;
-                layer.envelope_mix = layer.envelope_mix_target;
-                layer.envelope_mix_remaining = 0;
+                layer.amplitude.reset();
             }
         }
         self.transition_from = self.previous;
         self.transition = self.fade_frames;
         self.current = Some(id);
+        self.held_frames = 0;
+        self.release_frames = 0;
+        for e in &mut self.controls {
+            e.envelope.note_on();
+        }
         for layer in &mut self.layers {
-            layer.envelope.note_on();
             layer.gate.note_on();
         }
         self.velocity = f32::from(velocity) / 127.0;
@@ -75,20 +86,30 @@ impl Voice {
     }
     fn end_note(&mut self) {
         self.current = None;
+        self.release_frames = 0;
+        for e in &mut self.controls {
+            e.envelope.note_off();
+        }
         for layer in &mut self.layers {
-            layer.envelope.note_off();
             layer.gate.note_off();
         }
     }
     fn reset(&mut self) {
+        self.active_last_sample = false;
         self.end_note();
+        for e in &mut self.controls {
+            e.reset();
+        }
         for layer in &mut self.layers {
-            layer.envelope.reset();
             layer.gate.reset();
-            layer.envelope_mix = layer.envelope_mix_target;
-            layer.envelope_mix_remaining = 0;
+            layer.amplitude.reset();
+            for r in &mut layer.routes {
+                r.reset();
+            }
         }
         self.reconstructed_at = 0;
+        self.held_frames = 0;
+        self.release_frames = 0;
         self.previous = [0.0; 2];
         self.transition = 0;
         for oscillator in self.layers.iter_mut().flat_map(|layer| &mut layer.sources) {
@@ -96,19 +117,50 @@ impl Voice {
         }
     }
     fn advance_envelopes(&mut self, frames: u64) {
+        if self.current.is_some() {
+            self.held_frames = self.held_frames.saturating_add(frames);
+        } else {
+            self.release_frames = self.release_frames.saturating_add(frames);
+        }
+        for e in &mut self.controls {
+            e.envelope.advance(frames);
+        }
         for layer in &mut self.layers {
-            layer.envelope.advance(frames);
             layer.gate.advance(frames);
         }
     }
-    fn sample(&mut self) -> [f32; 2] {
-        if self.layers.iter().all(LayerVoice::is_idle) && self.transition == 0 {
+    fn sample(&mut self, shared: &[ModulationValue]) -> [f32; 2] {
+        if self.current.is_some() {
+            self.held_frames = self.held_frames.saturating_add(1);
+        } else {
+            self.release_frames = self.release_frames.saturating_add(1);
+        }
+        if self.controls.iter().all(|e| e.envelope.is_idle())
+            && self.layers.iter().all(LayerVoice::is_idle)
+            && self.transition == 0
+            && !shared.iter().any(|v| {
+                v.release_age == Some(self.release_frames) && v.value > 0.0 && v.weight > 0.0
+            })
+        {
+            self.active_last_sample = false;
             self.previous = [0.0; 2];
             return [0.0; 2];
         }
+        self.active_last_sample = true;
+        for (e, v) in self.controls.iter_mut().zip(&mut self.values) {
+            *v = e.tick();
+        }
         let mut sample = [0.0; 2];
         for layer in &mut self.layers {
-            let value = layer.sample();
+            let value = layer.sample(
+                &self.values,
+                shared,
+                if self.current.is_none() {
+                    Some(self.release_frames)
+                } else {
+                    None
+                },
+            );
             for ch in 0..2 {
                 sample[ch] += value[ch];
             }
@@ -129,9 +181,14 @@ impl Voice {
 }
 impl LayerVoice {
     fn is_idle(&self) -> bool {
-        self.envelope.is_idle() && self.gate.is_idle()
+        self.gate.is_idle()
     }
-    fn sample(&mut self) -> [f32; 2] {
+    fn sample(
+        &mut self,
+        local: &[ModulationValue],
+        shared: &[ModulationValue],
+        release_age: Option<u64>,
+    ) -> [f32; 2] {
         if self.gain_remaining > 0 {
             for ch in 0..2 {
                 self.gain[ch] +=
@@ -139,20 +196,44 @@ impl LayerVoice {
             }
             self.gain_remaining -= 1;
         }
-        if self.envelope_mix_remaining > 0 {
-            self.envelope_mix +=
-                (self.envelope_mix_target - self.envelope_mix) / self.envelope_mix_remaining as f32;
-            self.envelope_mix_remaining -= 1;
-        }
-        // Keep ADSR and the short gate advancing so bypass never restarts a held note.
-        let envelope = self.envelope.next_sample();
         let gate = self.gate.next_sample();
-        let envelope = if self.envelope_mix >= 1.0 {
-            envelope
-        } else if self.envelope_mix <= 0.0 {
-            gate
+        let mut per_note_delta = [0.0; 2];
+        let mut shared_delta = [0.0; 2];
+        let mut shared_release = false;
+        let mut direct = None;
+        let mut effective = 0;
+        for route in &mut self.routes {
+            if let Some((value, amount, per_note)) = route.sample(local, shared) {
+                let deltas = if per_note {
+                    &mut per_note_delta
+                } else {
+                    &mut shared_delta
+                };
+                deltas[0] += amount * (value - gate);
+                deltas[1] += amount * (value - 1.0);
+                if !per_note && value > 0.0 {
+                    shared_release |= shared.iter().any(|v| {
+                        Some(v.source) == route.settings.source
+                            && v.release_age.is_some()
+                            && v.release_age == release_age
+                    });
+                }
+                effective += 1;
+                direct = Some((value, amount, per_note));
+            }
+        }
+        let envelope = if let Some((value, 1.0, true)) = direct.filter(|_| effective == 1) {
+            // Preserve legacy full-depth ADSR arithmetic exactly.
+            value
         } else {
-            gate + (envelope - gate) * self.envelope_mix
+            // Only the last released notes carry a shared tail. Blend that tail toward
+            // the note gate at partial depth, so zero depth and disabled routes stay silent.
+            let (shaped, shared_factor) = if shared_release {
+                (1.0 + per_note_delta[1], gate + shared_delta[0])
+            } else {
+                (gate + per_note_delta[0], 1.0 + shared_delta[1])
+            };
+            shaped.clamp(0.0, 16.0) * shared_factor.clamp(0.0, 16.0)
         };
         let sources = self
             .sources
@@ -171,7 +252,8 @@ impl LayerVoice {
                 s.source.next_sample() * s.gain
             })
             .sum::<f32>();
-        self.gain.map(|gain| sources * envelope * gain)
+        let shaped = self.amplitude.process(sources, envelope, gate);
+        self.gain.map(|gain| shaped * gain)
     }
 }
 
@@ -200,6 +282,7 @@ pub(crate) struct MidiTrackRuntime {
     last_clip: Option<Id>,
     last_source: Option<u64>,
     next_event: usize,
+    shared: SharedControls,
 }
 impl MidiTrackRuntime {
     /// Build schedules and DSP state before publication. No callback allocations.
@@ -281,7 +364,6 @@ impl MidiTrackRuntime {
         // Stable layer IDs preserve independent controls and identify topology changes.
         for layer in &layers {
             layer.id.hash(&mut hash);
-            layer.has_envelope.hash(&mut hash);
             layer.oscillators.len().hash(&mut hash);
             for settings in &layer.oscillators {
                 format!("{:?}", settings.waveform).hash(&mut hash);
@@ -299,9 +381,11 @@ impl MidiTrackRuntime {
             held_sample: [0.0; 2],
             voices: (0..voice_count)
                 .map(|_| Voice {
+                    active_last_sample: false,
                     layers: layers
                         .iter()
                         .map(|layer| LayerVoice {
+                            id: layer.id,
                             sources: layer
                                 .oscillators
                                 .iter()
@@ -341,16 +425,57 @@ impl MidiTrackRuntime {
                                     max_block_frames: project.buffer_size_frames,
                                 },
                             ),
-                            envelope_mix: f32::from(layer.envelope_enabled),
-                            envelope_mix_target: f32::from(layer.envelope_enabled),
-                            envelope_mix_remaining: 0,
-                            envelope: Envelope::new(
-                                layer.effective_envelope(),
+                            amplitude: daw_amplitude::Amplitude::new(
+                                &layer.amplitude,
                                 ProcessingContext {
                                     sample_rate_hz: project.sample_rate_hz,
                                     max_block_frames: project.buffer_size_frames,
                                 },
                             ),
+                            routes: layer
+                                .amplitude
+                                .modulations
+                                .iter()
+                                .map(|r| Route::new(*r, project.sample_rate_hz))
+                                .collect(),
+                        })
+                        .collect(),
+                    controls: layers
+                        .iter()
+                        .flat_map(|l| {
+                            l.envelopes
+                                .iter()
+                                .filter(|e| e.mode == EnvelopeMode::PerNote)
+                                .map(|e| {
+                                    Control::new(
+                                        EnvelopeSource {
+                                            layer: l.id,
+                                            envelope: e.id,
+                                        },
+                                        e,
+                                        ProcessingContext {
+                                            sample_rate_hz: project.sample_rate_hz,
+                                            max_block_frames: project.buffer_size_frames,
+                                        },
+                                    )
+                                })
+                        })
+                        .collect(),
+                    values: layers
+                        .iter()
+                        .flat_map(|l| {
+                            l.envelopes
+                                .iter()
+                                .filter(|e| e.mode == EnvelopeMode::PerNote)
+                                .map(|e| ModulationValue {
+                                    source: EnvelopeSource {
+                                        layer: l.id,
+                                        envelope: e.id,
+                                    },
+                                    value: 0.0,
+                                    weight: 0.0,
+                                    release_age: None,
+                                })
                         })
                         .collect(),
                     current: None,
@@ -361,6 +486,8 @@ impl MidiTrackRuntime {
                     transition_from: [0.0; 2],
                     transition: 0,
                     fade_frames,
+                    held_frames: 0,
+                    release_frames: 0,
                 })
                 .collect(),
             clips,
@@ -368,30 +495,90 @@ impl MidiTrackRuntime {
             last_clip: None,
             last_source: None,
             next_event: 0,
+            shared: SharedControls::new(
+                layers
+                    .iter()
+                    .flat_map(|l| {
+                        l.envelopes
+                            .iter()
+                            .filter(|e| e.mode != EnvelopeMode::PerNote)
+                            .map(|e| {
+                                Control::new(
+                                    EnvelopeSource {
+                                        layer: l.id,
+                                        envelope: e.id,
+                                    },
+                                    e,
+                                    ProcessingContext {
+                                        sample_rate_hz: project.sample_rate_hz,
+                                        max_block_frames: project.buffer_size_frames,
+                                    },
+                                )
+                            })
+                    })
+                    .collect(),
+            ),
         })
     }
     pub fn compatible(&self, other: &Self) -> bool {
         self.fingerprint == other.fingerprint
+            && self.control_modes().all(|a| {
+                other
+                    .control_modes()
+                    .all(|b| a.source != b.source || a.mode == b.mode)
+            })
+    }
+    fn control_modes(&self) -> impl Iterator<Item = &Control> {
+        self.shared
+            .controls
+            .iter()
+            .chain(self.voices.first().into_iter().flat_map(|v| &v.controls))
     }
     pub fn fingerprint(&self) -> u64 {
         self.fingerprint
     }
     /// Retarget compatible voices before swapping them into the new renderer.
     /// All storage stays owned by the two prepared renderers; no DSP state is dropped here.
-    pub fn retarget_controls(&mut self, prepared: &Self) {
+    pub fn retarget_controls(&mut self, prepared: &mut Self) {
         let fade_frames = (self.sample_rate_hz / 200).max(1);
-        for (voice, next) in self.voices.iter_mut().zip(&prepared.voices) {
-            let idle = voice.transition == 0 && voice.layers.iter().all(LayerVoice::is_idle);
-            for (layer, next_layer) in voice.layers.iter_mut().zip(&next.layers) {
-                layer.envelope.set_settings(next_layer.envelope.settings());
-                if layer.envelope_mix_target != next_layer.envelope_mix_target {
-                    layer.envelope_mix_target = next_layer.envelope_mix_target;
-                    if idle {
-                        layer.envelope_mix = next_layer.envelope_mix_target;
-                        layer.envelope_mix_remaining = 0;
-                    } else {
-                        layer.envelope_mix_remaining = fade_frames;
+        self.shared.retarget(&mut prepared.shared);
+        for (voice, next) in self.voices.iter_mut().zip(&mut prepared.voices) {
+            for n in &mut next.controls {
+                if let Some(e) = voice.controls.iter_mut().find(|e| e.source == n.source) {
+                    e.retarget(n);
+                    std::mem::swap(e, n);
+                } else if voice.held_frames > 0 {
+                    n.envelope.note_on();
+                    n.envelope.advance(voice.held_frames);
+                    if voice.current.is_none() {
+                        n.envelope.note_off();
+                        n.envelope.advance(voice.release_frames);
                     }
+                }
+            }
+            std::mem::swap(&mut voice.controls, &mut next.controls);
+            std::mem::swap(&mut voice.values, &mut next.values);
+            let idle = voice.transition == 0
+                && voice.layers.iter().all(LayerVoice::is_idle)
+                && voice.controls.iter().all(|e| e.envelope.is_idle())
+                && !self.shared.values.iter().any(|v| {
+                    v.release_age == Some(voice.release_frames) && v.weight > 0.0 && v.value > 0.0
+                });
+            for (layer, next_layer) in voice.layers.iter_mut().zip(&mut next.layers) {
+                for n in &mut next_layer.routes {
+                    if let Some(r) = layer
+                        .routes
+                        .iter_mut()
+                        .find(|r| r.settings.id == n.settings.id)
+                    {
+                        r.retarget(n);
+                        std::mem::swap(r, n);
+                    }
+                }
+                std::mem::swap(&mut layer.routes, &mut next_layer.routes);
+                layer.amplitude.retarget(&next_layer.amplitude);
+                if idle {
+                    layer.amplitude.reset();
                 }
                 if layer.gain_target != next_layer.gain_target {
                     layer.gain_target = next_layer.gain_target;
@@ -419,18 +606,23 @@ impl MidiTrackRuntime {
     }
     fn voice_sample(&mut self) -> [f32; 2] {
         let mut sum = [0.0; 2];
+        self.shared.tick();
         for voice in &mut self.voices {
-            let sample = voice.sample();
+            let sample = voice.sample(&self.shared.values);
             for ch in 0..2 {
                 sum[ch] += sample[ch];
             }
         }
         sum
     }
+    pub fn modulation_values(&self) -> &[ModulationValue] {
+        &self.shared.values
+    }
     pub fn held_sample(&self) -> [f32; 2] {
         self.held_sample
     }
     pub fn reset(&mut self) {
+        self.shared.reset();
         self.held_sample = [0.0; 2];
         for voice in &mut self.voices {
             voice.reset();
@@ -439,11 +631,21 @@ impl MidiTrackRuntime {
         self.last_source = None;
     }
     pub fn end_notes(&mut self) {
+        self.shared.end();
         for voice in &mut self.voices {
             voice.end_note();
         }
         self.last_clip = None;
         self.last_source = None;
+    }
+    /// Highest active voice gain. Voice summing is not part of the parameter value.
+    pub fn amplitude_gain(&self, layer: Id) -> f32 {
+        self.voices
+            .iter()
+            .filter(|voice| voice.active_last_sample)
+            .filter_map(|voice| voice.layers.iter().find(|l| l.id == layer))
+            .map(|l| l.amplitude.effective_gain())
+            .fold(0.0, f32::max)
     }
     pub fn sample(&mut self, frame: u64) -> [f32; 2] {
         let sample = if let Some(prepared) = self
@@ -459,6 +661,7 @@ impl MidiTrackRuntime {
             let restarted = self.last_clip != Some(clip.id)
                 || self.last_source.is_none_or(|last| source < last);
             if restarted {
+                self.shared.reset();
                 for voice in &mut self.voices {
                     voice.reset();
                 }
@@ -473,6 +676,8 @@ impl MidiTrackRuntime {
                             .div_ceil(u128::from(stretch.source_frames))
                             .min(u128::from(u64::MAX)) as u64
                     });
+                    self.shared.advance_to(event_frame);
+                    self.shared.event(event.on.is_some());
                     voice.advance_envelopes(event_frame.saturating_sub(voice.reconstructed_at));
                     if let Some((pitch, velocity)) = event.on {
                         voice.note_on(event.note, pitch, velocity);
@@ -481,6 +686,7 @@ impl MidiTrackRuntime {
                     }
                     voice.reconstructed_at = event_frame;
                 }
+                self.shared.advance_to(position);
                 for voice in &mut self.voices {
                     voice.advance_envelopes(position.saturating_sub(voice.reconstructed_at));
                 }
@@ -490,6 +696,7 @@ impl MidiTrackRuntime {
                     .get(self.next_event)
                     .filter(|e| e.frame <= source)
                 {
+                    self.shared.event(event.on.is_some());
                     let voice = &mut self.voices[event.slot];
                     if let Some((pitch, velocity)) = event.on {
                         voice.note_on(event.note, pitch, velocity);
@@ -510,6 +717,7 @@ impl MidiTrackRuntime {
             self.voice_sample().map(|sample| sample * fade)
         } else {
             if self.last_clip.take().is_some() {
+                self.shared.reset();
                 // Clip fades have already reached zero; do not resurrect a release tail in a gap.
                 for voice in &mut self.voices {
                     voice.reset();
@@ -609,13 +817,13 @@ mod tests {
                 .unwrap();
             project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
             let instrument = project.tracks[0].instrument.as_mut().unwrap();
-            instrument.layers[0].envelope.attack.time_ms = 200.0;
-            instrument.layers[0].envelope.release.time_ms = 500.0;
+            instrument.layers[0].envelopes[0].settings.attack.time_ms = 200.0;
+            instrument.layers[0].envelopes[0].settings.release.time_ms = 500.0;
             let mut layer = daw_core::InstrumentLayerSettings::default();
             layer.oscillators.push(Default::default());
-            layer.has_envelope = true;
-            layer.envelope.attack.time_ms = 350.0;
-            layer.envelope.release.time_ms = 800.0;
+            layer.install_amplitude_envelope();
+            layer.envelopes[0].settings.attack.time_ms = 350.0;
+            layer.envelopes[0].settings.release.time_ms = 800.0;
             instrument.layers.push(layer);
             project.tracks[0].clips[0].stretch = stretch;
             project.tracks[0].clips[0].length_frames =
@@ -629,7 +837,7 @@ mod tests {
                 sought.sample(frame);
                 let played = played.voices.iter().find(|v| v.pitch == 60).unwrap();
                 let sought = sought.voices.iter().find(|v| v.pitch == 60).unwrap();
-                for (sought, played) in sought.layers.iter().zip(&played.layers) {
+                for (sought, played) in sought.controls.iter().zip(&played.controls) {
                     assert_eq!(sought.envelope.stage(), played.envelope.stage());
                     assert!((sought.envelope.level() - played.envelope.level()).abs() < 1e-6);
                 }
@@ -645,7 +853,7 @@ mod tests {
                 .iter()
                 .find(|v| v.current == Some(note))
                 .unwrap();
-            assert!(voice.layers[0].envelope.level() > 0.0);
+            assert!(voice.controls[0].envelope.level() > 0.0);
         }
     }
 }

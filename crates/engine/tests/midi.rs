@@ -38,7 +38,8 @@ fn plan(waveform: Waveform, rate: u32) -> RenderPlan {
     project.tracks[0].instrument = Some(OscillatorSettings::default().into());
     project.tracks[0].instrument.as_mut().unwrap().layers[0].oscillators[0].waveform = waveform;
     // Existing oscillator tests isolate source/mixer behavior using the legacy gate.
-    project.tracks[0].instrument.as_mut().unwrap().layers[0].envelope = EnvelopeSettings::legacy();
+    project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0].settings =
+        EnvelopeSettings::legacy();
     let clip = project.add_midi_pattern(track, 0).unwrap();
     project
         .edit(Edit::ReplaceMidiPattern {
@@ -159,7 +160,7 @@ fn callbacks_note_events_seek_loop_and_renderer_replacement_do_not_allocate() {
         };
         let mut second = InstrumentLayerSettings::default();
         second.oscillators.push(OscillatorSettings::default());
-        second.has_envelope = true;
+        second.install_amplitude_envelope();
         plan.project.tracks[0]
             .instrument
             .as_mut()
@@ -170,12 +171,12 @@ fn callbacks_note_events_seek_loop_and_renderer_replacement_do_not_allocate() {
         plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].oscillators[0].gain_db = -3.0;
         plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].oscillators[1].muted = false;
         plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].oscillators[0].transpose = 12;
-        plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelope =
+        plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0].settings =
             EnvelopeSettings::default();
         plan.project.tracks[0].instrument.as_mut().unwrap().layers[1].oscillators[0].gain_db =
             -18.0;
-        plan.project.tracks[0].instrument.as_mut().unwrap().layers[1]
-            .envelope
+        plan.project.tracks[0].instrument.as_mut().unwrap().layers[1].envelopes[0]
+            .settings
             .release
             .time_ms = 400.0;
         plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].gain_db = -9.0;
@@ -208,7 +209,7 @@ fn callbacks_note_events_seek_loop_and_renderer_replacement_do_not_allocate() {
 fn instrument_layers_sum_independent_envelopes_and_sources_and_empty_tracks_are_silent() {
     let mut combined = plan(Waveform::Sine, 48_000);
     let instrument = combined.project.tracks[0].instrument.as_mut().unwrap();
-    instrument.layers[0].envelope.release.time_ms = 250.0;
+    instrument.layers[0].envelopes[0].settings.release.time_ms = 250.0;
     let mut second = InstrumentLayerSettings::default();
     second.oscillators.push(OscillatorSettings {
         waveform: Waveform::Triangle,
@@ -216,10 +217,10 @@ fn instrument_layers_sum_independent_envelopes_and_sources_and_empty_tracks_are_
         gain_db: -18.0,
         ..Default::default()
     });
-    second.has_envelope = true;
-    second.envelope.attack.time_ms = 35.0;
-    second.envelope.sustain = 0.35;
-    second.envelope.release.time_ms = 900.0;
+    second.install_amplitude_envelope();
+    second.envelopes[0].settings.attack.time_ms = 35.0;
+    second.envelopes[0].settings.sustain = 0.35;
+    second.envelopes[0].settings.release.time_ms = 900.0;
     instrument.layers.push(second);
     instrument.layers.push(InstrumentLayerSettings::default());
     for start in [0, 18_000, 49_000] {
@@ -266,7 +267,9 @@ fn instrument_layers_sum_independent_envelopes_and_sources_and_empty_tracks_are_
 fn adsr_playback_matches_export_and_block_sizes_at_all_project_rates() {
     for rate in SAMPLE_RATES {
         let mut plan = plan(Waveform::Sine, rate);
-        let envelope = &mut plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelope;
+        let envelope = &mut plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes
+            [0]
+        .settings;
         *envelope = EnvelopeSettings::default();
         envelope.attack.shape = CurveShape::Logarithmic;
         envelope.attack.time_ms = 35.0;
@@ -311,7 +314,7 @@ fn live_envelope_edits_preserve_oscillator_phase_and_current_envelope_progress()
         .truncate(1);
     let mut settings = EnvelopeSettings::default();
     settings.attack.time_ms = 200.0;
-    plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelope = settings;
+    plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0].settings = settings;
     let context = ProcessingContext {
         sample_rate_hz: 48_000,
         max_block_frames: 512,
@@ -347,7 +350,8 @@ fn live_envelope_edits_preserve_oscillator_phase_and_current_envelope_progress()
                 settings.release.time_ms = 1500.0;
             }
         }
-        plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelope = settings;
+        plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0].settings =
+            settings;
         let mut next = Renderer::new(plan.clone());
         next.inherit(&mut live);
         live = next;
@@ -370,7 +374,8 @@ fn overlapping_release_tails_have_independent_note_envelopes() {
         .as_mut()
         .unwrap()
         .layers[0]
-        .envelope = EnvelopeSettings::default();
+        .envelopes[0]
+        .settings = EnvelopeSettings::default();
     let clip = combined.project.tracks[0].clips[0].id;
     let notes: Vec<_> = [0, 120, 240]
         .into_iter()
@@ -829,8 +834,8 @@ fn layer_renaming_reordering_and_collapse_preserve_live_voices_and_offline_audio
         gain_db: -18.0,
         ..Default::default()
     });
-    layer.has_envelope = true;
-    layer.envelope.attack.time_ms = 500.0;
+    layer.install_amplitude_envelope();
+    layer.envelopes[0].settings.attack.time_ms = 500.0;
     instrument.layers.push(layer);
     let mut live = Renderer::new(original.clone());
     let mut reference = Renderer::new(original.clone());
@@ -845,8 +850,9 @@ fn layer_renaming_reordering_and_collapse_preserve_live_voices_and_offline_audio
     layers[0].collapsed = true;
     layers[1].collapsed = true;
     layers[0].oscillator_collapsed = true;
-    layers[0].envelope_collapsed = true;
-    layers[1].envelope_collapsed = true;
+    layers[0].envelopes[0].collapsed = true;
+    layers[0].amplitude.modulation_open = true;
+    layers[1].envelopes[0].collapsed = true;
     layers.reverse();
     let mut replacement = Renderer::new(edited.clone());
     replacement.inherit(&mut live);
@@ -1026,18 +1032,19 @@ fn unit_enable_states_silence_sources_bypass_adsr_and_match_playback_export() {
     for rate in [44_100, 48_000] {
         let gate = plan(Waveform::Sine, rate);
         let mut wet = gate.clone();
-        wet.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelope = EnvelopeSettings {
-            attack: EnvelopeStageSettings {
-                time_ms: 200.0,
-                ..EnvelopeSettings::default().attack
-            },
-            sustain: 0.25,
-            release: EnvelopeStageSettings {
-                time_ms: 700.0,
-                ..EnvelopeSettings::default().release
-            },
-            ..Default::default()
-        };
+        wet.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0].settings =
+            EnvelopeSettings {
+                attack: EnvelopeStageSettings {
+                    time_ms: 200.0,
+                    ..EnvelopeSettings::default().attack
+                },
+                sustain: 0.25,
+                release: EnvelopeStageSettings {
+                    time_ms: 700.0,
+                    ..EnvelopeSettings::default().release
+                },
+                ..Default::default()
+            };
         let count = rate as usize;
         let mut gate_audio = vec![[0.0; 2]; count];
         Renderer::new(gate.clone()).render_offline(&mut gate_audio);
@@ -1051,7 +1058,7 @@ fn unit_enable_states_silence_sources_bypass_adsr_and_match_playback_export() {
                 .unwrap()
                 .layers[0];
             layer.oscillator_enabled = oscillator_enabled;
-            layer.envelope_enabled = envelope_enabled;
+            layer.envelopes[0].enabled = envelope_enabled;
             let mut audio = vec![[0.0; 2]; count];
             Renderer::new(changed.clone()).render_offline(&mut audio);
             if !oscillator_enabled {
@@ -1101,14 +1108,15 @@ fn unit_enable_states_silence_sources_bypass_adsr_and_match_playback_export() {
 fn live_unit_toggles_ramp_without_resetting_source_or_adsr_and_do_not_allocate() {
     let gate = plan(Waveform::Sine, 48_000);
     let mut wet = gate.clone();
-    wet.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelope = EnvelopeSettings {
-        attack: EnvelopeStageSettings {
-            time_ms: 200.0,
-            ..EnvelopeSettings::default().attack
-        },
-        sustain: 0.4,
-        ..Default::default()
-    };
+    wet.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0].settings =
+        EnvelopeSettings {
+            attack: EnvelopeStageSettings {
+                time_ms: 200.0,
+                ..EnvelopeSettings::default().attack
+            },
+            sustain: 0.4,
+            ..Default::default()
+        };
     let mut current = Renderer::new(wet.clone());
     let mut wet_reference = Renderer::new(wet.clone());
     let mut gate_reference = Renderer::new(gate);
@@ -1136,7 +1144,7 @@ fn live_unit_toggles_ramp_without_resetting_source_or_adsr_and_do_not_allocate()
             .unwrap()
             .layers[0];
         layer.oscillator_enabled = oscillator_enabled;
-        layer.envelope_enabled = envelope_enabled;
+        layer.envelopes[0].enabled = envelope_enabled;
         let next_gain = f32::from(oscillator_enabled);
         let next_mix = f32::from(envelope_enabled);
         let mut replacement = Renderer::new(changed);
@@ -1404,4 +1412,290 @@ fn adding_a_zero_latency_track_keeps_the_existing_live_pitch_phase() {
             assert_eq!(actual, expected);
         }
     }
+}
+
+#[test]
+fn unconnected_generic_envelopes_preserve_audio_and_live_voices_when_added_or_edited() {
+    let original = plan(Waveform::Triangle, 48_000);
+    let mut live = Renderer::new(original.clone());
+    let mut reference = Renderer::new(original.clone());
+    live.play();
+    reference.play();
+    for _ in 0..4000 {
+        assert_eq!(live.next_sample(), reference.next_sample());
+    }
+    let mut edited = original.clone();
+    let layer = &mut edited.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+    layer.envelopes[1].present = true;
+    layer.envelopes[1].settings.attack.time_ms = 432.0;
+    layer.envelopes[1].settings.sustain = 0.23;
+    layer.envelopes[1].settings.release.time_ms = 777.0;
+    layer.envelopes[1].enabled = true;
+    layer.envelopes[1].collapsed = true;
+    layer.envelopes.push(EnvelopeInstance::default());
+    let mut replacement = Renderer::new(edited.clone());
+    replacement.inherit(&mut live);
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+    for _ in 0..4000 {
+        assert_eq!(replacement.next_sample(), reference.next_sample());
+    }
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+    ALLOCATIONS.with(|count| assert_eq!(count.get(), 0));
+    let mut before = vec![[0.0; 2]; 12000];
+    let mut after = before.clone();
+    Renderer::new(original).render_offline(&mut before);
+    Renderer::new(edited).render_offline(&mut after);
+    assert_eq!(before, after);
+}
+
+#[test]
+fn shared_envelope_modulates_auto_filter_with_playback_export_and_live_edit_parity() {
+    for mode in [EnvelopeMode::Retrigger, EnvelopeMode::Legato] {
+        let mut source = plan(Waveform::Saw, 48_000);
+        let l = &mut source.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+        l.envelopes[1].present = true;
+        l.envelopes[1].mode = mode;
+        l.envelopes[1].settings.attack.time_ms = 400.0;
+        let id = EnvelopeSource {
+            layer: l.id,
+            envelope: l.envelopes[1].id,
+        };
+        let mut effect = EffectInstance::auto_filter();
+        let EffectSettings::AutoFilter(f) = &mut effect.unit else {
+            panic!()
+        };
+        f.lfo_enabled = false;
+        f.frequency_hz = 100.0;
+        let mut route = Modulation::new(ModulationParameter::Frequency);
+        route.source = Some(id);
+        route.amount = 5.0;
+        f.modulations.push(route);
+        source.project.tracks[0].effects.push(effect);
+        source.project.validate().unwrap();
+        let mut wet = vec![[0.0; 2]; 32000];
+        Renderer::new(source.clone()).render_offline(&mut wet);
+        let mut live = Renderer::new(source.clone());
+        live.play();
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|e| e.set(true));
+        for (i, s) in wet.iter().enumerate() {
+            let actual = live.next_sample();
+            if i > 240 {
+                assert!((actual[0] - s[0]).abs() < 1e-6);
+            }
+        }
+        TRACK_ALLOCATIONS.with(|e| e.set(false));
+        ALLOCATIONS.with(|c| assert_eq!(c.get(), 0));
+        let mut random = [[0.0; 2]; 64];
+        source.render(13000, &mut random);
+        assert_eq!(&random[..], &wet[13000..13064]);
+        let mut dry = source.clone();
+        let EffectSettings::AutoFilter(f) = &mut dry.project.tracks[0].effects[0].unit else {
+            panic!()
+        };
+        f.modulations.clear();
+        let mut unmodulated = vec![[0.0; 2]; 32000];
+        Renderer::new(dry).render_offline(&mut unmodulated);
+        assert!(
+            wet.iter()
+                .zip(&unmodulated)
+                .any(|(a, b)| (a[0] - b[0]).abs() > 0.01)
+        );
+        let mut edited = source.clone();
+        edited.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[1]
+            .settings
+            .attack
+            .time_ms = 100.0;
+        let EffectSettings::AutoFilter(f) = &mut edited.project.tracks[0].effects[0].unit else {
+            panic!()
+        };
+        f.modulations[0].amount = 2.0;
+        let mut replacement = Renderer::new(edited);
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|e| e.set(true));
+        replacement.inherit(&mut live);
+        for _ in 0..512 {
+            assert!(replacement.next_sample().iter().all(|s| s.is_finite()));
+        }
+        TRACK_ALLOCATIONS.with(|e| e.set(false));
+        ALLOCATIONS.with(|c| assert_eq!(c.get(), 0));
+    }
+}
+
+#[test]
+fn shared_amplitude_releases_the_last_notes_without_reviving_earlier_notes() {
+    for mode in [EnvelopeMode::Retrigger, EnvelopeMode::Legato] {
+        let mut source = plan(Waveform::Sine, 48_000);
+        let clip = source.project.tracks[0].clips[0].id;
+        let first = MidiNote {
+            id: Id::from_u128(71),
+            start_tick: 0,
+            length_ticks: 96,
+            pitch: 48,
+            velocity: 127,
+        };
+        let second = MidiNote {
+            id: Id::from_u128(72),
+            start_tick: 48,
+            length_ticks: 96,
+            pitch: 72,
+            velocity: 127,
+        };
+        source
+            .project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: MidiPattern {
+                    length_ticks: 3840,
+                    notes: vec![first, second.clone()],
+                },
+            })
+            .unwrap();
+        let e = &mut source.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0];
+        e.mode = mode;
+        e.settings.attack.time_ms = 0.0;
+        e.settings.decay.time_ms = 0.0;
+        e.settings.sustain = 1.0;
+        e.settings.release.time_ms = 500.0;
+        let end = source.project.midi_frame(144) as usize;
+        let mut both = vec![[0.0; 2]; end + 25_000];
+        Renderer::new(source.clone()).render_offline(&mut both);
+        let mut only_last = source.clone();
+        only_last
+            .project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: MidiPattern {
+                    length_ticks: 3840,
+                    notes: vec![second],
+                },
+            })
+            .unwrap();
+        let mut reference = vec![[0.0; 2]; both.len()];
+        Renderer::new(only_last).render_offline(&mut reference);
+        assert!(
+            both[end + 12_000..end + 16_000]
+                .iter()
+                .any(|s| s[0].abs() > 0.01),
+            "Shared release must outlive the legacy 5 ms gate"
+        );
+        for (a, b) in both[end + 500..].iter().zip(&reference[end + 500..]) {
+            assert!(
+                (a[0] - b[0]).abs() < 1e-6,
+                "An earlier note must not restart during the shared release"
+            );
+        }
+        assert!(both[end + 24_100..].iter().all(|s| s[0].abs() < 1e-6));
+        for amount in [0.0, 0.25, 0.5] {
+            let mut partial = source.clone();
+            partial.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0]
+                .amplitude
+                .modulations[0]
+                .amount = amount;
+            let mut audio = vec![[0.0; 2]; both.len()];
+            Renderer::new(partial).render_offline(&mut audio);
+            for (actual, full) in audio[end + 500..].iter().zip(&both[end + 500..]) {
+                assert!(
+                    (actual[0] - full[0] * amount).abs() < 1e-6,
+                    "Partial-depth shared release must fade to zero without a step"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn modulation_telemetry_tracks_processed_note_values_and_preserves_audio_without_allocations() {
+    use daw_engine::ModulationTarget;
+    let mut plan = plan(Waveform::Saw, 48_000);
+    let track = plan.project.tracks[0].id;
+    let instrument = plan.project.tracks[0].instrument.as_mut().unwrap();
+    let layer = &mut instrument.layers[0];
+    layer.install_amplitude_envelope();
+    let envelope = &mut layer.envelopes[0];
+    envelope.mode = EnvelopeMode::Legato;
+    envelope.settings.attack = EnvelopeStageSettings {
+        time_ms: 100.0,
+        shape: CurveShape::Linear,
+        amount: 0.5,
+    };
+    envelope.settings.decay.time_ms = 0.0;
+    envelope.settings.sustain = 1.0;
+    let source = EnvelopeSource {
+        layer: layer.id,
+        envelope: envelope.id,
+    };
+    layer.amplitude.modulations[0].source = Some(source);
+    let amplitude = ModulationTarget::Amplitude {
+        track,
+        layer: layer.id,
+    };
+    let mut effect = EffectInstance::auto_filter();
+    let filter = ModulationTarget::Effect(effect.id);
+    let EffectSettings::AutoFilter(settings) = &mut effect.unit else {
+        panic!()
+    };
+    settings.lfo_enabled = false;
+    settings.frequency_hz = 1000.0;
+    let mut route = Modulation::new(ModulationParameter::Frequency);
+    route.source = Some(source);
+    route.amount = 2.0;
+    settings.modulations.push(route);
+    plan.project.tracks[0].effects.push(effect);
+    let mut observed = Renderer::new(plan.clone());
+    let mut reference = Renderer::new(plan.clone());
+    observed.play();
+    reference.play();
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    for _ in 0..2400 {
+        assert_eq!(observed.next_sample(), reference.next_sample());
+        assert!(
+            observed
+                .modulation_values(filter)
+                .unwrap()
+                .iter()
+                .all(|v| v.is_finite())
+        );
+        assert!(observed.modulation_values(amplitude).unwrap()[0].is_finite());
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    let values = observed.modulation_values(filter).unwrap();
+    assert!((1900.0..2100.0).contains(&values[0]), "{values:?}");
+    assert_eq!(values[0], values[1]);
+    let gain = observed.modulation_values(amplitude).unwrap()[0];
+    assert!((-6.2..-5.8).contains(&gain), "{gain}");
+    let mut edited = plan;
+    edited.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+        .amplitude
+        .modulation_open = true;
+    let mut next = Renderer::new(edited);
+    next.inherit(&mut observed);
+    for _ in 0..2600 {
+        assert_eq!(next.next_sample(), reference.next_sample());
+    }
+    assert!(next.modulation_values(amplitude).unwrap()[0].abs() < 1e-4);
+    assert!((next.modulation_values(filter).unwrap()[0] - 4000.0).abs() < 2.0);
+    next.pause();
+    let held = next.modulation_values(amplitude);
+    next.next_sample();
+    assert_eq!(next.modulation_values(amplitude), held);
+    next.stop();
+    assert_eq!(
+        next.modulation_values(amplitude).unwrap()[0],
+        SILENT_GAIN_DB
+    );
+    assert!(
+        next.modulation_values(ModulationTarget::Amplitude {
+            track,
+            layer: Id::new_v4()
+        })
+        .is_none()
+    );
 }
