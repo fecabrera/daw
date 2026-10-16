@@ -45,6 +45,8 @@ pub mod icons;
 mod instrument_catalog;
 mod instrument_panel;
 pub mod knobs;
+mod lfo_controls;
+mod lfo_panel;
 mod limiter_panel;
 pub mod meters;
 mod mix_controls;
@@ -4628,6 +4630,7 @@ mod tests {
     mod group_looping;
     mod group_stretch;
     mod instrument_catalog;
+    mod lfo;
     mod menu_shortcuts;
     mod midi;
     mod mixer;

@@ -1,10 +1,11 @@
+use crate::lfo_controls::{choice as float_choice, phase_spec as phase};
 use crate::{
     icons,
     knobs::{self, Knob, KnobSpec},
     midi_editor::UNIT_STRIP_WIDTH,
     panels, rows, theme,
 };
-use daw_core::{AutoFilterSettings, FilterShape, LfoRateMode, LfoWave, NoteRate};
+use daw_core::{AutoFilterSettings, FilterShape};
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
@@ -14,20 +15,6 @@ pub(super) struct Bounds {
     pub lfo: Rect,
     pub sections: [Rect; 3],
 }
-fn float_choice<T: Copy + PartialEq>(
-    ui: &mut Ui,
-    value: &mut T,
-    choices: &[T],
-    spec: KnobSpec,
-) -> egui::Response {
-    let mut position = choices.iter().position(|v| *v == *value).unwrap() as f32;
-    let response = ui.add(Knob::new(&mut position, spec));
-    if response.changed() {
-        *value = choices[position.round().clamp(0.0, (choices.len() - 1) as f32) as usize];
-    }
-    response
-}
-
 fn filter_diagram(value: f32) -> Vec<Vec2> {
     let shape = FilterShape::ALL[value as usize];
     (0..=24)
@@ -46,58 +33,6 @@ fn filter_diagram(value: f32) -> Vec<Vec2> {
         .collect()
 }
 
-fn lfo_diagram(value: f32) -> Vec<Vec2> {
-    use daw_core::Waveform;
-    let wave = LfoWave::ALL[value as usize];
-    let waveform = match wave {
-        LfoWave::Sine => Waveform::Sine,
-        LfoWave::Triangle => Waveform::Triangle,
-        LfoWave::SawUp | LfoWave::SawDown => Waveform::Saw,
-        LfoWave::Square => Waveform::Square,
-    };
-    let mut points = knobs::waveform_path(waveform);
-    if wave == LfoWave::SawDown {
-        for point in &mut points {
-            point.y = -point.y;
-        }
-    }
-    points
-}
-
-// Saved note IDs stay unchanged; knob positions run from slowest to fastest.
-const NOTE_RATES: [NoteRate; 27] = [
-    NoteRate(1),
-    NoteRate(0),
-    NoteRate(4),
-    NoteRate(2),
-    NoteRate(3),
-    NoteRate(7),
-    NoteRate(5),
-    NoteRate(6),
-    NoteRate(10),
-    NoteRate(8),
-    NoteRate(9),
-    NoteRate(13),
-    NoteRate(11),
-    NoteRate(12),
-    NoteRate(16),
-    NoteRate(14),
-    NoteRate(15),
-    NoteRate(19),
-    NoteRate(17),
-    NoteRate(18),
-    NoteRate(22),
-    NoteRate(20),
-    NoteRate(21),
-    NoteRate(25),
-    NoteRate(23),
-    NoteRate(24),
-    NoteRate(26),
-];
-fn note_label(position: f32) -> String {
-    NOTE_RATES[position.round().clamp(0.0, f32::from(NoteRate::COUNT - 1)) as usize].label()
-}
-
 fn frequency() -> KnobSpec {
     KnobSpec::new("Filter frequency", 20.0..=20_000.0, 1000.0, 1.0)
         .scale(
@@ -109,14 +44,6 @@ fn frequency() -> KnobSpec {
         .format(knobs::format_frequency)
         .endpoint_labels("20", "20k")
 }
-fn phase(name: &'static str) -> KnobSpec {
-    KnobSpec::new(name, -180.0..=180.0, 0.0, 1.0)
-        .centered(0.0)
-        .bipolar()
-        .value_label(|v| format!("{v:.0}°"))
-        .format(|v| format!("{v:.0}°"))
-        .endpoint_labels("−180", "+180")
-}
 fn row(
     ui: &mut Ui,
     settings: &mut AutoFilterSettings,
@@ -126,66 +53,43 @@ fn row(
 ) -> Rect {
     knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
         match (strip, index) {
-            (0, 0) => float_choice(ui, &mut s.shape, FilterShape::ALL,
+            (0, 0) => float_choice(
+                ui,
+                &mut s.shape,
+                FilterShape::ALL,
                 KnobSpec::new("Filter shape", 0.0..=3.0, 0.0, 1.0)
-                    .stepped(1.0).cyclic().diagrams(filter_diagram)
-                    .format(|v| FilterShape::ALL[v as usize].name().into())),
-            (0, 1) => ui.add(Knob::new(&mut s.frequency_hz, frequency()).modulated(markers[0].as_ref(), &mut s.modulation_open)),
-            (0, 2) => ui.add(Knob::new(
-                &mut s.q,
-                KnobSpec::new(
-                    "Resonance",
-                    0.1..=10.0,
-                    std::f32::consts::FRAC_1_SQRT_2,
-                    0.01,
-                )
-                .scale(
-                    |v| (v / 0.1).log10() / 2.0,
-                    |p| 0.1 * 100_f32.powf(p),
-                    |v, d| v * 2_f32.powf(d / 24.0),
-                )
-                .value_label(|v| format!("Q {v:.2}"))
-                .format(|v| format!("Q {v:.2}"))
-                .endpoint_labels("0.1", "10"),
-            ).modulated(markers[1].as_ref(), &mut s.modulation_open)),
-            (1, 0) => float_choice(ui, &mut s.wave, LfoWave::ALL,
-                KnobSpec::new("LFO wave", 0.0..=4.0, 0.0, 1.0)
-                    .stepped(1.0).cyclic().diagrams(lfo_diagram)
-                    .format(|v| LfoWave::ALL[v as usize].name().into())),
-            (1, 1) => float_choice(ui, &mut s.rate_mode, LfoRateMode::ALL,
-                KnobSpec::new("LFO rate mode", 0.0..=1.0, 1.0, 1.0)
-                    .two_way_labels("Hz", "Note")
-                    .format(|v| LfoRateMode::ALL[v as usize].name().into())),
-            (1, 2) if s.rate_mode == LfoRateMode::Hz => ui.add(Knob::new(
-                &mut s.rate_hz,
-                KnobSpec::new("LFO rate", 0.01..=20.0, 2.0, 0.01)
+                    .stepped(1.0)
+                    .cyclic()
+                    .diagrams(filter_diagram)
+                    .format(|v| FilterShape::ALL[v as usize].name().into()),
+            ),
+            (0, 1) => ui.add(
+                Knob::new(&mut s.frequency_hz, frequency())
+                    .modulated(markers[0].as_ref(), &mut s.modulation_open),
+            ),
+            (0, 2) => ui.add(
+                Knob::new(
+                    &mut s.q,
+                    KnobSpec::new(
+                        "Resonance",
+                        0.1..=10.0,
+                        std::f32::consts::FRAC_1_SQRT_2,
+                        0.01,
+                    )
                     .scale(
-                        |v| (v / 0.01).ln() / 2000_f32.ln(),
-                        |p| 0.01 * 2000_f32.powf(p),
+                        |v| (v / 0.1).log10() / 2.0,
+                        |p| 0.1 * 100_f32.powf(p),
                         |v, d| v * 2_f32.powf(d / 24.0),
                     )
-                    .value_label(|v| format!("{v:.2} Hz"))
-                    .format(|v| format!("{v:.2} Hz"))
-                    .endpoint_labels("0.01", "20"),
-            )),
-            (1, 2) => {
-                let mut position = NOTE_RATES.iter().position(|rate| *rate == s.note_rate).unwrap() as f32;
-                let response = ui.add(Knob::new(
-                    &mut position,
-                    KnobSpec::new("LFO note duration", 0.0..=f32::from(NoteRate::COUNT - 1), 13.0, 1.0)
-                        .stepped(1.0)
-                        // Straight durations in the slowest-to-fastest choice order.
-                        .reference_values(&[1.0, 4.0, 7.0, 10.0, 13.0, 16.0, 19.0, 22.0, 25.0])
-                        .value_label(note_label)
-                        .format(note_label)
-                        .endpoint_labels("4b D", "1/64 T"),
-                ))
-                .on_hover_text("D = dotted; T = triplet. Bounded from dotted 4 bars to triplet 1/64, slowest to fastest. Note rates follow project tempo and transport.");
-                if response.changed() {
-                    s.note_rate = NOTE_RATES[position.round().clamp(0.0, f32::from(NoteRate::COUNT - 1)) as usize];
-                }
-                response
-            }
+                    .value_label(|v| format!("Q {v:.2}"))
+                    .format(|v| format!("Q {v:.2}"))
+                    .endpoint_labels("0.1", "10"),
+                )
+                .modulated(markers[1].as_ref(), &mut s.modulation_open),
+            ),
+            (1, 0) => crate::lfo_controls::wave(ui, &mut s.wave),
+            (1, 1) => crate::lfo_controls::mode(ui, &mut s.rate_mode),
+            (1, 2) => crate::lfo_controls::rate(ui, s.rate_mode, &mut s.rate_hz, &mut s.note_rate),
             (2, 0) => ui.add(Knob::new(
                 &mut s.strength_octaves,
                 KnobSpec::new("LFO strength", 0.0..=6.0, 1.0, 0.1)
@@ -202,14 +106,23 @@ fn row(
                 &mut s.stereo_phase_degrees,
                 phase("LFO stereo phase"),
             )),
-            (3, 0) => ui.add(Knob::new(&mut s.level_db, knobs::marked_gain_spec().named("Filter output level")).modulated(markers[2].as_ref(), &mut s.modulation_open)),
-            (3, 1) => ui.add(Knob::new(
-                &mut s.dry_wet,
-                KnobSpec::new("Dry/wet", 0.0..=1.0, 1.0, 0.01)
-                    .value_label(|v| format!("{:.0}%", v * 100.0))
-                    .format(|v| format!("{:.0}%", v * 100.0))
-                    .endpoint_labels("Dry", "Wet"),
-            ).modulated(markers[3].as_ref(), &mut s.modulation_open)),
+            (3, 0) => ui.add(
+                Knob::new(
+                    &mut s.level_db,
+                    knobs::marked_gain_spec().named("Filter output level"),
+                )
+                .modulated(markers[2].as_ref(), &mut s.modulation_open),
+            ),
+            (3, 1) => ui.add(
+                Knob::new(
+                    &mut s.dry_wet,
+                    KnobSpec::new("Dry/wet", 0.0..=1.0, 1.0, 0.01)
+                        .value_label(|v| format!("{:.0}%", v * 100.0))
+                        .format(|v| format!("{:.0}%", v * 100.0))
+                        .endpoint_labels("Dry", "Wet"),
+                )
+                .modulated(markers[3].as_ref(), &mut s.modulation_open),
+            ),
             _ => ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), egui::Sense::hover()),
         }
     })
@@ -328,6 +241,8 @@ pub(super) fn show(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lfo_controls::diagram as lfo_diagram;
+    use daw_unit_core::LfoWave;
 
     #[test]
     fn diagrams_show_the_filter_response_and_each_distinct_waveform() {

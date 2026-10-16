@@ -3390,3 +3390,72 @@ fn drive_modulation_round_trips_save_as_and_defaults_legacy_settings() {
     legacy["modulation_open"] = serde_json::Value::Null;
     assert!(serde_json::from_value::<daw_core::DriveSettings>(legacy).is_err());
 }
+
+#[test]
+fn lfo_instances_connections_and_presentation_survive_save_as_duplication_and_rate_changes() {
+    use daw_core::{
+        EffectInstance, EffectSettings, LfoInstance, LfoPolarity, LfoRestart, Modulation,
+        ModulationParameter, ModulationSourceId,
+    };
+    let f = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let instrument = session.project.tracks[0].instrument.as_mut().unwrap();
+    let layer = &mut instrument.layers[0];
+    let mut lfo = LfoInstance {
+        collapsed: true,
+        enabled: false,
+        ..Default::default()
+    };
+    lfo.settings.phase_degrees = -45.0;
+    lfo.settings.polarity = LfoPolarity::Bipolar;
+    lfo.settings.restart = LfoRestart::Legato;
+    lfo.settings.smooth_ms = 17.0;
+    let source = ModulationSourceId {
+        layer: layer.id,
+        unit: lfo.id,
+    };
+    layer.lfos.push(lfo);
+    layer.amplitude.present = true;
+    let mut route = Modulation::new(ModulationParameter::Amplitude);
+    route.source = Some(source);
+    route.amount = 0.7;
+    layer.amplitude.modulations.push(route);
+    let mut effect = EffectInstance::auto_filter();
+    let EffectSettings::AutoFilter(settings) = &mut effect.unit else {
+        panic!()
+    };
+    let mut route = Modulation::new(ModulationParameter::Frequency);
+    route.source = Some(source);
+    route.amount = -2.0;
+    settings.modulations.push(route);
+    session.project.tracks[0].effects.push(effect);
+    session.save(&f.0.join("lfo")).unwrap();
+    let mut opened = Session::open(&f.0.join("lfo")).unwrap();
+    opened.save(&f.0.join("lfo-copy")).unwrap();
+    let mut copy = Session::open(&f.0.join("lfo-copy")).unwrap();
+    assert_eq!(
+        copy.project.tracks[0].instrument,
+        session.project.tracks[0].instrument
+    );
+    assert_eq!(
+        copy.project.tracks[0].effects,
+        session.project.tracks[0].effects
+    );
+    copy.project
+        .edit(Edit::DuplicateTrack {
+            track_id: track,
+            new_track_id: daw_core::Id::new_v4(),
+        })
+        .unwrap();
+    copy.project.validate().unwrap();
+    assert_eq!(
+        copy.project.tracks[0].instrument,
+        copy.project.tracks[1].instrument
+    );
+    let changed = copy.with_audio_settings(96000, 256).unwrap();
+    assert_eq!(
+        changed.project.tracks[0].instrument,
+        copy.project.tracks[0].instrument
+    );
+}

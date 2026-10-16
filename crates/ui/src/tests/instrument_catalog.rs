@@ -252,10 +252,10 @@ fn catalog_keyboard_adds_selected_components_only_to_the_selected_layer() {
             .layers[1]
             .amplitude
             .level_db = -6.0;
-        add_component(&mut app, &ctx, layers[1], 2);
+        add_component(&mut app, &ctx, layers[1], 3);
         app.dirty = false;
         let original = serde_json::to_value(&app.session.project).unwrap();
-        add_component(&mut app, &ctx, layers[1], 2);
+        add_component(&mut app, &ctx, layers[1], 3);
         assert_eq!(
             serde_json::to_value(&app.session.project).unwrap(),
             original
@@ -445,7 +445,7 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                     click(&mut app, &ctx, source, false);
                     let envelope = app.instrument_catalog_bounds.entries[1].center();
                     click(&mut app, &ctx, envelope, true);
-                    let filter = app.instrument_catalog_bounds.entries[2].center();
+                    let filter = app.instrument_catalog_bounds.entries[3].center();
                     click(&mut app, &ctx, filter, true);
                     let original = serde_json::to_value(&app.session.project).unwrap();
                     let viewport = app.instrument_catalog_bounds.layer_viewport;
@@ -544,7 +544,7 @@ fn dragging_an_unselected_component_replaces_library_selection_and_existing_enve
     frame(&mut app, &ctx, vec![]);
     app.dirty = false;
     let original = serde_json::to_value(&app.session.project).unwrap();
-    start_component_drag(&mut app, &ctx, 2);
+    start_component_drag(&mut app, &ctx, 3);
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
     frame(&mut app, &ctx, vec![button(end, false)]);
     assert_eq!(
@@ -703,7 +703,7 @@ fn amplitude_double_click_adds_once_to_the_selected_layer() {
     for _ in 0..40 {
         frame(&mut app, &ctx, vec![]);
     }
-    let point = app.instrument_catalog_bounds.entries[2].center();
+    let point = app.instrument_catalog_bounds.entries[3].center();
     click(&mut app, &ctx, point, false);
     assert!(!app.dirty);
     click(&mut app, &ctx, point, false);

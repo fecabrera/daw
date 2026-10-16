@@ -2127,3 +2127,21 @@ Native visual/pointer checks, device playback, and Windows/Linux builds were not
 The return-to-origin button now uses Lucide Chevron First. This supersedes the Chevron Left icon above. The two-step Stop/return action, disabled state at zero, tooltip, accessibility name, dimensions, and colors remain unchanged.
 
 Formatting, strict workspace Clippy, and workspace tests passed, including all 370 UI tests. The two expanded time-stretch acceptance matrices remain explicitly ignored. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app` with Chevron First. Whitespace checks passed. Native appearance and Windows/Linux builds were not checked for this icon-only change.
+
+## LFO component and continuous modulation — 2026-10-16
+
+Instrument now adds independent LFO instances from its existing component catalog. LFOs use the shared source interface, publication, metadata, validation, destination routes, controls, and indicators. Amplitude, Auto-filter, and Drive consume one cached shared value per instance. The portable BSD-2-Clause `daw-lfo` crate has only `unit-core` as a dependency. Auto-filter shares its waveform, rate, clock, and parameter widgets with this component while keeping its internal stereo behavior.
+
+The shared source context supplies frame, tempo, and prepared note/legato origins. Dynamic metadata supplies polarity and Contour/Continuous behavior. The amplitude resolver multiplies normalized continuous gain by the existing contour result. Continuous values cannot own a release or revive a voice. Prepared note tables cover overlap, adjacent notes, gaps, trims, stretch, and repeat phase without expanding repeats. Compatible updates swap prepared timing/storage and preserve live state, including adding the first LFO during playback. Analytical periodic one-pole smoothing permits deterministic direct access without replaying a long control history.
+
+Automated checks cover all six processing rates, all five waveforms, both polarities, every note duration, phase, frequency/smoothing bounds, periodic/direct-access output, and live clock correction. Integration checks cover fan-out to all three destinations, audible modulation, contour composition and release lifetime, playback/export/block parity, deterministic random access, pause, loop phase after the existing boundary crossfade/effect history settles, source power/settings changes, and allocation-free processing, seek, and compatible replacement. Save/reopen, Save As, duplication, sample-rate changes, legacy empty lists, malformed settings, and source identity checks pass. Egui tests cover catalog double-click/Enter/drag actions, shared control heights/power/compact states in both themes, and continuous amplitude range indicators.
+
+Completed checks with the workspace Cargo cache selected:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --workspace`: 645 passed, zero failed, two ignored. This includes 374 UI tests, 32 engine MIDI tests, five portable LFO tests, and nine unit-core tests. The two existing expanded time-stretch matrices remain explicitly ignored.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed and rebuilt `target/debug/DAW.app`.
+- Local documentation file targets and `git diff --check`: passed.
+
+Native visual/gesture checks, device playback/listening, and Windows/Linux builds were not run. Per-note LFOs and broader graph routing remain outside the accepted scope. See [LFO controls and timing](lfo.md) and [the shared modulation contract](modulation.md).

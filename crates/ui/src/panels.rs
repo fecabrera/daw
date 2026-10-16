@@ -296,7 +296,15 @@ impl PanelStyle {
             };
             paint_unit_title(ui, body, &strip_title, text, true);
         } else {
-            paint_unit_title(ui, cap, name, header_text, false);
+            let title_rect = if reserved >= 90.0 && cap.width() < 260.0 {
+                Rect::from_min_max(
+                    egui::pos2(power_rect.right() + 7.0, cap.top()),
+                    egui::pos2(cap.right() - reserved, cap.bottom()),
+                )
+            } else {
+                cap
+            };
+            paint_unit_title(ui, title_rect, name, header_text, false);
         }
         let color = if *enabled {
             crate::theme::accent(ui.ctx())

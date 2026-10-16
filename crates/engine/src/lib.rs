@@ -1,5 +1,6 @@
 mod effects;
 mod latency;
+mod lfo;
 mod midi;
 mod modulation;
 use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};

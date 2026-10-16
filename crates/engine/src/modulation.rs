@@ -1,7 +1,7 @@
 use daw_core::{EnvelopeInstance, EnvelopeMode, ModulationSourceId, ModulationValue};
 use daw_envelope::Envelope;
 pub(crate) use daw_unit_core::ModulationRoute as Route;
-use daw_unit_core::{ModulationOutput, ProcessingContext};
+use daw_unit_core::{ModulationOutput, ModulationSourceContext, ProcessingContext};
 pub(crate) struct Control {
     pub source: ModulationSourceId,
     pub mode: EnvelopeMode,
@@ -30,13 +30,36 @@ impl Control {
         self.output.reset();
     }
     pub fn tick(&mut self) -> ModulationValue {
-        self.output.sample(&mut self.envelope)
+        self.output.sample(&mut self.envelope, Default::default())
     }
 }
 
+pub(crate) struct LfoControl {
+    source: ModulationSourceId,
+    unit: daw_lfo::Lfo,
+    output: ModulationOutput,
+}
+impl LfoControl {
+    pub fn new(
+        layer: daw_core::Id,
+        settings: &daw_unit_core::LfoInstance,
+        context: ProcessingContext,
+    ) -> Self {
+        let source = ModulationSourceId {
+            layer,
+            unit: settings.id,
+        };
+        Self {
+            source,
+            unit: daw_lfo::Lfo::new(settings.settings, context),
+            output: ModulationOutput::new(source, settings.present && settings.enabled, context),
+        }
+    }
+}
 pub(crate) struct SharedControls {
     pub controls: Vec<Control>,
     pub values: Vec<ModulationValue>,
+    lfos: Vec<LfoControl>,
     held: usize,
     frame: u64,
     release_frames: u64,
@@ -46,6 +69,8 @@ impl SharedControls {
         let values = controls
             .iter()
             .map(|e| ModulationValue {
+                range: daw_unit_core::ModulationRange::Unipolar,
+                behavior: daw_unit_core::ModulationBehavior::Contour,
                 source: e.source,
                 value: 0.0,
                 weight: 0.0,
@@ -55,12 +80,32 @@ impl SharedControls {
         Self {
             controls,
             values,
+            lfos: Vec::new(),
             held: 0,
             frame: 0,
             release_frames: 0,
         }
     }
+    pub fn with_lfos(mut self, lfos: Vec<LfoControl>) -> Self {
+        self.values.extend(lfos.iter().map(|l| ModulationValue {
+            source: l.source,
+            value: 0.0,
+            weight: 0.0,
+            range: daw_unit_core::ModulationRange::Unipolar,
+            behavior: daw_unit_core::ModulationBehavior::Continuous,
+            release_age: None,
+        }));
+        self.lfos = lfos;
+        self
+    }
     pub fn reset(&mut self) {
+        self.reset_notes();
+        for lfo in &mut self.lfos {
+            lfo.unit.reset();
+            lfo.output.reset();
+        }
+    }
+    pub fn reset_notes(&mut self) {
         for e in &mut self.controls {
             e.reset();
         }
@@ -108,7 +153,7 @@ impl SharedControls {
             }
         }
     }
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, context: ModulationSourceContext) {
         if self.held == 0 {
             self.release_frames = self.release_frames.saturating_add(1);
         }
@@ -118,8 +163,24 @@ impl SharedControls {
                 v.release_age = Some(self.release_frames);
             }
         }
+        for (lfo, value) in self
+            .lfos
+            .iter_mut()
+            .zip(&mut self.values[self.controls.len()..])
+        {
+            *value = lfo.output.sample(&mut lfo.unit, context);
+        }
     }
     pub fn retarget(&mut self, next: &mut Self) {
+        for n in &mut next.lfos {
+            if let Some(old) = self.lfos.iter_mut().find(|old| old.source == n.source) {
+                old.unit.set_settings(n.unit.settings());
+                old.output.retarget(&n.output);
+                std::mem::swap(old, n);
+            }
+        }
+        std::mem::swap(&mut self.lfos, &mut next.lfos);
+
         for n in &mut next.controls {
             if let Some(e) = self.controls.iter_mut().find(|e| e.source == n.source) {
                 e.retarget(n);
@@ -185,23 +246,23 @@ mod tests {
         for s in [&mut retrigger, &mut legato] {
             s.event(true);
             for _ in 0..25 {
-                s.tick();
+                s.tick(Default::default());
             }
             assert!((s.values[0].value - 0.25).abs() < 1e-6);
             s.event(true);
-            s.tick();
+            s.tick(Default::default());
         }
         assert!((retrigger.values[0].value - 0.01).abs() < 1e-6);
         assert!((legato.values[0].value - 0.26).abs() < 1e-6);
         for s in [&mut retrigger, &mut legato] {
             s.event(false);
             for _ in 0..100 {
-                s.tick();
+                s.tick(Default::default());
             }
             assert_eq!(s.values[0].value, 1.0);
             s.event(false);
             for _ in 0..100 {
-                s.tick();
+                s.tick(Default::default());
             }
             assert_eq!(s.values[0].value, 0.0);
             assert!(s.controls[0].envelope.is_idle());
@@ -214,12 +275,12 @@ mod tests {
             let mut sought = shared(mode);
             played.event(true);
             for _ in 0..25 {
-                played.tick();
+                played.tick(Default::default());
             }
             sought.event(true);
             sought.advance_to(25);
-            sought.tick();
-            played.tick();
+            sought.tick(Default::default());
+            played.tick(Default::default());
             assert_eq!(played.values[0].value, sought.values[0].value);
             let mut route = Modulation::new(daw_core::ModulationParameter::Frequency);
             route.source = Some(sought.values[0].source);

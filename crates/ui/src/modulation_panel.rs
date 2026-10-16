@@ -13,6 +13,7 @@ pub(super) struct Source {
     pub label: String,
     pub scope: ModulationScope,
     pub range: ModulationRange,
+    pub behavior: daw_unit_core::ModulationBehavior,
     pub enabled: bool,
 }
 pub(super) fn sources(instrument: Option<&InstrumentSettings>) -> Vec<Source> {
@@ -30,6 +31,7 @@ pub(super) fn sources(instrument: Option<&InstrumentSettings>) -> Vec<Source> {
             ),
             scope: source.scope,
             range: source.output.range,
+            behavior: source.output.behavior,
             enabled: source.enabled,
         })
         .collect()
@@ -232,8 +234,14 @@ pub(super) fn marker(
     let mut assigned = false;
     let mut active = false;
     let mut offsets = [0.0_f32; 2];
-    let mut amplitude = [[0.0_f32; 2]; 2];
-    let mut grouped: Vec<(ModulationSourceId, ModulationScope, ModulationRange, f32)> = Vec::new();
+    let mut amplitude = [[0.0_f32; 2]; 3];
+    let mut grouped: Vec<(
+        ModulationSourceId,
+        ModulationScope,
+        ModulationRange,
+        daw_unit_core::ModulationBehavior,
+        f32,
+    )> = Vec::new();
     let mut lines = vec![format!("{} modulation", parameter.label())];
     for route in routes.iter().filter(|r| r.parameter == parameter) {
         assigned = true;
@@ -268,17 +276,31 @@ pub(super) fn marker(
         }
         active = true;
         let source = source.unwrap();
-        if let Some((_, _, _, amount)) = grouped.iter_mut().find(|(id, _, _, _)| *id == source.id) {
+        if let Some((_, _, _, _, amount)) =
+            grouped.iter_mut().find(|(id, _, _, _, _)| *id == source.id)
+        {
             *amount += route.amount;
         } else {
-            grouped.push((source.id, source.scope, source.range, route.amount));
+            grouped.push((
+                source.id,
+                source.scope,
+                source.range,
+                source.behavior,
+                route.amount,
+            ));
         }
     }
     // Connections to the same source are correlated: opposite amounts cancel.
-    for (_, scope, range, amount) in grouped {
+    for (_, scope, range, behavior, amount) in grouped {
         let [min, max] = range.bounds();
         if parameter == ModulationParameter::Amplitude {
-            let group = usize::from(scope != ModulationScope::PerNote);
+            let continuous = behavior == daw_unit_core::ModulationBehavior::Continuous;
+            let group = if continuous {
+                2
+            } else {
+                usize::from(scope != ModulationScope::PerNote)
+            };
+            let (min, max) = if continuous { (0.0, 1.0) } else { (min, max) };
             let deltas = [(min - 1.0) * amount, (max - 1.0) * amount];
             amplitude[group][0] += deltas[0].min(deltas[1]);
             amplitude[group][1] += deltas[0].max(deltas[1]);
@@ -330,7 +352,7 @@ pub(super) fn marker(
             let factors = amplitude
                 .map(|[min, max]| [(1.0 + min).clamp(0.0, 16.0), (1.0 + max).clamp(0.0, 16.0)]);
             std::array::from_fn(|i| {
-                let factor = factors[0][i] * factors[1][i];
+                let factor = factors[0][i] * factors[1][i] * factors[2][i];
                 if factor > 0.0 && base > daw_core::SILENT_GAIN_DB {
                     base + 20.0 * factor.log10()
                 } else {
@@ -402,6 +424,7 @@ mod tests {
             label: "Layer 1 · Envelope 1".into(),
             scope: mode.into(),
             range: ModulationRange::Unipolar,
+            behavior: daw_unit_core::ModulationBehavior::Contour,
             enabled: true,
         }
     }
@@ -410,6 +433,32 @@ mod tests {
         route.source = Some(source.id);
         route.amount = amount;
         route
+    }
+    #[test]
+    fn continuous_amplitude_ranges_multiply_contours_and_normalize_polarity() {
+        let contour = source(EnvelopeMode::Legato);
+        let mut lfo = source(EnvelopeMode::Legato);
+        lfo.behavior = daw_unit_core::ModulationBehavior::Continuous;
+        for polarity in [ModulationRange::Unipolar, ModulationRange::Bipolar] {
+            lfo.range = polarity;
+            let routes = [
+                route(&contour, ModulationParameter::Amplitude, 0.5),
+                route(&lfo, ModulationParameter::Amplitude, 0.5),
+            ];
+            let marker = marker(
+                &routes,
+                &[contour.clone(), lfo.clone()],
+                ModulationParameter::Amplitude,
+                0.0,
+                true,
+                None,
+                [None; 2],
+            )
+            .unwrap();
+            let range = marker.range;
+            assert!((range[0] - 20.0 * 0.25_f32.log10()).abs() < 0.0001);
+            assert!(range[1].abs() < 0.0001);
+        }
     }
     #[test]
     fn markers_read_bipolar_range_from_provider_metadata() {

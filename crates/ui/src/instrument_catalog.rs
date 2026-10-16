@@ -5,12 +5,14 @@ use super::*;
 pub(super) enum Component {
     Oscillator,
     Envelope,
+    Lfo,
     Amplitude,
 }
 
-pub(super) const ENTRIES: [(&str, &str, Component); 3] = [
+pub(super) const ENTRIES: [(&str, &str, Component); 4] = [
     ("daw.oscillator", "Oscillator", Component::Oscillator),
     ("daw.envelope", "Envelope", Component::Envelope),
+    ("daw.lfo", "LFO", Component::Lfo),
     ("daw.amplitude", "Amplitude", Component::Amplitude),
 ];
 
@@ -24,6 +26,13 @@ impl Component {
                     e.present = true;
                 } else {
                     layer.envelopes.push(Default::default());
+                }
+            }
+            Self::Lfo => {
+                if let Some(lfo) = layer.lfos.iter_mut().find(|lfo| !lfo.present) {
+                    lfo.present = true;
+                } else {
+                    layer.lfos.push(Default::default());
                 }
             }
             Self::Amplitude => layer.amplitude.present = true,

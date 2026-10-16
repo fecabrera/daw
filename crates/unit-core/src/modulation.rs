@@ -175,6 +175,8 @@ impl AmplitudeSettings {
 /// Prepared control values are independent of DAW entities and can fan out without advancing DSP twice.
 #[derive(Clone, Copy, Debug)]
 pub struct ModulationValue {
+    pub range: ModulationRange,
+    pub behavior: ModulationBehavior,
     pub source: ModulationSourceId,
     pub value: f32,
     pub weight: f32,
@@ -184,3 +186,14 @@ pub struct ModulationValue {
 
 #[cfg(test)]
 mod tests;
+
+impl ModulationValue {
+    /// Only a note contour can carry the final released voice. Continuous sources never do.
+    pub fn owns_release(&self, age: Option<u64>) -> bool {
+        self.behavior == ModulationBehavior::Contour
+            && self.release_age.is_some()
+            && self.release_age == age
+            && self.value > 0.0
+            && self.weight > 0.0
+    }
+}

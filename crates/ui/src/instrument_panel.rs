@@ -454,6 +454,13 @@ impl DawUi {
                                                                 }
                                                             }
                                                         }
+                                                        for (index, lfo) in layer.lfos.iter_mut().enumerate() {
+                                                            if let Some(unit) = crate::lfo_panel::unit(ui, lfo, index + 1, height, compact) {
+                                                                let rect = unit.response.rect;
+                                                                if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }
+                                                                previous = Some(rect);
+                                                            }
+                                                        }
                                                         if let Some(amplitude) =
                                                             crate::amplitude_panel::unit(
                                                                 ui,

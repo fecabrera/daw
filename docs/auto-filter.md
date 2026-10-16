@@ -58,3 +58,8 @@ Moving dots show actual processed values after ramps, external smoothing, and bo
 
 
 Modulation uses the [shared portable source and destination contract](modulation.md). Source lookup, scope checks, typed route evaluation, and common smoothing belong to `unit-core`; the unit retains its audio processing and final parameter bounds.
+
+
+## Shared LFO primitives — 2026-10-16
+
+The internal LFO shares waveform evaluation, rate conversion, transport phase correction, and waveform/rate/phase UI controls with the [LFO component](lfo.md). Its stereo phase, strength, enable state, 1 ms smoothing, saved settings, and audio processing retain their behavior. External LFO components connect through the same shared modulation input as envelopes; their selected polarity supplies additive offsets in the existing parameter units.

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/amplitude", "crates/timestretch", "crates/timestretch-cli", "crates/unit-core", "crates/oscillator", "crates/envelope", "crates/equalizer", "crates/drive", "crates/auto-filter", "crates/compressor", "crates/limiter", "crates/ott", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
+members = ["crates/lfo", "crates/amplitude", "crates/timestretch", "crates/timestretch-cli", "crates/unit-core", "crates/oscillator", "crates/envelope", "crates/equalizer", "crates/drive", "crates/auto-filter", "crates/compressor", "crates/limiter", "crates/ott", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
 default-members = ["apps/desktop", "apps/cli"]
 
 [workspace.package]
@@ -9,6 +9,7 @@ edition = "2024"
 rust-version = "1.95"
 
 [workspace.dependencies]
+daw-lfo = { path = "crates/lfo" }
 daw-amplitude = { path = "crates/amplitude" }
 timestretch = { path = "crates/timestretch" }
 daw-unit-core = { path = "crates/unit-core", version = "0.1.0" }

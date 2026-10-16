@@ -1,4 +1,6 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+mod lfo;
+pub use lfo::*;
 use serde::{Deserialize, Serialize};
 mod auto_filter;
 mod modulation;
@@ -100,6 +102,7 @@ pub struct InstrumentLayerSettings {
     pub oscillator_enabled: bool,
     pub oscillator_collapsed: bool,
     pub envelopes: Vec<EnvelopeInstance>,
+    pub lfos: Vec<LfoInstance>,
     pub amplitude: AmplitudeSettings,
 }
 impl Default for InstrumentLayerSettings {
@@ -122,6 +125,7 @@ impl Default for InstrumentLayerSettings {
                     ..Default::default()
                 })
                 .collect(),
+            lfos: Vec::new(),
             amplitude: AmplitudeSettings::default(),
         }
     }
@@ -140,6 +144,10 @@ impl InstrumentLayerSettings {
                 self.envelopes
                     .iter()
                     .all(|e| !e.id.is_nil() && ids.insert(e.id) && e.settings.valid())
+                    && self
+                        .lfos
+                        .iter()
+                        .all(|l| !l.id.is_nil() && ids.insert(l.id) && l.settings.valid())
             }
     }
     /// Compatibility constructor: the former amplitude envelope becomes an explicit connection.
@@ -202,6 +210,8 @@ struct SavedLayer {
     filter_envelope_collapsed: bool,
     #[serde(default, deserialize_with = "saved_envelopes")]
     envelopes: Option<Vec<EnvelopeInstance>>,
+    #[serde(default)]
+    lfos: Vec<LfoInstance>,
     #[serde(default, deserialize_with = "saved_amplitude")]
     amplitude: Option<AmplitudeSettings>,
 }
@@ -255,6 +265,7 @@ impl SavedLayer {
                     },
                 ]
             }),
+            lfos: self.lfos,
             amplitude: self.amplitude.unwrap_or_default(),
         };
         if legacy && self.has_envelope {
@@ -303,6 +314,9 @@ impl InstrumentSettings {
                 .iter()
                 .enumerate()
                 .map(|(index, provider)| provider.modulation_source(layer.id, &layer.name, index))
+                .chain(layer.lfos.iter().enumerate().map(|(index, provider)| {
+                    provider.modulation_source(layer.id, &layer.name, index)
+                }))
         })
     }
     pub fn modulation_source(&self, id: ModulationSourceId) -> Option<ModulationSourceInfo<'_>> {

@@ -107,7 +107,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
         add_component(&mut app, &ctx, layer, 1);
-        add_component(&mut app, &ctx, layer, 2);
+        add_component(&mut app, &ctx, layer, 3);
         app.dirty = false;
         let bounds = &app.midi_editor.layer_bounds[&layer];
         let header = bounds.amplitude_header;
@@ -368,7 +368,7 @@ fn auto_filter_expansion_keeps_regular_controls_and_lists_only_shared_envelopes(
 fn modulation_visibility_is_saved_per_unit_and_follows_replacement_project_values() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
-        add_component(&mut app, &ctx, layer, 2);
+        add_component(&mut app, &ctx, layer, 3);
         app.session.project.tracks[0].effects = vec![
             daw_core::EffectInstance::auto_filter(),
             daw_core::EffectInstance::auto_filter(),
@@ -439,7 +439,7 @@ fn parameter_markers_open_their_own_modulation_controls_without_editing_base_val
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layer) = fixture(theme);
         add_component(&mut app, &ctx, layer, 1);
-        add_component(&mut app, &ctx, layer, 2);
+        add_component(&mut app, &ctx, layer, 3);
         let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
         let l = &mut instrument.layers[0];
         l.envelopes[0].mode = daw_core::EnvelopeMode::Legato;

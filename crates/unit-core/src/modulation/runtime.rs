@@ -65,7 +65,7 @@ impl ModulationRoute {
         &mut self,
         local: &[ModulationValue],
         shared: &[ModulationValue],
-    ) -> Option<(f32, f32, bool)> {
+    ) -> Option<(f32, f32, bool, ModulationRange, ModulationBehavior)> {
         let amount = self.amount.next_value();
         let source = self.settings.source?;
         let (value, per_note) = if let Some(v) = local.iter().find(|v| v.source == source) {
@@ -81,7 +81,13 @@ impl ModulationRoute {
         {
             None
         } else {
-            Some((value.value, amount * value.weight.min(1.0), per_note))
+            Some((
+                value.value,
+                amount * value.weight.min(1.0),
+                per_note,
+                value.range,
+                value.behavior,
+            ))
         }
     }
 }
@@ -123,15 +129,25 @@ impl ModulationInputs {
         let mut shared_release = false;
         let mut direct = None;
         let mut effective = 0;
+        let mut continuous = 0.0;
         for route in routes {
             // Advance every route ramp once even if a caller supplies an unsupported target.
             let sample = route.sample(local, shared);
             if !parameters.contains(&route.settings.parameter) {
                 continue;
             }
-            if let Some((value, amount, per_note)) = sample {
+            if let Some((value, amount, per_note, range, behavior)) = sample {
                 if let Some(index) = route.settings.parameter.offset_index() {
                     inputs.offsets[index] += value * amount;
+                    continue;
+                }
+                if behavior == ModulationBehavior::Continuous {
+                    // Gain modulation uses a normalized cycle; additive destinations retain polarity.
+                    let normalized = match range {
+                        ModulationRange::Unipolar => value,
+                        ModulationRange::Bipolar => (value + 1.0) * 0.5,
+                    };
+                    continuous += amount * (normalized - 1.0);
                     continue;
                 }
                 let deltas = if per_note {
@@ -144,8 +160,7 @@ impl ModulationInputs {
                 if !per_note && value > 0.0 {
                     shared_release |= shared.iter().any(|v| {
                         Some(v.source) == route.settings.source
-                            && v.release_age.is_some()
-                            && v.release_age == context.release_age
+                            && v.owns_release(context.release_age)
                     });
                 }
                 effective += 1;
@@ -164,6 +179,9 @@ impl ModulationInputs {
             };
             shaped.clamp(0.0, 16.0) * shared_factor.clamp(0.0, 16.0)
         };
+        if continuous != 0.0 {
+            inputs.amplitude *= (1.0 + continuous).clamp(0.0, 16.0);
+        }
         inputs
     }
 }

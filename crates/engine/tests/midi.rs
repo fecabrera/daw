@@ -1848,7 +1848,7 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
                 envelope.note_off();
                 output.set_enabled(false);
             }
-            let cached = [output.sample(&mut envelope)];
+            let cached = [output.sample(&mut envelope, Default::default())];
             let input = [0.2 * (frame as f32 * 0.035).sin(), 0.1];
             let c = ModulationContext {
                 frame: u64::from(frame),
@@ -1880,4 +1880,172 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
         assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     }
+}
+
+fn lfo_plan(restart: LfoRestart, polarity: LfoPolarity) -> RenderPlan {
+    let mut p = plan(Waveform::Saw, 48_000);
+    let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+    let mut lfo = LfoInstance::default();
+    lfo.settings.restart = restart;
+    lfo.settings.polarity = polarity;
+    lfo.settings.rate_mode = LfoRateMode::Hz;
+    lfo.settings.rate_hz = 3.0;
+    lfo.settings.smooth_ms = 7.0;
+    let source = ModulationSourceId {
+        layer: layer.id,
+        unit: lfo.id,
+    };
+    layer.lfos.push(lfo);
+    let mut route = Modulation::new(ModulationParameter::Amplitude);
+    route.source = Some(source);
+    route.amount = 0.8;
+    layer.amplitude.modulations.push(route);
+    let mut filter = EffectInstance::auto_filter();
+    let EffectSettings::AutoFilter(f) = &mut filter.unit else {
+        panic!()
+    };
+    f.lfo_enabled = false;
+    f.frequency_hz = 1500.0;
+    let mut route = Modulation::new(ModulationParameter::Frequency);
+    route.source = Some(source);
+    route.amount = 2.0;
+    f.modulations.push(route);
+    let mut drive = EffectInstance::drive();
+    let EffectSettings::Drive(f) = &mut drive.unit else {
+        panic!()
+    };
+    let mut route = Modulation::new(ModulationParameter::DriveGain);
+    route.source = Some(source);
+    route.amount = 0.3;
+    f.modulations.push(route);
+    p.project.tracks[0].effects.extend([filter, drive]);
+    p.project.validate().unwrap();
+    p
+}
+#[test]
+fn lfo_fanout_has_live_export_block_seek_and_loop_parity_without_extending_note_lifetime() {
+    for restart in LfoRestart::ALL {
+        for polarity in [LfoPolarity::Unipolar, LfoPolarity::Bipolar] {
+            let p = lfo_plan(restart, polarity);
+            let mut expected = vec![[0.0; 2]; 52_000];
+            Renderer::new(p.clone()).render_offline(&mut expected);
+            assert!(expected.iter().flatten().all(|x| x.is_finite()));
+            assert!(expected[1000..].iter().any(|s| s[0].abs() > 0.01));
+            // Continuous modulation cannot hold a voice after its contour and gate end.
+            assert!(expected[50_000..].iter().flatten().all(|x| *x == 0.0));
+            let mut live = Renderer::new(p.clone());
+            live.play();
+            ALLOCATIONS.with(|v| v.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            for (i, s) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if i > 240 {
+                    assert_eq!(actual, *s, "{restart:?} {polarity:?} {i}");
+                }
+            }
+            live.pause();
+            let position = live.playhead;
+            for _ in 0..300 {
+                live.next_sample();
+            }
+            assert_eq!(live.playhead, position);
+            live.seek(12_345);
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            let mut blocked = vec![[0.0; 2]; expected.len()];
+            let mut renderer = Renderer::new(p.clone());
+            for block in blocked.chunks_mut(137) {
+                renderer.render_offline(block);
+            }
+            assert_eq!(blocked, expected);
+            let mut random = [[0.0; 2]; 128];
+            p.render(13_000, &mut random);
+            assert_eq!(&random[..], &expected[13_000..13_128]);
+            let mut loop_plan = p.clone();
+            loop_plan.project.transport.r#loop = Loop {
+                enabled: true,
+                start_frame: 0,
+                end_frame: 24_000,
+            };
+            let mut looping = Renderer::new(loop_plan);
+            looping.play();
+            looping.ramp = 1.0;
+            let mut first = vec![[0.0; 2]; 24_000];
+            for sample in &mut first {
+                *sample = looping.next_sample();
+            }
+            // The existing loop crossfade and effect history settle after the boundary.
+            for (i, sample) in first.iter().enumerate() {
+                let actual = looping.next_sample();
+                assert!(actual.iter().all(|s| s.is_finite()));
+                if i > 2400 {
+                    assert!((actual[0] - sample[0]).abs() < 1e-5, "loop {i}");
+                }
+            }
+        }
+    }
+}
+#[test]
+fn adding_and_retargeting_lfos_retains_note_phase_and_callback_storage() {
+    let p = lfo_plan(LfoRestart::Retrigger, LfoPolarity::Bipolar);
+    let mut initial = p.clone();
+    let layer = &mut initial.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.lfos.clear();
+    layer.amplitude.modulations.pop();
+    initial.project.tracks[0].effects.clear();
+    let mut live = Renderer::new(initial);
+    let mut reference = Renderer::new(p.clone());
+    live.play();
+    reference.play();
+    for _ in 0..13_000 {
+        live.next_sample();
+        reference.next_sample();
+    }
+    let mut added = Renderer::new(p.clone());
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    added.inherit(&mut live);
+    for _ in 0..2000 {
+        added.next_sample();
+        reference.next_sample();
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    // The newly added LFO uses the latest note origin, rather than transport frame zero.
+    let target = daw_engine::ModulationTarget::Effect(p.project.tracks[0].effects[0].id);
+    assert_eq!(
+        added.modulation_values(target),
+        reference.modulation_values(target)
+    );
+    let mut edited = p.clone();
+    let lfo = &mut edited.project.tracks[0].instrument.as_mut().unwrap().layers[0].lfos[0];
+    lfo.settings.wave = LfoWave::Square;
+    lfo.settings.rate_hz = 7.0;
+    lfo.settings.phase_degrees = 90.0;
+    lfo.enabled = false;
+    let mut off = Renderer::new(edited.clone());
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    off.inherit(&mut added);
+    for _ in 0..1000 {
+        assert!(off.next_sample().iter().all(|s| s.is_finite()));
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!((off.modulation_values(target).unwrap()[0] - 1500.0).abs() < 0.1);
+    edited.project.tracks[0].instrument.as_mut().unwrap().layers[0].lfos[0].enabled = true;
+    let mut on = Renderer::new(edited);
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    on.inherit(&mut off);
+    on.seek(0);
+    for _ in 0..1000 {
+        assert!(on.next_sample().iter().all(|s| s.is_finite()));
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
 }

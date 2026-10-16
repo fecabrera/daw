@@ -1,4 +1,4 @@
-use super::modulation::{Control, Route, SharedControls};
+use super::modulation::{Control, LfoControl, Route, SharedControls};
 use daw_core::{Clip, Id, Project, Track, TrackKind, linear_gain};
 use daw_core::{EnvelopeMode, ModulationSourceId, ModulationValue};
 use daw_envelope::Envelope;
@@ -139,9 +139,9 @@ impl Voice {
         if self.controls.iter().all(|e| e.envelope.is_idle())
             && self.layers.iter().all(LayerVoice::is_idle)
             && self.transition == 0
-            && !shared.iter().any(|v| {
-                v.release_age == Some(self.release_frames) && v.value > 0.0 && v.weight > 0.0
-            })
+            && !shared
+                .iter()
+                .any(|v| v.owns_release(Some(self.release_frames)))
         {
             self.active_last_sample = false;
             self.previous = [0.0; 2];
@@ -258,6 +258,8 @@ pub(crate) struct MidiTrackRuntime {
     last_source: Option<u64>,
     next_event: usize,
     shared: SharedControls,
+    lfo_notes: super::lfo::NoteSchedule,
+    tempo_bpm: f32,
 }
 impl MidiTrackRuntime {
     /// Build schedules and DSP state before publication. No callback allocations.
@@ -272,7 +274,7 @@ impl MidiTrackRuntime {
         let any_solo = layers.iter().any(|layer| layer.soloed);
         let fade_frames = (project.sample_rate_hz / 200).max(1);
         let mut voice_count = 0;
-        let clips = track
+        let clips: Vec<PatternClip> = track
             .clips
             .iter()
             .filter_map(|clip| {
@@ -351,7 +353,24 @@ impl MidiTrackRuntime {
                 format!("{:?}", asset.midi_pattern).hash(&mut hash);
             }
         }
+        let lfo_notes = if layers.iter().all(|layer| layer.lfos.is_empty()) {
+            super::lfo::NoteSchedule::new(Vec::new())
+        } else {
+            super::lfo::NoteSchedule::new(
+                clips
+                    .iter()
+                    .map(|c| {
+                        super::lfo::NoteClip::new(
+                            c.clip.clone(),
+                            c.events.iter().map(|e| (e.frame, e.on.is_some())),
+                        )
+                    })
+                    .collect(),
+            )
+        };
         Some(Self {
+            lfo_notes,
+            tempo_bpm: project.tempo_bpm,
             fingerprint: hash.finish(),
             held_sample: [0.0; 2],
             voices: (0..voice_count)
@@ -449,6 +468,8 @@ impl MidiTrackRuntime {
                                     },
                                     value: 0.0,
                                     weight: 0.0,
+                                    range: daw_unit_core::ModulationRange::Unipolar,
+                                    behavior: daw_unit_core::ModulationBehavior::Contour,
                                     release_age: None,
                                 })
                         })
@@ -492,6 +513,23 @@ impl MidiTrackRuntime {
                             })
                     })
                     .collect(),
+            )
+            .with_lfos(
+                layers
+                    .iter()
+                    .flat_map(|layer| {
+                        layer.lfos.iter().map(|lfo| {
+                            LfoControl::new(
+                                layer.id,
+                                lfo,
+                                ProcessingContext {
+                                    sample_rate_hz: project.sample_rate_hz,
+                                    max_block_frames: project.buffer_size_frames,
+                                },
+                            )
+                        })
+                    })
+                    .collect(),
             ),
         })
     }
@@ -517,6 +555,8 @@ impl MidiTrackRuntime {
     pub fn retarget_controls(&mut self, prepared: &mut Self) {
         let fade_frames = (self.sample_rate_hz / 200).max(1);
         self.shared.retarget(&mut prepared.shared);
+        // Adding the first LFO also installs its prepared note-origin schedule.
+        std::mem::swap(&mut self.lfo_notes, &mut prepared.lfo_notes);
         for (voice, next) in self.voices.iter_mut().zip(&mut prepared.voices) {
             for n in &mut next.controls {
                 if let Some(e) = voice.controls.iter_mut().find(|e| e.source == n.source) {
@@ -536,9 +576,11 @@ impl MidiTrackRuntime {
             let idle = voice.transition == 0
                 && voice.layers.iter().all(LayerVoice::is_idle)
                 && voice.controls.iter().all(|e| e.envelope.is_idle())
-                && !self.shared.values.iter().any(|v| {
-                    v.release_age == Some(voice.release_frames) && v.weight > 0.0 && v.value > 0.0
-                });
+                && !self
+                    .shared
+                    .values
+                    .iter()
+                    .any(|v| v.owns_release(Some(voice.release_frames)));
             for (layer, next_layer) in voice.layers.iter_mut().zip(&mut next.layers) {
                 for n in &mut next_layer.routes {
                     if let Some(r) = layer
@@ -579,9 +621,10 @@ impl MidiTrackRuntime {
             }
         }
     }
-    fn voice_sample(&mut self) -> [f32; 2] {
+    fn voice_sample(&mut self, frame: u64) -> [f32; 2] {
         let mut sum = [0.0; 2];
-        self.shared.tick();
+        self.shared
+            .tick(self.lfo_notes.context(frame, self.tempo_bpm));
         for voice in &mut self.voices {
             let sample = voice.sample(&self.shared.values);
             for ch in 0..2 {
@@ -636,7 +679,7 @@ impl MidiTrackRuntime {
             let restarted = self.last_clip != Some(clip.id)
                 || self.last_source.is_none_or(|last| source < last);
             if restarted {
-                self.shared.reset();
+                self.shared.reset_notes();
                 for voice in &mut self.voices {
                     voice.reset();
                 }
@@ -689,17 +732,17 @@ impl MidiTrackRuntime {
                 position,
                 self.sample_rate_hz,
             );
-            self.voice_sample().map(|sample| sample * fade)
+            self.voice_sample(frame).map(|sample| sample * fade)
         } else {
             if self.last_clip.take().is_some() {
-                self.shared.reset();
+                self.shared.reset_notes();
                 // Clip fades have already reached zero; do not resurrect a release tail in a gap.
                 for voice in &mut self.voices {
                     voice.reset();
                 }
             }
             self.last_source = None;
-            self.voice_sample()
+            self.voice_sample(frame)
         };
         self.held_sample = sample;
         sample

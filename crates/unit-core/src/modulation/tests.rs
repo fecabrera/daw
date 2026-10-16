@@ -30,8 +30,9 @@ impl ModulationSource for TestSource {
     const MODULATION_OUTPUT: ModulationOutputDescriptor = ModulationOutputDescriptor {
         name: "Test control",
         range: ModulationRange::Bipolar,
+        behavior: ModulationBehavior::Contour,
     };
-    fn next_modulation(&mut self) -> f32 {
+    fn next_modulation(&mut self, _context: ModulationSourceContext) -> f32 {
         self.ticks += 1;
         self.value
     }
@@ -62,7 +63,7 @@ fn independent_provider_fans_out_to_typed_destinations_without_advancing_twice()
         ticks: 0,
     };
     let mut output = ModulationOutput::new(id(2), true, context());
-    let values = [output.sample(&mut source)];
+    let values = [output.sample(&mut source, Default::default())];
     let mut a = [
         route(id(2), ModulationParameter::Frequency, 2.0),
         route(id(2), ModulationParameter::Tone, -1.0),
@@ -91,16 +92,18 @@ fn common_output_clamps_range_neutralizes_nonfinite_and_keeps_disabled_sources_a
         ticks: 0,
     };
     let mut output = ModulationOutput::new(id(2), true, context());
-    assert_eq!(output.sample(&mut source).value, -1.0);
+    assert_eq!(output.sample(&mut source, Default::default()).value, -1.0);
     source.value = f32::NAN;
-    assert_eq!(output.sample(&mut source).value, 0.0);
+    assert_eq!(output.sample(&mut source, Default::default()).value, 0.0);
     source.value = 2.0;
-    assert_eq!(output.sample(&mut source).value, 1.0);
+    assert_eq!(output.sample(&mut source, Default::default()).value, 1.0);
     output.set_enabled(false);
-    let weights: Vec<_> = (0..5).map(|_| output.sample(&mut source).weight).collect();
+    let weights: Vec<_> = (0..5)
+        .map(|_| output.sample(&mut source, Default::default()).weight)
+        .collect();
     assert!(weights.windows(2).all(|pair| pair[0] > pair[1]));
     assert_eq!(weights[4], 0.0);
-    output.sample(&mut source);
+    output.sample(&mut source, Default::default());
     assert_eq!(source.ticks, 9);
     assert_eq!(ModulationRange::Unipolar.sanitize(-0.5), 0.0);
     assert_eq!(ModulationRange::Unipolar.sanitize(f32::INFINITY), 0.0);
@@ -108,6 +111,8 @@ fn common_output_clamps_range_neutralizes_nonfinite_and_keeps_disabled_sources_a
 #[test]
 fn routes_share_signed_summing_neutral_failures_and_five_millisecond_retargeting() {
     let value = ModulationValue {
+        range: ModulationRange::Unipolar,
+        behavior: ModulationBehavior::Contour,
         source: id(2),
         value: 0.5,
         weight: 1.0,
@@ -209,6 +214,8 @@ fn discovery_uses_generic_identity_scope_and_retained_presence_with_saved_id_com
 fn bipolar_sources_cannot_invert_the_amplitude_gate() {
     let mut routes = [route(id(2), ModulationParameter::Amplitude, 1.0)];
     let value = ModulationValue {
+        range: ModulationRange::Unipolar,
+        behavior: ModulationBehavior::Contour,
         source: id(2),
         value: -0.5,
         weight: 1.0,
@@ -233,4 +240,117 @@ fn bipolar_sources_cannot_invert_the_amplitude_gate() {
         },
     );
     assert_eq!(absent.amplitude(), 0.25);
+}
+
+#[test]
+fn continuous_amplitude_multiplies_the_contour_and_never_prolongs_its_release() {
+    let contour = ModulationValue {
+        source: id(2),
+        value: 0.4,
+        weight: 1.0,
+        release_age: Some(10),
+        range: ModulationRange::Unipolar,
+        behavior: ModulationBehavior::Contour,
+    };
+    let continuous = ModulationValue {
+        source: id(3),
+        value: 0.25,
+        weight: 1.0,
+        release_age: None,
+        range: ModulationRange::Unipolar,
+        behavior: ModulationBehavior::Continuous,
+    };
+    for (value, range) in [
+        (0.25, ModulationRange::Unipolar),
+        (-0.5, ModulationRange::Bipolar),
+    ] {
+        let mut routes = [
+            route(id(2), ModulationParameter::Amplitude, 1.0),
+            route(id(3), ModulationParameter::Amplitude, 0.8),
+        ];
+        let inputs = ModulationInputs::resolve(
+            &mut routes,
+            &[ModulationParameter::Amplitude],
+            &[],
+            &[
+                contour,
+                ModulationValue {
+                    value,
+                    range,
+                    ..continuous
+                },
+            ],
+            ModulationContext {
+                note_gate: 0.0,
+                release_age: Some(10),
+                ..Default::default()
+            },
+        );
+        assert!((inputs.amplitude() - 0.16).abs() < 1e-6);
+        let only_lfo = ModulationInputs::resolve(
+            &mut routes,
+            &[ModulationParameter::Amplitude],
+            &[],
+            &[continuous],
+            ModulationContext {
+                note_gate: 0.0,
+                release_age: Some(10),
+                ..Default::default()
+            },
+        );
+        assert_eq!(only_lfo.amplitude(), 0.0);
+    }
+}
+#[test]
+fn lfo_saved_settings_default_empty_and_validate_identity_and_selected_output_metadata() {
+    let mut instrument: InstrumentSettings = crate::OscillatorSettings::default().into();
+    let old = serde_json::to_value(&instrument).unwrap();
+    let mut legacy = old.clone();
+    legacy["layers"][0].as_object_mut().unwrap().remove("lfos");
+    assert!(
+        serde_json::from_value::<InstrumentSettings>(legacy)
+            .unwrap()
+            .layers[0]
+            .lfos
+            .is_empty()
+    );
+    instrument.layers[0]
+        .lfos
+        .push(crate::LfoInstance::default());
+    let lfo = &mut instrument.layers[0].lfos[0];
+    lfo.settings.polarity = crate::LfoPolarity::Bipolar;
+    lfo.collapsed = true;
+    let source = ModulationSourceId {
+        layer: instrument.layers[0].id,
+        unit: instrument.layers[0].lfos[0].id,
+    };
+    assert_eq!(
+        instrument.modulation_source(source).unwrap().output.range,
+        ModulationRange::Bipolar
+    );
+    assert_eq!(
+        instrument
+            .modulation_source(source)
+            .unwrap()
+            .output
+            .behavior,
+        ModulationBehavior::Continuous
+    );
+    assert_eq!(
+        serde_json::from_value::<InstrumentSettings>(serde_json::to_value(&instrument).unwrap())
+            .unwrap(),
+        instrument
+    );
+    assert!(instrument.valid());
+    for invalid in [f32::NAN, -1.0, 101.0] {
+        let mut bad = instrument.clone();
+        bad.layers[0].lfos[0].settings.smooth_ms = invalid;
+        assert!(!bad.valid());
+    }
+    let duplicate = instrument.layers[0].envelopes[0].id;
+    instrument.layers[0].lfos[0].id = duplicate;
+    assert!(!instrument.valid());
+    let mut malformed = old;
+    malformed["layers"][0]["lfos"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<InstrumentSettings>(malformed).is_err());
 }

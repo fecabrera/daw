@@ -71,22 +71,7 @@ impl Filter {
 fn weights<const N: usize>(index: usize) -> [Ramp; N] {
     std::array::from_fn(|i| Ramp::new(f64::from(i == index)))
 }
-fn wave(index: usize, phase: f64) -> f64 {
-    let phase = phase.rem_euclid(1.0);
-    match index {
-        0 => (phase * std::f64::consts::TAU).sin(),
-        1 => 1.0 - 4.0 * ((phase + 0.25).rem_euclid(1.0) - 0.5).abs(),
-        2 => 2.0 * phase - 1.0,
-        3 => 1.0 - 2.0 * phase,
-        _ => {
-            if phase < 0.5 {
-                1.0
-            } else {
-                -1.0
-            }
-        }
-    }
-}
+use daw_lfo::waveform as wave;
 
 pub struct AutoFilter {
     sample_rate: f64,
@@ -106,15 +91,11 @@ pub struct AutoFilter {
     rate_mode: LfoRateMode,
     rate_hz: f32,
     note_beats: f64,
-    last_frame: Option<u64>,
-    last_rate: f64,
-    last_phase: f64,
-    phase_correction: f64,
-    phase_remaining: u32,
     modulation: [f64; 2],
     modulation_initialized: bool,
     modulation_alpha: f64,
     standalone_frame: u64,
+    clock: daw_lfo::LfoClock,
     external: daw_unit_core::ModulationSmoother<4>,
     effective: [f32; 5],
 }
@@ -139,15 +120,11 @@ impl AutoFilter {
             rate_mode: settings.rate_mode,
             rate_hz: settings.rate_hz,
             note_beats: settings.note_rate.beats(),
-            last_frame: None,
-            last_rate: 0.0,
-            last_phase: 0.0,
-            phase_correction: 0.0,
-            phase_remaining: 0,
             modulation: [0.0; 2],
             modulation_initialized: false,
             modulation_alpha: 1.0 - (-1.0 / (0.001 * sample_rate)).exp(),
             standalone_frame: 0,
+            clock: daw_lfo::LfoClock::new(context),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: [
                 settings.frequency_hz,
@@ -193,34 +170,8 @@ impl AutoFilter {
         self.note_beats = settings.note_rate.beats();
     }
     fn phase(&mut self, frame: u64, tempo_bpm: f32) -> f64 {
-        let rate = match self.rate_mode {
-            LfoRateMode::Hz => f64::from(self.rate_hz),
-            LfoRateMode::Note => f64::from(tempo_bpm) / (60.0 * self.note_beats),
-        };
-        let target = (frame as f64 * rate / self.sample_rate).rem_euclid(1.0);
-        let continuous = self
-            .last_frame
-            .is_some_and(|previous| frame == previous.saturating_add(1) || frame == previous);
-        if !continuous {
-            self.phase_correction = 0.0;
-            self.phase_remaining = 0;
-        } else if rate != self.last_rate {
-            // Align to the new transport grid over 5 ms, taking the shorter circular path.
-            self.phase_correction = (self.last_phase + self.last_rate / self.sample_rate - target
-                + 0.5)
-                .rem_euclid(1.0)
-                - 0.5;
-            self.phase_remaining = self.fade;
-        }
-        let phase = (target + self.phase_correction).rem_euclid(1.0);
-        if self.phase_remaining > 0 {
-            self.phase_correction -= self.phase_correction / f64::from(self.phase_remaining);
-            self.phase_remaining -= 1;
-        }
-        self.last_frame = Some(frame);
-        self.last_rate = rate;
-        self.last_phase = phase;
-        phase
+        let rate = daw_lfo::rate_hz(self.rate_mode, self.rate_hz, self.note_beats, tempo_bpm);
+        self.clock.phase_at(frame, 0, rate)
     }
     /// Explicit host position makes seeks, loop wraps and export phase deterministic.
     pub fn process_at(&mut self, input: [f32; 2], frame: u64, tempo_bpm: f32) -> [f32; 2] {
@@ -307,9 +258,7 @@ impl EffectUnit for AutoFilter {
             ramp.reset();
         }
         self.filters = std::array::from_fn(|_| Filter::default());
-        self.last_frame = None;
-        self.phase_correction = 0.0;
-        self.phase_remaining = 0;
+        self.clock.reset();
         self.modulation_initialized = false;
         self.external.reset();
         self.effective = [
@@ -444,7 +393,6 @@ mod tests {
         for frame in 12002..12242 {
             filter.phase(frame, 60.0);
         }
-        assert_eq!(filter.phase_remaining, 0);
         assert!((filter.phase(12242, 60.0) - (12242.0 * 3.0 / 48000.0)).abs() < 1e-12);
     }
     #[test]

@@ -44,27 +44,60 @@ impl ModulationRange {
     }
 }
 
+/// Contours may own a note release; continuous controls never prolong a voice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModulationBehavior {
+    Contour,
+    Continuous,
+}
+/// Absolute project position and prepared note origins. Negative origins retain trimmed-note phase.
+#[derive(Clone, Copy, Debug)]
+pub struct ModulationSourceContext {
+    pub frame: u64,
+    pub tempo_bpm: f32,
+    pub note_origin: Option<i128>,
+    pub legato_origin: Option<i128>,
+}
+impl Default for ModulationSourceContext {
+    fn default() -> Self {
+        Self {
+            frame: 0,
+            tempo_bpm: 120.0,
+            note_origin: None,
+            legato_origin: None,
+        }
+    }
+}
+
 /// One normalized control output, independent of the unit's audio ports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModulationOutputDescriptor {
     pub name: &'static str,
     pub range: ModulationRange,
+    pub behavior: ModulationBehavior,
 }
 pub const ENVELOPE_MODULATION_OUTPUT: ModulationOutputDescriptor = ModulationOutputDescriptor {
     name: "Envelope",
     range: ModulationRange::Unipolar,
+    behavior: ModulationBehavior::Contour,
 };
 
 /// Implement this on every control generator. Hosts advance it once per sample, then fan out
 /// the cached `ModulationValue`; destinations never call the source themselves.
 pub trait ModulationSource: Send {
     const MODULATION_OUTPUT: ModulationOutputDescriptor;
-    fn next_modulation(&mut self) -> f32;
+    fn modulation_output(&self) -> ModulationOutputDescriptor {
+        Self::MODULATION_OUTPUT
+    }
+    fn next_modulation(&mut self, context: ModulationSourceContext) -> f32;
 }
 
 /// Control-thread discovery. Retained, absent units remain discoverable for reference validation.
 pub trait ModulationSourceSettings {
     const MODULATION_OUTPUT: ModulationOutputDescriptor;
+    fn modulation_output(&self) -> ModulationOutputDescriptor {
+        Self::MODULATION_OUTPUT
+    }
     fn modulation_source_id(&self) -> Uuid;
     fn modulation_scope(&self) -> ModulationScope;
     fn modulation_present(&self) -> bool;
@@ -82,7 +115,7 @@ pub trait ModulationSourceSettings {
             },
             layer_name,
             index,
-            output: Self::MODULATION_OUTPUT,
+            output: self.modulation_output(),
             scope: self.modulation_scope(),
             present: self.modulation_present(),
             enabled: self.modulation_enabled(),
@@ -140,12 +173,17 @@ impl ModulationOutput {
     pub fn reset(&mut self) {
         self.weight.reset();
     }
-    pub fn sample<S: ModulationSource>(&mut self, source: &mut S) -> ModulationValue {
+    pub fn sample<S: ModulationSource>(
+        &mut self,
+        source: &mut S,
+        context: ModulationSourceContext,
+    ) -> ModulationValue {
+        let descriptor = source.modulation_output();
         ModulationValue {
+            range: descriptor.range,
+            behavior: descriptor.behavior,
             source: self.id,
-            value: S::MODULATION_OUTPUT
-                .range
-                .sanitize(source.next_modulation()),
+            value: descriptor.range.sanitize(source.next_modulation(context)),
             weight: self.weight.next_value(),
             release_age: None,
         }
