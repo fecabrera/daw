@@ -18,7 +18,9 @@ mod audio_settings;
 mod stretch_engine;
 pub use stretch_engine::{StretchEngine, StretchEngineId};
 mod boundary;
+mod component_transfer;
 mod effects;
+pub use component_transfer::InstrumentComponent;
 mod looping;
 mod placement;
 mod resize;
@@ -670,6 +672,23 @@ impl Project {
             Edit::ReplaceMidiPattern { clip_id, pattern } => {
                 self.replace_midi_pattern(clip_id, pattern)?
             }
+            Edit::TransferInstrumentComponent {
+                track_id,
+                source,
+                destination,
+                destination_index,
+                component,
+                duplicate,
+            } => {
+                self.apply_component_transfer(
+                    track_id,
+                    source,
+                    destination,
+                    destination_index,
+                    component,
+                    duplicate,
+                )?;
+            }
             Edit::SetInstrument {
                 track_id,
                 instrument,
@@ -887,6 +906,16 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    /// Move or copy one installed component within an instrument, remapping references atomically.
+    TransferInstrumentComponent {
+        track_id: Id,
+        source: Id,
+        destination: Id,
+        /// Oscillator insertion position after removing a same-layer moving source.
+        destination_index: Option<usize>,
+        component: InstrumentComponent,
+        duplicate: bool,
+    },
     SetMasterEffects {
         effects: Vec<EffectInstance>,
         compact: bool,

@@ -1,0 +1,269 @@
+//! Shared drag lifecycle for catalog additions and installed component transfers.
+use super::*;
+use crate::instrument_catalog::add_components;
+
+pub(super) struct ComponentDrag {
+    pub(super) project: Id,
+    pub(super) track: Id,
+    pub(super) instrument: daw_core::InstrumentSettings,
+    pub(super) source: ComponentDragSource,
+    pub(super) origin: Pos2,
+    pub(super) focus: egui::Id,
+    pub active: bool,
+}
+
+pub(super) enum ComponentDragSource {
+    Catalog {
+        types: Vec<&'static str>,
+        index: usize,
+    },
+    Installed {
+        owner: Id,
+        component: daw_core::InstrumentComponent,
+    },
+}
+
+impl DawUi {
+    pub(super) fn cancel_unavailable_component_drag(&mut self, ui: &egui::Ui) {
+        let invalid = self.component_drag.as_ref().is_some_and(|drag| {
+            self.view_mode != ViewMode::Instrument
+                || (!self.instrument_catalog_visible
+                    && matches!(drag.source, ComponentDragSource::Catalog { .. }))
+                || self.session.project.project_id != drag.project
+                || self.selected_track != Some(drag.track)
+                || !self.effects_editing_enabled(ui)
+                || self.effects_drag.is_some()
+                || drag::cancelled(ui)
+                || !self.session.project.tracks.iter().any(|track| {
+                    track.id == drag.track
+                        && track.kind == daw_core::TrackKind::Midi
+                        && track.instrument.as_ref() == Some(&drag.instrument)
+                })
+        });
+        if invalid {
+            if self.view_mode == ViewMode::Instrument
+                && (self.instrument_catalog_visible
+                    || self
+                        .component_drag
+                        .as_ref()
+                        .is_some_and(|d| matches!(d.source, ComponentDragSource::Installed { .. })))
+                && self.edit_environment_available()
+                && ui.input(|input| input.focused && input.key_pressed(egui::Key::Escape))
+                && let Some(drag) = &self.component_drag
+            {
+                drag::restore_focus(ui.ctx(), drag.focus);
+            }
+            self.component_drag = None;
+        }
+    }
+
+    pub(super) fn activate_component_drag(&mut self, ui: &egui::Ui) {
+        if let Some(drag) = &mut self.component_drag
+            && !drag.active
+            && drag::crossed_threshold(ui, drag.origin)
+        {
+            drag.active = true;
+            if let ComponentDragSource::Catalog { index, .. } = drag.source {
+                self.instrument_catalog.select_dragged(index);
+            }
+        }
+    }
+
+    pub(super) fn finish_component_drag(
+        &mut self,
+        ui: &egui::Ui,
+        track: Id,
+        settings: &mut daw_core::InstrumentSettings,
+        rows: &[(Id, Rect)],
+        viewport: Rect,
+    ) -> Option<Edit> {
+        self.cancel_unavailable_component_drag(ui);
+        let Some(drag) = &self.component_drag else {
+            return None;
+        };
+        if !drag.active {
+            if !ui.input(|input| input.pointer.primary_down()) {
+                self.component_drag = None;
+            }
+            return None;
+        }
+        // A component drag never overwrites parameter or topology edits made after its press.
+        if drag.track != track || settings != &drag.instrument {
+            self.component_drag = None;
+            return None;
+        }
+        let target = ui
+            .input(|input| input.pointer.latest_pos())
+            .filter(|pointer| viewport.contains(*pointer))
+            .and_then(|pointer| {
+                rows.iter().find_map(|(id, row)| {
+                    let rect = Rect::from_min_max(
+                        Pos2::new(viewport.left(), row.top()),
+                        Pos2::new(viewport.right(), row.bottom()),
+                    )
+                    .intersect(viewport);
+                    rect.contains(pointer).then_some((*id, rect))
+                })
+            });
+        let duplicate = ui.input(|i| clip_copy_modifier(i.modifiers));
+        let target = target.filter(|(id, _)| match &drag.source {
+            ComponentDragSource::Catalog { types, .. } => {
+                *id != settings.main.id
+                    || types
+                        .iter()
+                        .any(|t| ["daw.envelope", "daw.lfo"].contains(t))
+            }
+            ComponentDragSource::Installed { owner, component } => self
+                .session
+                .project
+                .can_transfer_component(track, *owner, *id, *component, duplicate),
+        });
+        let mut destination_index = None;
+        let mut oscillator_insertion = None;
+        let target = target.filter(|(owner, row)| {
+            let ComponentDragSource::Installed {
+                owner: from,
+                component: daw_core::InstrumentComponent::Oscillator(id),
+            } = drag.source
+            else {
+                return true;
+            };
+            let slots: Vec<_> = self
+                .instrument_ui
+                .oscillator_slots
+                .iter()
+                .filter(|(layer, _, _)| layer == owner)
+                .map(|(_, id, r)| (*id, *r))
+                .collect();
+            let pointer = ui.input(|i| i.pointer.latest_pos()).unwrap();
+            let slot = if pointer.x < row.left() + TRACK_WIDTH {
+                slots.len()
+            } else {
+                drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r))
+            };
+            let old = slots.iter().position(|(unit, _)| *unit == id);
+            let index = slot
+                - usize::from(!duplicate && from == *owner && old.is_some_and(|old| old < slot));
+            if !duplicate && from == *owner && old == Some(index) {
+                return false;
+            }
+            destination_index = Some(index);
+            oscillator_insertion = Some((
+                slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
+                slot,
+                *row,
+            ));
+            true
+        });
+        if let Some((_, rect)) = target {
+            panels::selection_border(ui, rect);
+        }
+        if let Some((slots, slot, row)) = oscillator_insertion {
+            let body = Rect::from_min_max(Pos2::new(row.left() + TRACK_WIDTH, row.top()), row.max)
+                .intersect(viewport);
+            drag::insertion_line(ui, &slots, slot, body);
+        }
+        #[cfg(test)]
+        {
+            self.instrument_catalog_bounds.drop_target = target.map(|(id, _)| id);
+            self.instrument_catalog_bounds.drop_bounds =
+                target.map_or(Rect::NOTHING, |(_, rect)| rect);
+        }
+        ui.ctx().set_cursor_icon(if target.is_some() {
+            if duplicate && matches!(drag.source, ComponentDragSource::Installed { .. }) {
+                egui::CursorIcon::Copy
+            } else {
+                egui::CursorIcon::Grabbing
+            }
+        } else {
+            egui::CursorIcon::NotAllowed
+        });
+        if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
+            let drag = self.component_drag.take().unwrap();
+            drag::restore_focus(ui.ctx(), drag.focus);
+            if let Some((layer, _)) = target {
+                match drag.source {
+                    ComponentDragSource::Catalog { types, .. } => {
+                        add_components(settings, layer, &types)
+                    }
+                    ComponentDragSource::Installed { owner, component } => {
+                        self.instrument_ui.selected_layer = Some(layer);
+                        return Some(Edit::TransferInstrumentComponent {
+                            track_id: track,
+                            source: owner,
+                            destination: layer,
+                            destination_index,
+                            component,
+                            duplicate,
+                        });
+                    }
+                }
+                self.instrument_ui.selected_layer = Some(layer);
+                ui.ctx().request_repaint();
+            }
+        } else if !ui.input(|input| input.pointer.primary_down()) {
+            self.component_drag = None;
+        }
+        None
+    }
+
+    /// Installed and catalog drags share activation, row targets, scrolling and cancellation.
+    pub(super) fn start_installed_component_drag(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        excluded: &[Rect],
+        track: Id,
+        owner: Id,
+        component: daw_core::InstrumentComponent,
+    ) {
+        #[cfg(test)]
+        self.instrument_ui
+            .component_bounds
+            .push((owner, component, response.rect));
+        response
+            .clone()
+            .on_hover_cursor(egui::CursorIcon::Grab)
+            .on_hover_text(if cfg!(target_os = "macos") {
+                "Drag to move this component. Hold Option to duplicate."
+            } else {
+                "Drag to move this component. Hold Ctrl to duplicate."
+            });
+        if self.strip_dragging
+            || crate::strip_reorder::dragging(ui.ctx())
+            || self.component_drag.is_some()
+            || self.effects_drag.is_some()
+            || self.instrument_ui.dragging()
+            || self.instrument_ui.editing_name()
+            || !self.effects_editing_enabled(ui)
+        {
+            return;
+        }
+        let Some(origin) =
+            drag::press_origin(ui, response).filter(|p| !excluded.iter().any(|r| r.contains(*p)))
+        else {
+            return;
+        };
+        let Some(instrument) = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == track)
+            .and_then(|t| t.instrument.clone())
+        else {
+            return;
+        };
+        response.request_focus();
+        self.instrument_ui.selected_layer = Some(owner);
+        self.component_drag = Some(ComponentDrag {
+            project: self.session.project.project_id,
+            track,
+            instrument,
+            source: ComponentDragSource::Installed { owner, component },
+            origin,
+            focus: response.id,
+            active: false,
+        });
+    }
+}

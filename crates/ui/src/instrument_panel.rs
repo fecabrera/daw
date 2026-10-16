@@ -12,8 +12,11 @@ pub(super) struct InstrumentUi {
     name_edit: Option<LayerNameEdit>,
     drag: Option<Id>,
     pub(super) inputs: HashMap<Id, Inputs>,
+    pub(super) oscillator_slots: Vec<(Id, Id, Rect)>,
     #[cfg(test)]
     pub(super) main_bounds: crate::instrument_main::MainBounds,
+    #[cfg(test)]
+    pub(super) component_bounds: Vec<(Id, daw_core::InstrumentComponent, Rect)>,
 }
 struct LayerNameEdit {
     layer: Id,
@@ -64,6 +67,9 @@ impl DawUi {
     pub(super) fn instrument_view(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 0.0;
         self.activate_component_drag(ui);
+        self.instrument_ui.oscillator_slots.clear();
+        #[cfg(test)]
+        self.instrument_ui.component_bounds.clear();
         let Some(track) = self
             .session
             .project
@@ -152,14 +158,10 @@ impl DawUi {
         {
             self.midi_editor.instrument_header_bounds = header.response.rect;
         }
-        ui.painter().hline(
-            ui.max_rect().x_range(),
-            header.response.rect.bottom() - 0.5,
-            Stroke::new(1.0, theme::palette(ui.ctx()).border),
-        );
         let layer_action_width = header.inner;
         // Reserve Main outside the vertical scrolling region.
-        let main_height = panels::unit_height(settings.main.collapsed).min(ui.available_height());
+        let main_label_height = panels::unit_height(settings.main.collapsed);
+        let main_height = main_label_height.min(ui.available_height());
         let main_rect = Rect::from_min_max(
             Pos2::new(ui.max_rect().left(), ui.max_rect().bottom() - main_height),
             ui.max_rect().max,
@@ -186,7 +188,7 @@ impl DawUi {
                             let compact = layer.collapsed;
                             let height = panels::unit_height(compact);
                             let row = ui
-                                .add_enabled_ui(self.component_drag.is_none(), |ui| {
+                                .add_enabled_ui(self.component_drag.as_ref().is_none_or(|d| !d.active), |ui| {
                                     ui.horizontal_top(|ui| {
                                         ui.spacing_mut().item_spacing.x =
                                             if layer.oscillators.is_empty()
@@ -266,7 +268,7 @@ impl DawUi {
                                                         )
                                                     })
                                                     .inner;
-                                                let collapse = icons::button(
+                                                let collapse = icons::small_button(
                                                     ui,
                                                     if compact {
                                                         icons::Lucide::ArrowDownFromLine
@@ -381,6 +383,8 @@ impl DawUi {
                                             .id_salt("layer-units")
                                             .auto_shrink([false, true])
                                             .show(ui, |ui| {
+                                                if self.component_drag.as_ref().is_some_and(|d|d.active) { drag::scroll_near_edges(ui, drag::Axis::Horizontal, 360.0); }
+                                                crate::strip_reorder::scroll(ui);
                                                 ui.horizontal_top(|ui| {
                                                         ui.spacing_mut().item_spacing.x = -1.0;
                                                         if !layer.oscillators.is_empty() {
@@ -424,6 +428,7 @@ impl DawUi {
                                                                     compact,
                                                                 )
                                                             {
+                                                                self.start_installed_component_drag(ui, &envelope.header, &[envelope.power.rect], track.id, layer.id, daw_core::InstrumentComponent::Envelope(instance.id));
                                                                 let rect = envelope.response.rect;
                                                                 if let Some(previous) = previous {
                                                                     ui.painter().vline(
@@ -466,6 +471,7 @@ impl DawUi {
                                                         }
                                                         for (index, lfo) in layer.lfos.iter_mut().enumerate() {
                                                             if let Some(unit) = crate::lfo_panel::unit(ui, lfo, index + 1, height, compact) {
+                                                                self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, daw_core::InstrumentComponent::Lfo(lfo.id));
                                                                 let rect = unit.response.rect;
                                                                 if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }
                                                                 previous = Some(rect);
@@ -481,6 +487,7 @@ impl DawUi {
                                                                 self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Amplitude {track: track.id, layer: layer.id})).map(|v|v[0]),
                                                             )
                                                         {
+                                                            self.start_installed_component_drag(ui, &amplitude.header, &[amplitude.power.rect], track.id, layer.id, daw_core::InstrumentComponent::Amplitude);
                                                             if let Some(previous) = previous {
                                                                 panels::unit_divider(
                                                                     ui,
@@ -581,15 +588,6 @@ impl DawUi {
                             }
                             layer_rows.push((layer.id, row.response.rect));
                             panels::ControlPanel::row_dividers(ui, row.response.rect, true, true);
-                            if self.instrument_ui.selected_layer == Some(layer.id) {
-                                panels::selection_border(
-                                    ui,
-                                    Rect::from_min_size(
-                                        row.response.rect.min,
-                                        Vec2::new(LAYER_HEADER_WIDTH, height),
-                                    ),
-                                );
-                            }
                             #[cfg(test)]
                             {
                                 self.midi_editor
@@ -609,18 +607,49 @@ impl DawUi {
         self.instrument_main(ui, track.id, &mut settings.main, main_rect);
         layer_rows.push((settings.main.id, main_rect));
         control_panel.finish(ui);
+        // Fixed chrome must paint after scrolling rows, which share its boundary pixel.
+        ui.painter().hline(
+            ui.max_rect().x_range(),
+            header.response.rect.bottom() - 0.5,
+            Stroke::new(1.0, theme::palette(ui.ctx()).border),
+        );
+        // Keep the whole selection stroke above row fills and shared dividers.
+        if let Some(selected) = self.instrument_ui.selected_layer {
+            if selected == settings.main.id {
+                panels::ControlPanel::selected_row(
+                    ui,
+                    Rect::from_min_size(
+                        main_rect.min,
+                        Vec2::new(LAYER_HEADER_WIDTH, main_label_height),
+                    ),
+                    main_rect,
+                );
+            } else if let Some((_, row)) = reorder_rows.iter().find(|(id, _)| *id == selected) {
+                panels::ControlPanel::selected_row(
+                    ui,
+                    Rect::from_min_max(
+                        row.min,
+                        Pos2::new(row.left() + LAYER_HEADER_WIDTH, row.bottom()),
+                    ),
+                    scroll.inner_rect,
+                );
+            }
+        }
         #[cfg(test)]
         {
             self.instrument_catalog_bounds.layer_viewport = scroll.inner_rect;
             self.instrument_catalog_bounds.layer_scroll = scroll.state.offset.y;
         }
-        self.finish_component_drag(
+        if let Some(edit) = self.finish_component_drag(
             ui,
             track.id,
             &mut settings,
             &layer_rows,
             Rect::from_min_max(scroll.inner_rect.min, main_rect.max),
-        );
+        ) {
+            self.edit(edit);
+            return;
+        }
         self.layer_reorder(ui, &mut settings, &reorder_rows, scroll.inner_rect);
         if let Some(id) = remove_layer {
             if self
@@ -858,7 +887,7 @@ impl DawUi {
                         let strip = ui.scope_builder(
                             egui::UiBuilder::new()
                                 .id_salt(("oscillator-strip", track, oscillator.id))
-                                .sense(Sense::click()),
+                                .sense(Sense::click_and_drag()),
                             |ui| {
                                 egui::Frame::new()
                                     .inner_margin(strip_margin)
@@ -867,7 +896,7 @@ impl DawUi {
                                             egui::UiBuilder::new()
                                                 .id_salt(("oscillator-settings", track, oscillator.id))
                                                 .layout(egui::Layout::top_down(egui::Align::Min))
-                                                .sense(Sense::click()),
+                                                .sense(Sense::click_and_drag()),
                                             |ui| {
                                                 ui.set_width(strip_width);
                                                 let mut responses = Vec::with_capacity(4);
@@ -936,7 +965,11 @@ impl DawUi {
                                     })
                             },
                         );
+                        self.instrument_ui.oscillator_slots.push((layer_id, oscillator.id, strip.response.rect));
                         let column = strip.inner.inner;
+                        for response in [&column.response, &strip.response] {
+                            self.start_installed_component_drag(ui, response, &column.inner.iter().map(|r|r.rect).collect::<Vec<_>>(), track, layer_id, daw_core::InstrumentComponent::Oscillator(oscillator.id));
+                        }
                         if let Some(previous) = previous_column {
                             panels::unit_divider(
                                 ui,
@@ -1005,6 +1038,14 @@ impl DawUi {
             },
         )).inner;
         crate::modulation_panel::toggle(ui, &result.header, *collapsed, modulation_open);
+        self.start_installed_component_drag(
+            ui,
+            &result.header,
+            &[result.power.rect],
+            track,
+            layer_id,
+            daw_core::InstrumentComponent::Oscillators,
+        );
 
         let remove_id = remove.map(|index| oscillators[index].id);
         if add {

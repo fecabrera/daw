@@ -179,8 +179,14 @@ fn tracks_and_layers_share_the_control_panel_surface_header_and_final_border() {
                                     && rect.rect.top() < column.bottom()
                                     && rect.rect.bottom() > column.top()
                         ))
-                        .all(|(index, _)| index < border_index),
-                    "row fills and selection outlines cannot cover the column border"
+                        .all(|(index, shape)| {
+                            // Selection is flush and paints last; neutral rows keep
+                            // the common column border above their fills.
+                            let selection = matches!(&shape.shape,
+                                egui::Shape::Rect(rect) if rect.fill == egui::Color32::TRANSPARENT && rect.stroke == theme::selection_outline(&ctx));
+                            if selection { index > border_index } else { index < border_index }
+                        }),
+                    "only flush selection can paint above the shared column border"
                 );
                 let title = if view == ViewMode::Timeline {
                     "Tracks"
@@ -409,6 +415,66 @@ fn shortened_clip_previews_restore_lane_dividers_at_the_shared_row_coordinates()
                     }
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn timeline_track_and_master_selection_strokes_remain_flush_above_column_dividers() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for master in [false, true] {
+            let mut app = DawUi::default();
+            let track = app.session.project.add_track().unwrap();
+            app.session.project.add_track().unwrap();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.select_track(track, false);
+            app.master_selected = master;
+            app.timeline_effects_visible = false;
+            app.set_view_mode(ViewMode::Timeline, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let rect = if master {
+                app.master_bounds
+            } else {
+                let lane = app.lane_bounds[&track];
+                Rect::from_min_max(
+                    Pos2::new(lane.left() - TRACK_WIDTH, lane.top()),
+                    Pos2::new(lane.left(), lane.bottom()),
+                )
+            };
+            let index = shapes.iter().position(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.rect==rect && r.stroke==theme::selection_outline(&ctx))).expect("flush selection outline");
+            let egui::Shape::Rect(outline) = &shapes[index].shape else {
+                unreachable!()
+            };
+            assert_eq!(outline.stroke.width, 2.0);
+            assert_eq!(outline.stroke_kind, egui::StrokeKind::Inside);
+            assert!(shapes[index].clip_rect.contains_rect(rect));
+            assert!(!shapes[index + 1..].iter().any(|s| {
+                match &s.shape {
+                    egui::Shape::LineSegment { points, stroke } => {
+                        *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                            && points[0].x == rect.right() - 0.5
+                            && points[1].x == rect.right() - 0.5
+                            && points[0].y < rect.center().y
+                            && points[1].y > rect.center().y
+                    }
+                    egui::Shape::Rect(r) => {
+                        r.fill != egui::Color32::TRANSPARENT
+                            && r.rect
+                                .intersect(s.clip_rect)
+                                .contains(rect.right_center() - Vec2::new(1.0, 0.0))
+                    }
+                    _ => false,
+                }
+            }));
+            assert!(!app.dirty);
         }
     }
 }

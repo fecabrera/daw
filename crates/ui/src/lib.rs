@@ -43,6 +43,7 @@ mod file_drop;
 pub mod fonts;
 pub mod icons;
 mod instrument_catalog;
+mod instrument_component_drag;
 mod instrument_main;
 mod instrument_panel;
 pub mod knobs;
@@ -55,6 +56,7 @@ mod mixer;
 mod modulation_panel;
 mod ott_panel;
 mod parameter_knobs;
+mod strip_reorder;
 mod timeline_toolbar;
 mod track_overview;
 mod track_selector;
@@ -651,7 +653,8 @@ pub struct DawUi {
     effects_catalog: catalog::Catalog,
     instrument_catalog: catalog::Catalog,
     instrument_catalog_visible: bool,
-    component_drag: Option<instrument_catalog::ComponentDrag>,
+    component_drag: Option<instrument_component_drag::ComponentDrag>,
+    strip_dragging: bool,
     #[cfg(test)]
     instrument_catalog_bounds: instrument_catalog::Bounds,
     master_selected: bool,
@@ -742,6 +745,7 @@ impl Default for DawUi {
             ),
             instrument_catalog_visible: false,
             component_drag: None,
+            strip_dragging: false,
             #[cfg(test)]
             instrument_catalog_bounds: Default::default(),
             timeline_catalog_visible: true,
@@ -1597,6 +1601,16 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        strip_reorder::begin_frame(
+            ui,
+            egui::Id::new((
+                self.session.project.project_id,
+                self.selected_track,
+                self.view_mode.label(),
+            )),
+            self.edit_environment_available(),
+        );
+        self.strip_dragging = strip_reorder::dragging(ui.ctx());
         self.cancel_unavailable_effect_drag(ui);
         self.cancel_unavailable_component_drag(ui);
         if self.view_mode != mixer::ViewMode::Instrument
@@ -1754,6 +1768,8 @@ impl DawUi {
                     },
                 );
             });
+        strip_reorder::end_frame(&ctx);
+        self.strip_dragging = strip_reorder::dragging(&ctx);
         if self.sync_needed {
             let plan = self.session.plan();
             if let Some(output) = &mut self.output {
@@ -1913,7 +1929,8 @@ impl DawUi {
     }
 
     pub fn file_action_enabled(&self, action: FileAction) -> bool {
-        self.effects_drag.is_none()
+        !self.strip_dragging
+            && self.effects_drag.is_none()
             && self.component_drag.is_none()
             && self.drag.is_none()
             && !self.midi_editor.dragging()
@@ -2391,6 +2408,7 @@ impl DawUi {
             Pos2::new(bounds.left() + timeline_toolbar::WIDTH, bounds.bottom()),
         );
         let enabled = self.effects_editing_enabled(ui)
+            && !self.strip_dragging
             && self.component_drag.is_none()
             && self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
         let toggles = timeline_toolbar::show(
@@ -2477,7 +2495,7 @@ impl DawUi {
                 .max_rect(master_rect),
         );
         master_ui.set_clip_rect(master_rect.intersect(ui.clip_rect()));
-        self.master_track(&mut master_ui);
+        let master_label = self.master_track(&mut master_ui);
 
         // The scrollbar belongs to the timeline viewport, not a window-wide panel.
         let scrollbar_rect = Rect::from_min_max(
@@ -2511,9 +2529,10 @@ impl DawUi {
             .max_height((master_rect.top() - ui.cursor().top()).max(0.0))
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                self.tracks(ui);
+                let rows = self.tracks(ui);
                 self.empty_tracks_context_menu(ui);
                 self.scroll_track_drag(ui);
+                rows
             });
         self.timeline_bounds = timeline_rect;
         self.track_reorder(ui, tracks.inner_rect);
@@ -2569,8 +2588,16 @@ impl DawUi {
             );
         }
         control_panel.finish(ui);
+        for (id, rect) in tracks.inner {
+            if self.track_selected(id) {
+                panels::ControlPanel::selected_row(ui, rect, tracks.inner_rect);
+            }
+        }
+        if self.master_selected {
+            panels::ControlPanel::selected_row(ui, master_label, master_rect);
+        }
     }
-    fn master_track(&mut self, ui: &mut egui::Ui) {
+    fn master_track(&mut self, ui: &mut egui::Ui) -> Rect {
         let panel = panels::PanelStyle {
             margin: 6,
             ..Default::default()
@@ -2635,7 +2662,8 @@ impl DawUi {
             [rect.left_top(), rect.right_top()],
             Stroke::new(1.0, theme::palette(ui.ctx()).border),
         );
-        self.master_selection(ui, panel.response.rect);
+        self.master_selection_input(ui, panel.response.rect);
+        panel.response.rect
     }
     fn timeline_extent(&self) -> f64 {
         self.session
@@ -3401,7 +3429,7 @@ impl DawUi {
         ui.scroll_with_delta_animation(Vec2::new(0.0, delta), egui::style::ScrollAnimation::none());
         ui.ctx().request_repaint();
     }
-    fn tracks(&mut self, ui: &mut egui::Ui) {
+    fn tracks(&mut self, ui: &mut egui::Ui) -> Vec<(Id, Rect)> {
         let tracks = self.session.project.tracks.clone();
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
@@ -3570,16 +3598,13 @@ impl DawUi {
                     self.lane(ui, &track, inner.response.rect, index, count);
                 });
             }
-            for (id, rect) in outlines {
-                if self.track_selected(id) {
-                    panels::selection_border(ui, rect);
-                }
-            }
             if let Some(action) = context_action {
                 // Finish painting before changing the tracks and their control state.
                 self.perform_track_action(action, ui.ctx());
             }
-        });
+            outlines
+        })
+        .inner
     }
     fn view_zoom(&self) -> f32 {
         if self.view_mode.has_track_overview() {
@@ -4627,6 +4652,7 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     mod clip_duplication;
+    mod component_transfer;
     mod effects;
     mod envelope_units;
     mod group_looping;

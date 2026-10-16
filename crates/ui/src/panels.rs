@@ -5,6 +5,10 @@ pub(super) const HEADER_FONT_SIZE: f32 = 11.0;
 pub(super) const UNIT_POWER_SIZE: f32 = 10.0;
 /// A neighboring panel supplies this unit's left divider.
 pub(super) const SHARED_LEFT_BORDER_TAG: &str = "shared-unit-left-border";
+/// The adjoining lane or status panel owns this unit's bottom separator.
+pub(super) const SHARED_BOTTOM_BORDER_TAG: &str = "shared-unit-bottom-border";
+/// The pinned row owns the boundary above its components.
+pub(super) const SHARED_TOP_BORDER_TAG: &str = "shared-unit-top-border";
 
 /// Three shared knob rows and a footer, before the unit frame and header.
 pub(super) fn unit_control_height() -> f32 {
@@ -122,6 +126,25 @@ impl ControlPanel {
         }
     }
 
+    /// A fixed row shares its top separator with the preceding scroll region.
+    pub(super) fn pinned_row_divider(ui: &Ui, row: Rect) {
+        // Share the preceding row's bottom pixel rather than drawing the next pixel too.
+        Self::paint_row_dividers(
+            ui.painter(),
+            row.translate(Vec2::new(0.0, -1.0)),
+            true,
+            false,
+        );
+    }
+
+    /// Paint after neutral dividers, without an inset or a replacement edge at the clip limit.
+    pub(super) fn selected_row(ui: &Ui, row: Rect, clip: Rect) {
+        paint_selection_border(
+            &ui.painter().with_clip_rect(clip.intersect(ui.clip_rect())),
+            row,
+        );
+    }
+
     pub(super) fn finish(self, ui: &Ui) {
         ui.painter().vline(
             self.rect.right() - 0.5,
@@ -183,6 +206,15 @@ impl PanelStyle {
         bottom_border: bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> UnitResponse<R> {
+        let bottom_border = bottom_border
+            && !ui
+                .stack()
+                .iter()
+                .any(|node| node.tags().contains(SHARED_BOTTOM_BORDER_TAG));
+        let top_border = !ui
+            .stack()
+            .iter()
+            .any(|node| node.tags().contains(SHARED_TOP_BORDER_TAG));
         let (enabled, collapsed) = states;
         let (name, compact_title) = title;
         let id = ui.id().with(("unit-header", name));
@@ -190,7 +222,7 @@ impl PanelStyle {
         let mut header_rect = Rect::NOTHING;
         let mut frame = self.frame(ui.ctx(), false).inner_margin(0);
         let outline = frame.stroke;
-        if !bottom_border {
+        if !bottom_border || !top_border {
             frame.stroke.color = Color32::TRANSPARENT;
         }
         let result = if is_collapsed {
@@ -273,7 +305,13 @@ impl PanelStyle {
             header_rect.min,
             Vec2::new(header_rect.width(), HEADER_HEIGHT),
         );
-        ui.painter().rect_filled(cap, 0.0, fill);
+        let mut cap_fill = cap;
+        if !top_border {
+            // The frame still reserves its border geometry. Cover that omitted edge
+            // without shifting the header controls or changing the shared unit height.
+            cap_fill.min.y = result.response.rect.top();
+        }
+        ui.painter().rect_filled(cap_fill, 0.0, fill);
         let header_text = if *enabled {
             crate::theme::unit_header_text(fill)
         } else {
@@ -330,9 +368,14 @@ impl PanelStyle {
             *collapsed = !is_collapsed;
             ui.ctx().request_repaint();
         }
-        if !bottom_border {
+        if !bottom_border || !top_border {
             let rect = result.response.rect.shrink(0.5);
-            ui.painter().hline(rect.x_range(), rect.top(), outline);
+            if top_border {
+                ui.painter().hline(rect.x_range(), rect.top(), outline);
+            }
+            if bottom_border {
+                ui.painter().hline(rect.x_range(), rect.bottom(), outline);
+            }
             if !ui
                 .stack()
                 .iter()
@@ -412,10 +455,13 @@ fn paint_unit_title(ui: &Ui, rect: Rect, name: &str, color: Color32, vertical: b
 
 /// Shared selected outline for track rows and effect units.
 pub(super) fn selection_border(ui: &Ui, rect: Rect) {
-    ui.painter().rect_stroke(
+    paint_selection_border(ui.painter(), rect);
+}
+fn paint_selection_border(painter: &egui::Painter, rect: Rect) {
+    painter.rect_stroke(
         rect,
         2.0,
-        crate::theme::selection_outline(ui.ctx()),
+        crate::theme::selection_outline(painter.ctx()),
         egui::StrokeKind::Inside,
     );
 }

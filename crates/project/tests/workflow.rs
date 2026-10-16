@@ -3562,3 +3562,129 @@ fn oscillator_pitch_ids_routes_and_open_controls_survive_save_as_duplicate_and_r
         copy.project.tracks[0].instrument
     );
 }
+
+#[test]
+fn transferred_components_keep_connections_and_audio_through_save_as_and_reopen() {
+    use daw_core::{
+        InstrumentComponent, InstrumentLayerSettings, LfoInstance, Modulation, ModulationParameter,
+        ModulationSourceId, OscillatorSettings,
+    };
+    let f = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let clip = session.project.add_midi_pattern(track, 0).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: daw_core::MidiPattern {
+                length_ticks: 960,
+                notes: vec![daw_core::MidiNote {
+                    id: daw_core::Id::new_v4(),
+                    start_tick: 0,
+                    length_ticks: 960,
+                    pitch: 57,
+                    velocity: 100,
+                }],
+            },
+        })
+        .unwrap();
+    session.project.tracks[0].clips[0].length_frames = 24_000;
+    let i = session.project.tracks[0].instrument.as_mut().unwrap();
+    i.layers.push(InstrumentLayerSettings::default());
+    i.layers[0].lfos.push(LfoInstance::default());
+    let owners = [i.layers[0].id, i.layers[1].id, i.main.id];
+    let lfo = i.layers[0].lfos[0].id;
+    let osc = OscillatorSettings::default();
+    let mut route = Modulation::new(ModulationParameter::Pitch);
+    route.source = Some(ModulationSourceId {
+        layer: owners[0],
+        unit: lfo,
+    });
+    route.target = Some(osc.id);
+    route.amount = 7.0;
+    let oscillator_id = osc.id;
+    let second = OscillatorSettings {
+        gain_db: -18.0,
+        ..Default::default()
+    };
+    let mut second_route = route;
+    second_route.id = daw_core::Id::new_v4();
+    second_route.target = Some(second.id);
+    second_route.amount = -3.0;
+    i.layers[0].oscillators.extend([osc, second]);
+    i.layers[0]
+        .oscillator_modulations
+        .extend([route, second_route]);
+    let mut original = vec![[0.0; 2]; 24_000];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut original);
+    assert!(original.iter().any(|s| s[0].abs() > 0.01));
+    for (source, destination, component) in [
+        (owners[0], owners[1], InstrumentComponent::Oscillators),
+        (owners[0], owners[2], InstrumentComponent::Lfo(lfo)),
+    ] {
+        session
+            .project
+            .edit(Edit::TransferInstrumentComponent {
+                track_id: track,
+                source,
+                destination,
+                destination_index: None,
+                component,
+                duplicate: false,
+            })
+            .unwrap();
+    }
+    session
+        .project
+        .edit(Edit::TransferInstrumentComponent {
+            track_id: track,
+            source: owners[1],
+            destination: owners[1],
+            destination_index: Some(1),
+            component: InstrumentComponent::Oscillator(oscillator_id),
+            duplicate: false,
+        })
+        .unwrap();
+    let mut instrument = session.project.tracks[0].instrument.clone().unwrap();
+    instrument.layers[1].oscillator_modulations.reverse();
+    session
+        .project
+        .edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        })
+        .unwrap();
+    let mut moved = vec![[0.0; 2]; 24_000];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut moved);
+    assert_eq!(moved, original);
+    session.save(&f.0.join("transferred")).unwrap();
+    let mut opened = Session::open(&f.0.join("transferred")).unwrap();
+    opened.save(&f.0.join("transferred-copy")).unwrap();
+    let copy = Session::open(&f.0.join("transferred-copy")).unwrap();
+    assert_eq!(
+        copy.project.tracks[0].instrument,
+        session.project.tracks[0].instrument
+    );
+    let mut restored = vec![[0.0; 2]; 24_000];
+    daw_engine::Renderer::new(copy.plan()).render_offline(&mut restored);
+    assert_eq!(restored, moved);
+    let settings = daw_media::ExportSettings {
+        wav_codec: daw_media::WavCodec::Float32,
+        ..Default::default()
+    };
+    let output = f.0.join("transferred.wav");
+    copy.export_with_settings(&output, false, settings).unwrap();
+    let samples = hound::WavReader::open(output)
+        .unwrap()
+        .samples::<f32>()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        samples,
+        moved
+            .iter()
+            .flat_map(|s| s.iter().copied())
+            .collect::<Vec<_>>()
+    );
+}

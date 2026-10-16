@@ -37,10 +37,15 @@ impl DawUi {
         let mut child = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt((track, bus.id, "main"))
+                .ui_stack_info(
+                    egui::UiStackInfo::default()
+                        .with_tag(panels::SHARED_BOTTOM_BORDER_TAG)
+                        .with_tag(panels::SHARED_TOP_BORDER_TAG),
+                )
                 .max_rect(rect),
         );
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
-        let enabled = self.component_drag.is_none()
+        let enabled = self.component_drag.as_ref().is_none_or(|d| !d.active)
             && !self.instrument_ui.dragging()
             && !self.instrument_ui.editing_name();
         // Component presses select their owner just as they do on regular layer rows.
@@ -80,12 +85,12 @@ impl DawUi {
                 let collapse = rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
                     ui.label(egui::RichText::new("Main").size(rows::NAME_FONT_SIZE));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        icons::button(
+                        icons::small_button(
                             ui,
                             if compact {
-                                icons::Lucide::ArrowDownFromLine
-                            } else {
                                 icons::Lucide::ArrowUpFromLine
+                            } else {
+                                icons::Lucide::ArrowDownFromLine
                             },
                             if compact {
                                 "Expand Main"
@@ -124,9 +129,6 @@ impl DawUi {
                         "Select Main instrument bus",
                     )
                 });
-                if self.instrument_ui.selected_layer == Some(bus.id) {
-                    panels::selection_border(ui, label);
-                }
                 #[cfg(test)]
                 {
                     bounds.label = label;
@@ -144,6 +146,14 @@ impl DawUi {
                                 if let Some(unit) =
                                     crate::envelope_panel::unit(ui, e, i + 1, true, height, compact)
                                 {
+                                    self.start_installed_component_drag(
+                                        ui,
+                                        &unit.header,
+                                        &[unit.power.rect],
+                                        track,
+                                        bus.id,
+                                        daw_core::InstrumentComponent::Envelope(e.id),
+                                    );
                                     let rect = unit.response.rect;
                                     if let Some(prev) = previous {
                                         panels::unit_divider(
@@ -161,6 +171,14 @@ impl DawUi {
                                 if let Some(unit) =
                                     crate::lfo_panel::unit(ui, l, i + 1, height, compact)
                                 {
+                                    self.start_installed_component_drag(
+                                        ui,
+                                        &unit.header,
+                                        &[unit.power.rect],
+                                        track,
+                                        bus.id,
+                                        daw_core::InstrumentComponent::Lfo(l.id),
+                                    );
                                     let rect = unit.response.rect;
                                     if let Some(prev) = previous {
                                         panels::unit_divider(
@@ -178,7 +196,7 @@ impl DawUi {
                     });
             });
         });
-        panels::ControlPanel::row_dividers(&child, rect, true, false);
+        panels::ControlPanel::pinned_row_divider(ui, rect);
         ui.advance_cursor_after_rect(rect);
         #[cfg(test)]
         {

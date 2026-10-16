@@ -192,6 +192,15 @@ impl EffectSettings {
         }
     }
 
+    /// Mutable routes for identity remapping during host editing operations.
+    pub fn modulations_mut(&mut self) -> &mut [crate::Modulation] {
+        match self {
+            Self::AutoFilter(s) => &mut s.modulations,
+            Self::Drive(s) => &mut s.modulations,
+            _ => &mut [],
+        }
+    }
+
     pub fn valid(&self) -> bool {
         match self {
             Self::Eq3(eq) => eq.valid(),

@@ -89,3 +89,9 @@ Amounts retain their existing stored units, bounds, and routing meaning. Zero re
 The adapter in `knobs/amount.rs` uses the destination's scale and keyboard function. It adjusts normalized drag travel so the same pointer distance covers the same native-scale distance, including the shared tenfold Shift slowdown. Native gain marks are mapped and mirrored into the signed amount domain, omitting duplicate and out-of-range marks. Painting, focus, disabled behavior, drag accumulation, bounds, keyboard input, reset, fonts, and theme colors remain in the base `Knob` widget.
 
 These are UI definitions. The portable modulation protocol, source publication, signed amounts, smoothing, validation, saved project fields, and audio processing remain unchanged.
+
+## Component transfers
+
+[Moving and copying components](component-editing.md) uses the same stable source/target identities. Provider moves update all instrument and track-effect references in one core transaction, assigning a new provider ID only if the destination already owns that ID. Destination moves carry their routes. Destination copies receive new route/target IDs and retain source assignments; provider copies receive new IDs without taking over existing consumers. The shared modulation resolver and DSP are unchanged.
+
+All destination-owned modulation strips also use the same reorder gesture. Reordering changes list order only; route IDs, source assignments, target IDs, amounts, power, and compatible DSP history remain attached to their connection. See [strip reordering](component-editing.md#reordering-strips).

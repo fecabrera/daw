@@ -114,12 +114,16 @@ pub(super) fn targeted_body(
     }
     let mut remove = None;
     let mut add = false;
-    ui.horizontal_top(|ui| {
+    let owner = crate::strip_reorder::owner(ui);
+    let reordering = crate::strip_reorder::active(ui, owner);
+    let original = routes.clone();
+    let mut slots = Vec::new();
+    let body = ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         for (index, route) in routes.iter_mut().enumerate() {
             let strip = ui
-                .scope_builder(egui::UiBuilder::new().id_salt(route.id).sense(egui::Sense::click()), |ui| {
-                    egui::Frame::new().inner_margin(10).show(ui, |ui| {
+                .scope_builder(egui::UiBuilder::new().id_salt(route.id).sense(egui::Sense::click_and_drag()), |ui| {
+                    ui.add_enabled_ui(!reordering, |ui| egui::Frame::new().inner_margin(10).show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
                         ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
@@ -199,10 +203,12 @@ pub(super) fn targeted_body(
                             },
                         );
                         });
-                    })
+                    }))
                 });
+            crate::strip_reorder::arm(ui, owner, &strip.response, route.id, &original);
+            slots.push((route.id, strip.response.rect));
             strip.response.context_menu(|ui| {
-                if ui.button("Remove modulation").clicked() {
+                if ui.add_enabled(!reordering, egui::Button::new("Remove modulation")).clicked() {
                     remove = Some(index);
                     ui.close();
                 }
@@ -215,7 +221,7 @@ pub(super) fn targeted_body(
                 );
             }
         }
-        let add_strip = icons::circular_strip_button(
+        let add_strip = ui.add_enabled_ui(!reordering, |ui| icons::circular_strip_button(
             ui,
             icons::Lucide::Plus,
             "Add modulation",
@@ -224,12 +230,19 @@ pub(super) fn targeted_body(
                 crate::envelope_panel::body_height(compact) + 20.0,
             ),
             icons::COMPACT_BUTTON_SIZE,
-        );
+        )).inner;
         if !routes.is_empty() {
             panels::unit_divider(ui, add_strip.rect.left(), add_strip.rect.y_range().into());
         }
         add = add_strip.clicked();
     });
+    crate::strip_reorder::finish(
+        ui,
+        owner,
+        routes,
+        &slots,
+        body.response.rect.intersect(ui.clip_rect()),
+    );
     if let Some(index) = remove {
         routes.remove(index);
     }

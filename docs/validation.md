@@ -2211,3 +2211,47 @@ Checks with the workspace Cargo cache selected:
 - Local documentation file targets and `git diff --check`: passed.
 
 Native UI/pointer checks, device playback/listening, and Windows/Linux builds were not run. CLI smoke checks were not repeated for this UI-only change.
+
+## Component moves, copies, and strip reordering — 2026-10-16
+
+Instrument component headers now move installed components between compatible layers. Individual oscillator strips also move, copy, and reorder through insertion positions. The core transfer command preserves settings and remaps provider references, oscillator targets, and route IDs as one transaction. Legacy provider-ID collisions do not redirect existing destination connections. Main accepts shared Envelope/LFO components and rejects audio components and Per note envelopes; occupied Amplitude stages reject transfers.
+
+The existing platform copy modifier now duplicates installed effects and selected effect groups in chain order. Originals remain in place, copies receive fresh effect/route IDs, and copied destinations keep source assignments. Modulation strips on Amplitude, Auto-filter, Drive, and Oscillator use one shared reorder gesture. Effects, oscillator sources, and routes share insertion positions and preview-line painting. The component catalog and installed components share the same drag lifecycle and layer targets. See [component editing](component-editing.md) for gestures, settings, and destination rules.
+
+Layer and Main selection outlines meet all four edges without an inset and paint after shared neutral dividers and row fills, so no side of the stroke is covered. Main component shells omit their top and bottom edges. Main owns one top separator on the preceding layer's bottom pixel and shares the adjacent lane/status bottom separator. The fixed Layers toolbar separator paints after scrolling content. New both-theme tests cover outline geometry, bottom-edge ownership with compact/expanded/collapsed units and the effects lane shown/hidden, and separator paint order after vertical scrolling.
+
+New core and egui tests cover component moves/copies, source/target identity remapping, legacy collisions, Main, occupied destinations, source and route insertion, dynamic copy modifiers, fast releases, group chain order, both themes, compact/expanded rows, collapsed effects, control isolation, no-op drops, snapshot changes, hidden owners, jobs/dialogs, focus loss, Escape, and outside drops. A project workflow test moves two oscillators and their LFO source, reorders sources and pitch connections, saves/reopens with Save As, and verifies identical rendered and float-exported samples.
+
+Checks with the workspace Cargo cache selected:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --workspace`: 688 passed, zero failed, two existing expanded time-stretch matrices ignored. Includes 394 UI tests and 51 project workflow tests. After the final flush-outline paint-order update, `cargo test -p daw-ui --lib` also passed all 394 UI tests.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Local documentation targets and `git diff --check`: passed.
+
+Native UI/pointer, audio-device playback/listening, and Windows/Linux build checks were not run. Automated egui checks do not establish native gesture behavior.
+
+## Main header fill and Timeline selection edges — 2026-10-16
+
+Main unit headers now fill the one-point frame space left by their omitted top border. The shared shell extends only the painted background; header controls, hit areas, title positions, and unit heights retain their existing geometry. A new regression test failed on the gap before the fix and passed afterward for Envelope/LFO, both themes, compact/expanded Main, collapsed/expanded units, and unit power on/off.
+
+Timeline track and Master selection outlines now use the same final control-row paint pass as Instrument Layer/Main. Row fills and the neutral column divider paint first, then the full two-point inside selection stroke paints at the original row bounds. Track selection and Master interactions retain their existing guards. The shared-border ordering test failed before the fix; it and a new both-theme track/Master regression test pass afterward. Audio processing and saved project data are unchanged.
+
+Checks with the workspace Cargo cache selected:
+
+- `cargo fmt --all --check` and strict workspace Clippy: passed.
+- `cargo test --workspace`: 690 passed, zero failed, two existing expanded time-stretch matrices ignored. Includes 396 UI tests; the complete UI suite also passed separately.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Local documentation targets and `git diff --check`: passed.
+
+Native UI/pointer, device playback, and Windows/Linux builds were not run. CLI smoke checks were not repeated for these UI-only changes.
+
+
+## Instrument layer expand/collapse icons — 2026-10-16
+
+Regular layer and Main expand/collapse icons now use the same small text size as the M/S labels. The shared icon button reserves its original layout space, retaining button dimensions, spacing, and hit areas. Main uses an up arrow to expand above its pinned position and a down arrow to collapse. Regular layer directions stay unchanged. See [Instrument Main](instrument-main.md#layout-and-interaction).
+
+The 14 affected layer tests and all 396 UI tests passed. The existing layout tests caught a size-dependent button spacing change during development; the shared button now reserves the original icon space and those tests pass. Formatting, strict workspace Clippy, and the macOS debug app rebuild passed. Native UI/pointer, device playback, and Windows/Linux checks were not run. CLI smoke checks were not repeated for this UI-only change.
+
+`cargo test --workspace` passed: 690 tests passed, zero failed, and two existing expanded time-stretch matrices remained ignored.

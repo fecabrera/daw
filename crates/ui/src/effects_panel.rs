@@ -437,6 +437,7 @@ impl DawUi {
                     })
                     .show(ui, |ui| {
                         self.scroll_effect_drag(ui);
+                        crate::strip_reorder::scroll(ui);
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = -1.0;
                             for effect in effects.iter_mut() {
@@ -655,6 +656,8 @@ impl DawUi {
         if !ui.input(|input| {
             input.key_pressed(egui::Key::Delete) || input.key_pressed(egui::Key::Backspace)
         }) || self.effects_drag.is_some()
+            || self.strip_dragging
+            || crate::strip_reorder::dragging(ui.ctx())
             || ui.input(|input| input.pointer.any_down())
             || self.effects_lane_focus.lost(ui.ctx(), allowed, false)
         {

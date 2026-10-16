@@ -3866,3 +3866,218 @@ fn limiter_uses_shared_controls_and_catalog_actions_in_both_themes() {
         assert!(app.session.project.tracks[0].effects.is_empty());
     }
 }
+
+#[test]
+fn modifier_drag_copies_selected_effects_in_chain_order_with_new_ids() {
+    for compact in [false, true] {
+        for collapsed in [false, true] {
+            for master in [false, true] {
+                let (mut app, _, ctx, ids) = chain_fixture(compact, collapsed);
+                let original = app.session.project.tracks[0].effects.clone();
+                if master {
+                    app.session.project.master.effects = original.clone();
+                    app.session.project.tracks[0].effects.clear();
+                    app.session.project.master.effects_compact = compact;
+                    app.selected_track = None;
+                    app.master_selected = true;
+                    frame(&mut app, &ctx, vec![]);
+                }
+                let start = app.effects_bounds.units[0].header.center();
+                let end = egui::pos2(
+                    app.effects_bounds.chain.last().unwrap().1.right() + 12.0,
+                    start.y,
+                );
+                // First establish lane focus, then choose a separated group in reverse click order.
+                click(&mut app, &ctx, start);
+                app.select_effect(ids[2], false);
+                app.select_effect(ids[0], true);
+                app.dirty = false;
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                let modifiers = egui::Modifiers {
+                    alt: true,
+                    ctrl: true,
+                    ..Default::default()
+                };
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::ModifiersChanged(modifiers),
+                        egui::Event::PointerMoved(end),
+                    ],
+                );
+                let target = if master {
+                    effects_panel::EffectTarget::Master
+                } else {
+                    effects_panel::EffectTarget::Track(app.session.project.tracks[0].id)
+                };
+                assert_eq!(app.effect_chain(target).unwrap().0, original);
+                assert!(!app.dirty);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerButton {
+                        pos: end,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers,
+                    }],
+                );
+                let chain = app.effect_chain(target).unwrap().0;
+                assert_eq!(
+                    chain.len(),
+                    5,
+                    "compact {compact} collapsed {collapsed} master {master}"
+                );
+                assert_eq!(&chain[..3], &original);
+                for (copy, source) in chain[3..].iter().zip([&original[0], &original[2]]) {
+                    assert_ne!(copy.id, source.id);
+                    assert_eq!(copy.unit, source.unit);
+                }
+                assert_eq!(
+                    app.selected_effects,
+                    chain[3..].iter().map(|e| e.id).collect()
+                );
+                app.session.project.validate().unwrap();
+                assert!(app.dirty);
+            }
+        }
+    }
+}
+
+#[test]
+fn effect_copy_modifier_is_dynamic_and_cancel_never_creates_copies() {
+    for mode in ["escape", "outside", "release-modifier", "fast"] {
+        let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        let original = app.session.project.tracks[0].effects.clone();
+        let start = app.effects_bounds.units[0].header.center();
+        let end = if mode == "outside" {
+            egui::pos2(1.0, 1.0)
+        } else {
+            egui::pos2(
+                app.effects_bounds.chain.last().unwrap().1.right() + 12.0,
+                start.y,
+            )
+        };
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        let modifiers = egui::Modifiers {
+            alt: true,
+            ctrl: true,
+            ..Default::default()
+        };
+        if mode != "fast" {
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerMoved(end),
+                ],
+            );
+        }
+        let mut events = vec![
+            egui::Event::ModifiersChanged(if mode == "release-modifier" {
+                Default::default()
+            } else {
+                modifiers
+            }),
+            egui::Event::PointerMoved(end),
+        ];
+        if mode == "escape" {
+            events.push(egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            });
+        }
+        events.push(egui::Event::PointerButton {
+            pos: end,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: if mode == "release-modifier" {
+                Default::default()
+            } else {
+                modifiers
+            },
+        });
+        frame(&mut app, &ctx, events);
+        match mode {
+            "release-modifier" => assert_eq!(chain_ids(&app), vec![ids[1], ids[2], ids[0]]),
+            "fast" => {
+                assert_eq!(chain_ids(&app).len(), 4);
+                assert_eq!(
+                    app.session.project.tracks[0].effects[3].unit,
+                    original[0].unit
+                );
+            }
+            _ => {
+                assert_eq!(app.session.project.tracks[0].effects, original);
+                assert!(!app.dirty);
+            }
+        }
+        assert!(app.effects_drag.is_none());
+    }
+}
+
+#[test]
+fn effect_copies_keep_modulation_settings_but_receive_new_route_ids() {
+    let (mut app, _, ctx, _) = chain_fixture(false, false);
+    let daw_core::EffectSettings::Drive(s) = &mut app.session.project.tracks[0].effects[1].unit
+    else {
+        unreachable!()
+    };
+    s.modulation_open = true;
+    let mut route = daw_core::Modulation::new(daw_core::ModulationParameter::Volume);
+    route.amount = -7.0;
+    route.enabled = false;
+    s.modulations.push(route);
+    frame(&mut app, &ctx, vec![]);
+    let original = app.session.project.tracks[0].effects[1].clone();
+    let rect = app.effects_bounds.chain[1].1;
+    let start = Pos2::new(rect.center().x, rect.top() + 12.0);
+    let end = Pos2::new(
+        app.effects_bounds.chain.last().unwrap().1.right() + 12.0,
+        start.y,
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+    );
+    let modifiers = egui::Modifiers {
+        alt: true,
+        ctrl: true,
+        ..Default::default()
+    };
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            egui::Event::ModifiersChanged(modifiers),
+            egui::Event::PointerMoved(end),
+            egui::Event::PointerButton {
+                pos: end,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers,
+            },
+        ],
+    );
+    let copy = app.session.project.tracks[0].effects.last().unwrap();
+    assert_ne!(copy.id, original.id);
+    assert_ne!(copy.unit.modulations()[0].id, route.id);
+    let mut settings = copy.unit.clone();
+    settings.modulations_mut()[0].id = route.id;
+    assert_eq!(settings, original.unit);
+    app.session.project.validate().unwrap();
+}

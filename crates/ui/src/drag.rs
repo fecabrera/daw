@@ -68,3 +68,28 @@ pub(super) fn scroll_near_edges(ui: &Ui, axis: Axis, speed: f32) {
     );
     ui.ctx().request_repaint();
 }
+
+/// Shared horizontal insertion policy for effects, oscillator sources and routes.
+pub(super) fn insertion_slot(pointer: Pos2, slots: impl IntoIterator<Item = egui::Rect>) -> usize {
+    slots
+        .into_iter()
+        .take_while(|r| pointer.x >= r.center().x)
+        .count()
+}
+pub(super) fn insertion_line(ui: &Ui, slots: &[egui::Rect], slot: usize, viewport: egui::Rect) {
+    if viewport.width() < 2.0 || viewport.height() <= 0.0 {
+        return;
+    }
+    let x = slots
+        .get(slot)
+        .map_or_else(
+            || slots.last().map_or(viewport.left(), |r| r.right()),
+            |r| r.left(),
+        )
+        .clamp(viewport.left() + 1.0, viewport.right() - 1.0);
+    ui.painter_at(viewport).vline(
+        x,
+        viewport.y_range(),
+        egui::Stroke::new(2.0, crate::theme::accent(ui.ctx())),
+    );
+}

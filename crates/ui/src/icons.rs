@@ -50,7 +50,19 @@ pub fn reorder_grip(ui: &mut Ui, item: &str) -> Response {
 
 /// Shared icon button with a visible tooltip and an accessibility name.
 pub fn button(ui: &mut Ui, icon: Lucide, name: &str, enabled: bool, color: Color32) -> Response {
-    draw_button(ui, icon, name, enabled, color, None)
+    draw_button(ui, icon, name, enabled, color, None, TOOLBAR_ICON_SIZE)
+}
+
+/// Match small-text toggles while retaining the standard button and hit area.
+pub fn small_button(
+    ui: &mut Ui,
+    icon: Lucide,
+    name: &str,
+    enabled: bool,
+    color: Color32,
+) -> Response {
+    let icon_size = egui::TextStyle::Small.resolve(ui.style()).size;
+    draw_button(ui, icon, name, enabled, color, None, icon_size)
 }
 
 /// Borderless toolbar toggle. A shared gray overlay changes contrast in either theme.
@@ -281,6 +293,7 @@ pub fn toggle_button(
             crate::theme::palette(ui.ctx()).text
         },
         Some(selected),
+        TOOLBAR_ICON_SIZE,
     )
 }
 
@@ -291,15 +304,22 @@ fn draw_button(
     enabled: bool,
     color: Color32,
     selected: Option<bool>,
+    icon_size: f32,
 ) -> Response {
     let image = icon
-        .size(16.0)
+        .size(icon_size)
         .stroke_width(2.0)
         .color(color)
         .image()
         .alt_text(name);
-    let mut button =
-        egui::Button::image(image).min_size(Vec2::new(28.0, crate::toolbars::CONTROL_HEIGHT));
+    let mut min_size = Vec2::new(28.0, crate::toolbars::CONTROL_HEIGHT);
+    if icon_size < TOOLBAR_ICON_SIZE {
+        // Reserve the standard icon's space even when drawing a smaller icon.
+        let font = egui::FontSelection::default().resolve(ui.style());
+        let regular_size = TOOLBAR_ICON_SIZE.min(ui.fonts_mut(|fonts| fonts.row_height(&font)));
+        min_size = min_size.max(Vec2::splat(regular_size) + 2.0 * ui.spacing().button_padding);
+    }
+    let mut button = egui::Button::image(image).min_size(min_size);
     if let Some(selected) = selected {
         button = button.selected(selected);
     }

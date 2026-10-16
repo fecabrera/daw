@@ -445,3 +445,7 @@ Implement [per-oscillator pitch modulation](oscillator-modulation.md) with stabl
 ## Destination-matched modulation controls — 2026-10-16
 
 All destination-owned amount knobs use the same [parameter profile](modulation.md#destination-matched-amount-knobs) as their regular destination control. Reuse native scale, reference marks, keyboard operation, and mouse/Shift sensitivity through a signed amount adapter. Keep existing amount units, bounds, project data, and audio behavior. Use percent, Q, dB, octave, or semitone readouts as appropriate; do not add independent generic amount knobs in unit panels.
+
+## Installed component transfers and effect copies — 2026-10-16
+
+Installed instrument headers now move components between layers; individual oscillator strip gaps transfer one oscillator. Option-drag on macOS or Ctrl-drag elsewhere creates copies. Whole Oscillator transfers merge sources and targeted routes. Provider moves remap source references, including track effects. Main accepts shared Envelope/LFO components; occupied Amplitude stages reject drops. Core applies each transfer atomically. Effect headers use the same modifier to copy the selected group in chain order through their existing insertion preview. See [gestures, identity rules, and limits](component-editing.md).

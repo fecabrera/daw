@@ -1,5 +1,6 @@
 //! Catalog adapter for the components available within an instrument layer.
 use super::*;
+use crate::instrument_component_drag::{ComponentDrag, ComponentDragSource};
 
 #[derive(Clone, Copy)]
 pub(super) enum Component {
@@ -43,15 +44,11 @@ fn add_lfo(lfos: &mut Vec<daw_core::LfoInstance>) {
     }
 }
 
-pub(super) struct ComponentDrag {
-    project: Id,
-    track: Id,
-    instrument: daw_core::InstrumentSettings,
-    start: catalog::DragStart,
-    pub active: bool,
-}
-
-fn add_components(settings: &mut daw_core::InstrumentSettings, layer_id: Id, types: &[&str]) {
+pub(super) fn add_components(
+    settings: &mut daw_core::InstrumentSettings,
+    layer_id: Id,
+    types: &[&str],
+) {
     if settings.main.id == layer_id {
         for (id, _, component) in ENTRIES {
             if !types.contains(&id) {
@@ -172,7 +169,12 @@ impl DawUi {
                         project: self.session.project.project_id,
                         track,
                         instrument,
-                        start,
+                        source: ComponentDragSource::Catalog {
+                            types: start.types,
+                            index: start.index,
+                        },
+                        origin: start.origin,
+                        focus: start.focus,
                         active: false,
                     });
                     break;
@@ -211,115 +213,6 @@ impl DawUi {
                     instrument: Some(settings),
                 });
             }
-        }
-    }
-
-    pub(super) fn cancel_unavailable_component_drag(&mut self, ui: &egui::Ui) {
-        let invalid = self.component_drag.as_ref().is_some_and(|drag| {
-            self.view_mode != ViewMode::Instrument
-                || !self.instrument_catalog_visible
-                || self.session.project.project_id != drag.project
-                || self.selected_track != Some(drag.track)
-                || !self.effects_editing_enabled(ui)
-                || self.effects_drag.is_some()
-                || drag::cancelled(ui)
-                || !self.session.project.tracks.iter().any(|track| {
-                    track.id == drag.track
-                        && track.kind == daw_core::TrackKind::Midi
-                        && track.instrument.as_ref() == Some(&drag.instrument)
-                })
-        });
-        if invalid {
-            if self.view_mode == ViewMode::Instrument
-                && self.instrument_catalog_visible
-                && self.edit_environment_available()
-                && ui.input(|input| input.focused && input.key_pressed(egui::Key::Escape))
-                && let Some(drag) = &self.component_drag
-            {
-                drag::restore_focus(ui.ctx(), drag.start.focus);
-            }
-            self.component_drag = None;
-        }
-    }
-
-    pub(super) fn activate_component_drag(&mut self, ui: &egui::Ui) {
-        if let Some(drag) = &mut self.component_drag
-            && !drag.active
-            && drag::crossed_threshold(ui, drag.start.origin)
-        {
-            drag.active = true;
-            self.instrument_catalog.select_dragged(drag.start.index);
-        }
-    }
-
-    pub(super) fn finish_component_drag(
-        &mut self,
-        ui: &egui::Ui,
-        track: Id,
-        settings: &mut daw_core::InstrumentSettings,
-        rows: &[(Id, Rect)],
-        viewport: Rect,
-    ) {
-        self.cancel_unavailable_component_drag(ui);
-        let Some(drag) = &self.component_drag else {
-            return;
-        };
-        if !drag.active {
-            if !ui.input(|input| input.pointer.primary_down()) {
-                self.component_drag = None;
-            }
-            return;
-        }
-        // Rendering never edits the snapshot while a catalog drag owns the gesture.
-        if drag.track != track || settings != &drag.instrument {
-            self.component_drag = None;
-            return;
-        }
-        let target = ui
-            .input(|input| input.pointer.latest_pos())
-            .filter(|pointer| viewport.contains(*pointer))
-            .and_then(|pointer| {
-                rows.iter().find_map(|(id, row)| {
-                    let rect = Rect::from_min_max(
-                        Pos2::new(viewport.left(), row.top()),
-                        Pos2::new(viewport.right(), row.bottom()),
-                    )
-                    .intersect(viewport);
-                    rect.contains(pointer).then_some((*id, rect))
-                })
-            });
-        let target = target.filter(|(id, _)| {
-            *id != settings.main.id
-                || drag
-                    .start
-                    .types
-                    .iter()
-                    .any(|t| ["daw.envelope", "daw.lfo"].contains(t))
-        });
-        if let Some((_, rect)) = target {
-            panels::selection_border(ui, rect);
-        }
-        #[cfg(test)]
-        {
-            self.instrument_catalog_bounds.drop_target = target.map(|(id, _)| id);
-            self.instrument_catalog_bounds.drop_bounds =
-                target.map_or(Rect::NOTHING, |(_, rect)| rect);
-        }
-        ui.ctx().set_cursor_icon(if target.is_some() {
-            egui::CursorIcon::Grabbing
-        } else {
-            egui::CursorIcon::NotAllowed
-        });
-        if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
-            let drag = self.component_drag.take().unwrap();
-            drag::restore_focus(ui.ctx(), drag.start.focus);
-            if let Some((layer, _)) = target {
-                add_components(settings, layer, &drag.start.types);
-                self.instrument_ui.selected_layer = Some(layer);
-                ui.ctx().request_repaint();
-            }
-        } else if !ui.input(|input| input.pointer.primary_down()) {
-            self.component_drag = None;
         }
     }
 

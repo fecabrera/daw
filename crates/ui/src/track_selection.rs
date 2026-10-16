@@ -40,6 +40,13 @@ impl DawUi {
     }
 
     pub(super) fn master_selection(&mut self, ui: &egui::Ui, rect: Rect) {
+        self.master_selection_input(ui, rect);
+        if self.master_selected {
+            panels::selection_border(ui, rect);
+        }
+    }
+
+    pub(super) fn master_selection_input(&mut self, ui: &egui::Ui, rect: Rect) {
         if ui.is_enabled()
             && self.file_action_enabled(FileAction::Import)
             && ui.rect_contains_pointer(rect)
@@ -47,9 +54,6 @@ impl DawUi {
             && !self.master_selected
         {
             self.select_master();
-        }
-        if self.master_selected {
-            panels::selection_border(ui, rect);
         }
     }
 

@@ -189,3 +189,325 @@ fn main_accepts_shared_modulators_from_catalog_and_rejects_audio_components() {
     assert_eq!(app.instrument_ui.selected_layer, Some(main));
     app.session.project.validate().unwrap();
 }
+
+#[test]
+fn layer_and_main_selection_strokes_stay_flush_and_paint_after_shared_dividers() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for main in [false, true] {
+                let (mut app, ctx, _) = setup(theme);
+                app.timeline_effects_visible = false;
+                let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+                i.layers[0].collapsed = compact;
+                i.main.collapsed = compact;
+                let layer = i.layers[0].id;
+                app.instrument_ui.selected_layer = Some(if main { i.main.id } else { layer });
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                let label = if main {
+                    app.instrument_ui.main_bounds.label
+                } else {
+                    app.midi_editor.layer_bounds[&layer].label
+                };
+                let outline = shapes
+                    .iter()
+                    .find_map(|s| match &s.shape {
+                        egui::Shape::Rect(r)
+                            if r.stroke == theme::selection_outline(&ctx)
+                                && label.contains_rect(r.rect) =>
+                        {
+                            Some((s.clip_rect, r))
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(outline.1.rect, label);
+                assert_eq!(outline.1.stroke_kind, egui::StrokeKind::Inside);
+                assert!(
+                    outline.0.contains_rect(outline.1.rect),
+                    "main {main} compact {compact}: clip {:?}, rect {:?}, label {:?}",
+                    outline.0,
+                    outline.1.rect,
+                    label
+                );
+                assert_eq!(outline.1.stroke.width, 2.0);
+                let selection_index=shapes.iter().position(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.rect==label && r.stroke==theme::selection_outline(&ctx))).unwrap();
+                // Neither the final column divider nor later row fills may cut the stroke.
+                assert!(!shapes[selection_index + 1..].iter().any(|s| {
+                    match &s.shape {
+                        egui::Shape::LineSegment { points, stroke } => {
+                            *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                                && points[0].x == label.right() - 0.5
+                                && points[1].x == label.right() - 0.5
+                                && points[0].y < label.center().y
+                                && points[1].y > label.center().y
+                        }
+                        egui::Shape::Rect(r) => {
+                            r.fill != egui::Color32::TRANSPARENT
+                                && r.rect
+                                    .intersect(s.clip_rect)
+                                    .contains(label.right_center() - Vec2::new(1.0, 0.0))
+                        }
+                        _ => false,
+                    }
+                }));
+                assert!(!app.dirty);
+            }
+        }
+    }
+}
+
+#[test]
+fn main_components_share_the_bottom_separator_with_the_lane_or_status_panel() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for collapsed in [false, true] {
+                for effects_visible in [false, true] {
+                    let (mut app, ctx, _) = setup(theme);
+                    let bus = &mut app.session.project.tracks[0]
+                        .instrument
+                        .as_mut()
+                        .unwrap()
+                        .main;
+                    bus.collapsed = compact;
+                    bus.envelopes.push(daw_core::EnvelopeInstance {
+                        collapsed,
+                        mode: daw_core::EnvelopeMode::Legato,
+                        ..Default::default()
+                    });
+                    bus.lfos.push(daw_core::LfoInstance {
+                        collapsed,
+                        ..Default::default()
+                    });
+                    app.timeline_effects_visible = effects_visible;
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    let headers = &app.instrument_ui.main_bounds.envelopes;
+                    let x = headers[0].center().x;
+                    let main = app.instrument_ui.main_bounds.row;
+                    let y = main.bottom() - 0.5;
+                    assert!(
+                        !shapes.iter().any(|s| match &s.shape {
+                            egui::Shape::Rect(r) =>
+                                r.stroke.width > 0.0
+                                    && r.stroke.color != egui::Color32::TRANSPARENT
+                                    && r.rect.left() < x
+                                    && r.rect.right() > x
+                                    && (r.rect.bottom() - y).abs() < 1.0,
+                            egui::Shape::LineSegment { points, stroke } =>
+                                stroke.color == theme::palette(&ctx).border
+                                    && points[0].x < x
+                                    && points[1].x > x
+                                    && points.iter().all(|p| (p.y - y).abs() < 0.4),
+                            _ => false,
+                        }),
+                        "unit must omit its bottom edge: compact {compact}, collapsed {collapsed}, effects {effects_visible}"
+                    );
+                    // The left panel remains the same height as its components.
+                    assert_eq!(
+                        app.instrument_ui.main_bounds.label.height(),
+                        panels::unit_height(compact)
+                    );
+                    assert!(!app.dirty);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn fixed_layers_header_keeps_its_separator_above_scrolled_content() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _) = setup(color_theme);
+        app.timeline_effects_visible = false;
+        let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        i.layers
+            .extend((0..5).map(|_| daw_core::InstrumentLayerSettings::default()));
+        for l in &mut i.layers {
+            l.oscillators.push(Default::default());
+        }
+        frame(&mut app, &ctx, vec![]);
+        let viewport = app.instrument_catalog_bounds.layer_viewport;
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(viewport.center()),
+                egui::Event::MouseWheel {
+                    phase: egui::TouchPhase::Move,
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0.0, -120.0),
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        for _ in 0..10 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(app.instrument_catalog_bounds.layer_scroll > 0.0);
+        let header = app.midi_editor.instrument_header_bounds;
+        let y = header.bottom() - 0.5;
+        let index=shapes.iter().position(|s|matches!(&s.shape,egui::Shape::LineSegment{points,stroke} if *stroke==Stroke::new(1.0,theme::palette(&ctx).border) && points[0].y==y && points[1].y==y && points[0].x==header.left() && points[1].x>header.right())).expect("full-width pinned header separator");
+        // Scrolled row fills must be behind the fixed line, including the shared top pixel.
+        assert!(!shapes[index + 1..].iter().any(|s| {
+            match &s.shape {
+                egui::Shape::Rect(r) => {
+                    r.fill != egui::Color32::TRANSPARENT
+                        && r.rect
+                            .intersect(s.clip_rect)
+                            .contains(Pos2::new(header.left() + 20.0, y))
+                }
+                _ => false,
+            }
+        }));
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn main_top_separator_shares_the_last_layers_bottom_pixel() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for collapsed in [false, true] {
+                let (mut app, ctx, _) = setup(color_theme);
+                app.timeline_effects_visible = false;
+                let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+                i.layers
+                    .extend((0..4).map(|_| daw_core::InstrumentLayerSettings::default()));
+                i.main.collapsed = compact;
+                i.main.envelopes.push(daw_core::EnvelopeInstance {
+                    collapsed,
+                    mode: daw_core::EnvelopeMode::Legato,
+                    ..Default::default()
+                });
+                frame(&mut app, &ctx, vec![]);
+                let viewport = app.instrument_catalog_bounds.layer_viewport;
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(viewport.center()),
+                        egui::Event::MouseWheel {
+                            phase: egui::TouchPhase::Move,
+                            unit: egui::MouseWheelUnit::Point,
+                            delta: Vec2::new(0.0, -10000.0),
+                            modifiers: Default::default(),
+                        },
+                    ],
+                );
+                for _ in 0..12 {
+                    frame(&mut app, &ctx, vec![]);
+                }
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                let main = app.instrument_ui.main_bounds.row;
+                let x = app.instrument_ui.main_bounds.label.center().x;
+                let ys = shapes
+                    .iter()
+                    .filter_map(|s| match &s.shape {
+                        egui::Shape::LineSegment { points, stroke }
+                            if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                                && points[0].x < x
+                                && points[1].x > x
+                                && points[0].y == points[1].y
+                                && (points[0].y - main.top()).abs() <= 2.0 =>
+                        {
+                            Some(points[0].y)
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                assert!(!ys.is_empty());
+                assert!(
+                    ys.iter().all(|y| *y == main.top() - 0.5),
+                    "one shared pixel, got {ys:?}"
+                );
+                let header = app.instrument_ui.main_bounds.envelopes[0];
+                let cx = header.center().x;
+                assert!(!shapes.iter().any(|s| {
+                    match &s.shape {
+                        egui::Shape::LineSegment { points, stroke } => {
+                            *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
+                                && points[0].x < cx
+                                && points[1].x > cx
+                                && points
+                                    .iter()
+                                    .all(|p| (p.y - (main.top() + 0.5)).abs() < 0.1)
+                        }
+                        egui::Shape::Rect(r) => {
+                            r.stroke.width > 0.0
+                                && r.stroke.color != egui::Color32::TRANSPARENT
+                                && r.rect.left() < cx
+                                && r.rect.right() > cx
+                                && (r.rect.top() - main.top()).abs() < 1.0
+                        }
+                        _ => false,
+                    }
+                }));
+                assert!(!app.dirty);
+            }
+        }
+    }
+}
+
+#[test]
+fn main_unit_header_fills_reach_the_shared_top_edge_without_moving_controls() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for collapsed in [false, true] {
+                for enabled in [false, true] {
+                    let (mut app, ctx, _) = setup(color_theme);
+                    app.timeline_effects_visible = false;
+                    let bus = &mut app.session.project.tracks[0]
+                        .instrument
+                        .as_mut()
+                        .unwrap()
+                        .main;
+                    bus.collapsed = compact;
+                    bus.envelopes.push(daw_core::EnvelopeInstance {
+                        enabled,
+                        collapsed,
+                        mode: daw_core::EnvelopeMode::Legato,
+                        ..Default::default()
+                    });
+                    bus.lfos.push(daw_core::LfoInstance {
+                        enabled,
+                        collapsed,
+                        ..Default::default()
+                    });
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    let main = &app.instrument_ui.main_bounds;
+                    let fill = theme::unit_header_fill(&ctx, enabled);
+                    for header in main.envelopes.iter().chain(&main.lfos) {
+                        let point = Pos2::new(
+                            header.center().x,
+                            header.top() + panels::HEADER_HEIGHT * 0.5,
+                        );
+                        let cap = shapes
+                            .iter()
+                            .find_map(|s| match &s.shape {
+                                egui::Shape::Rect(r)
+                                    if r.fill == fill && r.rect.contains(point) =>
+                                {
+                                    Some(r.rect)
+                                }
+                                _ => None,
+                            })
+                            .expect("unit header fill");
+                        assert_eq!(
+                            cap.top(),
+                            main.row.top(),
+                            "Main header must not expose the omitted frame edge"
+                        );
+                        assert_eq!(
+                            header.top(),
+                            main.row.top() + 1.0,
+                            "retain frame and control geometry"
+                        );
+                        assert_eq!(cap.bottom(), header.top() + panels::HEADER_HEIGHT);
+                    }
+                    assert_eq!(main.label.height(), panels::unit_height(compact));
+                    assert!(!app.dirty);
+                }
+            }
+        }
+    }
+}

@@ -183,16 +183,15 @@ impl DawUi {
             self.effects_drag = None;
             return;
         }
+        let duplicate = ui.input(|i| clip_copy_modifier(i.modifiers));
         let target = ui
             .input(|input| input.pointer.latest_pos())
             .filter(|pointer| viewport.contains(*pointer))
             .map(|pointer| {
-                let slot = slots
-                    .iter()
-                    .position(|(_, rect)| pointer.x < rect.center().x)
-                    .unwrap_or(slots.len());
+                let slot = drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r));
                 match &drag.source {
                     DragSource::Library { .. } => (slot, slot, true),
+                    DragSource::Chain { .. } if duplicate => (slot, slot, true),
                     DragSource::Chain { units, .. } => {
                         let moving: HashSet<_> = units.iter().copied().collect();
                         let index = slots[..slot]
@@ -213,25 +212,19 @@ impl DawUi {
         if let Some((slot, _, changed)) = target
             && changed
         {
-            let x = slots
-                .get(slot)
-                .map_or_else(
-                    || {
-                        slots
-                            .last()
-                            .map_or(viewport.left(), |(_, rect)| rect.right())
-                    },
-                    |(_, rect)| rect.left(),
-                )
-                .clamp(viewport.left() + 1.0, viewport.right() - 1.0);
-            ui.painter_at(viewport).vline(
-                x,
-                viewport.y_range(),
-                Stroke::new(2.0, theme::accent(ui.ctx())),
+            drag::insertion_line(
+                ui,
+                &slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
+                slot,
+                viewport,
             );
         }
         ui.ctx().set_cursor_icon(if target.is_some() {
-            egui::CursorIcon::Grabbing
+            if duplicate && !drag.is_library() {
+                egui::CursorIcon::Copy
+            } else {
+                egui::CursorIcon::Grabbing
+            }
         } else {
             egui::CursorIcon::NotAllowed
         });
@@ -246,6 +239,23 @@ impl DawUi {
                             .filter(|entry| types.contains(&entry.0))
                             .map(|entry| (entry.2)());
                         effects.splice(index..index, added);
+                    }
+                    DragSource::Chain { units, .. } if duplicate => {
+                        let selected: HashSet<_> = units.into_iter().collect();
+                        let copies: Vec<_> = effects
+                            .iter()
+                            .filter(|e| selected.contains(&e.id))
+                            .map(|e| {
+                                let mut copy = e.clone();
+                                copy.id = Id::new_v4();
+                                for route in copy.unit.modulations_mut() {
+                                    route.id = Id::new_v4();
+                                }
+                                copy
+                            })
+                            .collect();
+                        self.selected_effects = copies.iter().map(|e| e.id).collect();
+                        effects.splice(index..index, copies);
                     }
                     DragSource::Chain { units, .. } => {
                         // Partition in existing chain order, regardless of selection click order.
