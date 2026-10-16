@@ -299,7 +299,8 @@ impl Renderer {
         renderer
     }
     /// Read the last processed parameters without advancing DSP or allocating.
-    /// Effects return cutoff L/R Hz, Q, level dB, wet fraction. Amplitude returns
+    /// Auto-filter returns cutoff L/R Hz, Q, level dB, wet fraction.
+    /// Drive returns Volume dB, Gain, Tone, Color strength, Color frequency Hz. Amplitude returns
     /// the highest voice gain in dB in slot 0; unused slots are zero.
     pub fn modulation_values(&self, target: ModulationTarget) -> Option<[f32; 5]> {
         match target {

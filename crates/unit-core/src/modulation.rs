@@ -55,8 +55,20 @@ pub enum ModulationParameter {
     Resonance,
     Level,
     DryWet,
+    Volume,
+    DriveGain,
+    Tone,
+    ColorStrength,
+    ColorFrequency,
 }
 impl ModulationParameter {
+    pub const DRIVE: [Self; 5] = [
+        Self::Volume,
+        Self::DriveGain,
+        Self::Tone,
+        Self::ColorStrength,
+        Self::ColorFrequency,
+    ];
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
@@ -65,21 +77,27 @@ impl ModulationParameter {
             Self::Resonance => "Resonance",
             Self::Level => "Level",
             Self::DryWet => "Dry/Wet",
+            Self::Volume => "Volume",
+            Self::DriveGain => "Gain",
+            Self::Tone => "Tone",
+            Self::ColorStrength => "Color strength",
+            Self::ColorFrequency => "Color frequency",
         }
     }
     pub fn limit(self) -> f32 {
         match self {
             Self::Frequency => 6.0,
+            Self::ColorFrequency => 3.0,
             Self::Resonance => 10.0,
-            Self::Level => 24.0,
+            Self::Level | Self::Volume => 24.0,
             _ => 1.0,
         }
     }
     pub fn unit(self) -> &'static str {
         match self {
-            Self::Frequency => "oct",
+            Self::Frequency | Self::ColorFrequency => "oct",
             Self::Resonance => "Q",
-            Self::Level => "dB",
+            Self::Level | Self::Volume => "dB",
             _ => "",
         }
     }

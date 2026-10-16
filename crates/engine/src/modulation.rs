@@ -175,6 +175,24 @@ impl SharedControls {
         std::mem::swap(&mut self.values, &mut next.values);
     }
 }
+/// Resolve shared effect offsets once per source/route sample, then apply destination bounds.
+pub(crate) fn offsets<const N: usize>(
+    routes: &mut [Route],
+    values: &[ModulationValue],
+    parameters: [daw_core::ModulationParameter; N],
+) -> [f32; N] {
+    let mut offsets = [0.0; N];
+    for route in routes {
+        if let Some(index) = parameters
+            .iter()
+            .position(|p| *p == route.settings.parameter)
+            && let Some((value, amount, _)) = route.sample(&[], values)
+        {
+            offsets[index] += value * amount;
+        }
+    }
+    offsets
+}
 pub(crate) struct Route {
     pub settings: Modulation,
     amount: Smooth,

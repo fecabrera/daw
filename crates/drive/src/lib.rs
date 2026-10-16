@@ -59,6 +59,9 @@ pub struct Drive {
     configured: [f32; 4],
     clipping: f32,
     normalization: f32,
+    external: [f64; 5],
+    modulation_alpha: f64,
+    effective: [f32; 5],
 }
 fn amplitude(db: f32) -> f32 {
     10_f32.powf(db / 20.0)
@@ -91,8 +94,17 @@ impl Drive {
             configured: [f32::NAN; 4],
             clipping: 0.0,
             normalization: 1.0,
+            external: [0.0; 5],
+            modulation_alpha: 1.0 - (-1.0 / (0.001 * f64::from(context.sample_rate_hz))).exp(),
+            effective: [
+                amplitude(settings.volume_db),
+                settings.gain,
+                settings.tone,
+                settings.color_strength,
+                settings.color_frequency_hz,
+            ],
         };
-        drive.configure();
+        drive.configure(drive.base_parameters());
         drive
     }
     /// Preserve filter history and any unrelated in-flight ramps on live edits.
@@ -109,16 +121,19 @@ impl Drive {
         }
         self.mix.retarget(f32::from(settings.enabled), frames);
     }
-    fn configure(&mut self) {
-        let values = [
+    fn base_parameters(&self) -> [f32; 4] {
+        [
             self.gain.value,
             self.tone.value,
             self.strength.value,
             self.frequency_log.value,
-        ];
+        ]
+    }
+    fn configure(&mut self, values: [f32; 4]) {
         if values == self.configured {
             return;
         }
+        self.effective[1..].copy_from_slice(&[values[0], values[1], values[2], values[3].exp()]);
         if values[0] != self.configured[0] {
             // Zero is clean. Full gain supplies 36 dB of drive into a symmetric soft clipper.
             self.clipping = 10_f32.powf(1.8 * values[0]) - 1.0;
@@ -188,13 +203,54 @@ impl EffectUnit for Drive {
         for filter in &mut self.tone_filter {
             filter.reset();
         }
-        self.configure();
+        self.external = [0.0; 5];
+        self.effective[0] = self.volume.value;
+        self.configure(self.base_parameters());
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
+        self.process_modulated(input, [0.0; 5])
+    }
+}
+impl Drive {
+    /// Last processed Volume dB, Gain, Tone, Color strength, and Color frequency Hz.
+    pub fn effective_parameters(&self) -> [f32; 5] {
+        let mut values = self.effective;
+        values[0] = if values[0] > 0.0 {
+            20.0 * values[0].log10()
+        } else {
+            daw_unit_core::SILENT_GAIN_DB
+        };
+        values
+    }
+    /// Offsets in the same order: dB, normalized fractions, and octaves for Frequency.
+    /// Sources and route amounts belong to the host; this portable stage smooths offsets by 1 ms.
+    pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 5]) -> [f32; 2] {
+        for (value, target) in self.external.iter_mut().zip(offsets) {
+            let target = if target.is_finite() {
+                f64::from(target)
+            } else {
+                0.0
+            };
+            *value += self.modulation_alpha * (target - *value);
+        }
         for ramp in self.ramps() {
             ramp.advance();
         }
-        self.configure();
+        let offsets = self.external.map(|v| v as f32);
+        let [gain, tone, strength, frequency_log] = self.base_parameters();
+        self.configure([
+            (gain + offsets[1]).clamp(0.0, 1.0),
+            (tone + offsets[2]).clamp(0.0, 1.0),
+            (strength + offsets[3]).clamp(0.0, 1.0),
+            (frequency_log + offsets[4] * std::f32::consts::LN_2)
+                .clamp(250.0_f32.ln(), 2000.0_f32.ln()),
+        ]);
+        let volume = if offsets[0] == 0.0 {
+            self.volume.value
+        } else {
+            (self.volume.value * amplitude(offsets[0].clamp(-96.0, 96.0))).min(amplitude(12.0))
+        };
+        self.effective[0] = volume;
         std::array::from_fn(|channel| {
             let dry = input[channel];
             let bass = self.bass[channel].filter_mono(dry);
@@ -214,7 +270,7 @@ impl EffectUnit for Drive {
             } else {
                 (color * self.clipping).tanh() * self.normalization
             };
-            let wet = self.tone_filter[channel].filter_mono(clipped) * self.volume.value;
+            let wet = self.tone_filter[channel].filter_mono(clipped) * volume;
             dry + (wet - dry) * self.mix.value
         })
     }

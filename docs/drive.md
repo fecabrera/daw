@@ -28,3 +28,24 @@ Drive adds no buffering or alignment delay. The clipper runs at the project rate
 FunDSP and its existing transitive dependencies retain the notices in [EQ dependency licenses](../crates/equalizer/assets/licenses), which the macOS package already includes. Native audio-device listening and Windows/Linux appearance require separate checks from automated DSP and UI tests.
 
 Master supports this unit through the same Timeline catalog and controls. Its independent saved chain processes the summed track bus before Master gain and output meters; see [Master effects](modular-audio-units.md#master-effects-implementation--2026-10-14).
+
+
+## Envelope modulation
+
+Drive accepts shared Retrigger/Legato Envelope sources from its own MIDI instrument. Per-note sources, cross-track sources, and instrument sources on audio tracks or Master are rejected through the same core validation as Auto-filter. An inactive or removed source contributes no offset. Connected envelopes must be disconnected from track effects before changing to Per note.
+
+| Destination | Signed Amount range | Application |
+| --- | --- | --- |
+| Volume | −24 to +24 dB | Add to the output level, capped at +12 dB; exact base silence stays silent. |
+| Gain | −1 to +1 | Add to normalized intensity, then clamp to 0–1. |
+| Tone | −1 to +1 | Add to normalized brightness, then clamp to 0–1. |
+| Color strength | −1 to +1 | Add to curve depth, then clamp to 0–1. |
+| Color frequency | −3 to +3 octaves | Multiply frequency by `2^(envelope × Amount)`, then clamp to 250 Hz–2 kHz. |
+
+Color shape remains a discrete selector. Color modulation continues advancing with Color Off, retaining the target values and filter histories, but it affects the sound only with a color shape enabled. The regular Strength/Frequency controls retain their existing disabled state while Color is Off.
+
+Drive reuses the modulation header dot, Source/Parameter/Amount strips, connection power, context-menu removal, and Plus strip from Auto-filter and Amplitude. The regular controls stay visible when the modulation section opens. Save `modulation_open` and the connection list per effect, independently of unit power and collapse. Older version-1 settings default closed with no connections. Visibility changes use the normal effect edit and mark the project modified. Save/reopen, Save As, duplication, and effect reorder retain the settings and source identities within their instrument scope.
+
+The five continuous controls reuse the shared status dots, range arcs, source/amount tooltips, click-to-open actions, and live value markers. Base pointers/readouts stay at the saved values. Live values come from the actual Drive processor through prepared atomic block snapshots. No separate UI envelope is evaluated.
+
+The engine reuses shared envelope evaluation and route smoothing. It sums signed contributions per destination before bounds. Route/source power and amount changes retain their existing 5 ms ramps; Drive smooths external offsets over 1 ms before applying bounds and recalculating filter coefficients. Combined Volume offsets are bounded to ±96 dB before gain conversion. Its normal base controls and bypass retain 5 ms ramps. Prepared route storage and stable route/effect IDs preserve compatible history without callback allocation, locks, or I/O. Zero connections preserve the unmodulated sound. Non-finite standalone offsets contribute neutral targets. The portable `process_modulated` API uses Volume dB, Gain, Tone, Color strength, and Color frequency octaves in that order; `effective_parameters` reports Volume dB, the three normalized values, and Color frequency Hz.

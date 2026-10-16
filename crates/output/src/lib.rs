@@ -134,7 +134,12 @@ fn modulation_meters(
     let effects = plan
         .project
         .all_effects()
-        .filter(|e| matches!(e.unit, daw_core::EffectSettings::AutoFilter(_)))
+        .filter(|e| {
+            matches!(
+                e.unit,
+                daw_core::EffectSettings::AutoFilter(_) | daw_core::EffectSettings::Drive(_)
+            )
+        })
         .map(|e| ModulationTarget::Effect(e.id));
     let amplitudes = plan.project.tracks.iter().flat_map(|track| {
         track.instrument.iter().flat_map(move |instrument| {
@@ -1036,6 +1041,9 @@ mod modulation_meter_tests {
         let effect = daw_core::EffectInstance::auto_filter();
         let key = ModulationTarget::Effect(effect.id);
         plan.project.tracks[0].effects.push(effect);
+        let drive = daw_core::EffectInstance::drive();
+        let drive_key = ModulationTarget::Effect(drive.id);
+        plan.project.tracks[0].effects.push(drive);
         let track = plan.project.add_midi_track().unwrap();
         let layer = &mut plan.project.tracks[1].instrument.as_mut().unwrap().layers[0];
         layer.amplitude.present = true;
@@ -1044,7 +1052,7 @@ mod modulation_meter_tests {
             layer: layer.id,
         };
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 2);
+        assert_eq!(handles.len(), 3);
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1066,6 +1074,10 @@ mod modulation_meter_tests {
         assert_eq!(
             f32::from_bits(handles[&amplitude][0].load(Ordering::Relaxed)),
             daw_core::SILENT_GAIN_DB
+        );
+        assert_eq!(
+            renderer.modulation_values(drive_key).unwrap(),
+            std::array::from_fn(|i| f32::from_bits(handles[&drive_key][i].load(Ordering::Relaxed)))
         );
         let next = modulation_meters(&plan, &handles);
         assert!(Arc::ptr_eq(&next[&key], &handles[&key]));

@@ -471,6 +471,8 @@ impl DawUi {
                                                     settings,
                                                     compact,
                                                     strip.height(),
+                                                    &modulation_sources,
+                                                    self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Effect(effect.id))),
                                                 );
                                                 let power = _bounds.power;
                                                 #[cfg(test)]

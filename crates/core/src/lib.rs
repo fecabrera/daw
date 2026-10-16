@@ -454,10 +454,12 @@ impl Project {
         }
         let mut ids = std::collections::HashSet::<Uuid>::new();
         ids.insert(self.project_id);
-        if self.master.effects.iter().any(|e| match &e.unit {
-            EffectSettings::AutoFilter(s) => s.modulations.iter().any(|r| r.source.is_some()),
-            _ => false,
-        }) {
+        if self
+            .master
+            .effects
+            .iter()
+            .any(|e| e.unit.modulations().iter().any(|r| r.source.is_some()))
+        {
             return Err(invalid(
                 "Master effects cannot reference instrument envelopes",
             ));
@@ -542,15 +544,7 @@ impl Project {
                     ));
                 }
             }
-            for route in t
-                .effects
-                .iter()
-                .filter_map(|e| match &e.unit {
-                    EffectSettings::AutoFilter(s) => Some(&s.modulations),
-                    _ => None,
-                })
-                .flatten()
-            {
+            for route in t.effects.iter().flat_map(|e| e.unit.modulations()) {
                 if route.source.is_some_and(|source| {
                     !t.instrument.as_ref().is_some_and(|i| {
                         i.layers
@@ -560,7 +554,7 @@ impl Project {
                     })
                 }) {
                     return Err(invalid(
-                        "Auto-filter modulation requires a shared envelope in the same MIDI track",
+                        "Effect modulation requires a shared envelope in the same MIDI track",
                     ));
                 }
             }

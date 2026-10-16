@@ -1137,3 +1137,90 @@ fn modulation_routes_validate_scope_parameter_amount_and_shared_note_modes_atomi
             .is_err()
     );
 }
+
+#[test]
+fn drive_modulation_validates_targets_bounds_and_shared_source_scope_atomically() {
+    let (mut project, track, _) = fixture();
+    let layer = &mut project.tracks[0].instrument.as_mut().unwrap().layers[0];
+    layer.envelopes[0].mode = EnvelopeMode::Legato;
+    let source = EnvelopeSource {
+        layer: layer.id,
+        envelope: layer.envelopes[0].id,
+    };
+    let mut effect = EffectInstance::drive();
+    let EffectSettings::Drive(settings) = &mut effect.unit else {
+        panic!()
+    };
+    settings.modulations = ModulationParameter::DRIVE
+        .into_iter()
+        .map(|p| {
+            let mut r = Modulation::new(p);
+            r.source = Some(source);
+            r.amount = p.limit();
+            r
+        })
+        .collect();
+    project
+        .edit(Edit::SetEffects {
+            track_id: track,
+            effects: vec![effect.clone()],
+            compact: false,
+        })
+        .unwrap();
+    let valid = serde_json::to_value(&project).unwrap();
+    for case in 0..7 {
+        let mut bad = effect.clone();
+        let EffectSettings::Drive(s) = &mut bad.unit else {
+            panic!()
+        };
+        match case {
+            0 => s.modulations[0].amount = f32::NAN,
+            1 => s.modulations[1].amount = 1.1,
+            2 => s.modulations[4].amount = 3.1,
+            3 => s.modulations[0].parameter = ModulationParameter::Resonance,
+            4 => s.modulations[0].source.as_mut().unwrap().layer = Id::new_v4(),
+            5 => s.modulations[0].source.as_mut().unwrap().envelope = Id::new_v4(),
+            _ => s.modulations.push(s.modulations[0]),
+        }
+        assert!(
+            project
+                .edit(Edit::SetEffects {
+                    track_id: track,
+                    effects: vec![bad],
+                    compact: false
+                })
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&project).unwrap(), valid);
+    }
+    let mut instrument = project.tracks[0].instrument.clone().unwrap();
+    instrument.layers[0].envelopes[0].mode = EnvelopeMode::PerNote;
+    assert!(
+        project
+            .edit(Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(instrument)
+            })
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(&project).unwrap(), valid);
+    effect.id = Id::new_v4();
+    let audio = project.add_track().unwrap();
+    assert!(
+        project
+            .edit(Edit::SetEffects {
+                track_id: audio,
+                effects: vec![effect.clone()],
+                compact: false
+            })
+            .is_err()
+    );
+    assert!(
+        project
+            .edit(Edit::SetMasterEffects {
+                effects: vec![effect],
+                compact: false
+            })
+            .is_err()
+    );
+}

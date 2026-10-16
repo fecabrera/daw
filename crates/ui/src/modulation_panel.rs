@@ -123,7 +123,7 @@ pub(super) fn body(
                                         }
                                     })
                                     .response
-                                    .on_hover_text(if parameters==[ModulationParameter::Amplitude] {"Modulation source"}else{"Auto-filter uses shared envelopes. Select Retrigger or Legato on the source Envelope."})
+                                    .on_hover_text(if parameters==[ModulationParameter::Amplitude] {"Modulation source"}else{"Track effects use shared envelopes. Select Retrigger or Legato on the source Envelope."})
                             });
                             rows::centered(ui, knobs::CHOICE_SIZE, |ui| {
                                 ui.set_min_height(knobs::CHOICE_SIZE);
@@ -302,11 +302,24 @@ pub(super) fn marker(
         ModulationParameter::Frequency => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(20.0, 20_000.0))
         }
+        ModulationParameter::ColorFrequency => {
+            offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(250.0, 2000.0))
+        }
         ModulationParameter::Resonance => offsets.map(|o| (base + o).clamp(0.1, 10.0)),
         ModulationParameter::Level => {
             offsets.map(|o| (base + o).clamp(daw_core::SILENT_GAIN_DB, 12.0))
         }
-        ModulationParameter::DryWet => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
+        ModulationParameter::Volume => {
+            if base <= daw_core::SILENT_GAIN_DB {
+                [daw_core::SILENT_GAIN_DB; 2]
+            } else {
+                offsets.map(|o| (base + o.clamp(-96.0, 96.0)).clamp(daw_core::SILENT_GAIN_DB, 12.0))
+            }
+        }
+        ModulationParameter::DryWet
+        | ModulationParameter::DriveGain
+        | ModulationParameter::Tone
+        | ModulationParameter::ColorStrength => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::Amplitude => {
             let factors = amplitude.map(|[positive, negative]| {
                 [
@@ -327,20 +340,29 @@ pub(super) fn marker(
     lines.push("Outer arc: possible held-note range, limited to the knob scale. Pointer and readout: base value.".into());
     if parameter == ModulationParameter::Amplitude {
         lines.push("Moving dot: highest active voice gain, including note gate and bypass smoothing; voice sum excluded.".into());
-    } else {
+    } else if parameter == ModulationParameter::Frequency {
         lines.push("Moving dot: processed value; Frequency shows both stereo channels.".into());
+    } else {
+        lines.push("Moving dot: processed value.".into());
     }
     let format_value = |value: f32| match parameter {
-        ModulationParameter::Frequency => knobs::format_frequency(value),
+        ModulationParameter::Frequency | ModulationParameter::ColorFrequency => {
+            knobs::format_frequency(value)
+        }
         ModulationParameter::Resonance => format!("Q {value:.2}"),
-        ModulationParameter::Amplitude | ModulationParameter::Level => {
+        ModulationParameter::Amplitude
+        | ModulationParameter::Level
+        | ModulationParameter::Volume => {
             if value <= daw_core::SILENT_GAIN_DB {
                 "−∞ dB".into()
             } else {
                 format!("{value:.1} dB")
             }
         }
-        ModulationParameter::DryWet => format!("{:.0}%", value * 100.0),
+        ModulationParameter::DryWet
+        | ModulationParameter::DriveGain
+        | ModulationParameter::Tone
+        | ModulationParameter::ColorStrength => format!("{:.0}%", value * 100.0),
     };
     lines.push(format!(
         "Range: {} to {}",
@@ -507,5 +529,45 @@ mod tests {
         .unwrap();
         assert_eq!(m.range[0], daw_core::SILENT_GAIN_DB);
         assert!((m.range[1] - 20.0 * 1.5_f32.log10()).abs() < 1e-6);
+    }
+    #[test]
+    fn drive_modulation_ranges_respect_volume_silence_aggregate_limits_and_color_frequency() {
+        use ModulationParameter::*;
+        let source = source(EnvelopeMode::Legato);
+        let sources = [source.clone()];
+        for (p, base, amount, expected) in [
+            (Volume, 0.0, -24.0, [-24.0, 0.0]),
+            (
+                Volume,
+                daw_core::SILENT_GAIN_DB,
+                24.0,
+                [daw_core::SILENT_GAIN_DB; 2],
+            ),
+            (DriveGain, 0.2, 1.0, [0.2, 1.0]),
+            (Tone, 0.5, -1.0, [0.0, 0.5]),
+            (ColorStrength, 0.5, 1.0, [0.5, 1.0]),
+            (ColorFrequency, 750.0, 3.0, [750.0, 2000.0]),
+        ] {
+            let marker = marker(
+                &[route(&source, p, amount)],
+                &sources,
+                p,
+                base,
+                true,
+                None,
+                [None; 2],
+            )
+            .unwrap();
+            assert_eq!(marker.range, expected);
+        }
+        let routes = (0..5)
+            .map(|_| route(&source, Volume, -24.0))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            marker(&routes, &sources, Volume, 0.0, true, None, [None; 2])
+                .unwrap()
+                .range,
+            [-96.0, 0.0]
+        );
     }
 }

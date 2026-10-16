@@ -3319,3 +3319,74 @@ fn modulation_visibility_survives_save_reopen_save_as_and_legacy_defaults() {
     filter["modulation_open"] = serde_json::Value::Null;
     assert!(serde_json::from_value::<AutoFilterSettings>(filter).is_err());
 }
+
+#[test]
+fn drive_modulation_round_trips_save_as_and_defaults_legacy_settings() {
+    use daw_core::{
+        EffectInstance, EffectSettings, EnvelopeMode, EnvelopeSource, Modulation,
+        ModulationParameter,
+    };
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    session.project.add_midi_track().unwrap();
+    let layer = &mut session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.envelopes[0].present = true;
+    layer.envelopes[0].mode = EnvelopeMode::Retrigger;
+    let source = EnvelopeSource {
+        layer: layer.id,
+        envelope: layer.envelopes[0].id,
+    };
+    let mut effect = EffectInstance::drive();
+    let EffectSettings::Drive(settings) = &mut effect.unit else {
+        panic!()
+    };
+    settings.modulation_open = true;
+    settings.modulations = ModulationParameter::DRIVE
+        .into_iter()
+        .map(|p| {
+            let mut r = Modulation::new(p);
+            r.source = Some(source);
+            r.amount = -p.limit();
+            r
+        })
+        .collect();
+    session.project.tracks[0].effects.push(effect);
+    session.save(&fixture.0.join("drive-modulation")).unwrap();
+    let mut reopened = Session::open(&fixture.0.join("drive-modulation")).unwrap();
+    reopened
+        .save(&fixture.0.join("drive-modulation-copy"))
+        .unwrap();
+    let copied = Session::open(&fixture.0.join("drive-modulation-copy")).unwrap();
+    assert_eq!(
+        copied.project.tracks[0].effects,
+        session.project.tracks[0].effects
+    );
+    let duplicate = daw_core::Id::new_v4();
+    reopened
+        .project
+        .edit(daw_core::Edit::DuplicateTrack {
+            track_id: reopened.project.tracks[0].id,
+            new_track_id: duplicate,
+        })
+        .unwrap();
+    assert_ne!(
+        reopened.project.tracks[0].effects[0].id,
+        reopened.project.tracks[1].effects[0].id
+    );
+    assert_eq!(
+        reopened.project.tracks[0].effects[0].unit,
+        reopened.project.tracks[1].effects[0].unit
+    );
+    reopened.project.validate().unwrap();
+    let mut legacy = serde_json::to_value(daw_core::DriveSettings::default()).unwrap();
+    legacy.as_object_mut().unwrap().remove("modulation_open");
+    legacy.as_object_mut().unwrap().remove("modulations");
+    let loaded: daw_core::DriveSettings = serde_json::from_value(legacy.clone()).unwrap();
+    assert!(!loaded.modulation_open && loaded.modulations.is_empty() && loaded.valid());
+    legacy["modulation_open"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<daw_core::DriveSettings>(legacy).is_err());
+}

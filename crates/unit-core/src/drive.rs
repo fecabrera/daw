@@ -40,6 +40,10 @@ pub struct DriveSettings {
     pub version: u32,
     pub enabled: bool,
     pub collapsed: bool,
+    #[serde(default)]
+    pub modulation_open: bool,
+    #[serde(default)]
+    pub modulations: Vec<crate::Modulation>,
     pub volume_db: f32,
     /// Normalized 0–1 drive intensity. Zero is clean.
     pub gain: f32,
@@ -55,6 +59,8 @@ impl Default for DriveSettings {
             version: DRIVE_STATE_VERSION,
             enabled: true,
             collapsed: false,
+            modulation_open: false,
+            modulations: Vec::new(),
             volume_db: 0.0,
             gain: 0.2,
             tone: 0.5,
@@ -72,6 +78,7 @@ impl DriveSettings {
             && [self.gain, self.tone, self.color_strength]
                 .into_iter()
                 .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+            && crate::valid_modulations(&self.modulations, &crate::ModulationParameter::DRIVE)
             && self.color_frequency_hz.is_finite()
             && (250.0..=2000.0).contains(&self.color_frequency_hz)
     }

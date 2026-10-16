@@ -1699,3 +1699,85 @@ fn modulation_telemetry_tracks_processed_note_values_and_preserves_audio_without
         .is_none()
     );
 }
+
+#[test]
+fn drive_modulation_has_playback_export_seek_and_live_edit_parity_without_allocations() {
+    for mode in [EnvelopeMode::Retrigger, EnvelopeMode::Legato] {
+        let mut source = plan(Waveform::Saw, 48_000);
+        let l = &mut source.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+        l.envelopes[1].present = true;
+        l.envelopes[1].mode = mode;
+        l.envelopes[1].settings.attack.time_ms = 400.0;
+        let id = EnvelopeSource {
+            layer: l.id,
+            envelope: l.envelopes[1].id,
+        };
+        let mut effect = EffectInstance::drive();
+        let EffectSettings::Drive(f) = &mut effect.unit else {
+            panic!()
+        };
+        f.gain = 0.0;
+        f.color_shape = DriveColorShape::MidHump;
+        let mut route = Modulation::new(ModulationParameter::DriveGain);
+        route.source = Some(id);
+        route.amount = 1.0;
+        f.modulations.push(route);
+        source.project.tracks[0].effects.push(effect);
+        source.project.validate().unwrap();
+        let mut wet = vec![[0.0; 2]; 32000];
+        Renderer::new(source.clone()).render_offline(&mut wet);
+        let target = daw_engine::ModulationTarget::Effect(source.project.tracks[0].effects[0].id);
+        let mut live = Renderer::new(source.clone());
+        live.play();
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|e| e.set(true));
+        for (i, s) in wet.iter().enumerate() {
+            let actual = live.next_sample();
+            if i > 240 {
+                assert!((actual[0] - s[0]).abs() < 1e-6);
+            }
+        }
+        assert!(
+            live.modulation_values(target)
+                .unwrap()
+                .iter()
+                .all(|v| v.is_finite())
+        );
+        assert!(live.modulation_values(target).unwrap()[1] > 0.1);
+        TRACK_ALLOCATIONS.with(|e| e.set(false));
+        ALLOCATIONS.with(|c| assert_eq!(c.get(), 0));
+        let mut random = [[0.0; 2]; 64];
+        source.render(13000, &mut random);
+        assert_eq!(&random[..], &wet[13000..13064]);
+        let mut dry = source.clone();
+        let EffectSettings::Drive(f) = &mut dry.project.tracks[0].effects[0].unit else {
+            panic!()
+        };
+        f.modulations.clear();
+        let mut unmodulated = vec![[0.0; 2]; 32000];
+        Renderer::new(dry).render_offline(&mut unmodulated);
+        assert!(
+            wet.iter()
+                .zip(&unmodulated)
+                .any(|(a, b)| (a[0] - b[0]).abs() > 0.01)
+        );
+        let mut edited = source.clone();
+        edited.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[1]
+            .settings
+            .attack
+            .time_ms = 100.0;
+        let EffectSettings::Drive(f) = &mut edited.project.tracks[0].effects[0].unit else {
+            panic!()
+        };
+        f.modulations[0].amount = -0.5;
+        let mut replacement = Renderer::new(edited);
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|e| e.set(true));
+        replacement.inherit(&mut live);
+        for _ in 0..512 {
+            assert!(replacement.next_sample().iter().all(|s| s.is_finite()));
+        }
+        TRACK_ALLOCATIONS.with(|e| e.set(false));
+        ALLOCATIONS.with(|c| assert_eq!(c.get(), 0));
+    }
+}

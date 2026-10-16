@@ -403,7 +403,7 @@ impl DawUi {
                                                         for (index, instance) in
                                                             layer.envelopes.iter_mut().enumerate()
                                                         {
-                                                            let shared_only=track.effects.iter().any(|effect|matches!(&effect.unit,daw_core::EffectSettings::AutoFilter(filter) if filter.modulations.iter().any(|r|r.source==Some(daw_core::EnvelopeSource{layer:layer.id,envelope:instance.id}))));
+                                                            let shared_only=track.effects.iter().any(|effect|effect.unit.modulations().iter().any(|r|r.source==Some(daw_core::EnvelopeSource{layer:layer.id,envelope:instance.id})));
                                                             if let Some(envelope) =
                                                                 envelope_panel::unit(
                                                                     ui,

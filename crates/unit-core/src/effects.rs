@@ -183,6 +183,15 @@ impl<'de> Deserialize<'de> for EffectSettings {
     }
 }
 impl EffectSettings {
+    /// Destination-owned routes; all current effect destinations require shared sources.
+    pub fn modulations(&self) -> &[crate::Modulation] {
+        match self {
+            Self::AutoFilter(s) => &s.modulations,
+            Self::Drive(s) => &s.modulations,
+            _ => &[],
+        }
+    }
+
     pub fn valid(&self) -> bool {
         match self {
             Self::Eq3(eq) => eq.valid(),

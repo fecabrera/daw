@@ -207,3 +207,79 @@ fn maximum_controls_remain_finite_with_high_level_stereo_input() {
         }
     }
 }
+
+#[test]
+fn modulation_matches_static_settings_after_smoothing_and_preserves_neutral_audio() {
+    for rate in RATES {
+        let settings = DriveSettings {
+            color_shape: DriveColorShape::MidHumpBassCut,
+            ..Default::default()
+        };
+        let mut neutral = unit(rate, &settings);
+        let mut legacy = unit(rate, &settings);
+        for frame in 0..1000 {
+            let input = [(frame as f32 * 0.1).sin() * 0.01, 0.0];
+            assert_eq!(
+                neutral.process_modulated(input, [0.0; 5]),
+                legacy.process_sample(input)
+            );
+        }
+        let target = DriveSettings {
+            volume_db: -6.0,
+            gain: 0.7,
+            tone: 0.8,
+            color_strength: 0.9,
+            color_frequency_hz: 1500.0,
+            ..settings.clone()
+        };
+        let mut modulated = unit(rate, &settings);
+        let mut fixed = unit(rate, &target);
+        let offsets = [-6.0, 0.5, 0.3, 0.4, 1.0];
+        for _ in 0..rate / 20 {
+            modulated.process_modulated([0.0; 2], offsets);
+            fixed.process_sample([0.0; 2]);
+        }
+        let actual = modulated.effective_parameters();
+        for (actual, expected) in actual.into_iter().zip([-6.0, 0.7, 0.8, 0.9, 1500.0]) {
+            assert!(
+                (actual - expected).abs() < 0.01,
+                "{rate}: {actual} != {expected}"
+            );
+        }
+        for frame in 0..1000 {
+            let input = [(frame as f32 * 0.1).sin() * 0.01, 0.0];
+            let a = modulated.process_modulated(input, offsets);
+            let b = fixed.process_sample(input);
+            assert!((a[0] - b[0]).abs() < 2e-5, "{rate}: {a:?} {b:?}");
+            assert_eq!(a[1], 0.0);
+        }
+        modulated.reset();
+        assert_eq!(
+            modulated.process_sample([0.2; 2]),
+            unit(rate, &settings).process_sample([0.2; 2])
+        );
+        for _ in 0..rate / 50 {
+            assert!(
+                modulated
+                    .process_modulated([0.1; 2], [1000.0; 5])
+                    .iter()
+                    .all(|s| s.is_finite())
+            );
+        }
+        let values = modulated.effective_parameters();
+        assert!((values[0] - 12.0).abs() < 1e-5);
+        assert_eq!(&values[1..4], &[1.0; 3]);
+        assert!((values[4] - 2000.0).abs() < 0.01);
+        for _ in 0..1000 {
+            assert!(
+                modulated
+                    .process_modulated(
+                        [0.0; 2],
+                        [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.0, 0.0]
+                    )
+                    .iter()
+                    .all(|s| s.is_finite())
+            );
+        }
+    }
+}

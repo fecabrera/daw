@@ -10,7 +10,7 @@ use std::sync::{Arc, atomic::AtomicU32};
 
 enum RuntimeEffect {
     Eq3(Box<Equalizer>),
-    Drive(Box<Drive>),
+    Drive(Box<Drive>, Vec<super::modulation::Route>),
     AutoFilter(Box<AutoFilter>, Vec<super::modulation::Route>),
     Compressor(Box<Compressor>),
     Ott(Box<Ott>),
@@ -26,20 +26,16 @@ impl RuntimeEffect {
     ) -> [f32; 2] {
         match self {
             Self::Eq3(unit) => unit.process_sample(input),
-            Self::Drive(unit) => unit.process_sample(input),
+            Self::Drive(unit, routes) => unit.process_modulated(
+                input,
+                super::modulation::offsets(routes, values, daw_core::ModulationParameter::DRIVE),
+            ),
             Self::AutoFilter(unit, routes) => {
-                let mut offsets = [0.0; 4];
-                for r in routes {
-                    if let Some((v, a, _)) = r.sample(&[], values) {
-                        let i = match r.settings.parameter {
-                            daw_core::ModulationParameter::Frequency => 0,
-                            daw_core::ModulationParameter::Resonance => 1,
-                            daw_core::ModulationParameter::Level => 2,
-                            _ => 3,
-                        };
-                        offsets[i] += v * a;
-                    }
-                }
+                let offsets = super::modulation::offsets(
+                    routes,
+                    values,
+                    daw_core::ModulationParameter::FILTER,
+                );
                 unit.process_modulated_at(input, frame, tempo, offsets)
             }
             Self::Compressor(unit) => unit.process_sample(input),
@@ -50,7 +46,13 @@ impl RuntimeEffect {
     fn reset(&mut self) {
         match self {
             Self::Eq3(unit) => unit.reset(),
-            Self::Drive(unit) => unit.reset(),
+
+            Self::Drive(unit, routes) => {
+                unit.reset();
+                for r in routes {
+                    r.reset();
+                }
+            }
             Self::AutoFilter(unit, routes) => {
                 unit.reset();
                 for r in routes {
@@ -67,7 +69,7 @@ impl RuntimeEffect {
             (Self::Eq3(unit), EffectSettings::Eq3(settings)) => unit.retarget(settings),
             (Self::Ott(unit), EffectSettings::Ott(settings)) => unit.retarget(settings),
             (Self::Limiter(unit), EffectSettings::Limiter(settings)) => unit.retarget(settings),
-            (Self::Drive(unit), EffectSettings::Drive(settings)) => unit.retarget(settings),
+            (Self::Drive(unit, _), EffectSettings::Drive(settings)) => unit.retarget(settings),
             (Self::Compressor(unit), EffectSettings::Compressor(settings)) => {
                 unit.retarget(settings)
             }
@@ -118,6 +120,11 @@ impl EffectChain {
                             ))),
                             EffectSettings::Drive(settings) => Some(RuntimeEffect::Drive(
                                 Box::new(Drive::new(context, settings)),
+                                settings
+                                    .modulations
+                                    .iter()
+                                    .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                    .collect(),
                             )),
                             EffectSettings::AutoFilter(settings) => {
                                 Some(RuntimeEffect::AutoFilter(
@@ -168,7 +175,9 @@ impl EffectChain {
                 if let (
                     RuntimeEffect::AutoFilter(_, old_routes),
                     RuntimeEffect::AutoFilter(_, new_routes),
-                ) = (&mut *previous, &mut *next)
+                )
+                | (RuntimeEffect::Drive(_, old_routes), RuntimeEffect::Drive(_, new_routes)) =
+                    (&mut *previous, &mut *next)
                 {
                     for new in new_routes.iter_mut() {
                         if let Some(old) = old_routes
@@ -192,6 +201,7 @@ impl EffectChain {
             Some((_, Some(RuntimeEffect::AutoFilter(unit, _)))) => {
                 Some(unit.effective_parameters())
             }
+            Some((_, Some(RuntimeEffect::Drive(unit, _)))) => Some(unit.effective_parameters()),
             _ => None,
         }
     }

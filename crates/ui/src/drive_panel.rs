@@ -54,7 +54,43 @@ pub(super) fn show(
     settings: &mut DriveSettings,
     compact: bool,
     height: f32,
+    sources: &[crate::modulation_panel::Source],
+    live: Option<[f32; 5]>,
 ) -> (Bounds, egui::Response) {
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
+        |ui| show_inner(ui, settings, compact, height, sources, live),
+    )
+    .inner
+}
+fn show_inner(
+    ui: &mut Ui,
+    settings: &mut DriveSettings,
+    compact: bool,
+    height: f32,
+    sources: &[crate::modulation_panel::Source],
+    live: Option<[f32; 5]>,
+) -> (Bounds, egui::Response) {
+    let open = settings.modulation_open;
+    let bases = [
+        settings.volume_db,
+        settings.gain,
+        settings.tone,
+        settings.color_strength,
+        settings.color_frequency_hz,
+    ];
+    let markers: [Option<knobs::ModulationMarker>; 5] = std::array::from_fn(|i| {
+        crate::modulation_panel::marker(
+            &settings.modulations,
+            sources,
+            daw_core::ModulationParameter::DRIVE[i],
+            bases[i],
+            settings.enabled,
+            None,
+            [live.map(|v| v[i]), None],
+        )
+    });
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
         header: Rect::NOTHING,
@@ -72,6 +108,8 @@ pub(super) fn show(
         color_shape,
         color_strength,
         color_frequency_hz,
+        modulation_open,
+        modulations,
         ..
     } = settings;
     let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(
@@ -83,6 +121,7 @@ pub(super) fn show(
         |ui| {
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+                let mut last_strip = Rect::NOTHING;
                 for (index, name) in ["Drive", "Color"].into_iter().enumerate() {
                     let strip = ui
                         .push_id(index, |ui| {
@@ -106,10 +145,16 @@ pub(super) fn show(
                                                             volume_db,
                                                             knobs::CHOICE_SIZE,
                                                             |ui, value| {
-                                                                knobs::gain_with_markers_named(
-                                                                    ui,
-                                                                    value,
-                                                                    "Drive volume",
+                                                                ui.add(
+                                                                    Knob::new(
+                                                                        value,
+                                                                        knobs::marked_gain_spec()
+                                                                            .named("Drive volume"),
+                                                                    )
+                                                                    .modulated(
+                                                                        markers[0].as_ref(),
+                                                                        modulation_open,
+                                                                    ),
                                                                 )
                                                             },
                                                         )
@@ -119,10 +164,19 @@ pub(super) fn show(
                                                             gain,
                                                             knobs::CHOICE_SIZE,
                                                             |ui, value| {
-                                                                ui.add(Knob::new(
-                                                                    value,
-                                                                    percent_spec("Drive gain", 0.2),
-                                                                ))
+                                                                ui.add(
+                                                                    Knob::new(
+                                                                        value,
+                                                                        percent_spec(
+                                                                            "Drive gain",
+                                                                            0.2,
+                                                                        ),
+                                                                    )
+                                                                    .modulated(
+                                                                        markers[1].as_ref(),
+                                                                        modulation_open,
+                                                                    ),
+                                                                )
                                                             },
                                                         )
                                                         .rect,
@@ -131,13 +185,22 @@ pub(super) fn show(
                                                             tone,
                                                             knobs::CHOICE_SIZE,
                                                             |ui, value| {
-                                                                ui.add(Knob::new(
-                                                                    value,
-                                                                    percent_spec("Drive tone", 0.5)
+                                                                ui.add(
+                                                                    Knob::new(
+                                                                        value,
+                                                                        percent_spec(
+                                                                            "Drive tone",
+                                                                            0.5,
+                                                                        )
                                                                         .centered(0.5)
                                                                         .bipolar()
                                                                         .endpoint_labels("−", "+"),
-                                                                ))
+                                                                    )
+                                                                    .modulated(
+                                                                        markers[2].as_ref(),
+                                                                        modulation_open,
+                                                                    ),
+                                                                )
                                                             },
                                                         )
                                                         .rect,
@@ -179,13 +242,19 @@ pub(super) fn show(
                                                                 color_strength,
                                                                 knobs::CHOICE_SIZE,
                                                                 |ui, value| {
-                                                                    ui.add(Knob::new(
-                                                                        value,
-                                                                        percent_spec(
-                                                                            "Color strength",
-                                                                            0.5,
+                                                                    ui.add(
+                                                                        Knob::new(
+                                                                            value,
+                                                                            percent_spec(
+                                                                                "Color strength",
+                                                                                0.5,
+                                                                            ),
+                                                                        )
+                                                                        .modulated(
+                                                                            markers[3].as_ref(),
+                                                                            modulation_open,
                                                                         ),
-                                                                    ))
+                                                                    )
                                                                 },
                                                             )
                                                             .rect;
@@ -194,10 +263,16 @@ pub(super) fn show(
                                                                 color_frequency_hz,
                                                                 knobs::CHOICE_SIZE,
                                                                 |ui, value| {
-                                                                    ui.add(Knob::new(
-                                                                        value,
-                                                                        frequency_spec(),
-                                                                    ))
+                                                                    ui.add(
+                                                                        Knob::new(
+                                                                            value,
+                                                                            frequency_spec(),
+                                                                        )
+                                                                        .modulated(
+                                                                            markers[4].as_ref(),
+                                                                            modulation_open,
+                                                                        ),
+                                                                    )
                                                                 },
                                                             )
                                                             .rect;
@@ -224,13 +299,25 @@ pub(super) fn show(
                         .inner
                         .response
                         .rect;
+                    last_strip = strip;
                     if index > 0 {
                         panels::unit_divider(ui, strip.left(), strip.y_range().into());
                     }
                 }
+                if open {
+                    panels::unit_divider(ui, last_strip.right(), last_strip.y_range().into());
+                    crate::modulation_panel::body(
+                        ui,
+                        modulations,
+                        sources,
+                        &daw_core::ModulationParameter::DRIVE,
+                        compact,
+                    );
+                }
             });
         },
     );
+    crate::modulation_panel::toggle(ui, &result.header, *collapsed, modulation_open);
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
     (bounds, result.header)
