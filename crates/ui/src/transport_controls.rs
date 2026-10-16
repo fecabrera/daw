@@ -50,10 +50,10 @@ pub(super) fn show(
             )
         })
         .inner;
-    let (icon, label) = if stop_action == StopAction::Stop {
-        (icons::Lucide::Square, "Stop")
-    } else {
+    let (icon, label) = if ui.is_enabled() && stop_action == StopAction::ReturnToOrigin {
         (icons::Lucide::ChevronFirst, "Return to origin")
+    } else {
+        (icons::Lucide::Square, "Stop")
     };
     let stop = ui
         .add_enabled_ui(stop_action != StopAction::AtOrigin, |ui| {

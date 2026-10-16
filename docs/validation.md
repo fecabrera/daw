@@ -2268,3 +2268,12 @@ New portable tests cover shared scope and resolution, all six rates, true freque
 Formatting, strict workspace Clippy, the CLI build/smoke checks, the macOS debug app rebuild, local documentation targets, and `git diff --check` passed. Native UI/pointer, audio-device playback/listening, and Windows/Linux checks were not run.
 
 `cargo test --workspace` passed: 698 passed, zero failed, and 2 existing expanded time-stretch matrices ignored. This includes all 397 UI tests and 51 project workflow tests.
+
+
+## Disabled transport Stop icon — 2026-10-16
+
+The transport button shows Square/Stop whenever it is disabled, including timeline origin and UI guards. Chevron First/Return to origin appears only for an enabled return action. The two-step Stop/return behavior, hit area, disabled clicks, and keyboard actions remain unchanged.
+
+All six transport UI tests, formatting, strict workspace Clippy, the macOS debug app rebuild, and `git diff --check` passed. Native visual/device and Windows/Linux checks were not run. CLI smoke checks were not repeated for this UI-only change.
+
+`cargo test --workspace` passed: 698 passed, zero failed, and 2 existing expanded time-stretch matrices ignored, including all 397 UI tests.
