@@ -67,6 +67,8 @@ pub(crate) struct SharedControls {
     pub values: Vec<ModulationValue>,
     lfos: Vec<LfoControl>,
     held: usize,
+    note_durations: [Option<u64>; 2],
+    note_ages: [u64; 2],
     frame: u64,
     release_frames: u64,
 }
@@ -88,6 +90,8 @@ impl SharedControls {
             values,
             lfos: Vec::new(),
             held: 0,
+            note_durations: [None; 2],
+            note_ages: [0; 2],
             frame: 0,
             release_frames: 0,
         }
@@ -140,6 +144,8 @@ impl SharedControls {
             v.weight = 0.0;
         }
         self.held = 0;
+        self.note_durations = [None; 2];
+        self.note_ages = [0; 2];
         self.frame = 0;
         self.release_frames = 0;
     }
@@ -151,6 +157,11 @@ impl SharedControls {
         }
     }
     pub fn advance_to(&mut self, frame: u64) {
+        if self.held > 0 {
+            for age in &mut self.note_ages {
+                *age = age.saturating_add(frame.saturating_sub(self.frame));
+            }
+        }
         if self.held == 0 {
             self.release_frames = self
                 .release_frames
@@ -161,11 +172,17 @@ impl SharedControls {
         }
         self.frame = frame;
     }
-    pub fn event(&mut self, on: bool) {
+    pub fn event(&mut self, on: bool, duration_frames: Option<u64>) {
         if on {
+            self.note_durations[0] = duration_frames;
+            self.note_ages[0] = 0;
+            if self.held == 0 {
+                self.note_durations[1] = duration_frames;
+                self.note_ages[1] = 0;
+            }
             for e in &mut self.controls {
                 if self.held == 0 || e.mode == EnvelopeMode::Retrigger {
-                    e.envelope.note_on();
+                    e.envelope.note_on_with_duration(duration_frames);
                 }
             }
             self.held += 1;
@@ -180,6 +197,11 @@ impl SharedControls {
         }
     }
     pub fn tick(&mut self, context: ModulationSourceContext) {
+        if self.held > 0 {
+            for age in &mut self.note_ages {
+                *age = age.saturating_add(1);
+            }
+        }
         if self.held == 0 {
             self.release_frames = self.release_frames.saturating_add(1);
         }
@@ -227,7 +249,9 @@ impl SharedControls {
                 e.retarget(n);
                 std::mem::swap(e, n);
             } else if self.held > 0 {
-                n.envelope.note_on();
+                let index = usize::from(n.mode == EnvelopeMode::Legato);
+                n.envelope.note_on_with_duration(self.note_durations[index]);
+                n.envelope.advance(self.note_ages[index]);
             }
         }
         for v in &mut next.values {
@@ -285,23 +309,23 @@ mod tests {
         let mut retrigger = shared(EnvelopeMode::Retrigger);
         let mut legato = shared(EnvelopeMode::Legato);
         for s in [&mut retrigger, &mut legato] {
-            s.event(true);
+            s.event(true, None);
             for _ in 0..25 {
                 s.tick(Default::default());
             }
             assert!((s.values[0].value - 0.25).abs() < 1e-6);
-            s.event(true);
+            s.event(true, None);
             s.tick(Default::default());
         }
         assert!((retrigger.values[0].value - 0.01).abs() < 1e-6);
         assert!((legato.values[0].value - 0.26).abs() < 1e-6);
         for s in [&mut retrigger, &mut legato] {
-            s.event(false);
+            s.event(false, None);
             for _ in 0..100 {
                 s.tick(Default::default());
             }
             assert_eq!(s.values[0].value, 1.0);
-            s.event(false);
+            s.event(false, None);
             for _ in 0..100 {
                 s.tick(Default::default());
             }
@@ -310,15 +334,48 @@ mod tests {
         }
     }
     #[test]
+    fn note_relative_shared_modes_keep_the_triggering_length_and_live_addition_age() {
+        for mode in [EnvelopeMode::Retrigger, EnvelopeMode::Legato] {
+            let mut s = shared(mode);
+            let mut settings = s.controls[0].envelope.settings();
+            settings.timing = daw_core::EnvelopeTiming::Note;
+            settings.attack_note = 1.0;
+            s.controls[0].envelope.set_settings(settings);
+            s.event(true, Some(100));
+            for _ in 0..25 {
+                s.tick(Default::default());
+            }
+            s.event(true, Some(200));
+            for _ in 0..25 {
+                s.tick(Default::default());
+            }
+            let expected = if mode == EnvelopeMode::Retrigger {
+                0.125
+            } else {
+                0.5
+            };
+            assert!((s.values[0].value - expected).abs() < 1e-6);
+            let mut next = shared(mode);
+            next.controls[0].source.unit = daw_core::Id::from_u128(999);
+            next.controls[0].envelope.set_settings(settings);
+            s.retarget(&mut next);
+            assert!((s.controls[0].envelope.level() - expected).abs() < 1e-6);
+            s.event(false, None);
+            assert_ne!(s.controls[0].envelope.stage(), daw_envelope::Stage::Release);
+            s.event(false, None);
+            assert_eq!(s.controls[0].envelope.stage(), daw_envelope::Stage::Release);
+        }
+    }
+    #[test]
     fn shared_seek_reconstruction_and_fanout_do_not_advance_a_source_twice() {
         for mode in [EnvelopeMode::Retrigger, EnvelopeMode::Legato] {
             let mut played = shared(mode);
             let mut sought = shared(mode);
-            played.event(true);
+            played.event(true, None);
             for _ in 0..25 {
                 played.tick(Default::default());
             }
-            sought.event(true);
+            sought.event(true, None);
             sought.advance_to(25);
             sought.tick(Default::default());
             played.tick(Default::default());

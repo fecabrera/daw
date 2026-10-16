@@ -453,3 +453,8 @@ Installed instrument headers now move components between layers; individual osci
 ## LFO modulation inputs — 2026-10-16
 
 LFO now provides and consumes control signals through the shared modulation contracts. Depth and Rate use the existing destination-owned controls, source discovery, scope validation, route resolver, smoothing, markers, stable IDs, and save format. The host prepares an acyclic provider-first order; self/feedback connections are invalid even when inactive. Shared Envelope and LFO inputs are supported; voice-local Envelope inputs remain invalid. See [LFO modulation](lfo.md#depth-and-rate-modulation) for bounds, continuous rate integration, the direct-seek history reset, and setup examples.
+
+
+### Envelope timing controls — 2026-10-16
+
+Envelope adds Time/Note timing and moves the Mode dropdown from its header to the first body column. One leading 90-point strip stacks the Timing knob above the Mode dropdown before the four ADSR strips; all retain the shared controls, separators, footer alignment, and 244-point height. Note timing scales Attack and Decay to the full triggering note length, preserves independent Time values, and leaves Release in milliseconds. Shared destinations consume the existing source interface without special handling. The detailed requirements and overlap rules are in [Envelope unit](midi-patterns.md#envelope-unit). This supersedes the earlier four-strip-only Envelope layout.

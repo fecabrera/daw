@@ -57,6 +57,10 @@ See [Oscillator pitch modulation](oscillator-modulation.md), [Envelope component
 
 The older scalar Amplitude API and positional Auto-filter/Drive offset methods remain low-level adapters for existing standalone callers. DAW rendering uses the typed entry point. The offset adapters use the same smoother and DSP as the typed interface.
 
+## Note-relative provider timing
+
+Envelope remains a `ModulationSource`. The host passes an optional full note duration through `Envelope::note_on_with_duration` in processing-rate frames; the existing `note_on()` uses the fixed-time fallback when duration is unknown. Note lengths are prepared with the event schedule, including stretch, off the audio thread. The portable Envelope scales only Attack and Decay; destinations consume the same cached normalized signal through `process_modulation`. No destination needs note-length logic or a separate route type. Per note, Retrigger, and Legato retain their existing scope, fan-out, release ownership, and reconstruction rules. See [Envelope timing and overlap behavior](midi-patterns.md#envelope-unit).
+
 ## Saved data and real-time constraints
 
 Connections, amounts, enable state, and existing `modulation_open` fields keep their saved defaults. Repeated destinations can add an optional route `target` UUID; ordinary destinations omit it. Oscillator saves `oscillator_modulations` and `oscillator_modulation_open` on its layer, with empty/closed legacy defaults. The Rust identity is now `ModulationSourceId { layer, unit }`. JSON continues writing the historical `envelope` key for that unit ID and also accepts `unit` when reading. This retains existing projects without a version change; the key does not constrain the provider type.

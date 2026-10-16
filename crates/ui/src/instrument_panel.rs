@@ -120,6 +120,17 @@ impl DawUi {
         });
         let modulation_sources = crate::modulation_panel::sources(Some(&settings));
         let lfo_sources = crate::modulation_panel::provider_sources(&settings);
+        let shared_sources: Vec<_> = track
+            .effects
+            .iter()
+            .flat_map(|e| e.unit.modulations())
+            .chain(
+                settings
+                    .lfo_destinations()
+                    .flat_map(|(_, l)| &l.modulations),
+            )
+            .filter_map(|r| r.source)
+            .collect();
         let mut remove_layer = None;
         let column_bounds = ui.max_rect();
         let control_panel = panels::ControlPanel::begin(ui, column_bounds);
@@ -418,7 +429,7 @@ impl DawUi {
                                                         for (index, instance) in
                                                             layer.envelopes.iter_mut().enumerate()
                                                         {
-                                                            let shared_only=track.effects.iter().any(|effect|effect.unit.modulations().iter().any(|r|r.source==Some(daw_core::ModulationSourceId{layer:layer.id,unit:instance.id})));
+                                                            let shared_only = shared_sources.contains(&daw_core::ModulationSourceId { layer: layer.id, unit: instance.id });
                                                             if let Some(envelope) =
                                                                 envelope_panel::unit(
                                                                     ui,

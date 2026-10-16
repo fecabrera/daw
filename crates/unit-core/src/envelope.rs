@@ -5,6 +5,26 @@ pub const MAX_ENVELOPE_TIME_MS: f32 = 10_000.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum EnvelopeTiming {
+    #[default]
+    Time,
+    Note,
+}
+impl EnvelopeTiming {
+    pub const ALL: [Self; 2] = [Self::Time, Self::Note];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Time => "Time",
+            Self::Note => "Note",
+        }
+    }
+}
+fn full_note() -> f32 {
+    1.0
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CurveShape {
     #[default]
     Linear,
@@ -72,6 +92,13 @@ impl EnvelopeStageSettings {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EnvelopeSettings {
     pub version: u32,
+    #[serde(default)]
+    pub timing: EnvelopeTiming,
+    /// Fractions of the triggering note; independent of retained millisecond settings.
+    #[serde(default = "full_note")]
+    pub attack_note: f32,
+    #[serde(default)]
+    pub decay_note: f32,
     pub attack: EnvelopeStageSettings,
     pub decay: EnvelopeStageSettings,
     /// Held level, 0–1. Sustain has no duration or curve.
@@ -82,6 +109,9 @@ impl Default for EnvelopeSettings {
     fn default() -> Self {
         Self {
             version: UNIT_STATE_VERSION,
+            timing: EnvelopeTiming::Time,
+            attack_note: 1.0,
+            decay_note: 0.0,
             attack: EnvelopeStageSettings {
                 time_ms: 5.0,
                 shape: CurveShape::Linear,
@@ -111,6 +141,9 @@ impl EnvelopeSettings {
         };
         Self {
             version: UNIT_STATE_VERSION,
+            timing: EnvelopeTiming::Time,
+            attack_note: 1.0,
+            decay_note: 0.0,
             attack: stage,
             decay: EnvelopeStageSettings {
                 time_ms: 0.0,
@@ -122,6 +155,10 @@ impl EnvelopeSettings {
     }
     pub fn valid(&self) -> bool {
         self.version == UNIT_STATE_VERSION
+            && self.attack_note.is_finite()
+            && (0.0..=1.0).contains(&self.attack_note)
+            && self.decay_note.is_finite()
+            && (0.0..=1.0).contains(&self.decay_note)
             && self.attack.valid()
             && self.decay.valid()
             && self.release.valid()
@@ -133,6 +170,50 @@ impl EnvelopeSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn timing_defaults_roundtrip_and_reject_invalid_fractions() {
+        let settings = EnvelopeSettings::default();
+        let mut old = serde_json::to_value(settings).unwrap();
+        for field in ["timing", "attack_note", "decay_note"] {
+            old.as_object_mut().unwrap().remove(field);
+        }
+        assert_eq!(
+            serde_json::from_value::<EnvelopeSettings>(old.clone()).unwrap(),
+            settings
+        );
+        let note = EnvelopeSettings {
+            timing: EnvelopeTiming::Note,
+            attack_note: 0.75,
+            decay_note: 0.25,
+            ..settings
+        };
+        assert_eq!(
+            serde_json::from_slice::<EnvelopeSettings>(&serde_json::to_vec(&note).unwrap())
+                .unwrap(),
+            note
+        );
+        for value in [-0.01, 1.01, f32::NAN, f32::INFINITY] {
+            assert!(
+                !EnvelopeSettings {
+                    attack_note: value,
+                    ..settings
+                }
+                .valid()
+            );
+            assert!(
+                !EnvelopeSettings {
+                    decay_note: value,
+                    ..settings
+                }
+                .valid()
+            );
+        }
+        for field in ["timing", "attack_note", "decay_note"] {
+            let mut malformed = old.clone();
+            malformed[field] = serde_json::Value::Null;
+            assert!(serde_json::from_value::<EnvelopeSettings>(malformed).is_err());
+        }
+    }
     #[test]
     fn curve_shapes_keep_endpoints_monotonic_and_zero_amount_is_linear() {
         for shape in CurveShape::ALL {

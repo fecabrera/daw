@@ -52,12 +52,12 @@ A direct seek or a nonconsecutive source frame resets the accumulated Rate phase
 
 To make filter movement grow during a held note:
 
-1. Add a shared Envelope in Legato or Retrigger mode. Set a long Attack, zero Decay, and 100% Sustain.
+1. Add a shared Envelope in Legato or Retrigger mode. Set its first-row Timing knob to Note, Attack to 100%, Decay to 0%, and Sustain to 100%.
 2. Set LFO Depth to 0%. Open its modulation controls, select that Envelope, choose Depth, and set Amount to +100%.
 3. Connect the LFO to Auto-filter Frequency and select the wanted signed sweep amount. Use bipolar polarity for movement above and below the base frequency. Disable Auto-filter’s internal LFO for this example.
 4. Add a second connection to LFO Rate if the movement should also accelerate. For example, +2 octaves reaches four times the base speed, subject to the rate bounds.
 
-Attack still uses a fixed time. It does not automatically scale to each note's complete duration. Overlapping notes follow the selected shared Envelope and LFO restart modes. Depth scales the published contribution weight, so 0% leaves each destination at its base behavior, including Amplitude. The portable `sample_at` convenience method returns the scaled control signal; hosts use `ModulationOutput` to preserve neutral routing semantics. LFO Depth and destination Amount retain separate meanings.
+Envelope Note timing scales Attack and Decay to the triggering note's complete duration. Retrigger uses each new note's length; Legato keeps the first held note's length through overlapping notes. Time timing remains available for fixed millisecond stages. Release remains in milliseconds. See [Envelope timing](midi-patterns.md#envelope-unit). Envelope timing is independent of LFO's tempo-synchronized Note rate and Restart selector. Depth scales the published contribution weight, so 0% leaves each destination at its base behavior, including Amplitude. The portable `sample_at` convenience method returns the scaled control signal; hosts use `ModulationOutput` to preserve neutral routing semantics. LFO Depth and destination Amount retain separate meanings.
 
 ## Shared modulation contract
 
@@ -71,6 +71,6 @@ The possible-range arc uses the declared polarity for additive targets and the n
 
 ## Scope and acceptance
 
-All three restart modes are shared sources within the same MIDI instrument. Per-note LFOs, audio-track/Master providers, cross-track routing, stereo control outputs, random/custom waveforms, note-duration-normalized envelopes, and a graph editor are outside this change. Auto-filter retains its independent internal stereo LFO, saved format, and behavior. It shares waveform, rate, clock, and UI primitives with the component.
+All three restart modes are shared sources within the same MIDI instrument. Per-note LFOs, audio-track/Master providers, cross-track routing, stereo control outputs, random/custom waveforms, and a graph editor are outside this change. Auto-filter retains its independent internal stereo LFO, saved format, and behavior. It shares waveform, rate, clock, and UI primitives with the component.
 
 Acceptance checks cover six processing rates; all waveforms, polarities, and note durations; smoothing and deterministic random access; overlap/adjacent-note restart; trim/stretch/repeat origins; source fan-out across supported destinations; contour/continuous amplitude composition; release lifetime; live/export/block/seek/loop parity; compatible retargeting and callback allocation; catalog keyboard/drag actions; shared panel geometry in both themes; saved identity, legacy defaults, invalid settings, input scope/cycle rejection, provider ordering, integrated frequency sweeps, Depth bounds, both rate modes, modulation controls and markers, component transfer/copy reference updates, and allocation-free live routing edits. See [validation records](validation.md) for executed checks and native-platform limits.

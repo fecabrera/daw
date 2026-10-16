@@ -1,5 +1,5 @@
 use crate::{icons, knobs, midi_editor::UNIT_STRIP_WIDTH, panels, rows, theme};
-use daw_core::{CurveShape, EnvelopeSettings, EnvelopeStageSettings};
+use daw_core::{CurveShape, EnvelopeMode, EnvelopeSettings, EnvelopeStageSettings, EnvelopeTiming};
 use egui::{Rect, Sense, Ui, Vec2};
 
 use panels::unit_control_height as control_height;
@@ -18,25 +18,29 @@ pub(super) fn unit(
     }
     let name = format!("Envelope {number}");
     let result = ui
-        .scope_builder(
-            egui::UiBuilder::new()
-                .id_salt(envelope.id)
-                .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-note-selector")),
-            |ui| {
-                panels::PanelStyle {
-                    margin: 0,
-                    ..Default::default()
-                }
-                .unit(
-                    ui,
-                    (&name, compact),
-                    height,
-                    &mut envelope.enabled,
-                    &mut envelope.collapsed,
-                    |ui| body(ui, &mut envelope.settings, 10, compact),
-                )
-            },
-        )
+        .scope_builder(egui::UiBuilder::new().id_salt(envelope.id), |ui| {
+            panels::PanelStyle {
+                margin: 0,
+                ..Default::default()
+            }
+            .unit(
+                ui,
+                (&name, compact),
+                height,
+                &mut envelope.enabled,
+                &mut envelope.collapsed,
+                |ui| {
+                    body(
+                        ui,
+                        &mut envelope.settings,
+                        &mut envelope.mode,
+                        shared_only,
+                        10,
+                        compact,
+                    )
+                },
+            )
+        })
         .inner;
     result.header.context_menu(|ui| {
         if ui.button("Remove envelope").clicked() {
@@ -44,32 +48,6 @@ pub(super) fn unit(
             ui.close();
         }
     });
-    if !envelope.collapsed {
-        let rect = Rect::from_min_max(
-            egui::pos2(
-                result.header.rect.right() - 88.0,
-                result.header.rect.top() + 2.0,
-            ),
-            egui::pos2(
-                result.header.rect.right() - 2.0,
-                result.header.rect.top() + panels::HEADER_HEIGHT - 1.0,
-            ),
-        );
-        let mut child = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(rect)
-                .id_salt((envelope.id, "note-mode")),
-        );
-        egui::ComboBox::from_id_salt("mode")
-            .selected_text(egui::RichText::new(envelope.mode.label()).size(panels::HEADER_FONT_SIZE)).width(80.0).truncate()
-            .show_ui(&mut child, |ui| {
-                for mode in daw_core::EnvelopeMode::ALL {
-                    ui.add_enabled_ui(!shared_only || mode!=daw_core::EnvelopeMode::PerNote, |ui| {
-                        ui.selectable_value(&mut envelope.mode, mode, mode.label())
-                    }).inner.on_disabled_hover_text("Per note is unavailable for a shared bus or a source connected to track effects.");
-                }
-            }).response.on_hover_text("Per note: independent ADSR. Retrigger: restart on every note. Legato: restart only for the first held note. Shared modes release after the last held note.");
-    }
     Some(result)
 }
 
@@ -84,10 +62,12 @@ pub(super) fn body_height(compact: bool) -> f32 {
     }
 }
 
-/// Four stage containers share the oscillator's row, footer, and padding geometry.
+/// One timing/mode column precedes the four stage containers; all share the oscillator geometry.
 pub(super) fn body(
     ui: &mut Ui,
     settings: &mut EnvelopeSettings,
+    mode: &mut EnvelopeMode,
+    shared_only: bool,
     margin: i8,
     compact: bool,
 ) -> [Rect; 4] {
@@ -95,6 +75,42 @@ pub(super) fn body(
     let mut bounds = [Rect::NOTHING; 4];
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+        let strip = egui::Frame::new().inner_margin(margin).show(ui, |ui| {
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
+                ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
+                ui.set_min_height(body_height(compact));
+                if !compact {
+                    knobs::row(ui, &mut settings.timing, knobs::CHOICE_SIZE, timing);
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
+                        egui::Layout::top_down(egui::Align::Center),
+                        |ui| {
+                            note_mode(ui, mode, shared_only);
+                        },
+                    );
+                    ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
+                        Sense::hover(),
+                    );
+                }
+                rows::centered(
+                    ui,
+                    if compact {
+                        body_height(true)
+                    } else {
+                        icons::COMPACT_BUTTON_SIZE
+                    },
+                    |ui| rows::unit_label(ui, "Timing"),
+                );
+            });
+        });
+        panels::unit_divider(
+            ui,
+            strip.response.rect.right(),
+            strip.response.rect.y_range().into(),
+        );
+        let relative = settings.timing == EnvelopeTiming::Note;
         for (index, name) in ["Attack", "Decay", "Sustain", "Release"]
             .into_iter()
             .enumerate()
@@ -112,6 +128,10 @@ pub(super) fn body(
                                     defaults.attack,
                                     "Attack time",
                                     false,
+                                    relative.then_some((
+                                        &mut settings.attack_note,
+                                        defaults.attack_note,
+                                    )),
                                 ),
                                 1 => stage_controls(
                                     ui,
@@ -119,6 +139,8 @@ pub(super) fn body(
                                     defaults.decay,
                                     "Decay time",
                                     true,
+                                    relative
+                                        .then_some((&mut settings.decay_note, defaults.decay_note)),
                                 ),
                                 3 => stage_controls(
                                     ui,
@@ -126,6 +148,7 @@ pub(super) fn body(
                                     defaults.release,
                                     "Release time",
                                     true,
+                                    None,
                                 ),
                                 _ => {
                                     knobs::row(
@@ -180,10 +203,23 @@ fn stage_controls(
     reset: EnvelopeStageSettings,
     name: &'static str,
     falling: bool,
+    relative: Option<(&mut f32, f32)>,
 ) {
-    knobs::row(ui, &mut stage.time_ms, knobs::CHOICE_SIZE, |ui, value| {
-        knobs::envelope_time(ui, value, name, reset.time_ms)
-    });
+    if let Some((value, reset)) = relative {
+        knobs::row(ui, value, knobs::CHOICE_SIZE, |ui, value| {
+            let spec = knobs::KnobSpec::new(name, 0.0..=1.0, reset, 0.01)
+                .value_label(note_percent)
+                .format(note_percent)
+                .endpoint_labels("0%", "100%");
+            ui.add(knobs::Knob::new(value, spec)).on_hover_text(
+                "Percentage of the triggering note's full duration. Unknown note lengths use the retained Time setting.",
+            )
+        });
+    } else {
+        knobs::row(ui, &mut stage.time_ms, knobs::CHOICE_SIZE, |ui, value| {
+            knobs::envelope_time(ui, value, name, reset.time_ms)
+        });
+    }
     knobs::row(ui, &mut stage.shape, knobs::CHOICE_SIZE, |ui, value| {
         knobs::curve_shape(ui, value, reset.shape, falling)
     });
@@ -195,4 +231,36 @@ fn stage_controls(
             knobs::curve_amount,
         );
     });
+}
+
+fn note_percent(value: f32) -> String {
+    format!("{:.0}%", value * 100.0)
+}
+fn timing(ui: &mut Ui, timing: &mut EnvelopeTiming) -> egui::Response {
+    let spec = knobs::KnobSpec::new("Envelope timing", 0.0..=1.0, 0.0, 1.0)
+        .two_way_labels("Time", "Note")
+        .format(|v| EnvelopeTiming::ALL[v.round() as usize].label().into());
+    crate::lfo_controls::choice(ui, timing, &EnvelopeTiming::ALL, spec).on_hover_text(
+        "Time: Attack and Decay use milliseconds. Note: use percentages of the triggering note's duration. Release always uses milliseconds.",
+    )
+}
+fn note_mode(ui: &mut Ui, mode: &mut EnvelopeMode, shared_only: bool) -> egui::Response {
+    ui.vertical_centered(|ui| {
+        ui.label(egui::RichText::new("Mode").size(panels::HEADER_FONT_SIZE));
+        egui::ComboBox::from_id_salt("envelope-mode")
+            .selected_text(egui::RichText::new(mode.label()).size(panels::HEADER_FONT_SIZE))
+            .width(ui.available_width())
+            .truncate()
+            .show_ui(ui, |ui| {
+                for choice in EnvelopeMode::ALL {
+                    ui.add_enabled_ui(!shared_only || choice != EnvelopeMode::PerNote, |ui| {
+                        ui.selectable_value(mode, choice, choice.label())
+                    }).inner.on_disabled_hover_text(
+                        "Per note is unavailable on Main and for shared modulation consumers.",
+                    );
+                }
+            }).response
+    }).inner.on_hover_text(
+        "Per note: independent envelope and duration. Retrigger: restart for every note using its length. Legato: keep the first held note's envelope and duration until the last note ends.",
+    )
 }

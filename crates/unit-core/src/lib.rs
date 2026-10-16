@@ -28,7 +28,9 @@ pub use effects::{
     EQ_STATE_VERSION, EQ_TYPE_ID, EffectInstance, EffectSettings, EqBandSettings, EqSettings,
 };
 mod envelope;
-pub use envelope::{CurveShape, EnvelopeSettings, EnvelopeStageSettings, MAX_ENVELOPE_TIME_MS};
+pub use envelope::{
+    CurveShape, EnvelopeSettings, EnvelopeStageSettings, EnvelopeTiming, MAX_ENVELOPE_TIME_MS,
+};
 
 pub const OSCILLATOR_TYPE_ID: &str = "daw.oscillator";
 pub const UNIT_STATE_VERSION: u32 = 1;

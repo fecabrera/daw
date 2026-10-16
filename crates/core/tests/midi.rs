@@ -323,6 +323,14 @@ fn invalid_envelope_edits_reject_the_entire_transaction() {
     }
     for value in [-0.1, 1.1, f32::NAN, f32::INFINITY] {
         invalid.push(EnvelopeSettings {
+            attack_note: value,
+            ..Default::default()
+        });
+        invalid.push(EnvelopeSettings {
+            decay_note: value,
+            ..Default::default()
+        });
+        invalid.push(EnvelopeSettings {
             sustain: value,
             ..Default::default()
         });

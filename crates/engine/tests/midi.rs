@@ -2606,3 +2606,59 @@ fn live_lfo_depth_rate_and_connection_edits_retain_voices_and_prepared_storage()
         "{values:?}"
     );
 }
+
+#[test]
+fn note_relative_envelopes_share_live_export_blocks_and_allocation_free_retargeting() {
+    for mode in EnvelopeMode::ALL {
+        let mut p = plan(Waveform::Saw, 48_000);
+        let e = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0];
+        e.mode = mode;
+        e.settings = EnvelopeSettings {
+            timing: EnvelopeTiming::Note,
+            attack_note: 0.5,
+            decay_note: 0.25,
+            ..Default::default()
+        };
+        p.project.validate().unwrap();
+        let mut expected = vec![[0.0; 2]; 60_000];
+        Renderer::new(p.clone()).render_offline(&mut expected);
+        let mut blocked = expected.clone();
+        let mut blocks = Renderer::new(p.clone());
+        for block in blocked.chunks_mut(137) {
+            blocks.render_offline(block);
+        }
+        assert_eq!(expected, blocked);
+        let mut random = [[0.0; 2]; 64];
+        p.render(15_000, &mut random);
+        assert_eq!(&random[..], &expected[15_000..15_064]);
+        let mut live = Renderer::new(p.clone());
+        live.play();
+        ALLOCATIONS.with(|v| v.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        for (frame, sample) in expected.iter().enumerate() {
+            let actual = live.next_sample();
+            if frame >= 240 {
+                assert_eq!(actual, *sample);
+            }
+        }
+        live.seek(6000);
+        for _ in 0..1000 {
+            live.next_sample();
+        }
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        p.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0]
+            .settings
+            .attack_note = 0.75;
+        let mut updated = Renderer::new(p);
+        ALLOCATIONS.with(|v| v.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        updated.inherit(&mut live);
+        for _ in 0..1000 {
+            assert!(updated.next_sample().into_iter().all(f32::is_finite));
+        }
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert_eq!(updated.playhead, 8000);
+    }
+}

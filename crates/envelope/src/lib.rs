@@ -14,6 +14,7 @@ pub enum Stage {
 
 pub struct Envelope {
     settings: EnvelopeSettings,
+    note_duration_frames: Option<u64>,
     sample_rate_hz: u32,
     stage: Stage,
     elapsed: u64,
@@ -27,6 +28,7 @@ impl Envelope {
     pub fn new(settings: EnvelopeSettings, context: ProcessingContext) -> Self {
         Self {
             settings,
+            note_duration_frames: None,
             sample_rate_hz: context.sample_rate_hz,
             stage: Stage::Idle,
             elapsed: 0,
@@ -47,11 +49,18 @@ impl Envelope {
         }
     }
     pub fn reset(&mut self) {
+        self.note_duration_frames = None;
         self.stage = Stage::Idle;
         self.level = 0.0;
         self.sustain_remaining = 0;
     }
     pub fn note_on(&mut self) {
+        self.note_on_with_duration(None);
+    }
+    /// Known durations use processing-rate frames. Unknown live-note lengths retain Time
+    /// timing as a fallback. The host supplies full note length, including hidden trim regions.
+    pub fn note_on_with_duration(&mut self, duration_frames: Option<u64>) {
+        self.note_duration_frames = duration_frames.map(|frames| frames.max(1));
         self.level = 0.0;
         self.start(Stage::Attack);
         self.advance(0);
@@ -91,12 +100,14 @@ impl Envelope {
         self.settings = settings;
         match self.stage {
             Stage::Attack | Stage::Decay | Stage::Release => {
+                let duration = self.stage_duration();
                 if previous_stage == self.stage_settings()
+                    && self.duration == duration
                     && (self.stage != Stage::Decay || previous_sustain == settings.sustain)
                 {
                     return;
                 }
-                self.duration = self.stage_settings().frames(self.sample_rate_hz);
+                self.duration = duration;
                 self.elapsed = (progress * self.duration as f64) as u64;
                 self.anchor_progress = self.progress();
                 self.anchor_level = self.level;
@@ -174,7 +185,22 @@ impl Envelope {
         self.anchor_progress = 0.0;
         self.anchor_level = self.level;
         self.sustain_remaining = 0;
-        self.duration = self.stage_settings().frames(self.sample_rate_hz);
+        self.duration = self.stage_duration();
+    }
+    fn stage_duration(&self) -> u64 {
+        if self.settings.timing == daw_unit_core::EnvelopeTiming::Note
+            && let Some(frames) = self.note_duration_frames
+        {
+            let fraction = match self.stage {
+                Stage::Attack => Some(self.settings.attack_note),
+                Stage::Decay => Some(self.settings.decay_note),
+                _ => None,
+            };
+            if let Some(fraction) = fraction {
+                return ((frames as f64 * f64::from(fraction)).round() as u64).min(frames);
+            }
+        }
+        self.stage_settings().frames(self.sample_rate_hz)
     }
     fn stage_settings(&self) -> EnvelopeStageSettings {
         match self.stage {

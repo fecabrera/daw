@@ -2277,3 +2277,20 @@ The transport button shows Square/Stop whenever it is disabled, including timeli
 All six transport UI tests, formatting, strict workspace Clippy, the macOS debug app rebuild, and `git diff --check` passed. Native visual/device and Windows/Linux checks were not run. CLI smoke checks were not repeated for this UI-only change.
 
 `cargo test --workspace` passed: 698 passed, zero failed, and 2 existing expanded time-stretch matrices ignored, including all 397 UI tests.
+
+
+## Envelope note-relative timing and first-column controls — 2026-10-16
+
+Envelope now saves Time/Note timing and independent Attack/Decay note fractions. Known note durations follow the stretched processing clock; Release retains milliseconds. Unknown note lengths fall back to retained Time values. Shared Retrigger uses each triggering note's length; Legato retains the first held note's length. Timing and the compact Mode dropdown share one leading column, above each other before ADSR. Unit height remains unchanged. See [Envelope requirements](midi-patterns.md#envelope-unit).
+
+Checks with the workspace Cargo cache selected:
+
+- Formatting and strict workspace Clippy: passed.
+- `cargo test --workspace`: 706 passed, zero failed, two existing expanded time-stretch matrices ignored. The final first-column layout passed a separate rerun of all 398 UI tests after the layout correction.
+- New checks cover stage endpoints across processing rates and note lengths, fixed Release, unknown-duration fallback, live progress retention, reconstruction through stretch/trim/repeat, shared overlap and live provider addition, saved defaults/malformed fields, atomic invalid edits, and playback/export/block/random-range parity without callback allocations.
+- First-column Timing keyboard input, Mode dropdown selection, retained millisecond/percentage values, serialization, both themes, and existing shared row geometry: passed. The reconstruction fixture also passes project validation.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app` after the final layout change.
+- Changed documentation links and `git diff --check`: passed.
+
+Native UI/device playback and Windows/Linux builds were not run. Automated egui checks do not establish native pointer or device behavior.

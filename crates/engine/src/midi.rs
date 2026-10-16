@@ -11,6 +11,7 @@ struct NoteEvent {
     note: Id,
     slot: usize,
     on: Option<(u8, u8)>,
+    duration_frames: u64,
 }
 struct PatternClip {
     clip: Clip,
@@ -40,6 +41,7 @@ struct Voice {
     transition: u32,
     fade_frames: u32,
     held_frames: u64,
+    note_duration_frames: Option<u64>,
     release_frames: u64,
 }
 struct OscillatorVoice {
@@ -55,7 +57,7 @@ struct OscillatorVoice {
     frequency_remaining: u32,
 }
 impl Voice {
-    fn note_on(&mut self, id: Id, pitch: u8, velocity: u8) {
+    fn note_on(&mut self, id: Id, pitch: u8, velocity: u8, duration_frames: u64) {
         let idle = self.transition == 0
             && self.layers.iter().all(LayerVoice::is_idle)
             && self.controls.iter().all(|e| e.envelope.is_idle());
@@ -70,9 +72,10 @@ impl Voice {
         self.transition = self.fade_frames;
         self.current = Some(id);
         self.held_frames = 0;
+        self.note_duration_frames = Some(duration_frames.max(1));
         self.release_frames = 0;
         for e in &mut self.controls {
-            e.envelope.note_on();
+            e.envelope.note_on_with_duration(self.note_duration_frames);
         }
         for layer in &mut self.layers {
             layer.gate.note_on();
@@ -114,6 +117,7 @@ impl Voice {
             }
         }
         self.reconstructed_at = 0;
+        self.note_duration_frames = None;
         self.held_frames = 0;
         self.release_frames = 0;
         self.previous = [0.0; 2];
@@ -326,13 +330,24 @@ impl MidiTrackRuntime {
                     } else {
                         free_at[slot] = available;
                     }
+                    let output_frame = |frame| {
+                        clip.stretch.map_or(frame, |stretch| {
+                            (u128::from(frame) * u128::from(stretch.output_frames))
+                                .div_ceil(u128::from(stretch.source_frames))
+                                .min(u128::from(u64::MAX)) as u64
+                        })
+                    };
+                    let duration_frames =
+                        output_frame(end).saturating_sub(output_frame(start)).max(1);
                     events.push(NoteEvent {
+                        duration_frames,
                         slot,
                         frame: start,
                         note: note.id,
                         on: Some((note.pitch, note.velocity)),
                     });
                     events.push(NoteEvent {
+                        duration_frames: 0,
                         slot,
                         frame: end,
                         note: note.id,
@@ -511,6 +526,7 @@ impl MidiTrackRuntime {
                     transition: 0,
                     fade_frames,
                     held_frames: 0,
+                    note_duration_frames: None,
                     release_frames: 0,
                 })
                 .collect(),
@@ -618,7 +634,7 @@ impl MidiTrackRuntime {
                     e.retarget(n);
                     std::mem::swap(e, n);
                 } else if voice.held_frames > 0 {
-                    n.envelope.note_on();
+                    n.envelope.note_on_with_duration(voice.note_duration_frames);
                     n.envelope.advance(voice.held_frames);
                     if voice.current.is_none() {
                         n.envelope.note_off();
@@ -782,10 +798,11 @@ impl MidiTrackRuntime {
                             .min(u128::from(u64::MAX)) as u64
                     });
                     self.shared.advance_to(event_frame);
-                    self.shared.event(event.on.is_some());
+                    self.shared
+                        .event(event.on.is_some(), event.on.map(|_| event.duration_frames));
                     voice.advance_envelopes(event_frame.saturating_sub(voice.reconstructed_at));
                     if let Some((pitch, velocity)) = event.on {
-                        voice.note_on(event.note, pitch, velocity);
+                        voice.note_on(event.note, pitch, velocity, event.duration_frames);
                     } else if voice.current == Some(event.note) {
                         voice.end_note();
                     }
@@ -801,10 +818,11 @@ impl MidiTrackRuntime {
                     .get(self.next_event)
                     .filter(|e| e.frame <= source)
                 {
-                    self.shared.event(event.on.is_some());
+                    self.shared
+                        .event(event.on.is_some(), event.on.map(|_| event.duration_frames));
                     let voice = &mut self.voices[event.slot];
                     if let Some((pitch, velocity)) = event.on {
-                        voice.note_on(event.note, pitch, velocity);
+                        voice.note_on(event.note, pitch, velocity, event.duration_frames);
                     } else if voice.current == Some(event.note) {
                         voice.end_note();
                     }
@@ -967,6 +985,83 @@ mod tests {
                 .find(|v| v.current == Some(note))
                 .unwrap();
             assert!(voice.controls[0].envelope.level() > 0.0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod note_timing_tests {
+    use super::*;
+    use daw_core::{
+        Edit, EnvelopeSettings, EnvelopeTiming, MidiNote, MidiPattern, OscillatorSettings,
+    };
+
+    #[test]
+    fn note_lengths_use_the_stretched_clock_and_reconstruct_through_trims_and_repeats() {
+        for rate in daw_core::SAMPLE_RATES {
+            for (numerator, denominator) in [(1, 1), (2, 1), (2, 3)] {
+                let mut project = Project {
+                    sample_rate_hz: rate,
+                    ..Default::default()
+                };
+                let track = project.add_midi_track().unwrap();
+                let clip_id = project.add_midi_pattern(track, 0).unwrap();
+                project.tracks[0].instrument = Some(OscillatorSettings::default().into());
+                let layer = &mut project.tracks[0].instrument.as_mut().unwrap().layers[0];
+                layer.envelopes[0].mode = EnvelopeMode::PerNote;
+                layer.envelopes[0].settings = EnvelopeSettings {
+                    timing: EnvelopeTiming::Note,
+                    attack_note: 1.0,
+                    decay_note: 0.0,
+                    ..Default::default()
+                };
+                project
+                    .edit(Edit::ReplaceMidiPattern {
+                        clip_id,
+                        pattern: MidiPattern {
+                            length_ticks: 3840,
+                            notes: vec![MidiNote {
+                                id: Id::from_u128(1),
+                                start_tick: 0,
+                                length_ticks: 960,
+                                pitch: 69,
+                                velocity: 127,
+                            }],
+                        },
+                    })
+                    .unwrap();
+                let length = project.midi_frame(960);
+                let stretch = daw_core::ClipStretch::new(denominator, numerator).unwrap();
+                let duration = (u128::from(length) * u128::from(numerator))
+                    .div_ceil(u128::from(denominator)) as u64;
+                let repeat_length = duration * 3;
+                let offset = duration / 4;
+                let clip = &mut project.tracks[0].clips[0];
+                clip.stretch = Some(stretch);
+                clip.source_offset_frame = offset;
+                clip.repeat = Some(daw_core::ClipLoop {
+                    length_frames: repeat_length,
+                    phase_frame: 0,
+                });
+                clip.length_frames = repeat_length * 2;
+                project.validate().unwrap();
+                let mut played = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+                assert_eq!(played.clips[0].events[0].duration_frames, duration);
+                let age = duration / 4;
+                for frame in 0..=age {
+                    played.sample(frame);
+                }
+                let expected = (offset + age + 1) as f32 / duration as f32;
+                assert!((played.voices[0].controls[0].envelope.level() - expected).abs() < 1e-6);
+                let mut sought = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+                sought.sample(age);
+                assert_eq!(sought.voices[0].note_duration_frames, Some(duration));
+                assert!((sought.voices[0].controls[0].envelope.level() - expected).abs() < 1e-6);
+                // Cross the source-clock wrap, as sequential rendering does.
+                sought.sample(repeat_length - 1);
+                sought.sample(repeat_length + age);
+                assert!((sought.voices[0].controls[0].envelope.level() - expected).abs() < 1e-6);
+            }
         }
     }
 }

@@ -735,3 +735,56 @@ fn oscillator_pitch_uses_shared_modulation_controls_markers_and_saved_expansion(
         );
     }
 }
+
+#[test]
+fn envelope_first_column_timing_knob_and_mode_dropdown_save_time_and_note_values() {
+    use daw_core::{EnvelopeMode, EnvelopeTiming};
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, layer) = fixture(theme);
+        add_component(&mut app, &ctx, layer, 1);
+        let stages = app.midi_editor.layer_bounds[&layer].envelope_stages;
+        let y = stages[0].top() + 10.0 + knobs::CHOICE_SIZE * 0.5;
+        let timing = Pos2::new(stages[0].left() - 0.5 * midi_editor::UNIT_STRIP_WIDTH, y);
+        let height = app.midi_editor.layer_bounds[&layer].envelope_panel.height();
+        click(&mut app, &ctx, timing, false);
+        key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let mode = label(&shapes, "Per note");
+        assert!((mode.x - timing.x).abs() < midi_editor::UNIT_STRIP_WIDTH * 0.5);
+        assert!(mode.y > timing.y && mode.y < timing.y + knobs::CHOICE_SIZE * 1.5);
+        click(&mut app, &ctx, mode, false);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let retrigger = label(&shapes, "Retrigger");
+        click(&mut app, &ctx, retrigger, false);
+        let attack = Pos2::new(stages[0].center().x, y);
+        click(&mut app, &ctx, attack, false);
+        key(&mut app, &ctx, egui::Key::ArrowDown, false, false);
+        let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+        let envelope = &instrument.layers[0].envelopes[0];
+        assert_eq!(envelope.mode, EnvelopeMode::Retrigger);
+        assert_eq!(envelope.settings.timing, EnvelopeTiming::Note);
+        assert!((envelope.settings.attack_note - 0.99).abs() < 1e-6);
+        assert_eq!(envelope.settings.attack.time_ms, 5.0);
+        assert_eq!(
+            height,
+            app.midi_editor.layer_bounds[&layer].envelope_panel.height()
+        );
+        let saved = serde_json::to_vec(&app.session.project).unwrap();
+        let reopened: daw_core::Project = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(
+            reopened.tracks[0].instrument,
+            app.session.project.tracks[0].instrument
+        );
+        click(&mut app, &ctx, timing, false);
+        key(&mut app, &ctx, egui::Key::ArrowDown, false, false);
+        let envelope = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .envelopes[0];
+        assert_eq!(envelope.settings.timing, EnvelopeTiming::Time);
+        assert_eq!(envelope.settings.attack.time_ms, 5.0);
+        assert!((envelope.settings.attack_note - 0.99).abs() < 1e-6);
+    }
+}

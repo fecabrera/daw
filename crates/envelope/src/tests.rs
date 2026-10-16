@@ -1,5 +1,99 @@
 use super::*;
-use daw_unit_core::{CurveShape, EnvelopeStageSettings};
+use daw_unit_core::{CurveShape, EnvelopeStageSettings, EnvelopeTiming};
+
+#[test]
+fn note_timing_scales_attack_and_decay_but_keeps_release_in_milliseconds() {
+    for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {
+        for length in [rate / 4, rate, rate * 4] {
+            let settings = EnvelopeSettings {
+                timing: EnvelopeTiming::Note,
+                attack_note: 0.25,
+                decay_note: 0.5,
+                ..settings()
+            };
+            let mut e = envelope(settings, rate);
+            e.note_on_with_duration(Some(u64::from(length)));
+            let attack = (f64::from(length) * 0.25).round() as u64;
+            let decay = (f64::from(length) * 0.5).round() as u64;
+            e.advance(attack - 1);
+            assert_eq!(e.stage(), Stage::Attack);
+            e.next_sample();
+            assert_eq!(e.level(), 1.0);
+            e.advance(decay - 1);
+            assert_eq!(e.stage(), Stage::Decay);
+            e.next_sample();
+            assert_eq!(e.level(), settings.sustain);
+            e.note_off();
+            e.advance(settings.release.frames(rate) - 1);
+            assert_eq!(e.stage(), Stage::Release);
+            e.next_sample();
+            assert!(e.is_idle());
+        }
+    }
+}
+
+#[test]
+fn unknown_note_length_uses_retained_time_values_and_note_off_interrupts_long_stages() {
+    let mut settings = settings();
+    settings.timing = EnvelopeTiming::Note;
+    settings.attack_note = 1.0;
+    settings.decay_note = 1.0;
+    let mut e = envelope(settings, 48_000);
+    e.note_on();
+    e.advance(settings.attack.frames(48_000));
+    assert_eq!(e.stage(), Stage::Decay);
+    e.note_on_with_duration(Some(48_000));
+    e.advance(24_000);
+    assert_eq!(e.level(), 0.5);
+    e.note_off();
+    assert_eq!(e.level(), 0.5);
+    e.advance(settings.release.frames(48_000));
+    assert!(e.is_idle());
+    settings.attack_note = 0.0;
+    settings.decay_note = 0.0;
+    e.set_settings(settings);
+    e.note_on_with_duration(Some(1));
+    assert_eq!(e.stage(), Stage::Sustain);
+    assert_eq!(e.level(), settings.sustain);
+}
+
+#[test]
+fn note_timing_live_edits_anchor_level_and_reconstruction_matches_sample_processing() {
+    let mut settings = EnvelopeSettings {
+        timing: EnvelopeTiming::Note,
+        attack_note: 1.0,
+        decay_note: 0.4,
+        ..settings()
+    };
+    let mut e = envelope(settings, 48_000);
+    e.note_on_with_duration(Some(1000));
+    e.advance(250);
+    assert_eq!(e.level(), 0.25);
+    settings.attack_note = 0.5;
+    e.set_settings(settings);
+    assert_eq!(e.level(), 0.25);
+    e.advance(374);
+    assert_eq!(e.stage(), Stage::Attack);
+    e.next_sample();
+    assert_eq!(e.stage(), Stage::Decay);
+    for shape in CurveShape::ALL {
+        settings.attack.shape = shape;
+        settings.decay.shape = shape;
+        settings.decay_note = 0.4;
+        for age in [0, 1, 249, 500, 700, 1000] {
+            let mut played = envelope(settings, 48_000);
+            let mut sought = envelope(settings, 48_000);
+            played.note_on_with_duration(Some(1000));
+            sought.note_on_with_duration(Some(1000));
+            for _ in 0..age {
+                played.next_sample();
+            }
+            sought.advance(age);
+            assert_eq!(played.stage(), sought.stage());
+            assert!((played.level() - sought.level()).abs() < 1e-6);
+        }
+    }
+}
 
 fn settings() -> EnvelopeSettings {
     let linear = |time_ms| EnvelopeStageSettings {

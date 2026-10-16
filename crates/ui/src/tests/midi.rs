@@ -1670,7 +1670,8 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
                 track_id: track,
                 instrument: Some(settings),
             });
-            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            // Timing and Mode share one strip before ADSR. Keep the full unit visible.
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 800.0));
             let oscillator = app.midi_editor.oscillator_panel_bounds;
             let envelope = app.midi_editor.envelope_panel_bounds;
             let waveform_size = shapes.iter().find_map(|shape| match &shape.shape {
