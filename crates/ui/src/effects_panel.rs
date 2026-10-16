@@ -406,7 +406,7 @@ impl DawUi {
             }
         }))
         .into_iter()
-        .filter(|s| s.mode != daw_core::EnvelopeMode::PerNote)
+        .filter(|s| daw_unit_core::ModulationScope::Shared.accepts(s.scope))
         .collect::<Vec<_>>();
         let mut remove = None;
         let mut slots = Vec::with_capacity(effects.len());

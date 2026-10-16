@@ -1457,9 +1457,9 @@ fn shared_envelope_modulates_auto_filter_with_playback_export_and_live_edit_pari
         l.envelopes[1].present = true;
         l.envelopes[1].mode = mode;
         l.envelopes[1].settings.attack.time_ms = 400.0;
-        let id = EnvelopeSource {
+        let id = ModulationSourceId {
             layer: l.id,
-            envelope: l.envelopes[1].id,
+            unit: l.envelopes[1].id,
         };
         let mut effect = EffectInstance::auto_filter();
         let EffectSettings::AutoFilter(f) = &mut effect.unit else {
@@ -1626,9 +1626,9 @@ fn modulation_telemetry_tracks_processed_note_values_and_preserves_audio_without
     };
     envelope.settings.decay.time_ms = 0.0;
     envelope.settings.sustain = 1.0;
-    let source = EnvelopeSource {
+    let source = ModulationSourceId {
         layer: layer.id,
-        envelope: envelope.id,
+        unit: envelope.id,
     };
     layer.amplitude.modulations[0].source = Some(source);
     let amplitude = ModulationTarget::Amplitude {
@@ -1708,9 +1708,9 @@ fn drive_modulation_has_playback_export_seek_and_live_edit_parity_without_alloca
         l.envelopes[1].present = true;
         l.envelopes[1].mode = mode;
         l.envelopes[1].settings.attack.time_ms = 400.0;
-        let id = EnvelopeSource {
+        let id = ModulationSourceId {
             layer: l.id,
-            envelope: l.envelopes[1].id,
+            unit: l.envelopes[1].id,
         };
         let mut effect = EffectInstance::drive();
         let EffectSettings::Drive(f) = &mut effect.unit else {
@@ -1779,5 +1779,105 @@ fn drive_modulation_has_playback_export_seek_and_live_edit_parity_without_alloca
         }
         TRACK_ALLOCATIONS.with(|e| e.set(false));
         ALLOCATIONS.with(|c| assert_eq!(c.get(), 0));
+    }
+}
+
+#[test]
+fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_allocation() {
+    use daw_amplitude::Amplitude;
+    use daw_auto_filter::AutoFilter;
+    use daw_drive::Drive;
+    use daw_envelope::Envelope;
+    use daw_unit_core::{
+        EffectUnit, ModulationContext, ModulationDestination, ModulationOutput, ModulationRoute,
+        ModulationSource, ProcessingContext, process_modulation,
+    };
+    for rate in SAMPLE_RATES {
+        let context = ProcessingContext {
+            sample_rate_hz: rate,
+            max_block_frames: 32,
+        };
+        let source = ModulationSourceId {
+            layer: Id::new_v4(),
+            unit: Id::new_v4(),
+        };
+        let mut envelope = Envelope::new(EnvelopeSettings::default(), context);
+        let mut output = ModulationOutput::new(source, true, context);
+        assert!(envelope.descriptor().provides_modulation());
+        assert!(!envelope.descriptor().consumes_modulation());
+        assert_eq!(
+            Envelope::MODULATION_OUTPUT,
+            daw_unit_core::ENVELOPE_MODULATION_OUTPUT
+        );
+        let amp_settings = AmplitudeSettings {
+            present: true,
+            ..Default::default()
+        };
+        let mut amp = Amplitude::new(&amp_settings, context);
+        let mut amp_reference = Amplitude::new(&amp_settings, context);
+        let mut filter = AutoFilter::new(context, &AutoFilterSettings::default());
+        let mut filter_reference = AutoFilter::new(context, &AutoFilterSettings::default());
+        let mut drive = Drive::new(context, &DriveSettings::default());
+        let mut drive_reference = Drive::new(context, &DriveSettings::default());
+        for descriptor in [amp.descriptor(), filter.descriptor(), drive.descriptor()] {
+            assert!(descriptor.consumes_modulation());
+            assert!(!descriptor.provides_modulation());
+        }
+        let routes = |parameters: &[ModulationParameter], amounts: &[f32]| {
+            parameters
+                .iter()
+                .zip(amounts)
+                .map(|(parameter, amount)| {
+                    let mut settings = Modulation::new(*parameter);
+                    settings.source = Some(source);
+                    settings.amount = *amount;
+                    ModulationRoute::new(settings, rate)
+                })
+                .collect::<Vec<_>>()
+        };
+        let filter_amounts = [2.0, 0.5, -3.0, -0.25];
+        let drive_amounts = [-3.0, 0.15, -0.1, 0.2, 0.5];
+        let mut amp_routes = routes(Amplitude::MODULATION_PARAMETERS, &[1.0]);
+        let mut filter_routes = routes(AutoFilter::MODULATION_PARAMETERS, &filter_amounts);
+        let mut drive_routes = routes(Drive::MODULATION_PARAMETERS, &drive_amounts);
+        envelope.note_on();
+        ALLOCATIONS.with(|count| count.set(0));
+        TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+        for frame in 0..rate / 20 {
+            if frame == rate / 40 {
+                envelope.note_off();
+                output.set_enabled(false);
+            }
+            let cached = [output.sample(&mut envelope)];
+            let input = [0.2 * (frame as f32 * 0.035).sin(), 0.1];
+            let c = ModulationContext {
+                frame: u64::from(frame),
+                ..Default::default()
+            };
+            // All three consume one cached output through the same public entry point.
+            assert_eq!(
+                process_modulation(&mut filter, &mut filter_routes, input, &[], &cached, c),
+                filter_reference.process_modulated_at(
+                    input,
+                    c.frame,
+                    c.tempo_bpm,
+                    filter_amounts.map(|a| cached[0].value * (a * cached[0].weight))
+                )
+            );
+            assert_eq!(
+                process_modulation(&mut drive, &mut drive_routes, input, &[], &cached, c),
+                drive_reference.process_modulated(
+                    input,
+                    drive_amounts.map(|a| cached[0].value * (a * cached[0].weight))
+                )
+            );
+            let factor = 1.0 + cached[0].weight * (cached[0].value - 1.0);
+            assert_eq!(
+                process_modulation(&mut amp, &mut amp_routes, input[0], &[], &cached, c),
+                amp_reference.process(input[0], factor, 1.0)
+            );
+        }
+        TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     }
 }

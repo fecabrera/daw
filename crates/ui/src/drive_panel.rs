@@ -310,7 +310,7 @@ fn show_inner(
                         ui,
                         modulations,
                         sources,
-                        &daw_core::ModulationParameter::DRIVE,
+                        <daw_unit_core::DriveSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS, <daw_unit_core::DriveSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE,
                         compact,
                     );
                 }

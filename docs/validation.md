@@ -2091,3 +2091,21 @@ The portable processor receives five resolved offsets and smooths them over 1 ms
 Automated coverage includes six-rate static-equivalence and neutral/extreme-offset DSP checks; both shared note modes; playback/export/random-access parity; live retargeting and telemetry reads without allocation; transactional scope/target/amount validation; save/reopen/Save As, duplication, and legacy/default parsing; and both-theme header/Plus/marker interactions with stable base values and geometry. The output snapshot test now includes Drive. Native appearance, device listening, and Windows/Linux builds require separate checks.
 
 Completed checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo build -p daw-cli`, and `python3 tools/check_cli.py` passed with the workspace Cargo cache selected. After the final Volume indicator bounds/silence adjustment, strict Clippy and the complete UI suite passed again: 367 tests, including the new range case. `sh tools/package_macos.sh debug` rebuilt the final macOS app. The two existing expanded time-stretch matrices remain ignored. `git diff --check` passed. Native visual/listening checks and Windows/Linux builds were not run.
+
+## Shared modulation protocol — 2026-10-15
+
+Envelope now implements the portable modulation source contract and publishes through the common normalized output and enable ramp. Amplitude, Auto-filter, and Drive use one typed destination entry point, scope check, route evaluator, and saved-route validation contract. Auto-filter and Drive reuse one offset smoother. Amplitude gate/release ownership moved into the shared resolver while preserving full-depth ADSR arithmetic. Source discovery, source labels, range indicators, and reference validation use generic provider metadata. Descriptors expose modulation input/output capabilities separately from audio generation.
+
+The Rust source identity is `ModulationSourceId { layer, unit }`. Existing JSON still writes `envelope` for the unit ID and also accepts `unit` on read. Saved connections, defaults, modulation visibility, and retained component settings remain compatible. The [shared contract](modulation.md) documents required integration steps for future providers and destinations; AGENTS.md requires this shared path.
+
+New automated coverage checks an independent bipolar provider and typed destination, signed fan-out without a second source tick, unsupported targets, local/shared scope enforcement, source/route enable ramps, invalid runtime values, neutral missing sources, saved ID compatibility, retained provider discovery, bipolar amplitude bounds, and metadata-driven UI range indicators. A portable integration test feeds one cached Envelope output to all three destinations at every project rate, compares their output exactly with the existing low-level APIs, and checks that processing allocates nothing.
+
+Completed checks with the workspace Cargo cache selected:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --workspace`: passed, including 368 UI tests, 30 engine MIDI tests, and seven unit-core tests. Existing save/open, migration, release ownership, live/export/seek, compatible replacement, and callback allocation checks passed. The two expanded time-stretch acceptance matrices remain explicitly ignored.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed and rebuilt `target/debug/DAW.app`.
+- Local documentation file links and staged/unstaged whitespace checks passed.
+
+Native visual/gesture checks, device playback, listening comparisons, and Windows/Linux builds were not run. No additional provider type was added to the DAW; the independent provider used to test the contract is a test fixture.

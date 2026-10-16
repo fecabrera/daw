@@ -1032,9 +1032,9 @@ fn version_two_envelopes_migrate_to_generic_sources_and_an_explicit_amplitude_co
     assert_eq!(l.amplitude.modulations[0].amount, 1.0);
     assert_eq!(
         l.amplitude.modulations[0].source,
-        Some(EnvelopeSource {
+        Some(ModulationSourceId {
             layer: id,
-            envelope: l.envelopes[0].id
+            unit: l.envelopes[0].id
         })
     );
     let saved = serde_json::to_value(&migrated).unwrap();
@@ -1045,9 +1045,9 @@ fn version_two_envelopes_migrate_to_generic_sources_and_an_explicit_amplitude_co
 #[test]
 fn modulation_routes_validate_scope_parameter_amount_and_shared_note_modes_atomically() {
     let (mut project, track, _) = fixture();
-    let source = EnvelopeSource {
+    let source = ModulationSourceId {
         layer: project.tracks[0].instrument.as_ref().unwrap().layers[0].id,
-        envelope: project.tracks[0].instrument.as_ref().unwrap().layers[0].envelopes[0].id,
+        unit: project.tracks[0].instrument.as_ref().unwrap().layers[0].envelopes[0].id,
     };
     let mut effect = EffectInstance::auto_filter();
     let EffectSettings::AutoFilter(filter) = &mut effect.unit else {
@@ -1116,7 +1116,7 @@ fn modulation_routes_validate_scope_parameter_amount_and_shared_note_modes_atomi
     let EffectSettings::AutoFilter(f) = &mut missing.unit else {
         panic!()
     };
-    f.modulations[0].source.as_mut().unwrap().envelope = Id::new_v4();
+    f.modulations[0].source.as_mut().unwrap().unit = Id::new_v4();
     assert!(
         project
             .edit(Edit::SetEffects {
@@ -1143,9 +1143,9 @@ fn drive_modulation_validates_targets_bounds_and_shared_source_scope_atomically(
     let (mut project, track, _) = fixture();
     let layer = &mut project.tracks[0].instrument.as_mut().unwrap().layers[0];
     layer.envelopes[0].mode = EnvelopeMode::Legato;
-    let source = EnvelopeSource {
+    let source = ModulationSourceId {
         layer: layer.id,
-        envelope: layer.envelopes[0].id,
+        unit: layer.envelopes[0].id,
     };
     let mut effect = EffectInstance::drive();
     let EffectSettings::Drive(settings) = &mut effect.unit else {
@@ -1179,7 +1179,7 @@ fn drive_modulation_validates_targets_bounds_and_shared_source_scope_atomically(
             2 => s.modulations[4].amount = 3.1,
             3 => s.modulations[0].parameter = ModulationParameter::Resonance,
             4 => s.modulations[0].source.as_mut().unwrap().layer = Id::new_v4(),
-            5 => s.modulations[0].source.as_mut().unwrap().envelope = Id::new_v4(),
+            5 => s.modulations[0].source.as_mut().unwrap().unit = Id::new_v4(),
             _ => s.modulations.push(s.modulations[0]),
         }
         assert!(

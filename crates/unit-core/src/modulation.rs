@@ -1,3 +1,8 @@
+mod protocol;
+mod runtime;
+pub use protocol::*;
+pub use runtime::*;
+
 use crate::EnvelopeSettings;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -42,10 +47,12 @@ impl Default for EnvelopeInstance {
         }
     }
 }
+/// Stable provider identity; the historical JSON key is retained for existing projects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EnvelopeSource {
+pub struct ModulationSourceId {
     pub layer: Uuid,
-    pub envelope: Uuid,
+    #[serde(rename = "envelope", alias = "unit")]
+    pub unit: Uuid,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -105,7 +112,7 @@ impl ModulationParameter {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Modulation {
     pub id: Uuid,
-    pub source: Option<EnvelopeSource>,
+    pub source: Option<ModulationSourceId>,
     pub parameter: ModulationParameter,
     pub amount: f32,
     pub enabled: bool,
@@ -126,7 +133,7 @@ impl Modulation {
             && self.amount.abs() <= self.parameter.limit()
             && self
                 .source
-                .is_none_or(|s| !s.layer.is_nil() && !s.envelope.is_nil())
+                .is_none_or(|s| !s.layer.is_nil() && !s.unit.is_nil())
     }
 }
 pub fn valid_modulations(routes: &[Modulation], parameters: &[ModulationParameter]) -> bool {
@@ -162,15 +169,18 @@ impl AmplitudeSettings {
     pub fn valid(&self) -> bool {
         self.level_db.is_finite()
             && (crate::SILENT_GAIN_DB..=12.0).contains(&self.level_db)
-            && valid_modulations(&self.modulations, &[ModulationParameter::Amplitude])
+            && crate::ModulationDestinationSettings::valid_modulations(self)
     }
 }
 /// Prepared control values are independent of DAW entities and can fan out without advancing DSP twice.
 #[derive(Clone, Copy, Debug)]
 pub struct ModulationValue {
-    pub source: EnvelopeSource,
+    pub source: ModulationSourceId,
     pub value: f32,
     pub weight: f32,
     /// Shared-note release age. Hosts can retain only the last released voice's amplitude tail.
     pub release_age: Option<u64>,
 }
+
+#[cfg(test)]
+mod tests;

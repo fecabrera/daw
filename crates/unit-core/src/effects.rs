@@ -186,8 +186,8 @@ impl EffectSettings {
     /// Destination-owned routes; all current effect destinations require shared sources.
     pub fn modulations(&self) -> &[crate::Modulation] {
         match self {
-            Self::AutoFilter(s) => &s.modulations,
-            Self::Drive(s) => &s.modulations,
+            Self::AutoFilter(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
             _ => &[],
         }
     }

@@ -1,48 +1,16 @@
-use daw_core::{EnvelopeInstance, EnvelopeMode, EnvelopeSource, Modulation, ModulationValue};
+use daw_core::{EnvelopeInstance, EnvelopeMode, ModulationSourceId, ModulationValue};
 use daw_envelope::Envelope;
-use daw_unit_core::ProcessingContext;
-#[derive(Clone, Copy)]
-pub(crate) struct Smooth {
-    value: f32,
-    target: f32,
-    left: u32,
-}
-impl Smooth {
-    pub fn new(value: f32) -> Self {
-        Self {
-            value,
-            target: value,
-            left: 0,
-        }
-    }
-    pub fn set(&mut self, value: f32, frames: u32) {
-        if self.target != value {
-            self.target = value;
-            self.left = frames;
-        }
-    }
-    pub fn next(&mut self) -> f32 {
-        if self.left > 0 {
-            self.value += (self.target - self.value) / self.left as f32;
-            self.left -= 1;
-        }
-        self.value
-    }
-    pub fn reset(&mut self) {
-        self.value = self.target;
-        self.left = 0;
-    }
-}
+pub(crate) use daw_unit_core::ModulationRoute as Route;
+use daw_unit_core::{ModulationOutput, ProcessingContext};
 pub(crate) struct Control {
-    pub source: EnvelopeSource,
+    pub source: ModulationSourceId,
     pub mode: EnvelopeMode,
     pub envelope: Envelope,
-    weight: Smooth,
-    frames: u32,
+    output: ModulationOutput,
 }
 impl Control {
     pub fn new(
-        source: EnvelopeSource,
+        source: ModulationSourceId,
         settings: &EnvelopeInstance,
         context: ProcessingContext,
     ) -> Self {
@@ -50,25 +18,19 @@ impl Control {
             source,
             mode: settings.mode,
             envelope: Envelope::new(settings.settings, context),
-            weight: Smooth::new(f32::from(settings.present && settings.enabled)),
-            frames: (context.sample_rate_hz / 200).max(1),
+            output: ModulationOutput::new(source, settings.present && settings.enabled, context),
         }
     }
     pub fn retarget(&mut self, next: &Self) {
         self.envelope.set_settings(next.envelope.settings());
-        self.weight.set(next.weight.target, self.frames);
+        self.output.retarget(&next.output);
     }
     pub fn reset(&mut self) {
         self.envelope.reset();
-        self.weight.reset();
+        self.output.reset();
     }
     pub fn tick(&mut self) -> ModulationValue {
-        ModulationValue {
-            source: self.source,
-            value: self.envelope.next_sample(),
-            weight: self.weight.next(),
-            release_age: None,
-        }
+        self.output.sample(&mut self.envelope)
     }
 }
 
@@ -175,71 +137,10 @@ impl SharedControls {
         std::mem::swap(&mut self.values, &mut next.values);
     }
 }
-/// Resolve shared effect offsets once per source/route sample, then apply destination bounds.
-pub(crate) fn offsets<const N: usize>(
-    routes: &mut [Route],
-    values: &[ModulationValue],
-    parameters: [daw_core::ModulationParameter; N],
-) -> [f32; N] {
-    let mut offsets = [0.0; N];
-    for route in routes {
-        if let Some(index) = parameters
-            .iter()
-            .position(|p| *p == route.settings.parameter)
-            && let Some((value, amount, _)) = route.sample(&[], values)
-        {
-            offsets[index] += value * amount;
-        }
-    }
-    offsets
-}
-pub(crate) struct Route {
-    pub settings: Modulation,
-    amount: Smooth,
-    frames: u32,
-}
-impl Route {
-    pub fn new(settings: Modulation, rate: u32) -> Self {
-        Self {
-            settings,
-            amount: Smooth::new(if settings.enabled {
-                settings.amount
-            } else {
-                0.0
-            }),
-            frames: (rate / 200).max(1),
-        }
-    }
-    pub fn reset(&mut self) {
-        self.amount.reset();
-    }
-    pub fn retarget(&mut self, next: &Self) {
-        self.settings = next.settings;
-        self.amount.set(next.amount.target, self.frames);
-    }
-    pub fn sample(
-        &mut self,
-        local: &[ModulationValue],
-        shared: &[ModulationValue],
-    ) -> Option<(f32, f32, bool)> {
-        let amount = self.amount.next();
-        let source = self.settings.source?;
-        let (value, per_note) = if let Some(v) = local.iter().find(|v| v.source == source) {
-            (v, true)
-        } else {
-            (shared.iter().find(|v| v.source == source)?, false)
-        };
-        if amount == 0.0 || value.weight <= 0.0 {
-            None
-        } else {
-            Some((value.value, amount * value.weight, per_note))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use daw_unit_core::Modulation;
     use daw_unit_core::{CurveShape, EnvelopeSettings, EnvelopeStageSettings};
     fn shared(mode: EnvelopeMode) -> SharedControls {
         let e = EnvelopeInstance {
@@ -266,9 +167,9 @@ mod tests {
             ..Default::default()
         };
         SharedControls::new(vec![Control::new(
-            EnvelopeSource {
+            ModulationSourceId {
                 layer: daw_core::Id::from_u128(1),
-                envelope: e.id,
+                unit: e.id,
             },
             &e,
             ProcessingContext {

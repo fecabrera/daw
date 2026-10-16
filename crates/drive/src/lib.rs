@@ -59,8 +59,7 @@ pub struct Drive {
     configured: [f32; 4],
     clipping: f32,
     normalization: f32,
-    external: [f64; 5],
-    modulation_alpha: f64,
+    external: daw_unit_core::ModulationSmoother<5>,
     effective: [f32; 5],
 }
 fn amplitude(db: f32) -> f32 {
@@ -94,8 +93,7 @@ impl Drive {
             configured: [f32::NAN; 4],
             clipping: 0.0,
             normalization: 1.0,
-            external: [0.0; 5],
-            modulation_alpha: 1.0 - (-1.0 / (0.001 * f64::from(context.sample_rate_hz))).exp(),
+            external: daw_unit_core::ModulationSmoother::new(context),
             effective: [
                 amplitude(settings.volume_db),
                 settings.gain,
@@ -186,7 +184,7 @@ impl EffectUnit for Drive {
             type_id: DRIVE_TYPE_ID,
             name: "Drive",
             is_source: false,
-            inputs: &[PortKind::StereoAudio],
+            inputs: &[PortKind::StereoAudio, PortKind::Modulation],
             outputs: &[PortKind::StereoAudio],
         }
     }
@@ -203,7 +201,7 @@ impl EffectUnit for Drive {
         for filter in &mut self.tone_filter {
             filter.reset();
         }
-        self.external = [0.0; 5];
+        self.external.reset();
         self.effective[0] = self.volume.value;
         self.configure(self.base_parameters());
     }
@@ -225,18 +223,11 @@ impl Drive {
     /// Offsets in the same order: dB, normalized fractions, and octaves for Frequency.
     /// Sources and route amounts belong to the host; this portable stage smooths offsets by 1 ms.
     pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 5]) -> [f32; 2] {
-        for (value, target) in self.external.iter_mut().zip(offsets) {
-            let target = if target.is_finite() {
-                f64::from(target)
-            } else {
-                0.0
-            };
-            *value += self.modulation_alpha * (target - *value);
-        }
+        let offsets = self.external.process(offsets);
         for ramp in self.ramps() {
             ramp.advance();
         }
-        let offsets = self.external.map(|v| v as f32);
+        let offsets = offsets.map(|v| v as f32);
         let [gain, tone, strength, frequency_log] = self.base_parameters();
         self.configure([
             (gain + offsets[1]).clamp(0.0, 1.0),
@@ -273,6 +264,23 @@ impl Drive {
             let wet = self.tone_filter[channel].filter_mono(clipped) * volume;
             dry + (wet - dry) * self.mix.value
         })
+    }
+}
+
+impl daw_unit_core::ModulationDestination for Drive {
+    type Audio = [f32; 2];
+    const MODULATION_PARAMETERS: &'static [daw_unit_core::ModulationParameter] = <daw_unit_core::DriveSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS;
+    const MODULATION_SCOPE: daw_unit_core::ModulationScope = <daw_unit_core::DriveSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE;
+    fn process_with_modulation(
+        &mut self,
+        input: Self::Audio,
+        modulation: &daw_unit_core::ModulationInputs,
+        _context: daw_unit_core::ModulationContext,
+    ) -> Self::Audio {
+        self.process_modulated(
+            input,
+            modulation.offsets(daw_unit_core::ModulationParameter::DRIVE),
+        )
     }
 }
 

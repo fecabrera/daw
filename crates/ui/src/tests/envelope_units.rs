@@ -159,9 +159,9 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
             .layers[0];
         assert_eq!(
             settings.amplitude.modulations[0].source,
-            Some(daw_core::EnvelopeSource {
+            Some(daw_core::ModulationSourceId {
                 layer,
-                envelope: settings.envelopes[0].id
+                unit: settings.envelopes[0].id
             })
         );
         assert_eq!(
@@ -443,9 +443,9 @@ fn parameter_markers_open_their_own_modulation_controls_without_editing_base_val
         let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
         let l = &mut instrument.layers[0];
         l.envelopes[0].mode = daw_core::EnvelopeMode::Legato;
-        let source = daw_core::EnvelopeSource {
+        let source = daw_core::ModulationSourceId {
             layer,
-            envelope: l.envelopes[0].id,
+            unit: l.envelopes[0].id,
         };
         let mut connection = daw_core::Modulation::new(daw_core::ModulationParameter::Amplitude);
         connection.source = Some(source);
@@ -530,9 +530,9 @@ fn drive_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() 
             .unwrap()
             .layers[0];
         state.envelopes[0].mode = daw_core::EnvelopeMode::Legato;
-        let source = daw_core::EnvelopeSource {
+        let source = daw_core::ModulationSourceId {
             layer,
-            envelope: state.envelopes[0].id,
+            unit: state.envelopes[0].id,
         };
         app.session.project.tracks[0]
             .effects

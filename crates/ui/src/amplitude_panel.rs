@@ -87,7 +87,7 @@ pub(super) fn unit(
                                     ui,
                                     &mut settings.modulations,
                                     sources,
-                                    &[daw_core::ModulationParameter::Amplitude],
+                                    <daw_unit_core::AmplitudeSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS, <daw_unit_core::AmplitudeSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE,
                                     compact,
                                 );
                             }

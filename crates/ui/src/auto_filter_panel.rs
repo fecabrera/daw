@@ -312,7 +312,7 @@ pub(super) fn show(
             if modulation_open {
                 let rect = bounds.sections[2];
                 panels::unit_divider(ui, rect.right(), rect.y_range().into());
-                crate::modulation_panel::body(ui, &mut settings.modulations, sources, &daw_core::ModulationParameter::FILTER, compact);
+                crate::modulation_panel::body(ui, &mut settings.modulations, sources, <daw_unit_core::AutoFilterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS, <daw_unit_core::AutoFilterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
             }
         });
     });

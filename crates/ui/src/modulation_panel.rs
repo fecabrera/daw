@@ -4,33 +4,33 @@ use crate::{
     knobs::{self, Knob, KnobSpec},
     panels, rows, theme,
 };
-use daw_core::{EnvelopeMode, EnvelopeSource, InstrumentSettings, Modulation, ModulationParameter};
+use daw_core::{InstrumentSettings, Modulation, ModulationParameter, ModulationSourceId};
+use daw_unit_core::{ModulationRange, ModulationScope};
 use egui::{Rect, Ui, Vec2};
 #[derive(Clone)]
 pub(super) struct Source {
-    pub id: EnvelopeSource,
+    pub id: ModulationSourceId,
     pub label: String,
-    pub mode: EnvelopeMode,
+    pub scope: ModulationScope,
+    pub range: ModulationRange,
     pub enabled: bool,
 }
 pub(super) fn sources(instrument: Option<&InstrumentSettings>) -> Vec<Source> {
     instrument
         .into_iter()
-        .flat_map(|i| &i.layers)
-        .flat_map(|l| {
-            l.envelopes
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| e.present)
-                .map(|(n, e)| Source {
-                    id: EnvelopeSource {
-                        layer: l.id,
-                        envelope: e.id,
-                    },
-                    label: format!("{} · Envelope {}", l.name, n + 1),
-                    mode: e.mode,
-                    enabled: e.enabled,
-                })
+        .flat_map(|i| i.modulation_sources())
+        .filter(|source| source.present)
+        .map(|source| Source {
+            id: source.id,
+            label: format!(
+                "{} · {} {}",
+                source.layer_name,
+                source.output.name,
+                source.index + 1
+            ),
+            scope: source.scope,
+            range: source.output.range,
+            enabled: source.enabled,
         })
         .collect()
 }
@@ -80,6 +80,7 @@ pub(super) fn body(
     routes: &mut Vec<Modulation>,
     sources: &[Source],
     parameters: &[ModulationParameter],
+    scope: ModulationScope,
     compact: bool,
 ) {
     let mut remove = None;
@@ -114,7 +115,7 @@ pub(super) fn body(
                                     .truncate()
                                     .show_ui(ui, |ui| {
                                         ui.selectable_value(&mut route.source, None, "None");
-                                        for source in sources {
+                                        for source in sources.iter().filter(|s| scope.accepts(s.scope)) {
                                             ui.selectable_value(
                                                 &mut route.source,
                                                 Some(source.id),
@@ -123,7 +124,7 @@ pub(super) fn body(
                                         }
                                     })
                                     .response
-                                    .on_hover_text(if parameters==[ModulationParameter::Amplitude] {"Modulation source"}else{"Track effects use shared envelopes. Select Retrigger or Legato on the source Envelope."})
+                                    .on_hover_text(if scope==ModulationScope::PerNote {"Modulation source"}else{"Shared modulation source. Per-note sources cannot feed this unit."})
                             });
                             rows::centered(ui, knobs::CHOICE_SIZE, |ui| {
                                 ui.set_min_height(knobs::CHOICE_SIZE);
@@ -232,7 +233,7 @@ pub(super) fn marker(
     let mut active = false;
     let mut offsets = [0.0_f32; 2];
     let mut amplitude = [[0.0_f32; 2]; 2];
-    let mut grouped: Vec<(EnvelopeSource, EnvelopeMode, f32)> = Vec::new();
+    let mut grouped: Vec<(ModulationSourceId, ModulationScope, ModulationRange, f32)> = Vec::new();
     let mut lines = vec![format!("{} modulation", parameter.label())];
     for route in routes.iter().filter(|r| r.parameter == parameter) {
         assigned = true;
@@ -250,9 +251,9 @@ pub(super) fn marker(
         } else if !source.unwrap().enabled {
             "source off"
         } else if parameter != ModulationParameter::Amplitude
-            && source.unwrap().mode == EnvelopeMode::PerNote
+            && source.unwrap().scope == ModulationScope::PerNote
         {
-            "requires shared envelope"
+            "requires shared source"
         } else {
             "active"
         };
@@ -267,19 +268,24 @@ pub(super) fn marker(
         }
         active = true;
         let source = source.unwrap();
-        if let Some((_, _, amount)) = grouped.iter_mut().find(|(id, _, _)| *id == source.id) {
+        if let Some((_, _, _, amount)) = grouped.iter_mut().find(|(id, _, _, _)| *id == source.id) {
             *amount += route.amount;
         } else {
-            grouped.push((source.id, source.mode, route.amount));
+            grouped.push((source.id, source.scope, source.range, route.amount));
         }
     }
     // Connections to the same source are correlated: opposite amounts cancel.
-    for (_, mode, amount) in grouped {
+    for (_, scope, range, amount) in grouped {
+        let [min, max] = range.bounds();
         if parameter == ModulationParameter::Amplitude {
-            let group = usize::from(mode != EnvelopeMode::PerNote);
-            amplitude[group][usize::from(amount < 0.0)] += amount.abs();
+            let group = usize::from(scope != ModulationScope::PerNote);
+            let deltas = [(min - 1.0) * amount, (max - 1.0) * amount];
+            amplitude[group][0] += deltas[0].min(deltas[1]);
+            amplitude[group][1] += deltas[0].max(deltas[1]);
         } else {
-            offsets[usize::from(amount > 0.0)] += amount;
+            let deltas = [min * amount, max * amount];
+            offsets[0] += deltas[0].min(deltas[1]);
+            offsets[1] += deltas[0].max(deltas[1]);
         }
     }
     if let Some((on, depth)) = lfo.filter(|(_, depth)| *depth > 0.0) {
@@ -321,12 +327,8 @@ pub(super) fn marker(
         | ModulationParameter::Tone
         | ModulationParameter::ColorStrength => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::Amplitude => {
-            let factors = amplitude.map(|[positive, negative]| {
-                [
-                    (1.0 - positive).clamp(0.0, 16.0),
-                    (1.0 + negative).clamp(0.0, 16.0),
-                ]
-            });
+            let factors = amplitude
+                .map(|[min, max]| [(1.0 + min).clamp(0.0, 16.0), (1.0 + max).clamp(0.0, 16.0)]);
             std::array::from_fn(|i| {
                 let factor = factors[0][i] * factors[1][i];
                 if factor > 0.0 && base > daw_core::SILENT_GAIN_DB {
@@ -390,14 +392,16 @@ pub(super) fn marker(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use daw_core::EnvelopeMode;
     fn source(mode: EnvelopeMode) -> Source {
         Source {
-            id: EnvelopeSource {
+            id: ModulationSourceId {
                 layer: daw_core::Id::new_v4(),
-                envelope: daw_core::Id::new_v4(),
+                unit: daw_core::Id::new_v4(),
             },
             label: "Layer 1 · Envelope 1".into(),
-            mode,
+            scope: mode.into(),
+            range: ModulationRange::Unipolar,
             enabled: true,
         }
     }
@@ -406,6 +410,26 @@ mod tests {
         route.source = Some(source.id);
         route.amount = amount;
         route
+    }
+    #[test]
+    fn markers_read_bipolar_range_from_provider_metadata() {
+        let mut sources = [source(EnvelopeMode::Legato)];
+        sources[0].range = ModulationRange::Bipolar;
+        let routes = [route(&sources[0], ModulationParameter::Frequency, -2.0)];
+        assert_eq!(
+            marker(
+                &routes,
+                &sources,
+                ModulationParameter::Frequency,
+                1000.0,
+                true,
+                None,
+                [None; 2]
+            )
+            .unwrap()
+            .range,
+            [250.0, 4000.0]
+        );
     }
     #[test]
     fn marker_ranges_combine_sources_cancel_correlated_routes_and_clamp_bounds() {

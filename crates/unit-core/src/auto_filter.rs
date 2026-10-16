@@ -121,6 +121,6 @@ impl AutoFilterSettings {
             && bounded(self.stereo_phase_degrees, -180.0, 180.0)
             && bounded(self.level_db, crate::SILENT_GAIN_DB, 12.0)
             && bounded(self.dry_wet, 0.0, 1.0)
-            && crate::valid_modulations(&self.modulations, &crate::ModulationParameter::FILTER)
+            && crate::ModulationDestinationSettings::valid_modulations(self)
     }
 }

@@ -1207,6 +1207,7 @@ dependencies = [
  "daw-media",
  "daw-output",
  "daw-project",
+ "daw-unit-core",
  "egui",
  "egui-lucide",
  "egui_extras",

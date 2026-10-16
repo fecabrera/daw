@@ -185,5 +185,13 @@ impl Envelope {
     }
 }
 
+impl daw_unit_core::ModulationSource for Envelope {
+    const MODULATION_OUTPUT: daw_unit_core::ModulationOutputDescriptor =
+        daw_unit_core::ENVELOPE_MODULATION_OUTPUT;
+    fn next_modulation(&mut self) -> f32 {
+        self.next_sample()
+    }
+}
+
 #[cfg(test)]
 mod tests;

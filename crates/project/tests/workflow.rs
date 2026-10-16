@@ -3323,8 +3323,8 @@ fn modulation_visibility_survives_save_reopen_save_as_and_legacy_defaults() {
 #[test]
 fn drive_modulation_round_trips_save_as_and_defaults_legacy_settings() {
     use daw_core::{
-        EffectInstance, EffectSettings, EnvelopeMode, EnvelopeSource, Modulation,
-        ModulationParameter,
+        EffectInstance, EffectSettings, EnvelopeMode, Modulation, ModulationParameter,
+        ModulationSourceId,
     };
     let fixture = Fixture::new();
     let mut session = Session::default();
@@ -3336,9 +3336,9 @@ fn drive_modulation_round_trips_save_as_and_defaults_legacy_settings() {
         .layers[0];
     layer.envelopes[0].present = true;
     layer.envelopes[0].mode = EnvelopeMode::Retrigger;
-    let source = EnvelopeSource {
+    let source = ModulationSourceId {
         layer: layer.id,
-        envelope: layer.envelopes[0].id,
+        unit: layer.envelopes[0].id,
     };
     let mut effect = EffectInstance::drive();
     let EffectSettings::Drive(settings) = &mut effect.unit else {

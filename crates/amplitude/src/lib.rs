@@ -99,6 +99,21 @@ fn gain(db: f32) -> f32 {
     }
 }
 
+impl daw_unit_core::ModulationDestination for Amplitude {
+    type Audio = f32;
+    const MODULATION_PARAMETERS: &'static [daw_unit_core::ModulationParameter] =
+        <AmplitudeSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS;
+    const MODULATION_SCOPE: daw_unit_core::ModulationScope = <daw_unit_core::AmplitudeSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE;
+    fn process_with_modulation(
+        &mut self,
+        input: f32,
+        modulation: &daw_unit_core::ModulationInputs,
+        context: daw_unit_core::ModulationContext,
+    ) -> f32 {
+        self.process(input, modulation.amplitude(), context.note_gate)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

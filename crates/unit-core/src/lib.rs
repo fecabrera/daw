@@ -153,18 +153,13 @@ impl InstrumentLayerSettings {
         if self.amplitude.modulations.is_empty() {
             let mut route = Modulation::new(ModulationParameter::Amplitude);
             route.id = uuid::Uuid::from_u128(1);
-            route.source = Some(EnvelopeSource {
+            route.source = Some(ModulationSourceId {
                 layer: self.id,
-                envelope: e.id,
+                unit: e.id,
             });
             route.amount = 1.0;
             self.amplitude.modulations.push(route);
         }
-    }
-    pub fn envelope(&self, source: EnvelopeSource) -> Option<&EnvelopeInstance> {
-        (source.layer == self.id)
-            .then(|| self.envelopes.iter().find(|e| e.id == source.envelope))
-            .flatten()
     }
 }
 
@@ -300,6 +295,19 @@ impl From<OscillatorSettings> for InstrumentSettings {
     }
 }
 impl InstrumentSettings {
+    /// All installed or retained providers, independent of their concrete DSP type.
+    pub fn modulation_sources(&self) -> impl Iterator<Item = ModulationSourceInfo<'_>> {
+        self.layers.iter().flat_map(|layer| {
+            layer
+                .envelopes
+                .iter()
+                .enumerate()
+                .map(|(index, provider)| provider.modulation_source(layer.id, &layer.name, index))
+        })
+    }
+    pub fn modulation_source(&self, id: ModulationSourceId) -> Option<ModulationSourceInfo<'_>> {
+        self.modulation_sources().find(|source| source.id == id)
+    }
     pub fn valid(&self) -> bool {
         let mut ids = std::collections::HashSet::new();
         self.version == INSTRUMENT_STATE_VERSION

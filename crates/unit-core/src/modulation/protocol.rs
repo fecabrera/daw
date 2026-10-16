@@ -1,0 +1,227 @@
+//! Portable modulation ports. Runtime methods must not allocate, block, or perform I/O.
+use super::*;
+use crate::{PortKind, ProcessingContext, UnitDescriptor};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModulationScope {
+    PerNote,
+    Shared,
+}
+impl ModulationScope {
+    /// A voice destination can consume local or shared controls. A bus cannot consume a voice.
+    pub fn accepts(self, source: Self) -> bool {
+        self == Self::PerNote || source == Self::Shared
+    }
+}
+impl From<EnvelopeMode> for ModulationScope {
+    fn from(mode: EnvelopeMode) -> Self {
+        match mode {
+            EnvelopeMode::PerNote => Self::PerNote,
+            EnvelopeMode::Retrigger | EnvelopeMode::Legato => Self::Shared,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModulationRange {
+    Unipolar,
+    Bipolar,
+}
+impl ModulationRange {
+    pub fn bounds(self) -> [f32; 2] {
+        match self {
+            Self::Unipolar => [0.0, 1.0],
+            Self::Bipolar => [-1.0, 1.0],
+        }
+    }
+    pub fn sanitize(self, value: f32) -> f32 {
+        let [min, max] = self.bounds();
+        if value.is_finite() {
+            value.clamp(min, max)
+        } else {
+            0.0
+        }
+    }
+}
+
+/// One normalized control output, independent of the unit's audio ports.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModulationOutputDescriptor {
+    pub name: &'static str,
+    pub range: ModulationRange,
+}
+pub const ENVELOPE_MODULATION_OUTPUT: ModulationOutputDescriptor = ModulationOutputDescriptor {
+    name: "Envelope",
+    range: ModulationRange::Unipolar,
+};
+
+/// Implement this on every control generator. Hosts advance it once per sample, then fan out
+/// the cached `ModulationValue`; destinations never call the source themselves.
+pub trait ModulationSource: Send {
+    const MODULATION_OUTPUT: ModulationOutputDescriptor;
+    fn next_modulation(&mut self) -> f32;
+}
+
+/// Control-thread discovery. Retained, absent units remain discoverable for reference validation.
+pub trait ModulationSourceSettings {
+    const MODULATION_OUTPUT: ModulationOutputDescriptor;
+    fn modulation_source_id(&self) -> Uuid;
+    fn modulation_scope(&self) -> ModulationScope;
+    fn modulation_present(&self) -> bool;
+    fn modulation_enabled(&self) -> bool;
+    fn modulation_source<'a>(
+        &self,
+        layer: Uuid,
+        layer_name: &'a str,
+        index: usize,
+    ) -> ModulationSourceInfo<'a> {
+        ModulationSourceInfo {
+            id: ModulationSourceId {
+                layer,
+                unit: self.modulation_source_id(),
+            },
+            layer_name,
+            index,
+            output: Self::MODULATION_OUTPUT,
+            scope: self.modulation_scope(),
+            present: self.modulation_present(),
+            enabled: self.modulation_enabled(),
+        }
+    }
+}
+impl ModulationSourceSettings for EnvelopeInstance {
+    const MODULATION_OUTPUT: ModulationOutputDescriptor = ENVELOPE_MODULATION_OUTPUT;
+    fn modulation_source_id(&self) -> Uuid {
+        self.id
+    }
+    fn modulation_scope(&self) -> ModulationScope {
+        self.mode.into()
+    }
+    fn modulation_present(&self) -> bool {
+        self.present
+    }
+    fn modulation_enabled(&self) -> bool {
+        self.enabled
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub struct ModulationSourceInfo<'a> {
+    pub id: ModulationSourceId,
+    pub layer_name: &'a str,
+    /// Zero-based ordinal in this provider's saved instance list.
+    pub index: usize,
+    pub output: ModulationOutputDescriptor,
+    pub scope: ModulationScope,
+    pub present: bool,
+    pub enabled: bool,
+}
+
+/// Common source enable ramp, normalization and published sample construction.
+/// Identity and scope belong to the host, so the same generator can serve voices or a shared bus.
+pub struct ModulationOutput {
+    id: ModulationSourceId,
+    weight: ModulationRamp,
+    frames: u32,
+}
+impl ModulationOutput {
+    pub fn new(id: ModulationSourceId, enabled: bool, context: ProcessingContext) -> Self {
+        Self {
+            id,
+            weight: ModulationRamp::new(f32::from(enabled)),
+            frames: (context.sample_rate_hz / 200).max(1),
+        }
+    }
+    pub fn retarget(&mut self, next: &Self) {
+        self.weight.set(next.weight.target(), self.frames);
+    }
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.weight.set(f32::from(enabled), self.frames);
+    }
+    pub fn reset(&mut self) {
+        self.weight.reset();
+    }
+    pub fn sample<S: ModulationSource>(&mut self, source: &mut S) -> ModulationValue {
+        ModulationValue {
+            source: self.id,
+            value: S::MODULATION_OUTPUT
+                .range
+                .sanitize(source.next_modulation()),
+            weight: self.weight.next_value(),
+            release_age: None,
+        }
+    }
+}
+
+/// Destination timing and note lifecycle supplied by the host. No transport or device dependency.
+#[derive(Clone, Copy, Debug)]
+pub struct ModulationContext {
+    pub frame: u64,
+    pub tempo_bpm: f32,
+    pub note_gate: f32,
+    pub release_age: Option<u64>,
+}
+impl Default for ModulationContext {
+    fn default() -> Self {
+        Self {
+            frame: 0,
+            tempo_bpm: 120.0,
+            note_gate: 1.0,
+            release_age: None,
+        }
+    }
+}
+
+/// All destinations expose their typed targets and consume the same resolved input frame.
+/// Audio remains unit-specific (mono or stereo). Bounds and unit-specific DSP stay in the unit.
+pub trait ModulationDestination: Send {
+    type Audio;
+    const MODULATION_PARAMETERS: &'static [ModulationParameter];
+    const MODULATION_SCOPE: ModulationScope;
+    fn process_with_modulation(
+        &mut self,
+        input: Self::Audio,
+        modulation: &ModulationInputs,
+        context: ModulationContext,
+    ) -> Self::Audio;
+}
+
+/// Saved destinations share route access, allowed targets and validation with portable DSP.
+pub trait ModulationDestinationSettings {
+    const MODULATION_PARAMETERS: &'static [ModulationParameter];
+    const MODULATION_SCOPE: ModulationScope;
+    fn modulations(&self) -> &[Modulation];
+    fn valid_modulations(&self) -> bool {
+        valid_modulations(self.modulations(), Self::MODULATION_PARAMETERS)
+    }
+}
+macro_rules! destination_settings {
+    ($settings:ty, $parameters:expr, $scope:ident) => {
+        impl ModulationDestinationSettings for $settings {
+            const MODULATION_PARAMETERS: &'static [ModulationParameter] = $parameters;
+            const MODULATION_SCOPE: ModulationScope = ModulationScope::$scope;
+            fn modulations(&self) -> &[Modulation] {
+                &self.modulations
+            }
+        }
+    };
+}
+destination_settings!(
+    crate::AmplitudeSettings,
+    &[ModulationParameter::Amplitude],
+    PerNote
+);
+destination_settings!(
+    crate::AutoFilterSettings,
+    &ModulationParameter::FILTER,
+    Shared
+);
+destination_settings!(crate::DriveSettings, &ModulationParameter::DRIVE, Shared);
+
+impl UnitDescriptor {
+    pub fn provides_modulation(&self) -> bool {
+        self.outputs.contains(&PortKind::Modulation)
+    }
+    pub fn consumes_modulation(&self) -> bool {
+        self.inputs.contains(&PortKind::Modulation)
+    }
+}

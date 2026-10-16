@@ -1,8 +1,9 @@
 use super::modulation::{Control, Route, SharedControls};
 use daw_core::{Clip, Id, Project, Track, TrackKind, linear_gain};
-use daw_core::{EnvelopeMode, EnvelopeSource, ModulationValue};
+use daw_core::{EnvelopeMode, ModulationSourceId, ModulationValue};
 use daw_envelope::Envelope;
 use daw_oscillator::Oscillator;
+use daw_unit_core::{ModulationContext, process_modulation};
 use daw_unit_core::{ProcessingContext, SourceUnit};
 
 struct NoteEvent {
@@ -197,43 +198,10 @@ impl LayerVoice {
             self.gain_remaining -= 1;
         }
         let gate = self.gate.next_sample();
-        let mut per_note_delta = [0.0; 2];
-        let mut shared_delta = [0.0; 2];
-        let mut shared_release = false;
-        let mut direct = None;
-        let mut effective = 0;
-        for route in &mut self.routes {
-            if let Some((value, amount, per_note)) = route.sample(local, shared) {
-                let deltas = if per_note {
-                    &mut per_note_delta
-                } else {
-                    &mut shared_delta
-                };
-                deltas[0] += amount * (value - gate);
-                deltas[1] += amount * (value - 1.0);
-                if !per_note && value > 0.0 {
-                    shared_release |= shared.iter().any(|v| {
-                        Some(v.source) == route.settings.source
-                            && v.release_age.is_some()
-                            && v.release_age == release_age
-                    });
-                }
-                effective += 1;
-                direct = Some((value, amount, per_note));
-            }
-        }
-        let envelope = if let Some((value, 1.0, true)) = direct.filter(|_| effective == 1) {
-            // Preserve legacy full-depth ADSR arithmetic exactly.
-            value
-        } else {
-            // Only the last released notes carry a shared tail. Blend that tail toward
-            // the note gate at partial depth, so zero depth and disabled routes stay silent.
-            let (shaped, shared_factor) = if shared_release {
-                (1.0 + per_note_delta[1], gate + shared_delta[0])
-            } else {
-                (gate + per_note_delta[0], 1.0 + shared_delta[1])
-            };
-            shaped.clamp(0.0, 16.0) * shared_factor.clamp(0.0, 16.0)
+        let context = ModulationContext {
+            note_gate: gate,
+            release_age,
+            ..Default::default()
         };
         let sources = self
             .sources
@@ -252,7 +220,14 @@ impl LayerVoice {
                 s.source.next_sample() * s.gain
             })
             .sum::<f32>();
-        let shaped = self.amplitude.process(sources, envelope, gate);
+        let shaped = process_modulation(
+            &mut self.amplitude,
+            &mut self.routes,
+            sources,
+            local,
+            shared,
+            context,
+        );
         self.gain.map(|gain| shaped * gain)
     }
 }
@@ -448,9 +423,9 @@ impl MidiTrackRuntime {
                                 .filter(|e| e.mode == EnvelopeMode::PerNote)
                                 .map(|e| {
                                     Control::new(
-                                        EnvelopeSource {
+                                        ModulationSourceId {
                                             layer: l.id,
-                                            envelope: e.id,
+                                            unit: e.id,
                                         },
                                         e,
                                         ProcessingContext {
@@ -468,9 +443,9 @@ impl MidiTrackRuntime {
                                 .iter()
                                 .filter(|e| e.mode == EnvelopeMode::PerNote)
                                 .map(|e| ModulationValue {
-                                    source: EnvelopeSource {
+                                    source: ModulationSourceId {
                                         layer: l.id,
-                                        envelope: e.id,
+                                        unit: e.id,
                                     },
                                     value: 0.0,
                                     weight: 0.0,
@@ -504,9 +479,9 @@ impl MidiTrackRuntime {
                             .filter(|e| e.mode != EnvelopeMode::PerNote)
                             .map(|e| {
                                 Control::new(
-                                    EnvelopeSource {
+                                    ModulationSourceId {
                                         layer: l.id,
-                                        envelope: e.id,
+                                        unit: e.id,
                                     },
                                     e,
                                     ProcessingContext {

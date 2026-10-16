@@ -78,7 +78,7 @@ impl DriveSettings {
             && [self.gain, self.tone, self.color_strength]
                 .into_iter()
                 .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
-            && crate::valid_modulations(&self.modulations, &crate::ModulationParameter::DRIVE)
+            && crate::ModulationDestinationSettings::valid_modulations(self)
             && self.color_frequency_hz.is_finite()
             && (250.0..=2000.0).contains(&self.color_frequency_hz)
     }

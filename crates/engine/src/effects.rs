@@ -5,7 +5,7 @@ use daw_drive::Drive;
 use daw_equalizer::Equalizer;
 use daw_limiter::Limiter;
 use daw_ott::Ott;
-use daw_unit_core::{EffectUnit, ProcessingContext};
+use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_modulation};
 use std::sync::{Arc, atomic::AtomicU32};
 
 enum RuntimeEffect {
@@ -26,18 +26,30 @@ impl RuntimeEffect {
     ) -> [f32; 2] {
         match self {
             Self::Eq3(unit) => unit.process_sample(input),
-            Self::Drive(unit, routes) => unit.process_modulated(
+            Self::Drive(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
                 input,
-                super::modulation::offsets(routes, values, daw_core::ModulationParameter::DRIVE),
+                &[],
+                values,
+                ModulationContext {
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
             ),
-            Self::AutoFilter(unit, routes) => {
-                let offsets = super::modulation::offsets(
-                    routes,
-                    values,
-                    daw_core::ModulationParameter::FILTER,
-                );
-                unit.process_modulated_at(input, frame, tempo, offsets)
-            }
+            Self::AutoFilter(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::Compressor(unit) => unit.process_sample(input),
             Self::Ott(unit) => unit.process_sample(input),
             Self::Limiter(unit) => unit.process_sample(input),

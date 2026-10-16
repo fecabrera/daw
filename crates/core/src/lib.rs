@@ -9,8 +9,8 @@ pub use daw_unit_core::{
     OttBandSettings, OttSettings, SILENT_GAIN_DB, Waveform,
 };
 pub use daw_unit_core::{
-    AmplitudeSettings, EnvelopeInstance, EnvelopeMode, EnvelopeSource, Modulation,
-    ModulationParameter, ModulationValue,
+    AmplitudeSettings, EnvelopeInstance, EnvelopeMode, Modulation, ModulationParameter,
+    ModulationSourceId, ModulationValue,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
 mod audio_settings;
@@ -537,7 +537,7 @@ impl Project {
                 if route.source.is_some_and(|source| {
                     !t.instrument
                         .as_ref()
-                        .is_some_and(|i| i.layers.iter().any(|l| l.envelope(source).is_some()))
+                        .is_some_and(|i| i.modulation_source(source).is_some())
                 }) {
                     return Err(invalid(
                         "Amplitude modulation source does not exist in this instrument",
@@ -547,14 +547,13 @@ impl Project {
             for route in t.effects.iter().flat_map(|e| e.unit.modulations()) {
                 if route.source.is_some_and(|source| {
                     !t.instrument.as_ref().is_some_and(|i| {
-                        i.layers
-                            .iter()
-                            .filter_map(|l| l.envelope(source))
-                            .any(|e| e.mode != EnvelopeMode::PerNote)
+                        i.modulation_source(source).is_some_and(|s| {
+                            daw_unit_core::ModulationScope::Shared.accepts(s.scope)
+                        })
                     })
                 }) {
                     return Err(invalid(
-                        "Effect modulation requires a shared envelope in the same MIDI track",
+                        "Effect modulation requires a shared source in the same MIDI track",
                     ));
                 }
             }

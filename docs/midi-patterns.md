@@ -126,3 +126,6 @@ The accepted [source-container architecture](modular-audio-units.md#one-source-c
 - One oscillator instrument per MIDI track, containing one or more layers, zero or more oscillator sources per layer, and multiple voices for polyphonic patterns. Oscillator frequencies at or above the processing Nyquist limit render silence. No MIDI file import/export, hardware MIDI, live note input, audition keyboard, or note clipboard yet.
 - No audio/beat editor, effect chain, graph connections, saved graph layouts, missing-unit fallback, or standalone interface yet. The larger [Units design](modular-audio-units.md) remains the source for that scope.
 - Native device stability and the full eight-voice workload with representative effects require separate validation. Automated rendering and input tests do not establish device or cross-platform behavior.
+
+
+Modulation uses the [shared portable source and destination contract](modulation.md). Source lookup, scope checks, typed route evaluation, and common smoothing belong to `unit-core`; the unit retains its audio processing and final parameter bounds.

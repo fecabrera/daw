@@ -115,7 +115,7 @@ pub struct AutoFilter {
     modulation_initialized: bool,
     modulation_alpha: f64,
     standalone_frame: u64,
-    external: [f64; 4],
+    external: daw_unit_core::ModulationSmoother<4>,
     effective: [f32; 5],
 }
 impl AutoFilter {
@@ -148,7 +148,7 @@ impl AutoFilter {
             modulation_initialized: false,
             modulation_alpha: 1.0 - (-1.0 / (0.001 * sample_rate)).exp(),
             standalone_frame: 0,
-            external: [0.0; 4],
+            external: daw_unit_core::ModulationSmoother::new(context),
             effective: [
                 settings.frequency_hz,
                 settings.frequency_hz,
@@ -234,15 +234,7 @@ impl AutoFilter {
         tempo_bpm: f32,
         offsets: [f32; 4],
     ) -> [f32; 2] {
-        for (value, target) in self.external.iter_mut().zip(offsets) {
-            let target = if target.is_finite() {
-                f64::from(target)
-            } else {
-                0.0
-            };
-            *value += self.modulation_alpha * (target - *value);
-        }
-        let offsets = self.external;
+        let offsets = self.external.process(offsets);
         let phase = self.phase(frame, tempo_bpm);
         let frequency = self.frequency_log.next();
         let q = (self.q.next() + offsets[1]).clamp(0.1, 10.0);
@@ -293,7 +285,7 @@ impl EffectUnit for AutoFilter {
             type_id: AUTO_FILTER_TYPE_ID,
             name: "Auto-filter",
             is_source: false,
-            inputs: &[PortKind::StereoAudio],
+            inputs: &[PortKind::StereoAudio, PortKind::Modulation],
             outputs: &[PortKind::StereoAudio],
         }
     }
@@ -319,7 +311,7 @@ impl EffectUnit for AutoFilter {
         self.phase_correction = 0.0;
         self.phase_remaining = 0;
         self.modulation_initialized = false;
-        self.external = [0.0; 4];
+        self.external.reset();
         self.effective = [
             2.0_f64.powf(self.frequency_log.value) as f32,
             2.0_f64.powf(self.frequency_log.value) as f32,
@@ -334,6 +326,25 @@ impl EffectUnit for AutoFilter {
         let output = self.process_at(input, self.standalone_frame, 120.0);
         self.standalone_frame = self.standalone_frame.saturating_add(1);
         output
+    }
+}
+
+impl daw_unit_core::ModulationDestination for AutoFilter {
+    type Audio = [f32; 2];
+    const MODULATION_PARAMETERS: &'static [daw_unit_core::ModulationParameter] = <daw_unit_core::AutoFilterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS;
+    const MODULATION_SCOPE: daw_unit_core::ModulationScope = <daw_unit_core::AutoFilterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE;
+    fn process_with_modulation(
+        &mut self,
+        input: Self::Audio,
+        modulation: &daw_unit_core::ModulationInputs,
+        context: daw_unit_core::ModulationContext,
+    ) -> Self::Audio {
+        self.process_modulated_at(
+            input,
+            context.frame,
+            context.tempo_bpm,
+            modulation.offsets(daw_unit_core::ModulationParameter::FILTER),
+        )
     }
 }
 
