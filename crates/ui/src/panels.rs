@@ -108,13 +108,17 @@ impl ControlPanel {
 
     /// One row boundary can span both the control column and its workspace lane.
     pub(super) fn row_dividers(ui: &Ui, row: Rect, top: bool, bottom: bool) {
-        let stroke = Stroke::new(1.0, crate::theme::palette(ui.ctx()).border);
+        Self::paint_row_dividers(ui.painter(), row, top, bottom);
+    }
+
+    /// Reuse row geometry when a clipped preview mask restores the lane background.
+    pub(super) fn paint_row_dividers(painter: &egui::Painter, row: Rect, top: bool, bottom: bool) {
+        let stroke = Stroke::new(1.0, crate::theme::palette(painter.ctx()).border);
         if top {
-            ui.painter().hline(row.x_range(), row.top() + 0.5, stroke);
+            painter.hline(row.x_range(), row.top() + 0.5, stroke);
         }
         if bottom {
-            ui.painter()
-                .hline(row.x_range(), row.bottom() - 0.5, stroke);
+            painter.hline(row.x_range(), row.bottom() - 0.5, stroke);
         }
     }
 

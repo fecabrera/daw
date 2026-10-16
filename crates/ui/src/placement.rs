@@ -166,10 +166,19 @@ impl DawUi {
                 let painter = ui.painter_at(viewport.intersect(lane).intersect(block));
                 painter.rect_filled(block, 0.0, theme::palette(ui.ctx()).background);
                 self.paint_grid(&painter, lane);
-                painter.line_segment(
-                    [lane.left_bottom(), lane.right_bottom()],
-                    Stroke::new(1.0, theme::palette(ui.ctx()).border),
-                );
+                if self.view_mode == ViewMode::Timeline {
+                    panels::ControlPanel::paint_row_dividers(
+                        &painter,
+                        lane,
+                        preview.track_index > 0,
+                        preview.track_index + 1 == self.session.project.tracks.len(),
+                    );
+                } else {
+                    painter.line_segment(
+                        [lane.left_bottom(), lane.right_bottom()],
+                        Stroke::new(1.0, theme::palette(ui.ctx()).border),
+                    );
+                }
             }
         }
     }

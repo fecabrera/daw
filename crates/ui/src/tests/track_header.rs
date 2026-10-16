@@ -301,3 +301,114 @@ fn timeline_row_dividers_share_track_panel_bounds_at_different_scales_and_scroll
         }
     }
 }
+
+#[test]
+fn shortened_clip_previews_restore_lane_dividers_at_the_shared_row_coordinates() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for scale in [1.0, 1.25, 2.0] {
+            for midi in [false, true] {
+                for (index, count) in [(0, 2), (1, 3), (1, 2)] {
+                    for left in [false, true] {
+                        let (mut app, track) = fixture();
+                        let clip = &mut app.session.project.tracks[0].clips[0];
+                        clip.start_frame = frames(2.0);
+                        clip.source_offset_frame = frames(1.0);
+                        clip.length_frames = frames(2.0);
+                        if midi {
+                            app.session.project.tracks[0].clips.clear();
+                            app.session.project.tracks[0].kind = daw_core::TrackKind::Midi;
+                            app.session.project.tracks[0].instrument = Some(Default::default());
+                            let clip_id = app
+                                .session
+                                .project
+                                .add_midi_pattern(track, frames(2.0))
+                                .unwrap();
+                            app.session
+                                .project
+                                .edit(Edit::ReplaceMidiPattern {
+                                    clip_id,
+                                    pattern: daw_core::MidiPattern {
+                                        length_ticks: 3840,
+                                        notes: vec![],
+                                    },
+                                })
+                                .unwrap();
+                            app.session.project.tracks[0].clips[0].length_frames = frames(2.0);
+                        }
+                        for _ in 1..count {
+                            app.session.project.add_track().unwrap();
+                        }
+                        app.session.project.tracks.swap(0, index);
+                        app.session.project.validate().unwrap();
+                        let clip = app.session.project.tracks[index].clips[0].clone();
+                        let original = format!("{:?}", app.session.project);
+                        let ctx = context();
+                        ctx.set_pixels_per_point(scale);
+                        app.set_settings(
+                            &ctx,
+                            settings::AppSettings {
+                                theme: color_theme,
+                                ..Default::default()
+                            },
+                        );
+                        frame(&mut app, &ctx, vec![]);
+                        let lane = app.lane_bounds[&track];
+                        let block = app.clip_block(lane, &clip, clip.start_frame);
+                        let start = Pos2::new(
+                            if left {
+                                block.left() + 0.2
+                            } else {
+                                block.right() - 0.2
+                            },
+                            block.top() + 40.0,
+                        );
+                        let end = start + Vec2::new(if left { 0.5 } else { -0.5 } * app.zoom, 0.0);
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(start), button(start, true)],
+                        );
+                        let shapes = frame_shapes(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(end)],
+                            Vec2::new(1280.0, 800.0),
+                        );
+                        let drag = app.drag.as_ref().unwrap();
+                        assert_eq!(
+                            drag.mode,
+                            if left {
+                                ClipDragMode::TrimLeft
+                            } else {
+                                ClipDragMode::TrimRight
+                            }
+                        );
+                        let previews = app.clip_drag_previews(drag, end, false);
+                        let preview = previews.iter().find(|p| p.clip.id == clip.id).unwrap();
+                        assert!(preview.clip.length_frames < clip.length_frames);
+                        let next = app.clip_block(lane, &preview.clip, preview.clip.start_frame);
+                        let gap_x = if left {
+                            (block.left() + next.left()) * 0.5
+                        } else {
+                            (block.right() + next.right()) * 0.5
+                        };
+                        let palette = theme::palette(&ctx);
+                        let mask = shapes.iter().rposition(|s| matches!(&s.shape,egui::Shape::Rect(r) if r.rect == block && r.fill == palette.background)).expect("original clip erased by preview mask");
+                        for y in [
+                            (index > 0).then_some(lane.top() + 0.5),
+                            (index + 1 == count).then_some(lane.bottom() - 0.5),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        {
+                            let point = Pos2::new(gap_x, y);
+                            assert!(shapes[mask+1..].iter().any(|s| s.clip_rect.contains(point) && matches!(&s.shape,egui::Shape::LineSegment {points,stroke} if points[0].y==y && points[1].y==y && points[0].x<=gap_x && points[1].x>=gap_x && *stroke==Stroke::new(1.0,palette.border))), "separator erased during trim: midi={midi}, left={left}, row={index}/{count}, scale={scale}, y={y}");
+                        }
+                        assert_eq!(format!("{:?}", app.session.project), original);
+                        assert!(!app.dirty);
+                    }
+                }
+            }
+        }
+    }
+}
