@@ -2109,3 +2109,21 @@ Completed checks with the workspace Cargo cache selected:
 - Local documentation file links and staged/unstaged whitespace checks passed.
 
 Native visual/gesture checks, device playback, listening comparisons, and Windows/Linux builds were not run. No additional provider type was added to the DAW; the independent provider used to test the contract is a test fixture.
+
+## Stop and return to origin — 2026-10-15
+
+The transport keeps its two-step action. Square Stop returns to the playback start, including when paused. After that return is consumed, the same button shows Lucide Chevron Left with Return to origin as its tooltip and accessible name. This action seeks to frame zero and is disabled when fully stopped there. A stopped project positioned away from zero without an audio output also offers the return action. Disabled clicks do not change the playhead or mark the project modified.
+
+The renderer exposes whether a playback-start return remains pending. Output publishes that flag with its existing atomic transport status; the UI uses it rather than guessing from position or maintaining another playback-start cache. The original Stop and Seek commands retain their processing behavior. Shared button dimensions, spacing, colors, guards, and all four views remain in use. No saved fields were added.
+
+Focused egui checks passed for both themes, paused/playing/stopped/origin states, pointer activation and disabled clicks, preserved button geometry and active colors, device-free return in every view, and clean repeated clicks at zero. The resampled callback test verifies that pending-return status survives pause, seek, and compatible renderer replacement, clears on Stop, and stays clear after the seek to zero.
+
+Completed checks with the workspace Cargo cache selected: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (including 370 UI tests), `cargo build -p daw-cli`, `python3 tools/check_cli.py`, and `sh tools/package_macos.sh debug` all passed. The macOS debug bundle is rebuilt at `target/debug/DAW.app`. The two expanded time-stretch acceptance matrices remain explicitly ignored. Local documentation file links and whitespace checks passed.
+
+Native visual/pointer checks, device playback, and Windows/Linux builds were not run for this change.
+
+## Return-to-origin icon — 2026-10-15
+
+The return-to-origin button now uses Lucide Chevron First. This supersedes the Chevron Left icon above. The two-step Stop/return action, disabled state at zero, tooltip, accessibility name, dimensions, and colors remain unchanged.
+
+Formatting, strict workspace Clippy, and workspace tests passed, including all 370 UI tests. The two expanded time-stretch acceptance matrices remain explicitly ignored. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app` with Chevron First. Whitespace checks passed. Native appearance and Windows/Linux builds were not checked for this icon-only change.

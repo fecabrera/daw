@@ -252,7 +252,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 
 - Disable playback for a project with no clips. Reject export of such a project with a clear message.
 - Before replacing an existing export file, require confirmation in the desktop UI or an explicit --overwrite flag in the CLI.
-- Play starts at the current playhead. Pause holds that position, and Play resumes from it. Stop returns to the position where playback started, including after pause/resume or a seek during playback. A new playback after Stop or natural completion records a new start position.
+- Play starts at the current playhead. Pause holds that position, and Play resumes from it. Stop returns to the position where playback started, including after pause/resume or a seek during playback. A new playback after Stop or natural completion records a new start position. While a playback-start return is pending, the square Stop button remains available, including when paused. After Stop, show Chevron First with the Return to origin action; it seeks to timeline frame 0. Disable this return action when fully stopped at frame 0. A project opened or manually positioned away from zero without a playback run offers the same return action.
 - Without looping, playback stops at the end of the last clip.
 - When looping is enabled, repeat the selected time range.
 - Export from project time zero to the end of the last clip, including leading silence. Ignore transport looping when exporting.

@@ -4,6 +4,24 @@ use egui::{Response, Ui, Vec2};
 pub(super) const PLAY_FILL: egui::Color32 = egui::Color32::from_rgb(51, 133, 85);
 pub(super) const STOP_FILL: egui::Color32 = egui::Color32::from_rgb(197, 78, 88);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum StopAction {
+    Stop,
+    ReturnToOrigin,
+    AtOrigin,
+}
+impl StopAction {
+    pub fn from_transport(playing: bool, can_return_to_start: bool, playhead_frame: u64) -> Self {
+        if playing || can_return_to_start {
+            Self::Stop
+        } else if playhead_frame > 0 {
+            Self::ReturnToOrigin
+        } else {
+            Self::AtOrigin
+        }
+    }
+}
+
 pub(super) struct Buttons {
     pub play: Response,
     pub stop: Response,
@@ -13,6 +31,7 @@ pub(super) struct Buttons {
 pub(super) fn show(
     ui: &mut Ui,
     playing: bool,
+    stop_action: StopAction,
     looping: bool,
     can_play: bool,
     can_loop: bool,
@@ -31,17 +50,23 @@ pub(super) fn show(
             )
         })
         .inner;
-    let stop = icons::borderless_toggle_with_colors(
-        ui,
-        icons::Lucide::Square,
-        "Stop",
-        playing,
-        size,
-        (STOP_FILL, foreground),
-    );
-    stop.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), "Stop")
-    });
+    let (icon, label) = if stop_action == StopAction::Stop {
+        (icons::Lucide::Square, "Stop")
+    } else {
+        (icons::Lucide::ChevronFirst, "Return to origin")
+    };
+    let stop = ui
+        .add_enabled_ui(stop_action != StopAction::AtOrigin, |ui| {
+            icons::borderless_toggle_with_colors(
+                ui,
+                icon,
+                label,
+                playing,
+                size,
+                (STOP_FILL, foreground),
+            )
+        })
+        .inner;
     let looping = ui
         .add_enabled_ui(can_loop, |ui| {
             icons::borderless_toggle_with_colors(

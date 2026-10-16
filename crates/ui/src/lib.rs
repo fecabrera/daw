@@ -1296,6 +1296,18 @@ impl DawUi {
             self.play();
         }
     }
+    fn stop_action(&self) -> transport_controls::StopAction {
+        transport_controls::StopAction::from_transport(
+            self.is_playing(),
+            self.output.as_ref().is_some_and(|output| {
+                output
+                    .status
+                    .can_return_to_playback_start
+                    .load(Ordering::Relaxed)
+            }),
+            self.session.project.transport.playhead_frame,
+        )
+    }
     fn stop(&mut self) {
         if let Some(output) = &mut self.output
             && let Err(e) = output.stop()
@@ -2270,10 +2282,12 @@ impl DawUi {
         );
         toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
             let playing = self.is_playing();
+            let stop_action = self.stop_action();
             let enabled = self.session.project.transport.r#loop.enabled;
             let buttons = transport_controls::show(
                 ui,
                 playing,
+                stop_action,
                 enabled,
                 playing || self.session.project.end() > 0,
                 self.job.is_none(),
@@ -2287,7 +2301,11 @@ impl DawUi {
                 self.toggle_playback();
             }
             if buttons.stop.clicked() {
-                self.stop();
+                match stop_action {
+                    transport_controls::StopAction::Stop => self.stop(),
+                    transport_controls::StopAction::ReturnToOrigin => self.seek(0),
+                    transport_controls::StopAction::AtOrigin => {}
+                }
             }
             if buttons.looping.clicked() {
                 self.toggle_looping();

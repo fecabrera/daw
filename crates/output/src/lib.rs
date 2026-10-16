@@ -16,8 +16,17 @@ pub use meters::StereoMeter;
 pub struct Status {
     pub playhead: AtomicU64,
     pub playing: AtomicBool,
+    pub can_return_to_playback_start: AtomicBool,
     pub failed: AtomicBool,
     pub meter: StereoMeter,
+}
+impl Status {
+    fn publish_transport(&self, renderer: &Renderer) {
+        self.playhead.store(renderer.playhead, Ordering::Relaxed);
+        self.playing.store(renderer.playing, Ordering::Relaxed);
+        self.can_return_to_playback_start
+            .store(renderer.can_return_to_playback_start(), Ordering::Relaxed);
+    }
 }
 // Prepared on the application thread and retired there. The callback only reads
 // the existing meter handles and writes atomics; it does not allocate or lock.
@@ -534,14 +543,7 @@ where
                     callback.renderer.publish_track_peaks();
                 }
                 callback.status.meter.publish_peaks(peaks);
-                callback
-                    .status
-                    .playhead
-                    .store(callback.renderer.playhead, Ordering::Relaxed);
-                callback
-                    .status
-                    .playing
-                    .store(callback.renderer.playing, Ordering::Relaxed);
+                callback.status.publish_transport(&callback.renderer);
             },
             move |_| {
                 status.failed.store(true, Ordering::Relaxed);
@@ -668,6 +670,8 @@ mod tests {
                 rate,
             )
             .unwrap();
+            status.publish_transport(&callback.renderer);
+            assert!(!status.can_return_to_playback_start.load(Ordering::Relaxed));
             producer.push(Command::Play).unwrap();
             callback.update();
             for _ in 0..5000 {
@@ -676,6 +680,9 @@ mod tests {
             producer.push(Command::Pause).unwrap();
             callback.update();
             assert!(!callback.renderer.playing);
+            status.publish_transport(&callback.renderer);
+            assert!(!status.playing.load(Ordering::Relaxed));
+            assert!(status.can_return_to_playback_start.load(Ordering::Relaxed));
             let paused_at = callback.renderer.playhead;
             assert!(paused_at > 4800);
             assert_eq!(callback.index, callback.output_count);
@@ -699,6 +706,8 @@ mod tests {
             producer.push(Command::Seek(9600)).unwrap();
             callback.update();
             assert!(callback.renderer.playing);
+            status.publish_transport(&callback.renderer);
+            assert!(status.can_return_to_playback_start.load(Ordering::Relaxed));
             assert!(retired.pop().is_ok());
             for _ in 0..2000 {
                 callback.next();
@@ -713,6 +722,14 @@ mod tests {
             }
             assert_eq!(callback.renderer.playhead, 4800);
             assert_eq!(callback.next(), [0.0; 2]);
+            status.publish_transport(&callback.renderer);
+            assert!(!status.can_return_to_playback_start.load(Ordering::Relaxed));
+            assert_eq!(status.playhead.load(Ordering::Relaxed), 4800);
+            producer.push(Command::Seek(0)).unwrap();
+            callback.update();
+            status.publish_transport(&callback.renderer);
+            assert_eq!(status.playhead.load(Ordering::Relaxed), 0);
+            assert!(!status.can_return_to_playback_start.load(Ordering::Relaxed));
             assert!(!status.failed.load(Ordering::Relaxed));
         }
     }

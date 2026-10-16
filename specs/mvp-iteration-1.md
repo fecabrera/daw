@@ -600,3 +600,8 @@ Drive extends these shared modulation controls to Volume, Gain, Tone, Color stre
 ## Shared modulation protocol acceptance — 2026-10-15
 
 Follow [the shared contract](../docs/modulation.md). Envelope must publish through the same source interface available to other portable units. Amplitude, Auto-filter, and Drive must consume typed parameters through one route resolver, with common scope checks and additive smoothing. Source discovery and validation must use generic identity/capability metadata. Preserve project JSON, neutral audio, ADSR/release behavior, smoothing, live/export parity, compatible state, and allocation-free callbacks. Test a second independent source implementation, signed fan-out, unsupported targets, local/shared scope, invalid values, and saved identity compatibility. Test the standard entry point against each existing portable destination API at every project rate.
+
+
+## Stop and return-to-origin button — 2026-10-15
+
+Keep two steps: square Stop returns to the playback start, including after pause/resume, seek, or compatible plan replacement. Once that return is consumed, show Lucide Chevron First with Return to origin as its tooltip and accessible name. Clicking it seeks to timeline frame zero. Disable it when fully stopped at zero; disabled clicks must not seek or mark the project modified. A stopped project positioned away from zero without a playback run also offers Return to origin. While a playback-start return is pending, retain Stop even when paused. Use renderer-owned state published with output transport status, preserve the 24-point hit area and 16-point icon, and keep active Stop colors and both-theme behavior. All four views share the control. Origin navigation must work without opening an audio device.

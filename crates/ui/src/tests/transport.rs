@@ -13,6 +13,27 @@ fn controls_frame(
     Vec<egui::epaint::ClippedShape>,
     IconColors,
 ) {
+    controls_frame_with_stop(
+        ctx,
+        state,
+        transport_controls::StopAction::from_transport(state[0], false, 1),
+        events,
+        enabled,
+    )
+}
+
+fn controls_frame_with_stop(
+    ctx: &egui::Context,
+    state: [bool; 4],
+    stop_action: transport_controls::StopAction,
+    events: Vec<egui::Event>,
+    enabled: bool,
+) -> (
+    transport_controls::Buttons,
+    Rect,
+    Vec<egui::epaint::ClippedShape>,
+    IconColors,
+) {
     let mut controls = None;
     let mut bounds = Rect::NOTHING;
     let mut output = ctx.run_ui(
@@ -25,7 +46,14 @@ fn controls_frame(
             let row =
                 toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
                     ui.add_enabled_ui(enabled, |ui| {
-                        transport_controls::show(ui, state[0], state[1], state[2], state[3])
+                        transport_controls::show(
+                            ui,
+                            state[0],
+                            stop_action,
+                            state[1],
+                            state[2],
+                            state[3],
+                        )
                     })
                     .inner
                 });
@@ -401,5 +429,105 @@ fn loop_bar_clicks_toggle_on_release_in_both_views_without_changing_the_range() 
         assert_eq!(state(&app), before);
         assert!(!app.dirty);
         drop(sender);
+    }
+}
+
+#[test]
+fn stop_control_disables_origin_and_keeps_paused_stop_available_in_both_themes() {
+    use transport_controls::StopAction;
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let ctx = context();
+        let mut app = DawUi::default();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        for (playing, pending, position, expected) in [
+            (true, true, 0, StopAction::Stop),
+            (false, true, 400, StopAction::Stop), // Paused: still return to playback start.
+            (false, true, 0, StopAction::Stop),   // Paused after seeking to timeline zero.
+            (false, false, 400, StopAction::ReturnToOrigin),
+            (false, false, 0, StopAction::AtOrigin),
+        ] {
+            let action = StopAction::from_transport(playing, pending, position);
+            assert_eq!(action, expected);
+            for enabled in [true, false] {
+                let state = [playing, false, true, true];
+                let (buttons, _, _, _) =
+                    controls_frame_with_stop(&ctx, state, action, vec![], enabled);
+                assert_eq!(
+                    buttons.stop.enabled(),
+                    enabled && action != StopAction::AtOrigin
+                );
+                assert_eq!(buttons.stop.rect.size(), Vec2::splat(24.0));
+                let point = buttons.stop.rect.center();
+                controls_frame_with_stop(
+                    &ctx,
+                    state,
+                    action,
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                    enabled,
+                );
+                let (buttons, _, _, _) = controls_frame_with_stop(
+                    &ctx,
+                    state,
+                    action,
+                    vec![button(point, false)],
+                    enabled,
+                );
+                assert_eq!(
+                    buttons.stop.clicked(),
+                    enabled && action != StopAction::AtOrigin
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn stopped_transport_returns_to_origin_once_without_an_audio_device_in_every_view() {
+    for view in [
+        ViewMode::Timeline,
+        ViewMode::Instrument,
+        ViewMode::Edit,
+        ViewMode::Mixer,
+    ] {
+        let (mut app, _) = fixture();
+        let ctx = context();
+        app.set_view_mode(view, &ctx);
+        app.session.project.transport.playhead_frame = frames(2.0);
+        app.dirty = false;
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.stop_action(),
+            transport_controls::StopAction::ReturnToOrigin
+        );
+        let point = app.transport_bounds[1].center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        assert_eq!(app.session.project.transport.playhead_frame, frames(2.0));
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        assert_eq!(app.session.project.transport.playhead_frame, 0);
+        assert_eq!(app.stop_action(), transport_controls::StopAction::AtOrigin);
+        assert!(app.dirty);
+        assert!(app.output.is_none());
+        assert!(app.error.is_none());
+        end_click_sequence(&mut app, &ctx);
+        app.dirty = false;
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        assert_eq!(app.session.project.transport.playhead_frame, 0);
+        assert!(!app.dirty);
     }
 }

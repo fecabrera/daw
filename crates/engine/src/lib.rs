@@ -503,6 +503,10 @@ impl Renderer {
         }
         self.playing = false;
     }
+    /// A playback run still owns its original start until Stop consumes it, including while paused.
+    pub fn can_return_to_playback_start(&self) -> bool {
+        self.playback_start.is_some()
+    }
     pub fn stop(&mut self) {
         self.master_effects.reset();
         for effects in &mut self.effects {
