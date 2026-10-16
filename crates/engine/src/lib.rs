@@ -154,6 +154,11 @@ pub fn pan_coefficients(pan: f32, mono: bool) -> [f32; 2] {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModulationTarget {
     Effect(Id),
+    Lfo {
+        track: Id,
+        layer: Id,
+        unit: Id,
+    },
     Oscillator {
         track: Id,
         layer: Id,
@@ -327,6 +332,18 @@ impl Renderer {
                         .iter()
                         .find_map(|chain| chain.modulation_values(id))
                 })
+            }
+            ModulationTarget::Lfo { track, layer, unit } => {
+                let index = self
+                    .plan
+                    .project
+                    .tracks
+                    .iter()
+                    .position(|t| t.id == track)?;
+                let [depth, hz] = self.midi[index]
+                    .as_ref()?
+                    .lfo_values(daw_core::ModulationSourceId { layer, unit })?;
+                Some([depth, hz, f32::NAN, f32::NAN, f32::NAN])
             }
             ModulationTarget::Oscillator {
                 track,

@@ -36,6 +36,30 @@ pub(super) fn sources(instrument: Option<&InstrumentSettings>) -> Vec<Source> {
         })
         .collect()
 }
+/// Filter through the shared graph rules before opening a provider's source picker.
+pub(super) fn provider_sources(
+    instrument: &InstrumentSettings,
+) -> Vec<(ModulationSourceId, Vec<Source>)> {
+    let all = sources(Some(instrument));
+    let nodes: Vec<_> = instrument
+        .lfo_destinations()
+        .map(|(id, lfo)| (id, lfo.modulations.as_slice()))
+        .collect();
+    nodes
+        .iter()
+        .map(|(destination, _)| {
+            (
+                *destination,
+                all.iter()
+                    .filter(|source| {
+                        !daw_unit_core::modulation_would_cycle(&nodes, *destination, source.id)
+                    })
+                    .cloned()
+                    .collect(),
+            )
+        })
+        .collect()
+}
 pub(super) fn toggle(
     ui: &mut Ui,
     header: &egui::Response,
@@ -253,6 +277,31 @@ pub(super) fn targeted_body(
     }
 }
 
+/// Apply destination-owned limits to both the possible-range arc and its tooltip.
+pub(super) fn bound_marker(
+    marker: &mut knobs::ModulationMarker,
+    bounds: [f32; 2],
+    format: impl Fn(f32) -> String,
+) {
+    marker.range = marker.range.map(|v| v.clamp(bounds[0], bounds[1]));
+    marker.tooltip = marker
+        .tooltip
+        .lines()
+        .map(|line| {
+            if line.starts_with("Range: ") {
+                format!(
+                    "Range: {} to {}",
+                    format(marker.range[0]),
+                    format(marker.range[1])
+                )
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+}
+
 /// Summarize assigned routes without evaluating or advancing an envelope in the UI.
 pub(super) fn marker(
     routes: &[Modulation],
@@ -361,6 +410,7 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::LfoRate => offsets.map(|o| (base * 2.0_f32.powf(o)).max(0.0)),
         ModulationParameter::Pitch => offsets.map(|o| base + o.clamp(-96.0, 96.0)),
         ModulationParameter::Frequency => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(20.0, 20_000.0))
@@ -379,7 +429,8 @@ pub(super) fn marker(
                 offsets.map(|o| (base + o.clamp(-96.0, 96.0)).clamp(daw_core::SILENT_GAIN_DB, 12.0))
             }
         }
-        ModulationParameter::DryWet
+        ModulationParameter::LfoDepth
+        | ModulationParameter::DryWet
         | ModulationParameter::DriveGain
         | ModulationParameter::Tone
         | ModulationParameter::ColorStrength => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
@@ -414,6 +465,7 @@ pub(super) fn marker(
         ModulationParameter::Frequency | ModulationParameter::ColorFrequency => {
             knobs::format_frequency(value)
         }
+        ModulationParameter::LfoRate => format!("{value:.2} Hz"),
         ModulationParameter::Resonance => format!("Q {value:.2}"),
         ModulationParameter::Amplitude
         | ModulationParameter::Level
@@ -424,7 +476,8 @@ pub(super) fn marker(
                 format!("{value:.1} dB")
             }
         }
-        ModulationParameter::DryWet
+        ModulationParameter::LfoDepth
+        | ModulationParameter::DryWet
         | ModulationParameter::DriveGain
         | ModulationParameter::Tone
         | ModulationParameter::ColorStrength => format!("{:.0}%", value * 100.0),

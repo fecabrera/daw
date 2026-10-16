@@ -1,27 +1,68 @@
 use crate::{
     envelope_panel, icons,
     knobs::{self, Knob, KnobSpec},
-    lfo_controls, panels, rows, theme,
+    lfo_controls, modulation_panel, panels, rows, theme,
 };
 use daw_unit_core::{LfoInstance, LfoPolarity, LfoRestart};
 use egui::{Rect, Ui};
 
+pub(super) struct Controls<'a> {
+    pub sources: &'a [modulation_panel::Source],
+    pub tempo: f32,
+    pub live: Option<[f32; 2]>,
+}
+impl Default for Controls<'_> {
+    fn default() -> Self {
+        Self {
+            sources: &[],
+            tempo: 120.0,
+            live: None,
+        }
+    }
+}
 pub(super) fn unit(
     ui: &mut Ui,
     lfo: &mut LfoInstance,
     number: usize,
     height: f32,
     compact: bool,
-) -> Option<panels::UnitResponse<[[Rect; 3]; 2]>> {
+    controls: Controls<'_>,
+) -> Option<panels::UnitResponse<[[Rect; 3]; 3]>> {
     if !lfo.present {
         return None;
     }
     let name = format!("LFO {number}");
+    let mut enabled = lfo.enabled;
+    let mut collapsed = lfo.collapsed;
+    let open = lfo.modulation_open;
+    let base_rate = lfo.settings.base_rate_hz(controls.tempo) as f32;
+    let mut rate_marker = modulation_panel::marker(
+        &lfo.modulations,
+        controls.sources,
+        daw_core::ModulationParameter::LfoRate,
+        base_rate,
+        lfo.enabled,
+        None,
+        [controls.live.map(|v| v[1]), None],
+    );
+    if let Some(marker) = &mut rate_marker {
+        let limits = lfo.settings.rate_bounds(controls.tempo).map(|v| v as f32);
+        modulation_panel::bound_marker(marker, limits, |v| format!("{v:.2} Hz"));
+    }
+    let depth_marker = modulation_panel::marker(
+        &lfo.modulations,
+        controls.sources,
+        daw_core::ModulationParameter::LfoDepth,
+        lfo.settings.depth,
+        lfo.enabled,
+        None,
+        [controls.live.map(|v| v[0]), None],
+    );
     let result = ui
         .scope_builder(
             egui::UiBuilder::new()
                 .id_salt(lfo.id)
-                .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-note-selector")),
+                .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-note-selector").with_tag("unit-modulation-button")),
             |ui| {
                 panels::PanelStyle {
                     margin: 0,
@@ -31,13 +72,14 @@ pub(super) fn unit(
                     ui,
                     (&name, compact),
                     height,
-                    &mut lfo.enabled,
-                    &mut lfo.collapsed,
+                    &mut enabled,
+                    &mut collapsed,
                     |ui| {
-                        let mut bounds = [[Rect::NOTHING; 3]; 2];
+                        let mut bounds = [[Rect::NOTHING; 3]; 3];
                         ui.horizontal_top(|ui| {
+                            let body_top = ui.cursor().top();
                             ui.spacing_mut().item_spacing.x = 0.0;
-                            for (strip, label) in ["Wave", "Rate"].into_iter().enumerate() {
+                            for (strip, label) in ["Wave", "Rate", "Depth"].into_iter().enumerate() {
                                 let frame = egui::Frame::new().inner_margin(10).show(ui, |ui| {
                                     ui.with_layout(
                                         egui::Layout::top_down(egui::Align::Min),
@@ -54,9 +96,9 @@ pub(super) fn unit(
                                                 {
                                                     *bounds = knobs::row(
                                                         ui,
-                                                        &mut lfo.settings,
+                                                        lfo,
                                                         knobs::CHOICE_SIZE,
-                                                        |ui, s| match (strip, row) {
+                                                        |ui, lfo| { let s = &mut lfo.settings; match (strip, row) {
                                                             (0, 0) => {
                                                                 lfo_controls::wave(ui, &mut s.wave)
                                                             }
@@ -103,12 +145,15 @@ pub(super) fn unit(
                                                                 ui,
                                                                 &mut s.rate_mode,
                                                             ),
-                                                            (1, 1) => lfo_controls::rate(
+                                                            (1, 1) => lfo_controls::modulated_rate(
                                                                 ui,
                                                                 s.rate_mode,
                                                                 &mut s.rate_hz,
                                                                 &mut s.note_rate,
+                                                                lfo_controls::RateModulation { marker: rate_marker.as_ref(), open: &mut lfo.modulation_open, tempo: controls.tempo },
                                                             ),
+                                                            (2, 0) => ui.add(Knob::new(&mut s.depth, crate::parameter_knobs::destination(daw_core::ModulationParameter::LfoDepth)).modulated(depth_marker.as_ref(), &mut lfo.modulation_open)),
+                                                            (2, _) => ui.allocate_exact_size(egui::Vec2::new(ui.available_width(), knobs::CHOICE_SIZE), egui::Sense::hover()).1,
                                                             _ => ui.add(Knob::new(
                                                                 &mut s.smooth_ms,
                                                                 KnobSpec::new(
@@ -123,7 +168,7 @@ pub(super) fn unit(
                                                                 .format(|v| format!("{v:.1} ms"))
                                                                 .endpoint_labels("0", "100"),
                                                             )),
-                                                        },
+                                                        } },
                                                     )
                                                     .rect;
                                                 }
@@ -140,13 +185,19 @@ pub(super) fn unit(
                                         },
                                     );
                                 });
-                                if strip == 0 {
+                                if strip < 2 {
                                     panels::unit_divider(
                                         ui,
                                         frame.response.rect.right(),
                                         frame.response.rect.y_range().into(),
                                     );
                                 }
+                            }
+                            if open {
+                                panels::unit_divider(ui, ui.cursor().left(), body_top..=(body_top + envelope_panel::body_height(compact) + 20.0));
+                                modulation_panel::body(ui, &mut lfo.modulations, controls.sources,
+                                    <LfoInstance as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS,
+                                    <LfoInstance as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
                             }
                         });
                         bounds
@@ -155,6 +206,9 @@ pub(super) fn unit(
             },
         )
         .inner;
+    lfo.enabled = enabled;
+    lfo.collapsed = collapsed;
+    modulation_panel::toggle(ui, &result.header, lfo.collapsed, &mut lfo.modulation_open);
     result.header.context_menu(|ui| {
         if ui.button("Remove LFO").clicked() {
             lfo.present = false;
@@ -164,11 +218,11 @@ pub(super) fn unit(
     if !lfo.collapsed {
         let rect = Rect::from_min_max(
             egui::pos2(
-                result.header.rect.right() - 88.0,
+                result.header.rect.right() - 114.0,
                 result.header.rect.top() + 2.0,
             ),
             egui::pos2(
-                result.header.rect.right() - 2.0,
+                result.header.rect.right() - 28.0,
                 result.header.rect.top() + panels::HEADER_HEIGHT - 1.0,
             ),
         );

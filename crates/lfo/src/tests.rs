@@ -212,3 +212,204 @@ fn frequency_bounds_smoothing_and_live_tempo_changes_are_finite_at_all_project_r
         );
     }
 }
+
+fn modulate(
+    lfo: &mut Lfo,
+    routes: &mut [daw_unit_core::ModulationRoute],
+    values: &[daw_unit_core::ModulationValue],
+    frame: u64,
+) -> f32 {
+    daw_unit_core::process_modulation(
+        lfo,
+        routes,
+        (),
+        &[],
+        values,
+        daw_unit_core::ModulationContext {
+            frame,
+            ..Default::default()
+        },
+    );
+    lfo.sample_at(clock(frame))
+}
+#[test]
+fn depth_and_rate_use_shared_resolution_smoothing_and_integrated_phase_at_every_rate() {
+    use daw_unit_core::*;
+    let id = ModulationSourceId {
+        layer: uuid_id(1),
+        unit: uuid_id(2),
+    };
+    let value = ModulationValue {
+        source: id,
+        value: 1.0,
+        weight: 1.0,
+        range: ModulationRange::Unipolar,
+        behavior: ModulationBehavior::Contour,
+        release_age: None,
+    };
+    for rate in RATES {
+        let mut unit = Lfo::new(
+            LfoSettings {
+                depth: 0.0,
+                ..settings()
+            },
+            context(rate),
+        );
+        assert!(unit.descriptor().consumes_modulation());
+        let mut routes = [ModulationParameter::LfoDepth, ModulationParameter::LfoRate].map(|p| {
+            ModulationRoute::new(
+                Modulation {
+                    source: Some(id),
+                    amount: 1.0,
+                    ..Modulation::new(p)
+                },
+                rate,
+            )
+        });
+        let mut reference_phase = 0.0;
+        let mut previous_hz = 0.0;
+        for frame in 0..rate / 20 {
+            let sample = modulate(&mut unit, &mut routes, &[value], u64::from(frame));
+            let [depth, hz] = unit.modulation_values();
+            assert!((0.0..=1.0).contains(&depth) && (1.0..=2.00001).contains(&hz));
+            if frame > 0 {
+                reference_phase += f64::from(previous_hz) / f64::from(rate);
+            }
+            let expected = (reference_phase * std::f64::consts::TAU).sin() as f32 * depth;
+            assert!(
+                (sample - expected).abs() < 1e-6,
+                "{rate}: {frame} {sample} {expected}"
+            );
+            previous_hz = hz;
+        }
+        assert!((unit.modulation_values()[0] - 1.0).abs() < 1e-6);
+        assert!((unit.modulation_values()[1] - 2.0).abs() < 1e-6);
+        unit.reset();
+        let a = modulate(&mut unit, &mut routes, &[value], 0);
+        unit.reset();
+        assert_eq!(a, modulate(&mut unit, &mut routes, &[value], 0));
+        // Shared LFOs do not consume per-note controls.
+        let mut local = Lfo::new(
+            LfoSettings {
+                depth: 0.0,
+                ..settings()
+            },
+            context(rate),
+        );
+        process_modulation(
+            &mut local,
+            &mut routes,
+            (),
+            &[value],
+            &[],
+            Default::default(),
+        );
+        assert_eq!(local.sample_at(clock(100)), 0.0);
+    }
+}
+fn uuid_id(value: u128) -> daw_unit_core::ModulationTargetId {
+    daw_unit_core::ModulationTargetId::from_u128(value)
+}
+#[test]
+fn unassigned_routes_are_neutral_and_extreme_modulation_respects_each_rate_modes_bounds() {
+    use daw_unit_core::*;
+    for mode in [LfoRateMode::Hz, LfoRateMode::Note] {
+        let s = LfoSettings {
+            rate_mode: mode,
+            ..settings()
+        };
+        let mut plain = Lfo::new(s, context(48000));
+        let mut routed = Lfo::new(s, context(48000));
+        let mut neutral = [ModulationRoute::new(
+            Modulation::new(ModulationParameter::LfoRate),
+            48000,
+        )];
+        for frame in 0..2000 {
+            assert_eq!(
+                plain.sample_at(clock(frame)),
+                modulate(&mut routed, &mut neutral, &[], frame)
+            );
+        }
+        let source = ModulationSourceId {
+            layer: uuid_id(1),
+            unit: uuid_id(2),
+        };
+        for sign in [-1.0, 1.0] {
+            let mut routes =
+                [ModulationParameter::LfoDepth, ModulationParameter::LfoRate].map(|p| {
+                    ModulationRoute::new(
+                        Modulation {
+                            source: Some(source),
+                            amount: sign * p.limit(),
+                            ..Modulation::new(p)
+                        },
+                        48000,
+                    )
+                });
+            let value = ModulationValue {
+                source,
+                value: 1.0,
+                weight: 1.0,
+                range: ModulationRange::Unipolar,
+                behavior: ModulationBehavior::Continuous,
+                release_age: None,
+            };
+            for frame in 0..2000 {
+                let sample = modulate(&mut routed, &mut routes, &[value], frame);
+                assert!(sample.is_finite() && (-1.0..=1.0).contains(&sample));
+                let [depth, hz] = routed.modulation_values();
+                let [low, high] = s.rate_bounds(120.0).map(|v| v as f32);
+                assert!((0.0..=1.0).contains(&depth) && (low..=high).contains(&hz));
+            }
+        }
+    }
+}
+
+#[test]
+fn published_depth_is_neutral_at_zero_for_amplitude_and_additive_destinations() {
+    use daw_unit_core::*;
+    let source = ModulationSourceId {
+        layer: uuid_id(1),
+        unit: uuid_id(2),
+    };
+    for polarity in [LfoPolarity::Unipolar, LfoPolarity::Bipolar] {
+        for depth in [0.0, 0.5, 1.0] {
+            let mut lfo = Lfo::new(
+                LfoSettings {
+                    depth,
+                    polarity,
+                    ..settings()
+                },
+                context(48000),
+            );
+            let mut output = ModulationOutput::new(source, true, context(48000));
+            let value = output.sample(&mut lfo, clock(36000));
+            assert_eq!(value.weight, depth);
+            let mut routes =
+                [ModulationParameter::Amplitude, ModulationParameter::Pitch].map(|p| {
+                    ModulationRoute::new(
+                        Modulation {
+                            source: Some(source),
+                            amount: 1.0,
+                            ..Modulation::new(p)
+                        },
+                        48000,
+                    )
+                });
+            let inputs = ModulationInputs::resolve(
+                &mut routes,
+                &[ModulationParameter::Amplitude, ModulationParameter::Pitch],
+                &[],
+                &[value],
+                Default::default(),
+            );
+            assert!((inputs.amplitude() - (1.0 - depth)).abs() < 1e-6);
+            let expected_pitch = if polarity == LfoPolarity::Bipolar {
+                -depth
+            } else {
+                0.0
+            };
+            assert_eq!(inputs.offset(ModulationParameter::Pitch), expected_pitch);
+        }
+    }
+}

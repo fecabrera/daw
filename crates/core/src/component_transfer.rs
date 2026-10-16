@@ -109,6 +109,9 @@ impl Project {
                             from.remove(index)
                         };
                         unit.id = new_id;
+                        if duplicate {
+                            fresh_routes(&mut unit.modulations);
+                        }
                         lfos_mut(instrument, destination).push(unit);
                     }
                     _ => unreachable!(),
@@ -125,6 +128,14 @@ impl Project {
                     for layer in &mut instrument.layers {
                         remap_source(&mut layer.oscillator_modulations, old, new);
                         remap_source(&mut layer.amplitude.modulations, old, new);
+                    }
+                    for lfo in instrument
+                        .layers
+                        .iter_mut()
+                        .flat_map(|l| &mut l.lfos)
+                        .chain(&mut instrument.main.lfos)
+                    {
+                        remap_source(&mut lfo.modulations, old, new);
                     }
                     for effect in &mut track.effects {
                         remap_source(effect.unit.modulations_mut(), old, new);

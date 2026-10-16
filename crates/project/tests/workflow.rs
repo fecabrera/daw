@@ -3411,6 +3411,21 @@ fn lfo_instances_connections_and_presentation_survive_save_as_duplication_and_ra
     lfo.settings.polarity = LfoPolarity::Bipolar;
     lfo.settings.restart = LfoRestart::Legato;
     lfo.settings.smooth_ms = 17.0;
+    lfo.settings.depth = 0.35;
+    lfo.modulation_open = true;
+    layer.envelopes[0].present = true;
+    layer.envelopes[0].mode = daw_core::EnvelopeMode::Legato;
+    for parameter in [ModulationParameter::LfoDepth, ModulationParameter::LfoRate] {
+        lfo.modulations.push(Modulation {
+            source: Some(ModulationSourceId {
+                layer: layer.id,
+                unit: layer.envelopes[0].id,
+            }),
+            amount: 0.5,
+            ..Modulation::new(parameter)
+        });
+    }
+
     let source = ModulationSourceId {
         layer: layer.id,
         unit: lfo.id,

@@ -119,6 +119,7 @@ impl DawUi {
             *id == settings.main.id || settings.layers.iter().any(|layer| layer.id == *id)
         });
         let modulation_sources = crate::modulation_panel::sources(Some(&settings));
+        let lfo_sources = crate::modulation_panel::provider_sources(&settings);
         let mut remove_layer = None;
         let column_bounds = ui.max_rect();
         let control_panel = panels::ControlPanel::begin(ui, column_bounds);
@@ -470,7 +471,11 @@ impl DawUi {
                                                             }
                                                         }
                                                         for (index, lfo) in layer.lfos.iter_mut().enumerate() {
-                                                            if let Some(unit) = crate::lfo_panel::unit(ui, lfo, index + 1, height, compact) {
+                                                            if let Some(unit) = crate::lfo_panel::unit(ui, lfo, index + 1, height, compact, crate::lfo_panel::Controls {
+                                                                sources: lfo_sources.iter().find(|(id, _)| id.layer == layer.id && id.unit == lfo.id).map_or(&[], |(_, sources)| sources.as_slice()),
+                                                                tempo: self.session.project.tempo_bpm,
+                                                                live: self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Lfo { track: track.id, layer: layer.id, unit: lfo.id })).map(|v| [v[0], v[1]]),
+                                                            }) {
                                                                 self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, daw_core::InstrumentComponent::Lfo(lfo.id));
                                                                 let rect = unit.response.rect;
                                                                 if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }
@@ -604,7 +609,7 @@ impl DawUi {
         for (_, rect) in &mut layer_rows {
             *rect = rect.intersect(scroll.inner_rect);
         }
-        self.instrument_main(ui, track.id, &mut settings.main, main_rect);
+        self.instrument_main(ui, track.id, &mut settings.main, main_rect, &lfo_sources);
         layer_rows.push((settings.main.id, main_rect));
         control_panel.finish(ui);
         // Fixed chrome must paint after scrolling rows, which share its boundary pixel.

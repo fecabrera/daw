@@ -38,6 +38,10 @@ impl LfoPolarity {
         }
     }
 }
+fn full_depth() -> f32 {
+    1.0
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LfoSettings {
     pub version: u32,
@@ -48,6 +52,8 @@ pub struct LfoSettings {
     pub phase_degrees: f32,
     pub polarity: LfoPolarity,
     pub smooth_ms: f32,
+    #[serde(default = "full_depth")]
+    pub depth: f32,
     pub restart: LfoRestart,
 }
 impl Default for LfoSettings {
@@ -61,13 +67,30 @@ impl Default for LfoSettings {
             phase_degrees: 0.0,
             polarity: LfoPolarity::Unipolar,
             smooth_ms: 1.0,
+            depth: 1.0,
             restart: LfoRestart::Transport,
         }
     }
 }
 impl LfoSettings {
+    pub fn base_rate_hz(&self, tempo_bpm: f32) -> f64 {
+        match self.rate_mode {
+            LfoRateMode::Hz => f64::from(self.rate_hz),
+            LfoRateMode::Note => f64::from(tempo_bpm) / (60.0 * self.note_rate.beats()),
+        }
+    }
+    pub fn rate_bounds(&self, tempo_bpm: f32) -> [f64; 2] {
+        match self.rate_mode {
+            LfoRateMode::Hz => [0.01, 20.0],
+            LfoRateMode::Note => {
+                [NoteRate(1), NoteRate(26)].map(|r| f64::from(tempo_bpm) / (60.0 * r.beats()))
+            }
+        }
+    }
     pub fn valid(&self) -> bool {
         self.version == LFO_STATE_VERSION
+            && self.depth.is_finite()
+            && (0.0..=1.0).contains(&self.depth)
             && self.rate_hz.is_finite()
             && (0.01..=20.0).contains(&self.rate_hz)
             && self.note_rate.0 < NoteRate::COUNT
@@ -84,6 +107,10 @@ pub struct LfoInstance {
     pub enabled: bool,
     pub collapsed: bool,
     pub settings: LfoSettings,
+    #[serde(default)]
+    pub modulation_open: bool,
+    #[serde(default)]
+    pub modulations: Vec<crate::Modulation>,
 }
 impl Default for LfoInstance {
     fn default() -> Self {
@@ -93,6 +120,8 @@ impl Default for LfoInstance {
             enabled: true,
             collapsed: false,
             settings: LfoSettings::default(),
+            modulation_open: false,
+            modulations: Vec::new(),
         }
     }
 }
@@ -120,5 +149,21 @@ impl crate::ModulationSourceSettings for LfoInstance {
     }
     fn modulation_enabled(&self) -> bool {
         self.enabled
+    }
+}
+
+impl LfoInstance {
+    pub fn valid(&self) -> bool {
+        !self.id.is_nil()
+            && self.settings.valid()
+            && crate::ModulationDestinationSettings::valid_modulations(self)
+    }
+}
+impl crate::ModulationDestinationSettings for LfoInstance {
+    const MODULATION_PARAMETERS: &'static [crate::ModulationParameter] =
+        &crate::ModulationParameter::LFO;
+    const MODULATION_SCOPE: crate::ModulationScope = crate::ModulationScope::Shared;
+    fn modulations(&self) -> &[crate::Modulation] {
+        &self.modulations
     }
 }

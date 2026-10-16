@@ -99,30 +99,67 @@ pub(super) fn mode(ui: &mut Ui, mode: &mut LfoRateMode) -> egui::Response {
             .format(|v| LfoRateMode::ALL[v as usize].name().into()),
     )
 }
+pub(super) struct RateModulation<'a> {
+    pub marker: Option<&'a knobs::ModulationMarker>,
+    pub open: &'a mut bool,
+    pub tempo: f32,
+}
+
 pub(super) fn rate(
     ui: &mut Ui,
     mode: LfoRateMode,
     hz: &mut f32,
     note: &mut NoteRate,
 ) -> egui::Response {
+    modulated_rate(
+        ui,
+        mode,
+        hz,
+        note,
+        RateModulation {
+            marker: None,
+            open: &mut false,
+            tempo: 120.0,
+        },
+    )
+}
+pub(super) fn modulated_rate(
+    ui: &mut Ui,
+    mode: LfoRateMode,
+    hz: &mut f32,
+    note: &mut NoteRate,
+    modulation: RateModulation<'_>,
+) -> egui::Response {
     if mode == LfoRateMode::Hz {
-        ui.add(Knob::new(
-            hz,
-            KnobSpec::new("LFO rate", 0.01..=20.0, 2.0, 0.01)
-                .scale(
-                    |v| (v / 0.01).ln() / 2000_f32.ln(),
-                    |p| 0.01 * 2000_f32.powf(p),
-                    |v, d| v * 2_f32.powf(d / 24.0),
-                )
-                .value_label(|v| format!("{v:.2} Hz"))
-                .format(|v| format!("{v:.2} Hz"))
-                .endpoint_labels("0.01", "20"),
-        ))
+        ui.add(
+            Knob::new(
+                hz,
+                crate::parameter_knobs::destination(daw_core::ModulationParameter::LfoRate),
+            )
+            .modulated(modulation.marker, modulation.open),
+        )
     } else {
         let mut position = NOTE_RATES
             .iter()
             .position(|rate| *rate == *note)
             .unwrap_or(13) as f32;
+        let marker = modulation.marker.cloned().map(|mut m| {
+            let to_position = |hz: f32| {
+                let hz = f64::from(hz).max(f64::MIN_POSITIVE);
+                for i in 0..NOTE_RATES.len() - 1 {
+                    let low = f64::from(modulation.tempo) / (60.0 * NOTE_RATES[i].beats());
+                    let high = f64::from(modulation.tempo) / (60.0 * NOTE_RATES[i + 1].beats());
+                    if hz <= high {
+                        return i as f32
+                            + ((hz / low).ln() / (high / low).ln()).clamp(0.0, 1.0) as f32;
+                    }
+                }
+                (NOTE_RATES.len() - 1) as f32
+            };
+            m.range = m.range.map(to_position);
+            m.live = m.live.map(|v| v.map(to_position));
+            m
+        });
         let response = ui.add(Knob::new(
             &mut position,
             KnobSpec::new("LFO note duration", 0.0..=f32::from(NoteRate::COUNT - 1), 13.0, 1.0)
@@ -131,7 +168,7 @@ pub(super) fn rate(
                 .value_label(note_label)
                 .format(note_label)
                 .endpoint_labels("4b D", "1/64 T"),
-        )).on_hover_text("D = dotted; T = triplet. Bounded from dotted 4 bars to triplet 1/64, slowest to fastest. Note rates follow project tempo and transport.");
+        ).modulated(marker.as_ref(), modulation.open)).on_hover_text("D = dotted; T = triplet. Bounded from dotted 4 bars to triplet 1/64, slowest to fastest. Note rates follow project tempo and transport.");
         if response.changed() {
             *note =
                 NOTE_RATES[position.round().clamp(0.0, f32::from(NoteRate::COUNT - 1)) as usize];

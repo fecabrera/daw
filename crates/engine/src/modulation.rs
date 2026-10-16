@@ -38,6 +38,7 @@ pub(crate) struct LfoControl {
     source: ModulationSourceId,
     unit: daw_lfo::Lfo,
     output: ModulationOutput,
+    routes: Vec<Route>,
 }
 impl LfoControl {
     pub fn new(
@@ -52,6 +53,11 @@ impl LfoControl {
         Self {
             source,
             unit: daw_lfo::Lfo::new(settings.settings, context),
+            routes: settings
+                .modulations
+                .iter()
+                .map(|r| Route::new(*r, context.sample_rate_hz))
+                .collect(),
             output: ModulationOutput::new(source, settings.present && settings.enabled, context),
         }
     }
@@ -86,7 +92,24 @@ impl SharedControls {
             release_frames: 0,
         }
     }
-    pub fn with_lfos(mut self, lfos: Vec<LfoControl>) -> Self {
+    pub fn with_lfos(mut self, mut lfos: Vec<LfoControl>) -> Self {
+        lfos.sort_by_key(|l| (l.source.layer, l.source.unit));
+        let settings: Vec<Vec<_>> = lfos
+            .iter()
+            .map(|l| l.routes.iter().map(|r| r.settings).collect())
+            .collect();
+        let dependencies: Vec<_> = lfos
+            .iter()
+            .zip(&settings)
+            .map(|(l, routes)| (l.source, routes.as_slice()))
+            .collect();
+        let order = daw_unit_core::modulation_dependency_order(&dependencies)
+            .expect("validated modulation graph");
+        let mut slots: Vec<_> = lfos.into_iter().map(Some).collect();
+        let lfos: Vec<_> = order
+            .into_iter()
+            .map(|i| slots[i].take().unwrap())
+            .collect();
         self.values.extend(lfos.iter().map(|l| ModulationValue {
             source: l.source,
             value: 0.0,
@@ -103,6 +126,9 @@ impl SharedControls {
         for lfo in &mut self.lfos {
             lfo.unit.reset();
             lfo.output.reset();
+            for route in &mut lfo.routes {
+                route.reset();
+            }
         }
     }
     pub fn reset_notes(&mut self) {
@@ -163,19 +189,34 @@ impl SharedControls {
                 v.release_age = Some(self.release_frames);
             }
         }
-        for (lfo, value) in self
-            .lfos
-            .iter_mut()
-            .zip(&mut self.values[self.controls.len()..])
-        {
-            *value = lfo.output.sample(&mut lfo.unit, context);
+        for (index, lfo) in self.lfos.iter_mut().enumerate() {
+            daw_unit_core::process_modulation(
+                &mut lfo.unit,
+                &mut lfo.routes,
+                (),
+                &[],
+                &self.values,
+                daw_unit_core::ModulationContext {
+                    frame: context.frame,
+                    tempo_bpm: context.tempo_bpm,
+                    ..Default::default()
+                },
+            );
+            self.values[self.controls.len() + index] = lfo.output.sample(&mut lfo.unit, context);
         }
+    }
+    pub fn lfo_values(&self, id: ModulationSourceId) -> Option<[f32; 2]> {
+        self.lfos
+            .iter()
+            .find(|l| l.source == id)
+            .map(|l| l.unit.modulation_values())
     }
     pub fn retarget(&mut self, next: &mut Self) {
         for n in &mut next.lfos {
             if let Some(old) = self.lfos.iter_mut().find(|old| old.source == n.source) {
                 old.unit.set_settings(n.unit.settings());
                 old.output.retarget(&n.output);
+                daw_unit_core::retarget_modulation_routes(&mut old.routes, &mut n.routes);
                 std::mem::swap(old, n);
             }
         }

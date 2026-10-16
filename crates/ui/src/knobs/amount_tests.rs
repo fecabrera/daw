@@ -3,7 +3,7 @@ use super::*;
 use crate::parameter_knobs;
 use daw_core::ModulationParameter as P;
 
-const PARAMETERS: [P; 11] = [
+const PARAMETERS: [P; 13] = [
     P::Pitch,
     P::Amplitude,
     P::Frequency,
@@ -15,6 +15,8 @@ const PARAMETERS: [P; 11] = [
     P::Tone,
     P::ColorStrength,
     P::ColorFrequency,
+    P::LfoDepth,
+    P::LfoRate,
 ];
 
 fn native_value(parameter: P, amount: f32) -> f32 {
@@ -22,7 +24,7 @@ fn native_value(parameter: P, amount: f32) -> f32 {
         P::Pitch => amount,
         P::Amplitude => 20.0 * (1.0 - amount.abs()).log10(),
         P::Level | P::Volume => -amount.abs(),
-        P::Frequency | P::ColorFrequency => {
+        P::Frequency | P::ColorFrequency | P::LfoRate => {
             parameter_knobs::destination(parameter).reset * 2.0_f32.powf(amount)
         }
         P::Resonance => 0.1 + amount.abs(),
@@ -31,7 +33,7 @@ fn native_value(parameter: P, amount: f32) -> f32 {
 }
 fn direction(parameter: P, amount: f32) -> f32 {
     match parameter {
-        P::Pitch | P::Frequency | P::ColorFrequency => 1.0,
+        P::Pitch | P::Frequency | P::ColorFrequency | P::LfoRate => 1.0,
         P::Amplitude | P::Level | P::Volume => -amount.signum(),
         _ => amount.signum(),
     }

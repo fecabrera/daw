@@ -13,6 +13,16 @@ fn percent(name: &'static str, reset: f32) -> KnobSpec {
 }
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::LfoDepth => percent("LFO depth", 1.0),
+        Parameter::LfoRate => KnobSpec::new("LFO rate", 0.01..=20.0, 2.0, 0.01)
+            .scale(
+                |v| (v / 0.01).ln() / 2000_f32.ln(),
+                |p| 0.01 * 2000_f32.powf(p),
+                |v, d| v * 2_f32.powf(d / 24.0),
+            )
+            .value_label(|v| format!("{v:.2} Hz"))
+            .format(|v| format!("{v:.2} Hz"))
+            .endpoint_labels("0.01", "20"),
         Parameter::Pitch => knobs::pitch_spec(),
         Parameter::Amplitude => knobs::marked_gain_spec(),
         Parameter::Level => knobs::marked_gain_spec().named("Filter output level"),
@@ -100,7 +110,9 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−24", "+24"],
             ),
-            Parameter::Frequency => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
+            Parameter::Frequency | Parameter::LfoRate => {
+                (AmountMapping::Octaves, signed_octaves, ["−6", "+6"])
+            }
             Parameter::ColorFrequency => (AmountMapping::Octaves, signed_octaves, ["−3", "+3"]),
             Parameter::Resonance => (
                 AmountMapping::Offset {
@@ -110,7 +122,8 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_q,
                 ["−10", "+10"],
             ),
-            Parameter::DryWet
+            Parameter::LfoDepth
+            | Parameter::DryWet
             | Parameter::DriveGain
             | Parameter::Tone
             | Parameter::ColorStrength => (

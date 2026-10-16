@@ -1,5 +1,7 @@
+mod graph;
 mod protocol;
 mod runtime;
+pub use graph::*;
 pub use protocol::*;
 pub use runtime::*;
 
@@ -68,8 +70,11 @@ pub enum ModulationParameter {
     Tone,
     ColorStrength,
     ColorFrequency,
+    LfoDepth,
+    LfoRate,
 }
 impl ModulationParameter {
+    pub const LFO: [Self; 2] = [Self::LfoDepth, Self::LfoRate];
     pub const DRIVE: [Self; 5] = [
         Self::Volume,
         Self::DriveGain,
@@ -80,6 +85,8 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::LfoDepth => "Depth",
+            Self::LfoRate => "Rate",
             Self::Amplitude => "Amplitude",
             Self::Pitch => "Pitch",
             Self::Frequency => "Frequency",
@@ -96,7 +103,7 @@ impl ModulationParameter {
     pub fn limit(self) -> f32 {
         match self {
             Self::Pitch => 48.0,
-            Self::Frequency => 6.0,
+            Self::Frequency | Self::LfoRate => 6.0,
             Self::ColorFrequency => 3.0,
             Self::Resonance => 10.0,
             Self::Level | Self::Volume => 24.0,
@@ -106,7 +113,7 @@ impl ModulationParameter {
     pub fn unit(self) -> &'static str {
         match self {
             Self::Pitch => "semitones",
-            Self::Frequency | Self::ColorFrequency => "oct",
+            Self::Frequency | Self::ColorFrequency | Self::LfoRate => "oct",
             Self::Resonance => "Q",
             Self::Level | Self::Volume => "dB",
             _ => "",

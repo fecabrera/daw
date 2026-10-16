@@ -107,6 +107,32 @@ fn common_output_clamps_range_neutralizes_nonfinite_and_keeps_disabled_sources_a
     assert_eq!(source.ticks, 9);
     assert_eq!(ModulationRange::Unipolar.sanitize(-0.5), 0.0);
     assert_eq!(ModulationRange::Unipolar.sanitize(f32::INFINITY), 0.0);
+    struct Weighted(f32);
+    impl ModulationSource for Weighted {
+        const MODULATION_OUTPUT: ModulationOutputDescriptor = TestSource::MODULATION_OUTPUT;
+        fn next_modulation(&mut self, _: ModulationSourceContext) -> f32 {
+            1.0
+        }
+        fn modulation_weight(&self) -> f32 {
+            self.0
+        }
+    }
+    let mut weighted = ModulationOutput::new(id(3), true, context());
+    for (depth, expected) in [
+        (0.0, 0.0),
+        (0.5, 0.5),
+        (2.0, 1.0),
+        (-1.0, 0.0),
+        (f32::NAN, 0.0),
+        (f32::INFINITY, 0.0),
+    ] {
+        assert_eq!(
+            weighted
+                .sample(&mut Weighted(depth), Default::default())
+                .weight,
+            expected
+        );
+    }
 }
 #[test]
 fn routes_share_signed_summing_neutral_failures_and_five_millisecond_retargeting() {
@@ -353,4 +379,82 @@ fn lfo_saved_settings_default_empty_and_validate_identity_and_selected_output_me
     let mut malformed = old;
     malformed["layers"][0]["lfos"] = serde_json::Value::Null;
     assert!(serde_json::from_value::<InstrumentSettings>(malformed).is_err());
+}
+
+#[test]
+fn lfo_destinations_validate_shared_references_cycles_and_legacy_defaults() {
+    let mut i = InstrumentSettings::default();
+    let owner = i.layers[0].id;
+    let mut a = crate::LfoInstance::default();
+    let a_id = ModulationSourceId {
+        layer: owner,
+        unit: a.id,
+    };
+    let mut b = crate::LfoInstance::default();
+    let b_id = ModulationSourceId {
+        layer: i.main.id,
+        unit: b.id,
+    };
+    a.modulations.push(Modulation {
+        source: Some(b_id),
+        amount: 1.0,
+        ..Modulation::new(ModulationParameter::LfoDepth)
+    });
+    b.modulation_open = true;
+    i.layers[0].lfos.push(a);
+    i.main.lfos.push(b);
+    assert!(i.valid());
+    let nodes: Vec<_> = i
+        .lfo_destinations()
+        .map(|(id, l)| (id, l.modulations.as_slice()))
+        .collect();
+    assert_eq!(modulation_dependency_order(&nodes), Some(vec![1, 0]));
+    assert!(modulation_would_cycle(&nodes, b_id, a_id));
+    assert!(modulation_would_cycle(&nodes, a_id, a_id));
+    assert!(!modulation_would_cycle(&nodes, a_id, b_id));
+    let mut legacy = serde_json::to_value(&i).unwrap();
+    let a = &mut legacy["layers"][0]["lfos"][0];
+    a["settings"].as_object_mut().unwrap().remove("depth");
+    a.as_object_mut().unwrap().remove("modulations");
+    a.as_object_mut().unwrap().remove("modulation_open");
+    let loaded: InstrumentSettings = serde_json::from_value(legacy.clone()).unwrap();
+    assert_eq!(loaded.layers[0].lfos[0].settings.depth, 1.0);
+    assert!(
+        loaded.layers[0].lfos[0].modulations.is_empty()
+            && !loaded.layers[0].lfos[0].modulation_open
+    );
+    assert!(loaded.valid());
+    legacy["layers"][0]["lfos"][0]["modulations"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<InstrumentSettings>(legacy).is_err());
+    let original = i.clone();
+    for source in [
+        a_id,
+        b_id,
+        ModulationSourceId {
+            layer: owner,
+            unit: i.layers[0].envelopes[0].id,
+        },
+        ModulationSourceId {
+            layer: owner,
+            unit: id(999).unit,
+        },
+    ] {
+        let mut invalid = original.clone();
+        invalid.main.lfos[0].modulations.push(Modulation {
+            source: Some(source),
+            enabled: false,
+            ..Modulation::new(ModulationParameter::LfoRate)
+        });
+        assert!(!invalid.valid(), "{source:?}");
+    }
+    for depth in [-0.01, 1.01, f32::NAN, f32::INFINITY] {
+        let mut invalid = original.clone();
+        invalid.main.lfos[0].settings.depth = depth;
+        assert!(!invalid.valid());
+    }
+    let mut wrong_target = original;
+    wrong_target.main.lfos[0]
+        .modulations
+        .push(Modulation::new(ModulationParameter::Pitch));
+    assert!(!wrong_target.valid());
 }

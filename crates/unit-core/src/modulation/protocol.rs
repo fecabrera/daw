@@ -90,6 +90,11 @@ pub trait ModulationSource: Send {
         Self::MODULATION_OUTPUT
     }
     fn next_modulation(&mut self, context: ModulationSourceContext) -> f32;
+    /// Normalized contribution depth after sampling. Keep zero neutral for every destination,
+    /// including multiplicative Amplitude, rather than changing the signal's polarity range.
+    fn modulation_weight(&self) -> f32 {
+        1.0
+    }
 }
 
 /// Control-thread discovery. Retained, absent units remain discoverable for reference validation.
@@ -179,12 +184,14 @@ impl ModulationOutput {
         context: ModulationSourceContext,
     ) -> ModulationValue {
         let descriptor = source.modulation_output();
+        let value = descriptor.range.sanitize(source.next_modulation(context));
+        let depth = ModulationRange::Unipolar.sanitize(source.modulation_weight());
         ModulationValue {
             range: descriptor.range,
             behavior: descriptor.behavior,
             source: self.id,
-            value: descriptor.range.sanitize(source.next_modulation(context)),
-            weight: self.weight.next_value(),
+            value,
+            weight: self.weight.next_value() * depth,
             release_age: None,
         }
     }

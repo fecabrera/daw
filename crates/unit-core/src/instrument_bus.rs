@@ -51,10 +51,7 @@ impl InstrumentBusSettings {
                     && e.mode != EnvelopeMode::PerNote
                     && e.settings.valid()
             })
-            && self
-                .lfos
-                .iter()
-                .all(|l| !l.id.is_nil() && ids.insert(l.id) && l.settings.valid())
+            && self.lfos.iter().all(|l| ids.insert(l.id) && l.valid())
     }
     pub fn modulation_sources(&self) -> impl Iterator<Item = ModulationSourceInfo<'_>> {
         self.envelopes

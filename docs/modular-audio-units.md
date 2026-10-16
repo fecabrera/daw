@@ -449,3 +449,7 @@ All destination-owned amount knobs use the same [parameter profile](modulation.m
 ## Installed component transfers and effect copies — 2026-10-16
 
 Installed instrument headers now move components between layers; individual oscillator strip gaps transfer one oscillator. Option-drag on macOS or Ctrl-drag elsewhere creates copies. Whole Oscillator transfers merge sources and targeted routes. Provider moves remap source references, including track effects. Main accepts shared Envelope/LFO components; occupied Amplitude stages reject drops. Core applies each transfer atomically. Effect headers use the same modifier to copy the selected group in chain order through their existing insertion preview. See [gestures, identity rules, and limits](component-editing.md).
+
+## LFO modulation inputs — 2026-10-16
+
+LFO now provides and consumes control signals through the shared modulation contracts. Depth and Rate use the existing destination-owned controls, source discovery, scope validation, route resolver, smoothing, markers, stable IDs, and save format. The host prepares an acyclic provider-first order; self/feedback connections are invalid even when inactive. Shared Envelope and LFO inputs are supported; voice-local Envelope inputs remain invalid. See [LFO modulation](lfo.md#depth-and-rate-modulation) for bounds, continuous rate integration, the direct-seek history reset, and setup examples.

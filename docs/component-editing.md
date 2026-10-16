@@ -20,11 +20,13 @@ Sources moved out of a layer are removed from its component list. They are not r
 
 Copies receive new component and connection IDs, including per-oscillator pitch targets. A copied destination keeps its existing source assignments. Existing consumers of a copied Envelope/LFO keep using the original provider. Base parameters, signed amounts, power, unit collapse, and modulation-open state are preserved. No modulation source or audio processing algorithm is duplicated in the UI.
 
+LFO components carry their incoming Depth/Rate connections and modulation-panel open state when moved or copied. Copies receive fresh incoming route IDs while retaining source assignments. Moving any provider also updates LFO consumers, including those on Main. Self/feedback cycles remain invalid under the [shared dependency rules](modulation.md#providers-that-also-consume-modulation).
+
 ## Reordering strips
 
 Drag unused space inside an oscillator strip to reorder sources within the Oscillator unit. The same gesture can insert that source between oscillators in another layer. The insertion line marks its position; dropping on a layer label appends it. Source UUIDs and pitch routes stay unchanged during reordering. Source controls and routes remain attached by ID when the displayed Osc N numbers change.
 
-Drag unused space inside a modulation strip to reorder connections within that destination. Amplitude, Auto-filter, Drive, and Oscillator all use this shared control. Source assignments, target IDs, amounts, power, and route IDs stay attached to the connection when the displayed Mod N numbers change. Reordering does not create a copy. The copy modifier remains available for oscillator transfers and installed effect headers. Strip edge scrolling, release-only commit, cancellation, and clean no-op drops follow the same rules as other unit drags. Source order and route order save with the project.
+Drag unused space inside a modulation strip to reorder connections within that destination. Amplitude, Auto-filter, Drive, Oscillator, and LFO all use this shared control. Source assignments, target IDs, amounts, power, and route IDs stay attached to the connection when the displayed Mod N numbers change. Reordering does not create a copy. The copy modifier remains available for oscillator transfers and installed effect headers. Strip edge scrolling, release-only commit, cancellation, and clean no-op drops follow the same rules as other unit drags. Source order and route order save with the project.
 
 ## Effects
 

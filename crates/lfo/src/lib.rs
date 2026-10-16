@@ -1,8 +1,10 @@
 //! Portable normalized LFO source and the clock/wave primitives shared by Auto-filter.
 use daw_unit_core::{
-    LfoPolarity, LfoRateMode, LfoRestart, LfoSettings, ModulationBehavior,
-    ModulationOutputDescriptor, ModulationRange, ModulationSource, ModulationSourceContext,
-    PortKind, ProcessingContext, UnitDescriptor,
+    LfoPolarity, LfoRateMode, LfoRestart, LfoSettings, ModulationBehavior, ModulationContext,
+    ModulationDestination, ModulationDestinationSettings, ModulationInputs,
+    ModulationOutputDescriptor, ModulationParameter, ModulationRange, ModulationScope,
+    ModulationSmoother, ModulationSource, ModulationSourceContext, PortKind, ProcessingContext,
+    UnitDescriptor,
 };
 
 pub fn waveform(index: usize, phase: f64) -> f64 {
@@ -123,6 +125,13 @@ pub struct Lfo {
     waves: [Ramp; 5],
     phase: Ramp,
     smoothing: Ramp,
+    depth: Ramp,
+    modulation: ModulationSmoother<2>,
+    offsets: [f64; 2],
+    rate_phase: f64,
+    rate_last: Option<(u64, i128, f64)>,
+    sample_rate: f64,
+    effective: [f32; 2],
 }
 impl Lfo {
     pub fn new(settings: LfoSettings, context: ProcessingContext) -> Self {
@@ -133,6 +142,13 @@ impl Lfo {
             waves: std::array::from_fn(|i| Ramp::new(f64::from(i == settings.wave.index()))),
             phase: Ramp::new(f64::from(settings.phase_degrees) / 360.0),
             smoothing: Ramp::new(f64::from(settings.smooth_ms)),
+            depth: Ramp::new(f64::from(settings.depth)),
+            modulation: ModulationSmoother::new(context),
+            offsets: [0.0; 2],
+            rate_phase: 0.0,
+            rate_last: None,
+            sample_rate: f64::from(context.sample_rate_hz),
+            effective: [settings.depth, settings.rate_hz],
         }
     }
     pub fn descriptor(&self) -> UnitDescriptor {
@@ -140,7 +156,7 @@ impl Lfo {
             type_id: daw_unit_core::LFO_TYPE_ID,
             name: "LFO",
             is_source: false,
-            inputs: &[PortKind::NoteEvents],
+            inputs: &[PortKind::NoteEvents, PortKind::Modulation],
             outputs: &[PortKind::Modulation],
         }
     }
@@ -154,6 +170,7 @@ impl Lfo {
         self.phase
             .set(f64::from(settings.phase_degrees) / 360.0, self.fade);
         self.smoothing.set(f64::from(settings.smooth_ms), self.fade);
+        self.depth.set(f64::from(settings.depth), self.fade);
         self.settings = settings;
     }
     pub fn reset(&mut self) {
@@ -163,20 +180,45 @@ impl Lfo {
         }
         self.phase.reset();
         self.smoothing.reset();
+        self.depth.reset();
+        self.modulation.reset();
+        self.offsets = [0.0; 2];
+        self.rate_phase = 0.0;
+        self.rate_last = None;
     }
+    /// Direct signal sample, including Depth. Hosts should publish through ModulationOutput,
+    /// which carries Depth as a neutral contribution weight for all destination semantics.
     pub fn sample_at(&mut self, context: ModulationSourceContext) -> f32 {
+        let value = self.control_at(context);
+        value * self.effective[0]
+    }
+    fn control_at(&mut self, context: ModulationSourceContext) -> f32 {
         let origin = match self.settings.restart {
             LfoRestart::Transport => 0,
             LfoRestart::Retrigger => context.note_origin.unwrap_or(0),
             LfoRestart::Legato => context.legato_origin.unwrap_or(0),
         };
-        let hz = rate_hz(
-            self.settings.rate_mode,
-            self.settings.rate_hz,
-            self.settings.note_rate.beats(),
-            context.tempo_bpm,
-        );
-        let phase = self.clock.phase_at(context.frame, origin, hz) + self.phase.next();
+        let base_hz = self.settings.base_rate_hz(context.tempo_bpm);
+        let [minimum, maximum] = self.settings.rate_bounds(context.tempo_bpm);
+        let hz =
+            (base_hz * 2.0_f64.powf(self.offsets[1].clamp(-24.0, 24.0))).clamp(minimum, maximum);
+        // Integrate frequency offsets. Multiplying elapsed time by the current frequency
+        // would create phase jumps and the wrong speed during a sweep.
+        match self.rate_last {
+            Some((frame, last_origin, delta))
+                if last_origin == origin && context.frame == frame.saturating_add(1) =>
+            {
+                self.rate_phase = (self.rate_phase + delta / self.sample_rate).rem_euclid(1.0);
+            }
+            Some((frame, last_origin, _)) if frame == context.frame && last_origin == origin => {}
+            _ => self.rate_phase = 0.0,
+        }
+        self.rate_last = Some((context.frame, origin, hz - base_hz));
+        let phase = self.clock.phase_at(context.frame, origin, base_hz)
+            + self.rate_phase
+            + self.phase.next();
+        let depth = (self.depth.next() + self.offsets[0]).clamp(0.0, 1.0);
+        self.effective = [depth as f32, hz as f32];
         for weight in &mut self.waves {
             weight.next();
         }
@@ -253,9 +295,41 @@ impl ModulationSource for Lfo {
         }
     }
     fn next_modulation(&mut self, context: ModulationSourceContext) -> f32 {
-        self.sample_at(context)
+        self.control_at(context)
+    }
+    fn modulation_weight(&self) -> f32 {
+        self.effective[0]
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+impl Lfo {
+    /// Effective Depth and Rate (Hz) from the last published sample.
+    pub fn modulation_values(&self) -> [f32; 2] {
+        self.effective
+    }
+}
+impl ModulationDestination for Lfo {
+    type Audio = ();
+    const MODULATION_PARAMETERS: &'static [ModulationParameter] =
+        <daw_unit_core::LfoInstance as ModulationDestinationSettings>::MODULATION_PARAMETERS;
+    const MODULATION_SCOPE: ModulationScope =
+        <daw_unit_core::LfoInstance as ModulationDestinationSettings>::MODULATION_SCOPE;
+    fn process_with_modulation(
+        &mut self,
+        (): (),
+        input: &ModulationInputs,
+        context: ModulationContext,
+    ) {
+        if self.rate_last.is_some_and(|(last, _, _)| {
+            context.frame != last && context.frame != last.saturating_add(1)
+        }) {
+            self.modulation.reset();
+        }
+        self.offsets = self
+            .modulation
+            .process(input.offsets(ModulationParameter::LFO));
+    }
+}

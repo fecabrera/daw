@@ -257,20 +257,17 @@ impl PanelStyle {
         };
         let reserved = if is_collapsed {
             0.0
-        } else if ui
-            .stack()
-            .iter()
-            .any(|n| n.tags().contains("unit-note-selector"))
-        {
-            90.0
-        } else if ui
-            .stack()
-            .iter()
-            .any(|n| n.tags().contains("unit-modulation-button"))
-        {
-            26.0
         } else {
-            0.0
+            f32::from(
+                ui.stack()
+                    .iter()
+                    .any(|n| n.tags().contains("unit-note-selector")),
+            ) * 90.0
+                + f32::from(
+                    ui.stack()
+                        .iter()
+                        .any(|n| n.tags().contains("unit-modulation-button")),
+                ) * 26.0
         };
         let mut interaction_rect = header_rect;
         interaction_rect.max.x -= reserved;

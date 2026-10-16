@@ -128,10 +128,7 @@ impl InstrumentLayerSettings {
                 self.envelopes
                     .iter()
                     .all(|e| !e.id.is_nil() && ids.insert(e.id) && e.settings.valid())
-                    && self
-                        .lfos
-                        .iter()
-                        .all(|l| !l.id.is_nil() && ids.insert(l.id) && l.settings.valid())
+                    && self.lfos.iter().all(|l| ids.insert(l.id) && l.valid())
             }
     }
     /// Remove only this destination and its connections; surviving IDs never change.
@@ -327,9 +324,46 @@ impl InstrumentSettings {
     pub fn modulation_source(&self, id: ModulationSourceId) -> Option<ModulationSourceInfo<'_>> {
         self.modulation_sources().find(|source| source.id == id)
     }
+    pub fn lfo_destinations(&self) -> impl Iterator<Item = (ModulationSourceId, &LfoInstance)> {
+        self.layers
+            .iter()
+            .flat_map(|l| {
+                l.lfos.iter().map(move |f| {
+                    (
+                        ModulationSourceId {
+                            layer: l.id,
+                            unit: f.id,
+                        },
+                        f,
+                    )
+                })
+            })
+            .chain(self.main.lfos.iter().map(|f| {
+                (
+                    ModulationSourceId {
+                        layer: self.main.id,
+                        unit: f.id,
+                    },
+                    f,
+                )
+            }))
+    }
     pub fn valid(&self) -> bool {
         let mut ids = std::collections::HashSet::new();
+        let dependencies: Vec<_> = self
+            .lfo_destinations()
+            .map(|(id, f)| (id, f.modulations.as_slice()))
+            .collect();
         self.version == INSTRUMENT_STATE_VERSION
+            && modulation_dependency_order(&dependencies).is_some()
+            && dependencies.iter().all(|(_, routes)| {
+                routes.iter().all(|r| {
+                    r.source.is_none_or(|id| {
+                        self.modulation_source(id)
+                            .is_some_and(|s| ModulationScope::Shared.accepts(s.scope))
+                    })
+                })
+            })
             && self.main.valid()
             && ids.insert(self.main.id)
             && !self.layers.is_empty()

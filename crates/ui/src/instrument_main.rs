@@ -31,6 +31,10 @@ impl DawUi {
         track: Id,
         bus: &mut InstrumentBusSettings,
         rect: Rect,
+        lfo_sources: &[(
+            daw_core::ModulationSourceId,
+            Vec<crate::modulation_panel::Source>,
+        )],
     ) {
         let compact = bus.collapsed;
         let height = panels::unit_height(compact);
@@ -168,9 +172,33 @@ impl DawUi {
                                 }
                             }
                             for (i, l) in bus.lfos.iter_mut().enumerate() {
-                                if let Some(unit) =
-                                    crate::lfo_panel::unit(ui, l, i + 1, height, compact)
-                                {
+                                if let Some(unit) = crate::lfo_panel::unit(
+                                    ui,
+                                    l,
+                                    i + 1,
+                                    height,
+                                    compact,
+                                    crate::lfo_panel::Controls {
+                                        sources: lfo_sources
+                                            .iter()
+                                            .find(|(id, _)| id.layer == bus.id && id.unit == l.id)
+                                            .map_or(&[], |(_, sources)| sources.as_slice()),
+                                        tempo: self.session.project.tempo_bpm,
+                                        live: self
+                                            .output
+                                            .as_ref()
+                                            .and_then(|o| {
+                                                o.modulation_values(
+                                                    daw_engine::ModulationTarget::Lfo {
+                                                        track,
+                                                        layer: bus.id,
+                                                        unit: l.id,
+                                                    },
+                                                )
+                                            })
+                                            .map(|v| [v[0], v[1]]),
+                                    },
+                                ) {
                                     self.start_installed_component_drag(
                                         ui,
                                         &unit.header,

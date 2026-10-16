@@ -2444,3 +2444,165 @@ fn pitch_modulation_repeats_deterministically_at_loop_boundaries_without_callbac
     TRACK_ALLOCATIONS.with(|v| v.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
 }
+
+fn modulated_lfo_plan() -> RenderPlan {
+    let mut p = lfo_plan(LfoRestart::Retrigger, LfoPolarity::Bipolar);
+    let i = p.project.tracks[0].instrument.as_mut().unwrap();
+    let layer = &mut i.layers[0];
+    let e = &mut layer.envelopes[0];
+    e.present = true;
+    e.mode = EnvelopeMode::Legato;
+    e.settings.attack.time_ms = 100.0;
+    e.settings.sustain = 1.0;
+    let source = ModulationSourceId {
+        layer: layer.id,
+        unit: e.id,
+    };
+    let lfo = &mut layer.lfos[0];
+    lfo.settings.depth = 0.0;
+    lfo.modulations.push(Modulation {
+        source: Some(source),
+        amount: 1.0,
+        ..Modulation::new(ModulationParameter::LfoDepth)
+    });
+    let mut provider = LfoInstance::default();
+    provider.settings.rate_mode = LfoRateMode::Hz;
+    provider.settings.rate_hz = 0.5;
+    lfo.modulations.push(Modulation {
+        source: Some(ModulationSourceId {
+            layer: i.main.id,
+            unit: provider.id,
+        }),
+        amount: 2.0,
+        ..Modulation::new(ModulationParameter::LfoRate)
+    });
+    i.main.lfos.push(provider);
+    p.project.validate().unwrap();
+    p
+}
+#[test]
+fn modulated_lfos_match_live_export_blocks_and_graph_order_without_callback_allocations() {
+    let p = modulated_lfo_plan();
+    let mut expected = vec![[0.0; 2]; 12_000];
+    Renderer::new(p.clone()).render_offline(&mut expected);
+    let mut blocked = vec![[0.0; 2]; expected.len()];
+    let mut blocks = Renderer::new(p.clone());
+    for block in blocked.chunks_mut(137) {
+        blocks.render_offline(block);
+    }
+    assert_eq!(expected, blocked);
+    let mut random = [[0.0; 2]; 64];
+    p.render(7000, &mut random);
+    assert_eq!(&random[..], &expected[7000..7064]);
+    let i = p.project.tracks[0].instrument.as_ref().unwrap();
+    let key = daw_engine::ModulationTarget::Lfo {
+        track: p.project.tracks[0].id,
+        layer: i.layers[0].id,
+        unit: i.layers[0].lfos[0].id,
+    };
+    let mut live = Renderer::new(p.clone());
+    live.play();
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    for (frame, expected) in expected.iter().enumerate() {
+        let sample = live.next_sample();
+        if frame > 240 {
+            assert_eq!(sample, *expected);
+        }
+        assert!(live.modulation_values(key).unwrap()[0].is_finite());
+    }
+    live.pause();
+    let paused = live.playhead;
+    for _ in 0..100 {
+        live.next_sample();
+    }
+    assert_eq!(live.playhead, paused);
+    live.seek(4000);
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    let values = blocks.modulation_values(key).unwrap();
+    assert!(values[0] > 0.9 && values[1] > 3.0, "{values:?}");
+    // A direct seek resets accumulated frequency history, consistently on every run.
+    let mut sought_a = Renderer::new(p.clone());
+    let mut sought_b = Renderer::new(p.clone());
+    sought_a.seek(7000);
+    sought_b.seek(7000);
+    let mut a = [[0.0; 2]; 600];
+    let mut b = a;
+    sought_a.render_offline(&mut a);
+    sought_b.render_offline(&mut b);
+    assert_eq!(a, b);
+    // Moving the provider before the destination in saved layout changes no samples.
+    let mut reordered = p.clone();
+    let i = reordered.project.tracks[0].instrument.as_mut().unwrap();
+    let provider = i.main.lfos.remove(0);
+    let old = ModulationSourceId {
+        layer: i.main.id,
+        unit: provider.id,
+    };
+    let new = ModulationSourceId {
+        layer: i.layers[0].id,
+        unit: provider.id,
+    };
+    i.layers[0].lfos[0].modulations[1].source = Some(new);
+    i.layers[0].lfos.insert(0, provider);
+    assert_ne!(old, new);
+    let mut moved = vec![[0.0; 2]; expected.len()];
+    Renderer::new(reordered).render_offline(&mut moved);
+    assert_eq!(moved, expected);
+    let mut loop_plan = p;
+    loop_plan.project.transport.r#loop = Loop {
+        enabled: true,
+        start_frame: 0,
+        end_frame: 12_000,
+    };
+    let mut looped = Renderer::new(loop_plan);
+    looped.play();
+    looped.ramp = 1.0;
+    let mut first = vec![[0.0; 2]; 12_000];
+    for sample in &mut first {
+        *sample = looped.next_sample();
+    }
+    for (frame, sample) in first.iter().enumerate() {
+        let actual = looped.next_sample();
+        if frame > 2400 {
+            assert!((actual[0] - sample[0]).abs() < 1e-5, "loop {frame}");
+        }
+    }
+}
+#[test]
+fn live_lfo_depth_rate_and_connection_edits_retain_voices_and_prepared_storage() {
+    let p = modulated_lfo_plan();
+    let mut live = Renderer::new(p.clone());
+    live.play();
+    for _ in 0..4000 {
+        live.next_sample();
+    }
+    let mut edited = p.clone();
+    let lfo = &mut edited.project.tracks[0].instrument.as_mut().unwrap().layers[0].lfos[0];
+    lfo.settings.rate_hz = 5.0;
+    lfo.settings.depth = 0.2;
+    lfo.modulations[0].amount = 0.5;
+    lfo.modulations[1].enabled = false;
+    let mut next = Renderer::new(edited);
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    next.inherit(&mut live);
+    for _ in 0..2000 {
+        assert!(next.next_sample().into_iter().all(f32::is_finite));
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(next.playhead, 6000);
+    let i = next.plan.project.tracks[0].instrument.as_ref().unwrap();
+    let key = daw_engine::ModulationTarget::Lfo {
+        track: next.plan.project.tracks[0].id,
+        layer: i.layers[0].id,
+        unit: i.layers[0].lfos[0].id,
+    };
+    let values = next.modulation_values(key).unwrap();
+    assert!(
+        (values[0] - 0.7).abs() < 0.0001 && (values[1] - 5.0).abs() < 0.0001,
+        "{values:?}"
+    );
+}

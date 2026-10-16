@@ -255,3 +255,55 @@ fn oscillator_reorder_preserves_route_order_and_rejects_invalid_indices_atomical
     );
     assert_eq!(serde_json::to_value(&p).unwrap(), saved);
 }
+
+#[test]
+fn lfo_destinations_move_with_routes_copy_fresh_routes_and_follow_provider_moves() {
+    let (mut p, t, a, b) = fixture();
+    let i = p.tracks[0].instrument.as_mut().unwrap();
+    let source = ModulationSourceId {
+        layer: a,
+        unit: i.layers[0].envelopes[0].id,
+    };
+    let envelope = source.unit;
+    let mut lfo = LfoInstance {
+        modulation_open: true,
+        ..Default::default()
+    };
+    lfo.modulations.push(Modulation {
+        source: Some(source),
+        amount: 1.0,
+        ..Modulation::new(ModulationParameter::LfoDepth)
+    });
+    let id = lfo.id;
+    let route = lfo.modulations[0];
+    i.main.lfos.push(lfo);
+    transfer(&mut p, t, a, b, Envelope(envelope), false);
+    let i = p.tracks[0].instrument.as_ref().unwrap();
+    assert_eq!(i.main.lfos[0].modulations[0].source.unwrap().layer, b);
+    let main = i.main.id;
+    transfer(&mut p, t, main, a, Lfo(id), true);
+    let i = p.tracks[0].instrument.as_ref().unwrap();
+    let copy = &i.layers[0].lfos[0];
+    assert_ne!(copy.id, id);
+    assert_ne!(copy.modulations[0].id, route.id);
+    assert!(copy.modulation_open);
+    assert_eq!(
+        copy.modulations[0].source,
+        i.main.lfos[0].modulations[0].source
+    );
+    p.validate().unwrap();
+    let before = serde_json::to_value(&p).unwrap();
+    let mut invalid = p.tracks[0].instrument.clone().unwrap();
+    invalid.main.lfos[0].modulations[0].source = Some(ModulationSourceId {
+        layer: main,
+        unit: id,
+    });
+    assert!(
+        p.edit(Edit::SetInstrument {
+            track_id: t,
+            instrument: Some(invalid)
+        })
+        .is_err()
+    );
+    assert_eq!(serde_json::to_value(&p).unwrap(), before);
+}

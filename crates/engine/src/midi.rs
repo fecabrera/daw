@@ -697,6 +697,9 @@ impl MidiTrackRuntime {
         }
         sum
     }
+    pub fn lfo_values(&self, id: daw_unit_core::ModulationSourceId) -> Option<[f32; 2]> {
+        self.shared.lfo_values(id)
+    }
     pub fn modulation_values(&self) -> &[ModulationValue] {
         &self.shared.values
     }

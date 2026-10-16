@@ -50,7 +50,7 @@ fn lfo_catalog_adds_independent_saved_sources_without_adding_routes_in_both_them
     }
 }
 #[test]
-fn lfo_panel_uses_shared_height_power_and_six_editable_controls_in_both_themes() {
+fn lfo_panel_uses_shared_height_power_and_seven_editable_controls_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let ctx = context();
         let mut app = DawUi::default();
@@ -71,8 +71,14 @@ fn lfo_panel_uses_shared_height_power_and_six_editable_controls_in_both_themes()
                     ..Default::default()
                 },
                 |ui| {
-                    bounds =
-                        crate::lfo_panel::unit(ui, lfo, 1, panels::unit_height(compact), compact);
+                    bounds = crate::lfo_panel::unit(
+                        ui,
+                        lfo,
+                        1,
+                        panels::unit_height(compact),
+                        compact,
+                        Default::default(),
+                    );
                 },
             );
             out.textures_delta.clear();
@@ -181,4 +187,129 @@ fn lfo_catalog_enter_and_drag_share_the_existing_component_actions() {
             .len(),
         2
     );
+}
+
+#[test]
+fn lfo_modulation_expands_without_hiding_controls_and_markers_use_shared_interactions() {
+    use daw_core::{
+        EnvelopeMode, InstrumentSettings, Modulation, ModulationParameter as P, ModulationSourceId,
+    };
+    for color in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let ctx = context();
+        let mut app = DawUi::default();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color,
+                ..Default::default()
+            },
+        );
+        let mut i = InstrumentSettings::default();
+        i.layers[0].envelopes[0].present = true;
+        i.layers[0].envelopes[0].mode = EnvelopeMode::Legato;
+        let source = ModulationSourceId {
+            layer: i.layers[0].id,
+            unit: i.layers[0].envelopes[0].id,
+        };
+        let mut lfo = LfoInstance::default();
+        lfo.settings.depth = 0.3;
+        lfo.settings.rate_mode = daw_core::LfoRateMode::Hz;
+        for p in [P::LfoDepth, P::LfoRate] {
+            lfo.modulations.push(Modulation {
+                source: Some(source),
+                amount: 0.5,
+                ..Modulation::new(p)
+            });
+        }
+        i.layers[0].lfos.push(lfo.clone());
+        let sources = crate::modulation_panel::provider_sources(&i);
+        let available = &sources[0].1;
+        assert!(available.iter().all(|s| s.id.unit != lfo.id));
+        let draw = |lfo: &mut LfoInstance, events: Vec<egui::Event>| {
+            let mut bounds = None;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 600.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    bounds = crate::lfo_panel::unit(
+                        ui,
+                        lfo,
+                        1,
+                        panels::unit_height(false),
+                        false,
+                        crate::lfo_panel::Controls {
+                            sources: available,
+                            tempo: 120.0,
+                            live: Some([0.7, 3.0]),
+                        },
+                    );
+                },
+            );
+            output.textures_delta.clear();
+            bounds.unwrap()
+        };
+        let closed = draw(&mut lfo, vec![]);
+        let regular = closed.inner.unwrap();
+        let toggle = Pos2::new(
+            closed.header.rect.right() - 13.5,
+            closed.header.rect.center().y,
+        );
+        draw(
+            &mut lfo,
+            vec![egui::Event::PointerMoved(toggle), button(toggle, true)],
+        );
+        assert!(!lfo.modulation_open);
+        draw(&mut lfo, vec![button(toggle, false)]);
+        assert!(lfo.modulation_open && !lfo.collapsed && lfo.enabled);
+        let expanded = draw(&mut lfo, vec![]);
+        assert!(expanded.response.rect.width() > closed.response.rect.width() + 180.0);
+        assert_eq!(expanded.inner.unwrap(), regular);
+        let depth = regular[2][0].center();
+        draw(
+            &mut lfo,
+            vec![egui::Event::PointerMoved(depth), button(depth, true)],
+        );
+        draw(&mut lfo, vec![button(depth, false)]);
+        draw(
+            &mut lfo,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowUp,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        assert!((lfo.settings.depth - 0.31).abs() < 0.0001);
+        for rect in [regular[2][0], regular[1][1]] {
+            lfo.modulation_open = false;
+            draw(&mut lfo, vec![]);
+            let marker = knobs::modulation_marker_rect(rect).center();
+            let original = lfo.settings;
+            draw(
+                &mut lfo,
+                vec![egui::Event::PointerMoved(marker), button(marker, true)],
+            );
+            draw(&mut lfo, vec![button(marker, false)]);
+            assert!(lfo.modulation_open);
+            assert_eq!(lfo.settings, original);
+        }
+        let expanded = draw(&mut lfo, vec![]);
+        let add = Pos2::new(
+            expanded.response.rect.right() - 20.0,
+            expanded.response.rect.center().y,
+        );
+        draw(
+            &mut lfo,
+            vec![egui::Event::PointerMoved(add), button(add, true)],
+        );
+        draw(&mut lfo, vec![button(add, false)]);
+        assert_eq!(lfo.modulations.len(), 3);
+        assert_eq!(lfo.modulations[2].parameter, P::LfoDepth);
+        assert_eq!(lfo.modulations[2].amount, 0.0);
+        assert!(lfo.modulations[2].source.is_none());
+    }
 }

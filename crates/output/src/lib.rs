@@ -175,7 +175,19 @@ fn modulation_meters(
             })
         })
     });
+    let lfos = plan.project.tracks.iter().flat_map(|track| {
+        track.instrument.iter().flat_map(move |i| {
+            i.lfo_destinations()
+                .filter(|(_, l)| l.present)
+                .map(move |(id, _)| ModulationTarget::Lfo {
+                    track: track.id,
+                    layer: id.layer,
+                    unit: id.unit,
+                })
+        })
+    });
     effects
+        .chain(lfos)
         .chain(amplitudes)
         .chain(oscillators)
         .map(|key| {
