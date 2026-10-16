@@ -2145,3 +2145,30 @@ Completed checks with the workspace Cargo cache selected:
 - Local documentation file targets and `git diff --check`: passed.
 
 Native visual/gesture checks, device playback/listening, and Windows/Linux builds were not run. Per-note LFOs and broader graph routing remain outside the accepted scope. See [LFO controls and timing](lfo.md) and [the shared modulation contract](modulation.md).
+
+## Instrument Main bus — 2026-10-16
+
+Instrument now has one fixed Main bus below the vertical layer viewport and above the effects lane. Main receives the stereo layer sum, applies its own gain/pan before track effects, and hosts shared Envelope/LFO sources. It starts compact at 68 points and can expand to the shared 244-point unit height. Mix controls, component panels, catalog additions/drops, source metadata, routing, power/collapse state, and source publication reuse the existing code. Main cannot be removed or reordered. Regular layers retain their own scroll/reorder viewport.
+
+Main settings save separately from regular layers in instrument version 3. Older instruments receive an empty neutral bus with a deterministic owner ID chosen to avoid existing layer IDs. Reopening the same legacy data produces the same migration. Null/malformed Main data, owner/source collisions, per-note bus envelopes, invalid controls, and invalid references fail validation. Save/reopen, Save As, duplication, and sample-rate changes preserve settings and connections.
+
+New automated checks cover bottom pinning while regular layers scroll, compact/expanded heights, shared gain/pan input, selection through components, both themes, catalog keyboard additions and Main drops, unsupported audio-component no-ops, Main source labels/scope, six-rate stereo multi-layer gain/pan, pre-effect placement verified against nonlinear Drive processing, shared source fan-out to all current destinations, note-release behavior, playback/export parity, and compatible live edits without callback allocation. Existing UI gesture tests now reserve enough visible space or use edge scrolling to reach rows above Main. Native visual/gesture behavior and device listening remain separate checks.
+
+Completed checks with the workspace Cargo cache selected:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --workspace`: 653 passed, zero failed, two ignored. This includes 376 UI tests, 35 engine MIDI tests, 49 project workflow tests, and 11 unit-core tests. The two existing expanded time-stretch matrices remain explicitly ignored.
+- After the final UI-only owner-selection adjustment, strict workspace Clippy and all 376 UI tests passed again.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed and rebuilt `target/debug/DAW.app`.
+- Local documentation file targets and `git diff --check`: passed.
+
+Native UI checks, device playback/listening, and Windows/Linux builds were not run. See [Instrument Main bus](instrument-main.md) for controls, processing order, persistence, and scope.
+
+## Main mix control placement — 2026-10-16
+
+Main's header inherited the surrounding horizontal layout. Its name/button row consumed the panel width, so the gain/pan row appeared in the component area to its right. The header now uses the same explicit top-down layout as regular layer headers. Name and collapse remain on the first row; gain/pan knobs and numeric fields stay on the second row inside the left panel in compact and expanded states.
+
+The existing both-theme Main test now checks containment of every mix control inside the label panel and vertical separation below the header at both heights. The new containment check failed before the fix and passed afterward. Audio processing and saved settings are unchanged.
+
+For this layout fix, `cargo fmt --all --check`, strict workspace Clippy, and `cargo test --workspace` passed with the workspace Cargo cache selected: 653 passed, zero failed, and the two existing expanded time-stretch matrices ignored. All 376 UI tests passed. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Whitespace and local documentation target checks passed. Native visual/pointer checks and Windows/Linux builds were not run. CLI checks were not repeated for this UI-only change.

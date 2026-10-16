@@ -1,4 +1,6 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+mod instrument_bus;
+pub use instrument_bus::InstrumentBusSettings;
 mod lfo;
 pub use lfo::*;
 use serde::{Deserialize, Serialize};
@@ -285,6 +287,7 @@ impl<'de> Deserialize<'de> for InstrumentLayerSettings {
 pub struct InstrumentSettings {
     pub version: u32,
     pub layers: Vec<InstrumentLayerSettings>,
+    pub main: InstrumentBusSettings,
 }
 /// Compatibility name for callers of the original oscillator-only instrument API.
 pub type OscillatorInstrumentSettings = InstrumentSettings;
@@ -293,6 +296,7 @@ impl Default for InstrumentSettings {
         Self {
             version: INSTRUMENT_STATE_VERSION,
             layers: vec![InstrumentLayerSettings::default()],
+            main: InstrumentBusSettings::default(),
         }
     }
 }
@@ -308,16 +312,21 @@ impl From<OscillatorSettings> for InstrumentSettings {
 impl InstrumentSettings {
     /// All installed or retained providers, independent of their concrete DSP type.
     pub fn modulation_sources(&self) -> impl Iterator<Item = ModulationSourceInfo<'_>> {
-        self.layers.iter().flat_map(|layer| {
-            layer
-                .envelopes
-                .iter()
-                .enumerate()
-                .map(|(index, provider)| provider.modulation_source(layer.id, &layer.name, index))
-                .chain(layer.lfos.iter().enumerate().map(|(index, provider)| {
-                    provider.modulation_source(layer.id, &layer.name, index)
-                }))
-        })
+        self.layers
+            .iter()
+            .flat_map(|layer| {
+                layer
+                    .envelopes
+                    .iter()
+                    .enumerate()
+                    .map(|(index, provider)| {
+                        provider.modulation_source(layer.id, &layer.name, index)
+                    })
+                    .chain(layer.lfos.iter().enumerate().map(|(index, provider)| {
+                        provider.modulation_source(layer.id, &layer.name, index)
+                    }))
+            })
+            .chain(self.main.modulation_sources())
     }
     pub fn modulation_source(&self, id: ModulationSourceId) -> Option<ModulationSourceInfo<'_>> {
         self.modulation_sources().find(|source| source.id == id)
@@ -325,6 +334,8 @@ impl InstrumentSettings {
     pub fn valid(&self) -> bool {
         let mut ids = std::collections::HashSet::new();
         self.version == INSTRUMENT_STATE_VERSION
+            && self.main.valid()
+            && ids.insert(self.main.id)
             && !self.layers.is_empty()
             && self
                 .layers
@@ -337,6 +348,8 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
         #[derive(Deserialize)]
         struct Saved {
             version: u32,
+            #[serde(default, deserialize_with = "saved_main")]
+            main: Option<InstrumentBusSettings>,
             #[serde(default, deserialize_with = "layers")]
             layers: Option<Vec<InstrumentLayerSettings>>,
             #[serde(default, deserialize_with = "sources")]
@@ -348,6 +361,11 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
             muted: bool,
             #[serde(default = "EnvelopeSettings::legacy")]
             envelope: EnvelopeSettings,
+        }
+        fn saved_main<'de, D: serde::Deserializer<'de>>(
+            d: D,
+        ) -> Result<Option<InstrumentBusSettings>, D::Error> {
+            InstrumentBusSettings::deserialize(d).map(Some)
         }
         // Explicit malformed collections must fail instead of selecting legacy fields.
         fn layers<'de, D: serde::Deserializer<'de>>(
@@ -370,6 +388,9 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
         }
         let saved = Saved::deserialize(deserializer)?;
         if let Some(layers) = saved.layers {
+            let main = saved
+                .main
+                .unwrap_or_else(|| InstrumentBusSettings::legacy(&layers));
             return Ok(Self {
                 version: if saved.version == 2 {
                     INSTRUMENT_STATE_VERSION
@@ -377,6 +398,7 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
                     saved.version
                 },
                 layers,
+                main,
             });
         }
         if saved.version != UNIT_STATE_VERSION {
@@ -408,9 +430,13 @@ impl<'de> Deserialize<'de> for InstrumentSettings {
         };
         layer.envelopes[0].settings = saved.envelope;
         layer.install_amplitude_envelope();
+        let main = saved
+            .main
+            .unwrap_or_else(|| InstrumentBusSettings::legacy(std::slice::from_ref(&layer)));
         Ok(Self {
             version: INSTRUMENT_STATE_VERSION,
             layers: vec![layer],
+            main,
         })
     }
 }

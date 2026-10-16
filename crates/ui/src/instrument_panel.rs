@@ -11,7 +11,9 @@ pub(super) struct InstrumentUi {
     pub(super) selected_layer: Option<Id>,
     name_edit: Option<LayerNameEdit>,
     drag: Option<Id>,
-    inputs: HashMap<Id, Inputs>,
+    pub(super) inputs: HashMap<Id, Inputs>,
+    #[cfg(test)]
+    pub(super) main_bounds: crate::instrument_main::MainBounds,
 }
 struct LayerNameEdit {
     layer: Id,
@@ -91,10 +93,11 @@ impl DawUi {
             self.instrument_ui.selected_layer = None;
             self.instrument_catalog.clear();
         }
-        if !settings
-            .layers
-            .iter()
-            .any(|layer| Some(layer.id) == self.instrument_ui.selected_layer)
+        if self.instrument_ui.selected_layer != Some(settings.main.id)
+            && !settings
+                .layers
+                .iter()
+                .any(|layer| Some(layer.id) == self.instrument_ui.selected_layer)
         {
             self.instrument_ui.selected_layer = settings.layers.first().map(|layer| layer.id);
         }
@@ -106,9 +109,9 @@ impl DawUi {
         {
             self.instrument_ui.name_edit = None;
         }
-        self.instrument_ui
-            .inputs
-            .retain(|id, _| settings.layers.iter().any(|layer| layer.id == *id));
+        self.instrument_ui.inputs.retain(|id, _| {
+            *id == settings.main.id || settings.layers.iter().any(|layer| layer.id == *id)
+        });
         let modulation_sources = crate::modulation_panel::sources(Some(&settings));
         let mut remove_layer = None;
         let column_bounds = ui.max_rect();
@@ -155,9 +158,16 @@ impl DawUi {
             Stroke::new(1.0, theme::palette(ui.ctx()).border),
         );
         let layer_action_width = header.inner;
+        // Reserve Main outside the vertical scrolling region.
+        let main_height = panels::unit_height(settings.main.collapsed).min(ui.available_height());
+        let main_rect = Rect::from_min_max(
+            Pos2::new(ui.max_rect().left(), ui.max_rect().bottom() - main_height),
+            ui.max_rect().max,
+        );
         let count = settings.layers.len();
         let mut layer_rows = Vec::new();
         let scroll = egui::ScrollArea::vertical()
+            .max_height((ui.available_height() - main_height).max(0.0))
             .auto_shrink([false, false])
             .id_salt(("instrument-layers", track.id))
             .show(ui, |ui| {
@@ -592,14 +602,26 @@ impl DawUi {
                     }
                 });
             });
+        let reorder_rows = layer_rows.clone();
+        for (_, rect) in &mut layer_rows {
+            *rect = rect.intersect(scroll.inner_rect);
+        }
+        self.instrument_main(ui, track.id, &mut settings.main, main_rect);
+        layer_rows.push((settings.main.id, main_rect));
         control_panel.finish(ui);
         #[cfg(test)]
         {
             self.instrument_catalog_bounds.layer_viewport = scroll.inner_rect;
             self.instrument_catalog_bounds.layer_scroll = scroll.state.offset.y;
         }
-        self.finish_component_drag(ui, track.id, &mut settings, &layer_rows, scroll.inner_rect);
-        self.layer_reorder(ui, &mut settings, &layer_rows, scroll.inner_rect);
+        self.finish_component_drag(
+            ui,
+            track.id,
+            &mut settings,
+            &layer_rows,
+            Rect::from_min_max(scroll.inner_rect.min, main_rect.max),
+        );
+        self.layer_reorder(ui, &mut settings, &reorder_rows, scroll.inner_rect);
         if let Some(id) = remove_layer {
             if self
                 .instrument_ui

@@ -3459,3 +3459,55 @@ fn lfo_instances_connections_and_presentation_survive_save_as_duplication_and_ra
         copy.project.tracks[0].instrument
     );
 }
+
+#[test]
+fn instrument_main_bus_and_shared_source_connections_survive_save_as_and_duplication() {
+    use daw_core::{
+        EnvelopeInstance, EnvelopeMode, LfoInstance, Modulation, ModulationParameter,
+        ModulationSourceId,
+    };
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let instrument = session.project.tracks[0].instrument.as_mut().unwrap();
+    instrument.main.gain_db = -8.0;
+    instrument.main.pan = 0.3;
+    instrument.main.collapsed = false;
+    instrument.main.envelopes.push(EnvelopeInstance {
+        mode: EnvelopeMode::Retrigger,
+        ..Default::default()
+    });
+    instrument.main.lfos.push(LfoInstance::default());
+    let mut route = Modulation::new(ModulationParameter::Amplitude);
+    route.source = Some(ModulationSourceId {
+        layer: instrument.main.id,
+        unit: instrument.main.envelopes[0].id,
+    });
+    route.amount = 0.5;
+    instrument.layers[0].amplitude.present = true;
+    instrument.layers[0].amplitude.modulations.push(route);
+    session.save(&fixture.0.join("main")).unwrap();
+    let mut opened = Session::open(&fixture.0.join("main")).unwrap();
+    assert_eq!(
+        opened.project.tracks[0].instrument,
+        session.project.tracks[0].instrument
+    );
+    opened.save(&fixture.0.join("main-copy")).unwrap();
+    let mut copy = Session::open(&fixture.0.join("main-copy")).unwrap();
+    copy.project
+        .edit(Edit::DuplicateTrack {
+            track_id: track,
+            new_track_id: daw_core::Id::new_v4(),
+        })
+        .unwrap();
+    assert_eq!(
+        copy.project.tracks[0].instrument,
+        copy.project.tracks[1].instrument
+    );
+    copy.project.validate().unwrap();
+    let changed = copy.with_audio_settings(96000, 256).unwrap();
+    assert_eq!(
+        changed.project.tracks[0].instrument,
+        copy.project.tracks[0].instrument
+    );
+}

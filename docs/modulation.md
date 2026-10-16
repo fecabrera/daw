@@ -23,7 +23,7 @@ A modulation output carries a normalized control value. A modulation input is a 
 
 `InstrumentSettings::modulation_sources()` enumerates providers through their settings contract. The source selector, labels, range indicators, and core reference validation use this metadata instead of assuming that every provider is an Envelope. Retained removed providers remain available to reference validation; the picker lists only present providers. Disabled providers remain listed and produce a neutral contribution after their enable ramp.
 
-The host still owns concrete unit construction, note scheduling, voice identity, and storage. The DAW registers Envelope and [LFO](lfo.md) providers. This contract does not add a graph editor, audio sidechain, cross-track connection, or multiple outputs per provider.
+The host still owns concrete unit construction, note scheduling, voice identity, and storage. The DAW registers Envelope and [LFO](lfo.md) providers in regular layers and the fixed [instrument Main bus](instrument-main.md). Main permits shared sources only. This contract does not add a graph editor, audio sidechain, cross-track connection, or multiple outputs per provider.
 
 ## Signal and scope rules
 

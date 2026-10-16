@@ -66,7 +66,7 @@ pub(super) fn unit(
                 for mode in daw_core::EnvelopeMode::ALL {
                     ui.add_enabled_ui(!shared_only || mode!=daw_core::EnvelopeMode::PerNote, |ui| {
                         ui.selectable_value(&mut envelope.mode, mode, mode.label())
-                    }).inner.on_disabled_hover_text("Disconnect this envelope from track effects before selecting Per note.");
+                    }).inner.on_disabled_hover_text("Per note is unavailable for a shared bus or a source connected to track effects.");
                 }
             }).response.on_hover_text("Per note: independent ADSR. Retrigger: restart on every note. Legato: restart only for the first held note. Shared modes release after the last held note.");
     }

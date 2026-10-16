@@ -2049,3 +2049,195 @@ fn adding_and_retargeting_lfos_retains_note_phase_and_callback_storage() {
     TRACK_ALLOCATIONS.with(|v| v.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn main_bus_mixes_the_stereo_layer_sum_before_track_effects_and_matches_live_export_at_all_rates() {
+    for rate in SAMPLE_RATES {
+        let mut base = plan(Waveform::Sine, rate);
+        let mut second = InstrumentLayerSettings {
+            pan: 0.3,
+            ..Default::default()
+        };
+        second.oscillators.push(OscillatorSettings {
+            waveform: Waveform::Triangle,
+            transpose: 12,
+            ..Default::default()
+        });
+        base.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers
+            .push(second);
+        let mut changed = base.clone();
+        let main = &mut changed.project.tracks[0].instrument.as_mut().unwrap().main;
+        main.gain_db = -6.0;
+        main.pan = -1.0;
+        let mut original = vec![[0.0; 2]; 1000];
+        let mut actual = original.clone();
+        Renderer::new(base).render_offline(&mut original);
+        Renderer::new(changed.clone()).render_offline(&mut actual);
+        let factor = linear_gain(-6.0) * 2.0_f32.sqrt();
+        for (a, b) in actual.iter().zip(&original) {
+            assert!((a[0] - b[0] * factor).abs() < 1e-6);
+            assert!(a[1].abs() < 1e-8);
+        }
+        let mut live = Renderer::new(changed);
+        live.play();
+        for (i, expected) in actual.iter().enumerate() {
+            let s = live.next_sample();
+            if i > rate as usize / 200 {
+                assert_eq!(s, *expected);
+            }
+        }
+    }
+}
+#[test]
+fn main_modulators_use_shared_destinations_and_live_bus_edits_retain_voice_state_without_allocation()
+ {
+    let mut p = lfo_plan(LfoRestart::Legato, LfoPolarity::Unipolar);
+    let original_sources = p.clone();
+    let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
+    let lfo = instrument.layers[0].lfos.remove(0);
+    let old = ModulationSourceId {
+        layer: instrument.layers[0].id,
+        unit: lfo.id,
+    };
+    let source = ModulationSourceId {
+        layer: instrument.main.id,
+        unit: lfo.id,
+    };
+    instrument.main.lfos.push(lfo);
+    for route in &mut instrument.layers[0].amplitude.modulations {
+        if route.source == Some(old) {
+            route.source = Some(source);
+        }
+    }
+    for effect in &mut p.project.tracks[0].effects {
+        match &mut effect.unit {
+            EffectSettings::AutoFilter(f) => f
+                .modulations
+                .iter_mut()
+                .for_each(|r| r.source = Some(source)),
+            EffectSettings::Drive(f) => f
+                .modulations
+                .iter_mut()
+                .for_each(|r| r.source = Some(source)),
+            _ => {}
+        }
+    }
+    p.project.validate().unwrap();
+    let mut original_audio = vec![[0.0; 2]; 16000];
+    let mut main_audio = original_audio.clone();
+    Renderer::new(original_sources).render_offline(&mut original_audio);
+    Renderer::new(p.clone()).render_offline(&mut main_audio);
+    assert_eq!(
+        main_audio, original_audio,
+        "Moving the shared source to Main preserves fan-out to all destinations"
+    );
+    // Isolate the live bus ramp from nonlinear downstream effects.
+    p.project.tracks[0].effects.clear();
+    let mut live = Renderer::new(p.clone());
+    let mut reference = Renderer::new(p.clone());
+    live.play();
+    reference.play();
+    for _ in 0..13000 {
+        assert_eq!(live.next_sample(), reference.next_sample());
+    }
+    let mut changed = p.clone();
+    changed.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .main
+        .gain_db = -6.0;
+    let mut next = Renderer::new(changed);
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    next.inherit(&mut live);
+    for i in 0..1000 {
+        let a = next.next_sample();
+        let b = reference.next_sample();
+        if i > 240 {
+            assert!((a[0] - b[0] * linear_gain(-6.0)).abs() < 1e-6);
+        }
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    // Main envelopes use the same shared note lifecycle and can fan out to layer amplitude.
+    let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
+    let envelope = EnvelopeInstance {
+        mode: EnvelopeMode::Legato,
+        settings: EnvelopeSettings {
+            release: EnvelopeStageSettings {
+                time_ms: 10.0,
+                ..EnvelopeSettings::default().release
+            },
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let source = ModulationSourceId {
+        layer: instrument.main.id,
+        unit: envelope.id,
+    };
+    instrument.main.envelopes.push(envelope);
+    let mut route = Modulation::new(ModulationParameter::Amplitude);
+    route.source = Some(source);
+    route.amount = 1.0;
+    instrument.layers[0].amplitude.modulations.push(route);
+    p.project.validate().unwrap();
+    let mut expected = vec![[0.0; 2]; 52000];
+    Renderer::new(p.clone()).render_offline(&mut expected);
+    assert!(expected[50_000..].iter().flatten().all(|s| *s == 0.0));
+    let mut live = Renderer::new(p);
+    live.play();
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    for (i, b) in expected.iter().enumerate() {
+        let a = live.next_sample();
+        if i > 240 {
+            assert_eq!(a, *b);
+        }
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}
+
+#[test]
+fn main_gain_precedes_nonlinear_track_effects() {
+    let mut p = plan(Waveform::Saw, 48000);
+    let mut drive = EffectInstance::drive();
+    let EffectSettings::Drive(settings) = &mut drive.unit else {
+        panic!()
+    };
+    settings.gain = 0.8;
+    p.project.tracks[0].effects.push(drive);
+    let mut bus = p.clone();
+    bus.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .main
+        .gain_db = -12.0;
+    let mut layer = p.clone();
+    layer.project.tracks[0].instrument.as_mut().unwrap().layers[0].gain_db = -12.0;
+    let mut expected = vec![[0.0; 2]; 3000];
+    let mut actual = expected.clone();
+    let mut post_effect = expected.clone();
+    Renderer::new(layer).render_offline(&mut expected);
+    Renderer::new(bus).render_offline(&mut actual);
+    Renderer::new(p).render_offline(&mut post_effect);
+    assert!(
+        actual
+            .iter()
+            .zip(&expected)
+            .all(|(a, b)| (a[0] - b[0]).abs() < 1e-6)
+    );
+    assert!(
+        actual
+            .iter()
+            .zip(&post_effect)
+            .any(|(a, b)| (a[0] - b[0] * linear_gain(-12.0)).abs() > 0.01)
+    );
+}

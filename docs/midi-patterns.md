@@ -129,3 +129,8 @@ The accepted [source-container architecture](modular-audio-units.md#one-source-c
 
 
 Modulation uses the [shared portable source and destination contract](modulation.md). Source lookup, scope checks, typed route evaluation, and common smoothing belong to `unit-core`; the unit retains its audio processing and final parameter bounds.
+
+
+## Instrument Main bus — 2026-10-16
+
+The [Main bus](instrument-main.md) is fixed below the scrolling layers. It receives their stereo sum, applies independent gain/pan before track effects, and hosts shared Envelope/LFO components through the existing catalog, controls, and modulation contract. It starts compact, keeps its own saved row/unit presentation, and cannot be removed or reordered. Missing Main data migrates to neutral settings without changing old audio.

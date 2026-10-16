@@ -9,8 +9,9 @@ pub use daw_unit_core::{
     OttBandSettings, OttSettings, SILENT_GAIN_DB, Waveform,
 };
 pub use daw_unit_core::{
-    AmplitudeSettings, EnvelopeInstance, EnvelopeMode, LfoInstance, LfoPolarity, LfoRestart,
-    LfoSettings, Modulation, ModulationParameter, ModulationSourceId, ModulationValue,
+    AmplitudeSettings, EnvelopeInstance, EnvelopeMode, InstrumentBusSettings, LfoInstance,
+    LfoPolarity, LfoRestart, LfoSettings, Modulation, ModulationParameter, ModulationSourceId,
+    ModulationValue,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
 mod audio_settings;

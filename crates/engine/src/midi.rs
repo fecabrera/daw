@@ -238,9 +238,12 @@ fn layer_gains(layer: &daw_core::InstrumentLayerSettings, any_solo: bool) -> [f3
     if !layer.oscillator_enabled || !daw_core::mix_audible(layer.muted, layer.soloed, any_solo) {
         return [0.0; 2];
     }
-    let pan = super::pan_coefficients(layer.pan, true);
+    bus_gains(layer.gain_db, layer.pan)
+}
+fn bus_gains(gain_db: f32, pan: f32) -> [f32; 2] {
+    let pan = super::pan_coefficients(pan, true);
     let center = super::pan_coefficients(0.0, true);
-    let gain = linear_gain(layer.gain_db);
+    let gain = linear_gain(gain_db);
     std::array::from_fn(|ch| gain * (pan[ch] / center[ch]))
 }
 
@@ -260,6 +263,9 @@ pub(crate) struct MidiTrackRuntime {
     shared: SharedControls,
     lfo_notes: super::lfo::NoteSchedule,
     tempo_bpm: f32,
+    main_gain: [f32; 2],
+    main_target: [f32; 2],
+    main_remaining: u32,
 }
 impl MidiTrackRuntime {
     /// Build schedules and DSP state before publication. No callback allocations.
@@ -353,7 +359,9 @@ impl MidiTrackRuntime {
                 format!("{:?}", asset.midi_pattern).hash(&mut hash);
             }
         }
-        let lfo_notes = if layers.iter().all(|layer| layer.lfos.is_empty()) {
+        let lfo_notes = if instrument.main.lfos.is_empty()
+            && layers.iter().all(|layer| layer.lfos.is_empty())
+        {
             super::lfo::NoteSchedule::new(Vec::new())
         } else {
             super::lfo::NoteSchedule::new(
@@ -369,6 +377,9 @@ impl MidiTrackRuntime {
             )
         };
         Some(Self {
+            main_gain: bus_gains(instrument.main.gain_db, instrument.main.pan),
+            main_target: bus_gains(instrument.main.gain_db, instrument.main.pan),
+            main_remaining: 0,
             lfo_notes,
             tempo_bpm: project.tempo_bpm,
             fingerprint: hash.finish(),
@@ -512,6 +523,19 @@ impl MidiTrackRuntime {
                                 )
                             })
                     })
+                    .chain(instrument.main.envelopes.iter().map(|e| {
+                        Control::new(
+                            ModulationSourceId {
+                                layer: instrument.main.id,
+                                unit: e.id,
+                            },
+                            e,
+                            ProcessingContext {
+                                sample_rate_hz: project.sample_rate_hz,
+                                max_block_frames: project.buffer_size_frames,
+                            },
+                        )
+                    }))
                     .collect(),
             )
             .with_lfos(
@@ -529,6 +553,16 @@ impl MidiTrackRuntime {
                             )
                         })
                     })
+                    .chain(instrument.main.lfos.iter().map(|lfo| {
+                        LfoControl::new(
+                            instrument.main.id,
+                            lfo,
+                            ProcessingContext {
+                                sample_rate_hz: project.sample_rate_hz,
+                                max_block_frames: project.buffer_size_frames,
+                            },
+                        )
+                    }))
                     .collect(),
             ),
         })
@@ -554,6 +588,10 @@ impl MidiTrackRuntime {
     /// All storage stays owned by the two prepared renderers; no DSP state is dropped here.
     pub fn retarget_controls(&mut self, prepared: &mut Self) {
         let fade_frames = (self.sample_rate_hz / 200).max(1);
+        if self.main_target != prepared.main_target {
+            self.main_target = prepared.main_target;
+            self.main_remaining = fade_frames;
+        }
         self.shared.retarget(&mut prepared.shared);
         // Adding the first LFO also installs its prepared note-origin schedule.
         std::mem::swap(&mut self.lfo_notes, &mut prepared.lfo_notes);
@@ -641,6 +679,8 @@ impl MidiTrackRuntime {
     }
     pub fn reset(&mut self) {
         self.shared.reset();
+        self.main_gain = self.main_target;
+        self.main_remaining = 0;
         self.held_sample = [0.0; 2];
         for voice in &mut self.voices {
             voice.reset();
@@ -744,6 +784,14 @@ impl MidiTrackRuntime {
             self.last_source = None;
             self.voice_sample(frame)
         };
+        if self.main_remaining > 0 {
+            for ch in 0..2 {
+                self.main_gain[ch] +=
+                    (self.main_target[ch] - self.main_gain[ch]) / self.main_remaining as f32;
+            }
+            self.main_remaining -= 1;
+        }
+        let sample = std::array::from_fn(|ch| sample[ch] * self.main_gain[ch]);
         self.held_sample = sample;
         sample
     }

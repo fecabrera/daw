@@ -43,6 +43,7 @@ mod file_drop;
 pub mod fonts;
 pub mod icons;
 mod instrument_catalog;
+mod instrument_main;
 mod instrument_panel;
 pub mod knobs;
 mod lfo_controls;
@@ -4630,6 +4631,7 @@ mod tests {
     mod group_looping;
     mod group_stretch;
     mod instrument_catalog;
+    mod instrument_main;
     mod lfo;
     mod menu_shortcuts;
     mod midi;

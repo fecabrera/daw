@@ -430,3 +430,8 @@ Every modulation provider and destination must use the [shared modulation contra
 ## LFO component — 2026-10-16
 
 Implement independent shared LFOs in each instrument layer through the existing component catalog and unit shell. Reuse the source publication, discovery, routing, validation, controls, and indicators in the [shared modulation contract](modulation.md). Amplitude, Auto-filter, and Drive accept these sources without provider-specific route code. Add Transport/Retrigger/Legato restart, Hz/note timing, waveform, phase, polarity, and smoothing as specified in [LFO component](lfo.md). Keep the internal Auto-filter LFO compatible by sharing waveform/clock/control primitives. Continuous outputs cannot extend note lifetime; their normalized amplitude factor multiplies the contour result. Per-note LFOs and graph routing remain deferred.
+
+
+## Instrument Main bus — 2026-10-16
+
+Add one fixed [Main bus](instrument-main.md) per instrument, separate from regular layers and project Master. Pin its row below the vertical layer viewport and above the effects lane. Apply its shared gain/pan after the stereo layer sum and before track effects. Reuse shared mix controls, unit panels, catalog actions, provider discovery, and modulation publication/resolution. Main hosts independent shared Envelope/LFO sources; it has no oscillator or Amplitude stage, and no per-note provider mode. Save identity, controls, and presentation with neutral legacy defaults. Preserve stable sources, voices, and allocation-free retargeting.

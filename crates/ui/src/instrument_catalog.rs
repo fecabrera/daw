@@ -21,22 +21,25 @@ impl Component {
         match self {
             Self::Oscillator => layer.oscillators.push(Default::default()),
             // Each Envelope is independent; Amplitude is a single retained audio stage.
-            Self::Envelope => {
-                if let Some(e) = layer.envelopes.iter_mut().find(|e| !e.present) {
-                    e.present = true;
-                } else {
-                    layer.envelopes.push(Default::default());
-                }
-            }
-            Self::Lfo => {
-                if let Some(lfo) = layer.lfos.iter_mut().find(|lfo| !lfo.present) {
-                    lfo.present = true;
-                } else {
-                    layer.lfos.push(Default::default());
-                }
-            }
+            Self::Envelope => add_envelope(&mut layer.envelopes),
+            Self::Lfo => add_lfo(&mut layer.lfos),
             Self::Amplitude => layer.amplitude.present = true,
         }
+    }
+}
+
+fn add_envelope(envelopes: &mut Vec<daw_core::EnvelopeInstance>) {
+    if let Some(e) = envelopes.iter_mut().find(|e| !e.present) {
+        e.present = true;
+    } else {
+        envelopes.push(Default::default());
+    }
+}
+fn add_lfo(lfos: &mut Vec<daw_core::LfoInstance>) {
+    if let Some(l) = lfos.iter_mut().find(|l| !l.present) {
+        l.present = true;
+    } else {
+        lfos.push(Default::default());
     }
 }
 
@@ -49,6 +52,26 @@ pub(super) struct ComponentDrag {
 }
 
 fn add_components(settings: &mut daw_core::InstrumentSettings, layer_id: Id, types: &[&str]) {
+    if settings.main.id == layer_id {
+        for (id, _, component) in ENTRIES {
+            if !types.contains(&id) {
+                continue;
+            }
+            match component {
+                Component::Envelope => {
+                    add_envelope(&mut settings.main.envelopes);
+                    for e in &mut settings.main.envelopes {
+                        if e.mode == daw_core::EnvelopeMode::PerNote {
+                            e.mode = daw_core::EnvelopeMode::Legato;
+                        }
+                    }
+                }
+                Component::Lfo => add_lfo(&mut settings.main.lfos),
+                Component::Oscillator | Component::Amplitude => {}
+            }
+        }
+        return;
+    }
     if let Some(layer) = settings
         .layers
         .iter_mut()
@@ -118,6 +141,19 @@ impl DawUi {
                 empty_enabled: allowed,
             },
         );
+        if target.is_some_and(|(track_id, owner)| {
+            self.session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == track_id)
+                .and_then(|t| t.instrument.as_ref())
+                .is_some_and(|i| i.main.id == owner)
+        }) {
+            for index in [0, 3] {
+                output.rows[index].clone().on_hover_text("Main accepts Envelope and LFO components. Drag this component onto a regular layer.");
+            }
+        }
         if enabled
             && self.component_drag.is_none()
             && let Some((track, _)) = target
@@ -252,6 +288,14 @@ impl DawUi {
                     rect.contains(pointer).then_some((*id, rect))
                 })
             });
+        let target = target.filter(|(id, _)| {
+            *id != settings.main.id
+                || drag
+                    .start
+                    .types
+                    .iter()
+                    .any(|t| ["daw.envelope", "daw.lfo"].contains(t))
+        });
         if let Some((_, rect)) = target {
             panels::selection_border(ui, rect);
         }
@@ -284,6 +328,11 @@ impl DawUi {
             Some(track.id) == self.selected_track && track.kind == daw_core::TrackKind::Midi
         })?;
         let instrument = track.instrument.as_ref()?;
+        if self.instrument_ui.track == Some(track.id)
+            && self.instrument_ui.selected_layer == Some(instrument.main.id)
+        {
+            return Some((track.id, instrument.main.id));
+        }
         let layer = instrument
             .layers
             .iter()

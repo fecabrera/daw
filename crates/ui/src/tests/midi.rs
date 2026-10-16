@@ -223,6 +223,8 @@ fn pattern(app: &DawUi) -> &MidiPattern {
 
 fn layer_header_fixture() -> (DawUi, egui::Context, Vec<daw_core::InstrumentLayerSettings>) {
     let (mut app, _, _, _) = fixture();
+    // Leave room for direct gestures on multiple rows above the pinned Main bus.
+    app.timeline_effects_visible = false;
     let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
     settings.layers[0].name = "Lead".into();
     let mut second = daw_core::InstrumentLayerSettings {
@@ -1202,7 +1204,10 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
             } else if action == "outside" {
                 Pos2::new(start.x, 10.0)
             } else {
-                app.midi_editor.layer_bounds[&layers[2].id].row.center() + Vec2::new(0.0, 8.0)
+                Pos2::new(
+                    start.x,
+                    app.instrument_catalog_bounds.layer_viewport.bottom() - 2.0,
+                )
             };
             frame(
                 &mut app,
@@ -1210,6 +1215,11 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
                 vec![egui::Event::PointerMoved(start), button(start, true)],
             );
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            if action != "same" && action != "outside" {
+                for _ in 0..45 {
+                    frame(&mut app, &ctx, vec![]);
+                }
+            }
             assert!(app.instrument_ui.dragging());
             assert!(!app.file_action_enabled(FileAction::Import));
             assert!(!app.view_switch_enabled());
@@ -1364,7 +1374,10 @@ fn dragging_layers_scrolls_the_rows_while_the_instrument_header_stays_fixed() {
 #[test]
 fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        let mut app = DawUi::default();
+        let mut app = DawUi {
+            timeline_effects_visible: false,
+            ..Default::default()
+        };
         let track = app.session.project.add_midi_track().unwrap();
         app.selected_track = Some(track);
         let ctx = context();
@@ -1541,6 +1554,7 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
     }
     for collapsed in [false, true] {
         let (mut app, _, _, _) = fixture();
+        app.timeline_effects_visible = false;
         let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
         settings.layers[0].envelopes[0].settings.attack.time_ms = 75.0;
         settings
