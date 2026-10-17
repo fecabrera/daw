@@ -51,23 +51,48 @@ fn move_unit(
     unit: InstrumentComponent,
     index: usize,
 ) -> Option<bool> {
-    let old = visible.iter().position(|c| *c == unit)?;
-    let first = visible.iter().take_while(|c| c.is_source()).count();
-    if unit.is_source() || index < first || index >= visible.len() {
+    if unit.is_source() || index >= visible.len() {
         return None;
     }
-    if old == index {
+    place_units(saved, inventory, visible, &[unit], index)
+}
+
+fn place_units(
+    saved: &mut Vec<InstrumentComponent>,
+    inventory: &[InstrumentComponent],
+    visible: &[InstrumentComponent],
+    units: &[InstrumentComponent],
+    index: usize,
+) -> Option<bool> {
+    if units.is_empty()
+        || units
+            .iter()
+            .enumerate()
+            .any(|(n, c)| !visible.contains(c) || units[..n].contains(c))
+    {
+        return None;
+    }
+    let moving: Vec<_> = units.iter().copied().filter(|c| !c.is_source()).collect();
+    let mut rest: Vec<_> = visible
+        .iter()
+        .copied()
+        .filter(|c| !moving.contains(c))
+        .collect();
+    let first = rest.iter().take_while(|c| c.is_source()).count();
+    if index < first || index > rest.len() {
+        return None;
+    }
+    let anchor = rest.get(index).copied();
+    rest.splice(index..index, moving.iter().copied());
+    if rest == visible {
         return Some(false);
     }
     let mut order = ordered(saved, inventory);
-    order.retain(|c| *c != unit);
-    let mut remaining = visible.to_vec();
-    remaining.remove(old);
-    let at = remaining
-        .get(index)
-        .and_then(|next| order.iter().position(|c| c == next))
+    order.retain(|c| !moving.contains(c));
+    let at = anchor
+        .and_then(|c| order.iter().position(|entry| *entry == c))
         .unwrap_or(order.len());
-    order.insert(at, unit);
+    order.splice(at..at, moving);
     *saved = order;
     Some(true)
 }
@@ -111,6 +136,23 @@ impl InstrumentLayerSettings {
         let visible = self.visible_components();
         move_unit(&mut self.component_order, &inventory, &visible, unit, index)
     }
+    /// Place a complete group at a final visible index after removing its movable units.
+    /// Sources remain pinned; retained hidden unit positions and DSP vectors stay separate.
+    pub fn place_components(
+        &mut self,
+        units: &[InstrumentComponent],
+        index: usize,
+    ) -> Option<bool> {
+        let inventory = self.component_inventory();
+        let visible = self.visible_components();
+        place_units(
+            &mut self.component_order,
+            &inventory,
+            &visible,
+            units,
+            index,
+        )
+    }
     /// Transfers remove concrete providers; retained hidden units keep their layout slot.
     pub fn prune_component_order(&mut self) {
         let inventory = self.component_inventory();
@@ -150,6 +192,24 @@ impl InstrumentBusSettings {
         let visible = self.visible_components();
         move_unit(&mut self.component_order, &inventory, &visible, unit, index)
     }
+    /// Place a complete group at a final visible index after removing its movable units.
+    /// Sources remain pinned; retained hidden unit positions and DSP vectors stay separate.
+    pub fn place_components(
+        &mut self,
+        units: &[InstrumentComponent],
+        index: usize,
+    ) -> Option<bool> {
+        let inventory = self.component_inventory();
+        let visible = self.visible_components();
+        place_units(
+            &mut self.component_order,
+            &inventory,
+            &visible,
+            units,
+            index,
+        )
+    }
+    /// Transfers remove concrete providers; retained hidden units keep their layout slot.
     pub fn prune_component_order(&mut self) {
         let inventory = self.component_inventory();
         self.component_order.retain(|c| inventory.contains(c));

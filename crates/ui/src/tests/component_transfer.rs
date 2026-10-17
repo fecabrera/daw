@@ -401,8 +401,8 @@ fn component_click_selection_uses_effect_outlines_and_stays_out_of_project_data(
                         Vec2::new(1280.0, 800.0),
                     );
                     assert_eq!(
-                        app.instrument_ui.selected_component,
-                        Some((owner, moving)),
+                        app.instrument_ui.selected_components,
+                        HashSet::from([(owner, moving)]),
                         "main {main} compact {compact} collapsed {collapsed}"
                     );
                     let rect = app
@@ -419,7 +419,10 @@ fn component_click_selection_uses_effect_outlines_and_stays_out_of_project_data(
                         if r.rect == rect && r.stroke == theme::selection_outline(&ctx)))
                     );
                     frame(&mut app, &ctx, vec![]);
-                    assert_eq!(app.instrument_ui.selected_component, Some((owner, moving)));
+                    assert_eq!(
+                        app.instrument_ui.selected_components,
+                        HashSet::from([(owner, moving)])
+                    );
                     assert_eq!(app.session.project.tracks[0].instrument, before);
                     assert!(!app.dirty);
                     let label = if main {
@@ -433,7 +436,7 @@ fn component_click_selection_uses_effect_outlines_and_stays_out_of_project_data(
                         vec![egui::Event::PointerMoved(label), event(label, true, false)],
                     );
                     frame(&mut app, &ctx, vec![event(label, false, false)]);
-                    assert_eq!(app.instrument_ui.selected_component, None);
+                    assert!(app.instrument_ui.selected_components.is_empty());
                     assert_eq!(app.session.project.tracks[0].instrument, before);
                     assert!(!app.dirty);
                 }
@@ -504,7 +507,7 @@ fn cross_lane_components_use_effect_insertion_preview_and_select_the_result() {
                 assert!(app.error.is_none(), "{:?}", app.error);
                 assert!(app.dirty);
                 frame(&mut app, &ctx, vec![]);
-                let selected = app.instrument_ui.selected_component.unwrap();
+                let selected = *app.instrument_ui.selected_components.iter().next().unwrap();
                 assert_eq!(selected.0, destination);
                 assert!(matches!(selected.1, InstrumentComponent::Envelope(_)));
                 let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
@@ -1024,5 +1027,397 @@ fn modulation_reorder_cancels_invalid_gestures_and_keeps_no_op_drops_clean() {
             "{mode}"
         );
         assert!(!app.dirty, "{mode}");
+    }
+}
+
+fn click_component(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    owner: Id,
+    component: InstrumentComponent,
+    shift: bool,
+) {
+    let pos = source(app, owner, component);
+    let modifiers = egui::Modifiers {
+        shift,
+        ..Default::default()
+    };
+    let button = |pressed| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers,
+    };
+    frame(
+        app,
+        ctx,
+        vec![
+            egui::Event::ModifiersChanged(modifiers),
+            egui::Event::PointerMoved(pos),
+            button(true),
+        ],
+    );
+    frame(app, ctx, vec![button(false)]);
+}
+
+#[test]
+fn component_group_shift_selection_toggles_replaces_and_stays_in_one_lane() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for main in [false, true] {
+            let (mut app, ctx, owner, last) = order_setup(theme, true, main, true);
+            if !main {
+                app.session.project.tracks[0]
+                    .instrument
+                    .as_mut()
+                    .unwrap()
+                    .main
+                    .lfos
+                    .push(daw_core::LfoInstance {
+                        collapsed: true,
+                        ..Default::default()
+                    });
+                frame(&mut app, &ctx, vec![]);
+            }
+            let first = app
+                .instrument_ui
+                .component_slots
+                .iter()
+                .find(|(id, c, _)| *id == owner && !c.is_source())
+                .unwrap()
+                .1;
+            let before = app.session.project.tracks[0].instrument.clone();
+            click_component(&mut app, &ctx, owner, first, false);
+            click_component(&mut app, &ctx, owner, last, true);
+            assert_eq!(
+                app.instrument_ui.selected_components,
+                HashSet::from([(owner, first), (owner, last)])
+            );
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            for unit in [first, last] {
+                let rect = app
+                    .instrument_ui
+                    .component_slots
+                    .iter()
+                    .find(|(id, c, _)| *id == owner && *c == unit)
+                    .unwrap()
+                    .2;
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))));
+            }
+            click_component(&mut app, &ctx, owner, first, true);
+            assert_eq!(
+                app.instrument_ui.selected_components,
+                HashSet::from([(owner, last)])
+            );
+            click_component(&mut app, &ctx, owner, last, false);
+            click_component(&mut app, &ctx, owner, first, false);
+            assert_eq!(
+                app.instrument_ui.selected_components,
+                HashSet::from([(owner, first)])
+            );
+            assert_eq!(app.session.project.tracks[0].instrument, before);
+            assert!(!app.dirty);
+            let other = app
+                .instrument_ui
+                .component_slots
+                .iter()
+                .find(|(id, _, _)| *id != owner)
+                .map(|(id, c, _)| (*id, *c))
+                .unwrap();
+            click_component(&mut app, &ctx, other.0, other.1, true);
+            assert_eq!(
+                app.instrument_ui.selected_components,
+                HashSet::from([other])
+            );
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn component_groups_reorder_in_lane_order_with_effect_previews_and_pinned_sources() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for main in [false, true] {
+                for with_source in [false, true] {
+                    if main && with_source {
+                        continue;
+                    }
+                    for fast in [false, true] {
+                        let (mut app, ctx, owner, last) = order_setup(theme, compact, main, true);
+                        let order: Vec<_> = app
+                            .instrument_ui
+                            .component_slots
+                            .iter()
+                            .filter(|(id, _, _)| *id == owner)
+                            .map(|(_, c, _)| *c)
+                            .collect();
+                        let envelope = order[usize::from(!main)];
+                        let group = if with_source {
+                            vec![InstrumentComponent::Oscillators, envelope]
+                        } else {
+                            vec![envelope, last]
+                        };
+                        // Select in reverse order; drag order must follow the lane.
+                        click_component(&mut app, &ctx, owner, group[1], false);
+                        click_component(&mut app, &ctx, owner, group[0], true);
+                        let original = app.session.project.tracks[0].instrument.clone();
+                        let rect = app
+                            .instrument_ui
+                            .component_slots
+                            .iter()
+                            .find(|(id, _, _)| *id == owner)
+                            .unwrap()
+                            .2;
+                        let end = if with_source {
+                            app.instrument_ui
+                                .component_slots
+                                .iter()
+                                .rfind(|(id, _, _)| *id == owner)
+                                .unwrap()
+                                .2
+                                .right_center()
+                                + Vec2::new(4.0, 0.0)
+                        } else {
+                            rect.left_center() + Vec2::new(2.0, 0.0)
+                        };
+                        let p = source(&app, owner, group[1]);
+                        start(&mut app, &ctx, p);
+                        if !fast {
+                            let shapes = frame_shapes(
+                                &mut app,
+                                &ctx,
+                                vec![egui::Event::PointerMoved(end)],
+                                Vec2::new(1280.0, 800.0),
+                            );
+                            assert_eq!(
+                                app.instrument_ui.selected_components,
+                                group.iter().map(|c| (owner, *c)).collect()
+                            );
+                            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment {stroke,..} if stroke.width == 2.0 && stroke.color == theme::accent(&ctx))));
+                            assert_eq!(app.session.project.tracks[0].instrument, original);
+                            assert!(!app.dirty);
+                        }
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(end), event(end, false, false)],
+                        );
+                        assert!(app.error.is_none(), "{:?}", app.error);
+                        assert!(app.dirty);
+                        frame(&mut app, &ctx, vec![]);
+                        let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
+                        let actual = if main {
+                            i.main.visible_components()
+                        } else {
+                            i.layers[0].visible_components()
+                        };
+                        let moving: Vec<_> =
+                            group.iter().copied().filter(|c| !c.is_source()).collect();
+                        let mut expected: Vec<_> =
+                            order.into_iter().filter(|c| !moving.contains(c)).collect();
+                        let at = if with_source {
+                            expected.len()
+                        } else {
+                            usize::from(!main)
+                        };
+                        expected.splice(at..at, moving);
+                        assert_eq!(actual, expected);
+                        assert_eq!(
+                            app.instrument_ui.selected_components,
+                            group.iter().map(|c| (owner, *c)).collect()
+                        );
+                        app.session.project.validate().unwrap();
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn component_groups_copy_or_move_together_to_regular_layers_and_empty_main() {
+    for main in [false, true] {
+        for duplicate in [false, true] {
+            for fast in [false, true] {
+                let (mut app, ctx, owners) = setup(settings::ColorTheme::Dark, true);
+                let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+                let a = &mut i.layers[0];
+                a.envelopes[0].collapsed = true;
+                a.lfos[0].collapsed = true;
+                let units = [
+                    InstrumentComponent::Envelope(a.envelopes[0].id),
+                    InstrumentComponent::Lfo(a.lfos[0].id),
+                ];
+                let to = if main { i.main.id } else { owners[1] };
+                frame(&mut app, &ctx, vec![]);
+                click_component(&mut app, &ctx, owners[0], units[1], false);
+                click_component(&mut app, &ctx, owners[0], units[0], true);
+                app.dirty = false;
+                let original = app.session.project.tracks[0].instrument.clone();
+                let viewport = app
+                    .instrument_ui
+                    .component_viewports
+                    .iter()
+                    .find(|(id, _)| *id == to)
+                    .unwrap()
+                    .1;
+                let end = viewport.left_center() + Vec2::new(2.0, 0.0);
+                let p = source(&app, owners[0], units[1]);
+                start(&mut app, &ctx, p);
+                if !fast {
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![
+                            egui::Event::PointerMoved(end),
+                            egui::Event::ModifiersChanged(modifier(duplicate)),
+                        ],
+                    );
+                    assert_eq!(app.instrument_catalog_bounds.drop_target, Some(to));
+                    assert_eq!(app.session.project.tracks[0].instrument, original);
+                    assert!(!app.dirty);
+                }
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(end),
+                        egui::Event::ModifiersChanged(modifier(duplicate)),
+                        event(end, false, duplicate),
+                    ],
+                );
+                assert!(app.error.is_none(), "{:?}", app.error);
+                assert!(app.dirty);
+                frame(&mut app, &ctx, vec![]);
+                assert_eq!(app.instrument_ui.selected_components.len(), 2);
+                assert!(
+                    app.instrument_ui
+                        .selected_components
+                        .iter()
+                        .all(|(id, _)| *id == to)
+                );
+                let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
+                let order = if main {
+                    i.main.visible_components()
+                } else {
+                    i.layers[1].visible_components()
+                };
+                assert!(matches!(order[0], InstrumentComponent::Envelope(_)));
+                assert!(matches!(order[1], InstrumentComponent::Lfo(_)));
+                if duplicate {
+                    assert_eq!(i.layers[0], original.unwrap().layers[0]);
+                    assert_ne!(order[0], units[0]);
+                    assert_ne!(order[1], units[1]);
+                } else {
+                    assert!(
+                        !i.layers[0]
+                            .envelopes
+                            .iter()
+                            .any(|e| InstrumentComponent::Envelope(e.id) == units[0])
+                    );
+                    assert!(i.layers[0].lfos.is_empty());
+                }
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn component_group_noop_cancel_invalid_target_and_unselected_anchor_keep_effect_rules() {
+    for mode in [
+        "same",
+        "escape",
+        "outside",
+        "invalid-main",
+        "occupied-copy",
+        "unselected",
+    ] {
+        let (mut app, ctx, owner, last) =
+            order_setup(settings::ColorTheme::Dark, true, false, true);
+        let order: Vec<_> = app
+            .instrument_ui
+            .component_slots
+            .iter()
+            .filter(|(id, _, _)| *id == owner)
+            .map(|(_, c, _)| *c)
+            .collect();
+        let units = if mode == "invalid-main" || mode == "occupied-copy" {
+            vec![order[1], last]
+        } else {
+            vec![order[1], order[2]]
+        };
+        click_component(&mut app, &ctx, owner, units[1], false);
+        click_component(&mut app, &ctx, owner, units[0], true);
+        let original = app.session.project.tracks[0].instrument.clone();
+        let first = app
+            .instrument_ui
+            .component_slots
+            .iter()
+            .find(|(id, _, _)| *id == owner)
+            .unwrap()
+            .2;
+        let end = match mode {
+            "invalid-main" => {
+                app.instrument_ui.main_bounds.row.right_center() - Vec2::new(3.0, 0.0)
+            }
+            "outside" => Pos2::new(2.0, 2.0),
+            _ => first.left_center() + Vec2::new(2.0, 0.0),
+        };
+        let p = source(
+            &app,
+            owner,
+            if mode == "unselected" { last } else { units[1] },
+        );
+        start(&mut app, &ctx, p);
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(end),
+                egui::Event::ModifiersChanged(modifier(mode == "occupied-copy")),
+            ],
+        );
+        assert_eq!(app.session.project.tracks[0].instrument, original);
+        assert!(!app.dirty);
+        if mode == "escape" {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }],
+            );
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![event(end, false, mode == "occupied-copy")],
+        );
+        assert!(app.component_drag.is_none());
+        assert!(app.error.is_none(), "{:?}", app.error);
+        if mode == "unselected" {
+            assert!(app.dirty);
+            assert_eq!(
+                app.instrument_ui.selected_components,
+                HashSet::from([(owner, last)])
+            );
+            assert_eq!(
+                app.session.project.tracks[0]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .layers[0]
+                    .visible_components()[1],
+                last
+            );
+        } else {
+            assert_eq!(app.session.project.tracks[0].instrument, original, "{mode}");
+            assert!(!app.dirty, "{mode}");
+        }
     }
 }

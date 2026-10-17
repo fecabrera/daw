@@ -2375,3 +2375,21 @@ Checks completed:
 The saved optional `component_order` field retains instrument version 3. Missing fields use canonical legacy layout; malformed lists and invalid insertion positions fail without changing the project. Presentation order does not reorder provider/source vectors or change DSP topology. The earlier restriction against arbitrary component-unit presentation order is superseded; cross-track transfers and component multi-selection remain outside this change.
 
 Native mouse/trackpad, display-scale, audible device, Windows, and Linux checks were not performed. Automated egui and renderer tests do not establish those native behaviors.
+
+## Component group selection, moves, and copies — 2026-10-17
+
+Shift-click toggles component selection within one lane. Selected headers move or copy the group in display order within regular layers or Main, or to a compatible destination lane. Audio sources stay first. Oscillator and Macro units retain their existing merge rules; one incompatible member rejects the complete group. A drag from an unselected header acts on that unit alone. Copies retain originals and source assignments, use fresh IDs, and select the resulting group.
+
+Completed checks:
+
+- `cargo test --workspace` passes: 739 tests pass; 2 existing expanded time-stretch acceptance matrices remain ignored.
+
+- The full UI suite passes 414 tests. New pointer/paint tests cover both themes, compact/expanded rows, collapsed units, Shift toggling and replacement, lane boundaries, multiple outlines, selection order independent of click order, source-containing groups, group insertion previews, fast release, dynamic copy modifiers, moves/copies to empty Main and regular layers, clean no-op/cancelled/invalid drops, occupied Amplitude rejection, and unselected-header drags. Existing effect selection/group drags and single-component/strip gestures remain passing.
+- Core group tests cover saved presentation order without processing-vector changes, source pinning, fresh copy and route IDs, resolved legacy collisions, source/Macro merges, complete reference remapping on moves, retained source assignments on copies, duplicate/empty group rejection, invalid positions, no-op detection, and preparation without publication. Failed preparation leaves the original project unchanged.
+- The existing project workflow now includes a Main group copy before save/reopen, Save As, track duplication, and sample-rate changes; it passes. The existing live/export layout test now uses a prepared group reorder and passes sample-exact output, held-note continuity, and zero callback-allocation checks.
+- `cargo fmt --all --check`, strict workspace Clippy, and `git diff --check` pass. The CLI build and `python3 tools/check_cli.py` pass.
+- `sh tools/package_macos.sh debug` succeeds and rebuilds `target/debug/DAW.app`. The running app was not relaunched.
+
+Effects and components share `unit_selection::select`, lane-order group capture, and `drag::group_insertion`, in addition to existing focus, outline, pointer, insertion-line, scroll, and cancellation primitives. Core prepares one validated Batch edit through the existing member transfer/remapping rules and shared `unit-core` placement. Selection stays in UI state; the existing component-order fields save the result without a format change. The earlier component multi-selection limit is superseded. Selection across lanes, cross-track transfers, and a second Amplitude stage remain outside this change.
+
+Native mouse/trackpad, display-scale, audible device, Windows, and Linux checks were not performed. Automated input/render tests do not establish those native behaviors.

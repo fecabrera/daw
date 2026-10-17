@@ -1,6 +1,5 @@
 //! Component selection is UI state, independent of the catalog and selected layer.
 use super::*;
-use daw_core::InstrumentComponent;
 
 impl DawUi {
     pub(super) fn component_selection(&mut self, ui: &mut egui::Ui, track: Id) {
@@ -17,8 +16,9 @@ impl DawUi {
             );
             if self
                 .instrument_ui
-                .selected_component
-                .is_some_and(|(id, _)| id == *owner)
+                .selected_components
+                .iter()
+                .any(|(id, _)| id == owner)
             {
                 self.instrument_ui.component_focus.set(ui, *viewport, true);
                 if self.instrument_ui.component_refocus {
@@ -27,7 +27,7 @@ impl DawUi {
                 }
             }
             if crate::unit_selection::clicked(ui, *viewport, allowed) {
-                self.instrument_ui.selected_component = self
+                let clicked = self
                     .instrument_ui
                     .component_slots
                     .iter()
@@ -35,6 +35,19 @@ impl DawUi {
                         id == owner && ui.rect_contains_pointer(rect.intersect(*viewport))
                     })
                     .map(|(id, unit, _)| (*id, *unit));
+                if let Some(key) = clicked {
+                    // Each component lane owns its selection, as each effects chain does.
+                    self.instrument_ui
+                        .selected_components
+                        .retain(|(id, _)| id == owner);
+                    crate::unit_selection::select(
+                        &mut self.instrument_ui.selected_components,
+                        key,
+                        ui.input(|i| i.modifiers.shift),
+                    );
+                } else {
+                    self.instrument_ui.selected_components.clear();
+                }
                 self.instrument_ui.component_focus.set(ui, *viewport, true);
                 crate::unit_selection::retain_focus(
                     ui,
@@ -47,78 +60,30 @@ impl DawUi {
             .instrument_ui
             .component_focus
             .lost(ui.ctx(), available, dragging)
-            || self.instrument_ui.selected_component.is_some_and(|key| {
-                !self
-                    .instrument_ui
-                    .component_slots
-                    .iter()
-                    .any(|(id, unit, _)| (*id, *unit) == key)
-            })
         {
-            self.instrument_ui.selected_component = None;
+            self.instrument_ui.selected_components.clear();
         }
-        // Paint after every row fill and divider, with each lane's own scroll clip.
-        if let Some((owner, unit)) = self.instrument_ui.selected_component
-            && let Some((_, viewport)) = self
-                .instrument_ui
-                .component_viewports
-                .iter()
-                .find(|(id, _)| *id == owner)
-            && let Some((_, _, rect)) = self
-                .instrument_ui
+        self.instrument_ui.selected_components.retain(|key| {
+            self.instrument_ui
                 .component_slots
                 .iter()
-                .find(|(id, c, _)| *id == owner && *c == unit)
-        {
+                .any(|(id, unit, _)| (*id, *unit) == *key)
+        });
+        // Paint every selected unit after row fills and dividers, with its lane's scroll clip.
+        for (owner, viewport) in &self.instrument_ui.component_viewports {
             let mut clipped = ui.new_child(egui::UiBuilder::new().max_rect(*viewport));
             clipped.set_clip_rect(*viewport);
-            crate::unit_selection::paint(&clipped, *rect, true);
+            for (id, unit, rect) in &self.instrument_ui.component_slots {
+                if id == owner {
+                    crate::unit_selection::paint(
+                        &clipped,
+                        *rect,
+                        self.instrument_ui
+                            .selected_components
+                            .contains(&(*id, *unit)),
+                    );
+                }
+            }
         }
-    }
-
-    pub(super) fn select_transferred_component(
-        &mut self,
-        track: Id,
-        owner: Id,
-        component: InstrumentComponent,
-    ) {
-        let Some(i) = self
-            .session
-            .project
-            .tracks
-            .iter()
-            .find(|t| t.id == track)
-            .and_then(|t| t.instrument.as_ref())
-        else {
-            return;
-        };
-        let unit = match component {
-            InstrumentComponent::Envelope(_) => {
-                let units = if owner == i.main.id {
-                    &i.main.envelopes
-                } else {
-                    &i.layers.iter().find(|l| l.id == owner).unwrap().envelopes
-                };
-                units
-                    .last()
-                    .map(|e| InstrumentComponent::Envelope(e.id))
-                    .unwrap_or(component)
-            }
-            InstrumentComponent::Lfo(_) => {
-                let units = if owner == i.main.id {
-                    &i.main.lfos
-                } else {
-                    &i.layers.iter().find(|l| l.id == owner).unwrap().lfos
-                };
-                units
-                    .last()
-                    .map(|e| InstrumentComponent::Lfo(e.id))
-                    .unwrap_or(component)
-            }
-            InstrumentComponent::Oscillator(_) => InstrumentComponent::Oscillators,
-            unit => unit,
-        };
-        self.instrument_ui.selected_component = Some((owner, unit));
-        self.instrument_ui.component_refocus = true;
     }
 }

@@ -35,14 +35,7 @@ impl EffectDrag {
 }
 impl DawUi {
     pub(super) fn select_effect(&mut self, id: Id, toggle: bool) {
-        if toggle {
-            if !self.selected_effects.remove(&id) {
-                self.selected_effects.insert(id);
-            }
-        } else {
-            self.selected_effects.clear();
-            self.selected_effects.insert(id);
-        }
+        crate::unit_selection::select(&mut self.selected_effects, id, toggle);
     }
 
     pub(super) fn cancel_unavailable_effect_drag(&mut self, ui: &egui::Ui) {
@@ -92,15 +85,7 @@ impl DawUi {
             && !power.contains(origin)
             && let Some(target) = target
         {
-            let units = if self.selected_effects.contains(&unit) {
-                order
-                    .iter()
-                    .copied()
-                    .filter(|id| self.selected_effects.contains(id))
-                    .collect()
-            } else {
-                vec![unit]
-            };
+            let units = crate::unit_selection::drag_group(order, &self.selected_effects, unit);
             // Arm on press so a fast motion+release cannot lose its origin between frames.
             header.request_focus();
             self.effects_drag = Some(EffectDrag {
@@ -193,19 +178,8 @@ impl DawUi {
                     DragSource::Library { .. } => (slot, slot, true),
                     DragSource::Chain { .. } if duplicate => (slot, slot, true),
                     DragSource::Chain { units, .. } => {
-                        let moving: HashSet<_> = units.iter().copied().collect();
-                        let index = slots[..slot]
-                            .iter()
-                            .filter(|(id, _)| !moving.contains(id))
-                            .count();
-                        let mut order: Vec<_> = drag
-                            .order
-                            .iter()
-                            .copied()
-                            .filter(|id| !moving.contains(id))
-                            .collect();
-                        order.splice(index..index, units.iter().copied());
-                        (slot, index, order != drag.order)
+                        let (index, changed) = drag::group_insertion(&drag.order, units, slot);
+                        (slot, index, changed)
                     }
                 }
             });

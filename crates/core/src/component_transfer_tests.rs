@@ -511,3 +511,208 @@ fn macro_module_moves_merge_strips_remap_every_consumer_and_copy_fresh_targets()
     );
     assert_eq!(serde_json::to_vec(&p).unwrap(), snapshot);
 }
+
+#[test]
+fn component_group_reorder_preserves_source_prefix_and_all_processing_settings() {
+    let (mut p, t, a, _) = fixture();
+    let i = p.tracks[0].instrument.as_mut().unwrap();
+    i.layers[0].lfos.push(LfoInstance::default());
+    i.layers[0].macro_module.add();
+    let before = i.clone();
+    let envelope = Envelope(i.layers[0].envelopes[0].id);
+    let lfo = Lfo(i.layers[0].lfos[0].id);
+    // Input selection order must not determine the resulting display order.
+    let prepared = p
+        .component_group_transfer(t, a, a, &[Macros, envelope], 3, false)
+        .unwrap();
+    assert_eq!(prepared.components, [envelope, Macros]);
+    assert!(prepared.changed);
+    p.edit(prepared.edit).unwrap();
+    let actual = p.tracks[0].instrument.as_ref().unwrap();
+    assert_eq!(
+        actual.layers[0].visible_components(),
+        [Oscillators, lfo, Amplitude, envelope, Macros]
+    );
+    let mut expected = before;
+    expected.layers[0].component_order = actual.layers[0].component_order.clone();
+    assert_eq!(actual, &expected);
+    let prepared = p
+        .component_group_transfer(t, a, a, &[envelope, Oscillators], 4, false)
+        .unwrap();
+    assert!(prepared.changed);
+    p.edit(prepared.edit).unwrap();
+    assert_eq!(
+        p.tracks[0].instrument.as_ref().unwrap().layers[0].visible_components(),
+        [Oscillators, lfo, Amplitude, Macros, envelope]
+    );
+    // Pinned sources do not make an otherwise unchanged group look like a move.
+    assert!(
+        !p.component_group_transfer(t, a, a, &[Oscillators, lfo], 1, false)
+            .unwrap()
+            .changed
+    );
+    let snapshot = serde_json::to_value(&p).unwrap();
+    for (units, index) in [
+        (vec![envelope, Macros], 0),
+        (vec![envelope, envelope], 1),
+        (vec![], 1),
+        (vec![envelope, Macros], 999),
+    ] {
+        assert!(
+            p.component_group_transfer(t, a, a, &units, index, false)
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&p).unwrap(), snapshot);
+    }
+}
+
+#[test]
+fn component_group_transfers_resolve_ids_merge_units_and_reject_the_whole_invalid_drop() {
+    for duplicate in [false, true] {
+        for main in [false, true] {
+            let (mut p, t, a, b) = fixture();
+            let i = p.tracks[0].instrument.as_mut().unwrap();
+            let envelope = Envelope(i.layers[0].envelopes[0].id);
+            let source = i.layers[0].amplitude.modulations[0].source;
+            let mut lfo = LfoInstance::default();
+            lfo.modulations.push(Modulation {
+                source,
+                amount: 0.5,
+                ..Modulation::new(ModulationParameter::LfoDepth)
+            });
+            let lfo_id = lfo.id;
+            i.layers[0].lfos.push(lfo);
+            i.layers[0].macro_module.add();
+            let to = if main {
+                i.main.macro_module.add();
+                i.main.id
+            } else {
+                i.layers[1].oscillators.push(OscillatorSettings::default());
+                i.layers[1].macro_module.add();
+                b
+            };
+            let units = vec![Macros, Lfo(lfo_id), envelope];
+            let snapshot = serde_json::to_value(&p).unwrap();
+            let mut invalid = units.clone();
+            invalid.push(Amplitude);
+            if main {
+                assert!(!p.can_transfer_components(t, a, to, &invalid, duplicate));
+                assert!(
+                    p.component_group_transfer(t, a, to, &invalid, 0, duplicate)
+                        .is_err()
+                );
+            }
+            assert!(
+                p.component_group_transfer(t, a, to, &units, 999, duplicate)
+                    .is_err()
+            );
+            assert_eq!(serde_json::to_value(&p).unwrap(), snapshot);
+            let result = p
+                .component_group_transfer(t, a, to, &units, usize::from(!main), duplicate)
+                .unwrap();
+            let placed = result.components.clone();
+            assert_eq!(
+                serde_json::to_value(&p).unwrap(),
+                snapshot,
+                "Preparation must not publish edits"
+            );
+            p.edit(result.edit).unwrap();
+            let i = p.tracks[0].instrument.as_ref().unwrap();
+            let (order, lfos, macros) = if main {
+                (
+                    i.main.visible_components(),
+                    &i.main.lfos,
+                    &i.main.macro_module,
+                )
+            } else {
+                (
+                    i.layers[1].visible_components(),
+                    &i.layers[1].lfos,
+                    &i.layers[1].macro_module,
+                )
+            };
+            assert_eq!(&order[usize::from(!main)..], placed);
+            assert_eq!(macros.controls.len(), 2);
+            assert!(matches!(placed[0], Envelope(_)));
+            assert!(matches!(placed[1], Lfo(_)));
+            assert_eq!(placed[2], Macros);
+            if duplicate {
+                assert_ne!(placed[0], envelope);
+                assert_ne!(placed[1], Lfo(lfo_id));
+                assert_eq!(lfos.last().unwrap().modulations[0].source, source);
+                let mut original: Project = serde_json::from_value(snapshot).unwrap();
+                assert_eq!(
+                    i.layers[0],
+                    original.tracks[0].instrument.take().unwrap().layers[0]
+                );
+            } else {
+                let new = Some(ModulationSourceId {
+                    layer: to,
+                    unit: match placed[0] {
+                        Envelope(id) => id,
+                        _ => unreachable!(),
+                    },
+                });
+                assert_eq!(lfos.last().unwrap().modulations[0].source, new);
+                assert_eq!(i.layers[0].amplitude.modulations[0].source, new);
+                assert!(
+                    !i.layers[0]
+                        .envelopes
+                        .iter()
+                        .any(|e| Envelope(e.id) == envelope)
+                );
+            }
+            p.validate().unwrap();
+        }
+    }
+}
+
+#[test]
+fn component_group_source_copies_merge_first_and_keep_routes_on_their_targets() {
+    let (mut p, t, a, b) = fixture();
+    let envelope = Envelope(p.tracks[0].instrument.as_ref().unwrap().layers[0].envelopes[0].id);
+    let original = p.tracks[0].instrument.as_ref().unwrap().layers[0].clone();
+    for to in [a, b] {
+        let mut copy = p.clone();
+        let result = copy
+            .component_group_transfer(t, a, to, &[envelope, Oscillators], 1, true)
+            .unwrap();
+        let placed = result.components.clone();
+        assert_eq!(placed[0], Oscillators);
+        copy.edit(result.edit).unwrap();
+        let i = copy.tracks[0].instrument.as_ref().unwrap();
+        let layer = i.layers.iter().find(|l| l.id == to).unwrap();
+        assert_eq!(layer.visible_components()[0], Oscillators);
+        assert_eq!(layer.visible_components()[1], placed[1]);
+        assert_ne!(placed[1], envelope);
+        let start = if to == a {
+            original.oscillators.len()
+        } else {
+            0
+        };
+        for (source, original_source) in
+            layer.oscillators[start..].iter().zip(&original.oscillators)
+        {
+            assert!(!original.oscillators.iter().any(|o| o.id == source.id));
+            let mut expected = original_source.clone();
+            expected.id = source.id;
+            assert_eq!(source, &expected);
+        }
+        let route = layer
+            .oscillator_modulations
+            .iter()
+            .find(|r| r.target == Some(layer.oscillators[start].id))
+            .unwrap();
+        assert_ne!(route.id, original.oscillator_modulations[0].id);
+        assert_eq!(route.source, original.oscillator_modulations[0].source);
+        copy.validate().unwrap();
+    }
+    let result = p
+        .component_group_transfer(t, a, b, &[envelope, Oscillators], 1, false)
+        .unwrap();
+    p.edit(result.edit).unwrap();
+    let i = p.tracks[0].instrument.as_ref().unwrap();
+    assert!(i.layers[0].oscillators.is_empty());
+    assert_eq!(i.layers[1].oscillators, original.oscillators);
+    assert_eq!(i.layers[1].visible_components()[0], Oscillators);
+}

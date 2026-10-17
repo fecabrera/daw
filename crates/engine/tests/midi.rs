@@ -2785,11 +2785,18 @@ fn macros_fan_out_through_lfo_dependencies_with_live_export_block_and_layout_par
         .macro_module
         .controls[0]
         .name = Some("Brightness".into());
-    assert_eq!(
-        named.project.tracks[0].instrument.as_mut().unwrap().layers[0]
-            .move_component(InstrumentComponent::Macros, 1),
-        Some(true)
-    );
+    let layer = &named.project.tracks[0].instrument.as_ref().unwrap().layers[0];
+    let owner = layer.id;
+    let units = [
+        InstrumentComponent::Macros,
+        InstrumentComponent::Lfo(layer.lfos[0].id),
+    ];
+    let group = named
+        .project
+        .component_group_transfer(named.project.tracks[0].id, owner, owner, &units, 1, false)
+        .unwrap();
+    assert!(group.changed);
+    named.project.edit(group.edit).unwrap();
     let mut ordered_audio = vec![[0.0; 2]; expected.len()];
     Renderer::new(named.clone()).render_offline(&mut ordered_audio);
     assert_eq!(ordered_audio, expected);

@@ -30,7 +30,7 @@ impl Project {
         destination_index: Option<usize>,
         component: InstrumentComponent,
         duplicate: bool,
-    ) -> Result<()> {
+    ) -> Result<InstrumentComponent> {
         let track = self
             .tracks
             .iter_mut()
@@ -64,7 +64,7 @@ impl Project {
             moved.ok_or_else(|| {
                 Error("Invalid component insertion index or pinned source".into())
             })?;
-            return Ok(());
+            return Ok(component);
         }
         let mut placed = component;
         match component {
@@ -180,11 +180,17 @@ impl Project {
                 Error("Invalid component insertion index or pinned source".into())
             })?;
         }
-        Ok(())
+        Ok(placed)
     }
 }
 
-fn eligible(i: &InstrumentSettings, from: Id, to: Id, c: InstrumentComponent, copy: bool) -> bool {
+pub(super) fn eligible(
+    i: &InstrumentSettings,
+    from: Id,
+    to: Id,
+    c: InstrumentComponent,
+    copy: bool,
+) -> bool {
     if from == to && !copy && !matches!(c, InstrumentComponent::Oscillator(_)) {
         return !c.is_source()
             && if from == i.main.id {

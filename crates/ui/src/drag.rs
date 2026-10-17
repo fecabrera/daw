@@ -85,6 +85,21 @@ pub(super) fn insertion_slot(pointer: Pos2, slots: impl IntoIterator<Item = egui
         .take_while(|r| pointer.x >= r.center().x)
         .count()
 }
+/// Shared group insertion and clean no-op calculation for installed unit lanes.
+pub(super) fn group_insertion<T: Copy + Eq>(
+    order: &[T],
+    moving: &[T],
+    slot: usize,
+) -> (usize, bool) {
+    let index = order[..slot].iter().filter(|c| !moving.contains(c)).count();
+    let mut next: Vec<_> = order
+        .iter()
+        .copied()
+        .filter(|c| !moving.contains(c))
+        .collect();
+    next.splice(index..index, moving.iter().copied());
+    (index, next != order)
+}
 pub(super) fn insertion_line(ui: &Ui, slots: &[egui::Rect], slot: usize, viewport: egui::Rect) {
     if viewport.width() < 2.0 || viewport.height() <= 0.0 {
         return;

@@ -9,7 +9,7 @@ const LAYER_HEADER_WIDTH: f32 = TRACK_WIDTH;
 pub(super) struct InstrumentUi {
     pub(super) track: Option<Id>,
     pub(super) selected_layer: Option<Id>,
-    pub(super) selected_component: Option<(Id, daw_core::InstrumentComponent)>,
+    pub(super) selected_components: HashSet<(Id, daw_core::InstrumentComponent)>,
     pub(super) component_refocus: bool,
     pub(super) component_focus: crate::selection_focus::SelectionFocus,
     pub(super) component_viewports: Vec<(Id, Rect)>,
@@ -31,7 +31,7 @@ struct LayerNameEdit {
 }
 impl InstrumentUi {
     pub(super) fn cancel(&mut self) {
-        self.selected_component = None;
+        self.selected_components.clear();
         self.component_refocus = false;
         self.name_edit = None;
         self.macro_name_edit = None;
@@ -642,26 +642,20 @@ impl DawUi {
             self.instrument_catalog_bounds.layer_scroll = scroll.state.offset.y;
         }
         self.component_selection(ui, track.id);
-        if let Some(edit) = self.finish_component_drag(
+        if let Some((edit, selected)) = self.finish_component_drag(
             ui,
             track.id,
             &mut settings,
             &layer_rows,
             Rect::from_min_max(scroll.inner_rect.min, main_rect.max),
         ) {
-            let selection = match &edit {
-                Edit::TransferInstrumentComponent {
-                    destination,
-                    component,
-                    source,
-                    duplicate,
-                    ..
-                } if source != destination || *duplicate => Some((*destination, *component)),
-                _ => None,
-            };
             self.edit(edit);
-            if let Some((owner, component)) = selection {
-                self.select_transferred_component(track.id, owner, component);
+            if self.error.is_none()
+                && let Some(owner) = self.instrument_ui.selected_layer
+            {
+                self.instrument_ui.selected_components =
+                    selected.into_iter().map(|c| (owner, c)).collect();
+                self.instrument_ui.component_refocus = true;
             }
             return;
         }

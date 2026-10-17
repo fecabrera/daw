@@ -467,3 +467,7 @@ Envelope adds Time/Note timing and moves the Mode dropdown from its header to th
 ## Component selection and presentation order — 2026-10-17
 
 Instrument components reuse effect-unit selection outlines and click/focus helpers. Header drags reorder units within layers or Main and place transferred units at the shared effects insertion line, including empty destinations. Oscillator/source units remain first. Saved `component_order` entries use shared `unit-core::InstrumentComponent` identities and validation; they change only presentation, never provider/source vector order or DSP topology. Retained hidden units keep their positions, and legacy projects keep canonical order. See [selection, placement, and persistence](component-editing.md#selecting-and-reordering-component-units).
+
+## Component group editing — 2026-10-17
+
+Shift-click toggles component units within one lane. Selected headers move or duplicate the complete group in display order within/between regular layers and Main. Effects and components share selection/group-capture and insertion/no-op helpers. Audio sources stay first, and Oscillator/Macro transfers retain their merge rules. Core prepares one validated Batch edit through the existing member transfer/remapping functions; one incompatible member rejects the whole drop. Existing settings, saved layout, renderer publication, and source-assignment rules apply. See [component editing](component-editing.md#selecting-and-reordering-component-units). This supersedes the earlier component multi-selection limit.

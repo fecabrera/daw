@@ -20,6 +20,7 @@ pub(super) enum ComponentDragSource {
     Installed {
         owner: Id,
         component: daw_core::InstrumentComponent,
+        components: Vec<daw_core::InstrumentComponent>,
     },
 }
 
@@ -63,19 +64,29 @@ impl DawUi {
             && drag::crossed_threshold(ui, drag.origin)
         {
             drag.active = true;
-            match drag.source {
+            match &drag.source {
                 ComponentDragSource::Catalog { index, .. } => {
-                    self.instrument_catalog.select_dragged(index)
+                    self.instrument_catalog.select_dragged(*index)
                 }
-                ComponentDragSource::Installed { owner, component } => {
-                    self.instrument_ui.selected_component = Some((
-                        owner,
-                        if matches!(component, daw_core::InstrumentComponent::Oscillator(_)) {
-                            daw_core::InstrumentComponent::Oscillators
-                        } else {
-                            component
-                        },
-                    ));
+                ComponentDragSource::Installed {
+                    owner,
+                    component,
+                    components,
+                } => {
+                    self.instrument_ui.selected_components = if components.is_empty() {
+                        [(
+                            *owner,
+                            if matches!(component, daw_core::InstrumentComponent::Oscillator(_)) {
+                                daw_core::InstrumentComponent::Oscillators
+                            } else {
+                                *component
+                            },
+                        )]
+                        .into_iter()
+                        .collect()
+                    } else {
+                        components.iter().map(|c| (*owner, *c)).collect()
+                    };
                 }
             }
         }
@@ -88,7 +99,7 @@ impl DawUi {
         settings: &mut daw_core::InstrumentSettings,
         rows: &[(Id, Rect)],
         viewport: Rect,
-    ) -> Option<Edit> {
+    ) -> Option<(Edit, Vec<daw_core::InstrumentComponent>)> {
         self.cancel_unavailable_component_drag(ui);
         let Some(drag) = &self.component_drag else {
             return None;
@@ -122,10 +133,21 @@ impl DawUi {
             ComponentDragSource::Catalog { types, .. } => {
                 crate::instrument_catalog::can_add_components(settings, *id, types)
             }
-            ComponentDragSource::Installed { owner, component } => self
-                .session
-                .project
-                .can_transfer_component(track, *owner, *id, *component, duplicate),
+            ComponentDragSource::Installed {
+                owner,
+                component,
+                components,
+            } => {
+                if matches!(component, daw_core::InstrumentComponent::Oscillator(_)) {
+                    self.session
+                        .project
+                        .can_transfer_component(track, *owner, *id, *component, duplicate)
+                } else {
+                    self.session
+                        .project
+                        .can_transfer_components(track, *owner, *id, components, duplicate)
+                }
+            }
         });
         let mut destination_index = None;
         let mut oscillator_insertion = None;
@@ -134,7 +156,8 @@ impl DawUi {
             let ComponentDragSource::Installed {
                 owner: from,
                 component,
-            } = drag.source
+                components,
+            } = &drag.source
             else {
                 return true;
             };
@@ -142,7 +165,7 @@ impl DawUi {
                 return true;
             }
             let pointer = ui.input(|i| i.pointer.latest_pos()).unwrap();
-            let same_move = from == *owner && !duplicate;
+            let same_move = from == owner && !duplicate;
             if same_move && pointer.x < row.left() + TRACK_WIDTH {
                 return false;
             }
@@ -157,27 +180,37 @@ impl DawUi {
                 .iter()
                 .take_while(|(unit, _)| unit.is_source())
                 .count();
-            // A Macro transfer merges into one existing unit; provider copies create a new unit.
-            let existing = same_move || component == daw_core::InstrumentComponent::Macros;
-            let old = existing
-                .then(|| slots.iter().position(|(unit, _)| *unit == component))
-                .flatten();
-            let slot = if component.is_source() {
+            let only_sources = components.iter().all(|c| c.is_source());
+            let slot = if only_sources {
                 0
             } else if pointer.x < row.left() + TRACK_WIDTH {
                 slots.len()
             } else {
                 drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r)).max(first)
             };
-            let index = slot - usize::from(old.is_some_and(|old| old < slot));
-            if !component.is_source() {
-                destination_index = Some(index);
+            let order: Vec<_> = slots.iter().map(|(c, _)| *c).collect();
+            // Sources stay pinned. A Macro transfer merges its one existing destination unit.
+            let moving: Vec<_> = components
+                .iter()
+                .copied()
+                .filter(|c| {
+                    !c.is_source()
+                        && (same_move
+                            || (*c == daw_core::InstrumentComponent::Macros && order.contains(c)))
+                })
+                .collect();
+            let (mut index, changed) = drag::group_insertion(&order, &moving, slot);
+            let incoming_source = !same_move && components.iter().any(|c| c.is_source());
+            if first == 0 && incoming_source {
+                index += 1;
             }
+            index = index.max(usize::from(first > 0 || incoming_source));
+            destination_index = Some(index);
             unit_insertion = Some((
                 slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
                 slot,
                 *row,
-                !same_move || old != Some(index),
+                !same_move || changed,
             ));
             true
         });
@@ -185,7 +218,8 @@ impl DawUi {
             let ComponentDragSource::Installed {
                 owner: from,
                 component: daw_core::InstrumentComponent::Oscillator(id),
-            } = drag.source
+                ..
+            } = &drag.source
             else {
                 return true;
             };
@@ -202,10 +236,10 @@ impl DawUi {
             } else {
                 drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r))
             };
-            let old = slots.iter().position(|(unit, _)| *unit == id);
+            let old = slots.iter().position(|(unit, _)| *unit == *id);
             let index = slot
-                - usize::from(!duplicate && from == *owner && old.is_some_and(|old| old < slot));
-            if !duplicate && from == *owner && old == Some(index) {
+                - usize::from(!duplicate && *from == *owner && old.is_some_and(|old| old < slot));
+            if !duplicate && *from == *owner && old == Some(index) {
                 return false;
             }
             destination_index = Some(index);
@@ -256,7 +290,11 @@ impl DawUi {
                     ComponentDragSource::Catalog { types, .. } => {
                         add_components(settings, layer, &types)
                     }
-                    ComponentDragSource::Installed { owner, component } => {
+                    ComponentDragSource::Installed {
+                        owner,
+                        component,
+                        components,
+                    } => {
                         self.instrument_ui.selected_layer = Some(layer);
                         if unit_insertion
                             .as_ref()
@@ -264,14 +302,36 @@ impl DawUi {
                         {
                             return None;
                         }
-                        return Some(Edit::TransferInstrumentComponent {
-                            track_id: track,
-                            source: owner,
-                            destination: layer,
-                            destination_index,
-                            component,
+                        if matches!(component, daw_core::InstrumentComponent::Oscillator(_)) {
+                            return Some((
+                                Edit::TransferInstrumentComponent {
+                                    track_id: track,
+                                    source: owner,
+                                    destination: layer,
+                                    destination_index,
+                                    component,
+                                    duplicate,
+                                },
+                                vec![daw_core::InstrumentComponent::Oscillators],
+                            ));
+                        }
+                        match self.session.project.component_group_transfer(
+                            track,
+                            owner,
+                            layer,
+                            &components,
+                            destination_index.unwrap(),
                             duplicate,
-                        });
+                        ) {
+                            Ok(result) if result.changed => {
+                                return Some((result.edit, result.components));
+                            }
+                            Ok(_) => return None,
+                            Err(error) => {
+                                self.fail(error);
+                                return None;
+                            }
+                        }
                     }
                 }
                 self.instrument_ui.selected_layer = Some(layer);
@@ -330,13 +390,40 @@ impl DawUi {
         else {
             return;
         };
+        let components = if matches!(component, daw_core::InstrumentComponent::Oscillator(_)) {
+            Vec::new()
+        } else {
+            let order = if owner == instrument.main.id {
+                instrument.main.visible_components()
+            } else {
+                instrument
+                    .layers
+                    .iter()
+                    .find(|l| l.id == owner)
+                    .unwrap()
+                    .visible_components()
+            };
+            let keys: Vec<_> = order.into_iter().map(|c| (owner, c)).collect();
+            crate::unit_selection::drag_group(
+                &keys,
+                &self.instrument_ui.selected_components,
+                (owner, component),
+            )
+            .into_iter()
+            .map(|(_, c)| c)
+            .collect()
+        };
         response.request_focus();
         self.instrument_ui.selected_layer = Some(owner);
         self.component_drag = Some(ComponentDrag {
             project: self.session.project.project_id,
             track,
             instrument,
-            source: ComponentDragSource::Installed { owner, component },
+            source: ComponentDragSource::Installed {
+                owner,
+                component,
+                components,
+            },
             origin,
             focus: response.id,
             active: false,
