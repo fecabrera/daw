@@ -1788,6 +1788,7 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
     use daw_auto_filter::AutoFilter;
     use daw_drive::Drive;
     use daw_envelope::Envelope;
+    use daw_equalizer::Equalizer;
     use daw_unit_core::{
         EffectUnit, ModulationContext, ModulationDestination, ModulationOutput, ModulationRoute,
         ModulationSource, ProcessingContext, process_modulation,
@@ -1817,9 +1818,16 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let mut amp_reference = Amplitude::new(&amp_settings, context);
         let mut filter = AutoFilter::new(context, &AutoFilterSettings::default());
         let mut filter_reference = AutoFilter::new(context, &AutoFilterSettings::default());
+        let mut eq = Equalizer::new(context, &EqSettings::default());
+        let mut eq_reference = Equalizer::new(context, &EqSettings::default());
         let mut drive = Drive::new(context, &DriveSettings::default());
         let mut drive_reference = Drive::new(context, &DriveSettings::default());
-        for descriptor in [amp.descriptor(), filter.descriptor(), drive.descriptor()] {
+        for descriptor in [
+            amp.descriptor(),
+            filter.descriptor(),
+            drive.descriptor(),
+            eq.descriptor(),
+        ] {
             assert!(descriptor.consumes_modulation());
             assert!(!descriptor.provides_modulation());
         }
@@ -1840,6 +1848,8 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let mut amp_routes = routes(Amplitude::MODULATION_PARAMETERS, &[1.0]);
         let mut filter_routes = routes(AutoFilter::MODULATION_PARAMETERS, &filter_amounts);
         let mut drive_routes = routes(Drive::MODULATION_PARAMETERS, &drive_amounts);
+        let eq_amounts = [6.0, 0.5, 0.2, -3.0, 6.0, -0.5, 0.2];
+        let mut eq_routes = routes(Equalizer::MODULATION_PARAMETERS, &eq_amounts);
         envelope.note_on();
         ALLOCATIONS.with(|count| count.set(0));
         TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
@@ -1854,7 +1864,14 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
                 frame: u64::from(frame),
                 ..Default::default()
             };
-            // All three consume one cached output through the same public entry point.
+            assert_eq!(
+                process_modulation(&mut eq, &mut eq_routes, input, &[], &cached, c),
+                eq_reference.process_modulated(
+                    input,
+                    eq_amounts.map(|a| cached[0].value * (a * cached[0].weight))
+                )
+            );
+            // All destinations consume one cached output through the same public entry point.
             assert_eq!(
                 process_modulation(&mut filter, &mut filter_routes, input, &[], &cached, c),
                 filter_reference.process_modulated_at(
@@ -2878,4 +2895,176 @@ fn unassigned_and_disabled_macro_modules_preserve_audio_and_never_extend_notes()
         "Continuous value one is unity at Amplitude"
     );
     assert!(actual[50_000..].iter().flatten().all(|v| *v == 0.0));
+}
+
+#[test]
+fn eq_modulation_shared_providers_match_live_export_blocks_seek_loop_and_updates() {
+    use daw_engine::ModulationTarget;
+    for provider in 0..3 {
+        let mut p = plan(Waveform::Saw, 48000);
+        let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
+        let main = &mut instrument.main;
+        let source = match provider {
+            0 => {
+                let e = EnvelopeInstance {
+                    mode: EnvelopeMode::Retrigger,
+                    ..Default::default()
+                };
+                let id = ModulationSourceId {
+                    layer: main.id,
+                    unit: e.id,
+                };
+                main.envelopes.push(e);
+                id
+            }
+            1 => {
+                let mut lfo = LfoInstance::default();
+                lfo.settings.rate_mode = LfoRateMode::Hz;
+                lfo.settings.rate_hz = 7.0;
+                let id = ModulationSourceId {
+                    layer: main.id,
+                    unit: lfo.id,
+                };
+                main.lfos.push(lfo);
+                id
+            }
+            _ => {
+                main.macro_module.add();
+                main.macro_module.controls[0].settings.value = 0.7;
+                ModulationSourceId {
+                    layer: main.id,
+                    unit: main.macro_module.controls[0].id,
+                }
+            }
+        };
+        let mut effect = EffectInstance::equalizer();
+        let target = ModulationTarget::Effect(effect.id);
+        let EffectSettings::Eq3(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        let amounts = [6.0, 0.5, 0.3, -6.0, 6.0, -0.5, 0.3];
+        s.modulations = ModulationParameter::EQUALIZER
+            .into_iter()
+            .zip(amounts)
+            .map(|(parameter, amount)| Modulation {
+                source: Some(source),
+                amount,
+                ..Modulation::new(parameter)
+            })
+            .collect();
+        // Identical signed routes cancel before smoothing and bounds.
+        s.modulations.push(Modulation {
+            source: Some(source),
+            amount: 1.0,
+            ..Modulation::new(ModulationParameter::EqLowQ)
+        });
+        s.modulations.push(Modulation {
+            source: Some(source),
+            amount: -1.0,
+            ..Modulation::new(ModulationParameter::EqLowQ)
+        });
+        p.project.tracks[0].effects.push(effect);
+        p.project.validate().unwrap();
+        let mut expected = vec![[0.0; 2]; 4096];
+        Renderer::new(p.clone()).render_offline(&mut expected);
+        let mut blocks = Renderer::new(p.clone());
+        let mut chunked = vec![[0.0; 2]; expected.len()];
+        for block in chunked.chunks_mut(127) {
+            blocks.render_offline(block);
+        }
+        assert_eq!(chunked, expected);
+        let mut live = Renderer::new(p.clone());
+        live.play();
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        for (frame, expected) in expected.iter().enumerate() {
+            let actual = live.next_sample();
+            if frame > 240 {
+                assert_eq!(actual, *expected);
+            }
+        }
+        assert!(
+            live.modulation_snapshot(target)
+                .unwrap()
+                .iter()
+                .all(|v| v.is_finite())
+        );
+        let snapshot = live.modulation_snapshot(target).unwrap();
+        live.pause();
+        for _ in 0..300 {
+            live.next_sample();
+        }
+        live.play();
+        live.seek(1000);
+        live.stop();
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        let mut random = [[0.0; 2]; 64];
+        p.render(3000, &mut random);
+        assert_eq!(&random[..], &expected[3000..3064]);
+        let mut dry = p.clone();
+        if let EffectSettings::Eq3(s) = &mut dry.project.tracks[0].effects[0].unit {
+            s.modulations.clear();
+        }
+        let mut unmodulated = vec![[0.0; 2]; expected.len()];
+        Renderer::new(dry).render_offline(&mut unmodulated);
+        assert!(
+            unmodulated
+                .iter()
+                .zip(&expected)
+                .any(|(a, b)| (a[0] - b[0]).abs() > 1e-4)
+        );
+        let mut uninterrupted = Renderer::new(p.clone());
+        uninterrupted.play();
+        for _ in 0..4096 {
+            uninterrupted.next_sample();
+        }
+        assert_eq!(uninterrupted.modulation_snapshot(target).unwrap(), snapshot);
+        let mut reordered = p.clone();
+        if let EffectSettings::Eq3(s) = &mut reordered.project.tracks[0].effects[0].unit {
+            s.modulations.reverse();
+            s.modulation_open = true;
+        }
+        let mut replacement = Renderer::new(reordered.clone());
+        let mut reference = Renderer::new(p.clone());
+        reference.play();
+        for _ in 0..4096 {
+            reference.next_sample();
+        }
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        replacement.inherit(&mut uninterrupted);
+        for _ in 0..512 {
+            let actual = replacement.next_sample();
+            let expected = reference.next_sample();
+            assert!((actual[0] - expected[0]).abs() < 1e-6);
+        }
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        if let EffectSettings::Eq3(s) = &mut reordered.project.tracks[0].effects[0].unit {
+            s.modulations[0].amount *= 0.5;
+            s.modulations[1].enabled = false;
+        }
+        let mut changed = Renderer::new(reordered);
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        changed.inherit(&mut replacement);
+        for _ in 0..512 {
+            assert!(changed.next_sample().iter().all(|v| v.is_finite()));
+        }
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        p.project.transport.r#loop = Loop {
+            enabled: true,
+            start_frame: 500,
+            end_frame: 1500,
+        };
+        let mut a = Renderer::new(p.clone());
+        let mut b = Renderer::new(p);
+        a.play();
+        b.play();
+        for _ in 0..4000 {
+            assert_eq!(a.next_sample(), b.next_sample());
+        }
+    }
 }

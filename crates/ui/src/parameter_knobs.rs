@@ -11,6 +11,26 @@ fn percent(name: &'static str, reset: f32) -> KnobSpec {
         .format(percentage)
         .endpoint_labels("0", "100")
 }
+fn frequency(name: &'static str, reset: f32) -> KnobSpec {
+    KnobSpec::new(name, 20.0..=20_000.0, reset, 1.0)
+        .scale(
+            |v| (v / 20.0).log10() / 3.0,
+            |p| 20.0 * 1000_f32.powf(p),
+            |v, d| v * 2_f32.powf(d / 24.0),
+        )
+        .value_label(knobs::format_frequency)
+        .format(knobs::format_frequency)
+        .endpoint_labels("20", "20k")
+}
+fn eq_gain() -> KnobSpec {
+    KnobSpec::new("EQ gain", -24.0..=24.0, 0.0, 0.1)
+        .centered(0.0)
+        .bipolar()
+        .reference_step(6.0)
+        .value_label(|v| format!("{v:.1} dB"))
+        .format(|v| format!("{v:.1} dB"))
+        .endpoint_labels("−24", "+24")
+}
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
         Parameter::MacroValue => percent("Macro value", 0.0),
@@ -28,15 +48,15 @@ pub(super) fn destination(parameter: Parameter) -> KnobSpec {
         Parameter::Amplitude => knobs::marked_gain_spec(),
         Parameter::Level => knobs::marked_gain_spec().named("Filter output level"),
         Parameter::Volume => knobs::marked_gain_spec().named("Drive volume"),
-        Parameter::Frequency => KnobSpec::new("Filter frequency", 20.0..=20_000.0, 1000.0, 1.0)
-            .scale(
-                |v| (v / 20.0).log10() / 3.0,
-                |p| 20.0 * 1000_f32.powf(p),
-                |v, d| v * 2_f32.powf(d / 24.0),
-            )
-            .value_label(knobs::format_frequency)
-            .format(knobs::format_frequency)
-            .endpoint_labels("20", "20k"),
+        Parameter::Frequency => frequency("Filter frequency", 1000.0),
+        Parameter::EqLowFrequency => frequency(parameter.label(), 250.0),
+        Parameter::EqHighFrequency => frequency(parameter.label(), 2500.0),
+        Parameter::EqLowGain | Parameter::EqMidGain | Parameter::EqHighGain => {
+            eq_gain().named(parameter.label())
+        }
+        Parameter::EqLowQ | Parameter::EqHighQ => {
+            destination(Parameter::Resonance).named(parameter.label())
+        }
         Parameter::ColorFrequency => KnobSpec::new("Color frequency", 250.0..=2000.0, 750.0, 1.0)
             .scale(
                 |v| (v / 250.0).log2() / 3.0,
@@ -94,6 +114,14 @@ fn signed_pitch(value: f32) -> String {
 pub(super) fn amount(parameter: Parameter) -> KnobSpec {
     let (mapping, format, endpoints): (AmountMapping, fn(f32) -> String, [&str; 2]) =
         match parameter {
+            Parameter::EqLowGain | Parameter::EqMidGain | Parameter::EqHighGain => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_db,
+                ["−24", "+24"],
+            ),
             Parameter::Pitch => (
                 AmountMapping::Offset {
                     origin: 0.0,
@@ -111,11 +139,12 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−24", "+24"],
             ),
-            Parameter::Frequency | Parameter::LfoRate => {
-                (AmountMapping::Octaves, signed_octaves, ["−6", "+6"])
-            }
+            Parameter::Frequency
+            | Parameter::LfoRate
+            | Parameter::EqLowFrequency
+            | Parameter::EqHighFrequency => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
             Parameter::ColorFrequency => (AmountMapping::Octaves, signed_octaves, ["−3", "+3"]),
-            Parameter::Resonance => (
+            Parameter::Resonance | Parameter::EqLowQ | Parameter::EqHighQ => (
                 AmountMapping::Offset {
                     origin: 0.1,
                     direction: 1.0,

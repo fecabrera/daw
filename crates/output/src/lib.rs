@@ -9,6 +9,8 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
 };
 
+type ModulationMeter = Arc<[AtomicU32; daw_engine::MODULATION_SNAPSHOT_SIZE]>;
+
 mod meters;
 pub use meters::StereoMeter;
 
@@ -33,7 +35,7 @@ impl Status {
 struct PreparedRenderer {
     renderer: Renderer,
     meters: Vec<Arc<StereoMeter>>,
-    modulation: Vec<(ModulationTarget, Arc<[AtomicU32; 5]>)>,
+    modulation: Vec<(ModulationTarget, ModulationMeter)>,
 }
 impl PreparedRenderer {
     fn new(plan: RenderPlan, meters: &HashMap<Id, Arc<StereoMeter>>) -> Self {
@@ -49,7 +51,7 @@ impl PreparedRenderer {
             modulation: Vec::new(),
         }
     }
-    fn bind_modulation(&mut self, meters: &HashMap<ModulationTarget, Arc<[AtomicU32; 5]>>) {
+    fn bind_modulation(&mut self, meters: &HashMap<ModulationTarget, ModulationMeter>) {
         self.modulation = meters
             .iter()
             .map(|(key, meter)| (*key, meter.clone()))
@@ -59,8 +61,8 @@ impl PreparedRenderer {
         for (key, meter) in &self.modulation {
             let values = self
                 .renderer
-                .modulation_values(*key)
-                .unwrap_or([f32::NAN; 5]);
+                .modulation_snapshot(*key)
+                .unwrap_or([f32::NAN; daw_engine::MODULATION_SNAPSHOT_SIZE]);
             for (cell, value) in meter.iter().zip(values) {
                 cell.store(value.to_bits(), Ordering::Relaxed);
             }
@@ -143,15 +145,17 @@ fn bind_band_meters(renderer: &mut Renderer, meters: &HashMap<Id, Arc<[AtomicU32
 }
 fn modulation_meters(
     plan: &RenderPlan,
-    previous: &HashMap<ModulationTarget, Arc<[AtomicU32; 5]>>,
-) -> HashMap<ModulationTarget, Arc<[AtomicU32; 5]>> {
+    previous: &HashMap<ModulationTarget, ModulationMeter>,
+) -> HashMap<ModulationTarget, ModulationMeter> {
     let effects = plan
         .project
         .all_effects()
         .filter(|e| {
             matches!(
                 e.unit,
-                daw_core::EffectSettings::AutoFilter(_) | daw_core::EffectSettings::Drive(_)
+                daw_core::EffectSettings::AutoFilter(_)
+                    | daw_core::EffectSettings::Drive(_)
+                    | daw_core::EffectSettings::Eq3(_)
             )
         })
         .map(|e| ModulationTarget::Effect(e.id));
@@ -243,7 +247,7 @@ pub struct AudioOutput {
     track_meters: HashMap<Id, Arc<StereoMeter>>,
     effect_meters: HashMap<Id, Arc<AtomicU32>>,
     band_meters: HashMap<Id, Arc<[AtomicU32; 3]>>,
-    modulation_meters: HashMap<ModulationTarget, Arc<[AtomicU32; 5]>>,
+    modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
 }
 impl AudioOutput {
     pub fn new(plan: RenderPlan) -> Result<Self, String> {
@@ -376,6 +380,13 @@ impl AudioOutput {
     }
     /// Display-only block snapshots. No synthetic animation when playback is stopped.
     pub fn modulation_values(&self, key: ModulationTarget) -> Option<[f32; 5]> {
+        self.modulation_snapshot(key)
+            .map(|v| std::array::from_fn(|i| v[i]))
+    }
+    pub fn modulation_snapshot(
+        &self,
+        key: ModulationTarget,
+    ) -> Option<daw_engine::ModulationSnapshot> {
         if !self.status.playing.load(Ordering::Relaxed) {
             return None;
         }
@@ -1120,6 +1131,12 @@ mod modulation_meter_tests {
         let drive = daw_core::EffectInstance::drive();
         let drive_key = ModulationTarget::Effect(drive.id);
         plan.project.tracks[0].effects.push(drive);
+        let mut eq = daw_core::EffectInstance::equalizer();
+        let eq_key = ModulationTarget::Effect(eq.id);
+        if let daw_core::EffectSettings::Eq3(s) = &mut eq.unit {
+            s.bands[2].q = 2.4;
+        }
+        plan.project.tracks[0].effects.push(eq);
         let track = plan.project.add_midi_track().unwrap();
         let layer = &mut plan.project.tracks[1].instrument.as_mut().unwrap().layers[0];
         layer.amplitude.present = true;
@@ -1134,7 +1151,7 @@ mod modulation_meter_tests {
             oscillator: layer.oscillators[0].id,
         };
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 4);
+        assert_eq!(handles.len(), 5);
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1143,15 +1160,18 @@ mod modulation_meter_tests {
         for _ in 0..512 {
             renderer.next_sample();
         }
-        let expected = renderer.modulation_values(key).unwrap();
+        let expected = renderer.modulation_snapshot(key).unwrap();
         let frame = renderer.playhead;
         renderer.publish_track_peaks();
         renderer.publish_track_peaks();
         assert_eq!(renderer.playhead, frame);
-        assert_eq!(expected, renderer.modulation_values(key).unwrap());
         assert_eq!(
-            expected,
-            std::array::from_fn(|i| f32::from_bits(handles[&key][i].load(Ordering::Relaxed)))
+            expected.map(f32::to_bits),
+            renderer.modulation_snapshot(key).unwrap().map(f32::to_bits)
+        );
+        assert_eq!(
+            expected.map(f32::to_bits),
+            std::array::from_fn(|i| handles[&key][i].load(Ordering::Relaxed))
         );
         assert_eq!(
             f32::from_bits(handles[&amplitude][0].load(Ordering::Relaxed)),
@@ -1162,7 +1182,15 @@ mod modulation_meter_tests {
             std::array::from_fn(|i| f32::from_bits(handles[&drive_key][i].load(Ordering::Relaxed)))
         );
         assert!(f32::from_bits(handles[&oscillator][0].load(Ordering::Relaxed)).is_nan());
+        let eq = renderer.modulation_snapshot(eq_key).unwrap();
+        assert!(eq.iter().all(|v| v.is_finite()));
+        assert_eq!(eq[6], 2.4);
+        assert_eq!(
+            eq.map(f32::to_bits),
+            std::array::from_fn(|i| handles[&eq_key][i].load(Ordering::Relaxed))
+        );
         let next = modulation_meters(&plan, &handles);
+        assert!(Arc::ptr_eq(&next[&eq_key], &handles[&eq_key]));
         assert!(Arc::ptr_eq(&next[&oscillator], &handles[&oscillator]));
         assert!(Arc::ptr_eq(&next[&key], &handles[&key]));
         plan.project.tracks.reverse();
@@ -1173,6 +1201,7 @@ mod modulation_meter_tests {
         plan.project.tracks[1].effects.clear();
         let removed = modulation_meters(&plan, &handles);
         assert!(!removed.contains_key(&key));
+        assert!(!removed.contains_key(&eq_key));
         assert!(removed.contains_key(&amplitude));
         assert!(Arc::ptr_eq(&removed[&oscillator], &handles[&oscillator]));
         plan.project.tracks[0].instrument.as_mut().unwrap().layers[0]

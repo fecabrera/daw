@@ -3873,6 +3873,14 @@ fn modifier_drag_copies_selected_effects_in_chain_order_with_new_ids() {
         for collapsed in [false, true] {
             for master in [false, true] {
                 let (mut app, _, ctx, ids) = chain_fixture(compact, collapsed);
+                for effect in &mut app.session.project.tracks[0].effects {
+                    if let daw_core::EffectSettings::Eq3(s) = &mut effect.unit {
+                        s.modulations.push(daw_core::Modulation {
+                            amount: 0.5,
+                            ..daw_core::Modulation::new(daw_core::ModulationParameter::EqHighQ)
+                        });
+                    }
+                }
                 let original = app.session.project.tracks[0].effects.clone();
                 if master {
                     app.session.project.master.effects = original.clone();
@@ -3936,7 +3944,20 @@ fn modifier_drag_copies_selected_effects_in_chain_order_with_new_ids() {
                 assert_eq!(&chain[..3], &original);
                 for (copy, source) in chain[3..].iter().zip([&original[0], &original[2]]) {
                     assert_ne!(copy.id, source.id);
-                    assert_eq!(copy.unit, source.unit);
+                    let mut copied_settings = copy.unit.clone();
+                    assert_eq!(
+                        copy.unit.modulations().len(),
+                        source.unit.modulations().len()
+                    );
+                    for (copied, original) in copied_settings
+                        .modulations_mut()
+                        .iter_mut()
+                        .zip(source.unit.modulations())
+                    {
+                        assert_ne!(copied.id, original.id);
+                        copied.id = original.id;
+                    }
+                    assert_eq!(copied_settings, source.unit);
                 }
                 assert_eq!(
                     app.selected_effects,

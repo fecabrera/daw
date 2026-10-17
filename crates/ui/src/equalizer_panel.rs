@@ -1,11 +1,11 @@
 use crate::{
     icons,
-    knobs::{self, Knob, KnobSpec},
+    knobs::{self, Knob},
     meters,
     midi_editor::UNIT_STRIP_WIDTH,
-    panels, rows, theme,
+    panels, parameter_knobs, rows, theme,
 };
-use daw_core::EqSettings;
+use daw_core::{EqSettings, ModulationParameter as Parameter};
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
@@ -16,45 +16,51 @@ pub(super) struct Bounds {
     pub meters: [Rect; 3],
 }
 
-fn gain_spec() -> KnobSpec {
-    KnobSpec::new("EQ gain", -24.0..=24.0, 0.0, 0.1)
-        .centered(0.0)
-        .bipolar()
-        .reference_step(6.0)
-        .value_label(|value| format!("{value:.1} dB"))
-        .endpoint_labels("−24", "+24")
-        .format(|value| format!("{value:.1} dB"))
-}
-fn frequency_spec(reset: f32) -> KnobSpec {
-    KnobSpec::new("EQ frequency", 20.0..=20_000.0, reset, 1.0)
-        .scale(
-            |value| (value / 20.0).log10() / 3.0,
-            |position| 20.0 * 1000_f32.powf(position),
-            |value, delta| value * 2_f32.powf(delta / 24.0),
-        )
-        .value_label(knobs::format_frequency)
-        .format(knobs::format_frequency)
-        .endpoint_labels("20", "20k")
-}
-fn q_spec() -> KnobSpec {
-    KnobSpec::new("EQ Q", 0.1..=10.0, std::f32::consts::FRAC_1_SQRT_2, 0.01)
-        .scale(
-            |value| (value / 0.1).log10() / 2.0,
-            |position| 0.1 * 100_f32.powf(position),
-            |value, delta| value * 2_f32.powf(delta / 24.0),
-        )
-        .value_label(|value| format!("Q {value:.2}"))
-        .format(|value| format!("Q {value:.2}"))
-        .endpoint_labels("0.1", "10")
-}
-
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut EqSettings,
     compact: bool,
     height: f32,
     levels: [f32; 3],
+    sources: &[crate::modulation_panel::Source],
+    live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
+        |ui| show_inner(ui, settings, compact, height, levels, sources, live),
+    )
+    .inner
+}
+fn show_inner(
+    ui: &mut Ui,
+    settings: &mut EqSettings,
+    compact: bool,
+    height: f32,
+    levels: [f32; 3],
+    sources: &[crate::modulation_panel::Source],
+    live: Option<daw_engine::ModulationSnapshot>,
+) -> (Bounds, egui::Response) {
+    let bases = [
+        settings.bands[0].gain_db,
+        settings.bands[0].frequency_hz,
+        settings.bands[0].q,
+        settings.bands[1].gain_db,
+        settings.bands[2].gain_db,
+        settings.bands[2].frequency_hz,
+        settings.bands[2].q,
+    ];
+    let markers = std::array::from_fn(|i| {
+        crate::modulation_panel::marker(
+            &settings.modulations,
+            sources,
+            Parameter::EQUALIZER[i],
+            bases[i],
+            settings.enabled,
+            None,
+            [live.map(|v| v[i]), None],
+        )
+    });
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
         header: Rect::NOTHING,
@@ -63,22 +69,33 @@ pub(super) fn show(
         bands: [Rect::NOTHING; 3],
         meters: [Rect::NOTHING; 3],
     };
+    let mut enabled = settings.enabled;
+    let mut collapsed = settings.collapsed;
     let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(
         ui,
         ("3-band EQ", compact),
         height,
-        &mut settings.enabled,
-        &mut settings.collapsed,
+        &mut enabled,
+        &mut collapsed,
         |ui| {
             body(
                 ui,
-                &mut settings.bands,
-                panel.margin,
+                settings,
                 compact,
                 levels,
                 &mut bounds,
+                &markers,
+                sources,
             )
         },
+    );
+    settings.enabled = enabled;
+    settings.collapsed = collapsed;
+    crate::modulation_panel::toggle(
+        ui,
+        &result.header,
+        settings.collapsed,
+        &mut settings.modulation_open,
     );
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
@@ -87,22 +104,26 @@ pub(super) fn show(
 
 fn body(
     ui: &mut Ui,
-    bands: &mut [daw_core::EqBandSettings; 3],
-    margin: i8,
+    settings: &mut EqSettings,
     compact: bool,
     levels: [f32; 3],
     bounds: &mut Bounds,
+    markers: &[Option<knobs::ModulationMarker>; 7],
+    sources: &[crate::modulation_panel::Source],
 ) {
+    let margin = panels::PanelStyle::default().margin;
+    let open = settings.modulation_open;
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+        let mut last_strip = Rect::NOTHING;
         for (index, name) in ["Low", "Mid", "High"].into_iter().enumerate() {
             let strip = ui.push_id(index, |ui| {
                 egui::Frame::new().inner_margin(margin).show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
                         ui.set_min_height(crate::envelope_panel::body_height(compact));
-                        let band = &mut bands[index];
-                        if !compact { bounds.knobs[index] = controls(ui, band, EqSettings::default().bands[index].frequency_hz, index == 1); }
+                        let band = &mut settings.bands[index];
+                        if !compact { bounds.knobs[index] = controls(ui, band, index, markers, &mut settings.modulation_open); }
                         rows::centered(ui, if compact { crate::envelope_panel::body_height(true) } else { icons::COMPACT_BUTTON_SIZE }, |ui| {
                             let response = rows::power_label(ui, name, &format!("Toggle {name} band cut"), band.enabled);
                             let response = response.on_hover_text(if index == 1 {
@@ -116,6 +137,7 @@ fn body(
                     });
                 })
             }).inner.response.rect;
+            last_strip = strip;
             if !compact {
                 let rail = meters::unit_monitor_rail(strip, margin);
                 bounds.meters[index] = rail;
@@ -123,44 +145,47 @@ fn body(
             }
             if index > 0 { panels::unit_divider(ui, strip.left(), strip.y_range().into()); }
         }
+        if open {
+            panels::unit_divider(ui, last_strip.right(), last_strip.y_range().into());
+            crate::modulation_panel::body(ui, &mut settings.modulations, sources, &Parameter::EQUALIZER, <EqSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
+        }
     });
 }
 fn controls(
     ui: &mut Ui,
     band: &mut daw_core::EqBandSettings,
-    frequency_reset: f32,
-    middle: bool,
+    index: usize,
+    markers: &[Option<knobs::ModulationMarker>; 7],
+    open: &mut bool,
 ) -> [Rect; 3] {
-    if middle {
-        let gain = knobs::row(ui, &mut band.gain_db, knobs::CHOICE_SIZE, |ui, value| {
-            ui.add(Knob::new(value, gain_spec()))
-        })
-        .rect;
-        // Keep footer alignment with the outer strips without exposing unused controls.
-        for _ in 0..2 {
+    let first = [0, 3, 4][index];
+    let mut bounds = [Rect::NOTHING; 3];
+    for (row, rect) in bounds.iter_mut().enumerate() {
+        if index == 1 && row > 0 {
+            // Mid retains the shared row/footer geometry without legacy frequency/Q controls.
             knobs::row(ui, &mut (), knobs::CHOICE_SIZE, |ui, _| {
                 ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), egui::Sense::hover())
             });
+            continue;
         }
-        return [gain, Rect::NOTHING, Rect::NOTHING];
+        let value = match row {
+            0 => &mut band.gain_db,
+            1 => &mut band.frequency_hz,
+            _ => &mut band.q,
+        };
+        let target = first + row;
+        *rect = knobs::row(ui, value, knobs::CHOICE_SIZE, |ui, v| {
+            ui.add(
+                Knob::new(
+                    v,
+                    parameter_knobs::destination(Parameter::EQUALIZER[target]),
+                )
+                .modulated(markers[target].as_ref(), open),
+            )
+        })
+        .rect;
     }
-    [
-        knobs::row(ui, &mut band.gain_db, knobs::CHOICE_SIZE, |ui, value| {
-            ui.add(Knob::new(value, gain_spec()))
-        })
-        .rect,
-        knobs::row(
-            ui,
-            &mut band.frequency_hz,
-            knobs::CHOICE_SIZE,
-            |ui, value| ui.add(Knob::new(value, frequency_spec(frequency_reset))),
-        )
-        .rect,
-        knobs::row(ui, &mut band.q, knobs::CHOICE_SIZE, |ui, value| {
-            ui.add(Knob::new(value, q_spec()))
-        })
-        .rect,
-    ]
+    bounds
 }
 
 #[cfg(test)]
@@ -208,6 +233,8 @@ mod tests {
                                         compact,
                                         if compact { 68.0 } else { 244.0 },
                                         [0.0, 10_f32.powf(-30.0 / 20.0), 2.0],
+                                        &[],
+                                        None,
                                     )
                                     .0,
                                 );

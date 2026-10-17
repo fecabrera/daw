@@ -597,3 +597,183 @@ mod limiter_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod eq_modulation_tests {
+    use crate::*;
+    fn fixture() -> (Project, Id, EffectInstance) {
+        let mut p = Project::default();
+        let track = p.add_midi_track().unwrap();
+        let layer = &mut p.tracks[0].instrument.as_mut().unwrap().layers[0];
+        layer.envelopes[0].present = true;
+        layer.envelopes[0].mode = EnvelopeMode::Retrigger;
+        let source = ModulationSourceId {
+            layer: layer.id,
+            unit: layer.envelopes[0].id,
+        };
+        let mut effect = EffectInstance::equalizer();
+        let EffectSettings::Eq3(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.modulation_open = true;
+        s.modulations = ModulationParameter::EQUALIZER
+            .into_iter()
+            .map(|parameter| Modulation {
+                source: Some(source),
+                amount: -parameter.limit(),
+                ..Modulation::new(parameter)
+            })
+            .collect();
+        (p, track, effect)
+    }
+    #[test]
+    fn eq_modulation_defaults_roundtrip_and_invalid_edits_are_atomic() {
+        let (mut p, track, effect) = fixture();
+        p.edit(Edit::SetEffects {
+            track_id: track,
+            effects: vec![effect.clone()],
+            compact: false,
+        })
+        .unwrap();
+        let saved = serde_json::to_value(&p).unwrap();
+        let loaded: Project = serde_json::from_value(saved.clone()).unwrap();
+        loaded.validate().unwrap();
+        assert_eq!(loaded.tracks[0].effects[0], effect);
+        for case in 0..9 {
+            let mut invalid = effect.clone();
+            let EffectSettings::Eq3(s) = &mut invalid.unit else {
+                unreachable!()
+            };
+            match case {
+                0 => s.modulations[0].amount = f32::NAN,
+                1 => s.modulations[1].amount = 6.01,
+                2 => s.modulations[2].amount = -10.01,
+                3 => s.modulations[3].parameter = ModulationParameter::Amplitude,
+                4 => s.modulations[0].source.as_mut().unwrap().unit = Id::new_v4(),
+                5 => s.modulations[0].target = Some(Id::new_v4()),
+                6 => s.modulations[0].id = Id::nil(),
+                7 => s.modulations[0].amount = 24.01,
+                _ => s.modulations.push(s.modulations[0]),
+            }
+            assert!(
+                p.edit(Edit::SetEffects {
+                    track_id: track,
+                    effects: vec![invalid],
+                    compact: true
+                })
+                .is_err()
+            );
+            assert_eq!(serde_json::to_value(&p).unwrap(), saved);
+        }
+        let mut legacy = serde_json::to_value(EqSettings::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("modulations");
+        legacy.as_object_mut().unwrap().remove("modulation_open");
+        assert_eq!(
+            serde_json::from_value::<EqSettings>(legacy.clone()).unwrap(),
+            EqSettings::default()
+        );
+        for field in ["modulations", "modulation_open"] {
+            let mut malformed = legacy.clone();
+            malformed[field] = serde_json::Value::Null;
+            assert!(serde_json::from_value::<EqSettings>(malformed).is_err());
+        }
+    }
+    #[test]
+    fn eq_modulation_uses_same_instrument_shared_sources_and_follows_provider_moves() {
+        let (mut p, track, effect) = fixture();
+        let source = effect.unit.modulations()[0].source.unwrap();
+        let mut instrument = p.tracks[0].instrument.clone().unwrap();
+        instrument.layers[0].envelopes[0].mode = EnvelopeMode::PerNote;
+        p.edit(Edit::SetEffects {
+            track_id: track,
+            effects: vec![effect.clone()],
+            compact: false,
+        })
+        .unwrap();
+        let saved = serde_json::to_value(&p).unwrap();
+        assert!(
+            p.edit(Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(instrument)
+            })
+            .is_err()
+        );
+        assert_eq!(serde_json::to_value(&p).unwrap(), saved);
+        assert!(
+            p.edit(Edit::SetMasterEffects {
+                effects: vec![EffectInstance {
+                    id: Id::new_v4(),
+                    ..effect.clone()
+                }],
+                compact: false
+            })
+            .is_err()
+        );
+        let audio = p.add_track().unwrap();
+        assert!(
+            p.edit(Edit::SetEffects {
+                track_id: audio,
+                effects: vec![EffectInstance {
+                    id: Id::new_v4(),
+                    ..effect.clone()
+                }],
+                compact: false
+            })
+            .is_err()
+        );
+        let destination = p.tracks[0].instrument.as_ref().unwrap().main.id;
+        p.edit(Edit::TransferInstrumentComponent {
+            track_id: track,
+            source: source.layer,
+            destination,
+            destination_index: None,
+            component: InstrumentComponent::Envelope(source.unit),
+            duplicate: false,
+        })
+        .unwrap();
+        assert!(
+            p.tracks[0].effects[0]
+                .unit
+                .modulations()
+                .iter()
+                .all(|r| r.source.unwrap().layer == destination)
+        );
+        p.validate().unwrap();
+        // LFO and Macro metadata use the same shared scope validation as Envelopes.
+        let instrument = p.tracks[0].instrument.as_mut().unwrap();
+        let lfo = LfoInstance::default();
+        let lfo_source = ModulationSourceId {
+            layer: destination,
+            unit: lfo.id,
+        };
+        instrument.main.lfos.push(lfo);
+        instrument.main.macro_module.add();
+        let macro_source = ModulationSourceId {
+            layer: destination,
+            unit: instrument.main.macro_module.controls[0].id,
+        };
+        for source in [lfo_source, macro_source] {
+            let mut effect = p.tracks[0].effects[0].clone();
+            for r in effect.unit.modulations_mut() {
+                r.source = Some(source);
+            }
+            p.edit(Edit::SetEffects {
+                track_id: track,
+                effects: vec![effect],
+                compact: false,
+            })
+            .unwrap();
+        }
+        let other_track = p.add_midi_track().unwrap();
+        let mut foreign = p.tracks[0].effects[0].clone();
+        foreign.id = Id::new_v4();
+        assert!(
+            p.edit(Edit::SetEffects {
+                track_id: other_track,
+                effects: vec![foreign],
+                compact: false
+            })
+            .is_err()
+        );
+    }
+}

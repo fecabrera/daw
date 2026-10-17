@@ -279,6 +279,7 @@ destination_settings!(
     Shared
 );
 destination_settings!(crate::DriveSettings, &ModulationParameter::DRIVE, Shared);
+destination_settings!(crate::EqSettings, &ModulationParameter::EQUALIZER, Shared);
 
 impl UnitDescriptor {
     pub fn provides_modulation(&self) -> bool {

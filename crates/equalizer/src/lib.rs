@@ -4,6 +4,9 @@ use daw_unit_core::{
 };
 use fundsp::{audionode::AudioNode, svf::*};
 
+mod modulation;
+#[cfg(test)]
+mod modulation_tests;
 mod monitor;
 
 #[derive(Clone)]
@@ -56,6 +59,7 @@ struct Band {
     current: [f32; 4],
     target: [f32; 4],
     remaining: u32,
+    configured: [f32; 4],
 }
 fn values(settings: EqBandSettings) -> [f32; 4] {
     [
@@ -81,6 +85,7 @@ impl Band {
             current,
             target: current,
             remaining: 0,
+            configured: current,
         }
     }
     fn retarget(&mut self, settings: EqBandSettings, frames: u32) {
@@ -100,14 +105,19 @@ impl Band {
                 *current += (target - *current) / self.remaining as f32;
             }
             self.remaining -= 1;
+        }
+    }
+    fn configure(&mut self, values: [f32; 4]) {
+        if self.configured[..3] != values[..3] {
             for filter in self
                 .normal
                 .iter_mut()
                 .flatten()
                 .chain(self.cut.iter_mut().flatten())
             {
-                filter.configure(self.current);
+                filter.configure(values);
             }
+            self.configured = values;
         }
     }
     fn sample(&mut self, input: [f32; 2], external: Option<([f32; 2], [f32; 2])>) -> [f32; 2] {
@@ -135,6 +145,7 @@ impl Band {
             filter.reset();
             filter.configure(self.current);
         }
+        self.configured = self.current;
     }
 }
 
@@ -310,6 +321,8 @@ pub struct Equalizer {
     remaining: u32,
     fade_frames: u32,
     monitor: monitor::Monitor,
+    external: daw_unit_core::ModulationSmoother<7>,
+    effective: [[f32; 4]; 3],
 }
 impl Equalizer {
     /// Prepare on a control thread with valid settings and a supported processing rate.
@@ -326,6 +339,8 @@ impl Equalizer {
             remaining: 0,
             fade_frames: (context.sample_rate_hz / 200).max(1),
             monitor: monitor::Monitor::new(context.sample_rate_hz),
+            external: daw_unit_core::ModulationSmoother::new(context),
+            effective: settings.bands.map(values),
         }
     }
     /// Retarget without allocating or resetting filter history. Display-only changes are no-ops.
@@ -354,7 +369,7 @@ impl EffectUnit for Equalizer {
             type_id: EQ_TYPE_ID,
             name: "3-band EQ",
             is_source: false,
-            inputs: &[PortKind::StereoAudio],
+            inputs: &[PortKind::StereoAudio, PortKind::Modulation],
             outputs: &[PortKind::StereoAudio],
         }
     }
@@ -367,22 +382,26 @@ impl EffectUnit for Equalizer {
         self.mix = self.target;
         self.remaining = 0;
         self.monitor.reset();
+        self.external.reset();
+        self.effective = std::array::from_fn(|i| self.bands[i].current);
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        for band in &mut self.bands {
-            band.advance();
+        self.process_modulated(input, [0.0; 7])
+    }
+}
+impl Equalizer {
+    fn process_effective_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
+        for (band, effective) in self.bands.iter_mut().zip(self.effective) {
+            band.configure(effective);
         }
         self.mid_cut.configure(
-            self.bands[0].current[0],
-            self.bands[2].current[0],
-            self.bands[0].current[1],
-            self.bands[2].current[1],
+            self.effective[0][0],
+            self.effective[2][0],
+            self.effective[0][1],
+            self.effective[2][1],
         );
-        self.mid_shelf.configure(
-            self.bands[0].current,
-            self.bands[2].current,
-            self.bands[1].current[2],
-        );
+        self.mid_shelf
+            .configure(self.effective[0], self.effective[2], self.effective[1][2]);
         let mut wet = self.bands[0].sample(input, None);
         let cut = self.mid_cut.sample(wet);
         let normal = self.mid_shelf.sample(wet);
@@ -405,7 +424,7 @@ impl EffectUnit for Equalizer {
         }
         let output = std::array::from_fn(|ch| input[ch] + (wet[ch] - input[ch]) * self.mix);
         self.monitor
-            .sample(output, self.bands[0].current[0], self.bands[2].current[0]);
+            .sample(output, self.effective[0][0], self.effective[2][0]);
         output
     }
 }

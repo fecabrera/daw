@@ -35,10 +35,16 @@ pub struct EqSettings {
     /// Low, middle, and high shelves, in serial order.
     /// Mid frequency/Q are retained for legacy data; processing uses Low/High controls.
     pub bands: [EqBandSettings; 3],
+    #[serde(default)]
+    pub modulation_open: bool,
+    #[serde(default)]
+    pub modulations: Vec<crate::Modulation>,
 }
 impl Default for EqSettings {
     fn default() -> Self {
         Self {
+            modulation_open: false,
+            modulations: Vec::new(),
             version: EQ_STATE_VERSION,
             enabled: true,
             collapsed: false,
@@ -53,7 +59,9 @@ impl Default for EqSettings {
 }
 impl EqSettings {
     pub fn valid(&self) -> bool {
-        self.version == EQ_STATE_VERSION && self.bands.iter().all(EqBandSettings::valid)
+        self.version == EQ_STATE_VERSION
+            && self.bands.iter().all(EqBandSettings::valid)
+            && crate::ModulationDestinationSettings::valid_modulations(self)
     }
 }
 
@@ -188,6 +196,7 @@ impl EffectSettings {
         match self {
             Self::AutoFilter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::Eq3(s) => crate::ModulationDestinationSettings::modulations(s),
             _ => &[],
         }
     }
@@ -197,6 +206,7 @@ impl EffectSettings {
         match self {
             Self::AutoFilter(s) => &mut s.modulations,
             Self::Drive(s) => &mut s.modulations,
+            Self::Eq3(s) => &mut s.modulations,
             _ => &mut [],
         }
     }

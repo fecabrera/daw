@@ -461,6 +461,8 @@ impl DawUi {
                                                         compact,
                                                         strip.height(),
                                                         self.output.as_ref().map_or([0.0; 3], |output| output.eq_band_levels(effect.id)),
+                                                        &modulation_sources,
+                                                        self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))),
                                                     );
                                                 let power = _bounds.power;
                                                 #[cfg(test)]

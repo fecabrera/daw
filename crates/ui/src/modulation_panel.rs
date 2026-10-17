@@ -438,15 +438,22 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::EqLowGain
+        | ModulationParameter::EqMidGain
+        | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
         ModulationParameter::LfoRate => offsets.map(|o| (base * 2.0_f32.powf(o)).max(0.0)),
         ModulationParameter::Pitch => offsets.map(|o| base + o.clamp(-96.0, 96.0)),
-        ModulationParameter::Frequency => {
+        ModulationParameter::Frequency
+        | ModulationParameter::EqLowFrequency
+        | ModulationParameter::EqHighFrequency => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(20.0, 20_000.0))
         }
         ModulationParameter::ColorFrequency => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(250.0, 2000.0))
         }
-        ModulationParameter::Resonance => offsets.map(|o| (base + o).clamp(0.1, 10.0)),
+        ModulationParameter::Resonance
+        | ModulationParameter::EqLowQ
+        | ModulationParameter::EqHighQ => offsets.map(|o| (base + o).clamp(0.1, 10.0)),
         ModulationParameter::Level => {
             offsets.map(|o| (base + o).clamp(daw_core::SILENT_GAIN_DB, 12.0))
         }
@@ -491,11 +498,17 @@ pub(super) fn marker(
     }
     let format_value = |value: f32| match parameter {
         ModulationParameter::Pitch => format!("{value:+.2} semitones"),
-        ModulationParameter::Frequency | ModulationParameter::ColorFrequency => {
-            knobs::format_frequency(value)
-        }
+        ModulationParameter::Frequency
+        | ModulationParameter::ColorFrequency
+        | ModulationParameter::EqLowFrequency
+        | ModulationParameter::EqHighFrequency => knobs::format_frequency(value),
         ModulationParameter::LfoRate => format!("{value:.2} Hz"),
-        ModulationParameter::Resonance => format!("Q {value:.2}"),
+        ModulationParameter::Resonance
+        | ModulationParameter::EqLowQ
+        | ModulationParameter::EqHighQ => format!("Q {value:.2}"),
+        ModulationParameter::EqLowGain
+        | ModulationParameter::EqMidGain
+        | ModulationParameter::EqHighGain => format!("{value:.1} dB"),
         ModulationParameter::Amplitude
         | ModulationParameter::Level
         | ModulationParameter::Volume => {

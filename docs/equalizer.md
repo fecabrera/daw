@@ -29,3 +29,23 @@ Playback and export use the same sequential runtime. There is no added buffering
 Native audio-device behavior and Windows/Linux appearance require separate checks from automated filter and egui tests.
 
 Master supports this unit through the same Timeline catalog and controls. Its independent saved chain processes the summed track bus before Master gain and output meters; see [Master effects](modular-audio-units.md#master-effects-implementation--2026-10-14).
+
+## Modulation — 2026-10-17
+
+3-band EQ is a shared modulation destination through the [portable source and destination contract](modulation.md). It accepts Retrigger/Legato Envelopes, LFOs, and Macro strips from its own MIDI instrument, including Main. Per note and foreign instrument sources fail core validation. Audio tracks and Master can retain unassigned connections but cannot reference an instrument provider. Disconnect a connected Envelope from track effects before changing it to Per note. Disabled, removed, unavailable, or unassigned sources contribute neutral offsets through the common resolver.
+
+| Destination | Signed Amount range | Application and final bounds |
+| --- | --- | --- |
+| Low · Gain / Mid · Gain / High · Gain | −24 to +24 dB per connection | Add to the band's gain; clamp to −24 to +24 dB. |
+| Low · Frequency / High · Frequency | −6 to +6 octaves per connection | Multiply by `2^offset`; clamp to 20 Hz–20 kHz. Both boundaries also control Mid. |
+| Low · Q / High · Q | −10 to +10 Q per connection | Add to Q; clamp to 0.1–10. Both Q values also control Mid edges. |
+
+Band and unit power remain discrete controls. Mid has no independent Frequency or Q target; its legacy saved fields remain ignored. Modulation leaves base values, power, and cuts unchanged. Disabled bands retain their gain settings; Frequency and Q continue controlling their cuts. Whole-unit off passes dry audio while filters and modulation continue advancing. Zero offsets preserve the unmodulated audio.
+
+The header's secondary-color dot opens the shared Source/Destination/Amount strips on the right. Connections reuse the common Plus strip, Power/Mod N footer, context-menu removal, and strip reordering. Regular EQ knobs and all three output-level rails stay visible. Compact lanes retain unit and connection footers while hiding knobs and level rails; horizontal collapse hides the body. Visibility edits use the existing effect transaction and mark the project modified. Header power, unit selection, collapse, and drag gestures retain their shared guards.
+
+Every EQ knob and Amount knob derives from `parameter_knobs.rs`. Gain keeps its centered ±24 dB scale, 6 dB marks, and 0.1 dB keyboard steps. Frequency retains its logarithmic scale and 1/24-octave keyboard operation; Q retains its logarithmic scale and shared signed amount adapter. Double-click Amount resets it to zero; Shift retains fine adjustment. Assigned parameters reuse the status dot, correlated-source range arc, source/amount tooltip, click-to-open action, and actual processed-value marker. Base pointers and readouts remain unchanged. A cut band's Gain target still reports its retained processed setting; its gain does not replace the cut path.
+
+Sources publish once per sample and fan out through cached values. `process_modulation` resolves typed signed routes, sums each target before bounds, and excludes per-note input. EQ reuses `ModulationSmoother` for 1 ms offset smoothing, alongside the existing 5 ms base, route amount/power, source-enable, and bypass ramps. Its normal shelf, Mid shelf/cut, and monitor filters all follow the resulting effective boundaries. Live markers use prepared atomic block snapshots with seven readings in Low Gain/Frequency/Q, Mid Gain, High Gain/Frequency/Q order. The existing five-reading host accessors remain compatibility adapters. Processing, route retargeting, snapshots, and reset allocate and lock nothing in the callback.
+
+EQ remains state version 1. Optional `modulation_open` and `modulations` fields default to closed/empty for older projects. Save/reopen, Save As, effect reorder, track duplication, processing-rate changes, and provider moves retain routes and source identity. Effect drag copies create fresh route IDs through the common effect-copy handler. Invalid route IDs, amounts, targets, or source references reject the complete edit. Compatible replacements retain route smoothing by stable ID plus EQ/filter/monitor history; presentation edits do not restart ramps. Stop/seek reset processing; Pause and loops retain the existing transport behavior. Modulation adds no audio latency, sidechain, cross-track routing, or note-release ownership.

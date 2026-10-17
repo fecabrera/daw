@@ -788,3 +788,127 @@ fn envelope_first_column_timing_knob_and_mode_dropdown_save_time_and_note_values
         assert!((envelope.settings.attack_note - 0.99).abs() < 1e-6);
     }
 }
+
+#[test]
+fn eq_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, layer) = fixture(theme);
+        add_component(&mut app, &ctx, layer, 1);
+        let state = &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        state.envelopes[0].mode = daw_core::EnvelopeMode::Legato;
+        let source = daw_core::ModulationSourceId {
+            layer,
+            unit: state.envelopes[0].id,
+        };
+        app.session.project.tracks[0]
+            .effects
+            .push(daw_core::EffectInstance::equalizer());
+        frame(&mut app, &ctx, vec![]);
+        let header = app.effects_bounds.units[0].header;
+        let height = app.effects_bounds.units[0].bands[0].bottom() - header.top();
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new(header.right() - 13.0, header.center().y),
+            false,
+        );
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.effects_bounds.units[0].header.width() > header.width());
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new(header.right() + 18.0, header.bottom() + 109.0),
+            false,
+        );
+        let daw_core::EffectSettings::Eq3(d) = &mut app.session.project.tracks[0].effects[0].unit
+        else {
+            panic!()
+        };
+        assert!(d.modulation_open);
+        assert_eq!(d.modulations.len(), 1);
+        assert_eq!(
+            d.modulations[0].parameter,
+            daw_core::ModulationParameter::EqLowGain
+        );
+        assert!(d.modulations[0].source.is_none() && d.modulations[0].amount == 0.0);
+        d.modulations = daw_core::ModulationParameter::EQUALIZER
+            .into_iter()
+            .map(|p| {
+                let mut r = daw_core::Modulation::new(p);
+                r.source = Some(source);
+                r.amount = p.limit() * 0.5;
+                r
+            })
+            .collect();
+        d.modulation_open = false;
+        let base = d.clone();
+        for (strip, row) in [(0, 0), (0, 1), (0, 2), (1, 0), (2, 0), (2, 1), (2, 2)] {
+            let daw_core::EffectSettings::Eq3(d) =
+                &mut app.session.project.tracks[0].effects[0].unit
+            else {
+                panic!()
+            };
+            d.modulation_open = false;
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let point =
+                knobs::modulation_marker_rect(app.effects_bounds.units[0].knobs[strip][row])
+                    .center();
+            click(&mut app, &ctx, point, false);
+            frame(&mut app, &ctx, vec![]);
+            let daw_core::EffectSettings::Eq3(d) = &app.session.project.tracks[0].effects[0].unit
+            else {
+                panic!()
+            };
+            let mut expected = base.clone();
+            expected.modulation_open = true;
+            assert_eq!(*d, expected);
+            assert!(app.dirty && app.effects_drag.is_none());
+            assert_eq!(
+                app.effects_bounds.units[0].bands[0].bottom() - header.top(),
+                height
+            );
+        }
+        let saved = serde_json::to_vec(&app.session.project).unwrap();
+        let mut reopened = DawUi::default();
+        reopened.session.project = serde_json::from_slice(&saved).unwrap();
+        reopened.selected_track = app.selected_track;
+        reopened.set_settings(&ctx, app.settings);
+        reopened.set_view_mode(ViewMode::Instrument, &ctx);
+        frame(&mut reopened, &ctx, vec![]);
+        let daw_core::EffectSettings::Eq3(d) = &reopened.session.project.tracks[0].effects[0].unit
+        else {
+            panic!()
+        };
+        assert!(d.modulation_open && !reopened.dirty);
+        assert!(reopened.effects_bounds.units[0].header.width() > header.width());
+    }
+}
+
+#[test]
+fn eq_modulation_compact_headers_keep_shared_footers_without_knobs_or_level_rails() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _) = fixture(theme);
+        let mut effect = daw_core::EffectInstance::equalizer();
+        let daw_core::EffectSettings::Eq3(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.modulation_open = true;
+        s.modulations.push(daw_core::Modulation::new(
+            daw_core::ModulationParameter::EqHighQ,
+        ));
+        app.session.project.tracks[0].effects.push(effect);
+        app.session.project.tracks[0].effects_compact = true;
+        frame(&mut app, &ctx, vec![]);
+        let bounds = &app.effects_bounds.units[0];
+        assert!(bounds.header.width() > 3.0 * midi_editor::UNIT_STRIP_WIDTH);
+        assert!(bounds.knobs.iter().flatten().all(|r| !r.is_positive()));
+        assert!(bounds.meters.iter().all(|r| !r.is_positive()));
+        assert!(bounds.bands.iter().all(|r| r.is_positive()));
+    }
+}

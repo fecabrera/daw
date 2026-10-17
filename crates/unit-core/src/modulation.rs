@@ -73,8 +73,25 @@ pub enum ModulationParameter {
     LfoDepth,
     LfoRate,
     MacroValue,
+    EqLowGain,
+    EqLowFrequency,
+    EqLowQ,
+    EqMidGain,
+    EqHighGain,
+    EqHighFrequency,
+    EqHighQ,
 }
 impl ModulationParameter {
+    /// Fixed band controls, in UI/telemetry order. Mid uses the outer boundaries and Q.
+    pub const EQUALIZER: [Self; 7] = [
+        Self::EqLowGain,
+        Self::EqLowFrequency,
+        Self::EqLowQ,
+        Self::EqMidGain,
+        Self::EqHighGain,
+        Self::EqHighFrequency,
+        Self::EqHighQ,
+    ];
     pub const LFO: [Self; 2] = [Self::LfoDepth, Self::LfoRate];
     pub const DRIVE: [Self; 5] = [
         Self::Volume,
@@ -86,6 +103,13 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::EqLowGain => "Low · Gain",
+            Self::EqLowFrequency => "Low · Frequency",
+            Self::EqLowQ => "Low · Q",
+            Self::EqMidGain => "Mid · Gain",
+            Self::EqHighGain => "High · Gain",
+            Self::EqHighFrequency => "High · Frequency",
+            Self::EqHighQ => "High · Q",
             Self::MacroValue => "Value",
             Self::LfoDepth => "Depth",
             Self::LfoRate => "Rate",
@@ -105,19 +129,27 @@ impl ModulationParameter {
     pub fn limit(self) -> f32 {
         match self {
             Self::Pitch => 48.0,
-            Self::Frequency | Self::LfoRate => 6.0,
+            Self::Frequency | Self::LfoRate | Self::EqLowFrequency | Self::EqHighFrequency => 6.0,
             Self::ColorFrequency => 3.0,
-            Self::Resonance => 10.0,
-            Self::Level | Self::Volume => 24.0,
+            Self::Resonance | Self::EqLowQ | Self::EqHighQ => 10.0,
+            Self::Level | Self::Volume | Self::EqLowGain | Self::EqMidGain | Self::EqHighGain => {
+                24.0
+            }
             _ => 1.0,
         }
     }
     pub fn unit(self) -> &'static str {
         match self {
             Self::Pitch => "semitones",
-            Self::Frequency | Self::ColorFrequency | Self::LfoRate => "oct",
-            Self::Resonance => "Q",
-            Self::Level | Self::Volume => "dB",
+            Self::Frequency
+            | Self::ColorFrequency
+            | Self::LfoRate
+            | Self::EqLowFrequency
+            | Self::EqHighFrequency => "oct",
+            Self::Resonance | Self::EqLowQ | Self::EqHighQ => "Q",
+            Self::Level | Self::Volume | Self::EqLowGain | Self::EqMidGain | Self::EqHighGain => {
+                "dB"
+            }
             _ => "",
         }
     }

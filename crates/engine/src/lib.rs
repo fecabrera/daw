@@ -151,6 +151,13 @@ pub fn pan_coefficients(pan: f32, mono: bool) -> [f32; 2] {
     }
 }
 
+/// Capacity for the largest current set of processed destination controls (the EQ's seven).
+pub const MODULATION_SNAPSHOT_SIZE: usize = 7;
+pub type ModulationSnapshot = [f32; MODULATION_SNAPSHOT_SIZE];
+fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
+    std::array::from_fn(|i| values.get(i).copied().unwrap_or(f32::NAN))
+}
+
 /// Stable identity for UI parameter telemetry. Layer IDs are scoped to their track.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModulationTarget {
@@ -331,6 +338,11 @@ impl Renderer {
     /// Drive returns Volume dB, Gain, Tone, Color strength, Color frequency Hz. Amplitude returns
     /// the highest voice gain in dB in slot 0; unused slots are zero.
     pub fn modulation_values(&self, target: ModulationTarget) -> Option<[f32; 5]> {
+        self.modulation_snapshot(target)
+            .map(|v| std::array::from_fn(|i| v[i]))
+    }
+    /// Full destination readings. EQ uses EQUALIZER order; added unused slots contain NaN.
+    pub fn modulation_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {
         match target {
             ModulationTarget::Effect(id) => {
                 self.master_effects.modulation_values(id).or_else(|| {
@@ -349,7 +361,7 @@ impl Renderer {
                 let value = self.midi[index]
                     .as_ref()?
                     .provider_values(daw_core::ModulationSourceId { layer, unit })?[0];
-                Some([value, f32::NAN, f32::NAN, f32::NAN, f32::NAN])
+                Some(parameter_snapshot([value]))
             }
             ModulationTarget::Lfo { track, layer, unit } => {
                 let index = self
@@ -361,7 +373,7 @@ impl Renderer {
                 let [depth, hz] = self.midi[index]
                     .as_ref()?
                     .provider_values(daw_core::ModulationSourceId { layer, unit })?;
-                Some([depth, hz, f32::NAN, f32::NAN, f32::NAN])
+                Some(parameter_snapshot([depth, hz]))
             }
             ModulationTarget::Oscillator {
                 track,
@@ -386,7 +398,7 @@ impl Renderer {
                 let [min, max] = self.midi[index]
                     .as_ref()?
                     .oscillator_pitch(layer, oscillator);
-                Some([min, max, f32::NAN, f32::NAN, f32::NAN])
+                Some(parameter_snapshot([min, max]))
             }
             ModulationTarget::Amplitude { track, layer } => {
                 let index = self
@@ -405,7 +417,7 @@ impl Renderer {
                     return None;
                 }
                 let gain = self.midi[index].as_ref()?.amplitude_gain(layer);
-                Some([
+                Some(parameter_snapshot([
                     if gain > 0.0 {
                         20.0 * gain.log10()
                     } else {
@@ -415,7 +427,7 @@ impl Renderer {
                     0.0,
                     0.0,
                     0.0,
-                ])
+                ]))
             }
         }
     }

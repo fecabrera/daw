@@ -9,7 +9,7 @@ use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_mo
 use std::sync::{Arc, atomic::AtomicU32};
 
 enum RuntimeEffect {
-    Eq3(Box<Equalizer>),
+    Eq3(Box<Equalizer>, Vec<super::modulation::Route>),
     Drive(Box<Drive>, Vec<super::modulation::Route>),
     AutoFilter(Box<AutoFilter>, Vec<super::modulation::Route>),
     Compressor(Box<Compressor>),
@@ -25,7 +25,18 @@ impl RuntimeEffect {
         values: &[daw_core::ModulationValue],
     ) -> [f32; 2] {
         match self {
-            Self::Eq3(unit) => unit.process_sample(input),
+            Self::Eq3(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::Drive(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -57,7 +68,12 @@ impl RuntimeEffect {
     }
     fn reset(&mut self) {
         match self {
-            Self::Eq3(unit) => unit.reset(),
+            Self::Eq3(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
 
             Self::Drive(unit, routes) => {
                 unit.reset();
@@ -78,7 +94,7 @@ impl RuntimeEffect {
     }
     fn retarget(&mut self, settings: &EffectSettings) -> bool {
         match (self, settings) {
-            (Self::Eq3(unit), EffectSettings::Eq3(settings)) => unit.retarget(settings),
+            (Self::Eq3(unit, _), EffectSettings::Eq3(settings)) => unit.retarget(settings),
             (Self::Ott(unit), EffectSettings::Ott(settings)) => unit.retarget(settings),
             (Self::Limiter(unit), EffectSettings::Limiter(settings)) => unit.retarget(settings),
             (Self::Drive(unit, _), EffectSettings::Drive(settings)) => unit.retarget(settings),
@@ -127,9 +143,14 @@ impl EffectChain {
                     (
                         effect.id,
                         match &effect.unit {
-                            EffectSettings::Eq3(settings) => Some(RuntimeEffect::Eq3(Box::new(
-                                Equalizer::new(context, settings),
-                            ))),
+                            EffectSettings::Eq3(settings) => Some(RuntimeEffect::Eq3(
+                                Box::new(Equalizer::new(context, settings)),
+                                settings
+                                    .modulations
+                                    .iter()
+                                    .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                    .collect(),
+                            )),
                             EffectSettings::Drive(settings) => Some(RuntimeEffect::Drive(
                                 Box::new(Drive::new(context, settings)),
                                 settings
@@ -188,7 +209,8 @@ impl EffectChain {
                     RuntimeEffect::AutoFilter(_, old_routes),
                     RuntimeEffect::AutoFilter(_, new_routes),
                 )
-                | (RuntimeEffect::Drive(_, old_routes), RuntimeEffect::Drive(_, new_routes)) =
+                | (RuntimeEffect::Drive(_, old_routes), RuntimeEffect::Drive(_, new_routes))
+                | (RuntimeEffect::Eq3(_, old_routes), RuntimeEffect::Eq3(_, new_routes)) =
                     (&mut *previous, &mut *next)
                 {
                     daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
@@ -199,12 +221,15 @@ impl EffectChain {
             }
         }
     }
-    pub fn modulation_values(&self, id: Id) -> Option<[f32; 5]> {
+    pub fn modulation_values(&self, id: Id) -> Option<super::ModulationSnapshot> {
         match self.units.iter().find(|(effect, _)| *effect == id) {
             Some((_, Some(RuntimeEffect::AutoFilter(unit, _)))) => {
-                Some(unit.effective_parameters())
+                Some(super::parameter_snapshot(unit.effective_parameters()))
             }
-            Some((_, Some(RuntimeEffect::Drive(unit, _)))) => Some(unit.effective_parameters()),
+            Some((_, Some(RuntimeEffect::Drive(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => Some(unit.effective_parameters()),
             _ => None,
         }
     }
@@ -222,7 +247,9 @@ impl EffectChain {
     pub fn set_band_meter(&mut self, id: Id, meter: &Arc<[AtomicU32; 3]>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
             Some((_, Some(RuntimeEffect::Ott(unit)))) => unit.set_gain_change_meter(meter.clone()),
-            Some((_, Some(RuntimeEffect::Eq3(unit)))) => unit.set_band_level_meter(meter.clone()),
+            Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => {
+                unit.set_band_level_meter(meter.clone())
+            }
             _ => {}
         }
     }
