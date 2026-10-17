@@ -1491,6 +1491,7 @@ impl DawUi {
                 .iter()
                 .map(|entry| (target_index + entry.track_index - first_track, &entry.clip))
                 .collect::<Vec<_>>(),
+            true,
         ) {
             self.fail(error);
             return;

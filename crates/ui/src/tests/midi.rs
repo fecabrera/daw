@@ -2854,7 +2854,7 @@ fn piano_roll_add_move_resize_cancel_and_delete_preserve_source_until_release() 
 }
 
 #[test]
-fn new_destination_tracks_preserve_each_midi_instrument_and_track_gaps() {
+fn new_destination_tracks_use_fresh_instruments_for_copies_and_preserve_move_sounds() {
     for duplicate in [false, true] {
         let (mut app, first, _, _) = fixture();
         let original = app.session.project.tracks[0].clips[0].clone();
@@ -2885,6 +2885,7 @@ fn new_destination_tracks_preserve_each_midi_instrument_and_track_gaps() {
             .unwrap();
         let before = format!("{:?}", app.session.project);
         // Deliberately visit the lower destination first. The intervening gap stays empty.
+        let originals = [original.clone(), second_clip.clone()];
         let previews = vec![
             ClipPreview {
                 track: Id::nil(),
@@ -2921,20 +2922,78 @@ fn new_destination_tracks_preserve_each_midi_instrument_and_track_gaps() {
         );
         assert!(app.error.is_none(), "{:?}", app.error);
         let tracks = &app.session.project.tracks;
-        assert_eq!(
-            tracks[2].instrument.as_ref().unwrap().layers[0].oscillators[0].waveform,
-            Waveform::Sine
-        );
+        for (index, source) in [(2, 0), (4, 1)] {
+            assert_eq!(tracks[index].kind, TrackKind::Midi);
+            let instrument = tracks[index].instrument.as_ref().unwrap();
+            if duplicate {
+                assert_eq!(instrument.layers.len(), 1);
+                assert!(instrument.layers[0].oscillators.is_empty());
+                assert!(instrument.layers[0].sampler.is_none());
+            } else {
+                assert_eq!(Some(instrument), tracks[source].instrument.as_ref());
+            }
+            let placed = &tracks[index].clips[0];
+            let mut expected = originals[source].clone();
+            assert_eq!(placed.id == expected.id, !duplicate);
+            expected.id = placed.id;
+            assert_eq!(format!("{placed:?}"), format!("{expected:?}"));
+            if duplicate {
+                assert_eq!(tracks[source].clips.len(), 1);
+                assert_eq!(
+                    format!("{:?}", tracks[source].clips[0]),
+                    format!("{:?}", originals[source])
+                );
+            }
+        }
         assert_eq!(tracks[3].kind, TrackKind::Audio);
         assert!(tracks[3].clips.is_empty());
-        assert_eq!(
-            tracks[4].instrument.as_ref().unwrap().layers[0].oscillators[0].waveform,
-            Waveform::Square
-        );
         assert_eq!(tracks[0].clips.len(), usize::from(duplicate));
         assert_eq!(tracks[1].clips.len(), usize::from(duplicate));
         app.session.project.validate().unwrap();
     }
+}
+
+#[test]
+fn group_paste_creates_fresh_midi_tracks_and_retains_existing_destination_instruments() {
+    let (mut app, first, first_clip, _) = fixture();
+    let second = app.session.project.add_midi_track().unwrap();
+    let second_clip = app.session.project.add_midi_pattern(second, 0).unwrap();
+    app.session.project.tracks[1].instrument = Some(
+        daw_core::OscillatorSettings {
+            waveform: Waveform::Square,
+            ..Default::default()
+        }
+        .into(),
+    );
+    app.selected_clip = Some(first_clip);
+    app.selected_clips = HashSet::from([first_clip, second_clip]);
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    app.perform_clip_action(ClipAction::Copy, &ctx);
+    app.select_track(second, false);
+    app.session.project.transport.playhead_frame = frames(10.0);
+    let before = app.session.project.tracks.clone();
+    app.perform_clip_action(ClipAction::Paste, &ctx);
+    assert!(app.error.is_none(), "{:?}", app.error);
+    assert_eq!(app.session.project.tracks.len(), 3);
+    for (track, original) in app.session.project.tracks.iter().zip(&before) {
+        assert_eq!(track.instrument, original.instrument);
+        assert_eq!(
+            format!("{:?}", track.clips[0]),
+            format!("{:?}", original.clips[0])
+        );
+    }
+    let fresh = &app.session.project.tracks[2];
+    assert_eq!(fresh.kind, TrackKind::Midi);
+    let instrument = fresh.instrument.as_ref().unwrap();
+    assert_eq!(instrument.layers.len(), 1);
+    assert!(instrument.layers[0].oscillators.is_empty());
+    assert_eq!(fresh.clips[0].asset_id, before[1].clips[0].asset_id);
+    assert_ne!(fresh.clips[0].id, second_clip);
+    assert_eq!(fresh.clips[0].start_frame, frames(10.0));
+    assert_eq!(app.selected_track, Some(second));
+    assert_eq!(app.session.project.tracks[0].id, first);
+    app.session.project.validate().unwrap();
 }
 
 fn click_note_or_lane(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {

@@ -66,6 +66,12 @@ Timeline MIDI lanes and the Editor track strip are views of the same project cli
 
 All clip gestures share project-grid snapping, Shift bypass, selection snapshots, overlap resolution, staged previews, and release handling. Escape, focus loss, or disabled editing cancels a gesture without publishing source/range changes. No-op releases retain asset identity and the modified state. File actions and view switches are disabled during active gestures. MIDI source resizing retains at least one tick and clamps to project zero and supported tick/frame bounds. Audio trims retain their source limits and shared-boundary behavior.
 
+### New tracks for clip copies
+
+Duplicating clips into empty Timeline track space creates fresh tracks of the matching audio or MIDI type. Group paste uses the same rule when it needs more tracks. Use the standard new-track name, color, 0 dB gain, centered pan, mute/solo off, and no effects. A new MIDI track starts with one empty instrument layer; it does not inherit the source instrument, Sampler, modulation, or Main bus settings. It remains silent until a source is installed. Existing destination tracks retain their settings.
+
+Copies receive new clip IDs and retain their asset, name, source range, loop, stretch, and color override. Group track gaps remain intact. Previews do not create saved tracks; drag release publishes tracks and clips together. Cancellation or invalid placement leaves the project unchanged. Ordinary moves into new track space retain the source MIDI instrument. The explicit Duplicate track action still copies track settings without clips.
+
 ### Implementation and regression checks
 
 - [clip_lane.rs](../crates/ui/src/clip_lane.rs) owns common clip-strip hit testing, gesture capture, selection, and context menus. Timeline and the Editor overview call it. Keep view-specific code responsible for layout and the active zoom/scroll transform.

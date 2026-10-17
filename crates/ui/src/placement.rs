@@ -6,6 +6,7 @@ impl DawUi {
         &self,
         project: &mut daw_core::Project,
         clip: &Clip,
+        duplicate: bool,
     ) -> daw_core::Result<Id> {
         let midi = project
             .assets
@@ -13,6 +14,11 @@ impl DawUi {
             .find(|a| a.id == clip.asset_id)
             .is_some_and(|a| a.midi_pattern.is_some());
         if midi {
+            let id = project.add_midi_track()?;
+            // Copies use the standard empty instrument. Only moves carry the source sound.
+            if duplicate {
+                return Ok(id);
+            }
             let instrument = self
                 .session
                 .project
@@ -27,7 +33,6 @@ impl DawUi {
                         .find(|t| t.clips.iter().any(|c| c.asset_id == clip.asset_id))
                 })
                 .and_then(|t| t.instrument.clone());
-            let id = project.add_midi_track()?;
             project.tracks.last_mut().unwrap().instrument = instrument;
             Ok(id)
         } else {
@@ -39,6 +44,7 @@ impl DawUi {
         &self,
         project: &mut daw_core::Project,
         placements: &[(usize, &Clip)],
+        duplicate: bool,
     ) -> daw_core::Result<()> {
         let Some(last) = placements.iter().map(|(index, _)| *index).max() else {
             return Ok(());
@@ -46,7 +52,7 @@ impl DawUi {
         while project.tracks.len() <= last {
             let index = project.tracks.len();
             if let Some((_, clip)) = placements.iter().find(|(target, _)| *target == index) {
-                self.add_placement_track(project, clip)?;
+                self.add_placement_track(project, clip, duplicate)?;
             } else {
                 project.add_track()?;
             }
@@ -58,6 +64,7 @@ impl DawUi {
         &self,
         previews: &[ClipPreview],
         originals: &[ClipPreview],
+        duplicate: bool,
     ) -> daw_core::Result<daw_core::Project> {
         let mut next = self.session.project.clone();
         self.prepare_placement_tracks(
@@ -66,6 +73,7 @@ impl DawUi {
                 .iter()
                 .map(|p| (p.track_index, &p.clip))
                 .collect::<Vec<_>>(),
+            duplicate,
         )?;
         let mut clips = Vec::with_capacity(previews.len());
         for preview in previews {
@@ -93,7 +101,7 @@ impl DawUi {
                 preview.clip.id = Id::new_v4();
             }
         }
-        match self.move_project(&placements, &raw) {
+        match self.move_project(&placements, &raw, duplicate) {
             Ok(next) => {
                 let ids = placements.iter().map(|preview| preview.clip.id).collect();
                 raw.extend(self.placement_neighbors(&next, &ids));
@@ -199,6 +207,7 @@ impl DawUi {
                     .iter()
                     .map(|p| (p.track_index, &p.clip))
                     .collect::<Vec<_>>(),
+                true,
             ) {
                 self.fail(error);
                 return;
@@ -227,7 +236,7 @@ impl DawUi {
         }) {
             return;
         }
-        match self.move_project(&previews, &previews) {
+        match self.move_project(&previews, &previews, false) {
             Ok(next) => {
                 let track = next.tracks[previews[primary].track_index].id;
                 self.selected_clip = Some(drag.clip.id);

@@ -2547,3 +2547,16 @@ An additional estimator-limit check used 48 kHz, a 2048-frame 0.47-cycle-per-sam
 `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, `cargo build --locked -p daw-cli --offline`, and `python3 tools/check_cli.py` pass. CLI smoke checks cover WAV/MP3 formats/bitrates, repeatable output, missing sources, eight-track projects, overwrite protection, and exit codes. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched. Commands used the default Cargo cache. Repository-relative documentation link targets and `git diff --check` pass.
 
 Native pointer/trackpad, display-scale, audible modulation/callback timing, Windows, and Linux checks were not performed. Automated egui, DSP, and renderer checks do not establish those native behaviors.
+
+
+## Fresh destination tracks for clip copies — 2026-10-17
+
+Clip drag duplication and group paste now use the standard audio/MIDI track constructors for new destination rows. New MIDI tracks start with one empty instrument layer instead of inheriting the source instrument. This supersedes the earlier instrument-copy behavior for clip copies. Ordinary moves still carry the MIDI instrument; explicit track duplication still copies track settings without clips. Existing destination settings, copied clip metadata, shared source assets, group timing, and track gaps remain intact. New tracks and clips publish together after valid release or paste. See the [clip-copy track rules](midi-patterns.md#new-tracks-for-clip-copies).
+
+`cargo test -p daw-ui --offline` passes all 437 UI tests. Added egui input checks cover audio/MIDI copies into new track space, standard track defaults, fresh clip IDs, retained source clips, selection, clean previews, release-only publication, and Escape cancellation. Group regressions cover out-of-order destination rows with track gaps, fresh MIDI instruments for copies, preserved MIDI instruments for moves, and group paste that keeps existing destination instruments. Existing invalid-copy rollback, overlap placement, metadata, clipboard guards, and explicit track-duplication checks pass.
+
+`cargo test --workspace --offline` passes: 792 tests pass; 2 existing expanded time-stretch acceptance matrices remain ignored.
+
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. Repository-relative link targets in the changed documentation and `git diff --check` pass. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched.
+
+Native pointer/trackpad, audio-device, Windows, and Linux checks were not performed. Automated egui checks do not establish native gesture behavior.
