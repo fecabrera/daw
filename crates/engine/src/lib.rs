@@ -151,8 +151,8 @@ pub fn pan_coefficients(pan: f32, mono: bool) -> [f32; 2] {
     }
 }
 
-/// Capacity for the largest current set of processed destination controls (seven).
-pub const MODULATION_SNAPSHOT_SIZE: usize = 7;
+/// Capacity for the largest current set of processed destination controls.
+pub const MODULATION_SNAPSHOT_SIZE: usize = daw_unit_core::ModulationParameter::OTT.len();
 pub type ModulationSnapshot = [f32; MODULATION_SNAPSHOT_SIZE];
 fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
     std::array::from_fn(|i| values.get(i).copied().unwrap_or(f32::NAN))

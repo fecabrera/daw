@@ -13,7 +13,7 @@ enum RuntimeEffect {
     Drive(Box<Drive>, Vec<super::modulation::Route>),
     AutoFilter(Box<AutoFilter>, Vec<super::modulation::Route>),
     Compressor(Box<Compressor>, Vec<super::modulation::Route>),
-    Ott(Box<Ott>),
+    Ott(Box<Ott>, Vec<super::modulation::Route>),
     Limiter(Box<Limiter>, Vec<super::modulation::Route>),
 }
 impl RuntimeEffect {
@@ -73,7 +73,18 @@ impl RuntimeEffect {
                     ..Default::default()
                 },
             ),
-            Self::Ott(unit) => unit.process_sample(input),
+            Self::Ott(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::Limiter(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -115,7 +126,12 @@ impl RuntimeEffect {
                     route.reset();
                 }
             }
-            Self::Ott(unit) => unit.reset(),
+            Self::Ott(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
             Self::Limiter(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -127,7 +143,7 @@ impl RuntimeEffect {
     fn retarget(&mut self, settings: &EffectSettings) -> bool {
         match (self, settings) {
             (Self::Eq3(unit, _), EffectSettings::Eq3(settings)) => unit.retarget(settings),
-            (Self::Ott(unit), EffectSettings::Ott(settings)) => unit.retarget(settings),
+            (Self::Ott(unit, _), EffectSettings::Ott(settings)) => unit.retarget(settings),
             (Self::Limiter(unit, _), EffectSettings::Limiter(settings)) => unit.retarget(settings),
             (Self::Drive(unit, _), EffectSettings::Drive(settings)) => unit.retarget(settings),
             (Self::Compressor(unit, _), EffectSettings::Compressor(settings)) => {
@@ -206,9 +222,14 @@ impl EffectChain {
                                         .collect(),
                                 ))
                             }
-                            EffectSettings::Ott(settings) => {
-                                Some(RuntimeEffect::Ott(Box::new(Ott::new(context, settings))))
-                            }
+                            EffectSettings::Ott(settings) => Some(RuntimeEffect::Ott(
+                                Box::new(Ott::new(context, settings)),
+                                settings
+                                    .modulations
+                                    .iter()
+                                    .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                    .collect(),
+                            )),
                             EffectSettings::Limiter(settings) => Some(RuntimeEffect::Limiter(
                                 Box::new(Limiter::new(context, settings)),
                                 settings
@@ -257,6 +278,7 @@ impl EffectChain {
                     RuntimeEffect::Compressor(_, old_routes),
                     RuntimeEffect::Compressor(_, new_routes),
                 )
+                | (RuntimeEffect::Ott(_, old_routes), RuntimeEffect::Ott(_, new_routes))
                 | (
                     RuntimeEffect::Limiter(_, old_routes),
                     RuntimeEffect::Limiter(_, new_routes),
@@ -278,11 +300,16 @@ impl EffectChain {
             Some((_, Some(RuntimeEffect::Drive(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
-            Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => Some(unit.effective_parameters()),
+            Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
             Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
-                Some(unit.effective_parameters())
+                Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Limiter(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::Ott(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             _ => None,
@@ -301,7 +328,9 @@ impl EffectChain {
     }
     pub fn set_band_meter(&mut self, id: Id, meter: &Arc<[AtomicU32; 3]>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
-            Some((_, Some(RuntimeEffect::Ott(unit)))) => unit.set_gain_change_meter(meter.clone()),
+            Some((_, Some(RuntimeEffect::Ott(unit, _)))) => {
+                unit.set_gain_change_meter(meter.clone())
+            }
             Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => {
                 unit.set_band_level_meter(meter.clone())
             }

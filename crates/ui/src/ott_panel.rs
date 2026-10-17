@@ -3,9 +3,9 @@ use crate::{
     knobs::{self, Knob, KnobSpec},
     meters,
     midi_editor::UNIT_STRIP_WIDTH,
-    panels, rows, theme,
+    panels, parameter_knobs, rows, theme,
 };
-use daw_core::{CompressorDetection, OttSettings};
+use daw_core::{CompressorDetection, ModulationParameter as Parameter, OttSettings};
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
@@ -16,171 +16,91 @@ pub(super) struct Bounds {
     pub bands: [Rect; 3],
     pub meters: [Rect; 3],
 }
-fn db(v: f32) -> String {
-    format!("{v:.1} dB")
-}
-fn percent(v: f32) -> String {
-    format!("{:.0}%", v * 100.0)
-}
-fn time(v: f32) -> String {
-    if v < 10.0 {
-        format!("{v:.1} ms")
-    } else {
-        format!("{v:.0} ms")
+/// Fixed band/control identity; an empty Mid frequency row has no destination.
+pub(super) fn parameter_index(section: usize, column: usize, row: usize) -> Option<usize> {
+    match (section, column, row) {
+        (0, 0, 0) => Some(0),
+        (2, 0, 0) => Some(1),
+        (band, 1, 0) if band < 3 => Some(2 + 5 * band),
+        (band, column, 1) if band < 3 => Some(3 + 5 * band + column),
+        (band, column, 2) if band < 3 => Some(5 + 5 * band + column),
+        (3, 0, 0) => Some(17),
+        (3, 0, 1) => Some(18),
+        _ => None,
     }
 }
-fn timing(attack: bool) -> KnobSpec {
-    let (name, min, max, reset) = if attack {
-        ("Attack", 0.1, 200.0, 10.0)
-    } else {
-        ("Release", 10.0, 2000.0, 100.0)
-    };
-    KnobSpec::new(name, min..=max, reset, 0.1)
-        .scale(
-            if attack {
-                |v| (v / 0.1).ln() / 2000_f32.ln()
-            } else {
-                |v| (v / 10.0).ln() / 200_f32.ln()
-            },
-            if attack {
-                |p| 0.1 * 2000_f32.powf(p)
-            } else {
-                |p| 10.0 * 200_f32.powf(p)
-            },
-            |v, d| v * 2_f32.powf(d / 24.0),
-        )
-        .value_label(time)
-        .format(time)
-        .endpoint_labels(
-            if attack { "0.1" } else { "10" },
-            if attack { "200" } else { "2k" },
-        )
-}
-fn frequency(low: bool) -> KnobSpec {
-    let (name, min, max, reset) = if low {
-        ("Low/Mid crossover", 20.0, 2000.0, 250.0)
-    } else {
-        ("Mid/High crossover", 200.0, 20_000.0, 2500.0)
-    };
-    KnobSpec::new(name, min..=max, reset, 1.0)
-        .scale(
-            if low {
-                |v| (v / 20.0).log10() / 2.0
-            } else {
-                |v| (v / 200.0).log10() / 2.0
-            },
-            if low {
-                |p| 20.0 * 100_f32.powf(p)
-            } else {
-                |p| 200.0 * 100_f32.powf(p)
-            },
-            |v, d| v * 2_f32.powf(d / 24.0),
-        )
-        .value_label(knobs::format_frequency)
-        .format(knobs::format_frequency)
-        .endpoint_labels(
-            if low { "20" } else { "200" },
-            if low { "2k" } else { "20k" },
-        )
-}
-fn row(ui: &mut Ui, settings: &mut OttSettings, section: usize, column: usize, row: usize) -> Rect {
+fn row(
+    ui: &mut Ui,
+    settings: &mut OttSettings,
+    section: usize,
+    column: usize,
+    row: usize,
+    markers: &[Option<knobs::ModulationMarker>; 19],
+) -> Rect {
     knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
-        if section < 3 {
-            match (column, row) {
-                (0, 0) if section != 1 => {
-                    let (value, limit) = if section == 0 {
-                        (&mut s.low_frequency_hz, s.high_frequency_hz - 1.0)
-                    } else {
-                        (&mut s.high_frequency_hz, s.low_frequency_hz + 1.0)
-                    };
-                    let response = ui.add(Knob::new(value, frequency(section == 0)));
-                    if response.changed() {
-                        *value = if section == 0 {
-                            value.min(limit)
-                        } else {
-                            value.max(limit)
-                        };
+        if let Some(index) = parameter_index(section, column, row) {
+            let value = match index {
+                0 => &mut s.low_frequency_hz,
+                1 => &mut s.high_frequency_hz,
+                17 => &mut s.level_db,
+                18 => &mut s.dry_wet,
+                _ => {
+                    let band = &mut s.bands[(index - 2) / 5];
+                    match (index - 2) % 5 {
+                        0 => &mut band.depth,
+                        1 => &mut band.input_db,
+                        2 => &mut band.output_db,
+                        3 => &mut band.attack_ms,
+                        4 => &mut band.release_ms,
+                        _ => unreachable!(),
                     }
-                    response
                 }
-                (0, 0) => {
-                    ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), egui::Sense::hover())
-                }
-                (1, 0) => ui.add(Knob::new(
-                    &mut s.bands[section].depth,
-                    KnobSpec::new("Compression depth", 0.0..=1.0, 1.0, 0.01)
-                        .value_label(percent)
-                        .format(percent)
-                        .endpoint_labels("0", "100"),
-                )),
-                (_, 1) => ui.add(Knob::new(
-                    if column == 0 {
-                        &mut s.bands[section].input_db
+            };
+            let response = ui.add(
+                Knob::new(
+                    value,
+                    if index == 17 {
+                        parameter_knobs::destination(Parameter::Level).named("OTT output level")
                     } else {
-                        &mut s.bands[section].output_db
+                        parameter_knobs::destination(Parameter::OTT[index])
                     },
-                    KnobSpec::new(
-                        if column == 0 {
-                            "Band input"
-                        } else {
-                            "Band output"
-                        },
-                        -24.0..=24.0,
-                        0.0,
-                        0.1,
-                    )
-                    .centered(0.0)
-                    .bipolar()
-                    .value_label(db)
-                    .format(db)
-                    .endpoint_labels("−24", "+24"),
-                )),
-                (_, 2) => ui.add(Knob::new(
-                    if column == 0 {
-                        &mut s.bands[section].attack_ms
-                    } else {
-                        &mut s.bands[section].release_ms
-                    },
-                    timing(column == 0),
-                )),
-                _ => unreachable!(),
-            }
-        } else {
-            match row {
-                0 => knobs::gain_with_markers_named(ui, &mut s.level_db, "OTT output level"),
-                1 => ui.add(Knob::new(
-                    &mut s.dry_wet,
-                    KnobSpec::new("Dry/wet", 0.0..=1.0, 1.0, 0.01)
-                        .value_label(percent)
-                        .format(percent)
-                        .endpoint_labels("Dry", "Wet"),
-                )),
-                2 => {
-                    let mut position = f32::from(s.detection == CompressorDetection::Rms);
-                    let response = ui.add(Knob::new(
-                        &mut position,
-                        KnobSpec::new("Detection mode", 0.0..=1.0, 0.0, 1.0)
-                            .two_way_labels("Peak", "RMS")
-                            .format(|v| {
-                                if v == 0.0 {
-                                    "Peak".into()
-                                } else {
-                                    "RMS".into()
-                                }
-                            }),
-                    ));
-                    if response.changed() {
-                        s.detection = if position == 0.0 {
-                            CompressorDetection::Peak
-                        } else {
-                            CompressorDetection::Rms
-                        };
-                    }
-                    response
+                )
+                .modulated(markers[index].as_ref(), &mut s.modulation_open),
+            );
+            if response.changed() {
+                if index == 0 {
+                    s.low_frequency_hz = s.low_frequency_hz.min(s.high_frequency_hz - 1.0);
                 }
-                _ => unreachable!(),
+                if index == 1 {
+                    s.high_frequency_hz = s.high_frequency_hz.max(s.low_frequency_hz + 1.0);
+                }
             }
+            return response;
         }
+        if section < 3 {
+            return ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), egui::Sense::hover());
+        }
+        let mut position = f32::from(s.detection == CompressorDetection::Rms);
+        let response = ui.add(Knob::new(
+            &mut position,
+            KnobSpec::new("Detection mode", 0.0..=1.0, 0.0, 1.0)
+                .two_way_labels("Peak", "RMS")
+                .format(|v| {
+                    if v == 0.0 {
+                        "Peak".into()
+                    } else {
+                        "RMS".into()
+                    }
+                }),
+        ));
+        if response.changed() {
+            s.detection = if position == 0.0 {
+                CompressorDetection::Peak
+            } else {
+                CompressorDetection::Rms
+            };
+        }
+        response
     })
     .rect
 }
@@ -190,7 +110,51 @@ pub(super) fn show(
     compact: bool,
     height: f32,
     gains: [f32; 3],
+    sources: &[crate::modulation_panel::Source],
+    live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
+        |ui| show_inner(ui, settings, compact, height, gains, sources, live),
+    )
+    .inner
+}
+fn show_inner(
+    ui: &mut Ui,
+    settings: &mut OttSettings,
+    compact: bool,
+    height: f32,
+    gains: [f32; 3],
+    sources: &[crate::modulation_panel::Source],
+    live: Option<daw_engine::ModulationSnapshot>,
+) -> (Bounds, egui::Response) {
+    let mut bases = [0.0; 19];
+    bases[0] = settings.low_frequency_hz;
+    bases[1] = settings.high_frequency_hz;
+    for (i, b) in settings.bands.iter().enumerate() {
+        bases[2 + 5 * i..7 + 5 * i].copy_from_slice(&[
+            b.depth,
+            b.input_db,
+            b.output_db,
+            b.attack_ms,
+            b.release_ms,
+        ]);
+    }
+    bases[17] = settings.level_db;
+    bases[18] = settings.dry_wet;
+    let markers = std::array::from_fn(|i| {
+        crate::modulation_panel::marker(
+            &settings.modulations,
+            sources,
+            Parameter::OTT[i],
+            bases[i],
+            settings.enabled,
+            None,
+            [live.map(|v| v[i]), None],
+        )
+    });
+    let open = settings.modulation_open;
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
         header: Rect::NOTHING,
@@ -220,7 +184,7 @@ pub(super) fn show(
                                 for column in 0..if section < 3 { 2 } else { 1 } {
                                     ui.push_id(column, |ui| ui.allocate_ui_with_layout(Vec2::new(column_width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
                                         ui.set_width(column_width);
-                                        for index in 0..3 { bounds.controls[section][column][index] = row(ui, settings, section, column, index); }
+                                        for index in 0..3 { bounds.controls[section][column][index] = row(ui, settings, section, column, index, &markers); }
                                     }));
                                 }
                             });
@@ -242,10 +206,18 @@ pub(super) fn show(
                     meters::gain_change(ui, rail, name, gains[section]);
                 }
             }
+            if open {
+                let last = bounds.sections[3];
+                panels::unit_divider(ui, last.right(), last.y_range().into());
+                crate::modulation_panel::body(ui, &mut settings.modulations, sources,
+                    <OttSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS,
+                    <OttSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
+            }
         });
     });
     settings.enabled = enabled;
     settings.collapsed = collapsed;
+    crate::modulation_panel::toggle(ui, &result.header, collapsed, &mut settings.modulation_open);
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
     (bounds, result.header)

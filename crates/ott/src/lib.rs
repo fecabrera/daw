@@ -136,6 +136,7 @@ fn gain_curve(level_db: f32) -> f32 {
 struct Band {
     // Depth, input/output dB, log attack/release milliseconds, enabled.
     parameters: [Ramp; 6],
+    effective: [f32; 6],
     rms: [MeterState; 2],
     gain_db: f64,
     configured_times: [f32; 2],
@@ -156,6 +157,7 @@ impl Band {
     fn new(rate: u32, settings: OttBandSettings) -> Self {
         Self {
             parameters: Self::values(settings).map(Ramp::new),
+            effective: Self::values(settings),
             rms: std::array::from_fn(|_| {
                 let mut state = MeterState::new(RMS);
                 state.set_sample_rate(RMS, f64::from(rate));
@@ -173,21 +175,29 @@ impl Band {
         }
     }
     fn change_db(&self) -> f32 {
-        self.gain_db as f32 * self.parameters[0].value * self.parameters[5].value
+        self.gain_db as f32 * self.effective[0] * self.effective[5]
     }
-    fn sample(&mut self, input: [f32; 2], rms_weight: f32) -> [f32; 2] {
+    fn sample(&mut self, input: [f32; 2], rms_weight: f32, offsets: [f32; 5]) -> [f32; 2] {
         for p in &mut self.parameters {
             p.advance();
         }
+        let mut p = self.parameters.each_ref().map(|p| p.value);
+        p[0] = (p[0] + offsets[0]).clamp(0.0, 1.0);
+        for i in 1..=2 {
+            p[i] = (p[i] + offsets[i]).clamp(-24.0, 24.0);
+        }
+        p[3] = (p[3] + offsets[3] * std::f32::consts::LN_2).clamp(0.1_f32.ln(), 200_f32.ln());
+        p[4] = (p[4] + offsets[4] * std::f32::consts::LN_2).clamp(10_f32.ln(), 2000_f32.ln());
+        self.effective = p;
         for index in 0..2 {
-            let time = self.parameters[index + 3].value;
+            let time = p[index + 3];
             if self.configured_times[index] != time {
                 self.configured_times[index] = time;
                 self.coefficients[index] =
                     (-1.0 / (f64::from(time).exp() * 0.001 * self.rate)).exp();
             }
         }
-        let input = input.map(|x| finite(f64::from(x) * amplitude(self.parameters[1].value)));
+        let input = input.map(|x| finite(f64::from(x) * amplitude(p[1])));
         let peak = input[0].abs().max(input[1].abs());
         let mut rms: f32 = 0.0;
         for (state, sample) in self.rms.iter_mut().zip(input) {
@@ -209,13 +219,14 @@ impl Band {
         let relaxing = target.abs() < self.gain_db.abs() && target * self.gain_db >= 0.0;
         let coefficient = self.coefficients[usize::from(relaxing)];
         self.gain_db = target + coefficient * (self.gain_db - target);
-        let gain = amplitude(self.change_db() + self.parameters[2].value);
+        let gain = amplitude(self.change_db() + p[2]);
         input.map(|x| finite(f64::from(x) * gain))
     }
     fn reset(&mut self) {
         for p in &mut self.parameters {
             p.reset();
         }
+        self.effective = self.parameters.each_ref().map(|p| p.value);
         for state in &mut self.rms {
             state.reset(RMS);
         }
@@ -226,6 +237,8 @@ impl Band {
 pub struct Ott {
     // Low log frequency, High log frequency, output amplitude, wet, RMS weight, enabled.
     parameters: [Ramp; 6],
+    external: daw_unit_core::ModulationSmoother<19>,
+    effective: [f32; 6],
     splits: [Split; 3],
     bands: [Band; 3],
     fade_frames: u32,
@@ -236,6 +249,8 @@ impl Ott {
         let rate = context.sample_rate_hz;
         Self {
             parameters: Self::values(settings).map(Ramp::new),
+            external: daw_unit_core::ModulationSmoother::new(context),
+            effective: Self::values(settings),
             splits: [
                 Split::new(rate, settings.low_frequency_hz),
                 Split::new(rate, settings.high_frequency_hz),
@@ -298,7 +313,7 @@ impl EffectUnit for Ott {
             type_id: OTT_TYPE_ID,
             name: "OTT",
             is_source: false,
-            inputs: &[PortKind::StereoAudio],
+            inputs: &[PortKind::StereoAudio, PortKind::Modulation],
             outputs: &[PortKind::StereoAudio],
         }
     }
@@ -306,6 +321,8 @@ impl EffectUnit for Ott {
         for p in &mut self.parameters {
             p.reset();
         }
+        self.external.reset();
+        self.effective = self.parameters.each_ref().map(|p| p.value);
         for split in &mut self.splits {
             split.reset();
         }
@@ -315,11 +332,13 @@ impl EffectUnit for Ott {
         self.publish();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        for p in &mut self.parameters {
-            p.advance();
-        }
-        let low = self.parameters[0].value.exp();
-        let high = self.parameters[1].value.exp();
+        self.process_modulated(input, [0.0; 19])
+    }
+}
+impl Ott {
+    fn process_effective_sample(&mut self, input: [f32; 2], offsets: [f32; 19]) -> [f32; 2] {
+        let low = self.effective[0].exp();
+        let high = self.effective[1].exp();
         self.splits[0].configure(low);
         self.splits[1].configure(high);
         self.splits[2].configure(high);
@@ -331,21 +350,26 @@ impl EffectUnit for Ott {
         let (a, b) = self.splits[2].sample(low);
         let low = std::array::from_fn(|ch| a[ch] + b[ch]);
         let raw = [low, mid, high];
-        let processed: [[f32; 2]; 3] =
-            std::array::from_fn(|i| self.bands[i].sample(raw[i], self.parameters[4].value));
-        let p = &self.parameters;
+        let processed: [[f32; 2]; 3] = std::array::from_fn(|i| {
+            self.bands[i].sample(
+                raw[i],
+                self.effective[4],
+                std::array::from_fn(|j| offsets[2 + 5 * i + j]),
+            )
+        });
+        let p = &self.effective;
         let output = std::array::from_fn(|ch| {
             let dry: f64 = raw.iter().map(|band| f64::from(band[ch])).sum();
             let wet: f64 = processed.iter().map(|band| f64::from(band[ch])).sum();
-            let mix = (dry * (1.0 - f64::from(p[3].value)) + wet * f64::from(p[3].value))
-                * f64::from(p[2].value);
-            finite(
-                f64::from(input[ch]) * (1.0 - f64::from(p[5].value)) + mix * f64::from(p[5].value),
-            )
+            let mix = (dry * (1.0 - f64::from(p[3])) + wet * f64::from(p[3])) * f64::from(p[2]);
+            finite(f64::from(input[ch]) * (1.0 - f64::from(p[5])) + mix * f64::from(p[5]))
         });
         self.publish();
         output
     }
 }
+mod modulation;
+#[cfg(test)]
+mod modulation_tests;
 #[cfg(test)]
 mod tests;

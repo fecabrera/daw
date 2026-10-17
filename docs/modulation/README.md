@@ -40,5 +40,6 @@ Assigned knobs have a status dot. Filled means active; hollow means inactive. Ho
 | Auto-filter | Frequency, Resonance, Level, Dry/Wet |
 | Compressor | Threshold, Ratio, Attack, Release, Knee, Level, Dry/Wet |
 | Limiter | Input, Release, Lookahead, Ceiling |
+| OTT | Low/High crossover; Low/Mid/High Depth, Input, Output, Attack, Release; Level, Dry/Wet |
 
-OTT has no external modulation controls. Unit power, discrete mode/shape choices, and read-only meters are not destinations. See the individual [component and effect guides](../views/instrument.md) for parameter behavior and limits.
+Unit power, discrete mode/shape choices, and read-only meters are not destinations. See the individual [component and effect guides](../views/instrument.md) for parameter behavior and limits.

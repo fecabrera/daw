@@ -57,8 +57,63 @@ fn compressor_time(attack: bool) -> KnobSpec {
         if attack { "200" } else { "2k" },
     )
 }
+fn ott_frequency(low: bool) -> KnobSpec {
+    let (name, min, max, reset) = if low {
+        ("Low/Mid crossover", 20.0, 2000.0, 250.0)
+    } else {
+        ("Mid/High crossover", 200.0, 20_000.0, 2500.0)
+    };
+    KnobSpec::new(name, min..=max, reset, 1.0)
+        .scale(
+            if low {
+                |v| (v / 20.0).log10() / 2.0
+            } else {
+                |v| (v / 200.0).log10() / 2.0
+            },
+            if low {
+                |p| 20.0 * 100_f32.powf(p)
+            } else {
+                |p| 200.0 * 100_f32.powf(p)
+            },
+            |v, d| v * 2_f32.powf(d / 24.0),
+        )
+        .value_label(knobs::format_frequency)
+        .format(knobs::format_frequency)
+        .endpoint_labels(
+            if low { "20" } else { "200" },
+            if low { "2k" } else { "20k" },
+        )
+}
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::OttLowFrequency => ott_frequency(true),
+        Parameter::OttHighFrequency => ott_frequency(false),
+        Parameter::OttLowDepth | Parameter::OttMidDepth | Parameter::OttHighDepth => {
+            percent("Compression depth", 1.0)
+        }
+        Parameter::OttLowInput | Parameter::OttMidInput | Parameter::OttHighInput => {
+            KnobSpec::new("Band input", -24.0..=24.0, 0.0, 0.1)
+                .centered(0.0)
+                .bipolar()
+                .value_label(|v| format!("{v:.1} dB"))
+                .format(|v| format!("{v:.1} dB"))
+                .endpoint_labels("−24", "+24")
+        }
+        Parameter::OttLowOutput | Parameter::OttMidOutput | Parameter::OttHighOutput => {
+            KnobSpec::new("Band output", -24.0..=24.0, 0.0, 0.1)
+                .centered(0.0)
+                .bipolar()
+                .value_label(|v| format!("{v:.1} dB"))
+                .format(|v| format!("{v:.1} dB"))
+                .endpoint_labels("−24", "+24")
+        }
+        Parameter::OttLowAttack | Parameter::OttMidAttack | Parameter::OttHighAttack => {
+            compressor_time(true)
+        }
+        Parameter::OttLowRelease | Parameter::OttMidRelease | Parameter::OttHighRelease => {
+            compressor_time(false)
+        }
+
         Parameter::LimiterInput => KnobSpec::new("Limiter input", -24.0..=24.0, 0.0, 0.1)
             .reference_step(6.0)
             .value_label(|v| format!("{v:.1} dB"))
@@ -177,7 +232,13 @@ fn signed_pitch(value: f32) -> String {
 pub(super) fn amount(parameter: Parameter) -> KnobSpec {
     let (mapping, format, endpoints): (AmountMapping, fn(f32) -> String, [&str; 2]) =
         match parameter {
-            Parameter::LimiterInput
+            Parameter::OttLowInput
+            | Parameter::OttMidInput
+            | Parameter::OttHighInput
+            | Parameter::OttLowOutput
+            | Parameter::OttMidOutput
+            | Parameter::OttHighOutput
+            | Parameter::LimiterInput
             | Parameter::EqLowGain
             | Parameter::EqMidGain
             | Parameter::EqHighGain => (
@@ -245,7 +306,15 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−24", "+24"],
             ),
-            Parameter::LimiterRelease
+            Parameter::OttLowFrequency
+            | Parameter::OttHighFrequency
+            | Parameter::OttLowAttack
+            | Parameter::OttMidAttack
+            | Parameter::OttHighAttack
+            | Parameter::OttLowRelease
+            | Parameter::OttMidRelease
+            | Parameter::OttHighRelease
+            | Parameter::LimiterRelease
             | Parameter::CompressorAttack
             | Parameter::CompressorRelease
             | Parameter::Frequency
@@ -261,7 +330,10 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_q,
                 ["−10", "+10"],
             ),
-            Parameter::MacroValue
+            Parameter::OttLowDepth
+            | Parameter::OttMidDepth
+            | Parameter::OttHighDepth
+            | Parameter::MacroValue
             | Parameter::LfoDepth
             | Parameter::DryWet
             | Parameter::DriveGain

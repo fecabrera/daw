@@ -55,3 +55,28 @@ Processing, reset, and retargeting do not allocate, block, log, or perform I/O. 
 State uses `daw.ott`, version 1. Settings, presentation, and IDs survive save/open, Save As, and processing-rate changes. Track duplication creates new instance IDs. Future versions retain their opaque state and pass through using the shared missing-effect behavior.
 
 Master supports this unit through the same Timeline catalog and controls. Its independent saved chain processes the summed track bus before Master gain and output meters; see [Master effects](../architecture/modular-audio-units.md#master-effects-implementation--2026-10-14).
+
+## Modulation — 2026-10-17
+
+OTT consumes shared Envelope, LFO, and Macro outputs from its own MIDI instrument, including Main, through the [shared source/destination contract](../modulation/contract.md). Per note and foreign-instrument providers are invalid. Audio tracks and Master may retain unassigned connections but cannot reference instrument providers. OTT publishes no modulation source. Peak/RMS, band power, and unit power remain discrete; gain-change monitors remain read-only.
+
+`OttSettings` and the portable `Ott` processor declare the same 19 `ModulationParameter::OTT` targets in Shared scope. Fixed band identities do not use list indices or optional target IDs. Level and Dry/Wet reuse the existing parameter identities. The common typed input frame adds 17 distinct OTT slots. Source discovery/publication, scope checks, route validation/resolution, amount/power ramps, the 1 ms additive offset smoother, route-history retargeting, and destination-owned connection controls remain shared code. OTT owns conversion, final bounds, crossover ordering, and audio processing.
+
+| Targets | Signed Amount per connection | Conversion and final bounds |
+| --- | --- | --- |
+| Low/Mid crossover | ±6 octaves | Add in log-frequency space; 20–2000 Hz. |
+| Mid/High crossover | ±6 octaves | Add in log-frequency space; 200–20,000 Hz, subject to the pair rule below. |
+| Low/Mid/High Depth | ±1, displayed as ±100% | Add to each band depth; 0–1. |
+| Low/Mid/High Input and Output | ±24 dB | Add to the corresponding gain; −24 to +24 dB. |
+| Low/Mid/High Attack | ±6 octaves of duration | Add in log-time space; 0.1–200 ms. |
+| Low/Mid/High Release | ±6 octaves of duration | Add in log-time space; 10–2000 ms. |
+| Level | ±24 dB | Multiply the ramped base amplitude by the summed dB offset, bounded to ±96 dB before conversion; cap at +12 dB. Exact base silence remains silent. |
+| Dry/Wet | ±1, displayed as ±100% | Add to the wet fraction; 0–1. |
+
+Positive octave offsets double frequency or duration per octave; negative offsets halve it. Resolve and smooth all offsets once per destination sample. When either crossover offset is nonzero, bound Low first, then bound High and raise it to at least Low + 1 Hz if necessary. Never swap band identities. Apply this constraint after smoothing, including during changing base ramps. Neutral crossover offsets retain the original crossover arithmetic and valid saved base separation. Modulation changes no base settings. Band compression bypass retains Input/Output modulation; Depth and timing continue advancing while compression is bypassed. Unit bypass retains unscaled dry audio and advancing DSP/modulation histories.
+
+The normal OTT knobs and Amount knobs use `parameter_knobs.rs` definitions. Reuse the native crossover and duration scales, bipolar band dB controls, percentages, and marked output Gain. The header's secondary dot opens the shared Source/Parameter/Amount strips to the right; regular controls and signed gain-change rails remain visible. Plus adds an enabled, unassigned, zero-amount connection; power, removal, reorder, tooltips, range arcs, assignment dots, and live readings reuse existing controls. Compact mode retains footers and hides controls/meters; horizontal collapse hides the body. Crossovers retain their existing manual 1 Hz clamp. Indicators use individual parameter bounds, and their crossover tooltip explains coupled ordering; live readings report the actual constrained values.
+
+Version 1 adds optional `modulations` and `modulation_open`, defaulting empty/closed. Explicit null or malformed values fail. Common settings/core validation rejects unsupported parameters, target IDs, duplicate/nil route IDs, nonfinite/out-of-range amounts, and missing/foreign/per-note source references atomically. Compatible edits retain crossover, detector, gain-envelope, base-ramp, and offset history. Route additions/removals/reordering retain history by stable route identity through the existing prepared renderer transition. Provider moves remap OTT consumers; effect copies receive fresh route IDs while keeping source assignments. Save/reopen, Save As, track duplication, and all six processing-rate changes retain settings and references.
+
+Processed telemetry follows `OTT` order: Low crossover, High crossover; then Depth/Input/Output/Attack/Release for Low, Mid, and High; then Level and Dry/Wet. Values use Hz, normalized fractions, dB, and milliseconds. The shared snapshot capacity is 19; destinations with fewer readings pad unused slots with NaN. Existing five-value accessors remain prefix adapters. Atomic storage and route vectors are prepared before publication and retained by destination identity; sampling, snapshots, reset, and compatible retargeting allocate and lock nothing in the callback. Meter readings include the actual modulated compression depth and detector/timing response before output balance, Dry/Wet, and Level. Playback and export use the same processor; latency, fixed curves, phase matching, band enable semantics, and export duration remain unchanged.

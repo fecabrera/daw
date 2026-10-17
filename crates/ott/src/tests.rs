@@ -124,13 +124,13 @@ fn attack_release_and_depth_control_signed_gain_independently_of_mix() {
             let target = f64::from(gain_curve(20.0 * sample.log10()));
             let frames = rate / 100;
             for _ in 0..frames {
-                band.sample([sample, -sample * 0.25], 0.0);
+                band.sample([sample, -sample * 0.25], 0.0, [0.0; 5]);
             }
             let expected = target * (1.0 - (-f64::from(frames) / (f64::from(rate) * 0.01)).exp());
             assert!((f64::from(band.change_db()) - expected).abs() < 0.001);
             let before = band.change_db();
             for _ in 0..rate / 10 {
-                band.sample([0.03, -0.0075], 0.0);
+                band.sample([0.03, -0.0075], 0.0, [0.0; 5]);
             }
             assert!(
                 (f64::from(band.change_db()) - f64::from(before) * (-1.0_f64).exp()).abs() < 0.001
@@ -139,14 +139,14 @@ fn attack_release_and_depth_control_signed_gain_independently_of_mix() {
     }
     let mut band = Band::new(48000, settings);
     for _ in 0..5000 {
-        band.sample([0.001; 2], 0.0);
+        band.sample([0.001; 2], 0.0, [0.0; 5]);
     }
     let full = band.change_db();
     let mut half = settings;
     half.depth = 0.5;
     band.retarget(half, 240);
     for _ in 0..240 {
-        band.sample([0.001; 2], 0.0);
+        band.sample([0.001; 2], 0.0, [0.0; 5]);
     }
     assert!((band.change_db() - full * 0.5).abs() < 0.001);
 }

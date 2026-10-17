@@ -3871,16 +3871,26 @@ fn limiter_uses_shared_controls_and_catalog_actions_in_both_themes() {
 fn modifier_drag_copies_selected_effects_in_chain_order_with_new_ids() {
     for compact in [false, true] {
         for collapsed in [false, true] {
-            for master in [false, true] {
+            for (master, ott) in [(false, false), (true, false), (false, true), (true, true)] {
                 let (mut app, _, ctx, ids) = chain_fixture(compact, collapsed);
                 let third = &mut app.session.project.tracks[0].effects[2];
-                third.unit = daw_core::EffectSettings::Compressor(daw_core::CompressorSettings {
-                    collapsed,
-                    modulations: vec![daw_core::Modulation::new(
-                        daw_core::ModulationParameter::CompressorKnee,
-                    )],
-                    ..Default::default()
-                });
+                third.unit = if ott {
+                    daw_core::EffectSettings::Ott(daw_core::OttSettings {
+                        collapsed,
+                        modulations: vec![daw_core::Modulation::new(
+                            daw_core::ModulationParameter::OttHighOutput,
+                        )],
+                        ..Default::default()
+                    })
+                } else {
+                    daw_core::EffectSettings::Compressor(daw_core::CompressorSettings {
+                        collapsed,
+                        modulations: vec![daw_core::Modulation::new(
+                            daw_core::ModulationParameter::CompressorKnee,
+                        )],
+                        ..Default::default()
+                    })
+                };
                 for effect in &mut app.session.project.tracks[0].effects {
                     if let daw_core::EffectSettings::Eq3(s) = &mut effect.unit {
                         s.modulations.push(daw_core::Modulation {
@@ -3889,6 +3899,8 @@ fn modifier_drag_copies_selected_effects_in_chain_order_with_new_ids() {
                         });
                     }
                 }
+                // Refresh geometry after replacing the fixture's final unit with a wider OTT.
+                frame(&mut app, &ctx, vec![]);
                 let original = app.session.project.tracks[0].effects.clone();
                 if master {
                     app.session.project.master.effects = original.clone();

@@ -43,6 +43,10 @@ pub struct OttSettings {
     pub version: u32,
     pub enabled: bool,
     pub collapsed: bool,
+    #[serde(default)]
+    pub modulation_open: bool,
+    #[serde(default)]
+    pub modulations: Vec<crate::Modulation>,
     pub low_frequency_hz: f32,
     pub high_frequency_hz: f32,
     pub bands: [OttBandSettings; 3],
@@ -56,6 +60,8 @@ impl Default for OttSettings {
             version: OTT_STATE_VERSION,
             enabled: true,
             collapsed: false,
+            modulation_open: false,
+            modulations: Vec::new(),
             low_frequency_hz: 250.0,
             high_frequency_hz: 2500.0,
             bands: [OttBandSettings::default(); 3],
@@ -74,5 +80,6 @@ impl OttSettings {
             && self.bands.iter().all(OttBandSettings::valid)
             && bounded(self.level_db, SILENT_GAIN_DB, 12.0)
             && bounded(self.dry_wet, 0.0, 1.0)
+            && crate::ModulationDestinationSettings::valid_modulations(self)
     }
 }

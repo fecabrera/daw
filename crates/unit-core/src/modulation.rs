@@ -59,6 +59,24 @@ pub struct ModulationSourceId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModulationParameter {
+    OttLowFrequency,
+    OttHighFrequency,
+    OttLowDepth,
+    OttLowInput,
+    OttLowOutput,
+    OttLowAttack,
+    OttLowRelease,
+    OttMidDepth,
+    OttMidInput,
+    OttMidOutput,
+    OttMidAttack,
+    OttMidRelease,
+    OttHighDepth,
+    OttHighInput,
+    OttHighOutput,
+    OttHighAttack,
+    OttHighRelease,
+
     Amplitude,
     Pitch,
     Frequency,
@@ -92,6 +110,28 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    /// Fixed OTT identities: crossovers, Low/Mid/High band controls, Level, Dry/Wet.
+    pub const OTT: [Self; 19] = [
+        Self::OttLowFrequency,
+        Self::OttHighFrequency,
+        Self::OttLowDepth,
+        Self::OttLowInput,
+        Self::OttLowOutput,
+        Self::OttLowAttack,
+        Self::OttLowRelease,
+        Self::OttMidDepth,
+        Self::OttMidInput,
+        Self::OttMidOutput,
+        Self::OttMidAttack,
+        Self::OttMidRelease,
+        Self::OttHighDepth,
+        Self::OttHighInput,
+        Self::OttHighOutput,
+        Self::OttHighAttack,
+        Self::OttHighRelease,
+        Self::Level,
+        Self::DryWet,
+    ];
     /// Continuous Limiter controls in UI/telemetry order; mode and routing remain discrete.
     pub const LIMITER: [Self; 4] = [
         Self::LimiterInput,
@@ -130,6 +170,23 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::OttLowFrequency => "Low · Frequency",
+            Self::OttHighFrequency => "High · Frequency",
+            Self::OttLowDepth => "Low · Depth",
+            Self::OttLowInput => "Low · Input",
+            Self::OttLowOutput => "Low · Output",
+            Self::OttLowAttack => "Low · Attack",
+            Self::OttLowRelease => "Low · Release",
+            Self::OttMidDepth => "Mid · Depth",
+            Self::OttMidInput => "Mid · Input",
+            Self::OttMidOutput => "Mid · Output",
+            Self::OttMidAttack => "Mid · Attack",
+            Self::OttMidRelease => "Mid · Release",
+            Self::OttHighDepth => "High · Depth",
+            Self::OttHighInput => "High · Input",
+            Self::OttHighOutput => "High · Output",
+            Self::OttHighAttack => "High · Attack",
+            Self::OttHighRelease => "High · Release",
             Self::LimiterInput => "Input",
             Self::LimiterRelease => "Release",
             Self::LimiterLookahead => "Lookahead",
@@ -165,6 +222,22 @@ impl ModulationParameter {
     }
     pub fn limit(self) -> f32 {
         match self {
+            Self::OttLowFrequency
+            | Self::OttHighFrequency
+            | Self::OttLowAttack
+            | Self::OttLowRelease
+            | Self::OttMidAttack
+            | Self::OttMidRelease
+            | Self::OttHighAttack
+            | Self::OttHighRelease => 6.0,
+            Self::OttLowDepth | Self::OttMidDepth | Self::OttHighDepth => 1.0,
+            Self::OttLowInput
+            | Self::OttLowOutput
+            | Self::OttMidInput
+            | Self::OttMidOutput
+            | Self::OttHighInput
+            | Self::OttHighOutput => 24.0,
+
             Self::LimiterInput | Self::LimiterCeiling => 24.0,
             Self::LimiterRelease => 6.0,
             Self::LimiterLookahead => 10.0,
@@ -187,6 +260,21 @@ impl ModulationParameter {
     }
     pub fn unit(self) -> &'static str {
         match self {
+            Self::OttLowFrequency
+            | Self::OttHighFrequency
+            | Self::OttLowAttack
+            | Self::OttLowRelease
+            | Self::OttMidAttack
+            | Self::OttMidRelease
+            | Self::OttHighAttack
+            | Self::OttHighRelease => "oct",
+            Self::OttLowDepth | Self::OttMidDepth | Self::OttHighDepth => "",
+            Self::OttLowInput
+            | Self::OttLowOutput
+            | Self::OttMidInput
+            | Self::OttMidOutput
+            | Self::OttHighInput
+            | Self::OttHighOutput => "dB",
             Self::LimiterInput | Self::LimiterCeiling => "dB",
             Self::LimiterRelease => "oct",
             Self::LimiterLookahead => "ms",

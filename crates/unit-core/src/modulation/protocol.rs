@@ -322,3 +322,5 @@ destination_settings!(
     &ModulationParameter::LIMITER,
     Shared
 );
+
+destination_settings!(crate::OttSettings, &ModulationParameter::OTT, Shared);

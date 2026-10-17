@@ -3,7 +3,24 @@ use super::*;
 use crate::parameter_knobs;
 use daw_core::ModulationParameter as P;
 
-const PARAMETERS: [P; 31] = [
+const PARAMETERS: [P; 48] = [
+    P::OttLowFrequency,
+    P::OttHighFrequency,
+    P::OttLowDepth,
+    P::OttLowInput,
+    P::OttLowOutput,
+    P::OttLowAttack,
+    P::OttLowRelease,
+    P::OttMidDepth,
+    P::OttMidInput,
+    P::OttMidOutput,
+    P::OttMidAttack,
+    P::OttMidRelease,
+    P::OttHighDepth,
+    P::OttHighInput,
+    P::OttHighOutput,
+    P::OttHighAttack,
+    P::OttHighRelease,
     P::LimiterInput,
     P::LimiterRelease,
     P::LimiterLookahead,
@@ -39,12 +56,30 @@ const PARAMETERS: [P; 31] = [
 
 fn native_value(parameter: P, amount: f32) -> f32 {
     match parameter {
-        P::LimiterInput | P::Pitch | P::EqLowGain | P::EqMidGain | P::EqHighGain => amount,
+        P::OttLowInput
+        | P::OttLowOutput
+        | P::OttMidInput
+        | P::OttMidOutput
+        | P::OttHighInput
+        | P::OttHighOutput
+        | P::LimiterInput
+        | P::Pitch
+        | P::EqLowGain
+        | P::EqMidGain
+        | P::EqHighGain => amount,
         P::Amplitude => 20.0 * (1.0 - amount.abs()).log10(),
         P::LimiterCeiling | P::SamplerGain | P::Level | P::Volume | P::CompressorThreshold => {
             -amount.abs()
         }
-        P::LimiterRelease
+        P::OttLowFrequency
+        | P::OttHighFrequency
+        | P::OttLowAttack
+        | P::OttLowRelease
+        | P::OttMidAttack
+        | P::OttMidRelease
+        | P::OttHighAttack
+        | P::OttHighRelease
+        | P::LimiterRelease
         | P::Frequency
         | P::ColorFrequency
         | P::LfoRate
@@ -61,6 +96,20 @@ fn native_value(parameter: P, amount: f32) -> f32 {
 }
 fn direction(parameter: P, amount: f32) -> f32 {
     match parameter {
+        P::OttLowInput
+        | P::OttLowOutput
+        | P::OttMidInput
+        | P::OttMidOutput
+        | P::OttHighInput
+        | P::OttHighOutput
+        | P::OttLowFrequency
+        | P::OttHighFrequency
+        | P::OttLowAttack
+        | P::OttLowRelease
+        | P::OttMidAttack
+        | P::OttMidRelease
+        | P::OttHighAttack
+        | P::OttHighRelease => 1.0,
         P::LimiterInput
         | P::LimiterRelease
         | P::Pitch

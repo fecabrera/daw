@@ -158,6 +158,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::Compressor(_)
                     | daw_core::EffectSettings::Limiter(_)
+                    | daw_core::EffectSettings::Ott(_)
             )
         })
         .map(|e| ModulationTarget::Effect(e.id));
@@ -1157,6 +1158,12 @@ mod modulation_meter_tests {
             s.dry_wet = 0.4;
         }
         plan.project.tracks[0].effects.push(compressor);
+        let mut ott = daw_core::EffectInstance::ott();
+        let ott_key = ModulationTarget::Effect(ott.id);
+        if let daw_core::EffectSettings::Ott(s) = &mut ott.unit {
+            s.bands[2].output_db = 3.0;
+        }
+        plan.project.tracks[0].effects.push(ott);
         let mut limiter = daw_core::EffectInstance::limiter();
         let limiter_key = ModulationTarget::Effect(limiter.id);
         if let daw_core::EffectSettings::Limiter(s) = &mut limiter.unit {
@@ -1191,7 +1198,7 @@ mod modulation_meter_tests {
             .layers
             .push(sample_layer);
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 8);
+        assert_eq!(handles.len(), 9);
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1223,14 +1230,16 @@ mod modulation_meter_tests {
         );
         assert!(f32::from_bits(handles[&oscillator][0].load(Ordering::Relaxed)).is_nan());
         let eq = renderer.modulation_snapshot(eq_key).unwrap();
-        assert!(eq.iter().all(|v| v.is_finite()));
+        assert!(eq[..7].iter().all(|v| v.is_finite()));
+        assert!(eq[7..].iter().all(|v| v.is_nan()));
         assert_eq!(eq[6], 2.4);
         assert_eq!(
             eq.map(f32::to_bits),
             std::array::from_fn(|i| handles[&eq_key][i].load(Ordering::Relaxed))
         );
         let compressor = renderer.modulation_snapshot(compressor_key).unwrap();
-        assert!(compressor.iter().all(|v| v.is_finite()));
+        assert!(compressor[..7].iter().all(|v| v.is_finite()));
+        assert!(compressor[7..].iter().all(|v| v.is_nan()));
         assert_eq!(compressor[6], 0.4);
         assert_eq!(
             compressor.map(f32::to_bits),
@@ -1250,7 +1259,15 @@ mod modulation_meter_tests {
             limiter.map(f32::to_bits),
             std::array::from_fn(|i| handles[&limiter_key][i].load(Ordering::Relaxed))
         );
+        let ott = renderer.modulation_snapshot(ott_key).unwrap();
+        assert!(ott.iter().all(|v| v.is_finite()));
+        assert_eq!(ott[14], 3.0);
+        assert_eq!(
+            ott.map(f32::to_bits),
+            std::array::from_fn(|i| handles[&ott_key][i].load(Ordering::Relaxed))
+        );
         let next = modulation_meters(&plan, &handles);
+        assert!(Arc::ptr_eq(&next[&ott_key], &handles[&ott_key]));
         assert!(Arc::ptr_eq(&next[&sampler], &handles[&sampler]));
         assert!(Arc::ptr_eq(&next[&limiter_key], &handles[&limiter_key]));
         assert!(Arc::ptr_eq(

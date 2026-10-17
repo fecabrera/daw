@@ -488,7 +488,7 @@ Delete/Backspace removes selected installed component units from the focused reg
 
 ## Compressor modulation — 2026-10-17
 
-[Compressor](../effects/compressor.md#modulation--2026-10-17) consumes shared Envelope, LFO, and Macro outputs from its MIDI instrument, including Main, through the common source/destination API. Expose Threshold, Ratio, Attack, Release, Knee, Level, and Dry/Wet. Keep Peak/RMS discrete and the gain-reduction meter read-only. Reuse typed route validation/resolution, cached publication, the 1 ms offset smoother, destination-matched amount knobs, connection strips/indicators, stable-ID history retargeting, and the existing seven-reading snapshot path. Preserve detector/reduction history, base ramps, bypass, unit geometry, neutral audio, and latency. Optional empty/closed fields retain Compressor state version 1. See the guide and [acceptance requirements](iteration-1.md#compressor-modulation--2026-10-17) for units, bounds, persistence, scope, and validation.
+[Compressor](../effects/compressor.md#modulation--2026-10-17) consumes shared Envelope, LFO, and Macro outputs from its MIDI instrument, including Main, through the common source/destination API. Expose Threshold, Ratio, Attack, Release, Knee, Level, and Dry/Wet. Keep Peak/RMS discrete and the gain-reduction meter read-only. Reuse typed route validation/resolution, cached publication, the 1 ms offset smoother, destination-matched amount knobs, connection strips/indicators, stable-ID history retargeting, and the shared processed-value snapshot path. Preserve detector/reduction history, base ramps, bypass, unit geometry, neutral audio, and latency. Optional empty/closed fields retain Compressor state version 1. See the guide and [acceptance requirements](iteration-1.md#compressor-modulation--2026-10-17) for units, bounds, persistence, scope, and validation.
 
 ## Sampler source — 2026-10-17
 
@@ -498,3 +498,8 @@ Delete/Backspace removes selected installed component units from the focused reg
 ## Limiter modulation — 2026-10-17
 
 [Limiter](../effects/limiter.md#modulation--2026-10-17) accepts shared Envelope/LFO/Macro modulation for Input, Release, Lookahead, and Ceiling through the common destination API. Mode/Routing and the reduction rail retain their discrete/read-only roles. Reuse source discovery/publication, typed resolution, smoothing, connection controls, amount knobs, indicators, and history retargeting. Modulation retains fixed latency and the existing protection, transport, persistence, and callback rules. See the [acceptance requirements](iteration-1.md#limiter-modulation--2026-10-17) for units, bounds, and reconstruction limits.
+
+
+## OTT modulation — 2026-10-17
+
+[OTT](../effects/ott.md#modulation--2026-10-17) consumes 19 continuous controls through the shared source/destination API. Reuse the common provider cache, typed routing/scope validation, offset smoother, destination-matched controls/indicators, prepared 19-reading snapshots, and stable-ID history retention. Keep mode/power discrete and meters read-only. Preserve the DSP topology, bypass and band-enable meanings, fixed curves, stereo phase matching, and neutral audio. Portable OTT owns final bounds and crossover ordering. See the [acceptance requirements](iteration-1.md#ott-modulation--2026-10-17).

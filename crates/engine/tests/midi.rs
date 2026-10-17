@@ -1825,6 +1825,8 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let mut eq_reference = Equalizer::new(context, &EqSettings::default());
         let mut drive = Drive::new(context, &DriveSettings::default());
         let mut drive_reference = Drive::new(context, &DriveSettings::default());
+        let mut ott = daw_ott::Ott::new(context, &OttSettings::default());
+        let mut ott_reference = daw_ott::Ott::new(context, &OttSettings::default());
         let mut limiter = daw_limiter::Limiter::new(context, &LimiterSettings::default());
         let mut limiter_reference = daw_limiter::Limiter::new(context, &LimiterSettings::default());
         let sample_audio = std::sync::Arc::new(vec![[0.2, -0.1]; rate as usize]);
@@ -1842,6 +1844,7 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
             compressor.descriptor(),
             sampler.descriptor(),
             limiter.descriptor(),
+            ott.descriptor(),
         ] {
             assert!(descriptor.consumes_modulation());
             assert!(!descriptor.provides_modulation());
@@ -1868,6 +1871,11 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let compressor_amounts = [-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25];
         let mut compressor_routes = routes(Compressor::MODULATION_PARAMETERS, &compressor_amounts);
         let mut sampler_routes = routes(daw_sampler::Sampler::MODULATION_PARAMETERS, &[-6.0]);
+        let ott_amounts = [
+            0.5, -0.5, -0.3, 6.0, -3.0, 0.5, -0.5, -0.3, 6.0, -3.0, 0.5, -0.5, -0.3, 6.0, -3.0,
+            0.5, -0.5, 6.0, -0.25,
+        ];
+        let mut ott_routes = routes(daw_ott::Ott::MODULATION_PARAMETERS, &ott_amounts);
         let limiter_amounts = [6.0, -1.0, 2.0, -6.0];
         let mut limiter_routes = routes(
             daw_limiter::Limiter::MODULATION_PARAMETERS,
@@ -1894,6 +1902,13 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
                 limiter_reference.process_modulated(
                     input,
                     limiter_amounts.map(|a| cached[0].value * (a * cached[0].weight))
+                )
+            );
+            assert_eq!(
+                process_modulation(&mut ott, &mut ott_routes, input, &[], &cached, c),
+                ott_reference.process_modulated(
+                    input,
+                    ott_amounts.map(|a| cached[0].value * (a * cached[0].weight))
                 )
             );
             let neutral = sampler_reference.next_sample();
@@ -2950,10 +2965,11 @@ fn unassigned_and_disabled_macro_modules_preserve_audio_and_never_extend_notes()
 #[test]
 fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_updates() {
     use daw_engine::ModulationTarget;
-    for (kind, rate) in [(0, 48000), (1, 48000)]
-        .into_iter()
-        .chain(SAMPLE_RATES.map(|rate| (2, rate)))
-    {
+    for (kind, rate) in [(0, 48000), (1, 48000)].into_iter().chain(
+        SAMPLE_RATES
+            .into_iter()
+            .flat_map(|rate| [(2, rate), (3, rate)]),
+    ) {
         for provider in 0..3 {
             let mut p = plan(Waveform::Saw, rate);
             let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
@@ -2995,22 +3011,29 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                 EffectInstance::equalizer,
                 EffectInstance::compressor,
                 EffectInstance::limiter,
+                EffectInstance::ott,
             ][kind]();
             let target = ModulationTarget::Effect(effect.id);
             let parameters = [
                 &ModulationParameter::EQUALIZER[..],
                 &ModulationParameter::COMPRESSOR[..],
                 &ModulationParameter::LIMITER[..],
+                &ModulationParameter::OTT[..],
             ][kind];
             let amounts = [
                 &[6.0, 0.5, 0.3, -6.0, 6.0, -0.5, 0.3][..],
                 &[-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25][..],
                 &[6.0, -1.0, 2.0, -6.0][..],
+                &[
+                    0.5, -0.5, -0.3, 6.0, -3.0, 0.5, -0.5, -0.3, 6.0, -3.0, 0.5, -0.5, -0.3, 6.0,
+                    -3.0, 0.5, -0.5, 6.0, -0.25,
+                ][..],
             ][kind];
             let routes = match &mut effect.unit {
                 EffectSettings::Compressor(s) => &mut s.modulations,
                 EffectSettings::Eq3(s) => &mut s.modulations,
                 EffectSettings::Limiter(s) => &mut s.modulations,
+                EffectSettings::Ott(s) => &mut s.modulations,
                 _ => unreachable!(),
             };
             *routes = parameters
@@ -3027,6 +3050,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                 ModulationParameter::EqLowQ,
                 ModulationParameter::CompressorKnee,
                 ModulationParameter::LimiterLookahead,
+                ModulationParameter::OttMidDepth,
             ][kind];
             for amount in [1.0, -1.0] {
                 routes.push(Modulation {
@@ -3106,6 +3130,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                 EffectSettings::Eq3(s) => s.modulation_open = true,
                 EffectSettings::Compressor(s) => s.modulation_open = true,
                 EffectSettings::Limiter(s) => s.modulation_open = true,
+                EffectSettings::Ott(s) => s.modulation_open = true,
                 _ => unreachable!(),
             }
             let mut replacement = Renderer::new(reordered.clone());

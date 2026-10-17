@@ -438,6 +438,12 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::OttLowFrequency => {
+            offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(20.0, 2000.0))
+        }
+        ModulationParameter::OttHighFrequency => {
+            offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(200.0, 20_000.0))
+        }
         ModulationParameter::LimiterInput => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
         ModulationParameter::LimiterCeiling => offsets.map(|o| (base + o).clamp(-24.0, 0.0)),
         ModulationParameter::LimiterRelease => {
@@ -447,13 +453,25 @@ pub(super) fn marker(
         ModulationParameter::CompressorThreshold => offsets.map(|o| (base + o).clamp(-60.0, 0.0)),
         ModulationParameter::CompressorRatio => offsets.map(|o| (base + o).clamp(1.0, 20.0)),
         ModulationParameter::CompressorKnee => offsets.map(|o| (base + o).clamp(0.0, 24.0)),
-        ModulationParameter::CompressorAttack => {
+        ModulationParameter::OttLowAttack
+        | ModulationParameter::OttMidAttack
+        | ModulationParameter::OttHighAttack
+        | ModulationParameter::CompressorAttack => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(0.1, 200.0))
         }
-        ModulationParameter::CompressorRelease => {
+        ModulationParameter::OttLowRelease
+        | ModulationParameter::OttMidRelease
+        | ModulationParameter::OttHighRelease
+        | ModulationParameter::CompressorRelease => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(10.0, 2000.0))
         }
-        ModulationParameter::EqLowGain
+        ModulationParameter::OttLowInput
+        | ModulationParameter::OttMidInput
+        | ModulationParameter::OttHighInput
+        | ModulationParameter::OttLowOutput
+        | ModulationParameter::OttMidOutput
+        | ModulationParameter::OttHighOutput
+        | ModulationParameter::EqLowGain
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
         ModulationParameter::LfoRate => offsets.map(|o| (base * 2.0_f32.powf(o)).max(0.0)),
@@ -478,7 +496,10 @@ pub(super) fn marker(
                 offsets.map(|o| (base + o.clamp(-96.0, 96.0)).clamp(daw_core::SILENT_GAIN_DB, 12.0))
             }
         }
-        ModulationParameter::MacroValue
+        ModulationParameter::OttLowDepth
+        | ModulationParameter::OttMidDepth
+        | ModulationParameter::OttHighDepth
+        | ModulationParameter::MacroValue
         | ModulationParameter::LfoDepth
         | ModulationParameter::DryWet
         | ModulationParameter::DriveGain
@@ -512,7 +533,18 @@ pub(super) fn marker(
     } else {
         lines.push("Moving dot: processed value.".into());
     }
+    if matches!(
+        parameter,
+        ModulationParameter::OttLowFrequency | ModulationParameter::OttHighFrequency
+    ) {
+        lines.push(
+            "Crossovers retain a 1 Hz gap; High is raised when modulated boundaries meet.".into(),
+        );
+    }
     let format_value = |value: f32| match parameter {
+        ModulationParameter::OttLowRelease
+        | ModulationParameter::OttMidRelease
+        | ModulationParameter::OttHighRelease => format!("{value:.1} ms"),
         ModulationParameter::LimiterInput | ModulationParameter::LimiterCeiling => {
             format!("{value:.1} dB")
         }
@@ -522,11 +554,17 @@ pub(super) fn marker(
         ModulationParameter::CompressorThreshold => format!("{value:.1} dBFS"),
         ModulationParameter::CompressorRatio => format!("{value:.1}:1"),
         ModulationParameter::CompressorKnee => format!("{value:.1} dB"),
-        ModulationParameter::CompressorAttack | ModulationParameter::CompressorRelease => {
+        ModulationParameter::OttLowAttack
+        | ModulationParameter::OttMidAttack
+        | ModulationParameter::OttHighAttack
+        | ModulationParameter::CompressorAttack
+        | ModulationParameter::CompressorRelease => {
             format!("{value:.1} ms")
         }
         ModulationParameter::Pitch => format!("{value:+.2} semitones"),
-        ModulationParameter::Frequency
+        ModulationParameter::OttLowFrequency
+        | ModulationParameter::OttHighFrequency
+        | ModulationParameter::Frequency
         | ModulationParameter::ColorFrequency
         | ModulationParameter::EqLowFrequency
         | ModulationParameter::EqHighFrequency => knobs::format_frequency(value),
@@ -534,7 +572,13 @@ pub(super) fn marker(
         ModulationParameter::Resonance
         | ModulationParameter::EqLowQ
         | ModulationParameter::EqHighQ => format!("Q {value:.2}"),
-        ModulationParameter::EqLowGain
+        ModulationParameter::OttLowInput
+        | ModulationParameter::OttMidInput
+        | ModulationParameter::OttHighInput
+        | ModulationParameter::OttLowOutput
+        | ModulationParameter::OttMidOutput
+        | ModulationParameter::OttHighOutput
+        | ModulationParameter::EqLowGain
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => format!("{value:.1} dB"),
         ModulationParameter::Amplitude
@@ -547,7 +591,10 @@ pub(super) fn marker(
                 format!("{value:.1} dB")
             }
         }
-        ModulationParameter::MacroValue
+        ModulationParameter::OttLowDepth
+        | ModulationParameter::OttMidDepth
+        | ModulationParameter::OttHighDepth
+        | ModulationParameter::MacroValue
         | ModulationParameter::LfoDepth
         | ModulationParameter::DryWet
         | ModulationParameter::DriveGain
@@ -683,6 +730,23 @@ mod tests {
             [1000.0; 2]
         );
         for (parameter, base, amount, expected) in [
+            (OttLowFrequency, 250.0, 6.0, [250.0, 2000.0]),
+            (OttHighFrequency, 2500.0, -6.0, [200.0, 2500.0]),
+            (OttLowDepth, 1.0, -1.0, [0.0, 1.0]),
+            (OttLowInput, 0.0, 24.0, [0.0, 24.0]),
+            (OttLowOutput, 0.0, -24.0, [-24.0, 0.0]),
+            (OttLowAttack, 10.0, 6.0, [10.0, 200.0]),
+            (OttLowRelease, 100.0, -6.0, [10.0, 100.0]),
+            (OttMidDepth, 1.0, -1.0, [0.0, 1.0]),
+            (OttMidInput, 0.0, 24.0, [0.0, 24.0]),
+            (OttMidOutput, 0.0, -24.0, [-24.0, 0.0]),
+            (OttMidAttack, 10.0, 6.0, [10.0, 200.0]),
+            (OttMidRelease, 100.0, -6.0, [10.0, 100.0]),
+            (OttHighDepth, 1.0, -1.0, [0.0, 1.0]),
+            (OttHighInput, 0.0, 24.0, [0.0, 24.0]),
+            (OttHighOutput, 0.0, -24.0, [-24.0, 0.0]),
+            (OttHighAttack, 10.0, 6.0, [10.0, 200.0]),
+            (OttHighRelease, 100.0, -6.0, [10.0, 100.0]),
             (Frequency, 1000.0, 6.0, [1000.0, 20000.0]),
             (Resonance, 2.0, -10.0, [0.1, 2.0]),
             (Level, 0.0, 24.0, [0.0, 12.0]),

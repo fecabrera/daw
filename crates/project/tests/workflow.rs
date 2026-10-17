@@ -3793,7 +3793,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
         EffectInstance, EffectSettings, LfoInstance, Modulation, ModulationParameter,
         ModulationSourceId,
     };
-    for kind in 0..3 {
+    for kind in 0..4 {
         let fixture = Fixture::new();
         let mut session = Session::default();
         let track = session.project.add_midi_track().unwrap();
@@ -3808,6 +3808,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             EffectInstance::equalizer,
             EffectInstance::compressor,
             EffectInstance::limiter,
+            EffectInstance::ott,
         ][kind]();
         let (open, collapsed, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => {
@@ -3819,6 +3820,9 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             EffectSettings::Limiter(s) => {
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
+            EffectSettings::Ott(s) => {
+                (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
+            }
             _ => unreachable!(),
         };
         *open = true;
@@ -3827,6 +3831,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             &ModulationParameter::EQUALIZER[..],
             &ModulationParameter::COMPRESSOR[..],
             &ModulationParameter::LIMITER[..],
+            &ModulationParameter::OTT[..],
         ][kind]
             .iter()
             .copied()
@@ -3854,13 +3859,15 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
         copied.project.validate().unwrap();
         assert_eq!(copied.project.tracks[1].effects[0].unit, effect.unit);
         assert_ne!(copied.project.tracks[1].effects[0].id, effect.id);
-        let changed = copied.with_audio_settings(96000, 256).unwrap();
-        changed.project.validate().unwrap();
-        for index in 0..2 {
-            assert_eq!(
-                changed.project.tracks[index].effects,
-                copied.project.tracks[index].effects
-            );
+        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+            let changed = copied.with_audio_settings(rate, 256).unwrap();
+            changed.project.validate().unwrap();
+            for index in 0..2 {
+                assert_eq!(
+                    changed.project.tracks[index].effects,
+                    copied.project.tracks[index].effects
+                );
+            }
         }
     }
 }
