@@ -7,8 +7,8 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Timeline:** arrange, trim, loop, stretch, move, copy, and duplicate audio and MIDI clips, with grid snapping and edit previews.
 - **MIDI editor:** create patterns and edit notes in a piano roll.
 - **Instruments:** build layered synthesizers and samplers, with modulation and a shared Main bus.
-- **Instrument components:** [Oscillator](docs/modular-audio-units.md), [Sampler](docs/sampler.md), [Envelope](docs/midi-patterns.md#envelope-unit), [LFO](docs/lfo.md), [Amplitude](docs/modular-audio-units.md#generic-envelope-amplitude-and-modulation--2026-10-15), and [Macro](docs/macro.md).
-- **Effects:** [3-band EQ](docs/equalizer.md), [Drive](docs/drive.md), [Auto-filter](docs/auto-filter.md), [Compressor](docs/compressor.md), [OTT](docs/ott.md), and [Limiter](docs/limiter.md).
+- **Instrument components:** [Oscillator](docs/instruments/oscillator.md), [Sampler](docs/instruments/sampler.md), [Envelope](docs/instruments/envelope.md), [LFO](docs/instruments/lfo.md), [Amplitude](docs/instruments/amplitude.md), and [Macro](docs/instruments/macro.md).
+- **Effects:** [3-band EQ](docs/effects/equalizer.md), [Drive](docs/effects/drive.md), [Auto-filter](docs/effects/auto-filter.md), [Compressor](docs/effects/compressor.md), [OTT](docs/effects/ott.md), and [Limiter](docs/effects/limiter.md).
 - **Mixer:** track gain, pan, mute, and solo controls, plus master gain.
 - **Playback:** tempo controls, loop playback, and stereo level meters.
 - **Projects:** save and open projects, with configurable audio processing settings.
@@ -21,7 +21,7 @@ Audio and MIDI workflows are available in four views: **Timeline**, **Instrument
 
 The project format is experimental, and undo/redo is outside the current MVP. Saved projects reference external audio files; they do not bundle recordings. Missing audio files remain visible and play as silence.
 
-Planned work includes audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [MVP scope](docs/MVP.md) for details.
+Planned work includes audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
 
 ## Build and run
 
@@ -129,12 +129,12 @@ Workers also upload command logs as `logs-test-<OS>-<architecture>` and `logs-bu
 
 ## Documentation
 
-- [Project scope](docs/MVP.md) and [implementation specification](specs/mvp-iteration-1.md).
-- [Modular audio units](docs/modular-audio-units.md) and [beat pattern editor](docs/beat-editor.md) designs and decisions.
-- [MIDI patterns and oscillators](docs/midi-patterns.md), including current controls and limits.
-- [Experimental Timestretch engine](docs/timestretch.md) and [acceptance plan](specs/timestretch-acceptance.md): reusable BSD-2-Clause Rust crate, standalone comparisons against Rubber Band R2/R3, and optional DAW engine selection. The engine, tool, and saved Project Settings selector are implemented. Rubber Band remains the default. See the [standalone tool guide](crates/timestretch-cli/README.md) and validation limits.
-- [Validation records](docs/validation.md).
-- [Contribution and development instructions](AGENTS.md), including architecture, documentation rules, and checks.
+- [User guide](docs/README.md): working with clips, instruments, modulation, and effects.
+- [Features and roadmap](docs/roadmap.md), including current limits and planned capabilities.
+- [Time stretching](docs/audio/time-stretch.md) and the [standalone comparison tool guide](crates/timestretch-cli/README.md).
+- [Implementation specifications](specs/README.md): architecture, data formats, requirements, and acceptance criteria.
+- [Validation records](specs/validation/README.md): completed checks and remaining verification limits.
+- [Repository instructions](AGENTS.md): contribution rules and development workflows.
 
 ## Licenses
 

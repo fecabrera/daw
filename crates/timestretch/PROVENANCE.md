@@ -2,7 +2,7 @@
 
 Implementation record updated: 2026-10-15. Status: experimental.
 
-The mandatory rule in `docs/timestretch.md` applies: under no circumstances take code directly from Rubber Band. Copies, ports, translations, adaptations, mechanical rewrites, and indirect reuse are prohibited. No Rubber Band DSP implementation source was consulted for this implementation. The new engine and tests were written in this task from the mathematical design below. This is a provenance record, not a certification of formal clean-room development or legal clearance.
+The mandatory rule in `specs/audio/timestretch.md` applies: under no circumstances take code directly from Rubber Band. Copies, ports, translations, adaptations, mechanical rewrites, and indirect reuse are prohibited. No Rubber Band DSP implementation source was consulted for this implementation. The new engine and tests were written in this task from the mathematical design below. This is a provenance record, not a certification of formal clean-room development or legal clearance.
 
 ## Research inputs
 

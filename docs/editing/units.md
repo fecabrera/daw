@@ -1,0 +1,28 @@
+# Moving and copying units
+
+Use header dragging to arrange installed instrument components and effects. Use Option on macOS or Ctrl on Windows/Linux during a drag to copy instead of move. The modifier held at release determines the action.
+
+## Select and remove
+
+Click a unit to select it. Shift-click adds or removes units from the selection within the same lane. Click empty lane space to clear the selection. With that lane focused, Delete or Backspace removes selected units. Right-click a header for its removal menu.
+
+Envelope, LFO, Macro, and Amplitude retain settings when removed; add them from the catalog to restore them. Removing Oscillator discards its sources and pitch connections. Removing Sampler discards its sample settings. Removing a component does not delete its external recording.
+
+## Move or copy components
+
+1. Select one or more installed units.
+2. Drag a selected header to the destination layer or Main.
+3. Use the insertion line to choose the position. Drop on a layer label to append.
+4. Release to apply the transfer, or press Escape to cancel.
+
+All selected units must be compatible with the destination. A rejected drop leaves the complete group unchanged. Main accepts shared Envelope, LFO, and Macro components. It does not accept Oscillator, Sampler, Amplitude, or Per note Envelopes.
+
+A regular layer can have Oscillator or Sampler. Multiple oscillators can share an Oscillator unit; an occupied Sampler or a conflicting source type blocks a source transfer. Use Replace source in the source header menu for an explicit replacement. Only one Amplitude stage is allowed in a layer. Macro transfers merge strips into the destination Macro component.
+
+## Reorder sources, connections, and effects
+
+Drag unused space inside an oscillator strip to change its source order. Drag unused space in a modulation strip to reorder its connections. Parameters and connections stay attached to their source as displayed numbers change.
+
+Drag effect headers to reorder selected effects in chain order. Modifier dragging copies the selected effects and keeps the originals. Effect copies retain their settings and source assignments.
+
+An insertion line previews the result. Hold near a lane edge to scroll. Changes take effect on release. Escape, focus loss, or an outside drop cancels. A same-position move makes no change.

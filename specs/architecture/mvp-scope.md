@@ -1,0 +1,491 @@
+# Desktop DAW MVP
+
+Implementation requirements and design records. For user instructions, see the [user guide](../../docs/roadmap.md).
+
+Status: Scope baseline for later specification definitions.
+
+First implementation specification: [Desktop DAW MVP Iteration 1](iteration-1.md).
+
+## Documentation standard
+
+Use a combination of ASD-STE100 principles and Plain Language (PL) for project documentation, specifications, and user instructions.
+
+- Use short, direct sentences and active voice.
+- Use one consistent term for each concept. Define technical terms and abbreviations on first use.
+- Use familiar words. Include technical detail when the reader needs it to understand or perform a task.
+- State requirements, defaults, limits, and expected results explicitly. Separate confirmed requirements from proposals and open decisions.
+- Use numbered steps for procedures and tables for comparisons or structured requirements.
+- Remove filler, promotional language, and ambiguous wording.
+- Apply these principles as a practical writing standard; do not claim formal ASD-STE100 compliance without a compliance review.
+
+## Objective
+
+Build a small multitrack audio editor for macOS, Linux, and Windows. A user must be able to import recordings, arrange clips, adjust the mix, save and reopen a project, and export a stereo WAV or MP3 file.
+
+Use Rust with egui for the desktop interface. Keep the audio engine independent of the interface. Future targets are iPadOS and Android; mobile delivery is outside the MVP.
+
+Provide a headless command-line mode from the start, using the same project model and audio engine as the desktop interface.
+
+## Required features
+
+| ID | Area | Requirement |
+| --- | --- | --- |
+| MVP-01 | Import | Import WAV files and display a waveform for each clip. |
+| MVP-02 | Tracks | Allow stereo audio tracks with no fixed track-count limit. Add and delete tracks. Provide gain, pan, mute, and solo controls per track. |
+| MVP-03 | Clips | Move, trim, split, and delete clips without modifying the source recording. Clips on the same track must not overlap; clips on different tracks can play simultaneously. |
+| MVP-04 | Timeline | Provide a simple timeline with a track list on the left and a toolbar above the timeline containing playback controls. Provide horizontal zoom and scrolling. |
+| MVP-05 | Transport | Play, pause, stop, seek, and loop a selected region. |
+| MVP-06 | Mixing | Mixer tracks. Provide a master gain control and peak meters. |
+| MVP-07 | Output | Use the system's default audio output device. Display audio initialization errors. If the device disconnects, stop playback safely and display a clear error. |
+| MVP-08 | Projects | Save and open projects stored as folders containing manifest files and an assets directory. Reference external source audio files during the MVP. Open projects with missing sources normally, show a warning, and display affected clips as empty placeholders. |
+| MVP-10 | Export | Export the arrangement as a stereo WAV or MP3 file. |
+| MVP-11 | Sample rate | Use a selectable project processing rate (44.1, 48, 88.2, 96, 176.4, or 192 kHz; default 48 kHz). Convert imports to that rate. |
+| MVP-12 | Clip boundaries | Apply short fades at clip boundaries to prevent clicks. |
+| MVP-13 | Headless mode | Load and validate an existing project and export its arrangement as WAV or MP3 from the command line, without a graphical session or audio output device. |
+
+Undo/redo is outside the MVP. Requirement ID MVP-09 is retired; the remaining IDs are unchanged.
+
+## MVP technology stack
+
+Use stable Rust, edition 2024, and Cargo. Select compatible released crate versions during implementation and commit Cargo.lock for reproducible application builds.
+
+| Area | Library or technology | Use |
+| --- | --- | --- |
+| Desktop UI | [egui and eframe](https://github.com/emilk/egui) | Window lifecycle, widgets, input, and custom timeline controls. Use Glow/OpenGL on Windows for native caption composition and wgpu on macOS/Linux. |
+| Headless CLI | [clap](https://docs.rs/clap/latest/clap/) | Command parsing, help, project validation, and offline export. |
+| Waveforms and timeline | egui Painter with application code | Draw cached waveform peaks, clips, rulers, and meters. Generate waveform peaks on a background worker. |
+| Audio output | [cpal](https://github.com/RustAudio/cpal) | Default output device, stream configuration, audio callback, and stream errors. |
+| Audio engine | Application code in Rust | Sample-based transport, clip scheduling, gain/pan, mute/solo, fades, metering, and mixing. Reuse the rendering logic for live playback and offline export. |
+| Audio decoding | [symphonia](https://github.com/pdeljanov/Symphonia) | Enable WAV and PCM support for the MVP. Wrap it behind the decoder interface; enable more formats after the MVP. |
+| WAV export | [hound](https://docs.rs/hound/latest/hound/) | Write WAV exports behind the encoder interface. |
+| Sample-rate conversion | [rubato](https://github.com/HEnquist/rubato) | Convert imported audio to the project processing rate on a background worker. |
+| Engine communication | [rtrb](https://docs.rs/rtrb/latest/rtrb/) and standard atomics | Preallocated single-producer/single-consumer command queues; atomic meter values and status counters. |
+| Background work | Rust standard library threads and channels | Import, waveform generation, project I/O, and export. Keep blocking channels outside the audio callback. |
+| Project manifests | [serde](https://serde.rs/) and [serde_json](https://docs.rs/serde_json/latest/serde_json/) | Experimental JSON manifests for project state and asset references. |
+| Stable identifiers | [uuid](https://docs.rs/uuid/latest/uuid/) | Persistent project, track, clip, and asset IDs. |
+| File dialogs | [rfd](https://github.com/PolyMeilex/rfd) | Source import, project folder selection, and export destination dialogs. Use the XDG Desktop Portal backend on Linux. |
+| Errors | [thiserror](https://docs.rs/thiserror/latest/thiserror/) | Typed errors for audio, decoding, project storage, and export. |
+| Diagnostics | [tracing](https://docs.rs/tracing/latest/tracing/) and tracing-subscriber | Diagnostics outside the audio callback. Report callback counters/errors through nonblocking communication. |
+
+### Audio backend choices
+
+- macOS: CoreAudio through CPAL.
+- Windows: WASAPI through CPAL, using shared output for the MVP.
+- Linux: ALSA through CPAL, using the system default device and its PipeWire/PulseAudio bridge where configured. Linux builds require ALSA development libraries.
+- Keep the project and mixer at the selected processing rate. Prefer a device stream at that rate. If the default device requires another rate, use a preallocated Rubato output conversion stage; the project sample rate stays unchanged.
+- Keep audio backend details behind an output interface so additional backends can be added later.
+
+### Module boundaries and real-time rules
+
+- Separate project model, audio engine, media import/export, project storage, and desktop UI into modules within a Cargo workspace.
+- Provide separate desktop and CLI executable targets backed by shared core crates. The CLI target must build without egui/eframe, wgpu, rfd, or CPAL dependencies; keep graphics and device output in desktop-specific crates.
+- Keep egui, manifest serialization, and file dialogs outside the engine's rendering code.
+- Preallocate render buffers and queue capacity. Bound command processing per callback and handle queue-full conditions outside the callback.
+- Create and retire audio assets on a control/background thread. Avoid final asset destruction and deallocation in the callback.
+- Live playback and export use separate render state built from the same project model.
+- Use Rust's built-in tests for mixing, transport, import conversion, and project save/reopen behavior. Run cargo fmt, cargo clippy, and cargo test; validate playback on all three desktop platforms.
+
+## Reusable component architecture
+
+- Build features from reusable components with clear responsibilities and interfaces. Prefer composition through Rust structs and traits where implementations need to vary.
+- Provide a shared application core for project entities, stable IDs, sample-time types, asset references, and editing commands. Engines and application interfaces use these common definitions.
+- Share audio processing components, including gain, pan/balance, fades, metering, and mixing, between live playback and offline rendering.
+- Keep shared application types independent of egui, graphics, device backends, and file dialogs. The headless application must use the same core without UI dependencies.
+
+### Shared UI panel core
+
+- All UI panels use a common panel foundation for identity, title/header, content framing, spacing, styling, and visibility.
+- Compose panel-specific content, such as the timeline, mixer, and transport, within that foundation. Keep the shared shell separate from each panel's behavior and view state.
+- Reuse common controls for gain, pan/balance, mute/solo, meters, and error display instead of implementing separate versions in each panel.
+- Panels read application state and submit commands through a common application interface. They must not own duplicate project data or access the audio callback directly.
+- Keep the panel foundation within the UI layer. Future themes and mobile layouts can reuse its controls and conventions while providing different layouts and input behavior.
+- Introduce shared abstractions when components have actual common behavior; avoid a universal base engine or a panel interface that includes unrelated responsibilities.
+
+## Initial desktop UI
+
+Provide Project Settings in File on every desktop platform, separate from application Settings. It edits the project name, processing sample rate, and buffer size with Apply/Enter and Cancel/Escape. Keep a draft until confirmation, reject blank names/control characters, and mark a changed name as modified. Save the name in the project manifest through the existing Save flow; retain its folder and arrangement. Disable background actions while the dialog is open and guard it against jobs, other dialogs, and active editing gestures.
+
+Project Settings also selects the processing sample rate (44.1, 48, 88.2, 96, 176.4, or 192 kHz) and buffer size (32, 64, 128, 256, 512, 1024, 2048, or 4096 samples). Defaults are 48 kHz and 512 samples; older manifests without a buffer value use 512. Apply prepares audio on a worker and commits the name, rate, buffer, and frame coordinates together after success. Rate changes preserve clip, source-offset, repeat, loop-selection, and playhead times to sample precision, retain stretch ratios, and rebuild waveforms and stretch buffers. Original files remain unchanged. Invalid ranges, empty clips, overflow, or processing errors retain the original session. A successful audio change stops playback; press Play to create the output with the new settings. Rate changes clear copied clips to avoid pasting old frame coordinates. Cancel discards all draft settings. The buffer duration shown is not total output latency. The device may use a supported buffer size or its default; its negotiated rate and requested buffer configuration appear in the status bar.
+
+Provide an application Settings dialog for theme and accent color. Place Settings in the app-name menu on macOS and File on Windows/Linux. Offer all 19 Material 500 colors with named options and left-hand preview swatches. Apply the chosen accent immediately through the shared theme, save it as an application preference, and retain it across project changes. Use Dark and Purple 500 by default. Offer Light with a `#E9E9E9` timeline and `#F9F9F9` panels, toolbars, menus, and dialogs, plus dark text and matching control/grid colors. Persist the theme with the accent and apply both immediately without modifying the project. On macOS, offer Custom (default) and Native titlebars in Settings. Apply the choice immediately without recreating the window, persist it separately from projects, and omit the custom header when Native is active. Keep native caption controls and the project title in both modes. Keep broader theme customization on the roadmap.
+
+Use the supplied Audacity 4 screenshots as layout references.
+
+- Place the track list on the left and the timeline to its right.
+- A plain track-panel click selects one track. Shift-click, Command-click on macOS, or Ctrl-click on Windows/Linux adds or removes a track from the selection. Highlight all selected track panels without changing clip selection or project data. Press M to toggle mute and S to toggle solo on every selected audio track. Provide the same actions in a Track menu after Edit, using the native macOS menu bar and the first toolbar row on Windows/Linux. Put Add audio track first, followed by a separator, then Mute and Solo with M and S beside them, then a separator and Rename track, Duplicate track, and Delete track. Use Duplicate selected tracks and Delete selected tracks for a group. Both duplication menus share guarded `TrackAction::Duplicate` dispatch. Through one validated batch of `Edit::DuplicateTrack` commands, insert an empty copy immediately after each selected original in project order, with a new ID and identical name, color, gain, pan, mute, and solo settings. Select the copies with the first copy as primary, retain clip selection, mark the project modified, and sync playback. Do not duplicate clips or assets or change the originals. Duplication has no shortcut and requires a selected track. Put an icon-only Lucide Copy Plus button immediately to the right of Add audio track in the Tracks header, using the shared icon button, alignment, and spacing. Route it through the same guarded duplication action; disable it without selection and use the single/group label for its tooltip and accessibility name. Failure retains project and selection. The context menu lists Rename, Duplicate, then Delete; commit its action after panel painting on menu-item release. Deletion has no shortcut, requires a selected track, and shares guarded `TrackAction::Delete` dispatch with the context menu, including one validated batch, selection/control cleanup, and retained source files/assets. Add audio track appends a default empty audio track named Audio N, using its position in project order for N, and selects it through the same guarded action as the Tracks header Plus button. It needs no existing selection and has no keyboard shortcut. Disable Mute and Solo without a selected track. Menu clicks and native callbacks must use the same guarded actions as the shortcuts; one native key press must not also trigger the UI shortcut. Ignore native key repeat. Each track reverses its own current state, including mixed selections; commit the full group through one validated batch and sync playback. Ignore key repeat and Command/Ctrl/Alt-modified M/S so standard shortcuts retain their behavior. Disable these actions during text editing, active pointer or monitor drags, file dragging, jobs, dialogs, disabled UI, and loss of window focus. Preserve track selection through saves and reordering, remove deleted IDs, and reset it on project replacement or closure. Clip selection, paste, moves, imports, and adding a track retain one primary track for their existing destination behavior. Master is excluded.
+- Rename track in the Track menu and track context menu opens the existing name editor for exactly one selected track. Use Command+R on macOS and Ctrl+R on Windows/Linux. Enter saves; Escape/focus loss cancels. Opening the editor preserves selection and project data.
+- Provide Timeline (default), Instrument, Editor, and Mixer views over the same project and transport. Timeline and Instrument share the effects catalog/lane; there is no dedicated Effects view. Mixer arranges channel strips left to right in track order, with names at the top on headers matching the default clips' header palette and thin top/bottom borders, and pan, gain entry, vertical gain faders, stereo meters, and Mute/Solo controls at the bottom. Pin Master at the right window edge outside the horizontally scrolling tracks. Share track selection, name editing, context actions, settings, and meters between views. Double-click empty track-header space to select all clips on that track; replace the previous clip selection and clear it for an empty track. Preserve timeline scroll/zoom and cancel text drafts when switching without modifying project data. Keep file drops and arrangement gestures in Timeline.
+- Add a View menu after Track with Timeline, Instrument, Editor, and Mixer items and their Command+1/2/3/4 shortcuts (Ctrl on Windows/Linux). Check the active view and share the view buttons' guarded switching behavior. Use the native macOS menu bar and the app menu bar on Windows/Linux.
+- Put view buttons to the right of the project title in the macOS custom titlebar. Native macOS uses a separate view toolbar below the titlebar. Native Windows and Linux use the same toolbar below the system titlebar: a borderless burger containing File/Edit/Track/View, a vertical separator, and view buttons. Windows Settings also offers Custom: a burger containing File/Edit/Track/View, the project title, a vertical separator, and view buttons, with OS-drawn Windows caption buttons at the top right. Use DWM for their rendering, hover, hit testing, and actions in normal and maximized windows. Windows uses the Glow/OpenGL renderer to leave the caption region available to DWM. Default to Native on Windows; persist the choice separately from projects and switch without recreating the window. Reserve the caption region at the current DPI and shorten long titles. Native dragging, resizing, maximizing, and guarded window closing must remain available. Place playback controls below the header or combined toolbar.
+- Align each track's controls with its corresponding timeline lane. Use a simple outlined block with the grip at the left, a left-aligned track name directly after it, and Mute/Solo at the far right of its header, immediately left of the stereo meters. Put gain and pan/balance knobs and inputs in the second row. Center both rows' controls vertically. Keep track deletion available through a secondary-click context menu anywhere in the panel, including controls and meters. Preserve a selected group on secondary-click; select only the clicked track if it was unselected. Show Delete track for one track or Delete selected tracks for a group. Remove the selected tracks and clips in one validated batch on menu-item release, clear deleted selection/control state, and sync playback. Retain source files and assets. Dismissing the menu leaves the project unchanged; guard deletion against text editing, active drags, jobs, dialogs, and loss of focus.
+- Include a Tracks header and an Add audio track button. Keep Add audio track enabled regardless of the track count.
+- Place a toolbar above the timeline. Toggle Play to Pause during playback, using the corresponding Lucide icons. Include a separate Stop button.
+- Put New project, Open, Import WAV, Save, Save as, and Export in the File menu. Use the native macOS menu bar and an in-window menu on Windows and Linux. Group these actions with separators and provide keyboard shortcuts.
+- Display a bars-and-beats ruler and grid above the track lanes using project tempo and 4/4. Use the upper ruler band for loop selection, edge resizing, and moving the selection body. A primary click on an existing range or its handles toggles looping on release; dragging does not toggle it. While looping, match both handles to the Loop button gold and use a lighter gold background with contrasting labels. While disabled, use the toolbar hover background and inactive icon color for both handles; use the lower band for playhead clicks and dragging. Keep moved selections the same length and clamp them at frame zero. Show a visible playhead and waveforms within clips. Include a matching bar.beat monitor beside the toolbar time display. Count bars and beats from 1; start the monitor at 0001.01.
+- Keep the track list visible during horizontal timeline scrolling. Keep track rows and timeline lanes aligned during vertical scrolling.
+- Support two-finger pinch zoom over the timeline, ruler, and scrollbar. Use the horizontal zoom slider's 1–3000 pixels-per-second range. Keep the timeline point under the pointer fixed where bounds permit, and update the grid and clips before painting. Ignore gestures outside the timeline, during jobs or dialogs, during clip or loop-selection drags, and while unfocused. Zoom must not change project data or interface font sizes.
+- Support horizontal two-finger trackpad scrolling over the timeline, ruler, and scrollbar. Use the same bounds as the scrollbar, retain vertical scrolling for diagonal gestures, and leave project data unchanged.
+- Provide timeline zoom and loop-region controls, plus master gain, peak metering, and clipping status, within the initial layout.
+- Place Master in a track-style block fixed at the bottom of the track list, above the status bar. Include master gain and L/R output monitors without Mute or Solo buttons. It is separate from the audio tracks.
+- Show the empty track list and timeline before tracks are added. Use the shared UI panel foundation and reusable controls.
+- Use simple colored clip blocks with a thin outline, slightly rounded corners, a name strip at the top, and a waveform body. Mono clips show one waveform; stereo clips show two stacked waveforms. See the [clip reference](../assets/clip-reference.png) and the implementation specification for details.
+
+## Headless mode
+
+- Minimum MVP commands: validate an existing project folder and render its arrangement to a WAV or MP3 destination.
+- Reuse project loading, source resolution, decoding, mixing, fades, and export logic from the desktop application.
+- Do not initialize windows, graphics, file dialogs, or audio devices for headless validation/export.
+- Take project and output paths as command-line arguments. Return clear diagnostics and a nonzero exit status on failure; missing or unsupported sources must not be silently skipped.
+- Missing sources are warnings, not export failures. Write warnings identifying missing files to standard error, render their clips as silence, and return success if export completes. Unsupported encodings and other processing failures remain errors.
+- Report export clipping through diagnostics, using the same final-output clamping as the desktop application.
+- Headless operation must work on macOS, Windows, and Linux, including Linux without a graphical session.
+- Interactive headless editing, device playback, and remote control are outside the initial headless scope; they can be specified later.
+
+## Mixing behavior
+
+- Use fixed equal-power panning for mono sources in the MVP: approximately -3 dB per channel at center and unity gain on the active channel at either extreme.
+- Use fixed stereo balance for stereo sources: preserve both channels at unity gain at center; attenuate the opposite channel toward silence at either extreme without moving its content to the other channel.
+- Apply panning according to each clip's source channel layout, using the track's pan/balance position. Preserve source channel metadata when converting audio to the internal representation.
+- Solo overrides mute. A track with both solo and mute enabled plays.
+- If any track is soloed, play all soloed tracks and silence tracks that are not soloed.
+- If no track is soloed, play all tracks that are not muted.
+- Use the same mute/solo rules for playback and export.
+- Retain floating-point headroom within the mixer. Show a clipping indicator when the master signal exceeds the output range; clamp only at the final device output, integer WAV export, and MP3 export. Do not apply automatic normalization or a limiter in the MVP.
+- Apply 5 ms linear fades at clip starts and ends, and at repeat boundaries within looped clips. For ranges shorter than 10 ms, shorten each fade to half the range duration so the fades do not overlap.
+- Smooth live gain, pan/balance, mute, and solo transitions to avoid clicks.
+
+## Project storage
+
+- Store each project in its own folder with manifest files and an assets directory.
+- Manifest files store project state, asset identities, metadata, and source references.
+- During the MVP, source audio remains external and is referenced by the manifests.
+- Reserve the assets directory for project-owned assets, including future included source audio files. External source audio is not copied into it during the MVP.
+- Future source management must support both external references and sources included in the project's assets directory.
+- Use an experimental project.json manifest at the project folder root and an assets/ directory for project-owned assets. The manifest schema can change substantially during MVP development.
+- Store source paths relative to the project folder where possible; otherwise store absolute paths. Resolve relative paths from the project folder, not the application's working directory.
+- When closing the application or opening another project with unsaved changes, prompt to Save, Discard, or Cancel. Continue after Save only if saving succeeds.
+- First Save and every Save As ask for the project name, then use the system folder picker to select the parent location. Create a new named child folder and set the manifest name only on success. Regular Save reuses the current folder. Reject invalid names and existing destination folders. Cancellation or failure retains the current project and unsaved state; cancel pending close/open/new actions. Save As preserves the original project and source references.
+- Save by writing a temporary manifest and replacing the previous manifest only after writing succeeds. On failure, preserve the previous manifest and keep the project marked unsaved.
+- Revalidate source metadata when opening a project. Warn if a changed source causes saved clip ranges to exceed its current duration; preserve clip data and treat unavailable ranges as silence.
+
+### Initial project.json schema
+
+Use one manifest for the MVP. This is the initial schema, not a stable compatibility contract. Ignore schema_version during loading for now; it is optional and reserved for future use. Validate fields and project constraints against the current implementation. Version checks and migrations are deferred until the format stabilizes.
+
+```json
+{
+  "schema_version": 1,
+  "project_id": "c2e1c40e-e9bd-444e-88c0-a195f18b1b2e",
+  "name": "My project",
+  "sample_rate_hz": 48000,
+  "buffer_size_frames": 512,
+  "tempo_bpm": 120.0,
+  "master": {
+    "gain_db": 0.0
+  },
+  "assets": [
+    {
+      "id": "41835009-63d9-4c4b-bb9d-50a5905c2ef6",
+      "name": "Guitar.wav",
+      "source": {
+        "kind": "external",
+        "path": "../recordings/Guitar.wav",
+        "path_kind": "relative"
+      },
+      "source_metadata": {
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "sample_format": "pcm_int",
+        "bits_per_sample": 24
+      },
+      "decoded_frame_count": 14400000
+    }
+  ],
+  "tracks": [
+    {
+      "id": "114b83e2-f6dc-4ccc-9687-f13ce5ff76a5",
+      "name": "Guitar",
+      "gain_db": 0.0,
+      "pan": 0.0,
+      "muted": false,
+      "soloed": false,
+      "clips": [
+        {
+          "id": "68a15f7b-dacc-4b91-8e89-49ac29d6af50",
+          "asset_id": "41835009-63d9-4c4b-bb9d-50a5905c2ef6",
+          "name": "Guitar take",
+          "start_frame": 0,
+          "source_offset_frame": 0,
+          "length_frames": 14400000
+        }
+      ]
+    }
+  ],
+  "transport": {
+    "playhead_frame": 0,
+    "loop": {
+      "enabled": false,
+      "start_frame": 0,
+      "end_frame": 14400000
+    }
+  }
+}
+```
+
+#### Field rules
+
+- Use UUIDs for project, asset, track, and clip identities. Track array order defines display order.
+- Every track stores a `color` object with integer `r`, `g`, and `b` channels from 0 to 255. New tracks use Material Design 400 shades by position, repeating after 16 tracks: Deep Orange, Orange, Amber, Yellow, Lime, Light Green, Green, Teal, Cyan, Light Blue, Blue, Indigo, Deep Purple, Purple, Pink, Red. Load older tracks without this field using the same sequence by display position; preserve saved colors. Track colors cannot be null. Adding or deleting tracks retains the colors of existing tracks. Track color is the default for its clips; its panel background remains neutral. Omitted or null clip colors inherit the containing track's color. Clip RGB overrides take precedence; omit unset clip colors when saving. Resolve headers, channel fills, text, and waveform colors from the effective color for rendering and all drag previews, including the next track's color for drops that create a track. Saved legacy blue retains its existing palette. Moving an inheriting clip adopts the destination track's color; explicit overrides survive move, trim, and split operations. Color edits do not affect audio. A color picker is deferred.
+- The time monitor supports separate vertical drags for hours, minutes, and seconds, with carry and borrow across units, preserved fractional seconds, Shift for tenfold slower adjustment, and clamping at frame zero. The toolbar bar.beat monitor and both selection endpoints support separate vertical drags on bars and beats, in whole units. Selection endpoints stay ordered and retain a nonzero duration when Loop is enabled. Beats carry and borrow across bars; Shift slows adjustment tenfold, and backward movement clamps at frame zero. Store tempo_bpm as a positive finite BPM value. Default to 120.0 for new projects and manifests without this field. Drag the playback toolbar's tempo monitor vertically to adjust it: up increases, down decreases, and Shift reduces the step tenfold. Dragging clamps at 0.01 BPM. Double-click for numeric entry. Show `120bpm` with the time monitor's styling and three fixed-width digit slots. Enter commits; Esc or focus loss cancels the draft and restores the monitor. Move clip starts to retain their beat positions, rounded to the nearest sample frame. Preserve lengths, source ranges, repeats, and stretch ratios. Apply typed and dragged tempo changes transactionally, rejecting same-track overlaps and timeline overflow without changing the tempo or clips. Scale both loop-selection endpoints with tempo, including when Loop is disabled, rounding up to sample frames as with ruler snapping. Reject invalid selection bounds with the entire tempo change. Keep the playhead frame unchanged.
+- All frame positions, offsets, and lengths use the project's selected-rate timeline, including source offsets after resampling. One frame contains one sample per channel; at 48 kHz, five minutes equals 14,400,000 frames.
+- Source metadata describes the original file. decoded_frame_count describes its length after conversion to the project sample rate. Use pcm_int or ieee_float for sample_format.
+- pan ranges from -1.0 (left) to 1.0 (right); 0.0 is center. Gain values are finite decibel values; mute is a separate boolean.
+- source.kind is external for the MVP. Reserve an included variant for future project-owned sources. path_kind distinguishes relative and absolute paths; resolve relative paths from the project folder.
+- Clips reference assets by ID. More than one clip can use the same asset without duplicating its source record.
+- Preserve asset metadata and clip ranges when sources are missing. Calculate missing-source status when opening the project; do not persist it as a flag.
+- Clip ranges use an inclusive start and exclusive end. Require nonnegative integer positions, positive clip lengths, and checked timeline ends. Normal clips require source_offset_frame + length_frames no greater than decoded_frame_count. Looped clips store an optional `repeat` object with positive `length_frames` and `phase_frame` less than that length. The source offset plus repeat length must fit saved decoded bounds; the visible clip length can extend beyond them. Map local frames through the saved repeat phase and length. Missing or null `repeat` fields retain normal clip behavior; omit unset repeats when saving. Moves and splits preserve the repeat base, with splits advancing the right piece's phase.
+- Permit any track count. Require unique IDs, valid asset references, and no same-track clip overlap. Enabled loops require end_frame greater than start_frame.
+- Do not store decoded PCM, waveform caches, output device settings, or active playback state in the manifest. Open projects stopped at the saved playhead position.
+- Keep the fixed MVP pan law, fades, default export settings, and dither policy in the application's MVP defaults. Add explicit settings when they become configurable.
+- Do not reject a project based on schema_version. Reject malformed JSON, invalid fields, and unsupported project structures with clear errors. Compatibility with earlier experimental manifests is not guaranteed.
+- Reserve assets/ for project-owned files; its internal layout can be specified when source inclusion is implemented.
+
+## Transport and export range
+
+- Disable playback for a project with no clips. Reject export of such a project with a clear message.
+- Before replacing an existing export file, require confirmation in the desktop UI or an explicit --overwrite flag in the CLI.
+- Play starts at the current playhead. Pause holds that position, and Play resumes from it. Stop returns to the position where playback started, including after pause/resume or a seek during playback. A new playback after Stop or natural completion records a new start position. While a playback-start return is pending, the square Stop button remains available, including when paused. After Stop, show Chevron First with the Return to origin action; it seeks to timeline frame 0. Disable this return action when fully stopped at frame 0. A disabled transport Stop/return button shows the square Stop icon, including when other UI guards disable the controls. A project opened or manually positioned away from zero without a playback run offers the same return action.
+- Without looping, playback stops at the end of the last clip.
+- When looping is enabled, repeat the selected time range.
+- Export from project time zero to the end of the last clip, including leading silence. Ignore transport looping when exporting.
+
+### Missing sources
+
+- Open projects with missing sources normally and show a clear warning identifying the missing files.
+- Display affected clips as empty placeholders without waveforms. Preserve their asset references, track positions, source offsets, and durations.
+- Missing-source clips produce silence during playback; available sources remain playable and the project remains editable.
+- Saving must preserve missing-source references and placeholder clip data.
+- Allow export with missing sources. Show a warning identifying the missing files and render their clips as silence, preserving their positions and durations. The desktop warning must not block export; the headless CLI reports the same condition through diagnostics.
+
+## Clip placement
+
+- Support multiple clip selection with Shift-click (and Command-click on macOS / Ctrl-click on Windows/Linux) to toggle membership. Click and hold in empty timeline space, then drag a rectangle to select intersecting clips across tracks. Shift-drag toggles intersecting clips against the selection at the start of the drag: add unselected clips, remove selected clips, and keep clips outside the box unchanged. Recompute from that starting selection each frame, so clips leaving the box regain their previous state. Escape or focus loss cancels the rectangle and restores the prior selection. Plain clip clicks replace selection; plain empty-space clicks clear it. Selection outlines use the existing clip outline style. Clip selection itself must not modify project data. Primary or secondary presses anywhere in a visible track panel select that track, including padding, borders, child controls, and meters. Keep child control behavior and existing clip selection intact. Paint the selected outline in the same frame. Ignore panel selection while disabled, unfocused, or behind another UI layer or dialog. Drag a track name to reorder the whole track. Preview insertion before or after the hovered row with an accent line across the panel and timeline. Hold near the viewport edges to scroll the list. Commit only on release within the track workspace. Escape, focus loss, disabled UI, dialogs, and outside drops cancel without changing project order. A same-position drop is a no-op. Preserve track/clip IDs, names, colors, control values, clip selection, and source references; keep the master pinned. Store order in the project track array and sync playback after a successful reorder. Key row widget identities by track ID so controls retain their state when rows move. Double-click track-name editing retains its existing behavior.
+- Copy, paste, move, drag duplication, and deletion apply to the full selection as one transaction. Preserve relative timing and track gaps. Paste anchors the earliest clip to the playhead and the top copied track to the selected track; add default tracks as needed, rolling them back if validation fails. Moves clamp the entire group to timeline bounds and existing track bounds. Hovering in unused timeline space below the last track previews new rows; dropping creates default tracks, with the top selected track mapped to the first new row and existing group track gaps preserved. Use each future track's default color in its preview. Normal moves and drag duplication share this behavior; create tracks only on a successful transaction. Compare every selected clip edge for group snapping, using grid priority before destination clip boundaries. Reject the entire group if any placement is invalid. Select all newly pasted or duplicated clips. Waveform-edge trims apply to the selected group; header looping also applies to the group, and modifier stretching also applies to the group.
+
+- Duplicate a clip by dragging its header while holding Option on macOS or Ctrl on Windows/Linux. Keep the original visible during dragging. Use the normal move preview, snapping, bounds, and shared collision handling, including the original clip as a destination neighbor and a fallback snap target. The copy can trim, split, or remove the original on release. Shift bypasses snapping. Read the copy modifier throughout the drag and on release; it affects moves only, not trim or loop edges. Successful duplication creates a new ID, shares source audio, preserves all clip metadata, selects the new clip and track, and marks the project modified. It does not change the clipboard.
+
+- Provide Copy and Paste in an Edit menu alongside File, using the native macOS menu bar and the first toolbar row on Windows/Linux. Show platform shortcuts and route menu commands through the same guarded clip actions. Disable Copy without a selected clip and Paste without a current-project snapshot or a remaining track; disable both during text editing. Copy the selected clips with Command+C on macOS or Ctrl+C on Windows/Linux. Paste with Command+V or Ctrl+V onto the selected track at the current playhead. Create a new ID for each clip, preserve each copied name, source range, loop base and phase, and color override, and reuse its asset and decoded samples. Copy captures a snapshot and does not modify the project; paste must validate placement transactionally, select all new clips, mark the project modified, and sync playback. Text editing retains normal clipboard behavior. Disable clip clipboard actions during background operations, dialogs, and active drags. Clear the internal clipboard on project replacement or closure.
+- Clip moves, file drops, trims, playhead positioning, and loop-selection creation, resizing, and movement snap within 6 points of a target. Prioritize visible bars, beats, and subdivisions, then source or clip boundaries. Clip moves and file drops compare both edges at each grid priority, prefer the nearest match, and preserve length. Other clip boundaries on the destination track provide fallback targets. While a file loads, snap only its known start; once decoded, use its actual duration. Drops during loading must use the decoded duration and release modifiers. Clip header looping prioritizes the trimmed repeat base and its multiples before the grid. Use the ruler's tempo- and zoom-dependent spacing. Hold Shift to bypass snapping throughout a drag; bounds and minimum lengths still apply. Preview and release must match. Menu imports use the playhead position.
+- Clips on the same track must not overlap. Clips on different tracks may overlap in time.
+- Moves, drag duplication, paste, and file drops take priority over existing destination clips. Use `Project::placed_clips` and `Edit::OverwriteClips` to trim covered edges, remove fully covered clips, or retain both sides when a placement lands in the middle. Preserve source offsets, repeat phases, stretch ratios, names, and colors on the retained pieces. Keep the original ID on the left piece (or the sole surviving piece); assign new IDs to additional right pieces. Remove all moving originals before resolving the full group. Copies receive new IDs and keep their originals as destination neighbors, so a copy can trim, split, or remove its original. Preserve group timing and track gaps, and reject invalid incoming ranges atomically. Preview incoming clips and every affected neighbor without changing project data or playback. Commit moves and drag duplication only on mouse release, paste as one transaction, and file drops only after preparation succeeds. Cancelled gestures and failed imports retain the original arrangement. Keep grid snapping, Shift bypass, timeline clamps, and new-track previews.
+- Show a translucent clip preview while moving, including across tracks. Clamp movement at frame zero. The preview and dropped clip must use the same position. Both trim edges below the header show the proposed waveform and range. Clamp normal trims to available source audio, valid timeline bounds, and at least one sample; looped clips can trim inward within their current visible range while retaining the repeat base. Preview and release use the same range.
+- For multiple selected clips, waveform-edge trimming applies one snapped frame delta to every selected clip, keeping each opposite edge fixed. Reject the whole edit if shortening would leave any clip empty. Expansion clamps each clip independently at its source and timeline limits; one clip reaching its limit does not stop the others. Preserve loop phases, stretch coordinates, IDs, and selection. Preview every affected clip and validate the final group through shared project validation. Resolve overlaps by trimming selected or unselected neighbors, removing fully covered clips, as one transaction. Shift bypasses snapping; cancellation and unchanged clamped releases leave the project clean. Header looping also applies to the selected group; modifier stretching also applies to the selected group.
+- Hold Option on macOS or Ctrl on Windows/Linux at either header or waveform edge to stretch all selected clips without changing pitch. Snap the dragged edge to the grid once and apply its duration ratio to each clip, rounded to sample frames. Keep each opposite endpoint fixed. Clamp the common ratio so all clips stay within timeline bounds and between 1/8 and 8 times their original source duration, including existing stretch ratios. Scale source offsets and repeat bases/phases; retain IDs, selection, source references, and colors. Preview every result and validate the full group atomically. Resolve overlaps by trimming the covered edge of selected or unselected neighbors and removing fully covered clips. Earlier selected clips take priority on right-edge drags; later clips take priority on left-edge drags. Use the shared `Project::stretched_clips` calculation and `Edit::StretchClips` transaction. Previews include neighbor trims and removals. Shift bypasses snapping. Escape, focus loss, and unchanged releases retain the original project. On release, prepare all required Rubber Band R3/Finer buffers on one worker and publish all stretches, neighbor trims, and deletions together only after success. Keep project data and playback unchanged during dragging and processing. Prune deleted selection IDs after publication. Processing failure preserves the project and prepared audio. Playback, waveforms, and export share the prepared buffers; original sources stay intact.
+- Header-edge looping applies the same snapped frame delta to all selected clips across tracks. Each clip retains its own trimmed or saved repeat base and phase. Clamp the common delta so every clip stays within timeline bounds and its minimum loop length. Snap against the dragged clip's repeat-base multiples before the grid; Shift bypasses snapping. Preview all results and validate final group geometry through the shared project model. Resolve any overlap by trimming selected or unselected neighbors and removing fully covered clips, as one transaction. Preserve selection, IDs, source references, stretch data, and color overrides. Cancellation and no-op releases leave the project unchanged.
+- Drag either header edge to repeat the clip's current trimmed range, using its current length as the base on the first resize. Retain that base for later resizes. Keep the opposite endpoint fixed, allow partial repeats above the base length, clamp to valid timeline bounds and a minimum of the base length, and preserve existing audio timing when extending left. A clip already shorter than its base after a split or body trim retains its current length as the minimum. Show a repeated waveform preview and repeat boundary markers. Commit only on release; cancellation and unchanged clamped releases must not modify the project. Reuse source samples for waveforms, playback, and export.
+- When boundary resizing returns a loop to its base length, clear the repeat flag and restore its original trimmed source range, even when opposite-edge resizing has shifted the phase. For contiguous partial ranges, advance source offset by phase and clear the repeat flag. Restore normal body trimming into the original source bounds. Apply the same restoration before body trimming previously saved clips at their base length or with contiguous partial ranges. Preserve repeat data for other ranges that cross a repeat boundary. Keep timeline placement and source references unchanged.
+- Clip duplication and group paste create fresh default audio or MIDI tracks when the destination needs more rows. Do not copy the source track's instrument or mix/effect settings. New MIDI tracks have one empty instrument layer and remain silent until configured. Preserve copied clip metadata, shared assets, fresh clip IDs, group timing, and track gaps. Publish tracks and clips together; cancellation and failure retain the original project. Ordinary moves retain their instrument-transfer behavior; explicit track duplication still copies track settings without clips. See the [clip-copy track rules](../instruments/midi-patterns.md#new-tracks-for-clip-copies).
+- Preview WAV files dragged into the timeline at the hovered track and sample position. Load the waveform in the background without changing the project. Reuse prepared audio on drop; empty timeline drops create a track. Cancelled hovers and invalid drops leave the project unchanged.
+- Clips may touch at their boundaries. Missing-source placeholders reserve their existing time ranges under the same placement rules.
+- Trim extensions and header looping resolve collisions within the same track. Resize all selected candidates first, then process right-edge resizes in ascending original timeline order and left-edge resizes in descending order. Earlier clips win right-edge collisions; later clips win left-edge collisions. Trim the covered edge of each intersecting neighbor, including selected clips. Remove clips whose resulting ranges are fully covered. Preserve the remaining source sample mapping, including repeat phases and stretched coordinates. Retain IDs, source references, and color overrides for survivors, and prune deleted selection IDs. Use the shared project resize calculation for previews and commits. Show all affected ranges and deletions during dragging, with no changes to project data or playback. Commit the whole result only on mouse release; Escape or focus loss cancels. Reject invalid ranges atomically. Menu imports retain overlap rejection. Moves, drag duplication, paste, and file drops trim, remove, or split destination neighbors using the shared placement calculation. Modifier stretching also resolves collisions through the shared resize calculation and publishes only after worker preparation succeeds.
+- Project validation must detect same-track overlap, including in headless mode.
+
+- Start a waveform drag on the dividing line between two contiguous clips to move their shared boundary: trim one and extend the other, keeping the pair's outer endpoints fixed. Clamp movement to both clips' available source audio and remove either clip when fully covered. Starting more than 3 logical points inside either clip keeps ordinary trimming. The gesture is chosen at the initial press and does not change when the cursor crosses the line. Snap to the grid and source boundaries; Shift bypasses snapping. Preview both clips and commit only on release; Escape or focus loss cancels. If both are selected, treat them as one boundary pair. Other selected clips use the same requested delta with ordinary trim limits; reject the full edit if any of those clips would become empty. Header looping and modifier stretching retain their existing behavior.
+
+## MVP WAV scope
+
+- Import uncompressed WAV files with 16-bit or 24-bit integer PCM, or 32-bit IEEE floating-point samples.
+- Accept mono and stereo sources. Feed mono sources equally to the left and right channels before track gain and pan; preserve stereo channel order. Reject files with more than two channels with a clear error.
+- Decode and mix using 32-bit floating-point PCM at the project's selected sample rate.
+- Export stereo at the project rate as WAV (16-bit PCM, default 24-bit PCM, or 32-bit IEEE float) or MP3 (MPEG Layer III through bundled LAME, CBR 128/192/256/320 kbps; default 192; MP3 converts rates above 48 kHz to 48 kHz).
+- Open the shared application dialog for format, codec, and MP3 bitrate before choosing the native destination. Remember the last accepted options for the app session. Cancel must not modify the project.
+- When export starts, show a status dialog with live progress, finalization state, destination, settings, warnings, completion notices, and errors. Keep the report open until dismissed after completion or failure. Scroll long reports. Block background editing and file actions while it is open. Show 100% only after successful file publication.
+- Use the same settings and encoders for desktop and CLI export. Reject incompatible CLI options.
+- Reject unsupported WAV import encodings with a clear error. Additional import formats and advanced conversion settings follow after the MVP.
+
+### Export quantization and dither
+
+- Apply triangular (TPDF) dither without noise shaping once, immediately before final conversion to 16-bit or 24-bit integer PCM.
+- Round to the nearest integer sample and clamp the result to the valid integer range.
+- Use a deterministic dither seed and identical export processing in the desktop and headless paths so repeated exports of the same project and settings match.
+- Float WAV does not use dither or clamping and preserves floating-point headroom. MP3 clamps samples to the valid input range without WAV dither. Both report levels above 0 dBFS.
+- Dither does not prevent clipping. Retain the agreed clipping diagnostics and final-output clamping.
+- Keep these settings fixed in the MVP; user-selectable dither modes and an off option follow in the short-term roadmap.
+
+## Audio architecture requirements
+
+Support for additional audio file formats is planned after the MVP. The initial implementation must support that extension without changes to playback or mixing logic.
+
+### Processing flow
+
+Audio file → decoder → sample-rate and channel conversion → internal audio asset → audio engine.
+
+### Module boundaries
+
+| ID | Component | Requirement |
+| --- | --- | --- |
+| ARCH-01 | Decoders | Define a common decoder interface for metadata and block-based decoding to floating-point PCM. Implement WAV first. Additional formats must use the same interface. |
+| ARCH-02 | Import | Keep decoding and sample-rate/channel conversion separate from playback and mixing. Define handling for mono, stereo, and unsupported channel layouts. |
+| ARCH-03 | Audio assets | Store decoded samples separately from clips. Each clip references an asset and a sample range. Moving, trimming, and splitting must not copy the asset's audio samples. |
+| ARCH-04 | Audio engine | Process PCM buffers without knowledge of file extensions, codecs, or containers. Keep the engine independent of egui. |
+| ARCH-05 | Export | Define an encoder interface separate from the decoder interface. Import support for a format does not imply export support. |
+| ARCH-06 | Real-time processing | Keep file access, decoding, allocation, and blocking locks outside the audio callback. Playback must continue when interface rendering stalls. |
+| ARCH-07 | Communication | Use bounded queues for interface-to-engine commands. Provide a nonblocking path for meter data from the engine to the interface. |
+| ARCH-08 | MVP loading | Decode imported files before playback. Keep asset access separate from the mixer so background streaming through buffered readers can be added later. |
+| ARCH-09 | Source information | Preserve the source file path and metadata. Separate asset identity from source location so future projects can use external references or included source files without changes to clip references or mixing logic. |
+| ARCH-10 | Timing | Use sample positions internally for precise clip and playback timing. |
+
+A decoder trait and clear module boundaries are sufficient for the MVP. A runtime plugin system is a mid-term goal after the MVP. Keep extension interfaces separate from any future plugin discovery and loading mechanism.
+
+Future synth and effect work follows [Modular audio units design and decisions](modular-audio-units.md). Beat-track work follows [Beat pattern editor design and decisions](../views/beat-editor.md). Confirmed requirements include user-built synths/effect chains, Instrument controls and Timeline effect chains, effects-only audio tracks, sources/effects on MIDI tracks, and a shared unit core for independent distribution as Rust crates and standalone tools. The planned track types are audio, MIDI, and beat. The future Editor view chooses an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor provides step toggles in audio or MIDI lanes, each with its own sources and effects. Beat and MIDI patterns are clip sources: trimming and looping preserve the source, while pattern edits create a new source without changing other clips. The Beat and [Units MVP scopes](modular-audio-units.md#accepted-units-mvp-scope) are accepted, including FunDSP, initial units, routing, voice/transport rules, state ownership, and export tails. Detailed APIs and packaging remain to be specified; the full unit/beat scope remains outside the original iteration. Basic MIDI tracks, patterns, oscillator controls in Instrument, and the MIDI Editor view are now implemented; see [MIDI patterns and oscillators](../instruments/midi-patterns.md). The agreed view names are Timeline, Instrument, Editor, and Mixer. Timeline has the effects catalog to the left of Tracks and the effects lane below its arrangement; Editor retains the selected-track overview. The timeline scrollbar sits immediately above the lane; one thin separator separates it from the status bar. Serial [3-band EQ](../effects/equalizer.md) processing on audio/MIDI tracks is implemented. Additional effects, beat-lane processing, further instrument tools, audio editing, and beat editing remain future additions.
+
+## Output buffer and latency
+
+- Request the selected project buffer size; default 512 frames.
+- If that size is unsupported, request the nearest supported size. Use the host default if fixed-size requests fail.
+- Handle variable callback sizes; the requested size is not guaranteed by the audio backend.
+- A 512-frame buffer at 48 kHz contains approximately 10.67 ms of audio. This is not total output latency; OS buffering, drivers, and hardware add delay.
+- Target no more than 50 ms from play/seek command submission to audible change on reference hardware.
+- Target no audible dropouts during the agreed test workload. Prioritize stable playback over smaller buffers.
+- Recording/monitoring latency targets remain a short-term goal.
+
+## First prototype milestone
+
+1. Import two WAV files onto separate tracks.
+2. Display their waveforms and move the clips.
+3. Play both tracks together with independent gain and mute controls.
+4. Seek and zoom while playback continues.
+5. Export the mix as a stereo WAV or MP3 file.
+6. Validate and export the same project through the headless CLI.
+
+After this milestone, implement the remaining MVP features.
+
+## Completion criteria
+
+### Reference hardware
+
+Validation environments:
+
+- macOS 27.
+- Windows 11.
+- Manjaro Linux with GNOME.
+
+Record the exact OS build, Manjaro package versions, and GNOME version in each validation report.
+
+Minimum system memory: 8 GB of RAM on all supported platforms. The MVP must work within this minimum on each reference machine under the agreed test workload.
+
+macOS validation:
+
+- MacBook Air M5.
+- MacBook Pro M4 Pro.
+
+Windows and Linux validation:
+
+- Desktop with an AMD Ryzen 7600X CPU.
+
+### Acceptance criteria
+
+- Play and mix four stereo audio tracks simultaneously within the agreed test workload on each reference machine, with a minimum of 8 GB of RAM. Permit projects with more than four tracks in desktop and headless modes. Track capacity depends on available memory; playback capacity also depends on CPU performance and audio buffer settings.
+- A user can assemble a short piece, save the project, reopen it, and export the same mix.
+- Playback continues without audible dropouts during scrolling, zooming, and editing in the agreed test workload.
+- The import, arrangement, playback, save/reopen, and export workflow works on macOS, Linux, and Windows.
+- Missing source files, audio initialization failures, and output-device disconnections produce clear errors. Output-device disconnection stops playback safely.
+- A project with missing sources opens with a warning and empty placeholder clips that retain their positions and durations. Available audio remains playable.
+- Desktop and headless export succeed with missing sources, warn about the missing files, and preserve the export range while rendering affected clips as silence.
+- Imports and edits cannot create overlapping clips on the same track.
+- Additional decoders can be integrated without changing playback or mixing logic.
+- Build and run the CLI without desktop UI or audio-device dependencies. Validate and export a project without a graphical session or audio output device; desktop and CLI exports must match for the same project and export settings.
+
+### Playback test workload
+
+- Load four stereo sources, each five minutes long, on separate tracks: 20 minutes of total decoded audio.
+- At 48 kHz with 32-bit floating-point samples, source PCM occupies approximately 460.8 MB, excluding waveform data, working buffers, and other application memory.
+- Play all four tracks together in a loop for 30 minutes while scrolling, zooming, moving clips, and adjusting gain.
+- Require no unintended audible gaps or clicks and zero reported output underruns where the backend exposes them.
+- Run this test on each reference platform with the 8 GB RAM minimum. This is a validation baseline, not a project-duration limit.
+
+## Future features
+
+These horizons describe the proposed order after the MVP, not delivery dates.
+
+Source management is also a future goal; its delivery horizon remains to be defined. Projects must be able to include source files within the project's assets directory. A source manager must let the user control which files remain externally referenced and which are included. Detailed source manager behavior will be defined during specification.
+
+### Short-term
+
+#### Audio Engine
+
+- Additional project sample-rate options.
+- Background streaming for large audio files.
+- Source buffer files: cache decoded PCM audio on disk and stream it through bounded memory buffers, so playback does not require entire sources in RAM. Generate and read caches outside the audio callback. Cache files are rebuildable from source files and do not replace the original sources.
+- Configurable memory budget for decoded audio and streaming buffers. Define defaults and behavior when the budget is reached during specification.
+- Recording and monitoring latency targets.
+
+#### Audio Features
+
+- Audio recording.
+- Additional import and export formats.
+- Mono/stereo export, channel mapping/downmix rules, and dither modes including an off option.
+
+#### Musical Timing
+
+- Metronome/click.
+- Time signatures.
+
+#### UI
+
+- Further theme customization beyond the built-in Light and Dark palettes.
+- Audio settings interface for device selection and audio-memory budget. Project sample rate and buffer-size controls are available in Project Settings.
+- Advanced import/export controls for sample format, bit depth, channel conversion, and dither.
+- User-configurable mixing controls after the MVP: pan law, stereo pan/balance modes, clipping protection options, and clip fade lengths and curves.
+
+#### Editing
+
+- Configurable snapping controls and targets.
+- Introduce undo/redo progressively, starting with basic track and clip edits.
+
+### Mid-term
+
+- Track grouping with both shared editing controls and mixer buses. Support linked editing of grouped tracks and routing their audio through a group bus for shared mixing controls. Detailed controls and routing behavior will be defined during specification.
+- Stem separation.
+- Plugin engine.
+- Extend MIDI editing and playback beyond the [initial piano roll and oscillator implementation](../instruments/midi-patterns.md).
+- Instruments and effects follow the [accepted Units MVP scope](modular-audio-units.md#accepted-units-mvp-scope): FunDSP behind a shared API; oscillators, noise, sample playback, envelope, LFO, filter, gain, delay, and simple reverb. Use polyphonic MIDI tracks and one active voice per beat lane. Include serial track/lane/Master effects, instrument/modulation graphs, agreed transport and persistence rules, and export tails capped at 10 seconds. Limiter now adds Peak/True Peak and L/R/M/S processing with fixed host-compensated latency; see [Limiter](../effects/limiter.md). Polyphonic MIDI beat lanes, nested graph editing/presets, arbitrary plugin latency, SoundFont instruments, spectral effects, and convolution follow later.
+- The Editor view hosts audio, MIDI pattern, and beat pattern editors, chosen by clip type. Audio-editor tools remain to be specified; the initial MIDI piano roll is implemented. Beat tracks and the beat pattern editor follow the [accepted beat pattern editor MVP scope](../views/beat-editor.md#accepted-beat-mvp-scope): audio/MIDI lanes; on/off and per-step velocity; one pitch per MIDI lane; a shared 1–16-bar grid at 1/4, 1/8, 1/16, or 1/32 resolution, defaulting to one bar at 1/16. Audio hits play to their end; MIDI notes send note-off after one step, and retriggers replace the lane's voice. Simple lane-stop connections fade the stopped voice; the stopping lane wins when connected lanes trigger together. Units provides lane gain/pan/mute/solo and serial lane/track effects. Open beat clips from Timeline in Editor using the beat pattern editor, and retain clip/lane context in Units. Lane type is fixed at creation. Pattern edits create a new source while clip trims/loops preserve it. MIDI polyphony, custom duration modes, advanced step controls, lane conversion, parallel audio paths, shared-effect sends, and audio sidechains follow later.
+- Automation.
+- Extend undo/redo coverage to mixing controls and the new editing features introduced after the MVP.
+
+### Long-term
+
+- iPadOS and Android delivery.
+
+## Decisions required during specification
+
+These details are not yet fixed:
+
+- Delivery horizon and detailed behavior for the source manager and source inclusion.
+- Post-MVP undo/redo rollout: exact coverage per stage, action grouping, and history limits.
+
+### Drive effect — 2026-10-13
+
+The [Drive effect](../effects/drive.md) is implemented alongside 3-band EQ in the serial track effects lane. It provides Drive (Volume, Gain, Tone) and Color (Shape, Strength, Frequency) strips. Color choices cover flat, mid scoop, mid hump, and mid hump with bass cut. Audio/MIDI tracks, saved presentation/settings, shared unit controls, 5 ms live transitions, and playback/export use the existing effects architecture. The specification records DSP ranges and limits. Other effect units and beat-lane routing remains pending.
+
+## Master effects — 2026-10-14
+
+Master has an independent saved serial chain using the same five effect units, catalog, and Timeline lane as audio/MIDI tracks. Click Master in Timeline or Mixer to select its chain; click a track to restore that track’s lane. Preserve clips and project data when changing selection. Catalog add/drop, unit editing, compact/collapse settings, group reorder/Delete, and pane guards are shared. Process Master effects after summed track gain/pan and before Master gain and output meters in playback and export. Legacy projects default to an empty Master chain. Unknown units retain their state and bypass with a warning. Beat-lane effects remain future work.
+
+## Experimental Rust time stretch engine — 2026-10-14
+
+The [Timestretch functional specification](../audio/timestretch.md) and [acceptance plan](../acceptance/timestretch.md) define the experimental BSD-2-Clause Rust crate at `crates/timestretch`, with package/library name `timestretch` and no DAW-specific dependencies. Its scope is whole-source offline mono/stereo stretching at a constant 1/8–8 duration ratio, unchanged pitch, exact frame length, and the six project rates. Provide a saved Project Settings selector with exactly Rubber Band (R3) and Integrated (experimental). A separate DAW-independent tool at `crates/timestretch-cli` runs Timestretch, Rubber Band R2, and R3 on the same file, with portable comparison/benchmark scripts. Engine changes prepare buffers and peaks atomically; playback, waveforms, and export share the selected result. Rubber Band remains the default/reference during evaluation. The backend, selector, and tool are implemented. See the validation record for completed checks and remaining acceptance work. Existing editing behavior is retained.
+
+## Instrument effects workspace — 2026-10-14
+
+Instrument uses the same 38-point left rail and 24×24 Library/Gallery Horizontal toggles as Timeline. The 250-point effects catalog sits left of Layers; the effects lane spans the width to the right of the rail below the layer workspace. Panel visibility is independent and shared across these two views. Hidden panels return their space to Instrument without project edits. The lane edits the selected MIDI track’s saved effect chain through the existing add/drop, unit editing, group reorder/Delete, focus, and gesture handlers. The MIDI-only selector and layer/source/envelope controls retain their behavior. Unsupported audio/Master selections retain the MIDI prompt and cannot receive catalog additions from Instrument.
+
+## Sampler source — 2026-10-17
+
+Instrument supports a [Sampler source](../instruments/sampler.md) in regular MIDI layers, mutually exclusive with the Oscillator component. It accepts WAV files and retained audio-clip ranges, provides non-destructive waveform selection, Gain, fixed Off/Time/Bars duration modes, One-shot/Gate triggering, and a piano-roll-compatible root-note input with a sharp toggle. Gain accepts per-note/shared Envelope, LFO, and Macro modulation through the [shared destination API](../instruments/sampler.md#gain-modulation--2026-10-17). Root note is metadata only; pitch transposition remains deferred. Worker preparation, project persistence, MIDI voices, Amplitude, layer mixing, and live/export rendering stay shared. See the guide and [acceptance requirements](iteration-1.md#sampler-source--2026-10-17).
+
+
+## Limiter modulation — 2026-10-17
+
+Limiter Input, Release, Lookahead, and Ceiling accept shared Envelope/LFO/Macro modulation from the same MIDI instrument through the [shared API](../modulation/contract.md#limiter-destination). Reuse existing modulation controls and retain fixed latency, stereo protection, and transport behavior. See [Limiter](../effects/limiter.md#modulation--2026-10-17) and the [acceptance requirements](iteration-1.md#limiter-modulation--2026-10-17).
