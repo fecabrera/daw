@@ -3741,6 +3741,16 @@ fn macro_strips_routing_and_presentation_survive_save_as_duplication_and_rate_ch
         amount: 1.0,
         ..Modulation::new(ModulationParameter::Amplitude)
     });
+    i.layers[0].amplitude.present = true;
+    assert_eq!(
+        i.layers[0].move_component(InstrumentComponent::Amplitude, 0),
+        Some(true)
+    );
+    i.main.lfos.push(LfoInstance::default());
+    assert_eq!(
+        i.main.move_component(InstrumentComponent::Macros, 0),
+        Some(true)
+    );
     session.save(&f.0.join("macro")).unwrap();
     let mut reopened = Session::open(&f.0.join("macro")).unwrap();
     reopened.save(&f.0.join("macro-copy")).unwrap();

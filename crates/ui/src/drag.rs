@@ -36,10 +36,19 @@ pub(super) enum Axis {
 
 /// Scroll the containing viewport while the pointer is held near an edge.
 pub(super) fn scroll_near_edges(ui: &Ui, axis: Axis, speed: f32) {
-    if cancelled(ui) || !ui.input(|input| input.pointer.primary_down()) {
+    scroll_drag(ui, axis, speed, ui.is_enabled(), ui.clip_rect());
+}
+
+/// The host can keep a validated drag scrolling while its parameter controls are disabled.
+pub(super) fn scroll_drag(ui: &Ui, axis: Axis, speed: f32, allowed: bool, bounds: egui::Rect) {
+    if !allowed
+        || ui.input(|input| {
+            !input.focused || input.key_pressed(egui::Key::Escape) || !input.pointer.primary_down()
+        })
+    {
         return;
     }
-    let viewport = ui.clip_rect();
+    let viewport = ui.clip_rect().intersect(bounds);
     let Some(pointer) = ui
         .input(|input| input.pointer.latest_pos())
         .filter(|p| viewport.contains(*p))

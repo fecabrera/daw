@@ -56,12 +56,475 @@ fn source(app: &DawUi, owner: Id, c: InstrumentComponent) -> Pos2 {
         .find(|(id, kind, _)| *id == owner && *kind == c)
         .unwrap()
         .2;
-    if matches!(c, InstrumentComponent::Oscillator(_)) {
+    if r.width() < 40.0 {
+        r.center()
+    } else if matches!(c, InstrumentComponent::Oscillator(_)) {
         egui::pos2(r.left() + 2.0, r.center().y)
     } else {
         egui::pos2(r.left() + 35.0, r.top() + 10.0)
     }
 }
+
+fn order_setup(
+    theme: settings::ColorTheme,
+    compact: bool,
+    main: bool,
+    collapsed: bool,
+) -> (DawUi, egui::Context, Id, InstrumentComponent) {
+    let (mut app, ctx, owners) = setup(theme, compact);
+    let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    i.layers[1].collapsed = true;
+    i.layers[0].oscillators.truncate(1);
+    i.layers[0].amplitude.present = collapsed;
+    i.layers[0].amplitude.collapsed = collapsed;
+    i.layers[0].envelopes[0].collapsed = collapsed;
+    i.layers[0].lfos[0].collapsed = collapsed;
+    let owner;
+    let moving;
+    if main {
+        i.main.collapsed = compact;
+        i.main.envelopes = vec![i.layers[0].envelopes[0].clone()];
+        i.main.lfos.push(daw_core::LfoInstance {
+            collapsed,
+            ..Default::default()
+        });
+        owner = i.main.id;
+        if collapsed {
+            i.main.macro_module.add();
+            i.main.macro_module.collapsed = true;
+            moving = InstrumentComponent::Macros;
+        } else {
+            moving = InstrumentComponent::Lfo(i.main.lfos[0].id);
+        }
+        i.layers[0].collapsed = true;
+    } else {
+        owner = owners[0];
+        moving = if collapsed {
+            InstrumentComponent::Amplitude
+        } else {
+            InstrumentComponent::Lfo(i.layers[0].lfos[0].id)
+        };
+    }
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    app.dirty = false;
+    (app, ctx, owner, moving)
+}
+
+#[test]
+fn component_units_reorder_with_effects_lane_preview_and_sources_pinned_first() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for main in [false, true] {
+                for collapsed in [false, true] {
+                    for fast in [false, true] {
+                        let (mut app, ctx, owner, moving) =
+                            order_setup(theme, compact, main, collapsed);
+                        let before = app.session.project.tracks[0].instrument.clone().unwrap();
+                        let slots: Vec<_> = app
+                            .instrument_ui
+                            .component_slots
+                            .iter()
+                            .filter(|(id, _, _)| *id == owner)
+                            .map(|(_, c, r)| (*c, *r))
+                            .collect();
+                        let first = usize::from(!main);
+                        let end = slots[0].1.left_center() + egui::vec2(2.0, 0.0);
+                        let p = source(&app, owner, moving);
+                        start(&mut app, &ctx, p);
+                        if !fast {
+                            let shapes = frame_shapes(
+                                &mut app,
+                                &ctx,
+                                vec![egui::Event::PointerMoved(end)],
+                                Vec2::new(1280.0, 800.0),
+                            );
+                            assert_eq!(app.instrument_catalog_bounds.drop_target, Some(owner));
+                            assert_eq!(
+                                app.session.project.tracks[0].instrument.as_ref().unwrap(),
+                                &before
+                            );
+                            assert!(!app.dirty);
+                            let line_x = slots[first].1.left().max(
+                                app.instrument_catalog_bounds.drop_bounds.left()
+                                    + TRACK_WIDTH
+                                    + 1.0,
+                            );
+                            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { points, stroke }
+                                if stroke.width == 2.0 && stroke.color == theme::accent(&ctx)
+                                && (points[0].x - line_x).abs() < 0.1 && points[0].x == points[1].x)), "main {main} compact {compact} collapsed {collapsed}");
+                            let bounds = app.instrument_catalog_bounds.drop_bounds;
+                            assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == bounds && r.stroke == theme::selection_outline(&ctx))));
+                        }
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(end), event(end, false, false)],
+                        );
+                        assert!(app.component_drag.is_none());
+                        assert!(app.error.is_none(), "{:?}", app.error);
+                        assert!(app.dirty);
+                        let actual = app.session.project.tracks[0].instrument.as_ref().unwrap();
+                        let mut expected = before;
+                        let order = if main {
+                            &actual.main.component_order
+                        } else {
+                            &actual.layers[0].component_order
+                        };
+                        if main {
+                            expected.main.component_order = order.clone();
+                        } else {
+                            expected.layers[0].component_order = order.clone();
+                        }
+                        assert_eq!(actual, &expected);
+                        let visible = if main {
+                            actual.main.visible_components()
+                        } else {
+                            actual.layers[0].visible_components()
+                        };
+                        assert_eq!(visible[first], moving);
+                        if !main {
+                            assert_eq!(visible[0], InstrumentComponent::Oscillators);
+                        }
+                        frame(&mut app, &ctx, vec![]);
+                        assert_eq!(
+                            app.instrument_ui
+                                .component_slots
+                                .iter()
+                                .filter(|(id, _, _)| *id == owner)
+                                .map(|(_, c, _)| *c)
+                                .collect::<Vec<_>>(),
+                            visible
+                        );
+                        app.session.project.validate().unwrap();
+                        let saved = serde_json::to_vec(&app.session.project).unwrap();
+                        assert_eq!(
+                            serde_json::from_slice::<daw_core::Project>(&saved)
+                                .unwrap()
+                                .tracks[0]
+                                .instrument,
+                            app.session.project.tracks[0].instrument
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn component_reorder_no_op_cancel_and_pinned_source_drags_stay_clean() {
+    for main in [false, true] {
+        for mode in ["same", "escape", "focus", "outside", "source"] {
+            if main && mode == "source" {
+                continue;
+            }
+            let (mut app, ctx, owner, mut moving) =
+                order_setup(settings::ColorTheme::Dark, true, main, true);
+            if mode == "source" {
+                moving = InstrumentComponent::Oscillators;
+            }
+            let original = app.session.project.tracks[0].instrument.clone();
+            let slots: Vec<_> = app
+                .instrument_ui
+                .component_slots
+                .iter()
+                .filter(|(id, _, _)| *id == owner)
+                .map(|(_, c, r)| (*c, *r))
+                .collect();
+            let p = source(&app, owner, moving);
+            let end = if mode == "same" {
+                slots
+                    .iter()
+                    .find(|(c, _)| *c == moving)
+                    .unwrap()
+                    .1
+                    .left_center()
+                    + egui::vec2(2.0, 0.0)
+            } else if mode == "source" {
+                slots.last().unwrap().1.right_center() - egui::vec2(2.0, 0.0)
+            } else {
+                slots[0].1.left_center() + egui::vec2(2.0, 0.0)
+            };
+            start(&mut app, &ctx, p);
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            match mode {
+                "escape" => frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                ),
+                "focus" => {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            focused: false,
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                egui::vec2(1280.0, 800.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| app.show(ui),
+                    );
+                    output.textures_delta.clear();
+                }
+                "outside" => frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(egui::pos2(1.0, 1.0)),
+                        event(egui::pos2(1.0, 1.0), false, false),
+                    ],
+                ),
+                _ => frame(&mut app, &ctx, vec![event(end, false, false)]),
+            }
+            assert!(app.component_drag.is_none(), "{mode}");
+            assert_eq!(app.session.project.tracks[0].instrument, original, "{mode}");
+            assert!(!app.dirty, "{mode}");
+        }
+    }
+}
+#[test]
+fn component_reorder_scrolls_both_owner_viewports_without_editing_the_preview() {
+    for main in [false, true] {
+        let (mut app, ctx, owner, moving) =
+            order_setup(settings::ColorTheme::Dark, false, main, false);
+        let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        let extra = (0..4).map(|_| daw_core::EnvelopeInstance {
+            present: true,
+            mode: daw_core::EnvelopeMode::Legato,
+            ..Default::default()
+        });
+        if main {
+            i.main.envelopes.extend(extra);
+            i.main.component_order = vec![moving];
+        } else {
+            i.layers[0].envelopes.extend(extra);
+            i.layers[0].component_order = vec![InstrumentComponent::Oscillators, moving];
+        }
+        let others = (0..4).map(|_| daw_core::EnvelopeInstance {
+            present: true,
+            mode: daw_core::EnvelopeMode::Legato,
+            ..Default::default()
+        });
+        if main {
+            i.layers[0].envelopes.extend(others);
+        } else {
+            i.layers[1].envelopes.extend(others);
+        }
+        frame(&mut app, &ctx, vec![]);
+        frame(&mut app, &ctx, vec![]);
+        app.dirty = false;
+        let before = app.session.project.tracks[0].instrument.clone();
+        let position = |app: &DawUi| {
+            app.instrument_ui
+                .component_slots
+                .iter()
+                .find(|(id, c, _)| *id == owner && *c == moving)
+                .unwrap()
+                .2
+                .left()
+        };
+        let other_positions = |app: &DawUi| {
+            app.instrument_ui
+                .component_slots
+                .iter()
+                .filter(|(id, _, _)| *id != owner)
+                .map(|(id, unit, rect)| (*id, *unit, rect.left()))
+                .collect::<Vec<_>>()
+        };
+        let others_before = other_positions(&app);
+        let x = position(&app);
+        let p = source(&app, owner, moving);
+        let row = if main {
+            app.instrument_ui.main_bounds.row
+        } else {
+            app.midi_editor.layer_bounds[&owner].row
+        };
+        let edge = egui::pos2(row.right() - 3.0, p.y);
+        start(&mut app, &ctx, p);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(edge)]);
+        for _ in 0..40 {
+            frame(&mut app, &ctx, vec![]);
+        }
+        assert!(position(&app) < x - 20.0, "Main: {main}");
+        assert_eq!(
+            other_positions(&app),
+            others_before,
+            "Unhovered lanes must not scroll"
+        );
+        assert!(app.component_drag.as_ref().is_some_and(|d| d.active));
+        assert_eq!(app.session.project.tracks[0].instrument, before);
+        assert!(!app.dirty);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        assert!(app.component_drag.is_none());
+        assert_eq!(app.session.project.tracks[0].instrument, before);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn component_click_selection_uses_effect_outlines_and_stays_out_of_project_data() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for main in [false, true] {
+                for collapsed in [false, true] {
+                    let (mut app, ctx, owner, moving) =
+                        order_setup(theme, compact, main, collapsed);
+                    let before = app.session.project.tracks[0].instrument.clone();
+                    let p = source(&app, owner, moving);
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(p), event(p, true, false)],
+                    );
+                    let shapes = frame_shapes(
+                        &mut app,
+                        &ctx,
+                        vec![event(p, false, false)],
+                        Vec2::new(1280.0, 800.0),
+                    );
+                    assert_eq!(
+                        app.instrument_ui.selected_component,
+                        Some((owner, moving)),
+                        "main {main} compact {compact} collapsed {collapsed}"
+                    );
+                    let rect = app
+                        .instrument_ui
+                        .component_slots
+                        .iter()
+                        .find(|(id, c, _)| *id == owner && *c == moving)
+                        .unwrap()
+                        .2;
+                    assert!(
+                        shapes
+                            .iter()
+                            .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                        if r.rect == rect && r.stroke == theme::selection_outline(&ctx)))
+                    );
+                    frame(&mut app, &ctx, vec![]);
+                    assert_eq!(app.instrument_ui.selected_component, Some((owner, moving)));
+                    assert_eq!(app.session.project.tracks[0].instrument, before);
+                    assert!(!app.dirty);
+                    let label = if main {
+                        app.instrument_ui.main_bounds.label.center()
+                    } else {
+                        app.midi_editor.layer_bounds[&owner].label.center()
+                    };
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(label), event(label, true, false)],
+                    );
+                    frame(&mut app, &ctx, vec![event(label, false, false)]);
+                    assert_eq!(app.instrument_ui.selected_component, None);
+                    assert_eq!(app.session.project.tracks[0].instrument, before);
+                    assert!(!app.dirty);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn cross_lane_components_use_effect_insertion_preview_and_select_the_result() {
+    for main in [false, true] {
+        for empty in [false, true] {
+            for copy in [false, true] {
+                let (mut app, ctx, owners) = setup(settings::ColorTheme::Dark, true);
+                let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+                i.layers[0].envelopes[0].collapsed = true;
+                i.layers[0].lfos[0].collapsed = true;
+                let component = InstrumentComponent::Envelope(i.layers[0].envelopes[0].id);
+                let destination = if main {
+                    i.main.collapsed = true;
+                    i.main.id
+                } else {
+                    owners[1]
+                };
+                if !empty {
+                    if main {
+                        i.main.lfos.push(Default::default());
+                    } else {
+                        i.layers[1].oscillators.push(Default::default());
+                        i.layers[1].lfos.push(Default::default());
+                    }
+                }
+                frame(&mut app, &ctx, vec![]);
+                frame(&mut app, &ctx, vec![]);
+                let before = app.session.project.tracks[0].instrument.clone();
+                app.dirty = false;
+                let viewport = app
+                    .instrument_ui
+                    .component_viewports
+                    .iter()
+                    .find(|(id, _)| *id == destination)
+                    .unwrap()
+                    .1;
+                let end = egui::pos2(viewport.left() + 2.0, viewport.center().y);
+                let p = source(&app, owners[0], component);
+                start(&mut app, &ctx, p);
+                let shapes = frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::ModifiersChanged(modifier(copy)),
+                        egui::Event::PointerMoved(end),
+                    ],
+                    Vec2::new(1280.0, 800.0),
+                );
+                assert_eq!(
+                    app.instrument_catalog_bounds.drop_target,
+                    Some(destination),
+                    "main {main} empty {empty} copy {copy} end {end:?} viewport {viewport:?}"
+                );
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment {points, stroke}
+                    if stroke.width == 2.0 && stroke.color == theme::accent(&ctx) && points[0].x == points[1].x)));
+                let drop = app.instrument_catalog_bounds.drop_bounds;
+                assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == drop && r.stroke == theme::selection_outline(&ctx))));
+                assert_eq!(app.session.project.tracks[0].instrument, before);
+                assert!(!app.dirty);
+                frame(&mut app, &ctx, vec![event(end, false, copy)]);
+                assert!(app.error.is_none(), "{:?}", app.error);
+                assert!(app.dirty);
+                frame(&mut app, &ctx, vec![]);
+                let selected = app.instrument_ui.selected_component.unwrap();
+                assert_eq!(selected.0, destination);
+                assert!(matches!(selected.1, InstrumentComponent::Envelope(_)));
+                let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
+                let order = if main {
+                    i.main.visible_components()
+                } else {
+                    i.layers[1].visible_components()
+                };
+                assert_eq!(order[usize::from(!main && !empty)], selected.1);
+                if copy || !main {
+                    assert_ne!(selected.1, component);
+                } else {
+                    assert_eq!(selected.1, component);
+                }
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+}
+
 fn start(app: &mut DawUi, ctx: &egui::Context, p: Pos2) {
     frame(
         app,

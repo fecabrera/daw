@@ -9,6 +9,8 @@ use uuid::Uuid;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InstrumentBusSettings {
     pub id: Uuid,
+    #[serde(default)]
+    pub component_order: Vec<crate::InstrumentComponent>,
     pub collapsed: bool,
     pub gain_db: f32,
     pub pan: f32,
@@ -21,6 +23,7 @@ impl Default for InstrumentBusSettings {
     fn default() -> Self {
         Self {
             id: Uuid::new_v4(),
+            component_order: Vec::new(),
             collapsed: true,
             gain_db: 0.0,
             pan: 0.0,
@@ -57,6 +60,7 @@ impl InstrumentBusSettings {
             })
             && self.lfos.iter().all(|l| ids.insert(l.id) && l.valid())
             && self.macro_module.valid()
+            && self.valid_component_order()
             && self.macro_module.controls.iter().all(|c| ids.insert(c.id))
     }
     pub fn modulation_sources(&self) -> impl Iterator<Item = ModulationSourceInfo<'_>> {

@@ -46,6 +46,7 @@ mod instrument_catalog;
 mod instrument_component_drag;
 mod instrument_main;
 mod instrument_panel;
+mod instrument_selection;
 pub mod knobs;
 mod lfo_controls;
 mod lfo_panel;
@@ -74,6 +75,7 @@ pub mod theme;
 #[cfg(any(target_os = "windows", test))]
 pub mod titlebar;
 pub mod toolbars;
+mod unit_selection;
 mod waveforms;
 
 const TRACK_WIDTH: f32 = panels::ControlPanel::WIDTH;

@@ -271,15 +271,7 @@ impl PanelStyle {
         };
         let mut interaction_rect = header_rect;
         interaction_rect.max.x -= reserved;
-        let mut header = ui.interact(
-            interaction_rect,
-            id,
-            if bottom_border {
-                egui::Sense::click()
-            } else {
-                egui::Sense::click_and_drag()
-            },
-        );
+        let mut header = ui.interact(interaction_rect, id, egui::Sense::click_and_drag());
         header.rect = header_rect;
         let power_rect = Rect::from_min_size(
             header_rect.min + Vec2::splat(1.0),

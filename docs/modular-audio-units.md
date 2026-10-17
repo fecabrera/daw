@@ -463,3 +463,7 @@ Envelope adds Time/Note timing and moves the Mode dropdown from its header to th
 ### Macro component — 2026-10-16
 
 [Macro](macro.md) adds multiple independent shared control strips inside one component on regular layers or Main. Each strip has one 0–100% knob, a shared circular Power control, and a name label that defaults to Macro N. Double-click the label to rename the strip; names save with the project and appear in shared modulation controls. One strip may feed several destinations, and may receive shared Envelope/LFO/Macro modulation through the existing targeted controls. Stable IDs, target-specific cycle checks, neutral power weights, shared source/destination processing, save/load defaults, and component transfer transactions are required. The portable processor lives in `crates/macro`; UI and host construction remain outside it.
+
+## Component selection and presentation order — 2026-10-17
+
+Instrument components reuse effect-unit selection outlines and click/focus helpers. Header drags reorder units within layers or Main and place transferred units at the shared effects insertion line, including empty destinations. Oscillator/source units remain first. Saved `component_order` entries use shared `unit-core::InstrumentComponent` identities and validation; they change only presentation, never provider/source vector order or DSP topology. Retained hidden units keep their positions, and legacy projects keep canonical order. See [selection, placement, and persistence](component-editing.md#selecting-and-reordering-component-units).

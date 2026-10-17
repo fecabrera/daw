@@ -9,11 +9,16 @@ const LAYER_HEADER_WIDTH: f32 = TRACK_WIDTH;
 pub(super) struct InstrumentUi {
     pub(super) track: Option<Id>,
     pub(super) selected_layer: Option<Id>,
+    pub(super) selected_component: Option<(Id, daw_core::InstrumentComponent)>,
+    pub(super) component_refocus: bool,
+    pub(super) component_focus: crate::selection_focus::SelectionFocus,
+    pub(super) component_viewports: Vec<(Id, Rect)>,
     name_edit: Option<LayerNameEdit>,
     pub(super) macro_name_edit: Option<crate::macro_panel::NameEdit>,
     drag: Option<Id>,
     pub(super) inputs: HashMap<Id, Inputs>,
     pub(super) oscillator_slots: Vec<(Id, Id, Rect)>,
+    pub(super) component_slots: Vec<(Id, daw_core::InstrumentComponent, Rect)>,
     #[cfg(test)]
     pub(super) main_bounds: crate::instrument_main::MainBounds,
     #[cfg(test)]
@@ -26,6 +31,8 @@ struct LayerNameEdit {
 }
 impl InstrumentUi {
     pub(super) fn cancel(&mut self) {
+        self.selected_component = None;
+        self.component_refocus = false;
         self.name_edit = None;
         self.macro_name_edit = None;
         self.drag = None;
@@ -70,6 +77,8 @@ impl DawUi {
         ui.spacing_mut().item_spacing.y = 0.0;
         self.activate_component_drag(ui);
         self.instrument_ui.oscillator_slots.clear();
+        self.instrument_ui.component_slots.clear();
+        self.instrument_ui.component_viewports.clear();
         #[cfg(test)]
         self.instrument_ui.component_bounds.clear();
         let Some(track) = self
@@ -401,151 +410,99 @@ impl DawUi {
                                             Rect::NOTHING,
                                             [Rect::NOTHING; 4],
                                         );
-                                        egui::ScrollArea::horizontal()
+                                        let components = egui::ScrollArea::horizontal()
                                             .id_salt("layer-units")
                                             .auto_shrink([false, true])
                                             .show(ui, |ui| {
-                                                if self.component_drag.as_ref().is_some_and(|d|d.active) { drag::scroll_near_edges(ui, drag::Axis::Horizontal, 360.0); }
+                                                if self.component_drag.as_ref().is_some_and(|d|d.active) { drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range())); }
                                                 crate::strip_reorder::scroll(ui);
                                                 ui.horizontal_top(|ui| {
                                                         ui.spacing_mut().item_spacing.x = -1.0;
-                                                        if !layer.oscillators.is_empty() {
-                                                            let (rect, header, power) = self
-                                                                .oscillator_unit(
-                                                                    ui, track.id, layer, height,
-                                                                    compact, &modulation_sources,
-                                                                );
-                                                            oscillator_panel = Some(rect);
-                                                            oscillator_header = header;
-                                                            oscillator_power = power;
-                                                        } else {
-                                                            #[cfg(test)]
-                                                            {
-                                                                self.midi_editor
-                                                                    .oscillator_bounds
-                                                                    .clear();
-                                                                self.midi_editor
-                                                                    .oscillator_strip_bounds
-                                                                    .clear();
-                                                                self.midi_editor
-                                                                    .oscillator_power_bounds
-                                                                    .clear();
-                                                                self.midi_editor
-                                                                    .oscillator_panel_bounds =
-                                                                    Rect::NOTHING;
+                                                        if layer.oscillators.is_empty() {
+                                                            #[cfg(test)] {
+                                                                self.midi_editor.oscillator_bounds.clear();
+                                                                self.midi_editor.oscillator_strip_bounds.clear();
+                                                                self.midi_editor.oscillator_power_bounds.clear();
+                                                                self.midi_editor.oscillator_panel_bounds = Rect::NOTHING;
                                                             }
                                                         }
-                                                        let mut previous = oscillator_panel;
-                                                        for (index, instance) in
-                                                            layer.envelopes.iter_mut().enumerate()
-                                                        {
-                                                            let shared_only = shared_sources.contains(&daw_core::ModulationSourceId { layer: layer.id, unit: instance.id });
-                                                            if let Some(envelope) =
-                                                                envelope_panel::unit(
-                                                                    ui,
-                                                                    instance,
-                                                                    index + 1,
-                                                                    shared_only,
-                                                                    height,
-                                                                    compact,
-                                                                )
-                                                            {
-                                                                self.start_installed_component_drag(ui, &envelope.header, &[envelope.power.rect], track.id, layer.id, daw_core::InstrumentComponent::Envelope(instance.id));
-                                                                let rect = envelope.response.rect;
+                                                        let mut previous: Option<Rect> = None;
+                                                        for component in layer.visible_components() {
+                                                            let rect = ui.push_id(component, |ui| match component {
+                                                                daw_core::InstrumentComponent::Oscillators => {
+                                                                    let (rect, header, power) = self.oscillator_unit(ui, track.id, layer, height, compact, &modulation_sources);
+                                                                    oscillator_panel = Some(rect);
+                                                                    oscillator_header = header;
+                                                                    oscillator_power = power;
+                                                                    Some(rect)
+                                                                }
+                                                                daw_core::InstrumentComponent::Envelope(id) => {
+                                                                    let index = layer.envelopes.iter().position(|e| e.id == id).unwrap();
+                                                                    let instance = &mut layer.envelopes[index];
+                                                                    let shared_only = shared_sources.contains(&daw_core::ModulationSourceId { layer: layer.id, unit: id });
+                                                                    envelope_panel::unit(ui, instance, index + 1, shared_only, height, compact).map(|unit| {
+                                                                        self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, component);
+                                                                        let rect = unit.response.rect;
+                                                                        if index == 0 {
+                                                                            envelope_rect = rect;
+                                                                            envelope_header = unit.header.rect;
+                                                                            envelope_power = unit.power.rect;
+                                                                            envelope_stages = unit.inner.unwrap_or([Rect::NOTHING; 4]);
+                                                                        }
+                                                                        #[cfg(test)] if index == 1 {
+                                                                            filter_envelope = (rect, unit.header.rect, unit.power.rect, unit.inner.unwrap_or([Rect::NOTHING; 4]));
+                                                                        }
+                                                                        rect
+                                                                    })
+                                                                }
+                                                                daw_core::InstrumentComponent::Lfo(id) => {
+                                                                    let index = layer.lfos.iter().position(|l| l.id == id).unwrap();
+                                                                    crate::lfo_panel::unit(ui, &mut layer.lfos[index], index + 1, height, compact, crate::lfo_panel::Controls {
+                                                                        sources: provider_sources.iter().find(|(source, _)| source.layer == layer.id && source.unit == id).map_or(&[], |(_, sources)| sources.as_slice()),
+                                                                        tempo: self.session.project.tempo_bpm,
+                                                                        live: self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Lfo { track: track.id, layer: layer.id, unit: id })).map(|v| [v[0], v[1]]),
+                                                                    }).map(|unit| {
+                                                                        self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, component);
+                                                                        unit.response.rect
+                                                                    })
+                                                                }
+                                                                daw_core::InstrumentComponent::Macros => {
+                                                                    let live: Vec<_> = layer.macro_module.controls.iter().filter_map(|c|
+                                                                        self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Macro { track: track.id, layer: layer.id, unit: c.id })).map(|v| (c.id, v[0]))).collect();
+                                                                    crate::macro_panel::unit(ui, &mut layer.macro_module, height, compact, crate::macro_panel::Controls {
+                                                                        layer: layer.id, sources: &modulation_sources, available: &provider_sources, live: &live,
+                                                                        name_edit: &mut self.instrument_ui.macro_name_edit,
+                                                                    }).map(|unit| {
+                                                                        self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, component);
+                                                                        unit.response.rect
+                                                                    })
+                                                                }
+                                                                daw_core::InstrumentComponent::Amplitude => {
+                                                                    crate::amplitude_panel::unit(ui, &mut layer.amplitude, &modulation_sources, height, compact,
+                                                                        self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Amplitude { track: track.id, layer: layer.id })).map(|v| v[0]))
+                                                                        .map(|unit| {
+                                                                            self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, component);
+                                                                            #[cfg(test)] { amplitude_bounds = (unit.response.rect, unit.header.rect); }
+                                                                            unit.response.rect
+                                                                        })
+                                                                }
+                                                                daw_core::InstrumentComponent::Oscillator(_) => None,
+                                                            }).inner;
+                                                            if let Some(rect) = rect {
+                                                                self.instrument_ui.component_slots.push((layer.id, component, rect));
                                                                 if let Some(previous) = previous {
-                                                                    ui.painter().vline(
-                                                                        previous.right() - 0.5,
-                                                                        previous.top()
-                                                                            ..=rect.bottom(),
-                                                                        egui::Stroke::new(
-                                                                            1.0,
-                                                                            crate::theme::palette(
-                                                                                ui.ctx(),
-                                                                            )
-                                                                            .border,
-                                                                        ),
-                                                                    );
+                                                                    if matches!(component, daw_core::InstrumentComponent::Envelope(_)) {
+                                                                        ui.painter().vline(previous.right() - 0.5, previous.top()..=rect.bottom(), Stroke::new(1.0, theme::palette(ui.ctx()).border));
+                                                                    } else {
+                                                                        panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom());
+                                                                    }
                                                                 }
                                                                 previous = Some(rect);
-                                                                if index == 0 {
-                                                                    envelope_rect = rect;
-                                                                    envelope_header =
-                                                                        envelope.header.rect;
-                                                                    envelope_power =
-                                                                        envelope.power.rect;
-                                                                    envelope_stages =
-                                                                        envelope.inner.unwrap_or(
-                                                                            [Rect::NOTHING; 4],
-                                                                        );
-                                                                }
-                                                                #[cfg(test)]
-                                                                if index == 1 {
-                                                                    filter_envelope = (
-                                                                        rect,
-                                                                        envelope.header.rect,
-                                                                        envelope.power.rect,
-                                                                        envelope.inner.unwrap_or(
-                                                                            [Rect::NOTHING; 4],
-                                                                        ),
-                                                                    );
-                                                                }
-                                                            }
-                                                        }
-                                                        for (index, lfo) in layer.lfos.iter_mut().enumerate() {
-                                                            if let Some(unit) = crate::lfo_panel::unit(ui, lfo, index + 1, height, compact, crate::lfo_panel::Controls {
-                                                                sources: provider_sources.iter().find(|(id, _)| id.layer == layer.id && id.unit == lfo.id).map_or(&[], |(_, sources)| sources.as_slice()),
-                                                                tempo: self.session.project.tempo_bpm,
-                                                                live: self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Lfo { track: track.id, layer: layer.id, unit: lfo.id })).map(|v| [v[0], v[1]]),
-                                                            }) {
-                                                                self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, daw_core::InstrumentComponent::Lfo(lfo.id));
-                                                                let rect = unit.response.rect;
-                                                                if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }
-                                                                previous = Some(rect);
-                                                            }
-                                                        }
-                                                        let macro_live: Vec<_> = layer.macro_module.controls.iter().filter_map(|c|
-                                                            self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Macro { track: track.id, layer: layer.id, unit: c.id })).map(|v| (c.id, v[0]))).collect();
-                                                        if let Some(unit) = crate::macro_panel::unit(ui, &mut layer.macro_module, height, compact, crate::macro_panel::Controls {
-                                                            layer: layer.id, sources: &modulation_sources, available: &provider_sources, live: &macro_live,
-                                                            name_edit: &mut self.instrument_ui.macro_name_edit,
-                                                        }) {
-                                                            self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, daw_core::InstrumentComponent::Macros);
-                                                            let rect = unit.response.rect;
-                                                            if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }
-                                                            previous = Some(rect);
-                                                        }
-                                                        if let Some(amplitude) =
-                                                            crate::amplitude_panel::unit(
-                                                                ui,
-                                                                &mut layer.amplitude,
-                                                                &modulation_sources,
-                                                                height,
-                                                                compact,
-                                                                self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Amplitude {track: track.id, layer: layer.id})).map(|v|v[0]),
-                                                            )
-                                                        {
-                                                            self.start_installed_component_drag(ui, &amplitude.header, &[amplitude.power.rect], track.id, layer.id, daw_core::InstrumentComponent::Amplitude);
-                                                            if let Some(previous) = previous {
-                                                                panels::unit_divider(
-                                                                    ui,
-                                                                    previous.right() - 0.5,
-                                                                    previous.top()
-                                                                        ..=amplitude
-                                                                            .response
-                                                                            .rect
-                                                                            .bottom(),
-                                                                );
-                                                            }
-                                                            #[cfg(test)]
-                                                            {
-                                                                amplitude_bounds = (
-                                                                    amplitude.response.rect,
-                                                                    amplitude.header.rect,
-                                                                );
                                                             }
                                                         }
                                                     });
                                             });
+                                        self.instrument_ui.component_viewports.push((layer.id, Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect())));
                                         #[cfg(test)]
                                         {
                                             self.midi_editor.envelope_panel_bounds = envelope_rect;
@@ -684,6 +641,7 @@ impl DawUi {
             self.instrument_catalog_bounds.layer_viewport = scroll.inner_rect;
             self.instrument_catalog_bounds.layer_scroll = scroll.state.offset.y;
         }
+        self.component_selection(ui, track.id);
         if let Some(edit) = self.finish_component_drag(
             ui,
             track.id,
@@ -691,7 +649,20 @@ impl DawUi {
             &layer_rows,
             Rect::from_min_max(scroll.inner_rect.min, main_rect.max),
         ) {
+            let selection = match &edit {
+                Edit::TransferInstrumentComponent {
+                    destination,
+                    component,
+                    source,
+                    duplicate,
+                    ..
+                } if source != destination || *duplicate => Some((*destination, *component)),
+                _ => None,
+            };
             self.edit(edit);
+            if let Some((owner, component)) = selection {
+                self.select_transferred_component(track.id, owner, component);
+            }
             return;
         }
         self.layer_reorder(ui, &mut settings, &reorder_rows, scroll.inner_rect);

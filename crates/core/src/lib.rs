@@ -911,7 +911,7 @@ pub enum Edit {
         track_id: Id,
         source: Id,
         destination: Id,
-        /// Oscillator insertion position after removing a same-layer moving source.
+        /// Final source-strip index for oscillator transfers; otherwise a visible destination unit index.
         destination_index: Option<usize>,
         component: InstrumentComponent,
         duplicate: bool,

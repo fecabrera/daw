@@ -1,6 +1,129 @@
 use crate::*;
 use InstrumentComponent::*;
 
+#[test]
+fn transferred_units_insert_by_resolved_identity_and_reject_invalid_positions_atomically() {
+    for main in [false, true] {
+        for copy in [false, true] {
+            let (mut p, track, from, regular) = fixture();
+            let i = p.tracks[0].instrument.as_mut().unwrap();
+            let id = i.layers[0].envelopes[0].id;
+            let to = if main {
+                i.main.lfos.push(LfoInstance::default());
+                i.main.id
+            } else {
+                i.layers[1].oscillators.push(OscillatorSettings::default());
+                i.layers[1].lfos.push(LfoInstance::default());
+                regular
+            };
+            let first = usize::from(!main);
+            let snapshot = serde_json::to_value(&p).unwrap();
+            for index in [999, if main { 999 } else { 0 }] {
+                assert!(
+                    p.edit(Edit::TransferInstrumentComponent {
+                        track_id: track,
+                        source: from,
+                        destination: to,
+                        component: Envelope(id),
+                        destination_index: Some(index),
+                        duplicate: copy,
+                    })
+                    .is_err()
+                );
+                assert_eq!(serde_json::to_value(&p).unwrap(), snapshot);
+            }
+            p.edit(Edit::TransferInstrumentComponent {
+                track_id: track,
+                source: from,
+                destination: to,
+                component: Envelope(id),
+                destination_index: Some(first),
+                duplicate: copy,
+            })
+            .unwrap();
+            let i = p.tracks[0].instrument.as_ref().unwrap();
+            let (order, moved) = if main {
+                (
+                    i.main.visible_components(),
+                    i.main.envelopes.last().unwrap().id,
+                )
+            } else {
+                (
+                    i.layers[1].visible_components(),
+                    i.layers[1].envelopes.last().unwrap().id,
+                )
+            };
+            assert_eq!(order[first], Envelope(moved));
+            if copy || !main {
+                assert_ne!(moved, id);
+            }
+            p.validate().unwrap();
+        }
+    }
+}
+
+#[test]
+fn unit_reorder_is_atomic_preserves_settings_and_prunes_transferred_provider_positions() {
+    let (mut project, track, owner, destination) = fixture();
+    let before = project.tracks[0].instrument.clone().unwrap();
+    project
+        .edit(Edit::TransferInstrumentComponent {
+            track_id: track,
+            source: owner,
+            destination: owner,
+            destination_index: Some(1),
+            component: Amplitude,
+            duplicate: false,
+        })
+        .unwrap();
+    let after = project.tracks[0].instrument.clone().unwrap();
+    assert_eq!(
+        after.layers[0].visible_components()[..2],
+        [Oscillators, Amplitude]
+    );
+    let mut expected = before;
+    expected.layers[0].component_order = after.layers[0].component_order.clone();
+    assert_eq!(after, expected);
+    for (unit, index) in [
+        (Amplitude, Some(0)),
+        (Oscillators, Some(1)),
+        (Amplitude, Some(999)),
+        (Amplitude, None),
+    ] {
+        let snapshot = serde_json::to_value(&project).unwrap();
+        assert!(
+            project
+                .edit(Edit::TransferInstrumentComponent {
+                    track_id: track,
+                    source: owner,
+                    destination: owner,
+                    destination_index: index,
+                    component: unit,
+                    duplicate: false
+                })
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(&project).unwrap(), snapshot);
+    }
+    let id = after.layers[0].envelopes[0].id;
+    project
+        .edit(Edit::TransferInstrumentComponent {
+            track_id: track,
+            source: owner,
+            destination,
+            destination_index: None,
+            component: Envelope(id),
+            duplicate: false,
+        })
+        .unwrap();
+    assert!(
+        !project.tracks[0].instrument.as_ref().unwrap().layers[0]
+            .component_order
+            .contains(&Envelope(id))
+    );
+    project.validate().unwrap();
+}
+
 fn fixture() -> (Project, Id, Id, Id) {
     let mut p = Project::default();
     let track = p.add_midi_track().unwrap();

@@ -2774,7 +2774,7 @@ fn macros_fan_out_through_lfo_dependencies_with_live_export_block_and_layout_par
     }
     TRACK_ALLOCATIONS.with(|v| v.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
-    // Display-name edits retain the same audio state and route identities.
+    // Display-name and component-layout edits retain audio state and route identities.
     let mut original = Renderer::new(p.clone());
     original.play();
     for _ in 0..1000 {
@@ -2785,6 +2785,14 @@ fn macros_fan_out_through_lfo_dependencies_with_live_export_block_and_layout_par
         .macro_module
         .controls[0]
         .name = Some("Brightness".into());
+    assert_eq!(
+        named.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+            .move_component(InstrumentComponent::Macros, 1),
+        Some(true)
+    );
+    let mut ordered_audio = vec![[0.0; 2]; expected.len()];
+    Renderer::new(named.clone()).render_offline(&mut ordered_audio);
+    assert_eq!(ordered_audio, expected);
     let mut renamed = Renderer::new(named);
     ALLOCATIONS.with(|v| v.set(0));
     TRACK_ALLOCATIONS.with(|v| v.set(true));

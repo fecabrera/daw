@@ -584,32 +584,20 @@ impl DawUi {
                                     }
                                 });
                                 let rect = unit.response.rect;
-                                if allowed
-                                    && self.effects_drag.as_ref().is_none_or(|drag| !drag.active)
-                                    && ui.rect_contains_pointer(rect)
-                                    && ui.input(|input| {
-                                        input.focused
-                                            && input
-                                                .pointer
-                                                .button_clicked(egui::PointerButton::Primary)
-                                    })
+                                if crate::unit_selection::clicked(ui, rect, allowed && self.effects_drag.as_ref().is_none_or(|drag| !drag.active))
                                 {
                                     self.select_effect(
                                         effect.id,
                                         ui.input(|input| input.modifiers.shift),
                                     );
-                                    if !self.effects_lane_focus.owns(ui.ctx()) {
-                                        unit.response.request_focus();
-                                    }
+                                    crate::unit_selection::retain_focus(ui, &unit.response, &self.effects_lane_focus);
                                 }
                                 slots.push((effect.id, rect));
                             }
                         });
                         // Paint last so adjacent units cannot cover a selected outline.
                         for (id, rect) in &slots {
-                            if self.selected_effects.contains(id) {
-                                panels::selection_border(ui, *rect);
-                            }
+                            crate::unit_selection::paint(ui, *rect, self.selected_effects.contains(id));
                         }
                     })
             })

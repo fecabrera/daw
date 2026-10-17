@@ -63,8 +63,20 @@ impl DawUi {
             && drag::crossed_threshold(ui, drag.origin)
         {
             drag.active = true;
-            if let ComponentDragSource::Catalog { index, .. } = drag.source {
-                self.instrument_catalog.select_dragged(index);
+            match drag.source {
+                ComponentDragSource::Catalog { index, .. } => {
+                    self.instrument_catalog.select_dragged(index)
+                }
+                ComponentDragSource::Installed { owner, component } => {
+                    self.instrument_ui.selected_component = Some((
+                        owner,
+                        if matches!(component, daw_core::InstrumentComponent::Oscillator(_)) {
+                            daw_core::InstrumentComponent::Oscillators
+                        } else {
+                            component
+                        },
+                    ));
+                }
             }
         }
     }
@@ -117,6 +129,58 @@ impl DawUi {
         });
         let mut destination_index = None;
         let mut oscillator_insertion = None;
+        let mut unit_insertion = None;
+        let target = target.filter(|(owner, row)| {
+            let ComponentDragSource::Installed {
+                owner: from,
+                component,
+            } = drag.source
+            else {
+                return true;
+            };
+            if matches!(component, daw_core::InstrumentComponent::Oscillator(_)) {
+                return true;
+            }
+            let pointer = ui.input(|i| i.pointer.latest_pos()).unwrap();
+            let same_move = from == *owner && !duplicate;
+            if same_move && pointer.x < row.left() + TRACK_WIDTH {
+                return false;
+            }
+            let slots: Vec<_> = self
+                .instrument_ui
+                .component_slots
+                .iter()
+                .filter(|(layer, _, _)| layer == owner)
+                .map(|(_, unit, rect)| (*unit, *rect))
+                .collect();
+            let first = slots
+                .iter()
+                .take_while(|(unit, _)| unit.is_source())
+                .count();
+            // A Macro transfer merges into one existing unit; provider copies create a new unit.
+            let existing = same_move || component == daw_core::InstrumentComponent::Macros;
+            let old = existing
+                .then(|| slots.iter().position(|(unit, _)| *unit == component))
+                .flatten();
+            let slot = if component.is_source() {
+                0
+            } else if pointer.x < row.left() + TRACK_WIDTH {
+                slots.len()
+            } else {
+                drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r)).max(first)
+            };
+            let index = slot - usize::from(old.is_some_and(|old| old < slot));
+            if !component.is_source() {
+                destination_index = Some(index);
+            }
+            unit_insertion = Some((
+                slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
+                slot,
+                *row,
+                !same_move || old != Some(index),
+            ));
+            true
+        });
         let target = target.filter(|(owner, row)| {
             let ComponentDragSource::Installed {
                 owner: from,
@@ -152,13 +216,22 @@ impl DawUi {
             ));
             true
         });
-        if let Some((_, rect)) = target {
+        if let Some((_, rect)) = target
+            && matches!(drag.source, ComponentDragSource::Catalog { .. })
+        {
             panels::selection_border(ui, rect);
         }
         if let Some((slots, slot, row)) = oscillator_insertion {
             let body = Rect::from_min_max(Pos2::new(row.left() + TRACK_WIDTH, row.top()), row.max)
                 .intersect(viewport);
             drag::insertion_line(ui, &slots, slot, body);
+        }
+        if let Some((slots, slot, row, changed)) = &unit_insertion
+            && *changed
+        {
+            let body = Rect::from_min_max(Pos2::new(row.left() + TRACK_WIDTH, row.top()), row.max)
+                .intersect(viewport);
+            drag::insertion_line(ui, slots, *slot, body);
         }
         #[cfg(test)]
         {
@@ -185,6 +258,12 @@ impl DawUi {
                     }
                     ComponentDragSource::Installed { owner, component } => {
                         self.instrument_ui.selected_layer = Some(layer);
+                        if unit_insertion
+                            .as_ref()
+                            .is_some_and(|(_, _, _, changed)| !changed)
+                        {
+                            return None;
+                        }
                         return Some(Edit::TransferInstrumentComponent {
                             track_id: track,
                             source: owner,
@@ -222,9 +301,9 @@ impl DawUi {
             .clone()
             .on_hover_cursor(egui::CursorIcon::Grab)
             .on_hover_text(if cfg!(target_os = "macos") {
-                "Drag to move this component. Hold Option to duplicate."
+                "Drag to reorder or move this component. Hold Option to duplicate. Sources stay first."
             } else {
-                "Drag to move this component. Hold Ctrl to duplicate."
+                "Drag to reorder or move this component. Hold Ctrl to duplicate. Sources stay first."
             });
         if self.strip_dragging
             || crate::strip_reorder::dragging(ui.ctx())

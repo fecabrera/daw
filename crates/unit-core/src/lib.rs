@@ -1,6 +1,8 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
 mod instrument_bus;
 pub use instrument_bus::InstrumentBusSettings;
+mod instrument_components;
+pub use instrument_components::InstrumentComponent;
 mod macro_control;
 pub use macro_control::*;
 mod lfo;
@@ -70,6 +72,8 @@ pub const INSTRUMENT_STATE_VERSION: u32 = 3;
 pub struct InstrumentLayerSettings {
     pub id: uuid::Uuid,
     pub name: String,
+    /// Presentation only; missing entries follow the canonical component inventory.
+    pub component_order: Vec<InstrumentComponent>,
     /// Saved compact presentation; does not change unit or audio settings.
     pub collapsed: bool,
     pub muted: bool,
@@ -92,6 +96,7 @@ impl Default for InstrumentLayerSettings {
         Self {
             id: uuid::Uuid::new_v4(),
             name: "Layer 1".into(),
+            component_order: Vec::new(),
             collapsed: false,
             muted: false,
             soloed: false,
@@ -125,6 +130,7 @@ impl InstrumentLayerSettings {
             && self.oscillators.iter().all(OscillatorSettings::valid)
             && self.amplitude.valid()
             && self.macro_module.valid()
+            && self.valid_component_order()
             && ModulationDestinationSettings::valid_modulations(self)
             && {
                 let mut ids = std::collections::HashSet::new();
@@ -173,6 +179,8 @@ struct SavedLayer {
     id: uuid::Uuid,
     #[serde(default, deserialize_with = "saved_layer_name")]
     name: Option<String>,
+    #[serde(default)]
+    component_order: Vec<InstrumentComponent>,
     #[serde(default)]
     collapsed: bool,
     #[serde(default)]
@@ -240,6 +248,7 @@ impl SavedLayer {
         let mut layer = InstrumentLayerSettings {
             id: self.id,
             name: self.name.unwrap_or_else(|| format!("Layer {}", index + 1)),
+            component_order: self.component_order,
             collapsed: self.collapsed,
             muted: self.muted,
             soloed: self.soloed,

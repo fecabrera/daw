@@ -3,15 +3,7 @@ use crate::*;
 #[path = "macro_transfer.rs"]
 mod macros;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InstrumentComponent {
-    Oscillators,
-    Oscillator(Id),
-    Envelope(Id),
-    Lfo(Id),
-    Amplitude,
-    Macros,
-}
+pub use daw_unit_core::InstrumentComponent;
 
 impl Project {
     /// Allocation-free eligibility check for drag feedback. No identities are created here.
@@ -53,6 +45,28 @@ impl Project {
                 "Component cannot be transferred to this layer".into(),
             ));
         }
+        if source == destination
+            && !duplicate
+            && !matches!(component, InstrumentComponent::Oscillator(_))
+        {
+            let index = destination_index
+                .ok_or_else(|| Error("Component reorder requires an insertion index".into()))?;
+            let moved = if source == instrument.main.id {
+                instrument.main.move_component(component, index)
+            } else {
+                instrument
+                    .layers
+                    .iter_mut()
+                    .find(|l| l.id == source)
+                    .unwrap()
+                    .move_component(component, index)
+            };
+            moved.ok_or_else(|| {
+                Error("Invalid component insertion index or pinned source".into())
+            })?;
+            return Ok(());
+        }
+        let mut placed = component;
         match component {
             InstrumentComponent::Oscillators | InstrumentComponent::Oscillator(_) => {
                 transfer_oscillators(
@@ -99,6 +113,10 @@ impl Project {
                     } else {
                         id
                     };
+                placed = match component {
+                    InstrumentComponent::Envelope(_) => InstrumentComponent::Envelope(new_id),
+                    _ => InstrumentComponent::Lfo(new_id),
+                };
                 match component {
                     InstrumentComponent::Envelope(_) => {
                         let from = envelopes_mut(instrument, source);
@@ -140,13 +158,40 @@ impl Project {
                 }
             }
         }
+        for layer in &mut instrument.layers {
+            layer.prune_component_order();
+        }
+        instrument.main.prune_component_order();
+        // Strip insertion belongs to Oscillator; other indices describe the unit layout.
+        if !placed.is_source()
+            && let Some(index) = destination_index
+        {
+            let moved = if destination == instrument.main.id {
+                instrument.main.move_component(placed, index)
+            } else {
+                instrument
+                    .layers
+                    .iter_mut()
+                    .find(|l| l.id == destination)
+                    .unwrap()
+                    .move_component(placed, index)
+            };
+            moved.ok_or_else(|| {
+                Error("Invalid component insertion index or pinned source".into())
+            })?;
+        }
         Ok(())
     }
 }
 
 fn eligible(i: &InstrumentSettings, from: Id, to: Id, c: InstrumentComponent, copy: bool) -> bool {
     if from == to && !copy && !matches!(c, InstrumentComponent::Oscillator(_)) {
-        return false;
+        return !c.is_source()
+            && if from == i.main.id {
+                i.main.has_component(c)
+            } else {
+                i.layers.iter().any(|l| l.id == from && l.has_component(c))
+            };
     }
     let source = i.layers.iter().find(|l| l.id == from);
     let destination = i.layers.iter().find(|l| l.id == to);

@@ -2356,3 +2356,22 @@ Catalog registrations now contain the layer installation function and optional M
 Focused egui checks passed for every registered component in both themes, both Main row sizes, label/body targets, fast motion-and-release, clean previews, unsupported-only drops, and mixed selections on populated Main. A synthetic new type ID passes through the same registration checks and addition functions, with zero installation calls during preview; unregistered IDs, invalid owners, and absent Main installers stay rejected. Existing instrument catalog, cancellation, selection, and Main layout checks also passed.
 
 Checks with the workspace Cargo cache passed: formatting, strict workspace Clippy, `cargo test --workspace` (723 tests, zero failures, two existing expanded time-stretch matrices ignored, including all 405 UI tests), documentation link targets, and `git diff --check`. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Native UI/device behavior and Windows/Linux builds were not checked. CLI smoke checks were not repeated for this UI-only change.
+
+## Component selection and saved unit order — 2026-10-17
+
+Component units now support single-click selection with the same outline, click detection, and focus helpers as installed effects. Header drags reorder units within regular layers or Main, with audio sources pinned first. Installed transfers between lanes, including empty Main, use the effects insertion-line renderer instead of a row outline. The drop position determines the saved unit position; existing Oscillator and Macro merge rules remain in effect. Selection stays outside project data.
+
+Checks completed:
+
+- `cargo test --workspace` passes: 732 tests pass and 2 existing expanded time-stretch acceptance matrices remain ignored.
+
+- `cargo fmt --all --check`, strict workspace Clippy, and `git diff --check` pass. Repository-relative documentation link targets exist.
+- The full UI suite passes 410 tests; the focused component run passes 23. New input/paint checks cover both themes, both row heights, expanded/collapsed units, same-lane insertion, source pinning, fast release, clean no-op/cancelled previews, horizontal edge scrolling isolated to the hovered regular layer or Main, selection/focus clearing, cross-lane moves/copies, empty destinations, and selection of the resulting unit. Existing catalog, oscillator-strip, modulation-strip, and transfer tests remain passing.
+- Portable layout tests cover legacy defaults, save/deserialize round trips, retained hidden-unit positions, new-unit placement, stale/duplicate/unknown identities, individual-strip rejection, Main restrictions, and source-first validation. Core tests cover transactional reorder/placement rejection, legacy provider-ID collisions, and transfer cleanup.
+- Project workflow checks preserve layer/Main order through save/reopen, Save As, track duplication, and sample-rate changes. The engine check retains sample-exact offline/live output, held-note state, and zero callback allocations after a layout update.
+- The CLI build and `python3 tools/check_cli.py` pass. WAV/MP3 formats, bitrates, deterministic output, missing sources, eight-track projects, overwrite protection, and exit codes remain covered.
+- `sh tools/package_macos.sh debug` succeeds and rebuilds `target/debug/DAW.app`. The running app was not relaunched.
+
+The saved optional `component_order` field retains instrument version 3. Missing fields use canonical legacy layout; malformed lists and invalid insertion positions fail without changing the project. Presentation order does not reorder provider/source vectors or change DSP topology. The earlier restriction against arbitrary component-unit presentation order is superseded; cross-track transfers and component multi-selection remain outside this change.
+
+Native mouse/trackpad, display-scale, audible device, Windows, and Linux checks were not performed. Automated egui and renderer tests do not establish those native behaviors.
