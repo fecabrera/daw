@@ -31,6 +31,7 @@ pub struct KnobSpec {
     value_label: Option<fn(f32) -> String>,
     endpoint_labels: Option<[&'static str; 2]>,
     two_way_labels: Option<[&'static str; 2]>,
+    three_way_labels: Option<[&'static str; 3]>,
     center: Option<f32>,
     scale: Option<ParameterScale>,
     amount_scale: Option<amount::AmountScale>,
@@ -60,6 +61,7 @@ impl KnobSpec {
             value_label: None,
             endpoint_labels: None,
             two_way_labels: None,
+            three_way_labels: None,
             center: None,
             scale: None,
             amount_scale: None,
@@ -126,7 +128,27 @@ impl KnobSpec {
         self.discrete_step = Some(self.max - self.min);
         self.cyclic = false;
         self.two_way_labels = Some([min, max]);
+        self.three_way_labels = None;
         self
+    }
+    /// Three fixed positions over the same neutral upper arc as two-position modes.
+    pub fn three_way_labels(
+        mut self,
+        min: &'static str,
+        middle: &'static str,
+        max: &'static str,
+    ) -> Self {
+        self.discrete_step = Some((self.max - self.min) / 2.0);
+        self.cyclic = false;
+        self.three_way_labels = Some([min, middle, max]);
+        self.two_way_labels = None;
+        self
+    }
+    fn mode_labels(&self) -> Option<&[&'static str]> {
+        self.three_way_labels
+            .as_ref()
+            .map(|l| l.as_slice())
+            .or_else(|| self.two_way_labels.as_ref().map(|l| l.as_slice()))
     }
     pub fn bipolar(mut self) -> Self {
         self.bipolar = true;
@@ -568,7 +590,7 @@ fn base_knob(
     let size = if spec.diagram.is_some()
         || spec.value_label.is_some()
         || spec.endpoint_labels.is_some()
-        || spec.two_way_labels.is_some()
+        || spec.mode_labels().is_some()
     {
         CHOICE_SIZE
     } else {
@@ -687,7 +709,7 @@ fn base_knob(
         let painter = ui.painter();
         let center = rect.center();
         let radius = SIZE / 2.0 - 2.0;
-        let (start, sweep) = if spec.two_way_labels.is_some() {
+        let (start, sweep) = if spec.mode_labels().is_some() {
             (-0.75 * PI, 0.5 * PI)
         } else if spec.cyclic {
             (-0.5 * PI, 2.0 * PI)
@@ -729,7 +751,7 @@ fn base_knob(
             0.0
         };
         arc(0.0, 1.0, theme::palette(ui.ctx()).border);
-        if spec.two_way_labels.is_none() && !spec.cyclic && normalized != origin {
+        if spec.mode_labels().is_none() && !spec.cyclic && normalized != origin {
             arc(origin, normalized, theme::accent(ui.ctx()));
         }
         painter.circle(
@@ -761,7 +783,7 @@ fn base_knob(
                 ),
             )
         };
-        if spec.two_way_labels.is_none() {
+        if spec.mode_labels().is_none() {
             if let Some(diagram) = spec.diagram {
                 let step = spec.discrete_step.unwrap();
                 for index in 0..=((spec.max - spec.min) / step).round() as u32 {
@@ -832,21 +854,49 @@ fn base_knob(
                 );
             }
         }
-        if let Some(labels) = spec.two_way_labels {
-            for (choice, position, align, label) in [
-                (spec.min, rect.left_top(), egui::Align2::LEFT_TOP, labels[0]),
-                (
-                    spec.max,
-                    rect.right_top(),
-                    egui::Align2::RIGHT_TOP,
-                    labels[1],
-                ),
-            ] {
+        if let Some(labels) = spec.mode_labels() {
+            let font = crate::fonts::numeric(9.0);
+            let widths: Vec<_> = labels
+                .iter()
+                .map(|label| {
+                    painter
+                        .layout_no_wrap(
+                            (*label).into(),
+                            font.clone(),
+                            theme::palette(ui.ctx()).text,
+                        )
+                        .size()
+                        .x
+                })
+                .collect();
+            // Long captions can extend within the row padding, without changing the knob center.
+            let span = if labels.len() == 2 {
+                widths[0] + widths[1] + 6.0
+            } else {
+                2.0 * (widths[0].max(widths[2]) + widths[1] * 0.5 + 4.0)
+            }
+            .max(rect.width());
+            for (index, label) in labels.iter().enumerate() {
+                let (position, align) = if index == 0 {
+                    (
+                        Pos2::new(rect.center().x - span * 0.5, rect.top()),
+                        egui::Align2::LEFT_TOP,
+                    )
+                } else if index == labels.len() - 1 {
+                    (
+                        Pos2::new(rect.center().x + span * 0.5, rect.top()),
+                        egui::Align2::RIGHT_TOP,
+                    )
+                } else {
+                    (rect.center_top(), egui::Align2::CENTER_TOP)
+                };
+                let choice =
+                    spec.min + (spec.max - spec.min) * index as f32 / (labels.len() - 1) as f32;
                 painter.text(
                     position,
                     align,
-                    label,
-                    crate::fonts::numeric(9.0),
+                    *label,
+                    font.clone(),
                     if choice == *value {
                         theme::accent(ui.ctx())
                     } else {
@@ -1184,6 +1234,8 @@ mod tests {
     fn stepped_keyboard_values_clamp_reset_and_ignore_disabled_input() {
         for spec in [
             KnobSpec::new("Waveform", 0.0..=3.0, 0.0, 1.0).stepped(1.0),
+            KnobSpec::new("Stretch mode", 0.0..=2.0, 0.0, 1.0)
+                .three_way_labels("Off", "Time", "Bars"),
             KnobSpec::new("Rate mode", 0.0..=1.0, 1.0, 1.0).two_way_labels("Hz", "Note"),
             KnobSpec::new("Pitch", -48.0..=48.0, 0.0, 1.0)
                 .stepped(1.0)

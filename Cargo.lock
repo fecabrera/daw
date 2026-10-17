@@ -1120,6 +1120,7 @@ dependencies = [
  "daw-media",
  "daw-oscillator",
  "daw-ott",
+ "daw-sampler",
  "daw-unit-core",
  "serde_json",
 ]
@@ -1213,6 +1214,13 @@ dependencies = [
  "serde_json",
  "symphonia",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "daw-sampler"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
 ]
 
 [[package]]

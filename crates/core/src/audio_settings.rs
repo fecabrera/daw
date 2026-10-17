@@ -53,6 +53,26 @@ impl Project {
                 repeat.phase_frame = scale(repeat.phase_frame)?.min(repeat.length_frames - 1);
             }
         }
+        for layer in next
+            .tracks
+            .iter_mut()
+            .filter_map(|t| t.instrument.as_mut())
+            .flat_map(|i| &mut i.layers)
+        {
+            if let Some(s) = &mut layer.sampler {
+                s.start_frame = scale(s.start_frame)?;
+                s.end_frame = scale(s.end_frame)?;
+                if let Some(i) = &mut s.input {
+                    i.source_offset_frame = scale(i.source_offset_frame)?;
+                    i.length_frames = scale(i.length_frames)?;
+                    if let Some(r) = &mut i.repeat {
+                        r.length_frames = scale(r.length_frames)?;
+                        r.phase_frame =
+                            scale(r.phase_frame)?.min(r.length_frames.saturating_sub(1));
+                    }
+                }
+            }
+        }
         next.transport.playhead_frame = scale(next.transport.playhead_frame)?;
         next.transport.r#loop.start_frame = scale(next.transport.r#loop.start_frame)?;
         next.transport.r#loop.end_frame = scale(next.transport.r#loop.end_frame)?;

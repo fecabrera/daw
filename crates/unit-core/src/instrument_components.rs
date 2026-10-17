@@ -7,6 +7,7 @@ use uuid::Uuid;
 #[serde(tag = "kind", content = "id", rename_all = "snake_case")]
 pub enum InstrumentComponent {
     Oscillators,
+    Sampler,
     /// An individual source strip can transfer, but is not a component unit in this order.
     Oscillator(Uuid),
     Envelope(Uuid),
@@ -16,7 +17,10 @@ pub enum InstrumentComponent {
 }
 impl InstrumentComponent {
     pub fn is_source(self) -> bool {
-        matches!(self, Self::Oscillators | Self::Oscillator(_))
+        matches!(
+            self,
+            Self::Oscillators | Self::Sampler | Self::Oscillator(_)
+        )
     }
 }
 
@@ -30,11 +34,8 @@ fn ordered(
             order.push(*unit);
         }
     }
-    // Sources are pinned even when legacy or partial saved orders omit them.
-    if let Some(index) = order.iter().position(|c| c.is_source()) {
-        let source = order.remove(index);
-        order.insert(0, source);
-    }
+    // Hidden source positions cannot put the active source behind another component.
+    order.sort_by_key(|c| !c.is_source());
     order
 }
 fn valid(saved: &[InstrumentComponent], inventory: &[InstrumentComponent]) -> bool {
@@ -113,7 +114,8 @@ fn remove_providers(
                 lfos.iter_mut().find(|l| l.id == id).unwrap().present = false
             }
             InstrumentComponent::Macros => macros.present = false,
-            InstrumentComponent::Oscillators
+            InstrumentComponent::Sampler
+            | InstrumentComponent::Oscillators
             | InstrumentComponent::Oscillator(_)
             | InstrumentComponent::Amplitude => {}
         }
@@ -123,6 +125,7 @@ fn remove_providers(
 impl InstrumentLayerSettings {
     fn component_inventory(&self) -> Vec<InstrumentComponent> {
         std::iter::once(InstrumentComponent::Oscillators)
+            .chain(self.sampler.as_ref().map(|_| InstrumentComponent::Sampler))
             .chain(
                 self.envelopes
                     .iter()
@@ -134,6 +137,7 @@ impl InstrumentLayerSettings {
     }
     pub fn has_component(&self, unit: InstrumentComponent) -> bool {
         match unit {
+            InstrumentComponent::Sampler => self.sampler.is_some(),
             InstrumentComponent::Oscillators => !self.oscillators.is_empty(),
             InstrumentComponent::Envelope(id) => {
                 self.envelopes.iter().any(|e| e.id == id && e.present)
@@ -169,6 +173,10 @@ impl InstrumentLayerSettings {
         if units.contains(&InstrumentComponent::Oscillators) {
             self.oscillators.clear();
             self.oscillator_modulations.clear();
+        }
+        if units.contains(&InstrumentComponent::Sampler) {
+            self.sampler = None;
+            self.prune_component_order();
         }
         if units.contains(&InstrumentComponent::Amplitude) {
             self.amplitude.present = false;

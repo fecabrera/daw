@@ -121,3 +121,57 @@ pub fn unit_label(ui: &mut Ui, name: &str) -> egui::Response {
     );
     ui.add(egui::Label::new(label).selectable(false))
 }
+
+/// Join related inputs inside one standard frame, retaining each widget's interaction.
+pub fn input_group<R>(ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    let palette = crate::theme::palette(ui.ctx());
+    let border = ui.visuals().widgets.inactive.bg_stroke.width;
+    let frame = egui::Frame::new()
+        .fill(palette.input)
+        .stroke(ui.visuals().widgets.inactive.bg_stroke)
+        .corner_radius(ui.visuals().widgets.inactive.corner_radius);
+    frame.show(ui, |ui| {
+        // Include the outer border in the standard input height.
+        ui.spacing_mut().interact_size.y =
+            (crate::toolbars::CONTROL_HEIGHT - 2.0 * border).max(0.0);
+        ui.spacing_mut().button_padding.y = (ui.spacing().button_padding.y - 2.0 * border).max(0.0);
+        ui.spacing_mut().item_spacing.x = 0.0;
+        // TextEdit otherwise adds its focused stroke outside the inner control.
+        // Keep the selection text color; the group owns the input outline.
+        ui.visuals_mut().selection.stroke.width = 0.0;
+        let widgets = &mut ui.visuals_mut().widgets;
+        for widget in [
+            &mut widgets.noninteractive,
+            &mut widgets.inactive,
+            &mut widgets.hovered,
+            &mut widgets.active,
+            &mut widgets.open,
+        ] {
+            widget.bg_stroke = egui::Stroke::NONE;
+            widget.corner_radius = egui::CornerRadius::ZERO;
+        }
+        ui.horizontal(content).inner
+    })
+}
+
+/// Paint one input-group outline and divider with the standard focus/hover colors.
+pub fn input_group_outline(ui: &Ui, rect: egui::Rect, divider: f32, controls: &[&egui::Response]) {
+    let visuals = if controls.iter().any(|r| r.has_focus() || r.dragged()) {
+        &ui.visuals().widgets.active
+    } else if controls.iter().any(|r| r.hovered()) {
+        &ui.visuals().widgets.hovered
+    } else {
+        &ui.visuals().widgets.inactive
+    };
+    ui.painter().rect_stroke(
+        rect,
+        visuals.corner_radius,
+        visuals.bg_stroke,
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().vline(
+        divider,
+        rect.top() + 1.0..=rect.bottom() - 1.0,
+        egui::Stroke::new(1.0, crate::theme::palette(ui.ctx()).border),
+    );
+}

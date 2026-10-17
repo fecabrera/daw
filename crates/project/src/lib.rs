@@ -1,3 +1,4 @@
+mod sampler;
 use daw_core::{Asset, Clip, ClipStretch, Id, Project, Source};
 use daw_engine::RenderPlan;
 use daw_media::{AudioData, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec};
@@ -166,10 +167,22 @@ impl Session {
     pub fn prepare_stretches(&mut self) -> Result<()> {
         self.prepare_stretches_cancellable(&|| false)
     }
-    fn prepare_stretches_cancellable(&mut self, cancelled: &impl Fn() -> bool) -> Result<()> {
+    pub fn prepare_stretches_cancellable(&mut self, cancelled: &impl Fn() -> bool) -> Result<()> {
         self.project.validate().map_err(error)?;
         let mut prepared = HashMap::new();
-        for clip in self.project.tracks.iter().flat_map(|track| &track.clips) {
+        let sampler_clips: Vec<_> = self
+            .project
+            .samplers()
+            .filter_map(|s| s.input.as_ref())
+            .map(Clip::from)
+            .collect();
+        for clip in self
+            .project
+            .tracks
+            .iter()
+            .flat_map(|track| &track.clips)
+            .chain(&sampler_clips)
+        {
             if cancelled() {
                 return Err(error("Audio preparation cancelled"));
             }
@@ -202,7 +215,11 @@ impl Session {
         if cancelled() {
             return Err(error("Audio preparation cancelled"));
         }
-        self.stretched_audio = prepared;
+        let mut next = self.clone();
+        next.stretched_audio = prepared;
+        next.prepare_sampler_audio(cancelled)?;
+        self.stretched_audio = next.stretched_audio;
+        self.audio = next.audio;
         Ok(())
     }
     pub fn open(folder: &Path) -> Result<Self> {

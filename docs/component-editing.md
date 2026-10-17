@@ -75,3 +75,7 @@ Timeline track/Master, regular layer, and Main selection outlines meet all four 
 
 
 Macro headers use these same installed-component gestures. The module moves all its strips, saved names, and targeted input routes, merging into a populated destination. Moves remap all consumers; copies use fresh strip/route IDs and matching targets while retaining source assignments. Both regular layers and Main accept Macro modules. See [Macro editing](macro.md#editing-and-saved-state).
+
+## Sampler source ownership — 2026-10-17
+
+The component catalog also exposes [Sampler](sampler.md). Each regular layer accepts one Oscillator component or one Sampler component. Oscillator retains multiple internal strips. Sampler stays first, cannot enter Main, and rejects source conflicts during catalog previews, additions, and installed moves/copies. Source headers provide an explicit Replace source action. Existing group selection, insertion, copy IDs, removal keys, and cancellation apply. Sampler copies share immutable audio and receive new sampler IDs. Sampler removal discards its source settings and prunes its saved order entry; other retained components keep their restoration behavior.

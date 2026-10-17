@@ -162,6 +162,11 @@ fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModulationTarget {
     Effect(Id),
+    /// Playback position in prepared sample frames; shares the atomic telemetry transport.
+    Sampler {
+        track: Id,
+        layer: Id,
+    },
     Macro {
         track: Id,
         layer: Id,
@@ -264,7 +269,7 @@ impl Renderer {
             .project
             .tracks
             .iter()
-            .map(|track| midi::MidiTrackRuntime::new(&plan.project, track))
+            .map(|track| midi::MidiTrackRuntime::with_audio(&plan.project, track, &plan.audio))
             .collect();
         // Prepare source identity off the callback. Mixer/source control changes need only
         // parameter ramps; restarting the output transition would modulate a held sample.
@@ -344,6 +349,17 @@ impl Renderer {
     /// Full readings. EQ/Compressor use their parameter-list order; added unused slots contain NaN.
     pub fn modulation_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {
         match target {
+            ModulationTarget::Sampler { track, layer } => {
+                let index = self
+                    .plan
+                    .project
+                    .tracks
+                    .iter()
+                    .position(|t| t.id == track)?;
+                Some(parameter_snapshot([self.midi[index]
+                    .as_ref()?
+                    .sampler_position(layer)]))
+            }
             ModulationTarget::Effect(id) => {
                 self.master_effects.modulation_values(id).or_else(|| {
                     self.effects

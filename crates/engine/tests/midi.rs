@@ -3112,3 +3112,267 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
         }
     }
 }
+
+fn sampler_plan(rate: u32, trigger: SamplerTrigger) -> RenderPlan {
+    let mut p = plan(Waveform::Sine, rate);
+    let track = p.project.tracks[0].id;
+    let clip = p.project.tracks[0].clips[0].id;
+    p.project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: MidiPattern {
+                length_ticks: 3840,
+                notes: vec![MidiNote {
+                    id: Id::from_u128(1),
+                    start_tick: 0,
+                    length_ticks: 120,
+                    pitch: 20,
+                    velocity: 127,
+                }],
+            },
+        })
+        .unwrap();
+    let asset = Id::new_v4();
+    let id = Id::new_v4();
+    let length = u64::from(rate) / 5;
+    let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+    layer.oscillators.clear();
+    layer.envelopes.clear();
+    layer.amplitude = Default::default();
+    layer.sampler = Some(SamplerSettings {
+        id,
+        trigger,
+        end_frame: length,
+        input: Some(SamplerInput {
+            asset_id: asset,
+            name: "Stereo sample".into(),
+            source_offset_frame: 0,
+            length_frames: length,
+            repeat: None,
+            stretch: None,
+        }),
+        ..Default::default()
+    });
+    let metadata = SourceMetadata {
+        sample_rate_hz: rate,
+        channels: 2,
+        sample_format: "ieee_float".into(),
+        bits_per_sample: 32,
+    };
+    p.project.assets.push(Asset {
+        id: asset,
+        name: "sample.wav".into(),
+        source: Source {
+            kind: "external".into(),
+            path: "sample.wav".into(),
+            path_kind: "relative".into(),
+        },
+        source_metadata: metadata.clone(),
+        decoded_frame_count: length,
+        midi_pattern: None,
+    });
+    let audio = daw_media::AudioData {
+        sample_rate_hz: rate,
+        samples: std::sync::Arc::new(vec![[0.4, -0.2]; length as usize]),
+        peaks: Default::default(),
+        metadata,
+    };
+    p.audio.insert(asset, audio.clone());
+    p.audio.insert(id, audio);
+    assert_eq!(p.project.tracks[0].id, track);
+    p.project.validate().unwrap();
+    p
+}
+
+#[test]
+fn sampler_one_shot_gate_stereo_pitch_metadata_and_render_paths_agree_at_all_rates() {
+    for rate in SAMPLE_RATES {
+        for trigger in [SamplerTrigger::OneShot, SamplerTrigger::Gate] {
+            let p = sampler_plan(rate, trigger);
+            let mut expected = vec![[0.0; 2]; rate as usize / 3];
+            Renderer::new(p.clone()).render_offline(&mut expected);
+            assert!(expected[rate as usize / 20][0] > 0.1);
+            assert_eq!(
+                expected[rate as usize / 10][0] > 0.1,
+                trigger == SamplerTrigger::OneShot
+            );
+            assert!(expected[rate as usize / 4..].iter().all(|s| *s == [0.0; 2]));
+            for sample in &expected {
+                assert!((sample[0] + sample[1] * 2.0).abs() < 1e-6);
+            }
+            let mut blocks = Renderer::new(p.clone());
+            let mut actual = vec![[0.0; 2]; expected.len()];
+            for block in actual.chunks_mut(127) {
+                blocks.render_offline(block);
+            }
+            assert_eq!(actual, expected);
+            let mut random = [[0.0; 2]; 64];
+            p.render(u64::from(rate / 10), &mut random);
+            assert_eq!(
+                &random,
+                &expected[rate as usize / 10..rate as usize / 10 + 64]
+            );
+            let mut metadata = p.clone();
+            metadata.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0]
+                .sampler
+                .as_mut()
+                .unwrap()
+                .root_note = 127;
+            let asset = metadata.project.tracks[0].clips[0].asset_id;
+            metadata
+                .project
+                .assets
+                .iter_mut()
+                .find(|a| a.id == asset)
+                .unwrap()
+                .midi_pattern
+                .as_mut()
+                .unwrap()
+                .notes[0]
+                .pitch = 127;
+            let mut different_pitch = vec![[0.0; 2]; expected.len()];
+            Renderer::new(metadata).render_offline(&mut different_pitch);
+            assert_eq!(different_pitch, expected);
+            let mut live = Renderer::new(p);
+            live.play();
+            ALLOCATIONS.with(|c| c.set(0));
+            TRACK_ALLOCATIONS.with(|c| c.set(true));
+            for (frame, expected) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if frame > rate as usize / 200 {
+                    assert_eq!(actual, *expected);
+                }
+            }
+            live.pause();
+            for _ in 0..rate / 200 + 1 {
+                live.next_sample();
+            }
+            live.play();
+            live.seek(1000);
+            live.stop();
+            TRACK_ALLOCATIONS.with(|c| c.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        }
+    }
+}
+
+#[test]
+fn sampler_gain_power_presentation_and_voice_positions_survive_compatible_updates_without_allocation()
+ {
+    let p = sampler_plan(48000, SamplerTrigger::OneShot);
+    let track = p.project.tracks[0].id;
+    let layer = p.project.tracks[0].instrument.as_ref().unwrap().layers[0].id;
+    let target = daw_engine::ModulationTarget::Sampler { track, layer };
+    let mut old = Renderer::new(p.clone());
+    let mut reference = Renderer::new(p.clone());
+    old.play();
+    reference.play();
+    for _ in 0..2000 {
+        assert_eq!(old.next_sample(), reference.next_sample());
+    }
+    let mut next_plan = p.clone();
+    let s = next_plan.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0]
+        .sampler
+        .as_mut()
+        .unwrap();
+    s.collapsed = true;
+    s.root_note = 73;
+    let mut next = Renderer::new(next_plan.clone());
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACK_ALLOCATIONS.with(|c| c.set(true));
+    next.inherit(&mut old);
+    for _ in 0..512 {
+        assert_eq!(next.next_sample(), reference.next_sample());
+    }
+    assert!(next.modulation_snapshot(target).unwrap()[0] > 2000.0);
+    TRACK_ALLOCATIONS.with(|c| c.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    next_plan.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0]
+        .sampler
+        .as_mut()
+        .unwrap()
+        .enabled = false;
+    let mut muted = Renderer::new(next_plan);
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACK_ALLOCATIONS.with(|c| c.set(true));
+    muted.inherit(&mut next);
+    for _ in 0..512 {
+        assert!(muted.next_sample().iter().all(|v| v.is_finite()));
+    }
+    assert_eq!(muted.next_sample(), [0.0; 2]);
+    TRACK_ALLOCATIONS.with(|c| c.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}
+
+#[test]
+fn adding_an_empty_sampler_layer_preserves_existing_oscillator_audio_and_track_pan() {
+    for pan in [-1.0, -0.4, 0.0, 0.7, 1.0] {
+        let mut original = plan(Waveform::Sine, 48000);
+        original.project.tracks[0].pan = pan;
+        let mut added = original.clone();
+        added.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers
+            .push(InstrumentLayerSettings {
+                sampler: Some(Default::default()),
+                ..Default::default()
+            });
+        let mut before = [[0.0; 2]; 1024];
+        let mut after = before;
+        Renderer::new(original).render_offline(&mut before);
+        Renderer::new(added).render_offline(&mut after);
+        assert_eq!(before, after);
+    }
+}
+
+#[test]
+fn sampler_trigger_changes_apply_to_new_notes_without_cutting_or_reviving_existing_notes() {
+    for trigger in [SamplerTrigger::OneShot, SamplerTrigger::Gate] {
+        for elapsed in [2000, 4000] {
+            let p = sampler_plan(48000, trigger);
+            let mut old = Renderer::new(p.clone());
+            let mut reference = Renderer::new(p.clone());
+            old.play();
+            reference.play();
+            for _ in 0..elapsed {
+                assert_eq!(old.next_sample(), reference.next_sample());
+            }
+            let mut changed = p;
+            changed.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0]
+                .sampler
+                .as_mut()
+                .unwrap()
+                .trigger = match trigger {
+                SamplerTrigger::OneShot => SamplerTrigger::Gate,
+                SamplerTrigger::Gate => SamplerTrigger::OneShot,
+            };
+            let mut next = Renderer::new(changed);
+            ALLOCATIONS.with(|c| c.set(0));
+            TRACK_ALLOCATIONS.with(|c| c.set(true));
+            next.inherit(&mut old);
+            for _ in elapsed..8500 {
+                assert_eq!(next.next_sample(), reference.next_sample());
+            }
+            TRACK_ALLOCATIONS.with(|c| c.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        }
+    }
+}

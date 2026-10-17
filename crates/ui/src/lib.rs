@@ -3,7 +3,9 @@ mod clip_paint;
 mod looping;
 mod midi_editor;
 mod placement;
+mod range_selection;
 mod resize;
+mod sampler_panel;
 mod stretch;
 mod track_selection;
 mod trim;
@@ -1336,8 +1338,21 @@ impl DawUi {
         }
     }
     fn edit(&mut self, command: Edit) {
-        match self.session.project.edit(command) {
+        let mut project = self.session.project.clone();
+        match project.edit(command) {
             Ok(()) => {
+                if self.session.sampler_preparation_needed(&project) {
+                    let mut session = self.session.clone();
+                    session.project = project;
+                    self.run_sampler_job("Preparing sampler", move |cancel| {
+                        session
+                            .prepare_stretches_cancellable(&|| cancel.load(Ordering::Relaxed))
+                            .map_err(|e| e.to_string())?;
+                        Ok(session)
+                    });
+                    return;
+                }
+                self.session.project = project;
                 if self.track_name_edit.as_ref().is_some_and(|edit| {
                     !self
                         .session
@@ -1816,6 +1831,9 @@ impl DawUi {
             self.selected_effects.clear();
             ctx.request_repaint();
         }
+        if self.view_mode == ViewMode::Instrument {
+            self.finish_clip_drag(ui);
+        }
         self.clip_shortcuts(&ctx);
         if ui.is_enabled() {
             self.track_shortcuts(&ctx);
@@ -1826,7 +1844,20 @@ impl DawUi {
             && self.project_settings.is_none()
             && !self.settings_open
         {
-            if self.file_action_enabled(FileAction::Import)
+            let sampler_file = ctx
+                .input(|i| i.pointer.latest_pos())
+                .and_then(|p| self.sampler_drop_target(p))
+                .zip(ctx.input(|i| i.raw.dropped_files.first().cloned()));
+            if self.edit_environment_available()
+                && let Some((target, dropped)) = sampler_file
+            {
+                self.file_drop_target = None;
+                if ctx.input(|i| i.raw.dropped_files.len()) > 1 {
+                    self.fail("Drop one audio file onto a Sampler");
+                } else {
+                    self.load_sampler_file(target, dropped.path().to_path_buf());
+                }
+            } else if self.file_action_enabled(FileAction::Import)
                 && let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned())
                 && let Some(target) = self.file_drop_target.take()
             {
@@ -1995,10 +2026,12 @@ impl DawUi {
         if bpm == self.session.project.tempo_bpm {
             return;
         }
-        match self.session.project.edit(Edit::SetTempo { bpm }) {
-            Ok(()) => self.changed(),
-            Err(error) => self.fail(format!("Tempo change rejected: {error}")),
+        let mut candidate = self.session.project.clone();
+        if let Err(error) = candidate.edit(Edit::SetTempo { bpm }) {
+            self.fail(format!("Tempo change rejected: {error}"));
+            return;
         }
+        self.edit(Edit::SetTempo { bpm });
     }
     fn tempo_control(&mut self, ui: &mut egui::Ui) {
         let previous = self.session.project.tempo_bpm;
@@ -2900,20 +2933,9 @@ impl DawUi {
             return LoopDragMode::Create;
         }
         let (left, right) = self.loop_pixels(rect);
-        let left_distance = (pointer.x - left).abs();
-        let right_distance = (pointer.x - right).abs();
-        if left_distance.min(right_distance) <= 5.0 {
-            if left_distance <= right_distance {
-                LoopDragMode::Start
-            } else {
-                LoopDragMode::End
-            }
-        } else if (left..right).contains(&pointer.x) {
-            LoopDragMode::Move
-        } else {
-            LoopDragMode::Create
-        }
+        range_selection::mode(left, right, pointer)
     }
+
     fn ruler_frame(&self, rect: Rect, pointer: Pos2) -> u64 {
         self.session
             .project
@@ -2951,45 +2973,21 @@ impl DawUi {
             let at = self.ruler_frame(rect, pointer);
             let original = &drag.original;
             let unsnapped = musical_time::snap_bypassed(ui);
-            let (start, end) = match drag.mode {
-                LoopDragMode::Create => {
-                    let origin = self.selection_frame(
-                        i128::from(self.ruler_frame(rect, drag.origin)),
-                        0..=u64::MAX,
-                        unsnapped,
-                    );
-                    let at = self.selection_frame(i128::from(at), 0..=u64::MAX, unsnapped);
-                    (origin.min(at), origin.max(at))
-                }
-                LoopDragMode::Start => (
-                    self.selection_frame(
-                        i128::from(at),
-                        0..=original.end_frame - 1,
-                        unsnapped || at == original.start_frame,
-                    ),
-                    original.end_frame,
-                ),
-                LoopDragMode::End => (
-                    original.start_frame,
-                    self.selection_frame(
-                        i128::from(at),
-                        original.start_frame + 1..=u64::MAX,
-                        unsnapped || at == original.end_frame,
-                    ),
-                ),
-                LoopDragMode::Move => {
-                    let length = original.end_frame - original.start_frame;
-                    let delta = (f64::from(pointer.x - drag.origin.x) / f64::from(self.view_zoom())
+            let [start, end] = range_selection::preview(
+                range_selection::Gesture {
+                    mode: drag.mode,
+                    origin_frame: self.ruler_frame(rect, drag.origin),
+                    at_frame: at,
+                    delta_frames: (f64::from(pointer.x - drag.origin.x)
+                        / f64::from(self.view_zoom())
                         * f64::from(self.session.project.sample_rate_hz))
-                    .round() as i128;
-                    let start = self.selection_frame(
-                        i128::from(original.start_frame) + delta,
-                        0..=u64::MAX - length,
-                        unsnapped || delta == 0,
-                    );
-                    (start, start + length)
-                }
-            };
+                    .round() as i128,
+                },
+                [original.start_frame, original.end_frame],
+                u64::MAX,
+                unsnapped,
+                |raw, bounds, bypass| self.selection_frame(raw, bounds, bypass),
+            );
             let region = &mut self.session.project.transport.r#loop;
             if end > start && (region.start_frame, region.end_frame) != (start, end) {
                 region.start_frame = start;
@@ -3081,27 +3079,9 @@ impl DawUi {
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
         painter.rect_filled(labels, 0.0, theme::palette(ui.ctx()).panel);
         let l = &self.session.project.transport.r#loop;
-        let (loop_fill, loop_handle) = theme::ruler_loop_colors(ui.ctx(), l.enabled);
         let (x1, x2) = self.loop_pixels(rect);
-        if l.end_frame > l.start_frame && x2 > rect.left() && x1 < rect.right() {
-            let band = Rect::from_min_max(
-                Pos2::new(x1.max(rect.left()), labels.top()),
-                Pos2::new(x2.min(rect.right()), labels.bottom()),
-            );
-            painter.rect_filled(band, 0.0, loop_fill);
-            // Draw handles at the real endpoints, including when the range is scrolled.
-            for x in [x1, x2] {
-                if (rect.left()..=rect.right()).contains(&x) {
-                    painter.rect_filled(
-                        Rect::from_min_max(
-                            Pos2::new(x - 1.5, labels.top() + 2.0),
-                            Pos2::new(x + 1.5, labels.bottom() - 2.0),
-                        ),
-                        0.0,
-                        loop_handle,
-                    );
-                }
-            }
+        if l.end_frame > l.start_frame {
+            range_selection::paint(ui, labels, x1, x2, l.enabled);
         }
         if let Some(pointer) = selection_response.hover_pos() {
             let mode = self
@@ -3115,47 +3095,14 @@ impl DawUi {
                 LoopDragMode::Move => egui::CursorIcon::Grab,
             });
         }
-        painter.line_segment(
-            [ticks.left_top(), ticks.right_top()],
-            Stroke::new(1.0_f32, theme::palette(ui.ctx()).border),
-        );
         let timeline = self.musical_timeline();
-        for tick in timeline.ticks(rect.width()) {
-            let x = rect.left() + tick.x;
-            if x < rect.left() || x > rect.right() {
-                continue;
-            }
-            let top = if tick.bar {
-                rect.top()
-            } else if tick.whole_beat {
-                ticks.top()
-            } else if tick.beat.fract() == 0.5 {
-                ticks.bottom() - 8.0
-            } else {
-                ticks.bottom() - 5.0
-            };
-            painter.line_segment(
-                [Pos2::new(x, top), Pos2::new(x, ticks.bottom())],
-                Stroke::new(1.0_f32, theme::palette(ui.ctx()).secondary),
-            );
-            if let Some(label) = tick.label {
-                let selected = tick.beat >= timeline.beats(l.start_frame)
-                    && tick.beat < timeline.beats(l.end_frame);
-                painter.text(
-                    Pos2::new(x + 3.0, labels.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    label,
-                    egui::FontId::proportional(11.0),
-                    if selected && l.enabled {
-                        theme::contrast_color(loop_fill)
-                    } else if selected && ui.visuals().dark_mode {
-                        theme::CLIP_TEXT
-                    } else {
-                        theme::palette(ui.ctx()).text
-                    },
-                );
-            }
-        }
+        timeline.paint_ruler_ticks(
+            &painter,
+            rect,
+            labels,
+            [l.start_frame, l.end_frame],
+            l.enabled,
+        );
         let playhead_x = rect.left()
             + ((self
                 .session
@@ -3654,24 +3601,9 @@ impl DawUi {
         )
     }
     fn paint_grid(&self, painter: &egui::Painter, rect: Rect) {
-        for tick in self.musical_timeline().ticks(rect.width()) {
-            let x = rect.left() + tick.x;
-            if x < rect.left() || x > rect.right() {
-                continue;
-            }
-            let color = if tick.bar {
-                theme::palette(painter.ctx()).border
-            } else if tick.whole_beat {
-                theme::palette(painter.ctx()).grid
-            } else {
-                theme::palette(painter.ctx()).grid_subdivision
-            };
-            painter.line_segment(
-                [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-                Stroke::new(1.0_f32, color),
-            );
-        }
+        self.musical_timeline().paint_grid(painter, rect);
     }
+
     fn clip_block(&self, lane: Rect, clip: &Clip, start: u64) -> Rect {
         let left = lane.left()
             + ((self.session.project.seconds(start) - self.view_scroll()) as f32)
@@ -4446,6 +4378,25 @@ impl DawUi {
                 .input(|input| input.pointer.latest_pos())
                 .unwrap_or(drag.origin);
             if drag.mode == ClipDragMode::Move {
+                if let Some(target) = self.sampler_drop_target(pointer) {
+                    if drag.clips.len() > 1 {
+                        self.fail("Drop one audio clip onto a Sampler");
+                        return;
+                    }
+                    let session = self.session.clone();
+                    let clip = drag.clip.clone();
+                    self.run_sampler_job("Preparing sample", move |cancel| {
+                        session
+                            .with_sampler_clip_cancellable(target.0, target.1, &clip, &|| {
+                                cancel.load(Ordering::Relaxed)
+                            })
+                            .map_err(|e| e.to_string())
+                    });
+                    return;
+                }
+                if self.view_mode == ViewMode::Instrument {
+                    return;
+                }
                 let previews = self
                     .move_group_preview(&drag, pointer, musical_time::snap_bypassed(ui))
                     .unwrap_or_default();
@@ -4671,6 +4622,7 @@ mod tests {
     mod placement_overwrite;
     mod project_settings;
     mod resize_neighbors;
+    mod sampler;
     mod track_header;
     mod track_shortcuts;
     mod transport;

@@ -9,6 +9,8 @@ pub(super) struct Entry {
     pub name: &'static str,
     add_layer: fn(&mut daw_core::InstrumentLayerSettings),
     add_main: Option<fn(&mut daw_core::InstrumentBusSettings)>,
+    source: bool,
+    layer_available: fn(&daw_core::InstrumentLayerSettings) -> bool,
 }
 impl Entry {
     const fn layer(
@@ -21,7 +23,14 @@ impl Entry {
             name,
             add_layer: add,
             add_main: None,
+            source: false,
+            layer_available: |_| true,
         }
+    }
+    const fn source(mut self, available: fn(&daw_core::InstrumentLayerSettings) -> bool) -> Self {
+        self.source = true;
+        self.layer_available = available;
+        self
     }
     const fn with_main(mut self, add: fn(&mut daw_core::InstrumentBusSettings)) -> Self {
         self.add_main = Some(add);
@@ -34,7 +43,10 @@ impl Entry {
         if owner == settings.main.id {
             self.supports_main()
         } else {
-            settings.layers.iter().any(|layer| layer.id == owner)
+            settings
+                .layers
+                .iter()
+                .any(|layer| layer.id == owner && (self.layer_available)(layer))
         }
     }
     fn add_to(self, settings: &mut daw_core::InstrumentSettings, owner: Id) {
@@ -48,10 +60,11 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 5] = [
+pub(super) const ENTRIES: [Entry; 6] = [
     Entry::layer("daw.oscillator", "Oscillator", |l| {
         l.oscillators.push(Default::default())
-    }),
+    })
+    .source(|l| l.sampler.is_none()),
     Entry::layer("daw.envelope", "Envelope", |l| {
         add_envelope(&mut l.envelopes)
     })
@@ -68,6 +81,10 @@ pub(super) const ENTRIES: [Entry; 5] = [
     Entry::layer("daw.amplitude", "Amplitude", |l| l.amplitude.present = true),
     Entry::layer("daw.macro", "Macro", |l| l.macro_module.add())
         .with_main(|main| main.macro_module.add()),
+    Entry::layer("daw.sampler", "Sampler", |l| {
+        l.sampler = Some(Default::default())
+    })
+    .source(|l| l.sampler.is_none() && l.oscillators.is_empty()),
 ];
 
 fn add_envelope(envelopes: &mut Vec<daw_core::EnvelopeInstance>) {
@@ -99,6 +116,9 @@ fn add_registered(
     owner: Id,
     types: &[&str],
 ) {
+    if !can_add_registered(entries, settings, owner, types) {
+        return;
+    }
     for entry in entries {
         if types.contains(&entry.type_id) {
             entry.add_to(settings, owner);
@@ -121,9 +141,19 @@ fn can_add_registered(
     owner: Id,
     types: &[&str],
 ) -> bool {
-    entries
-        .iter()
-        .any(|entry| types.contains(&entry.type_id) && entry.can_add(settings, owner))
+    (owner == settings.main.id
+        || (entries
+            .iter()
+            .filter(|e| e.source && types.contains(&e.type_id))
+            .count()
+            <= 1
+            && entries
+                .iter()
+                .filter(|e| e.source && types.contains(&e.type_id))
+                .all(|e| e.can_add(settings, owner))))
+        && entries
+            .iter()
+            .any(|entry| types.contains(&entry.type_id) && entry.can_add(settings, owner))
 }
 
 #[cfg(test)]
@@ -182,6 +212,21 @@ impl DawUi {
                 empty_enabled: allowed,
             },
         );
+        if let Some((track, owner)) = target
+            && let Some(settings) = self
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .and_then(|t| t.instrument.as_ref())
+        {
+            for (index, entry) in ENTRIES.iter().enumerate() {
+                if entry.source && !entry.can_add(settings, owner) {
+                    output.rows[index].clone().on_hover_text("A layer can contain Oscillator or Sampler. Remove its source or use Replace source in the installed source header menu.");
+                }
+            }
+        }
         if target.is_some_and(|(track_id, owner)| {
             self.session
                 .project

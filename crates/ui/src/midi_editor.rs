@@ -214,15 +214,7 @@ fn note_rect(grid: Rect, note: &MidiNote, beat_width: f32) -> Rect {
         ),
     )
 }
-fn note_name(pitch: u8) -> String {
-    format!(
-        "{}{}",
-        [
-            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
-        ][usize::from(pitch % 12)],
-        i16::from(pitch) / 12 - 1
-    )
-}
+use daw_unit_core::note_name;
 fn black_key(pitch: u8) -> bool {
     matches!(pitch % 12, 1 | 3 | 6 | 8 | 10)
 }

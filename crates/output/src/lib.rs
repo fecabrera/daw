@@ -160,6 +160,17 @@ fn modulation_meters(
             )
         })
         .map(|e| ModulationTarget::Effect(e.id));
+    let samplers = plan.project.tracks.iter().flat_map(|track| {
+        track.instrument.iter().flat_map(move |i| {
+            i.layers
+                .iter()
+                .filter(|l| l.sampler.is_some())
+                .map(move |l| ModulationTarget::Sampler {
+                    track: track.id,
+                    layer: l.id,
+                })
+        })
+    });
     let amplitudes = plan.project.tracks.iter().flat_map(|track| {
         track.instrument.iter().flat_map(move |instrument| {
             instrument
@@ -216,6 +227,7 @@ fn modulation_meters(
         .chain(macros)
         .chain(lfos)
         .chain(amplitudes)
+        .chain(samplers)
         .chain(oscillators)
         .map(|key| {
             let handle = previous.get(&key).cloned().unwrap_or_else(|| {

@@ -265,6 +265,82 @@ impl Timeline {
         .unwrap_or(start)
     }
 
+    /// Shared bar/beat/subdivision lines for arrangement, piano roll, and sample previews.
+    pub fn paint_grid(&self, painter: &egui::Painter, rect: egui::Rect) {
+        use egui::{Pos2, Stroke};
+        for tick in self.ticks(rect.width()) {
+            let x = rect.left() + tick.x;
+            if x < rect.left() || x > rect.right() {
+                continue;
+            }
+            let color = if tick.bar {
+                crate::theme::palette(painter.ctx()).border
+            } else if tick.whole_beat {
+                crate::theme::palette(painter.ctx()).grid
+            } else {
+                crate::theme::palette(painter.ctx()).grid_subdivision
+            };
+            painter.line_segment(
+                [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
+                Stroke::new(1.0_f32, color),
+            );
+        }
+    }
+
+    /// Shared ruler ticks and labels; callers own selection painting and interaction.
+    pub fn paint_ruler_ticks(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        labels: egui::Rect,
+        selection: [u64; 2],
+        enabled: bool,
+    ) {
+        use egui::{Pos2, Stroke};
+        let ticks = egui::Rect::from_min_max(labels.left_bottom(), rect.max);
+        let loop_fill = crate::theme::ruler_loop_colors(painter.ctx(), enabled).0;
+        painter.line_segment(
+            [ticks.left_top(), ticks.right_top()],
+            Stroke::new(1.0_f32, crate::theme::palette(painter.ctx()).border),
+        );
+        for tick in self.ticks(rect.width()) {
+            let x = rect.left() + tick.x;
+            if x < rect.left() || x > rect.right() {
+                continue;
+            }
+            let top = if tick.bar {
+                rect.top()
+            } else if tick.whole_beat {
+                ticks.top()
+            } else if tick.beat.fract() == 0.5 {
+                ticks.bottom() - 8.0
+            } else {
+                ticks.bottom() - 5.0
+            };
+            painter.line_segment(
+                [Pos2::new(x, top), Pos2::new(x, ticks.bottom())],
+                Stroke::new(1.0_f32, crate::theme::palette(painter.ctx()).secondary),
+            );
+            if let Some(label) = tick.label {
+                let selected =
+                    tick.beat >= self.beats(selection[0]) && tick.beat < self.beats(selection[1]);
+                painter.text(
+                    Pos2::new(x + 3.0, labels.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    label,
+                    egui::FontId::proportional(11.0),
+                    if selected && enabled {
+                        crate::theme::contrast_color(loop_fill)
+                    } else if selected && painter.ctx().theme() == egui::Theme::Dark {
+                        crate::theme::CLIP_TEXT
+                    } else {
+                        crate::theme::palette(painter.ctx()).text
+                    },
+                );
+            }
+        }
+    }
+
     pub fn ticks(&self, width: f32) -> impl Iterator<Item = Tick> + '_ {
         // Power-of-two subdivisions keep every tick aligned to the 4/4 bars.
         // Bound tick density in pixels, including at extreme valid tempos.

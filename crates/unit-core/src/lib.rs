@@ -1,4 +1,10 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+mod note_name;
+pub use note_name::{natural_note, note_name};
+mod audio_range;
+pub use audio_range::{ClipLoop, ClipStretch};
+mod sampler;
+pub use sampler::{SamplerInput, SamplerMode, SamplerSettings, SamplerTrigger};
 mod instrument_bus;
 pub use instrument_bus::InstrumentBusSettings;
 mod instrument_components;
@@ -81,6 +87,7 @@ pub struct InstrumentLayerSettings {
     pub gain_db: f32,
     pub pan: f32,
     pub oscillators: Vec<OscillatorSettings>,
+    pub sampler: Option<SamplerSettings>,
     /// Unit enable states retain individual source switches and envelope settings.
     pub oscillator_enabled: bool,
     pub oscillator_collapsed: bool,
@@ -103,6 +110,7 @@ impl Default for InstrumentLayerSettings {
             gain_db: 0.0,
             pan: 0.0,
             oscillators: Vec::new(),
+            sampler: None,
             oscillator_enabled: true,
             oscillator_collapsed: false,
             oscillator_modulation_open: false,
@@ -127,6 +135,10 @@ impl InstrumentLayerSettings {
             && self.gain_db.is_finite()
             && 10.0_f32.powf(self.gain_db / 20.0).is_finite()
             && (-1.0..=1.0).contains(&self.pan)
+            && self
+                .sampler
+                .as_ref()
+                .is_none_or(|s| s.valid() && self.oscillators.is_empty())
             && self.oscillators.iter().all(OscillatorSettings::valid)
             && self.amplitude.valid()
             && self.macro_module.valid()
@@ -193,6 +205,8 @@ struct SavedLayer {
     pan: f32,
     #[serde(deserialize_with = "oscillator::saved_oscillators")]
     oscillators: Vec<OscillatorSettings>,
+    #[serde(default)]
+    sampler: Option<SamplerSettings>,
     #[serde(default = "default_unit_enabled")]
     oscillator_enabled: bool,
     #[serde(default = "default_unit_enabled")]
@@ -255,6 +269,7 @@ impl SavedLayer {
             gain_db: self.gain_db,
             pan: self.pan,
             oscillators: self.oscillators,
+            sampler: self.sampler,
             oscillator_enabled: self.oscillator_enabled,
             oscillator_collapsed: self.oscillator_collapsed,
             oscillator_modulation_open: self.oscillator_modulation_open,
@@ -543,6 +558,14 @@ pub trait SourceUnit: Send {
     fn reset(&mut self);
     fn set_frequency(&mut self, hz: f32);
     fn next_sample(&mut self) -> f32;
+}
+
+/// A prepared stereo source with the same callback constraints as mono sources.
+/// Hosts own note scheduling; source-specific controls stay in the portable implementation.
+pub trait StereoSourceUnit: Send {
+    fn descriptor(&self) -> UnitDescriptor;
+    fn reset(&mut self);
+    fn next_sample(&mut self) -> [f32; 2];
 }
 
 /// A prepared stereo effect. All callback methods must be allocation-free and nonblocking.

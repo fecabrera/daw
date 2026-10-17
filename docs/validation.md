@@ -2464,3 +2464,46 @@ Focused checks pass:
 `cargo test --workspace --offline` passes: 761 tests pass, including 423 UI tests; two existing expanded time-stretch acceptance matrices remain ignored. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, `cargo build --locked -p daw-cli --offline`, and `python3 tools/check_cli.py` pass. CLI smoke checks cover WAV/MP3 formats/bitrates, deterministic output, missing sources, eight-track projects, overwrite protection, and exit codes. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched. Commands used the default Cargo cache. Repository-relative documentation link targets and `git diff --check` pass.
 
 Native pointer/trackpad, display-scale, audible modulation/callback timing, Windows, and Linux checks were not performed. Automated egui, DSP, and renderer checks do not establish those native behaviors.
+
+
+## Sampler source — 2026-10-17
+
+Sampler is a regular-layer Instrument source, mutually exclusive with the Oscillator component. It reuses catalog registration, source ordering, component edits/transfers, unit shells, clip mapping/header painting, mono/stereo waveform peaks, loop-selection geometry/calculation, marked Gain, fixed mode knobs, worker preparation, MIDI scheduling, Amplitude, layer/Main mixing, and prepared atomic position snapshots. Root note remains metadata. See [Sampler](sampler.md) and the [acceptance requirements](../specs/mvp-iteration-1.md#sampler-source--2026-10-17).
+
+The preview reuses the standard musical grid/ruler painters, scaled by the selected region output/input ratio in Time/Bars; snapping maps back to input frames through that ratio. Root note and sharp form one joined input group; the group and conditional duration share one horizontal row without visible field labels; tooltips and accessible names remain. The controls use a standard 90-point strip with shared padding/divider and a centered Sample footer. The fixed Off/Time/Bars selector uses the shared neutral arc and measured label spacing. The filename appears once in the clip header. Bars stores positive whole bars, with stable 1-bar drag steps and a minimum of 1. Mode/load initialization and saved fractional-bar prototype values round to the nearest whole bar. Root note reuses the standard drag input with shared piano-roll naming/parsing; semitone drags update the sharp toggle. Drag previews commit on release; cancelled text cannot commit on a later focus-loss frame. Trigger changes apply to new notes and retain existing voice behavior.
+
+Focused automated checks pass:
+
+- Portable checks cover stereo playback, 5 ms boundaries/gain/power fades, silence, seeking, source immutability, note naming/sharp validation, whole-bar initialization/migration, duration bounds, legacy defaults, and source exclusivity at all six processing rates.
+- Core checks cover source conflicts, Main exclusion, copies with fresh IDs, source ordering, removal, track duplication, and invalid-edit rollback.
+- Project workflows cover file loading, missing/error paths, retained clip trim/repeat/stretch mapping, unchanged source clips, region/duration/root/trigger/presentation persistence, save/reopen, Save As, all processing rates, and tempo-following Bars.
+- Renderer checks cover One-shot/Gate, no pitch response, stereo channels, live/export/block/random-range parity, transport, compatible Gain/power/root/presentation changes, actual positions, and zero callback allocations. Trigger changes preserve held/released notes without cutting or reviving them. Adding an empty Sampler layer preserves existing oscillator audio and track panning sample-exactly.
+- Both-theme egui checks cover catalog/source conflicts, fixed mode/trigger knobs and non-overlapping labels, standard strip width/divider/alignment/centered bottom footer, local grid/ruler alignment in Off/Time/one-bar/two-bar modes at three tempos, output/input clock mapping and snapping with trimmed regions at all six rates, joined root/sharp geometry, matched 22-point duration/group heights, fixed 160-point duration width and centered text across units/value lengths in display/text-entry states, and retained interactions, horizontal input geometry/hidden labels, filename placement, natural note/sharp text entry, root-note dragging/accidental crossings/bounds/cancellation, whole-bar stepping/minimum, compact/collapsed controls, file/clip drops, release-only region changes, cancellation, and protection against late worker publication.
+
+`cargo test --workspace --offline` passes: 778 tests pass, including 430 UI tests; two existing expanded time-stretch acceptance matrices remain ignored. After the final preview/input layout changes, `cargo test -p daw-ui --offline` passes all 433 UI tests, including local-grid/ruler, duration-clock, and fixed-width/centered duration-input checks. This final run includes the existing Timeline/Editor ruler, grid, and selection regressions.
+
+`cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, `cargo build --locked -p daw-cli --offline`, and `python3 tools/check_cli.py` pass. CLI smoke checks cover WAV/MP3 formats/bitrates, repeatable output, missing sources, eight-track projects, overwrite protection, and exit codes. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched. Commands used the default Cargo cache. Repository-relative documentation link targets and `git diff --check` pass.
+
+Native pointer/trackpad, display-scale, audible device/callback timing, Windows, and Linux checks were not performed. Automated egui, DSP, and renderer checks do not establish those native behaviors.
+
+
+## Sampler input groups — 2026-10-17
+
+Root note, sharp, and duration use the shared 11-point numeric font. Duration now has a numeric drag/text segment and a separate read-only bars/ms label under one outline, with an internal divider. Both segments center their text. The group retains its 160-point outer width, 40-point unit segment, and 22-point height. The unit stays visible during text entry. Root note and duration reuse the same group frame and focus/hover outline painter.
+
+Both-theme egui checks pass for small font sizes, joined geometry, individual segment centering, short/long values in both modes, fixed dimensions during text entry, and clean unit-label clicks. Existing root-note typing/dragging, sharp toggling, whole-bar stepping, grid, drop, selection, and cancellation checks pass.
+
+`cargo test -p daw-ui --offline` passes all 433 UI tests. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, documentation link targets, and `git diff --check` pass. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched. Native pointer/display-scale, audio-device, Windows, and Linux checks were not performed.
+
+
+## Sampler mode dropdowns — 2026-10-17
+
+The duration group's unit segment is now an Off/Time (ms)/Bars dropdown. This supersedes the separate stretch-mode knob and the read-only unit label recorded above. The closed selector shows Off/ms/bars. The joined duration control is now 120 points wide, including a 60-point mode segment. Its numeric value stays centered; unusually long values scale below the shared 11-point font to fit. Off retains an available dropdown and a disabled original-duration millisecond readout, including 0 before loading.
+
+One-shot/Gate is now a 76-point dropdown in the same row as root note and duration. Both dropdowns reuse one selector helper. The row uses 4-point gaps and matched 22-point heights within the preview width. Gain is the only knob in the standard control strip; two reserved rows retain the centered Sample footer and full-height divider. The Trigger dropdown supersedes the fixed two-way knob recorded above. Trigger behavior and saved values remain unchanged.
+
+Both-theme egui checks cover both selectors, actual stretch preparation, retained playback buffers for Trigger changes, clean current-choice selection/cancellation, disabled Off editing, row alignment, matched heights, fixed duration width/text centering during display/editing, whole-bar dragging, and the standard strip/footer. Existing root-note, grid, file/clip drop, selection, worker cancellation, and compact/collapsed checks pass.
+
+`cargo test --workspace --offline` passes: 781 tests pass, including all 433 UI tests; two existing expanded time-stretch acceptance matrices remain ignored.
+
+`cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, repository-relative documentation link targets, and `git diff --check` pass. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched. Native pointer/display-scale, audio-device, Windows, and Linux checks were not performed.

@@ -201,6 +201,15 @@ impl DawUi {
                     )
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .on_hover_text(format!("Show {label} view"));
+                if mode == ViewMode::Instrument
+                    && ui.input(|i| {
+                        i.pointer
+                            .latest_pos()
+                            .is_some_and(|p| response.rect.contains(p))
+                    })
+                {
+                    self.sampler_drag_navigation(ui.ctx());
+                }
                 let radius = style.visuals.widgets.inactive.corner_radius;
                 ui.painter().set(
                     background,

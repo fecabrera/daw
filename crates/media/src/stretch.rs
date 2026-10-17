@@ -209,7 +209,7 @@ fn stretch_audio_cancellable(
     Ok(prepared_audio(audio, samples))
 }
 
-fn prepared_audio(audio: &AudioData, samples: Vec<[f32; 2]>) -> AudioData {
+pub fn prepared_audio(audio: &AudioData, samples: Vec<[f32; 2]>) -> AudioData {
     let peaks = samples
         .chunks(256)
         .map(|chunk| {

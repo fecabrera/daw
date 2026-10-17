@@ -21,6 +21,9 @@ struct PatternClip {
 struct LayerVoice {
     id: Id,
     sources: Vec<OscillatorVoice>,
+    sampler: Option<daw_sampler::Sampler>,
+    one_shot: bool,
+    one_shot_target: bool,
     gate: Envelope,
     amplitude: daw_amplitude::Amplitude,
     routes: Vec<Route>,
@@ -79,7 +82,11 @@ impl Voice {
             e.envelope.note_on_with_duration(self.note_duration_frames);
         }
         for layer in &mut self.layers {
+            layer.one_shot = layer.one_shot_target;
             layer.gate.note_on();
+            if let Some(s) = &mut layer.sampler {
+                s.note_on();
+            }
         }
         self.velocity = f32::from(velocity) / 127.0;
         self.pitch = pitch;
@@ -112,6 +119,9 @@ impl Voice {
         }
         for layer in &mut self.layers {
             layer.gate.reset();
+            if let Some(s) = &mut layer.sampler {
+                s.reset();
+            }
             layer.amplitude.reset();
             for r in &mut layer.routes {
                 r.reset();
@@ -141,6 +151,9 @@ impl Voice {
         }
         for layer in &mut self.layers {
             layer.gate.advance(frames);
+            if let Some(s) = &mut layer.sampler {
+                s.advance(frames);
+            }
         }
     }
     fn sample(&mut self, shared: &[ModulationValue]) -> [f32; 2] {
@@ -195,7 +208,7 @@ impl Voice {
 }
 impl LayerVoice {
     fn is_idle(&self) -> bool {
-        self.gate.is_idle()
+        self.gate.is_idle() && !(self.one_shot && self.sampler.as_ref().is_some_and(|s| s.active()))
     }
     fn sample(
         &mut self,
@@ -210,7 +223,12 @@ impl LayerVoice {
             }
             self.gain_remaining -= 1;
         }
-        let gate = self.gate.next_sample();
+        let base_gate = self.gate.next_sample();
+        let gate = if self.one_shot && self.sampler.as_ref().is_some_and(|s| s.active()) {
+            1.0
+        } else {
+            base_gate
+        };
         let context = ModulationContext {
             note_gate: gate,
             release_age,
@@ -234,22 +252,31 @@ impl LayerVoice {
                     * s.gain
             })
             .sum::<f32>();
+        let mut stereo = self
+            .sampler
+            .as_mut()
+            .map_or([sources; 2], |s| s.next_sample());
         let shaped = process_modulation(
             &mut self.amplitude,
             &mut self.routes,
-            sources,
+            1.0,
             local,
             shared,
             context,
         );
-        self.gain.map(|gain| shaped * gain)
+        for (value, gain) in stereo.iter_mut().zip(self.gain) {
+            *value = (*value * shaped) * gain;
+        }
+        stereo
     }
 }
 
 /// Center is unity per channel so legacy instruments retain their original gain and track pan.
 /// Muted and solo-excluded layers continue advancing all sources/envelopes with zero output.
 fn layer_gains(layer: &daw_core::InstrumentLayerSettings, any_solo: bool) -> [f32; 2] {
-    if !layer.oscillator_enabled || !daw_core::mix_audible(layer.muted, layer.soloed, any_solo) {
+    if (layer.sampler.is_none() && !layer.oscillator_enabled)
+        || !daw_core::mix_audible(layer.muted, layer.soloed, any_solo)
+    {
         return [0.0; 2];
     }
     bus_gains(layer.gain_db, layer.pan)
@@ -283,7 +310,15 @@ pub(crate) struct MidiTrackRuntime {
 }
 impl MidiTrackRuntime {
     /// Build schedules and DSP state before publication. No callback allocations.
+    #[cfg(test)]
     pub fn new(project: &Project, track: &Track) -> Option<Self> {
+        Self::with_audio(project, track, &std::collections::HashMap::new())
+    }
+    pub fn with_audio(
+        project: &Project,
+        track: &Track,
+        audio: &std::collections::HashMap<Id, daw_media::AudioData>,
+    ) -> Option<Self> {
         if track.kind != TrackKind::Midi {
             return None;
         }
@@ -322,6 +357,15 @@ impl MidiTrackRuntime {
                     let release_frames = (f64::from(daw_core::MAX_ENVELOPE_TIME_MS)
                         * f64::from(project.sample_rate_hz)
                         / 1000.0) as u64;
+                    let release_frames = release_frames.max(
+                        layers
+                            .iter()
+                            .filter_map(|l| l.sampler.as_ref())
+                            .filter_map(|s| audio.get(&s.id))
+                            .map(|a| a.samples.len() as u64)
+                            .max()
+                            .unwrap_or(0),
+                    );
                     let release_source_frames = clip.stretch.map_or(release_frames, |stretch| {
                         stretch.original_frame(release_frames).saturating_add(1)
                     });
@@ -372,6 +416,18 @@ impl MidiTrackRuntime {
         // Stable layer IDs preserve independent controls and identify topology changes.
         for layer in &layers {
             layer.id.hash(&mut hash);
+            if let Some(s) = &layer.sampler {
+                s.id.hash(&mut hash);
+                format!("{:?}", s.input).hash(&mut hash);
+                s.start_frame.hash(&mut hash);
+                s.end_frame.hash(&mut hash);
+                s.output_frames(project.sample_rate_hz, project.tempo_bpm)
+                    .hash(&mut hash);
+                audio
+                    .get(&s.id)
+                    .map(|a| std::sync::Arc::as_ptr(&a.samples) as usize)
+                    .hash(&mut hash);
+            }
             let mut sources: Vec<_> = layer.oscillators.iter().collect();
             sources.sort_by_key(|s| s.id);
             for settings in sources {
@@ -418,6 +474,27 @@ impl MidiTrackRuntime {
                         .iter()
                         .map(|layer| LayerVoice {
                             id: layer.id,
+                            sampler: layer.sampler.as_ref().map(|s| {
+                                daw_sampler::Sampler::new(
+                                    ProcessingContext {
+                                        sample_rate_hz: project.sample_rate_hz,
+                                        max_block_frames: project.buffer_size_frames,
+                                    },
+                                    s,
+                                    audio.get(&s.id).map_or_else(
+                                        || std::sync::Arc::new(Vec::new()),
+                                        |a| a.samples.clone(),
+                                    ),
+                                )
+                            }),
+                            one_shot_target: layer
+                                .sampler
+                                .as_ref()
+                                .is_some_and(|s| s.trigger == daw_core::SamplerTrigger::OneShot),
+                            one_shot: layer
+                                .sampler
+                                .as_ref()
+                                .is_some_and(|s| s.trigger == daw_core::SamplerTrigger::OneShot),
                             sources: layer
                                 .oscillators
                                 .iter()
@@ -672,6 +749,11 @@ impl MidiTrackRuntime {
                     &mut next_layer.routes,
                 );
                 layer.amplitude.retarget(&next_layer.amplitude);
+                // Trigger edits apply to new notes; held/released notes keep their gate behavior.
+                layer.one_shot_target = next_layer.one_shot_target;
+                if let (Some(s), Some(next)) = (&mut layer.sampler, &next_layer.sampler) {
+                    s.retarget(next);
+                }
                 if idle {
                     layer.amplitude.reset();
                 }
@@ -781,6 +863,16 @@ impl MidiTrackRuntime {
             }
         }
         range.map(|v| if v.is_finite() { v } else { f32::NAN })
+    }
+    pub fn sampler_position(&self, layer: Id) -> f32 {
+        self.voices
+            .iter()
+            .filter(|v| v.active_last_sample)
+            .filter_map(|v| v.layers.iter().find(|l| l.id == layer))
+            .filter_map(|l| l.sampler.as_ref())
+            .filter_map(|s| s.position())
+            .max()
+            .map_or(f32::NAN, |p| p as f32)
     }
     pub fn sample(&mut self, frame: u64) -> [f32; 2] {
         let sample = if let Some(prepared) = self

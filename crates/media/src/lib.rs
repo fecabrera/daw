@@ -7,7 +7,7 @@ mod stretch;
 pub use export::{
     AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, Mp3Bitrate, WavCodec, WavEncoder,
 };
-pub use stretch::{PreparedStretch, stretch_audio, stretch_audio_with_engine};
+pub use stretch::{PreparedStretch, prepared_audio, stretch_audio, stretch_audio_with_engine};
 use symphonia::core::{
     audio::SampleBuffer, codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,
     meta::MetadataOptions, probe::Hint,

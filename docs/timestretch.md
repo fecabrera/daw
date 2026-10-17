@@ -217,3 +217,7 @@ Initial references:
 - [WIPO: Copyright Protection of Computer Software](https://www.wipo.int/en/web/copyright/activities/software): distinguishes methods, expression, and patent protection; not clearance for a particular implementation.
 
 Review further primary publications before selecting transient/stereo/multi-resolution methods. Record license/patent questions separately from signal-quality results. Passing acceptance does not establish legal clearance or Rubber Band equivalence.
+
+## Sampler consumer — 2026-10-17
+
+[Sampler](sampler.md) reuses the selected project stretch backend/revision for its prepared region. The project worker first composes the input clip's trim/repeat/stretch mapping and selected region, then prepares one complete mono/stereo buffer at a constant duration ratio. Time sets milliseconds; Bars derives duration from project tempo. The existing positive-frame and 1/8–8 bounds apply, and failure/cancellation retains the original project and audio. This consumer adds no live stretching, ratio automation, pitch shifting, or library algorithm changes. Sampler root note remains metadata until a separate pitch-support design is implemented.

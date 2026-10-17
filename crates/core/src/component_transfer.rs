@@ -68,6 +68,27 @@ impl Project {
         }
         let mut placed = component;
         match component {
+            InstrumentComponent::Sampler => {
+                let from = instrument
+                    .layers
+                    .iter_mut()
+                    .find(|l| l.id == source)
+                    .unwrap();
+                let mut sampler = if duplicate {
+                    from.sampler.clone().unwrap()
+                } else {
+                    from.sampler.take().unwrap()
+                };
+                if duplicate {
+                    sampler.id = Id::new_v4();
+                }
+                instrument
+                    .layers
+                    .iter_mut()
+                    .find(|l| l.id == destination)
+                    .unwrap()
+                    .sampler = Some(sampler);
+            }
             InstrumentComponent::Oscillators | InstrumentComponent::Oscillator(_) => {
                 transfer_oscillators(
                     instrument,
@@ -205,12 +226,17 @@ pub(super) fn eligible(
         return false;
     }
     match c {
+        InstrumentComponent::Sampler => {
+            source.is_some_and(|l| l.sampler.is_some())
+                && destination.is_some_and(|l| l.sampler.is_none() && l.oscillators.is_empty())
+        }
         InstrumentComponent::Oscillators => {
-            source.is_some_and(|l| !l.oscillators.is_empty()) && destination.is_some()
+            source.is_some_and(|l| !l.oscillators.is_empty())
+                && destination.is_some_and(|l| l.sampler.is_none())
         }
         InstrumentComponent::Oscillator(id) => {
             source.is_some_and(|l| l.oscillators.iter().any(|s| s.id == id))
-                && destination.is_some()
+                && destination.is_some_and(|l| l.sampler.is_none())
         }
         InstrumentComponent::Macros => {
             let m = source.map_or(&i.main.macro_module, |l| &l.macro_module);

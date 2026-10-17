@@ -477,3 +477,7 @@ The [Timestretch functional specification](timestretch.md) and [acceptance plan]
 ## Instrument effects workspace — 2026-10-14
 
 Instrument uses the same 38-point left rail and 24×24 Library/Gallery Horizontal toggles as Timeline. The 250-point effects catalog sits left of Layers; the effects lane spans the width to the right of the rail below the layer workspace. Panel visibility is independent and shared across these two views. Hidden panels return their space to Instrument without project edits. The lane edits the selected MIDI track’s saved effect chain through the existing add/drop, unit editing, group reorder/Delete, focus, and gesture handlers. The MIDI-only selector and layer/source/envelope controls retain their behavior. Unsupported audio/Master selections retain the MIDI prompt and cannot receive catalog additions from Instrument.
+
+## Sampler source — 2026-10-17
+
+Instrument supports a [Sampler source](sampler.md) in regular MIDI layers, mutually exclusive with the Oscillator component. It accepts WAV files and retained audio-clip ranges, provides non-destructive waveform selection, Gain, fixed Off/Time/Bars duration modes, One-shot/Gate triggering, and a piano-roll-compatible root-note input with a sharp toggle. Root note is metadata only; pitch transposition remains deferred. Worker preparation, project persistence, MIDI voices, Amplitude, layer mixing, and live/export rendering stay shared. See the guide and [acceptance requirements](../specs/mvp-iteration-1.md#sampler-source--2026-10-17).

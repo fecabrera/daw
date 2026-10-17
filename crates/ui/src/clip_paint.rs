@@ -48,28 +48,8 @@ impl DawUi {
                 colors.body
             },
         );
-        let header = Rect::from_min_max(block.min, Pos2::new(block.right(), block.top() + 22.0));
-        painter.rect_filled(
-            header,
-            2.0,
-            if missing {
-                theme::palette(painter.ctx()).border
-            } else {
-                colors.header
-            },
-        );
         let clip_painter = painter.with_clip_rect(block.intersect(lane));
-        clip_painter.text(
-            Pos2::new(header.left() + 7.0, header.center().y),
-            egui::Align2::LEFT_CENTER,
-            &clip.name,
-            egui::FontId::proportional(11.0),
-            if missing {
-                theme::palette(painter.ctx()).text
-            } else {
-                colors.text
-            },
-        );
+        paint_header(&clip_painter, block, &clip.name, colors, missing);
         if missing {
             clip_painter.text(
                 block.center(),
@@ -81,61 +61,18 @@ impl DawUi {
         } else if let Some(pattern) = pattern {
             self.paint_midi_notes(&clip_painter, block, clip, pattern, colors.waveform);
         } else if let Some(audio) = audio {
-            let channels = usize::from(audio.metadata.channels);
             let body = Rect::from_min_max(Pos2::new(block.left(), block.top() + 22.0), block.max);
-            let height = body.height() / channels as f32;
-            for channel in 0..channels {
-                let top = body.top() + height * channel as f32;
-                let center = top + height * 0.5;
-                if channel == 1 {
-                    clip_painter.rect_filled(
-                        Rect::from_min_max(Pos2::new(body.left(), top), body.max),
-                        0.0,
-                        colors.channel,
-                    );
-                }
-                if channel == 1 {
-                    clip_painter.line_segment(
-                        [Pos2::new(block.left(), top), Pos2::new(block.right(), top)],
-                        Stroke::new(1.0_f32, colors.header),
-                    );
-                }
-                let left = body.left().max(lane.left());
-                let right = body.right().min(lane.right());
-                for pixel in (left as i32)..=(right as i32) {
-                    let local = ((pixel as f32 - body.left()) / self.view_zoom()
-                        * f64::from(self.session.project.sample_rate_hz) as f32)
-                        .max(0.0) as u64;
-                    let samples_per_pixel = f64::from(self.session.project.sample_rate_hz)
-                        / f64::from(self.view_zoom());
-                    let [min, max] = if cached.is_none() && clip.stretch.is_some() {
-                        waveforms::preview_extrema(
-                            audio,
-                            clip,
-                            local,
-                            samples_per_pixel.ceil() as u64 + 1,
-                            channel,
-                            clip.stretch,
-                        )
-                    } else {
-                        waveforms::extrema(
-                            audio,
-                            clip,
-                            local,
-                            samples_per_pixel.ceil() as u64 + 1,
-                            channel,
-                        )
-                    };
-                    clip_painter.line_segment(
-                        [
-                            Pos2::new(pixel as f32, center - max.clamp(-1.0, 1.0) * height * 0.42),
-                            Pos2::new(pixel as f32, center - min.clamp(-1.0, 1.0) * height * 0.42),
-                        ],
-                        Stroke::new(1.0_f32, colors.waveform),
-                    );
-                }
-            }
+            waveforms::paint(
+                &clip_painter,
+                body,
+                audio,
+                clip,
+                f64::from(self.session.project.sample_rate_hz) / f64::from(self.view_zoom()),
+                colors,
+                if cached.is_none() { clip.stretch } else { None },
+            );
         }
+
         if let Some(repeat) = clip.repeat {
             let step = self.session.project.seconds(repeat.length_frames) as f32 * self.view_zoom();
             if step >= 4.0 {
@@ -253,4 +190,38 @@ impl DawUi {
             }
         }
     }
+}
+
+/// Shared audio/MIDI clip title strip, also used inside the Sampler preview.
+pub(super) fn paint_header(
+    painter: &egui::Painter,
+    block: Rect,
+    name: &str,
+    colors: theme::ClipColors,
+    missing: bool,
+) -> Rect {
+    let header = Rect::from_min_max(block.min, Pos2::new(block.right(), block.top() + 22.0));
+    painter.rect_filled(
+        header,
+        2.0,
+        if missing {
+            theme::palette(painter.ctx()).border
+        } else {
+            colors.header
+        },
+    );
+    painter
+        .with_clip_rect(header.intersect(painter.clip_rect()))
+        .text(
+            Pos2::new(header.left() + 7.0, header.center().y),
+            egui::Align2::LEFT_CENTER,
+            name,
+            egui::FontId::proportional(11.0),
+            if missing {
+                theme::palette(painter.ctx()).text
+            } else {
+                colors.text
+            },
+        );
+    header
 }

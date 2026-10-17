@@ -1,6 +1,64 @@
 use daw_core::Clip;
 use daw_media::AudioData;
 
+/// Paint linked mono/stereo peaks with the same channel layout in clips and sample previews.
+pub(super) fn paint(
+    painter: &egui::Painter,
+    body: egui::Rect,
+    audio: &AudioData,
+    clip: &Clip,
+    frames_per_pixel: f64,
+    colors: crate::theme::ClipColors,
+    unprepared: Option<daw_core::ClipStretch>,
+) {
+    let channels = usize::from(audio.metadata.channels).clamp(1, 2);
+    let height = body.height() / channels as f32;
+    let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));
+    for channel in 0..channels {
+        let top = body.top() + height * channel as f32;
+        let center = top + height * 0.5;
+        if channel == 1 {
+            painter.rect_filled(
+                egui::Rect::from_min_max(egui::pos2(body.left(), top), body.max),
+                0.0,
+                colors.channel,
+            );
+            painter.hline(body.x_range(), top, egui::Stroke::new(1.0, colors.header));
+        }
+        for pixel in body.left().max(painter.clip_rect().left()) as i32
+            ..=body.right().min(painter.clip_rect().right()) as i32
+        {
+            let local =
+                ((pixel as f64 - f64::from(body.left())) * frames_per_pixel).max(0.0) as u64;
+            let [min, max] = if let Some(stretch) = unprepared {
+                preview_extrema(
+                    audio,
+                    clip,
+                    local,
+                    frames_per_pixel.ceil() as u64 + 1,
+                    channel,
+                    Some(stretch),
+                )
+            } else {
+                extrema(
+                    audio,
+                    clip,
+                    local,
+                    frames_per_pixel.ceil() as u64 + 1,
+                    channel,
+                )
+            };
+            painter.line_segment(
+                [
+                    egui::pos2(pixel as f32, center - max.clamp(-1.0, 1.0) * height * 0.42),
+                    egui::pos2(pixel as f32, center - min.clamp(-1.0, 1.0) * height * 0.42),
+                ],
+                egui::Stroke::new(1.0, colors.waveform),
+            );
+        }
+    }
+}
+
 /// Inspect a visible timeline window without reading outside the clip's source range.
 pub fn extrema(audio: &AudioData, clip: &Clip, local: u64, count: u64, channel: usize) -> [f32; 2] {
     preview_extrema(audio, clip, local, count, channel, None)

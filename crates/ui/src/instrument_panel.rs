@@ -18,6 +18,7 @@ pub(super) struct InstrumentUi {
     drag: Option<Id>,
     pub(super) inputs: HashMap<Id, Inputs>,
     pub(super) oscillator_slots: Vec<(Id, Id, Rect)>,
+    pub(super) samplers: Vec<crate::sampler_panel::Bounds>,
     pub(super) component_slots: Vec<(Id, daw_core::InstrumentComponent, Rect)>,
     #[cfg(test)]
     pub(super) main_bounds: crate::instrument_main::MainBounds,
@@ -38,6 +39,7 @@ impl InstrumentUi {
         self.macro_name_edit = None;
         self.drag = None;
         self.inputs.clear();
+        self.samplers.clear();
     }
     pub(super) fn dragging(&self) -> bool {
         self.drag.is_some()
@@ -78,6 +80,7 @@ impl DawUi {
         ui.spacing_mut().item_spacing.y = 0.0;
         self.activate_component_drag(ui);
         self.instrument_ui.oscillator_slots.clear();
+        self.instrument_ui.samplers.clear();
         self.instrument_ui.component_slots.clear();
         self.instrument_ui.component_viewports.clear();
         #[cfg(test)]
@@ -224,6 +227,7 @@ impl DawUi {
                                     ui.horizontal_top(|ui| {
                                         ui.spacing_mut().item_spacing.x =
                                             if layer.oscillators.is_empty()
+                                                && layer.sampler.is_none()
                                                 && !layer.envelopes.iter().any(|e| e.present)
                                                 && !layer.amplitude.present
                                             {
@@ -430,6 +434,7 @@ impl DawUi {
                                                         let mut previous: Option<Rect> = None;
                                                         for component in layer.visible_components() {
                                                             let rect = ui.push_id(component, |ui| match component {
+                                                                daw_core::InstrumentComponent::Sampler => Some(self.sampler_unit(ui, track.id, layer, height, compact)),
                                                                 daw_core::InstrumentComponent::Oscillators => {
                                                                     let (rect, header, power) = self.oscillator_unit(ui, track.id, layer, height, compact, &modulation_sources);
                                                                     oscillator_panel = Some(rect);
@@ -1057,12 +1062,25 @@ impl DawUi {
             daw_core::InstrumentComponent::Oscillators,
         );
 
+        let mut replace_source = false;
+        result.header.context_menu(|ui| {
+            if ui.button("Replace source with Sampler").clicked() {
+                replace_source = true;
+                ui.close();
+            }
+        });
         let remove_id = remove.map(|index| oscillators[index].id);
         if add {
             oscillators.push(Default::default());
         }
         if let Some(id) = remove_id {
             layer.remove_oscillator(id);
+        }
+        if replace_source {
+            layer.oscillators.clear();
+            layer.oscillator_modulations.clear();
+            layer.sampler = Some(Default::default());
+            layer.component_order.retain(|c| !c.is_source());
         }
         #[cfg(test)]
         {

@@ -3860,3 +3860,158 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
         }
     }
 }
+
+#[test]
+fn sampler_files_regions_durations_and_root_metadata_survive_storage_and_rate_changes() {
+    use daw_core::{SamplerMode, SamplerSettings, SamplerTrigger};
+    let fixture = Fixture::new();
+    let path = fixture.wav("sampler.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let layer = &mut session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.sampler = Some(SamplerSettings::default());
+    let owner = layer.id;
+    session = session.with_sampler_file(track, owner, &path).unwrap();
+    let id = session.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .layers[0]
+        .sampler
+        .as_ref()
+        .unwrap()
+        .id;
+    assert_eq!(session.audio[&id].samples.len(), 4800);
+    assert!(session.project.tracks[0].clips.is_empty());
+    let before = serde_json::to_value(&session.project).unwrap();
+    assert!(
+        session
+            .with_sampler_file(track, owner, &fixture.0.join("missing.wav"))
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
+    let mut instrument = session.project.tracks[0].instrument.clone().unwrap();
+    let s = instrument.layers[0].sampler.as_mut().unwrap();
+    s.start_frame = 1200;
+    s.end_frame = 3600;
+    s.mode = SamplerMode::Time;
+    s.time_ms = 100.0;
+    s.root_note = 61;
+    s.trigger = SamplerTrigger::Gate;
+    s.collapsed = true;
+    session = session
+        .with_edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        })
+        .unwrap();
+    assert_eq!(session.audio[&id].samples.len(), 4800);
+    session.save(&fixture.0.join("sampler-project")).unwrap();
+    let mut reopened = Session::open(&fixture.0.join("sampler-project")).unwrap();
+    reopened.save(&fixture.0.join("sampler-copy")).unwrap();
+    let copied = Session::open(&fixture.0.join("sampler-copy")).unwrap();
+    assert_eq!(
+        copied.project.tracks[0].instrument,
+        session.project.tracks[0].instrument
+    );
+    for rate in daw_core::SAMPLE_RATES {
+        let changed = copied.with_audio_settings(rate, 256).unwrap();
+        let s = changed.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .sampler
+            .as_ref()
+            .unwrap();
+        assert_eq!(s.root_note, 61);
+        assert_eq!(s.start_frame, (f64::from(rate) / 40.0).round() as u64);
+        assert_eq!(changed.audio[&id].samples.len(), rate as usize / 10);
+        assert_eq!(s.trigger, SamplerTrigger::Gate);
+    }
+    let mut instrument = copied.project.tracks[0].instrument.clone().unwrap();
+    let s = instrument.layers[0].sampler.as_mut().unwrap();
+    s.mode = SamplerMode::Bars;
+    s.start_frame = 0;
+    s.end_frame = 48000;
+    s.input.as_mut().unwrap().length_frames = 48000;
+    s.input.as_mut().unwrap().repeat = Some(daw_core::ClipLoop {
+        length_frames: 4800,
+        phase_frame: 0,
+    });
+    s.bars = 1;
+    let bars = copied
+        .with_edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        })
+        .unwrap();
+    let slower = bars.with_edit(Edit::SetTempo { bpm: 60.0 }).unwrap();
+    assert_eq!(
+        slower.audio[&id].samples.len(),
+        bars.audio[&id].samples.len() * 2
+    );
+    let mut invalid = bars.project.tracks[0].instrument.clone().unwrap();
+    invalid.layers[0].sampler.as_mut().unwrap().bars = 100;
+    assert!(
+        bars.with_edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(invalid)
+        })
+        .is_err()
+    );
+    fs::remove_file(&path).unwrap();
+    let missing = Session::open(&fixture.0.join("sampler-copy")).unwrap();
+    assert!(!missing.audio.contains_key(&id));
+    assert!(!missing.warnings.is_empty());
+}
+
+#[test]
+fn sampler_clip_assignment_reuses_trim_repeat_and_stretch_mapping_without_changing_arrangement() {
+    let fixture = Fixture::new();
+    let path = fixture.wav("region.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    let audio_track = session.project.add_track().unwrap();
+    let clip_id = session.import(&path, Some(audio_track), 0).unwrap();
+    let track = session.project.add_midi_track().unwrap();
+    let layer = &mut session.project.tracks[1]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.sampler = Some(Default::default());
+    let owner = layer.id;
+    let mut clip = session.project.tracks[0].clips[0].clone();
+    clip.source_offset_frame = 480;
+    clip.length_frames = 6000;
+    clip.repeat = Some(ClipLoop {
+        length_frames: 2400,
+        phase_frame: 300,
+    });
+    clip.stretch = daw_core::ClipStretch::new(1, 2);
+    session.prepare_stretches().unwrap();
+    // Assigning a stretched dropped clip prepares its shared source cache as part of the job.
+    let assigned = session.with_sampler_clip(track, owner, &clip).unwrap();
+    let s = assigned.project.tracks[1]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .layers[0]
+        .sampler
+        .as_ref()
+        .unwrap();
+    let source = assigned.audio_for_clip(&clip).unwrap();
+    for local in [0, 1000, 2300, 4900, 5999] {
+        assert_eq!(
+            assigned.audio[&s.id].samples[local],
+            source.samples[clip.source_frame(local as u64) as usize]
+        );
+    }
+    assert_eq!(assigned.project.tracks[0].clips[0].id, clip_id);
+    assert_eq!(assigned.project.tracks[0].clips[0].length_frames, 4800);
+    assert_eq!(assigned.project.assets.len(), session.project.assets.len());
+}

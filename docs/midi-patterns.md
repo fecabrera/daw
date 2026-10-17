@@ -142,3 +142,7 @@ Modulation uses the [shared portable source and destination contract](modulation
 The [Main bus](instrument-main.md) is fixed below the scrolling layers. It receives their stereo sum, applies independent gain/pan before track effects, and hosts shared Envelope/LFO components through the existing catalog, controls, and modulation contract. It starts compact, keeps its own saved row/unit presentation, and cannot be removed or reordered. Missing Main data migrates to neutral settings without changing old audio.
 
 Each oscillator has a stable ID and an individual [Pitch modulation target](oscillator-modulation.md). Its routes use per-note or shared Envelope/LFO values through the shared destination interface. Pitch amounts use signed fractional semitones; base transpose and waveform phase remain independent of modulation.
+
+## Sampler layer sources — 2026-10-17
+
+A regular instrument layer can use [Sampler](sampler.md) instead of Oscillator. MIDI notes trigger independent stereo sample voices at the original pitch; MIDI velocity and the existing Amplitude stage shape their output. One-shot continues the source after note-off; Gate follows the note gate/release. Clip boundaries and transport retain their existing behavior. Root note is saved reference metadata, with the same C−1–G9 names as the piano roll. Existing oscillator layers retain their sound and source lists.
