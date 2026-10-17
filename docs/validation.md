@@ -2308,3 +2308,41 @@ Checks with the workspace Cargo cache selected:
 - `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
 
 Native UI, audio-device playback, and Windows/Linux builds were not run. CLI smoke checks were not repeated for this UI-only change.
+
+## Multiple Macro strips — 2026-10-16
+
+Macro adds one component on regular instrument layers and Main, containing independent stable-ID strips. Each strip has one 0–100% knob, a shared circular Power control, and a Macro N label. The Plus strip and catalog additions add controls. Each strip can receive shared modulation through the existing targeted connection controls and fan out to several destinations. Module/strip power, presence, values, routes, panel state, and IDs save with the project. See [Macro requirements and limits](macro.md).
+
+The portable `daw-macro` crate uses the shared source/destination interfaces, offset smoother, and base-value ramp. LFO and Macro share the host's continuous-provider sampling, publication, dependency ordering, and retargeting code. Graph checks and source pickers filter edges by individual target ID. Component moves/merges/copies reuse the existing drag transactions and update consumers, targets, and copied identities.
+
+Checks with the workspace Cargo cache selected:
+
+- `cargo test --workspace`: 718 passed, zero failed, 2 existing expanded time-stretch matrices ignored.
+- Portable Macro checks passed at all six processing rates: exact manual ramp completion, bounds, neutral processing, target isolation, signed cancellation, nonfinite inputs, reset, and rejection of voice-local inputs.
+- Model/core checks passed: missing-field migration, malformed/null rejection, independent and retained strips, targeted dependency ordering, Macro/LFO feedback and scope rejection, atomic invalid edits, collision-safe moves, destination merges, and fresh copied IDs/targets.
+- Integrated Macro rendering checks passed: Macro → several destinations and Macro → LFO → Macro dependencies, live/export/block/random-range parity, strip-order independence, neutral unassigned/off modules, note lifetime, pause/seek, telemetry, compatible live value/power/route edits, and callback allocation checks.
+- Save/reopen, Save As, track duplication, and processing-rate changes passed with retained Macro state and references.
+- All 401 UI tests also passed after the final layout/selector review, including new multi-strip catalog addition on regular layers and Main, shared Power/name pairs, one knob per strip, Plus, compact/collapsed geometry, expanded route controls, per-target cycle filtering, Macro module drag moves/copies in both themes and row heights, and an empty component with separate header controls.
+- Formatting, strict workspace Clippy, changed documentation links, and `git diff --check`: passed.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+
+Native UI/device playback and Windows/Linux builds were not run. Automated egui checks do not establish native gesture or device behavior. Direct seeks reset Macro offset smoothing without reconstructing its history; upstream LFO Rate history retains its existing documented limit. Individual Macro strip transfers and custom strip names are outside this change.
+
+## Macro removal menu — 2026-10-16
+
+Macro strips now register click input for their context menu. The menu also attaches to the Value knob and Power button, which own their pointer events. Right-click any of these areas and select Remove macro. Removal retains the existing saved-state and restore behavior.
+
+The new egui regression failed before the fix because Remove macro did not appear. After the fix, it passes on regular layers and Main, in expanded and compact layouts, using strip padding, the knob or label, and Power. Opening the menu and pressing its item retain the original instrument; releasing the item removes only the target strip. Formatting, strict workspace Clippy, and `git diff --check` passed.
+
+`cargo test --workspace` passed: 719 tests, zero failures, and two existing expanded time-stretch matrices ignored, including all 402 UI tests. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Commands used the workspace Cargo cache. Native UI/device behavior and Windows/Linux builds were not checked. CLI smoke checks were not repeated for this UI-only fix.
+
+## Macro strip names — 2026-10-17
+
+Double-click a Macro name to edit it on a regular layer or Main, including compact views. Enter commits a trimmed, nonempty name through the existing instrument edit. Escape, loss of focus, view/track/project changes, and unavailable controls cancel drafts. Names save with each stable strip ID and appear in shared modulation discovery and Value destinations. Long names retain the fixed strip width and expose their full text in tooltips. This supersedes the earlier restriction on custom Macro names.
+
+Focused checks passed with the workspace Cargo cache: double-click/select-all, Enter, blank/unchanged names, cancellation, muted strip power/value/route preservation, both themes and row sizes, and long-name geometry while editing and after commit. Model checks cover legacy missing-name defaults, Unicode names, metadata identity, round-trip serialization, and invalid blank/control-character names. Component transfer and project workflows retain names through moves, copies, save/reopen, Save As, duplication, and processing-rate changes. A live rename retains exact audio and state without callback allocations.
+
+Formatting, strict workspace Clippy, documentation link targets, and `git diff --check` passed. `cargo test --workspace` passed: 721 tests, zero failures, and two existing expanded time-stretch matrices ignored, including all 403 UI tests.
+
+`cargo build -p daw-cli` and `python3 tools/check_cli.py` passed. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Native UI/device behavior and Windows/Linux builds were not checked. Automated egui input checks do not establish native pointer behavior.

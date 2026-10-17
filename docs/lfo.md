@@ -4,7 +4,7 @@ Implemented on 2026-10-16. An LFO (low-frequency oscillator) is a modulation com
 
 ## Controls and placement
 
-Add LFO from the Instrument component catalog. Double-click, Enter, multi-selection, and dragging onto a layer use the existing catalog actions. Each layer can contain multiple independent instances, named LFO 1, LFO 2, and so on. Adding one creates no connections. Select it in an Oscillator, Amplitude, Auto-filter, Drive, or another LFO modulation strip to connect it, then set that strip's signed Amount.
+Add LFO from the Instrument component catalog. Double-click, Enter, multi-selection, and dragging onto a layer use the existing catalog actions. Each layer can contain multiple independent instances, named LFO 1, LFO 2, and so on. Adding one creates no connections. Select it in an Oscillator, Amplitude, Auto-filter, Drive, Macro, or another LFO modulation strip to connect it, then set that strip's signed Amount.
 
 | Control | Values | Default |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ LFO uses the existing destination-owned Source, Parameter, Amount, and Power str
 
 Hz-mode Rate stays within 0.01–20 Hz. Note-mode Rate stays between the slowest and fastest existing note choices at the current tempo; modulation varies continuously between them without changing the selected duration. Rate Amount shares the Hz control's logarithmic scale, keyboard operation, and pointer sensitivity through the existing amount adapter. Depth shares its native percentage control. Both retain signed amounts, neutral-zero reset, bounds, and Shift sensitivity from the shared knob base.
 
-Both targets accept shared Retrigger/Legato Envelopes and other LFOs, including sources on Main. Per note Envelopes cannot feed a shared LFO. Source filtering and saved-reference validation use the shared scope and dependency rules. Self-connections and feedback cycles are rejected, including retained, disabled, and zero-amount connections. The picker excludes sources that would close a cycle. Preparation orders providers before consumers; saved row/strip order never decides audio processing order. Each source still advances once per sample and fans out its cached value.
+Both targets accept shared Retrigger/Legato Envelopes, other LFOs, and Macro strips, including sources on Main. Per note Envelopes cannot feed a shared LFO. Source filtering and saved-reference validation use the shared scope and dependency rules. Self-connections and feedback cycles are rejected, including retained, disabled, and zero-amount connections. The picker excludes sources that would close a cycle. Preparation orders providers before consumers; saved row/strip order never decides audio processing order. Each source still advances once per sample and fans out its cached value.
 
 Depth and Rate offsets use the common 1 ms parameter smoother. Source power and route amount/power use the common 5 ms ramps. Rate modulation integrates the frequency difference from the base clock each sample. It does not multiply elapsed note time by the current modulated frequency. This keeps a continuous sweep free of phase jumps. The selected restart origin clears the accumulated offset when that origin changes. The periodic Smooth response uses the current effective rate; under changing rate it remains an instantaneous periodic approximation.
 

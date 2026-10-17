@@ -50,6 +50,7 @@ pub mod knobs;
 mod lfo_controls;
 mod lfo_panel;
 mod limiter_panel;
+mod macro_panel;
 pub mod meters;
 mod mix_controls;
 mod mixer;
@@ -4660,6 +4661,7 @@ mod tests {
     mod instrument_catalog;
     mod instrument_main;
     mod lfo;
+    mod macros;
     mod menu_shortcuts;
     mod midi;
     mod mixer;

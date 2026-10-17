@@ -1,3 +1,4 @@
+mod continuous_modulation;
 mod effects;
 mod latency;
 mod lfo;
@@ -154,6 +155,11 @@ pub fn pan_coefficients(pan: f32, mono: bool) -> [f32; 2] {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModulationTarget {
     Effect(Id),
+    Macro {
+        track: Id,
+        layer: Id,
+        unit: Id,
+    },
     Lfo {
         track: Id,
         layer: Id,
@@ -333,6 +339,18 @@ impl Renderer {
                         .find_map(|chain| chain.modulation_values(id))
                 })
             }
+            ModulationTarget::Macro { track, layer, unit } => {
+                let index = self
+                    .plan
+                    .project
+                    .tracks
+                    .iter()
+                    .position(|t| t.id == track)?;
+                let value = self.midi[index]
+                    .as_ref()?
+                    .provider_values(daw_core::ModulationSourceId { layer, unit })?[0];
+                Some([value, f32::NAN, f32::NAN, f32::NAN, f32::NAN])
+            }
             ModulationTarget::Lfo { track, layer, unit } => {
                 let index = self
                     .plan
@@ -342,7 +360,7 @@ impl Renderer {
                     .position(|t| t.id == track)?;
                 let [depth, hz] = self.midi[index]
                     .as_ref()?
-                    .lfo_values(daw_core::ModulationSourceId { layer, unit })?;
+                    .provider_values(daw_core::ModulationSourceId { layer, unit })?;
                 Some([depth, hz, f32::NAN, f32::NAN, f32::NAN])
             }
             ModulationTarget::Oscillator {

@@ -1,6 +1,7 @@
 //! Instrument output bus: shared modulators and post-layer stereo mix controls.
 use crate::{
-    EnvelopeInstance, EnvelopeMode, LfoInstance, ModulationSourceInfo, ModulationSourceSettings,
+    EnvelopeInstance, EnvelopeMode, LfoInstance, MacroModuleSettings, ModulationSourceInfo,
+    ModulationSourceSettings,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -13,6 +14,8 @@ pub struct InstrumentBusSettings {
     pub pan: f32,
     pub envelopes: Vec<EnvelopeInstance>,
     pub lfos: Vec<LfoInstance>,
+    #[serde(default)]
+    pub macro_module: MacroModuleSettings,
 }
 impl Default for InstrumentBusSettings {
     fn default() -> Self {
@@ -23,6 +26,7 @@ impl Default for InstrumentBusSettings {
             pan: 0.0,
             envelopes: Vec::new(),
             lfos: Vec::new(),
+            macro_module: MacroModuleSettings::default(),
         }
     }
 }
@@ -52,6 +56,8 @@ impl InstrumentBusSettings {
                     && e.settings.valid()
             })
             && self.lfos.iter().all(|l| ids.insert(l.id) && l.valid())
+            && self.macro_module.valid()
+            && self.macro_module.controls.iter().all(|c| ids.insert(c.id))
     }
     pub fn modulation_sources(&self) -> impl Iterator<Item = ModulationSourceInfo<'_>> {
         self.envelopes
@@ -64,6 +70,7 @@ impl InstrumentBusSettings {
                     .enumerate()
                     .map(|(i, l)| l.modulation_source(self.id, "Main", i)),
             )
+            .chain(self.macro_module.sources(self.id, "Main"))
     }
 }
 

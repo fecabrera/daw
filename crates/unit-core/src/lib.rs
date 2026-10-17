@@ -1,6 +1,8 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
 mod instrument_bus;
 pub use instrument_bus::InstrumentBusSettings;
+mod macro_control;
+pub use macro_control::*;
 mod lfo;
 pub use lfo::*;
 use serde::{Deserialize, Serialize};
@@ -82,6 +84,7 @@ pub struct InstrumentLayerSettings {
     pub oscillator_modulations: Vec<Modulation>,
     pub envelopes: Vec<EnvelopeInstance>,
     pub lfos: Vec<LfoInstance>,
+    pub macro_module: MacroModuleSettings,
     pub amplitude: AmplitudeSettings,
 }
 impl Default for InstrumentLayerSettings {
@@ -107,6 +110,7 @@ impl Default for InstrumentLayerSettings {
                 })
                 .collect(),
             lfos: Vec::new(),
+            macro_module: MacroModuleSettings::default(),
             amplitude: AmplitudeSettings::default(),
         }
     }
@@ -120,6 +124,7 @@ impl InstrumentLayerSettings {
             && (-1.0..=1.0).contains(&self.pan)
             && self.oscillators.iter().all(OscillatorSettings::valid)
             && self.amplitude.valid()
+            && self.macro_module.valid()
             && ModulationDestinationSettings::valid_modulations(self)
             && {
                 let mut ids = std::collections::HashSet::new();
@@ -131,6 +136,7 @@ impl InstrumentLayerSettings {
                     .iter()
                     .all(|e| !e.id.is_nil() && ids.insert(e.id) && e.settings.valid())
                     && self.lfos.iter().all(|l| ids.insert(l.id) && l.valid())
+                    && self.macro_module.controls.iter().all(|c| ids.insert(c.id))
             }
     }
     /// Remove only this destination and its connections; surviving IDs never change.
@@ -207,6 +213,8 @@ struct SavedLayer {
     envelopes: Option<Vec<EnvelopeInstance>>,
     #[serde(default)]
     lfos: Vec<LfoInstance>,
+    #[serde(default)]
+    macro_module: MacroModuleSettings,
     #[serde(default, deserialize_with = "saved_amplitude")]
     amplitude: Option<AmplitudeSettings>,
 }
@@ -263,6 +271,7 @@ impl SavedLayer {
                 ]
             }),
             lfos: self.lfos,
+            macro_module: self.macro_module,
             amplitude: self.amplitude.unwrap_or_default(),
         };
         if legacy && self.has_envelope {
@@ -320,6 +329,7 @@ impl InstrumentSettings {
                     .chain(layer.lfos.iter().enumerate().map(|(index, provider)| {
                         provider.modulation_source(layer.id, &layer.name, index)
                     }))
+                    .chain(layer.macro_module.sources(layer.id, &layer.name))
             })
             .chain(self.main.modulation_sources())
     }
@@ -350,21 +360,41 @@ impl InstrumentSettings {
                 )
             }))
     }
+    pub fn macro_modules(&self) -> impl Iterator<Item = (uuid::Uuid, &MacroModuleSettings)> {
+        self.layers
+            .iter()
+            .map(|l| (l.id, &l.macro_module))
+            .chain(std::iter::once((self.main.id, &self.main.macro_module)))
+    }
+    pub fn provider_destinations(
+        &self,
+    ) -> impl Iterator<Item = (ModulationSourceId, &[Modulation])> {
+        self.lfo_destinations()
+            .map(|(id, l)| (id, l.modulations.as_slice()))
+            .chain(self.macro_modules().flat_map(|(layer, module)| {
+                module.controls.iter().map(move |c| {
+                    (
+                        ModulationSourceId { layer, unit: c.id },
+                        module.modulations.as_slice(),
+                    )
+                })
+            }))
+    }
     pub fn valid(&self) -> bool {
         let mut ids = std::collections::HashSet::new();
-        let dependencies: Vec<_> = self
-            .lfo_destinations()
-            .map(|(id, f)| (id, f.modulations.as_slice()))
-            .collect();
+        let dependencies: Vec<_> = self.provider_destinations().collect();
         self.version == INSTRUMENT_STATE_VERSION
             && modulation_dependency_order(&dependencies).is_some()
-            && dependencies.iter().all(|(_, routes)| {
-                routes.iter().all(|r| {
-                    r.source.is_none_or(|id| {
-                        self.modulation_source(id)
-                            .is_some_and(|s| ModulationScope::Shared.accepts(s.scope))
+            && dependencies.iter().all(|(destination, routes)| {
+                routes
+                    .iter()
+                    .filter(|r| r.target.is_none_or(|target| target == destination.unit))
+                    .all(|r| {
+                        r.source.is_none_or(|id| {
+                            self.modulation_source(id)
+                                .is_some_and(|s| ModulationScope::Shared.accepts(s.scope))
+                        })
                     })
-                })
             })
             && self.main.valid()
             && ids.insert(self.main.id)

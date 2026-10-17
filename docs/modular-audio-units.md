@@ -458,3 +458,8 @@ LFO now provides and consumes control signals through the shared modulation cont
 ### Envelope timing controls — 2026-10-16
 
 Envelope adds Time/Note timing and moves the Mode dropdown from its header to the first body column. One leading 90-point strip stacks the Timing knob above the Mode dropdown before the four ADSR strips; all retain the shared controls, separators, footer alignment, and 244-point height. Note timing scales Attack and Decay to the full triggering note length, preserves independent Time values, and leaves Release in milliseconds. Shared destinations consume the existing source interface without special handling. The detailed requirements and overlap rules are in [Envelope unit](midi-patterns.md#envelope-unit). This supersedes the earlier four-strip-only Envelope layout.
+
+
+### Macro component — 2026-10-16
+
+[Macro](macro.md) adds multiple independent shared control strips inside one component on regular layers or Main. Each strip has one 0–100% knob, a shared circular Power control, and a name label that defaults to Macro N. Double-click the label to rename the strip; names save with the project and appear in shared modulation controls. One strip may feed several destinations, and may receive shared Envelope/LFO/Macro modulation through the existing targeted controls. Stable IDs, target-specific cycle checks, neutral power weights, shared source/destination processing, save/load defaults, and component transfer transactions are required. The portable processor lives in `crates/macro`; UI and host construction remain outside it.

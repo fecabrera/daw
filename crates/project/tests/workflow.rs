@@ -3703,3 +3703,66 @@ fn transferred_components_keep_connections_and_audio_through_save_as_and_reopen(
             .collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn macro_strips_routing_and_presentation_survive_save_as_duplication_and_rate_changes() {
+    use daw_core::*;
+    let f = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let i = session.project.tracks[0].instrument.as_mut().unwrap();
+    let module = &mut i.main.macro_module;
+    module.add();
+    module.add();
+    module.enabled = false;
+    module.collapsed = true;
+    module.modulation_open = true;
+    module.controls[0].settings.value = 0.63;
+    module.controls[0].name = Some("Brightness".into());
+    module.controls[1].name = Some("Movement".into());
+    module.controls[1].enabled = false;
+    let source = ModulationSourceId {
+        layer: i.main.id,
+        unit: module.controls[0].id,
+    };
+    let lfo = LfoInstance::default();
+    module.modulations.push(Modulation {
+        target: Some(module.controls[1].id),
+        amount: -0.6,
+        source: Some(ModulationSourceId {
+            layer: i.layers[0].id,
+            unit: lfo.id,
+        }),
+        ..Modulation::new(ModulationParameter::MacroValue)
+    });
+    i.layers[0].lfos.push(lfo);
+    i.layers[0].amplitude.modulations.push(Modulation {
+        source: Some(source),
+        amount: 1.0,
+        ..Modulation::new(ModulationParameter::Amplitude)
+    });
+    session.save(&f.0.join("macro")).unwrap();
+    let mut reopened = Session::open(&f.0.join("macro")).unwrap();
+    reopened.save(&f.0.join("macro-copy")).unwrap();
+    let mut copy = Session::open(&f.0.join("macro-copy")).unwrap();
+    assert_eq!(
+        copy.project.tracks[0].instrument,
+        session.project.tracks[0].instrument
+    );
+    copy.project
+        .edit(Edit::DuplicateTrack {
+            track_id: track,
+            new_track_id: Id::new_v4(),
+        })
+        .unwrap();
+    let changed = copy.with_audio_settings(96_000, 256).unwrap();
+    assert_eq!(
+        changed.project.tracks[0].instrument,
+        session.project.tracks[0].instrument
+    );
+    assert_eq!(
+        changed.project.tracks[1].instrument,
+        session.project.tracks[0].instrument
+    );
+    changed.project.validate().unwrap();
+}

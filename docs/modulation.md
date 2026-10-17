@@ -1,6 +1,6 @@
 # Shared modulation contract
 
-Implemented on 2026-10-15. The portable contract and runtime code live in `crates/unit-core/src/modulation`. They have no DAW, UI, device, or backend dependencies. Envelope and LFO provide control outputs. Oscillator, Amplitude, Auto-filter, Drive, and LFO consume parameter inputs through this contract.
+Implemented on 2026-10-15. The portable contract and runtime code live in `crates/unit-core/src/modulation`. They have no DAW, UI, device, or backend dependencies. Envelope, LFO, and Macro provide control outputs. Oscillator, Amplitude, Auto-filter, Drive, LFO, and Macro consume parameter inputs through this contract.
 
 A modulation output carries a normalized control value. A modulation input is a destination parameter that receives that value through a signed amount. Audio ports remain separate. A unit can declare both kinds of modulation port.
 
@@ -8,8 +8,8 @@ A modulation output carries a normalized control value. A modulation input is a 
 
 | Component | Responsibility |
 | --- | --- |
-| `ModulationSource` | Declares output name/range/behavior and produces the next control sample using `ModulationSourceContext`. Envelope and LFO implement it. |
-| `ModulationSourceSettings` | Describes saved provider identity, scope, presence, and enable state. Envelope and LFO instances implement it. |
+| `ModulationSource` | Declares output name/range/behavior and produces the next control sample using `ModulationSourceContext`. Envelope, LFO, and Macro implement it. |
+| `ModulationSourceSettings` | Describes saved provider identity, scope, presence, and enable state. Envelope, LFO, and Macro instances implement it. |
 | `ModulationOutput` | Advances a provider once, normalizes its value, applies the common source-enable weight, and publishes a cached `ModulationValue`. |
 | `ModulationSourceId` | Identifies a provider by stable layer and unit IDs, without naming its concrete unit type. |
 | `ModulationDestinationSettings` | Declares supported parameters and scope; exposes saved routes and uses common route validation. |
@@ -17,25 +17,25 @@ A modulation output carries a normalized control value. A modulation input is a 
 | `ModulationRoute` | Resolves a cached source and smooths route amount/power changes. |
 | `ModulationTargetId` | Identifies a repeated destination instance independently of its display position. |
 | `ModulationInputs` | Filters the optional instance identity and sums supported routes by parameter identity and resolves the amplitude gate/release rules. Declaration order does not determine a parameter's meaning. |
-| `ModulationSmoother` | Applies the same 1 ms smoothing to Oscillator, Auto-filter, Drive, and LFO offsets, with common nonfinite-input handling. |
+| `ModulationSmoother` | Applies the same 1 ms smoothing to Oscillator, Auto-filter, Drive, LFO, and Macro offsets, with common nonfinite-input handling. |
 | `process_modulation` | Standard destination entry point: checks source scope, resolves routes, then invokes the unit. Playback and export use it for all destinations. |
 
-`UnitDescriptor::provides_modulation()` and `consumes_modulation()` inspect the declared modulation ports. These capabilities are independent of `is_source`, which identifies audio generators. Envelope and LFO declare modulation outputs. Oscillator, Amplitude, Auto-filter, Drive, and LFO declare modulation inputs. LFO declares both input and output ports.
+`UnitDescriptor::provides_modulation()` and `consumes_modulation()` inspect the declared modulation ports. These capabilities are independent of `is_source`, which identifies audio generators. Envelope, LFO, and Macro declare modulation outputs. Oscillator, Amplitude, Auto-filter, Drive, LFO, and Macro declare modulation inputs. LFO and Macro declare both input and output ports.
 
 `InstrumentSettings::modulation_sources()` enumerates providers through their settings contract. The source selector, labels, range indicators, and core reference validation use this metadata instead of assuming that every provider is an Envelope. Retained removed providers remain available to reference validation; the picker lists only present providers. Disabled providers remain listed and produce a neutral contribution after their enable ramp.
 
-The host still owns concrete unit construction, note scheduling, voice identity, and storage. The DAW registers Envelope and [LFO](lfo.md) providers in regular layers and the fixed [instrument Main bus](instrument-main.md). Main permits shared sources only. This contract does not add a graph editor, audio sidechain, cross-track connection, or multiple outputs per provider.
+The host still owns concrete unit construction, note scheduling, voice identity, and storage. The DAW registers Envelope and [LFO](lfo.md) and [Macro](macro.md) providers in regular layers and the fixed [instrument Main bus](instrument-main.md). Main permits shared sources only. This contract does not add a graph editor, audio sidechain, cross-track connection, or multiple outputs per provider.
 
 ## Signal and scope rules
 
 - `Unipolar` outputs span 0–1; `Bipolar` outputs span −1–1. The shared output code clamps finite samples and replaces nonfinite samples with zero. `ModulationSource::modulation_weight` supplies an optional normalized contribution depth (default 1). Publication multiplies it by the source-enable ramp, keeping zero Depth neutral even for Amplitude. Source metadata also supplies the UI's possible-range bounds.
 - The host advances each source exactly once per sample and fans its cached value out to destinations. Reading a route never advances the source. Disabled providers keep advancing; their contribution weight ramps over 5 ms.
 - `PerNote` destinations can consume local or shared values. `Shared` destinations accept shared values only. The common entry point excludes local values for shared destinations, including outside the DAW. Core validation also rejects invalid saved connections. Callers must put values in the correct local/shared buffer; the host owns their scope.
-- Oscillator pitch and Amplitude are per-note destinations. Auto-filter and Drive are shared track destinations; LFO Depth and Rate are shared component destinations. Retrigger and Legato envelopes supply shared values; Per note supplies voice-local values. LFOs supply shared values in every restart mode. All current connections stay in the same MIDI instrument. Audio tracks and Master have no instrument provider.
+- Oscillator pitch and Amplitude are per-note destinations. Auto-filter and Drive are shared track destinations; LFO Depth/Rate and Macro Value are shared component destinations. Retrigger and Legato envelopes supply shared values; Per note supplies voice-local values. LFOs supply shared values in every restart mode; Macro strips supply shared continuous values. All current connections stay in the same MIDI instrument. Audio tracks and Master have no instrument provider.
 - Routes start unassigned, enabled, and at zero amount. Amounts must be finite and within the target's bound. Route IDs must be unique within the destination. Unsupported targets or invalid source references fail project validation as one transaction.
 - Additive routes sum `source × amount × source weight` in each parameter's units. Missing, disabled, unassigned, or invalid runtime values contribute zero. Multiple routes to the same parameter add, including signed cancellation. Route amount/power changes ramp over 5 ms. Reset takes the current targets without a ramp.
 - Amplitude receives a resolved multiplicative factor. With no effective route it follows the note gate. Full-depth per-note envelopes preserve the existing ADSR arithmetic. Continuous sources form a separate multiplicative gain group after contours; bipolar continuous values normalize to 0–1 for this factor. Shared tails belong only to the final released voices; older voices cannot revive. Partial depth blends with the gate and reaches silence at release end. Only `Contour` values with matching release ownership can extend a note. `Continuous` values cannot revive or extend voices. These rules are shared resolver code, not provider-specific destination logic.
-- Oscillator, Auto-filter, Drive, and LFO apply the common 1 ms offset smoother before unit-specific bounds. Amplitude retains its note-gate, level, and bypass behavior without adding an offset smoother to its ADSR. Each unit owns its parameter conversion, final bounds, bypass, and audio DSP. Base settings never change when modulation runs.
+- Oscillator, Auto-filter, Drive, LFO, and Macro apply the common 1 ms offset smoother before unit-specific bounds. Amplitude retains its note-gate, level, and bypass behavior without adding an offset smoother to its ADSR. Each unit owns its parameter conversion, final bounds, bypass, and audio DSP. Base settings never change when modulation runs.
 
 See [Oscillator pitch modulation](oscillator-modulation.md), [Envelope components](midi-patterns.md#envelope-components), [Auto-filter](auto-filter.md), and [Drive modulation](drive.md#envelope-modulation) for controls, units, bounds, and existing lifecycle behavior.
 
@@ -107,3 +107,12 @@ LFO uses both shared interfaces. The host first calls `process_modulation` with 
 `modulation_dependency_order` prepares a provider-first order on the control thread. `modulation_would_cycle` applies the same edge definition to source pickers. All assigned edges count, including disabled, zero-amount, and retained connections; edits cannot enable a hidden cycle. Project validation also checks that every input refers to a shared source in the same instrument. Envelopes publish before the ordered LFOs, then audio destinations consume the completed cache. Ordering, route vectors, telemetry, and cache storage are prepared before publication. There is no callback graph traversal, allocation, lock, or recursive source sampling.
 
 LFO Depth uses a normalized ±1 offset; Rate uses ±6 octaves per connection in both Hz and Note modes. The source's output behavior remains `Continuous`. UI parameter definitions, amount adapters, source selectors, strip reordering, indicators, enable ramps, and compatible route retargeting remain shared. LFO routes travel with component moves/copies, copied route IDs are fresh, and provider moves update LFO consumers as well as audio destinations. See [LFO timing and rate-history limits](lfo.md#depth-and-rate-modulation).
+
+
+## Multiple Macro strips
+
+[Macro](macro.md) groups several stable-ID shared providers in one component. `MacroModuleSettings` reuses targeted routes and the shared destination interface for `MacroValue`. Each strip publishes a unipolar continuous signal. `provider_destinations()` enumerates both LFO and Macro nodes. The graph and source picker filter incoming edges by each target ID, so independent strips do not acquire one another's connections. `targeted_body_with_sources` reuses the common connection controls with target-specific valid source choices; ordinary destinations remain adapters over that function. Macro uses the shared 1 ms offset smoother and exported `ModulationRamp` for its 5 ms base-value transition.
+
+The host's `continuous_modulation.rs` constructs concrete LFO/Macro processors and shares their route processing, output publication, reset, and identity-based retargeting. Each destination still calls the portable `process_modulation` entry point; no consumer looks up or advances a Macro directly. Macro Value amounts retain signed ±100% limits and the Value knob's percentage scale/steps. Module and strip power use the existing neutral source contribution weight.
+
+Macro strip names are published through the optional `ModulationSourceSettings::modulation_name` metadata and `ModulationSourceInfo::display_name`. Missing names use the provider type and ordinal. Shared source selectors and Macro Value destination labels show the saved name; route IDs and DSP remain independent of display names.

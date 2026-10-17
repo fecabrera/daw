@@ -1,3 +1,4 @@
+use super::continuous_modulation::ProviderControl;
 use daw_core::{EnvelopeInstance, EnvelopeMode, ModulationSourceId, ModulationValue};
 use daw_envelope::Envelope;
 pub(crate) use daw_unit_core::ModulationRoute as Route;
@@ -34,38 +35,10 @@ impl Control {
     }
 }
 
-pub(crate) struct LfoControl {
-    source: ModulationSourceId,
-    unit: daw_lfo::Lfo,
-    output: ModulationOutput,
-    routes: Vec<Route>,
-}
-impl LfoControl {
-    pub fn new(
-        layer: daw_core::Id,
-        settings: &daw_unit_core::LfoInstance,
-        context: ProcessingContext,
-    ) -> Self {
-        let source = ModulationSourceId {
-            layer,
-            unit: settings.id,
-        };
-        Self {
-            source,
-            unit: daw_lfo::Lfo::new(settings.settings, context),
-            routes: settings
-                .modulations
-                .iter()
-                .map(|r| Route::new(*r, context.sample_rate_hz))
-                .collect(),
-            output: ModulationOutput::new(source, settings.present && settings.enabled, context),
-        }
-    }
-}
 pub(crate) struct SharedControls {
     pub controls: Vec<Control>,
     pub values: Vec<ModulationValue>,
-    lfos: Vec<LfoControl>,
+    providers: Vec<ProviderControl>,
     held: usize,
     note_durations: [Option<u64>; 2],
     note_ages: [u64; 2],
@@ -88,7 +61,7 @@ impl SharedControls {
         Self {
             controls,
             values,
-            lfos: Vec::new(),
+            providers: Vec::new(),
             held: 0,
             note_durations: [None; 2],
             note_ages: [0; 2],
@@ -96,43 +69,40 @@ impl SharedControls {
             release_frames: 0,
         }
     }
-    pub fn with_lfos(mut self, mut lfos: Vec<LfoControl>) -> Self {
-        lfos.sort_by_key(|l| (l.source.layer, l.source.unit));
-        let settings: Vec<Vec<_>> = lfos
+    pub fn with_providers(mut self, mut providers: Vec<ProviderControl>) -> Self {
+        providers.sort_by_key(|l| (l.source.layer, l.source.unit));
+        let settings: Vec<Vec<_>> = providers
             .iter()
             .map(|l| l.routes.iter().map(|r| r.settings).collect())
             .collect();
-        let dependencies: Vec<_> = lfos
+        let dependencies: Vec<_> = providers
             .iter()
             .zip(&settings)
             .map(|(l, routes)| (l.source, routes.as_slice()))
             .collect();
         let order = daw_unit_core::modulation_dependency_order(&dependencies)
             .expect("validated modulation graph");
-        let mut slots: Vec<_> = lfos.into_iter().map(Some).collect();
-        let lfos: Vec<_> = order
+        let mut slots: Vec<_> = providers.into_iter().map(Some).collect();
+        let providers: Vec<_> = order
             .into_iter()
             .map(|i| slots[i].take().unwrap())
             .collect();
-        self.values.extend(lfos.iter().map(|l| ModulationValue {
-            source: l.source,
-            value: 0.0,
-            weight: 0.0,
-            range: daw_unit_core::ModulationRange::Unipolar,
-            behavior: daw_unit_core::ModulationBehavior::Continuous,
-            release_age: None,
-        }));
-        self.lfos = lfos;
+        self.values
+            .extend(providers.iter().map(|l| ModulationValue {
+                source: l.source,
+                value: 0.0,
+                weight: 0.0,
+                range: daw_unit_core::ModulationRange::Unipolar,
+                behavior: daw_unit_core::ModulationBehavior::Continuous,
+                release_age: None,
+            }));
+        self.providers = providers;
         self
     }
     pub fn reset(&mut self) {
         self.reset_notes();
-        for lfo in &mut self.lfos {
-            lfo.unit.reset();
-            lfo.output.reset();
-            for route in &mut lfo.routes {
-                route.reset();
-            }
+        for provider in &mut self.providers {
+            provider.reset();
         }
     }
     pub fn reset_notes(&mut self) {
@@ -211,38 +181,23 @@ impl SharedControls {
                 v.release_age = Some(self.release_frames);
             }
         }
-        for (index, lfo) in self.lfos.iter_mut().enumerate() {
-            daw_unit_core::process_modulation(
-                &mut lfo.unit,
-                &mut lfo.routes,
-                (),
-                &[],
-                &self.values,
-                daw_unit_core::ModulationContext {
-                    frame: context.frame,
-                    tempo_bpm: context.tempo_bpm,
-                    ..Default::default()
-                },
-            );
-            self.values[self.controls.len() + index] = lfo.output.sample(&mut lfo.unit, context);
+        for (index, provider) in self.providers.iter_mut().enumerate() {
+            self.values[self.controls.len() + index] = provider.tick(&self.values, context);
         }
     }
-    pub fn lfo_values(&self, id: ModulationSourceId) -> Option<[f32; 2]> {
-        self.lfos
+    pub fn provider_values(&self, id: ModulationSourceId) -> Option<[f32; 2]> {
+        self.providers
             .iter()
             .find(|l| l.source == id)
-            .map(|l| l.unit.modulation_values())
+            .map(|l| l.values())
     }
     pub fn retarget(&mut self, next: &mut Self) {
-        for n in &mut next.lfos {
-            if let Some(old) = self.lfos.iter_mut().find(|old| old.source == n.source) {
-                old.unit.set_settings(n.unit.settings());
-                old.output.retarget(&n.output);
-                daw_unit_core::retarget_modulation_routes(&mut old.routes, &mut n.routes);
-                std::mem::swap(old, n);
+        for n in &mut next.providers {
+            if let Some(old) = self.providers.iter_mut().find(|old| old.source == n.source) {
+                old.retarget(n);
             }
         }
-        std::mem::swap(&mut self.lfos, &mut next.lfos);
+        std::mem::swap(&mut self.providers, &mut next.providers);
 
         for n in &mut next.controls {
             if let Some(e) = self.controls.iter_mut().find(|e| e.source == n.source) {

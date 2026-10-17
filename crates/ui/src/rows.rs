@@ -61,14 +61,35 @@ pub fn wrapped<R>(
 /// Standard centered unit-footer pair: 18-point Power, 8-point gap, 11-point label.
 /// The caller supplies state and handles the returned release action.
 pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Response {
+    power_label_with(ui, label, name, on, |ui, label, width| {
+        ui.add_sized(
+            Vec2::new(width, crate::icons::COMPACT_BUTTON_SIZE),
+            egui::Label::new(label).selectable(false).truncate(),
+        )
+    })
+    .0
+}
+
+/// Reuse the footer geometry with an interactive label or inline name editor.
+pub(super) fn power_label_with(
+    ui: &mut Ui,
+    label: &str,
+    name: &str,
+    on: bool,
+    label_ui: impl FnOnce(&mut Ui, egui::RichText, f32) -> egui::Response,
+) -> (egui::Response, egui::Response) {
     let palette = crate::theme::palette(ui.ctx());
-    let label = ui.painter().layout_no_wrap(
-        label.to_owned(),
-        egui::FontId::proportional(crate::panels::HEADER_FONT_SIZE),
-        if on { palette.text } else { palette.secondary },
-    );
+    let font = egui::FontId::proportional(crate::panels::HEADER_FONT_SIZE);
+    let color = if on { palette.text } else { palette.secondary };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), font.clone(), color);
     let gap = f32::from(crate::theme::TOOLBAR_PADDING);
-    let pair_width = crate::icons::COMPACT_BUTTON_SIZE + gap + label.size().x;
+    let label_width = galley
+        .size()
+        .x
+        .min((ui.available_width() - crate::icons::COMPACT_BUTTON_SIZE - gap).max(0.0));
+    let pair_width = crate::icons::COMPACT_BUTTON_SIZE + gap + label_width;
     ui.spacing_mut().item_spacing.x = gap;
     ui.add_space(((ui.available_width() - pair_width) * 0.5).max(0.0).round());
     let response = crate::icons::circular_button(
@@ -78,8 +99,12 @@ pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Resp
         Some(on),
         crate::icons::COMPACT_BUTTON_SIZE,
     );
-    ui.add(egui::Label::new(label).selectable(false));
-    response
+    let label_response = label_ui(
+        ui,
+        egui::RichText::new(label).font(font).color(color),
+        label_width,
+    );
+    (response, label_response)
 }
 
 /// Center a standard unit footer label in its reserved row.

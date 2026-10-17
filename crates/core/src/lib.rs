@@ -10,8 +10,8 @@ pub use daw_unit_core::{
 };
 pub use daw_unit_core::{
     AmplitudeSettings, EnvelopeInstance, EnvelopeMode, InstrumentBusSettings, LfoInstance,
-    LfoPolarity, LfoRestart, LfoSettings, Modulation, ModulationParameter, ModulationSourceId,
-    ModulationValue,
+    LfoPolarity, LfoRestart, LfoSettings, MacroInstance, MacroModuleSettings, MacroSettings,
+    Modulation, ModulationParameter, ModulationSourceId, ModulationValue,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
 mod audio_settings;

@@ -24,12 +24,7 @@ pub(super) fn sources(instrument: Option<&InstrumentSettings>) -> Vec<Source> {
         .filter(|source| source.present)
         .map(|source| Source {
             id: source.id,
-            label: format!(
-                "{} · {} {}",
-                source.layer_name,
-                source.output.name,
-                source.index + 1
-            ),
+            label: format!("{} · {}", source.layer_name, source.display_name()),
             scope: source.scope,
             range: source.output.range,
             behavior: source.output.behavior,
@@ -42,10 +37,7 @@ pub(super) fn provider_sources(
     instrument: &InstrumentSettings,
 ) -> Vec<(ModulationSourceId, Vec<Source>)> {
     let all = sources(Some(instrument));
-    let nodes: Vec<_> = instrument
-        .lfo_destinations()
-        .map(|(id, lfo)| (id, lfo.modulations.as_slice()))
-        .collect();
+    let nodes: Vec<_> = instrument.provider_destinations().collect();
     nodes
         .iter()
         .map(|(destination, _)| {
@@ -134,6 +126,16 @@ pub(super) fn targeted_body(
     scope: ModulationScope,
     compact: bool,
 ) {
+    targeted_body_with_sources(ui, routes, targets, scope, compact, |_| sources);
+}
+pub(super) fn targeted_body_with_sources<'a>(
+    ui: &mut Ui,
+    routes: &mut Vec<Modulation>,
+    targets: &[Target],
+    scope: ModulationScope,
+    compact: bool,
+    sources_for_target: impl Fn(Option<daw_core::Id>) -> &'a [Source],
+) {
     if targets.is_empty() {
         return;
     }
@@ -154,6 +156,7 @@ pub(super) fn targeted_body(
                         ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
                         ui.set_min_height(crate::envelope_panel::body_height(compact));
                         if !compact {
+                            let sources = sources_for_target(route.target);
                             let selected = route
                                 .source
                                 .and_then(|id| sources.iter().find(|s| s.id == id))
@@ -191,8 +194,12 @@ pub(super) fn targeted_body(
                                     .show_ui(ui, |ui| {
                                         for target in targets {
                                             if ui.selectable_label(route.parameter == target.parameter && route.target == target.id, &target.label).clicked() {
+                                                let target_changed = route.target != target.id;
                                                 route.parameter = target.parameter;
                                                 route.target = target.id;
+                                                if target_changed && scope == ModulationScope::Shared && route.source.is_some_and(|source| !sources_for_target(target.id).iter().any(|s| s.id == source && scope.accepts(s.scope))) {
+                                                    route.source = None;
+                                                }
                                                 route.amount = route.amount.clamp(-target.parameter.limit(), target.parameter.limit());
                                             }
                                         }
@@ -450,7 +457,8 @@ pub(super) fn marker(
                 offsets.map(|o| (base + o.clamp(-96.0, 96.0)).clamp(daw_core::SILENT_GAIN_DB, 12.0))
             }
         }
-        ModulationParameter::LfoDepth
+        ModulationParameter::MacroValue
+        | ModulationParameter::LfoDepth
         | ModulationParameter::DryWet
         | ModulationParameter::DriveGain
         | ModulationParameter::Tone
@@ -497,7 +505,8 @@ pub(super) fn marker(
                 format!("{value:.1} dB")
             }
         }
-        ModulationParameter::LfoDepth
+        ModulationParameter::MacroValue
+        | ModulationParameter::LfoDepth
         | ModulationParameter::DryWet
         | ModulationParameter::DriveGain
         | ModulationParameter::Tone

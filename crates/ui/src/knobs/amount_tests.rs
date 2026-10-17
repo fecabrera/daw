@@ -3,7 +3,7 @@ use super::*;
 use crate::parameter_knobs;
 use daw_core::ModulationParameter as P;
 
-const PARAMETERS: [P; 13] = [
+const PARAMETERS: [P; 14] = [
     P::Pitch,
     P::Amplitude,
     P::Frequency,
@@ -17,6 +17,7 @@ const PARAMETERS: [P; 13] = [
     P::ColorFrequency,
     P::LfoDepth,
     P::LfoRate,
+    P::MacroValue,
 ];
 
 fn native_value(parameter: P, amount: f32) -> f32 {

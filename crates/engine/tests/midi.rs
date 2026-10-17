@@ -2662,3 +2662,205 @@ fn note_relative_envelopes_share_live_export_blocks_and_allocation_free_retarget
         assert_eq!(updated.playhead, 8000);
     }
 }
+
+fn macro_plan() -> RenderPlan {
+    let mut p = plan(Waveform::Saw, 48_000);
+    let i = p.project.tracks[0].instrument.as_mut().unwrap();
+    let l = &mut i.layers[0];
+    l.macro_module.add();
+    l.macro_module.add();
+    l.macro_module.controls[0].settings.value = 0.25;
+    l.macro_module.controls[1].settings.value = 0.6;
+    let a = ModulationSourceId {
+        layer: l.id,
+        unit: l.macro_module.controls[0].id,
+    };
+    let b = ModulationSourceId {
+        layer: l.id,
+        unit: l.macro_module.controls[1].id,
+    };
+    let mut lfo = LfoInstance::default();
+    lfo.settings.depth = 0.0;
+    lfo.modulations.push(Modulation {
+        source: Some(a),
+        amount: 1.0,
+        ..Modulation::new(ModulationParameter::LfoDepth)
+    });
+    l.macro_module.modulations.push(Modulation {
+        source: Some(ModulationSourceId {
+            layer: l.id,
+            unit: lfo.id,
+        }),
+        target: Some(b.unit),
+        amount: -0.4,
+        ..Modulation::new(ModulationParameter::MacroValue)
+    });
+    l.lfos.push(lfo);
+    l.oscillator_modulations.push(Modulation {
+        source: Some(a),
+        target: Some(l.oscillators[0].id),
+        amount: 12.0,
+        ..Modulation::new(ModulationParameter::Pitch)
+    });
+    l.amplitude.modulations.push(Modulation {
+        source: Some(a),
+        amount: 0.8,
+        ..Modulation::new(ModulationParameter::Amplitude)
+    });
+    let mut filter = EffectInstance::auto_filter();
+    if let EffectSettings::AutoFilter(s) = &mut filter.unit {
+        s.lfo_enabled = false;
+        s.modulations.push(Modulation {
+            source: Some(a),
+            amount: 2.0,
+            ..Modulation::new(ModulationParameter::Frequency)
+        });
+    }
+    let mut drive = EffectInstance::drive();
+    if let EffectSettings::Drive(s) = &mut drive.unit {
+        s.modulations.push(Modulation {
+            source: Some(b),
+            amount: 0.5,
+            ..Modulation::new(ModulationParameter::DriveGain)
+        });
+    }
+    p.project.tracks[0].effects = vec![filter, drive];
+    p.project.validate().unwrap();
+    p
+}
+#[test]
+fn macros_fan_out_through_lfo_dependencies_with_live_export_block_and_layout_parity() {
+    let p = macro_plan();
+    let mut expected = vec![[0.0; 2]; 52_000];
+    Renderer::new(p.clone()).render_offline(&mut expected);
+    assert!(expected.iter().flatten().all(|v| v.is_finite()));
+    assert!(expected[4000..8000].iter().any(|s| s[0].abs() > 0.01));
+    let mut blocks = Renderer::new(p.clone());
+    let mut actual = expected.clone();
+    for block in actual.chunks_mut(137) {
+        blocks.render_offline(block);
+    }
+    assert_eq!(actual, expected);
+    let mut range = [[0.0; 2]; 128];
+    p.render(13_000, &mut range);
+    assert_eq!(range, expected[13_000..13_128]);
+    let i = p.project.tracks[0].instrument.as_ref().unwrap();
+    let target = daw_engine::ModulationTarget::Macro {
+        track: p.project.tracks[0].id,
+        layer: i.layers[0].id,
+        unit: i.layers[0].macro_module.controls[0].id,
+    };
+    let mut live = Renderer::new(p.clone());
+    live.play();
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    for (frame, sample) in expected.iter().enumerate() {
+        let got = live.next_sample();
+        if frame > 240 {
+            assert_eq!(got, *sample);
+        }
+        assert_eq!(live.modulation_values(target).unwrap()[0], 0.25);
+    }
+    live.pause();
+    let position = live.playhead;
+    for _ in 0..100 {
+        live.next_sample();
+    }
+    assert_eq!(live.playhead, position);
+    live.seek(13_000);
+    live.play();
+    for _ in 0..600 {
+        assert!(live.next_sample().iter().all(|v| v.is_finite()));
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    // Display-name edits retain the same audio state and route identities.
+    let mut original = Renderer::new(p.clone());
+    original.play();
+    for _ in 0..1000 {
+        original.next_sample();
+    }
+    let mut named = p.clone();
+    named.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+        .macro_module
+        .controls[0]
+        .name = Some("Brightness".into());
+    let mut renamed = Renderer::new(named);
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    renamed.inherit(&mut original);
+    for sample in &expected[1000..2000] {
+        assert_eq!(renamed.next_sample(), *sample);
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    let mut changed = p.clone();
+    changed.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0]
+        .macro_module
+        .controls
+        .swap(0, 1);
+    let mut reordered = vec![[0.0; 2]; expected.len()];
+    Renderer::new(changed).render_offline(&mut reordered);
+    assert_eq!(
+        reordered, expected,
+        "Saved strip order must not change provider order or destinations"
+    );
+    let mut changed = p;
+    let module = &mut changed.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0]
+        .macro_module;
+    module.controls[0].settings.value = 0.75;
+    module.controls[1].enabled = false;
+    module.modulations[0].amount = -0.1;
+    let mut next = Renderer::new(changed);
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    next.inherit(&mut live);
+    for _ in 0..1000 {
+        assert!(next.next_sample().iter().all(|v| v.is_finite()));
+    }
+    assert_eq!(next.modulation_values(target).unwrap()[0], 0.75);
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}
+#[test]
+fn unassigned_and_disabled_macro_modules_preserve_audio_and_never_extend_notes() {
+    let baseline = plan(Waveform::Square, 48_000);
+    let mut p = baseline.clone();
+    let l = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+    l.macro_module.add();
+    l.macro_module.controls[0].settings.value = 1.0;
+    let mut reference = vec![[0.0; 2]; 52_000];
+    let mut actual = reference.clone();
+    Renderer::new(baseline.clone()).render_offline(&mut reference);
+    Renderer::new(p.clone()).render_offline(&mut actual);
+    assert_eq!(reference, actual);
+    let l = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+    l.macro_module.enabled = false;
+    l.amplitude.modulations.push(Modulation {
+        source: Some(ModulationSourceId {
+            layer: l.id,
+            unit: l.macro_module.controls[0].id,
+        }),
+        amount: 1.0,
+        ..Modulation::new(ModulationParameter::Amplitude)
+    });
+    Renderer::new(p.clone()).render_offline(&mut actual);
+    assert_eq!(reference, actual);
+    p.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+        .macro_module
+        .enabled = true;
+    Renderer::new(p).render_offline(&mut actual);
+    assert_eq!(
+        reference, actual,
+        "Continuous value one is unity at Amplitude"
+    );
+    assert!(actual[50_000..].iter().flatten().all(|v| *v == 0.0));
+}

@@ -100,6 +100,10 @@ pub trait ModulationSource: Send {
 /// Control-thread discovery. Retained, absent units remain discoverable for reference validation.
 pub trait ModulationSourceSettings {
     const MODULATION_OUTPUT: ModulationOutputDescriptor;
+    /// Optional instance name for discovery, independent of routing identity.
+    fn modulation_name(&self) -> Option<&str> {
+        None
+    }
     fn modulation_output(&self) -> ModulationOutputDescriptor {
         Self::MODULATION_OUTPUT
     }
@@ -108,7 +112,7 @@ pub trait ModulationSourceSettings {
     fn modulation_present(&self) -> bool;
     fn modulation_enabled(&self) -> bool;
     fn modulation_source<'a>(
-        &self,
+        &'a self,
         layer: Uuid,
         layer_name: &'a str,
         index: usize,
@@ -119,6 +123,7 @@ pub trait ModulationSourceSettings {
                 unit: self.modulation_source_id(),
             },
             layer_name,
+            name: self.modulation_name(),
             index,
             output: self.modulation_output(),
             scope: self.modulation_scope(),
@@ -146,12 +151,22 @@ impl ModulationSourceSettings for EnvelopeInstance {
 pub struct ModulationSourceInfo<'a> {
     pub id: ModulationSourceId,
     pub layer_name: &'a str,
+    pub name: Option<&'a str>,
     /// Zero-based ordinal in this provider's saved instance list.
     pub index: usize,
     pub output: ModulationOutputDescriptor,
     pub scope: ModulationScope,
     pub present: bool,
     pub enabled: bool,
+}
+impl ModulationSourceInfo<'_> {
+    /// Use the saved instance name, or the provider type and list ordinal.
+    pub fn display_name(&self) -> std::borrow::Cow<'_, str> {
+        self.name.map_or_else(
+            || std::borrow::Cow::Owned(format!("{} {}", self.output.name, self.index + 1)),
+            std::borrow::Cow::Borrowed,
+        )
+    }
 }
 
 /// Common source enable ramp, normalization and published sample construction.

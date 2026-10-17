@@ -12,7 +12,8 @@ Drag unused space inside an individual oscillator strip to transfer that oscilla
 | Individual oscillator | Append that source and only its pitch routes. Other sources and routes stay in place. |
 | Envelope or LFO | Append the independent component. Moves update existing modulation connections throughout the instrument and its track effects. Copies start with no consumers. |
 | Amplitude | Transfer the stage and its connections to a regular layer without an installed Amplitude stage. An occupied stage rejects the drop. |
-| Main | Accept shared Envelope and LFO components. Reject Per note envelopes, Oscillator, and Amplitude. Moving a component does not change its mode. |
+| Macro header | Merge all strips and their targeted routes into the destination Macro component; moves update all consumers and copies receive fresh strip/route IDs. |
+| Main | Accept shared Envelope, LFO, and Macro components. Reject Per note envelopes, Oscillator, and Amplitude. Moving a component does not change its mode. |
 
 A copy can stay in the source layer where the destination rules permit it. Individual oscillators can also move to an insertion position in their current layer. Other moves onto the source layer make no edit. There is one Oscillator unit and one optional Amplitude stage per regular layer; this operation does not add a second unit of either type. An Oscillator merge uses the destination unit's enable, collapse, and modulation-open state. An empty destination takes those settings from the source unit. Individual oscillator settings always travel with the source. Layer gain, pan, mute, solo, name, order, and compact state stay with the layer.
 
@@ -43,3 +44,6 @@ Saved transfers use the existing project fields. Save/reopen and Save As preserv
 ## Panel borders
 
 Timeline track/Master, regular layer, and Main selection outlines meet all four edges without an inset. They paint after neutral dividers and row fills so no side of the stroke is covered. The fixed Layers header separator paints after scrolling content. Main owns one top separator on the preceding layer's bottom pixel. Its components omit their separate top and bottom unit edges, and header fills cover the reserved top frame space without moving controls; the adjacent effects lane or status panel owns that separator. These borders share the existing panel and theme helpers in both themes and at both row heights.
+
+
+Macro headers use these same installed-component gestures. The module moves all its strips, saved names, and targeted input routes, merging into a populated destination. Moves remap all consumers; copies use fresh strip/route IDs and matching targets while retaining source assignments. Both regular layers and Main accept Macro modules. See [Macro editing](macro.md#editing-and-saved-state).

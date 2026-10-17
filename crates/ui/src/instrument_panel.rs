@@ -10,6 +10,7 @@ pub(super) struct InstrumentUi {
     pub(super) track: Option<Id>,
     pub(super) selected_layer: Option<Id>,
     name_edit: Option<LayerNameEdit>,
+    pub(super) macro_name_edit: Option<crate::macro_panel::NameEdit>,
     drag: Option<Id>,
     pub(super) inputs: HashMap<Id, Inputs>,
     pub(super) oscillator_slots: Vec<(Id, Id, Rect)>,
@@ -26,6 +27,7 @@ struct LayerNameEdit {
 impl InstrumentUi {
     pub(super) fn cancel(&mut self) {
         self.name_edit = None;
+        self.macro_name_edit = None;
         self.drag = None;
         self.inputs.clear();
     }
@@ -33,7 +35,7 @@ impl InstrumentUi {
         self.drag.is_some()
     }
     pub(super) fn editing_name(&self) -> bool {
-        self.name_edit.is_some()
+        self.name_edit.is_some() || self.macro_name_edit.is_some()
     }
 }
 
@@ -118,16 +120,24 @@ impl DawUi {
         self.instrument_ui.inputs.retain(|id, _| {
             *id == settings.main.id || settings.layers.iter().any(|layer| layer.id == *id)
         });
+        if self
+            .instrument_ui
+            .macro_name_edit
+            .as_ref()
+            .is_some_and(|edit| !edit.available(&settings))
+        {
+            self.instrument_ui.macro_name_edit = None;
+        }
         let modulation_sources = crate::modulation_panel::sources(Some(&settings));
-        let lfo_sources = crate::modulation_panel::provider_sources(&settings);
+        let provider_sources = crate::modulation_panel::provider_sources(&settings);
         let shared_sources: Vec<_> = track
             .effects
             .iter()
             .flat_map(|e| e.unit.modulations())
             .chain(
                 settings
-                    .lfo_destinations()
-                    .flat_map(|(_, l)| &l.modulations),
+                    .provider_destinations()
+                    .flat_map(|(_, routes)| routes),
             )
             .filter_map(|r| r.source)
             .collect();
@@ -483,7 +493,7 @@ impl DawUi {
                                                         }
                                                         for (index, lfo) in layer.lfos.iter_mut().enumerate() {
                                                             if let Some(unit) = crate::lfo_panel::unit(ui, lfo, index + 1, height, compact, crate::lfo_panel::Controls {
-                                                                sources: lfo_sources.iter().find(|(id, _)| id.layer == layer.id && id.unit == lfo.id).map_or(&[], |(_, sources)| sources.as_slice()),
+                                                                sources: provider_sources.iter().find(|(id, _)| id.layer == layer.id && id.unit == lfo.id).map_or(&[], |(_, sources)| sources.as_slice()),
                                                                 tempo: self.session.project.tempo_bpm,
                                                                 live: self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Lfo { track: track.id, layer: layer.id, unit: lfo.id })).map(|v| [v[0], v[1]]),
                                                             }) {
@@ -492,6 +502,17 @@ impl DawUi {
                                                                 if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }
                                                                 previous = Some(rect);
                                                             }
+                                                        }
+                                                        let macro_live: Vec<_> = layer.macro_module.controls.iter().filter_map(|c|
+                                                            self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Macro { track: track.id, layer: layer.id, unit: c.id })).map(|v| (c.id, v[0]))).collect();
+                                                        if let Some(unit) = crate::macro_panel::unit(ui, &mut layer.macro_module, height, compact, crate::macro_panel::Controls {
+                                                            layer: layer.id, sources: &modulation_sources, available: &provider_sources, live: &macro_live,
+                                                            name_edit: &mut self.instrument_ui.macro_name_edit,
+                                                        }) {
+                                                            self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, daw_core::InstrumentComponent::Macros);
+                                                            let rect = unit.response.rect;
+                                                            if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }
+                                                            previous = Some(rect);
                                                         }
                                                         if let Some(amplitude) =
                                                             crate::amplitude_panel::unit(
@@ -620,7 +641,14 @@ impl DawUi {
         for (_, rect) in &mut layer_rows {
             *rect = rect.intersect(scroll.inner_rect);
         }
-        self.instrument_main(ui, track.id, &mut settings.main, main_rect, &lfo_sources);
+        self.instrument_main(
+            ui,
+            track.id,
+            &mut settings.main,
+            main_rect,
+            &modulation_sources,
+            &provider_sources,
+        );
         layer_rows.push((settings.main.id, main_rect));
         control_panel.finish(ui);
         // Fixed chrome must paint after scrolling rows, which share its boundary pixel.

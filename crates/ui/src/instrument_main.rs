@@ -31,7 +31,8 @@ impl DawUi {
         track: Id,
         bus: &mut InstrumentBusSettings,
         rect: Rect,
-        lfo_sources: &[(
+        sources: &[crate::modulation_panel::Source],
+        provider_sources: &[(
             daw_core::ModulationSourceId,
             Vec<crate::modulation_panel::Source>,
         )],
@@ -49,11 +50,18 @@ impl DawUi {
                 .max_rect(rect),
         );
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
+        // Main must keep its own Macro editor enabled while it has keyboard focus.
         let enabled = self.component_drag.as_ref().is_none_or(|d| !d.active)
             && !self.instrument_ui.dragging()
-            && !self.instrument_ui.editing_name();
+            && (!self.instrument_ui.editing_name()
+                || self
+                    .instrument_ui
+                    .macro_name_edit
+                    .as_ref()
+                    .is_some_and(|edit| edit.on_layer(bus.id)));
         // Component presses select their owner just as they do on regular layer rows.
         if enabled
+            && !self.instrument_ui.editing_name()
             && ui.is_enabled()
             && self.edit_environment_available()
             && ui.rect_contains_pointer(rect)
@@ -179,7 +187,7 @@ impl DawUi {
                                     height,
                                     compact,
                                     crate::lfo_panel::Controls {
-                                        sources: lfo_sources
+                                        sources: provider_sources
                                             .iter()
                                             .find(|(id, _)| id.layer == bus.id && id.unit == l.id)
                                             .map_or(&[], |(_, sources)| sources.as_slice()),
@@ -218,6 +226,55 @@ impl DawUi {
                                     previous = Some(rect);
                                     #[cfg(test)]
                                     bounds.lfos.push(unit.header.rect);
+                                }
+                            }
+                            let macro_live: Vec<_> = bus
+                                .macro_module
+                                .controls
+                                .iter()
+                                .filter_map(|c| {
+                                    self.output
+                                        .as_ref()
+                                        .and_then(|o| {
+                                            o.modulation_values(
+                                                daw_engine::ModulationTarget::Macro {
+                                                    track,
+                                                    layer: bus.id,
+                                                    unit: c.id,
+                                                },
+                                            )
+                                        })
+                                        .map(|v| (c.id, v[0]))
+                                })
+                                .collect();
+                            if let Some(unit) = crate::macro_panel::unit(
+                                ui,
+                                &mut bus.macro_module,
+                                height,
+                                compact,
+                                crate::macro_panel::Controls {
+                                    layer: bus.id,
+                                    sources,
+                                    available: provider_sources,
+                                    live: &macro_live,
+                                    name_edit: &mut self.instrument_ui.macro_name_edit,
+                                },
+                            ) {
+                                self.start_installed_component_drag(
+                                    ui,
+                                    &unit.header,
+                                    &[unit.power.rect],
+                                    track,
+                                    bus.id,
+                                    daw_core::InstrumentComponent::Macros,
+                                );
+                                let rect = unit.response.rect;
+                                if let Some(prev) = previous {
+                                    panels::unit_divider(
+                                        ui,
+                                        prev.right() - 0.5,
+                                        prev.top()..=rect.bottom(),
+                                    );
                                 }
                             }
                         });

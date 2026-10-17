@@ -72,6 +72,7 @@ pub enum ModulationParameter {
     ColorFrequency,
     LfoDepth,
     LfoRate,
+    MacroValue,
 }
 impl ModulationParameter {
     pub const LFO: [Self; 2] = [Self::LfoDepth, Self::LfoRate];
@@ -85,6 +86,7 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::MacroValue => "Value",
             Self::LfoDepth => "Depth",
             Self::LfoRate => "Rate",
             Self::Amplitude => "Amplitude",

@@ -8,17 +8,23 @@ pub fn modulation_dependency_order(
 ) -> Option<Vec<usize>> {
     let mut order = Vec::with_capacity(nodes.len());
     while order.len() < nodes.len() {
-        let next = nodes.iter().enumerate().position(|(index, (_, routes))| {
-            !order.contains(&index)
-                && routes.iter().all(|route| {
-                    route.source.is_none_or(|source| {
-                        nodes
-                            .iter()
-                            .position(|(id, _)| *id == source)
-                            .is_none_or(|provider| order.contains(&provider))
-                    })
-                })
-        })?;
+        let next = nodes
+            .iter()
+            .enumerate()
+            .position(|(index, (destination, routes))| {
+                !order.contains(&index)
+                    && routes
+                        .iter()
+                        .filter(|r| r.target.is_none_or(|target| target == destination.unit))
+                        .all(|route| {
+                            route.source.is_none_or(|source| {
+                                nodes
+                                    .iter()
+                                    .position(|(id, _)| *id == source)
+                                    .is_none_or(|provider| order.contains(&provider))
+                            })
+                        })
+            })?;
         order.push(next);
     }
     Some(order)
@@ -41,7 +47,12 @@ pub fn modulation_would_cycle(
         }
         visited.push(id);
         if let Some((_, routes)) = nodes.iter().find(|(node, _)| *node == id) {
-            pending.extend(routes.iter().filter_map(|route| route.source));
+            pending.extend(
+                routes
+                    .iter()
+                    .filter(|r| r.target.is_none_or(|target| target == id.unit))
+                    .filter_map(|route| route.source),
+            );
         }
     }
     false

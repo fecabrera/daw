@@ -1,5 +1,7 @@
 //! Instrument-local component transfers. Project::edit validates the complete result atomically.
 use crate::*;
+#[path = "macro_transfer.rs"]
+mod macros;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InstrumentComponent {
@@ -8,6 +10,7 @@ pub enum InstrumentComponent {
     Envelope(Id),
     Lfo(Id),
     Amplitude,
+    Macros,
 }
 
 impl Project {
@@ -60,6 +63,14 @@ impl Project {
                     component,
                     duplicate,
                 )?;
+            }
+            InstrumentComponent::Macros => {
+                let remaps = macros::transfer(instrument, source, destination, duplicate);
+                if !duplicate {
+                    for (old, new) in remaps {
+                        remap_consumers(instrument, &mut track.effects, old, new);
+                    }
+                }
             }
             InstrumentComponent::Amplitude => {
                 let from = instrument
@@ -125,21 +136,7 @@ impl Project {
                         layer: destination,
                         unit: new_id,
                     };
-                    for layer in &mut instrument.layers {
-                        remap_source(&mut layer.oscillator_modulations, old, new);
-                        remap_source(&mut layer.amplitude.modulations, old, new);
-                    }
-                    for lfo in instrument
-                        .layers
-                        .iter_mut()
-                        .flat_map(|l| &mut l.lfos)
-                        .chain(&mut instrument.main.lfos)
-                    {
-                        remap_source(&mut lfo.modulations, old, new);
-                    }
-                    for effect in &mut track.effects {
-                        remap_source(effect.unit.modulations_mut(), old, new);
-                    }
+                    remap_consumers(instrument, &mut track.effects, old, new);
                 }
             }
         }
@@ -164,6 +161,10 @@ fn eligible(i: &InstrumentSettings, from: Id, to: Id, c: InstrumentComponent, co
             source.is_some_and(|l| l.oscillators.iter().any(|s| s.id == id))
                 && destination.is_some()
         }
+        InstrumentComponent::Macros => {
+            let m = source.map_or(&i.main.macro_module, |l| &l.macro_module);
+            m.present && m.controls.iter().any(|c| c.present)
+        }
         InstrumentComponent::Amplitude => {
             source.is_some_and(|l| l.amplitude.present)
                 && destination.is_some_and(|l| !l.amplitude.present)
@@ -187,6 +188,13 @@ fn providers(i: &InstrumentSettings, owner: Id) -> impl Iterator<Item = Id> + '_
         .iter()
         .map(|e| e.id)
         .chain(layer.map_or(&i.main.lfos, |l| &l.lfos).iter().map(|l| l.id))
+        .chain(
+            layer
+                .map_or(&i.main.macro_module, |l| &l.macro_module)
+                .controls
+                .iter()
+                .map(|c| c.id),
+        )
 }
 fn envelopes_mut(i: &mut InstrumentSettings, owner: Id) -> &mut Vec<EnvelopeInstance> {
     if i.main.id == owner {
@@ -205,6 +213,28 @@ fn lfos_mut(i: &mut InstrumentSettings, owner: Id) -> &mut Vec<LfoInstance> {
         &mut i.main.lfos
     } else {
         &mut i.layers.iter_mut().find(|l| l.id == owner).unwrap().lfos
+    }
+}
+fn remap_consumers(
+    instrument: &mut InstrumentSettings,
+    effects: &mut [EffectInstance],
+    old: ModulationSourceId,
+    new: ModulationSourceId,
+) {
+    for layer in &mut instrument.layers {
+        remap_source(&mut layer.oscillator_modulations, old, new);
+        remap_source(&mut layer.amplitude.modulations, old, new);
+        remap_source(&mut layer.macro_module.modulations, old, new);
+        for lfo in &mut layer.lfos {
+            remap_source(&mut lfo.modulations, old, new);
+        }
+    }
+    remap_source(&mut instrument.main.macro_module.modulations, old, new);
+    for lfo in &mut instrument.main.lfos {
+        remap_source(&mut lfo.modulations, old, new);
+    }
+    for effect in effects {
+        remap_source(effect.unit.modulations_mut(), old, new);
     }
 }
 fn remap_source(routes: &mut [Modulation], old: ModulationSourceId, new: ModulationSourceId) {

@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+daw-macro.workspace = true
 daw-lfo.workspace = true
 daw-amplitude.workspace = true
 daw-unit-core.workspace = true

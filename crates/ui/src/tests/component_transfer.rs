@@ -74,10 +74,20 @@ fn start(app: &mut DawUi, ctx: &egui::Context, p: Pos2) {
 fn installed_component_headers_and_source_gaps_move_and_copy_on_release() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
-            for kind in 0..5 {
+            for kind in 0..6 {
                 for copy in [false, true] {
                     let (mut app, ctx, owners) = setup(theme, compact);
-                    // Keep all five components visible without horizontal scrolling.
+                    // Keep the transferred component visible without horizontal scrolling.
+                    if kind == 5 {
+                        let module = &mut app.session.project.tracks[0]
+                            .instrument
+                            .as_mut()
+                            .unwrap()
+                            .layers[0]
+                            .macro_module;
+                        module.add();
+                        module.add();
+                    }
                     if kind != 2 {
                         app.session.project.tracks[0]
                             .instrument
@@ -98,7 +108,8 @@ fn installed_component_headers_and_source_gaps_move_and_copy_on_release() {
                         1 => InstrumentComponent::Oscillator(l.oscillators[0].id),
                         2 => InstrumentComponent::Envelope(l.envelopes[0].id),
                         3 => InstrumentComponent::Lfo(l.lfos[0].id),
-                        _ => InstrumentComponent::Amplitude,
+                        4 => InstrumentComponent::Amplitude,
+                        _ => InstrumentComponent::Macros,
                     };
                     let p = source(&app, owners[0], c);
                     let end = app.midi_editor.layer_bounds[&owners[1]].label.center();
@@ -155,6 +166,14 @@ fn installed_component_headers_and_source_gaps_move_and_copy_on_release() {
                         3 => {
                             assert_eq!(i.layers[0].lfos.len(), usize::from(copy));
                             assert_eq!(i.layers[1].lfos.len(), 1);
+                        }
+                        5 => {
+                            assert_eq!(
+                                i.layers[0].macro_module.controls.len(),
+                                if copy { 2 } else { 0 }
+                            );
+                            assert_eq!(i.layers[1].macro_module.controls.len(), 2);
+                            assert!(i.layers[1].macro_module.present);
                         }
                         _ => {
                             assert_eq!(i.layers[0].amplitude.present, copy);

@@ -1,4 +1,5 @@
-use super::modulation::{Control, LfoControl, Route, SharedControls};
+use super::continuous_modulation::ProviderControl;
+use super::modulation::{Control, Route, SharedControls};
 use daw_core::{Clip, Id, Project, Track, TrackKind, linear_gain};
 use daw_core::{EnvelopeMode, ModulationSourceId, ModulationValue};
 use daw_envelope::Envelope;
@@ -571,12 +572,12 @@ impl MidiTrackRuntime {
                     }))
                     .collect(),
             )
-            .with_lfos(
+            .with_providers(
                 layers
                     .iter()
                     .flat_map(|layer| {
                         layer.lfos.iter().map(|lfo| {
-                            LfoControl::new(
+                            ProviderControl::lfo(
                                 layer.id,
                                 lfo,
                                 ProcessingContext {
@@ -587,7 +588,7 @@ impl MidiTrackRuntime {
                         })
                     })
                     .chain(instrument.main.lfos.iter().map(|lfo| {
-                        LfoControl::new(
+                        ProviderControl::lfo(
                             instrument.main.id,
                             lfo,
                             ProcessingContext {
@@ -595,6 +596,19 @@ impl MidiTrackRuntime {
                                 max_block_frames: project.buffer_size_frames,
                             },
                         )
+                    }))
+                    .chain(instrument.macro_modules().flat_map(|(layer, module)| {
+                        module.controls.iter().map(move |control| {
+                            ProviderControl::macro_control(
+                                layer,
+                                module,
+                                control,
+                                ProcessingContext {
+                                    sample_rate_hz: project.sample_rate_hz,
+                                    max_block_frames: project.buffer_size_frames,
+                                },
+                            )
+                        })
                     }))
                     .collect(),
             ),
@@ -713,8 +727,8 @@ impl MidiTrackRuntime {
         }
         sum
     }
-    pub fn lfo_values(&self, id: daw_unit_core::ModulationSourceId) -> Option<[f32; 2]> {
-        self.shared.lfo_values(id)
+    pub fn provider_values(&self, id: daw_unit_core::ModulationSourceId) -> Option<[f32; 2]> {
+        self.shared.provider_values(id)
     }
     pub fn modulation_values(&self) -> &[ModulationValue] {
         &self.shared.values

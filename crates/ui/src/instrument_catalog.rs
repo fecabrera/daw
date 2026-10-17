@@ -8,13 +8,15 @@ pub(super) enum Component {
     Envelope,
     Lfo,
     Amplitude,
+    Macro,
 }
 
-pub(super) const ENTRIES: [(&str, &str, Component); 4] = [
+pub(super) const ENTRIES: [(&str, &str, Component); 5] = [
     ("daw.oscillator", "Oscillator", Component::Oscillator),
     ("daw.envelope", "Envelope", Component::Envelope),
     ("daw.lfo", "LFO", Component::Lfo),
     ("daw.amplitude", "Amplitude", Component::Amplitude),
+    ("daw.macro", "Macro", Component::Macro),
 ];
 
 impl Component {
@@ -24,6 +26,7 @@ impl Component {
             // Each Envelope is independent; Amplitude is a single retained audio stage.
             Self::Envelope => add_envelope(&mut layer.envelopes),
             Self::Lfo => add_lfo(&mut layer.lfos),
+            Self::Macro => layer.macro_module.add(),
             Self::Amplitude => layer.amplitude.present = true,
         }
     }
@@ -64,6 +67,7 @@ pub(super) fn add_components(
                     }
                 }
                 Component::Lfo => add_lfo(&mut settings.main.lfos),
+                Component::Macro => settings.main.macro_module.add(),
                 Component::Oscillator | Component::Amplitude => {}
             }
         }

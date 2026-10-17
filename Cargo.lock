@@ -1116,6 +1116,7 @@ dependencies = [
  "daw-equalizer",
  "daw-lfo",
  "daw-limiter",
+ "daw-macro",
  "daw-media",
  "daw-oscillator",
  "daw-ott",
@@ -1147,6 +1148,13 @@ dependencies = [
 
 [[package]]
 name = "daw-limiter"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
+]
+
+[[package]]
+name = "daw-macro"
 version = "0.1.0"
 dependencies = [
  "daw-unit-core",

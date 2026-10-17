@@ -13,6 +13,7 @@ fn percent(name: &'static str, reset: f32) -> KnobSpec {
 }
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::MacroValue => percent("Macro value", 0.0),
         Parameter::LfoDepth => percent("LFO depth", 1.0),
         Parameter::LfoRate => KnobSpec::new("LFO rate", 0.01..=20.0, 2.0, 0.01)
             .scale(
@@ -122,7 +123,8 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_q,
                 ["−10", "+10"],
             ),
-            Parameter::LfoDepth
+            Parameter::MacroValue
+            | Parameter::LfoDepth
             | Parameter::DryWet
             | Parameter::DriveGain
             | Parameter::Tone

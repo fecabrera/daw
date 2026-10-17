@@ -1,7 +1,8 @@
 use super::*;
 
 #[derive(Clone, Copy)]
-pub(crate) struct ModulationRamp {
+/// Shared finite linear ramp for control values and contribution weights.
+pub struct ModulationRamp {
     value: f32,
     target: f32,
     left: u32,
@@ -96,13 +97,13 @@ impl ModulationRoute {
 /// Amplitude uses the note gate with no routes. Resolve once for each destination sample.
 #[derive(Clone, Copy, Debug)]
 pub struct ModulationInputs {
-    offsets: [f32; 12],
+    offsets: [f32; 13],
     amplitude: f32,
 }
 impl ModulationInputs {
     pub fn neutral(note_gate: f32) -> Self {
         Self {
-            offsets: [0.0; 12],
+            offsets: [0.0; 13],
             amplitude: note_gate,
         }
     }
@@ -200,6 +201,7 @@ impl ModulationParameter {
         match self {
             Self::LfoDepth => Some(10),
             Self::LfoRate => Some(11),
+            Self::MacroValue => Some(12),
             Self::Amplitude => None,
             Self::Pitch => Some(9),
             Self::Frequency => Some(0),

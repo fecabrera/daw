@@ -307,3 +307,84 @@ fn lfo_destinations_move_with_routes_copy_fresh_routes_and_follow_provider_moves
     );
     assert_eq!(serde_json::to_value(&p).unwrap(), before);
 }
+
+#[test]
+fn macro_module_moves_merge_strips_remap_every_consumer_and_copy_fresh_targets() {
+    let (mut p, track, a, b) = fixture();
+    let i = p.tracks[0].instrument.as_mut().unwrap();
+    let collision = Id::new_v4();
+    i.layers[1].envelopes[0].id = collision;
+    let module = &mut i.layers[0].macro_module;
+    module.add();
+    module.add();
+    module.modulation_open = true;
+    module.controls[0].name = Some("Tone".into());
+    // Force a collision with a retained Envelope on the destination owner.
+    module.controls[0].id = collision;
+    let id = module.controls[0].id;
+    let source = ModulationSourceId { layer: a, unit: id };
+    module.modulations.push(Modulation {
+        target: Some(id),
+        source: None,
+        amount: 0.4,
+        ..Modulation::new(ModulationParameter::MacroValue)
+    });
+    i.layers[0].amplitude.modulations[0].source = Some(source);
+    let mut lfo = LfoInstance::default();
+    lfo.modulations.push(Modulation {
+        source: Some(source),
+        amount: 0.5,
+        ..Modulation::new(ModulationParameter::LfoDepth)
+    });
+    i.main.lfos.push(lfo);
+    i.layers[1].macro_module.add();
+    let destination_id = i.layers[1].macro_module.controls[0].id;
+    transfer(&mut p, track, a, b, Macros, false);
+    let i = p.tracks[0].instrument.as_ref().unwrap();
+    let moved = i.layers[1].macro_module.controls[1].id;
+    assert_eq!(
+        i.layers[1].macro_module.controls[1].name.as_deref(),
+        Some("Tone")
+    );
+    assert_ne!(id, moved);
+    assert_eq!(i.layers[1].macro_module.controls[0].id, destination_id);
+    assert!(!i.layers[0].macro_module.present);
+    let new = Some(ModulationSourceId {
+        layer: b,
+        unit: moved,
+    });
+    assert_eq!(i.layers[0].amplitude.modulations[0].source, new);
+    assert_eq!(i.main.lfos[0].modulations[0].source, new);
+    assert_eq!(i.layers[1].macro_module.modulations[0].target, Some(moved));
+    let main = i.main.id;
+    let before = i.layers[1].macro_module.clone();
+    transfer(&mut p, track, b, main, Macros, true);
+    let i = p.tracks[0].instrument.as_ref().unwrap();
+    assert_eq!(i.layers[1].macro_module, before);
+    assert_eq!(i.main.macro_module.controls.len(), before.controls.len());
+    for (copy, original) in i.main.macro_module.controls.iter().zip(&before.controls) {
+        assert_ne!(copy.id, original.id);
+        assert_eq!(copy.settings, original.settings);
+        assert_eq!(copy.name, original.name);
+    }
+    assert_ne!(
+        i.main.macro_module.modulations[0].id,
+        before.modulations[0].id
+    );
+    assert_eq!(
+        i.main.macro_module.modulations[0].target,
+        Some(i.main.macro_module.controls[1].id)
+    );
+    p.validate().unwrap();
+    let snapshot = serde_json::to_vec(&p).unwrap();
+    let mut invalid = p.tracks[0].instrument.clone().unwrap();
+    invalid.main.macro_module.controls[0].settings.value = f32::NAN;
+    assert!(
+        p.edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(invalid)
+        })
+        .is_err()
+    );
+    assert_eq!(serde_json::to_vec(&p).unwrap(), snapshot);
+}

@@ -186,7 +186,24 @@ fn modulation_meters(
                 })
         })
     });
+    let macros = plan.project.tracks.iter().flat_map(|track| {
+        track.instrument.iter().flat_map(move |i| {
+            i.macro_modules()
+                .filter(|(_, m)| m.present)
+                .flat_map(move |(layer, m)| {
+                    m.controls
+                        .iter()
+                        .filter(|c| c.present)
+                        .map(move |c| ModulationTarget::Macro {
+                            track: track.id,
+                            layer,
+                            unit: c.id,
+                        })
+                })
+        })
+    });
     effects
+        .chain(macros)
         .chain(lfos)
         .chain(amplitudes)
         .chain(oscillators)

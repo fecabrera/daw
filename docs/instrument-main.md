@@ -6,7 +6,7 @@ Processing order:
 
 `Layer sources → layer Amplitude and gain/pan → stereo layer sum → Main gain/pan → track effects → track gain/pan → project mix`
 
-Main also hosts shared Envelope and LFO components. These are modulation sources; adding them does not change audio or create connections. Use the existing destination strips on layer Amplitude, Auto-filter, or Drive to connect them.
+Main also hosts shared Envelope, LFO, and Macro components. These are modulation sources; adding them does not change audio or create connections. Use the existing destination strips on layer Amplitude, Auto-filter, or Drive to connect them.
 
 ## Layout and interaction
 
