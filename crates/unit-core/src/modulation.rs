@@ -80,6 +80,10 @@ pub enum ModulationParameter {
     EqHighGain,
     EqHighFrequency,
     EqHighQ,
+    LimiterInput,
+    LimiterRelease,
+    LimiterLookahead,
+    LimiterCeiling,
     SamplerGain,
     CompressorThreshold,
     CompressorRatio,
@@ -88,6 +92,13 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    /// Continuous Limiter controls in UI/telemetry order; mode and routing remain discrete.
+    pub const LIMITER: [Self; 4] = [
+        Self::LimiterInput,
+        Self::LimiterRelease,
+        Self::LimiterLookahead,
+        Self::LimiterCeiling,
+    ];
     /// Continuous Compressor controls, in UI/telemetry order. Detection remains discrete.
     pub const COMPRESSOR: [Self; 7] = [
         Self::CompressorThreshold,
@@ -119,6 +130,10 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::LimiterInput => "Input",
+            Self::LimiterRelease => "Release",
+            Self::LimiterLookahead => "Lookahead",
+            Self::LimiterCeiling => "Ceiling",
             Self::SamplerGain => "Gain",
             Self::CompressorThreshold => "Threshold",
             Self::CompressorRatio => "Ratio",
@@ -150,6 +165,9 @@ impl ModulationParameter {
     }
     pub fn limit(self) -> f32 {
         match self {
+            Self::LimiterInput | Self::LimiterCeiling => 24.0,
+            Self::LimiterRelease => 6.0,
+            Self::LimiterLookahead => 10.0,
             Self::CompressorThreshold => 60.0,
             Self::CompressorRatio => 19.0,
             Self::CompressorKnee => 24.0,
@@ -169,6 +187,9 @@ impl ModulationParameter {
     }
     pub fn unit(self) -> &'static str {
         match self {
+            Self::LimiterInput | Self::LimiterCeiling => "dB",
+            Self::LimiterRelease => "oct",
+            Self::LimiterLookahead => "ms",
             Self::CompressorThreshold | Self::CompressorKnee => "dB",
             Self::CompressorRatio => ":1",
             Self::CompressorAttack | Self::CompressorRelease => "oct",

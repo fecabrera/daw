@@ -22,6 +22,10 @@ pub struct LimiterSettings {
     pub version: u32,
     pub enabled: bool,
     pub collapsed: bool,
+    #[serde(default)]
+    pub modulation_open: bool,
+    #[serde(default)]
+    pub modulations: Vec<crate::Modulation>,
     pub input_db: f32,
     pub release_ms: f32,
     pub lookahead_ms: f32,
@@ -35,6 +39,8 @@ impl Default for LimiterSettings {
             version: LIMITER_STATE_VERSION,
             enabled: true,
             collapsed: false,
+            modulation_open: false,
+            modulations: Vec::new(),
             input_db: 0.0,
             release_ms: 100.0,
             lookahead_ms: 1.0,
@@ -54,5 +60,6 @@ impl LimiterSettings {
             && bounded(self.release_ms, 1.0, 2000.0)
             && bounded(self.lookahead_ms, 0.0, 10.0)
             && bounded(self.ceiling_db, -24.0, 0.0)
+            && crate::ModulationDestinationSettings::valid_modulations(self)
     }
 }

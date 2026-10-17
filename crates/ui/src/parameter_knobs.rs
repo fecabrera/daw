@@ -31,6 +31,13 @@ fn eq_gain() -> KnobSpec {
         .format(|v| format!("{v:.1} dB"))
         .endpoint_labels("−24", "+24")
 }
+fn time(value: f32) -> String {
+    if value < 10.0 {
+        format!("{value:.1} ms")
+    } else {
+        format!("{value:.0} ms")
+    }
+}
 fn compressor_time(attack: bool) -> KnobSpec {
     let spec = if attack {
         KnobSpec::new("Attack", 0.1..=200.0, 10.0, 0.1).scale(
@@ -45,13 +52,6 @@ fn compressor_time(attack: bool) -> KnobSpec {
             |v, d| v * 2_f32.powf(d / 24.0),
         )
     };
-    fn time(v: f32) -> String {
-        if v < 10.0 {
-            format!("{v:.1} ms")
-        } else {
-            format!("{v:.0} ms")
-        }
-    }
     spec.value_label(time).format(time).endpoint_labels(
         if attack { "0.1" } else { "10" },
         if attack { "200" } else { "2k" },
@@ -59,6 +59,28 @@ fn compressor_time(attack: bool) -> KnobSpec {
 }
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::LimiterInput => KnobSpec::new("Limiter input", -24.0..=24.0, 0.0, 0.1)
+            .reference_step(6.0)
+            .value_label(|v| format!("{v:.1} dB"))
+            .format(|v| format!("{v:.1} dB"))
+            .endpoint_labels("−24", "+24"),
+        Parameter::LimiterRelease => KnobSpec::new("Release", 1.0..=2000.0, 100.0, 0.1)
+            .scale(
+                |v| v.ln() / 2000_f32.ln(),
+                |p| 2000_f32.powf(p),
+                |v, d| v * 2_f32.powf(d / 24.0),
+            )
+            .value_label(time)
+            .format(time)
+            .endpoint_labels("1", "2k"),
+        Parameter::LimiterLookahead => KnobSpec::new("Lookahead", 0.0..=10.0, 1.0, 0.1)
+            .value_label(time)
+            .format(time)
+            .endpoint_labels("0", "10"),
+        Parameter::LimiterCeiling => KnobSpec::new("Ceiling", -24.0..=0.0, -1.0, 0.1)
+            .value_label(|v| format!("{v:.1} dB"))
+            .format(|v| format!("{v:.1} dB"))
+            .endpoint_labels("−24", "0"),
         Parameter::CompressorThreshold => KnobSpec::new("Threshold", -60.0..=0.0, -18.0, 0.1)
             .value_label(|v| format!("{v:.1} dB"))
             .format(|v| format!("{v:.1} dBFS"))
@@ -155,13 +177,32 @@ fn signed_pitch(value: f32) -> String {
 pub(super) fn amount(parameter: Parameter) -> KnobSpec {
     let (mapping, format, endpoints): (AmountMapping, fn(f32) -> String, [&str; 2]) =
         match parameter {
-            Parameter::EqLowGain | Parameter::EqMidGain | Parameter::EqHighGain => (
+            Parameter::LimiterInput
+            | Parameter::EqLowGain
+            | Parameter::EqMidGain
+            | Parameter::EqHighGain => (
                 AmountMapping::Offset {
                     origin: 0.0,
                     direction: 1.0,
                 },
                 signed_db,
                 ["−24", "+24"],
+            ),
+            Parameter::LimiterCeiling => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: -1.0,
+                },
+                signed_db,
+                ["−24", "+24"],
+            ),
+            Parameter::LimiterLookahead => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.1} ms"),
+                ["−10", "+10"],
             ),
             Parameter::CompressorThreshold => (
                 AmountMapping::Offset {
@@ -204,7 +245,8 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−24", "+24"],
             ),
-            Parameter::CompressorAttack
+            Parameter::LimiterRelease
+            | Parameter::CompressorAttack
             | Parameter::CompressorRelease
             | Parameter::Frequency
             | Parameter::LfoRate

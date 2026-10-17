@@ -438,6 +438,12 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::LimiterInput => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
+        ModulationParameter::LimiterCeiling => offsets.map(|o| (base + o).clamp(-24.0, 0.0)),
+        ModulationParameter::LimiterRelease => {
+            offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(1.0, 2000.0))
+        }
+        ModulationParameter::LimiterLookahead => offsets.map(|o| (base + o).clamp(0.0, 10.0)),
         ModulationParameter::CompressorThreshold => offsets.map(|o| (base + o).clamp(-60.0, 0.0)),
         ModulationParameter::CompressorRatio => offsets.map(|o| (base + o).clamp(1.0, 20.0)),
         ModulationParameter::CompressorKnee => offsets.map(|o| (base + o).clamp(0.0, 24.0)),
@@ -507,6 +513,12 @@ pub(super) fn marker(
         lines.push("Moving dot: processed value.".into());
     }
     let format_value = |value: f32| match parameter {
+        ModulationParameter::LimiterInput | ModulationParameter::LimiterCeiling => {
+            format!("{value:.1} dB")
+        }
+        ModulationParameter::LimiterRelease | ModulationParameter::LimiterLookahead => {
+            format!("{value:.1} ms")
+        }
         ModulationParameter::CompressorThreshold => format!("{value:.1} dBFS"),
         ModulationParameter::CompressorRatio => format!("{value:.1}:1"),
         ModulationParameter::CompressorKnee => format!("{value:.1} dB"),
@@ -674,6 +686,10 @@ mod tests {
             (Frequency, 1000.0, 6.0, [1000.0, 20000.0]),
             (Resonance, 2.0, -10.0, [0.1, 2.0]),
             (Level, 0.0, 24.0, [0.0, 12.0]),
+            (LimiterInput, 0.0, 24.0, [0.0, 24.0]),
+            (LimiterCeiling, -1.0, -24.0, [-24.0, -1.0]),
+            (LimiterRelease, 100.0, 6.0, [100.0, 2000.0]),
+            (LimiterLookahead, 1.0, -10.0, [0.0, 1.0]),
             (SamplerGain, -6.0, 24.0, [-6.0, 12.0]),
             (
                 SamplerGain,

@@ -1825,6 +1825,8 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let mut eq_reference = Equalizer::new(context, &EqSettings::default());
         let mut drive = Drive::new(context, &DriveSettings::default());
         let mut drive_reference = Drive::new(context, &DriveSettings::default());
+        let mut limiter = daw_limiter::Limiter::new(context, &LimiterSettings::default());
+        let mut limiter_reference = daw_limiter::Limiter::new(context, &LimiterSettings::default());
         let sample_audio = std::sync::Arc::new(vec![[0.2, -0.1]; rate as usize]);
         let mut sampler =
             daw_sampler::Sampler::new(context, &SamplerSettings::default(), sample_audio.clone());
@@ -1839,6 +1841,7 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
             eq.descriptor(),
             compressor.descriptor(),
             sampler.descriptor(),
+            limiter.descriptor(),
         ] {
             assert!(descriptor.consumes_modulation());
             assert!(!descriptor.provides_modulation());
@@ -1865,6 +1868,11 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let compressor_amounts = [-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25];
         let mut compressor_routes = routes(Compressor::MODULATION_PARAMETERS, &compressor_amounts);
         let mut sampler_routes = routes(daw_sampler::Sampler::MODULATION_PARAMETERS, &[-6.0]);
+        let limiter_amounts = [6.0, -1.0, 2.0, -6.0];
+        let mut limiter_routes = routes(
+            daw_limiter::Limiter::MODULATION_PARAMETERS,
+            &limiter_amounts,
+        );
         envelope.note_on();
         ALLOCATIONS.with(|count| count.set(0));
         TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
@@ -1881,6 +1889,13 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
             };
             let sample =
                 process_modulation(&mut sampler, &mut sampler_routes, [0.0; 2], &[], &cached, c);
+            assert_eq!(
+                process_modulation(&mut limiter, &mut limiter_routes, input, &[], &cached, c),
+                limiter_reference.process_modulated(
+                    input,
+                    limiter_amounts.map(|a| cached[0].value * (a * cached[0].weight))
+                )
+            );
             let neutral = sampler_reference.next_sample();
             for ch in 0..2 {
                 assert!((sample[ch] - neutral[ch] * sampler.effective_gain()).abs() < 1e-6);
@@ -2935,9 +2950,12 @@ fn unassigned_and_disabled_macro_modules_preserve_audio_and_never_extend_notes()
 #[test]
 fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_updates() {
     use daw_engine::ModulationTarget;
-    for compressor in [false, true] {
+    for (kind, rate) in [(0, 48000), (1, 48000)]
+        .into_iter()
+        .chain(SAMPLE_RATES.map(|rate| (2, rate)))
+    {
         for provider in 0..3 {
-            let mut p = plan(Waveform::Saw, 48000);
+            let mut p = plan(Waveform::Saw, rate);
             let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
             let main = &mut instrument.main;
             let source = match provider {
@@ -2973,41 +2991,43 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                     }
                 }
             };
-            let mut effect = if compressor {
-                EffectInstance::compressor()
-            } else {
-                EffectInstance::equalizer()
-            };
+            let mut effect = [
+                EffectInstance::equalizer,
+                EffectInstance::compressor,
+                EffectInstance::limiter,
+            ][kind]();
             let target = ModulationTarget::Effect(effect.id);
-            let parameters = if compressor {
-                ModulationParameter::COMPRESSOR
-            } else {
-                ModulationParameter::EQUALIZER
-            };
-            let amounts = if compressor {
-                [-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25]
-            } else {
-                [6.0, 0.5, 0.3, -6.0, 6.0, -0.5, 0.3]
-            };
+            let parameters = [
+                &ModulationParameter::EQUALIZER[..],
+                &ModulationParameter::COMPRESSOR[..],
+                &ModulationParameter::LIMITER[..],
+            ][kind];
+            let amounts = [
+                &[6.0, 0.5, 0.3, -6.0, 6.0, -0.5, 0.3][..],
+                &[-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25][..],
+                &[6.0, -1.0, 2.0, -6.0][..],
+            ][kind];
             let routes = match &mut effect.unit {
                 EffectSettings::Compressor(s) => &mut s.modulations,
                 EffectSettings::Eq3(s) => &mut s.modulations,
+                EffectSettings::Limiter(s) => &mut s.modulations,
                 _ => unreachable!(),
             };
             *routes = parameters
-                .into_iter()
-                .zip(amounts)
+                .iter()
+                .copied()
+                .zip(amounts.iter().copied())
                 .map(|(parameter, amount)| Modulation {
                     source: Some(source),
                     amount,
                     ..Modulation::new(parameter)
                 })
                 .collect();
-            let cancel = if compressor {
-                ModulationParameter::CompressorKnee
-            } else {
-                ModulationParameter::EqLowQ
-            };
+            let cancel = [
+                ModulationParameter::EqLowQ,
+                ModulationParameter::CompressorKnee,
+                ModulationParameter::LimiterLookahead,
+            ][kind];
             for amount in [1.0, -1.0] {
                 routes.push(Modulation {
                     source: Some(source),
@@ -3031,13 +3051,12 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
             TRACK_ALLOCATIONS.with(|c| c.set(true));
             for (frame, expected) in expected.iter().enumerate() {
                 let actual = live.next_sample();
-                if frame > 240 {
+                if frame > rate as usize / 200 {
                     assert_eq!(actual, *expected);
                 }
             }
             assert!(
-                live.modulation_snapshot(target)
-                    .unwrap()
+                live.modulation_snapshot(target).unwrap()[..parameters.len()]
                     .iter()
                     .all(|v| v.is_finite())
             );
@@ -3071,7 +3090,13 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
             for _ in 0..4096 {
                 uninterrupted.next_sample();
             }
-            assert_eq!(uninterrupted.modulation_snapshot(target).unwrap(), snapshot);
+            assert_eq!(
+                uninterrupted
+                    .modulation_snapshot(target)
+                    .unwrap()
+                    .map(f32::to_bits),
+                snapshot.map(f32::to_bits)
+            );
             let mut reordered = p.clone();
             reordered.project.tracks[0].effects[0]
                 .unit
@@ -3080,6 +3105,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
             match &mut reordered.project.tracks[0].effects[0].unit {
                 EffectSettings::Eq3(s) => s.modulation_open = true,
                 EffectSettings::Compressor(s) => s.modulation_open = true,
+                EffectSettings::Limiter(s) => s.modulation_open = true,
                 _ => unreachable!(),
             }
             let mut replacement = Renderer::new(reordered.clone());

@@ -601,7 +601,7 @@ mod limiter_tests {
 #[cfg(test)]
 mod effect_modulation_tests {
     use crate::*;
-    fn fixture(compressor: bool) -> (Project, Id, EffectInstance) {
+    fn fixture(kind: usize) -> (Project, Id, EffectInstance) {
         let mut p = Project::default();
         let track = p.add_midi_track().unwrap();
         let layer = &mut p.tracks[0].instrument.as_mut().unwrap().layers[0];
@@ -611,35 +611,37 @@ mod effect_modulation_tests {
             layer: layer.id,
             unit: layer.envelopes[0].id,
         };
-        let mut effect = if compressor {
-            EffectInstance::compressor()
-        } else {
-            EffectInstance::equalizer()
-        };
+        let mut effect = [
+            EffectInstance::equalizer,
+            EffectInstance::compressor,
+            EffectInstance::limiter,
+        ][kind]();
         let (open, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Compressor(s) => (&mut s.modulation_open, &mut s.modulations),
+            EffectSettings::Limiter(s) => (&mut s.modulation_open, &mut s.modulations),
             _ => unreachable!(),
         };
         *open = true;
-        *routes = if compressor {
-            ModulationParameter::COMPRESSOR
-        } else {
-            ModulationParameter::EQUALIZER
-        }
-        .into_iter()
-        .map(|parameter| Modulation {
-            source: Some(source),
-            amount: -parameter.limit(),
-            ..Modulation::new(parameter)
-        })
-        .collect();
+        *routes = [
+            &ModulationParameter::EQUALIZER[..],
+            &ModulationParameter::COMPRESSOR[..],
+            &ModulationParameter::LIMITER[..],
+        ][kind]
+            .iter()
+            .copied()
+            .map(|parameter| Modulation {
+                source: Some(source),
+                amount: -parameter.limit(),
+                ..Modulation::new(parameter)
+            })
+            .collect();
         (p, track, effect)
     }
     #[test]
     fn effect_modulation_defaults_roundtrip_and_invalid_edits_are_atomic() {
-        for compressor in [false, true] {
-            let (mut p, track, effect) = fixture(compressor);
+        for kind in 0..3 {
+            let (mut p, track, effect) = fixture(kind);
             p.edit(Edit::SetEffects {
                 track_id: track,
                 effects: vec![effect.clone()],
@@ -674,11 +676,12 @@ mod effect_modulation_tests {
                 );
                 assert_eq!(serde_json::to_value(&p).unwrap(), saved);
             }
-            let expected = if compressor {
-                EffectInstance::compressor().unit
-            } else {
-                EffectInstance::equalizer().unit
-            };
+            let expected = [
+                EffectInstance::equalizer,
+                EffectInstance::compressor,
+                EffectInstance::limiter,
+            ][kind]()
+            .unit;
             let mut legacy = serde_json::to_value(&expected).unwrap();
             legacy["state"]
                 .as_object_mut()
@@ -702,8 +705,8 @@ mod effect_modulation_tests {
 
     #[test]
     fn effect_modulation_uses_same_instrument_shared_sources_and_follows_provider_moves() {
-        for compressor in [false, true] {
-            let (mut p, track, effect) = fixture(compressor);
+        for kind in 0..3 {
+            let (mut p, track, effect) = fixture(kind);
             let source = effect.unit.modulations()[0].source.unwrap();
             let mut instrument = p.tracks[0].instrument.clone().unwrap();
             instrument.layers[0].envelopes[0].mode = EnvelopeMode::PerNote;

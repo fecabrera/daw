@@ -3,9 +3,9 @@ use crate::{
     knobs::{self, Knob, KnobSpec},
     meters,
     midi_editor::UNIT_STRIP_WIDTH,
-    panels, rows, theme,
+    panels, parameter_knobs, rows, theme,
 };
-use daw_core::{LimiterMode, LimiterRouting, LimiterSettings};
+use daw_core::{LimiterMode, LimiterRouting, LimiterSettings, ModulationParameter as Parameter};
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
@@ -15,32 +15,26 @@ pub(super) struct Bounds {
     pub sections: [Rect; 2],
     pub meter: Rect,
 }
-fn db(value: f32) -> String {
-    format!("{value:.1} dB")
-}
-fn time(value: f32) -> String {
-    if value < 10.0 {
-        format!("{value:.1} ms")
-    } else {
-        format!("{value:.0} ms")
-    }
-}
-fn row(ui: &mut Ui, settings: &mut LimiterSettings, column: usize, row: usize) -> Rect {
+fn row(
+    ui: &mut Ui,
+    settings: &mut LimiterSettings,
+    column: usize,
+    row: usize,
+    markers: &[Option<knobs::ModulationMarker>; 4],
+) -> Rect {
     knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
+        let target = match (column, row) {
+            (0, 0) => Some((0, &mut s.input_db)),
+            (0, 1) => Some((1, &mut s.release_ms)),
+            (0, 2) => Some((2, &mut s.lookahead_ms)),
+            (1, 0) => Some((3, &mut s.ceiling_db)),
+            _ => None,
+        };
+        if let Some((index, value)) = target {
+            return ui.add(Knob::new(value, parameter_knobs::destination(Parameter::LIMITER[index]))
+                .modulated(markers[index].as_ref(), &mut s.modulation_open));
+        }
         match (column, row) {
-            (0, 0) => ui.add(Knob::new(&mut s.input_db,
-                KnobSpec::new("Limiter input", -24.0..=24.0, 0.0, 0.1)
-                    .reference_step(6.0).value_label(db).format(db).endpoint_labels("−24", "+24"))),
-            (0, 1) => ui.add(Knob::new(&mut s.release_ms,
-                KnobSpec::new("Release", 1.0..=2000.0, 100.0, 0.1)
-                    .scale(|v| v.ln()/2000_f32.ln(), |p| 2000_f32.powf(p), |v,d| v*2_f32.powf(d/24.0))
-                    .value_label(time).format(time).endpoint_labels("1", "2k"))),
-            (0, 2) => ui.add(Knob::new(&mut s.lookahead_ms,
-                KnobSpec::new("Lookahead", 0.0..=10.0, 1.0, 0.1)
-                    .value_label(time).format(time).endpoint_labels("0", "10"))),
-            (1, 0) => ui.add(Knob::new(&mut s.ceiling_db,
-                KnobSpec::new("Ceiling", -24.0..=0.0, -1.0, 0.1)
-                    .value_label(db).format(db).endpoint_labels("−24", "0"))),
             (1, 1) => {
                 let mut value = f32::from(s.mode == LimiterMode::TruePeak);
                 let response = ui.add(Knob::new(&mut value,
@@ -68,7 +62,43 @@ pub(super) fn show(
     compact: bool,
     height: f32,
     reduction_db: f32,
+    sources: &[crate::modulation_panel::Source],
+    live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
+        |ui| show_inner(ui, settings, compact, height, reduction_db, sources, live),
+    )
+    .inner
+}
+fn show_inner(
+    ui: &mut Ui,
+    settings: &mut LimiterSettings,
+    compact: bool,
+    height: f32,
+    reduction_db: f32,
+    sources: &[crate::modulation_panel::Source],
+    live: Option<daw_engine::ModulationSnapshot>,
+) -> (Bounds, egui::Response) {
+    let bases = [
+        settings.input_db,
+        settings.release_ms,
+        settings.lookahead_ms,
+        settings.ceiling_db,
+    ];
+    let markers = std::array::from_fn(|i| {
+        crate::modulation_panel::marker(
+            &settings.modulations,
+            sources,
+            Parameter::LIMITER[i],
+            bases[i],
+            settings.enabled,
+            None,
+            [live.map(|v| v[i]), None],
+        )
+    });
+    let open = settings.modulation_open;
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
         header: Rect::NOTHING,
@@ -106,7 +136,7 @@ pub(super) fn show(
                                             if !compact {
                                                 for index in 0..3 {
                                                     bounds.controls[column][index] =
-                                                        row(ui, settings, column, index);
+                                                        row(ui, settings, column, index, &markers);
                                                 }
                                             }
                                             rows::centered(
@@ -140,11 +170,19 @@ pub(super) fn show(
                         panels::unit_divider(ui, rect.left(), rect.y_range().into());
                     }
                 }
+                if open {
+                    let last = bounds.sections[1];
+                    panels::unit_divider(ui, last.right(), last.y_range().into());
+                    crate::modulation_panel::body(ui, &mut settings.modulations, sources,
+                        <LimiterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS,
+                        <LimiterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
+                }
             });
         },
     );
     settings.enabled = enabled;
     settings.collapsed = collapsed;
+    crate::modulation_panel::toggle(ui, &result.header, collapsed, &mut settings.modulation_open);
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
     (bounds, result.header)

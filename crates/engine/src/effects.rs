@@ -14,7 +14,7 @@ enum RuntimeEffect {
     AutoFilter(Box<AutoFilter>, Vec<super::modulation::Route>),
     Compressor(Box<Compressor>, Vec<super::modulation::Route>),
     Ott(Box<Ott>),
-    Limiter(Box<Limiter>),
+    Limiter(Box<Limiter>, Vec<super::modulation::Route>),
 }
 impl RuntimeEffect {
     fn sample(
@@ -74,7 +74,18 @@ impl RuntimeEffect {
                 },
             ),
             Self::Ott(unit) => unit.process_sample(input),
-            Self::Limiter(unit) => unit.process_sample(input),
+            Self::Limiter(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
         }
     }
     fn reset(&mut self) {
@@ -105,14 +116,19 @@ impl RuntimeEffect {
                 }
             }
             Self::Ott(unit) => unit.reset(),
-            Self::Limiter(unit) => unit.reset(),
+            Self::Limiter(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
         }
     }
     fn retarget(&mut self, settings: &EffectSettings) -> bool {
         match (self, settings) {
             (Self::Eq3(unit, _), EffectSettings::Eq3(settings)) => unit.retarget(settings),
             (Self::Ott(unit), EffectSettings::Ott(settings)) => unit.retarget(settings),
-            (Self::Limiter(unit), EffectSettings::Limiter(settings)) => unit.retarget(settings),
+            (Self::Limiter(unit, _), EffectSettings::Limiter(settings)) => unit.retarget(settings),
             (Self::Drive(unit, _), EffectSettings::Drive(settings)) => unit.retarget(settings),
             (Self::Compressor(unit, _), EffectSettings::Compressor(settings)) => {
                 unit.retarget(settings)
@@ -195,6 +211,11 @@ impl EffectChain {
                             }
                             EffectSettings::Limiter(settings) => Some(RuntimeEffect::Limiter(
                                 Box::new(Limiter::new(context, settings)),
+                                settings
+                                    .modulations
+                                    .iter()
+                                    .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                    .collect(),
                             )),
                             EffectSettings::Missing { .. } => None,
                             EffectSettings::Compressor(settings) => {
@@ -235,6 +256,10 @@ impl EffectChain {
                 | (
                     RuntimeEffect::Compressor(_, old_routes),
                     RuntimeEffect::Compressor(_, new_routes),
+                )
+                | (
+                    RuntimeEffect::Limiter(_, old_routes),
+                    RuntimeEffect::Limiter(_, new_routes),
                 ) = (&mut *previous, &mut *next)
                 {
                     daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
@@ -257,6 +282,9 @@ impl EffectChain {
             Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
                 Some(unit.effective_parameters())
             }
+            Some((_, Some(RuntimeEffect::Limiter(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
             _ => None,
         }
     }
@@ -265,7 +293,7 @@ impl EffectChain {
             Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
                 unit.set_gain_reduction_meter(meter.clone())
             }
-            Some((_, Some(RuntimeEffect::Limiter(unit)))) => {
+            Some((_, Some(RuntimeEffect::Limiter(unit, _)))) => {
                 unit.set_gain_reduction_meter(meter.clone())
             }
             _ => {}
@@ -295,7 +323,7 @@ impl EffectChain {
         for (_, unit) in &mut self.units {
             if let Some(unit) = unit {
                 input = unit.sample(input, frame, tempo, values);
-                if let RuntimeEffect::Limiter(unit) = unit {
+                if let RuntimeEffect::Limiter(unit, _) = unit {
                     frame = super::latency::delayed_frame(
                         frame,
                         u64::from(unit.latency_frames()),

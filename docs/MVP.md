@@ -481,3 +481,8 @@ Instrument uses the same 38-point left rail and 24×24 Library/Gallery Horizonta
 ## Sampler source — 2026-10-17
 
 Instrument supports a [Sampler source](sampler.md) in regular MIDI layers, mutually exclusive with the Oscillator component. It accepts WAV files and retained audio-clip ranges, provides non-destructive waveform selection, Gain, fixed Off/Time/Bars duration modes, One-shot/Gate triggering, and a piano-roll-compatible root-note input with a sharp toggle. Gain accepts per-note/shared Envelope, LFO, and Macro modulation through the [shared destination API](sampler.md#gain-modulation--2026-10-17). Root note is metadata only; pitch transposition remains deferred. Worker preparation, project persistence, MIDI voices, Amplitude, layer mixing, and live/export rendering stay shared. See the guide and [acceptance requirements](../specs/mvp-iteration-1.md#sampler-source--2026-10-17).
+
+
+## Limiter modulation — 2026-10-17
+
+Limiter Input, Release, Lookahead, and Ceiling accept shared Envelope/LFO/Macro modulation from the same MIDI instrument through the [shared API](modulation.md#limiter-destination). Reuse existing modulation controls and retain fixed latency, stereo protection, and transport behavior. See [Limiter](limiter.md#modulation--2026-10-17) and the [acceptance requirements](../specs/mvp-iteration-1.md#limiter-modulation--2026-10-17).

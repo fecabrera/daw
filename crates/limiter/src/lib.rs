@@ -7,6 +7,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
 };
+mod modulation;
 mod true_peak;
 
 #[derive(Clone, Copy, Default)]
@@ -63,6 +64,8 @@ pub struct Limiter {
     index: usize,
     // Input, release milliseconds, lookahead milliseconds, ceiling, M/S weight, enabled.
     parameters: [Ramp; 6],
+    external: daw_unit_core::ModulationSmoother<4>,
+    effective: [f64; 6],
     gains: [f64; 3],
     true_peak: bool,
     guard: true_peak::Guard,
@@ -87,6 +90,8 @@ impl Limiter {
             tree_size,
             index: 0,
             parameters: Self::values(settings).map(Ramp::new),
+            external: daw_unit_core::ModulationSmoother::new(context),
+            effective: Self::values(settings),
             gains: [1.0; 3],
             true_peak: settings.mode == LimiterMode::TruePeak,
             guard: true_peak::Guard::new(),
@@ -157,7 +162,7 @@ impl EffectUnit for Limiter {
             type_id: LIMITER_TYPE_ID,
             name: "Limiter",
             is_source: false,
-            inputs: &[PortKind::StereoAudio],
+            inputs: &[PortKind::StereoAudio, PortKind::Modulation],
             outputs: &[PortKind::StereoAudio],
         }
     }
@@ -169,13 +174,19 @@ impl EffectUnit for Limiter {
             p.value = p.target;
             p.remaining = 0;
         }
+        self.external.reset();
+        self.effective = self.parameters.each_ref().map(|p| p.value);
         self.gains = [1.0; 3];
         self.guard.reset();
         self.reduction_db = 0.0;
         self.publish();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        let p = self.parameters.each_mut().map(Ramp::tick);
+        self.process_modulated(input, [0.0; 4])
+    }
+}
+impl Limiter {
+    fn process_effective_sample(&mut self, input: [f32; 2], p: [f64; 6]) -> [f32; 2] {
         let dry = input.map(|v| if v.is_finite() { f64::from(v) } else { 0.0 });
         let wet = dry.map(|v| v * p[0]);
         self.frames[self.index] = Frame { dry, wet };
@@ -233,3 +244,6 @@ impl EffectUnit for Limiter {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod modulation_tests;

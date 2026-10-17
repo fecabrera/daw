@@ -316,3 +316,9 @@ destination_settings!(
     &[ModulationParameter::SamplerGain],
     PerNote
 );
+
+destination_settings!(
+    crate::LimiterSettings,
+    &ModulationParameter::LIMITER,
+    Shared
+);

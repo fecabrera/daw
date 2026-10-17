@@ -1,5 +1,5 @@
 use super::*;
-const RATES: [u32; 6] = [44_100, 48_000, 88_200, 96_000, 176_400, 192_000];
+pub(super) const RATES: [u32; 6] = [44_100, 48_000, 88_200, 96_000, 176_400, 192_000];
 fn unit(rate: u32, settings: &LimiterSettings) -> Limiter {
     Limiter::new(
         ProcessingContext {
@@ -101,7 +101,7 @@ fn mid_side_retains_more_side_energy_and_recombination_still_meets_ceiling() {
     assert!(side[1] > side[0] * 1.5, "{side:?}");
 }
 // Independent 16x/128-tap reconstruction, deliberately different from the 8x guard.
-fn reconstructed_peak(input: &[[f32; 2]]) -> f64 {
+pub(super) fn reconstructed_peak(input: &[[f32; 2]]) -> f64 {
     let mut peak: f64 = 0.0;
     for center in -64..input.len() as isize + 64 {
         for phase in 0..16 {

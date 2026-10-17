@@ -1054,3 +1054,123 @@ fn compressor_modulation_preserves_compact_and_collapsed_unit_geometry() {
         }
     }
 }
+
+#[test]
+fn limiter_modulation_reuses_header_strips_markers_and_saved_compact_collapse_layout() {
+    for color in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, layer) = fixture(color);
+        let state = &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        state.envelopes[0].mode = daw_core::EnvelopeMode::Legato;
+        let source = daw_core::ModulationSourceId {
+            layer,
+            unit: state.envelopes[0].id,
+        };
+        app.session.project.tracks[0]
+            .effects
+            .push(daw_core::EffectInstance::limiter());
+        frame(&mut app, &ctx, vec![]);
+        let b = &app.effects_bounds.limiter_units[0];
+        let header = b.header;
+        let meter_width = b.meter.width();
+        let height = b.sections[0].bottom() - header.top();
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new(header.right() - 13.0, header.center().y),
+            false,
+        );
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.effects_bounds.limiter_units[0].header.width() > header.width());
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new(header.right() + 18.0, header.bottom() + 109.0),
+            false,
+        );
+        let daw_core::EffectSettings::Limiter(s) =
+            &mut app.session.project.tracks[0].effects[0].unit
+        else {
+            unreachable!()
+        };
+        assert!(s.modulation_open);
+        assert_eq!(s.modulations.len(), 1);
+        assert_eq!(
+            s.modulations[0].parameter,
+            daw_core::ModulationParameter::LimiterInput
+        );
+        assert!(s.modulations[0].source.is_none() && s.modulations[0].amount == 0.0);
+        s.modulations = daw_core::ModulationParameter::LIMITER
+            .into_iter()
+            .map(|p| {
+                let mut route = daw_core::Modulation::new(p);
+                route.source = Some(source);
+                route.amount = -p.limit() * 0.5;
+                route
+            })
+            .collect();
+        s.modulation_open = false;
+        let base = s.clone();
+        for (column, row) in [(0, 0), (0, 1), (0, 2), (1, 0)] {
+            let daw_core::EffectSettings::Limiter(s) =
+                &mut app.session.project.tracks[0].effects[0].unit
+            else {
+                unreachable!()
+            };
+            s.modulation_open = false;
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let point = knobs::modulation_marker_rect(
+                app.effects_bounds.limiter_units[0].controls[column][row],
+            )
+            .center();
+            click(&mut app, &ctx, point, false);
+            frame(&mut app, &ctx, vec![]);
+            let daw_core::EffectSettings::Limiter(s) =
+                &app.session.project.tracks[0].effects[0].unit
+            else {
+                unreachable!()
+            };
+            let mut expected = base.clone();
+            expected.modulation_open = true;
+            assert_eq!(*s, expected);
+            assert!(app.dirty && app.effects_drag.is_none());
+            let b = &app.effects_bounds.limiter_units[0];
+            assert_eq!(b.sections[0].bottom() - b.header.top(), height);
+            assert_eq!(b.meter.width(), meter_width);
+            assert_eq!(b.sections[0].width(), midi_editor::UNIT_STRIP_WIDTH);
+        }
+        let saved = serde_json::to_vec(&app.session.project).unwrap();
+        let reopened: daw_core::Project = serde_json::from_slice(&saved).unwrap();
+        reopened.validate().unwrap();
+        assert_eq!(
+            reopened.tracks[0].effects,
+            app.session.project.tracks[0].effects
+        );
+        for compact in [false, true] {
+            for collapsed in [false, true] {
+                app.session.project.tracks[0].effects_compact = compact;
+                let daw_core::EffectSettings::Limiter(s) =
+                    &mut app.session.project.tracks[0].effects[0].unit
+                else {
+                    unreachable!()
+                };
+                s.collapsed = collapsed;
+                frame(&mut app, &ctx, vec![]);
+                let b = &app.effects_bounds.limiter_units[0];
+                assert!(
+                    b.controls
+                        .iter()
+                        .flatten()
+                        .all(|r| r.is_positive() == (!compact && !collapsed))
+                );
+                assert_eq!(b.meter.is_positive(), !compact && !collapsed);
+                assert!(b.sections.iter().all(|r| r.is_positive() == !collapsed));
+            }
+        }
+    }
+}

@@ -22,9 +22,9 @@ pub(super) struct AmountScale {
 }
 impl KnobSpec {
     pub(crate) fn modulation_amount(self, limit: f32, mapping: AmountMapping) -> Self {
-        // Pitch already has the required signed domain and quantization.
+        // Symmetric destinations already have the signed domain and quantization.
         if self.min == -limit && self.max == limit {
-            return self.named("Modulation amount");
+            return self.named("Modulation amount").centered(0.0).bipolar();
         }
         Self {
             name: "Modulation amount",

@@ -157,6 +157,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::Drive(_)
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::Compressor(_)
+                    | daw_core::EffectSettings::Limiter(_)
             )
         })
         .map(|e| ModulationTarget::Effect(e.id));
@@ -1156,6 +1157,12 @@ mod modulation_meter_tests {
             s.dry_wet = 0.4;
         }
         plan.project.tracks[0].effects.push(compressor);
+        let mut limiter = daw_core::EffectInstance::limiter();
+        let limiter_key = ModulationTarget::Effect(limiter.id);
+        if let daw_core::EffectSettings::Limiter(s) = &mut limiter.unit {
+            s.lookahead_ms = 2.3;
+        }
+        plan.project.tracks[0].effects.push(limiter);
         let track = plan.project.add_midi_track().unwrap();
         let layer = &mut plan.project.tracks[1].instrument.as_mut().unwrap().layers[0];
         layer.amplitude.present = true;
@@ -1184,7 +1191,7 @@ mod modulation_meter_tests {
             .layers
             .push(sample_layer);
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 7);
+        assert_eq!(handles.len(), 8);
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1235,8 +1242,17 @@ mod modulation_meter_tests {
             reading.map(f32::to_bits),
             std::array::from_fn(|i| handles[&sampler][i].load(Ordering::Relaxed))
         );
+        let limiter = renderer.modulation_snapshot(limiter_key).unwrap();
+        assert!(limiter[..4].iter().all(|v| v.is_finite()));
+        assert!(limiter[4..].iter().all(|v| v.is_nan()));
+        assert_eq!(limiter[2], 2.3);
+        assert_eq!(
+            limiter.map(f32::to_bits),
+            std::array::from_fn(|i| handles[&limiter_key][i].load(Ordering::Relaxed))
+        );
         let next = modulation_meters(&plan, &handles);
         assert!(Arc::ptr_eq(&next[&sampler], &handles[&sampler]));
+        assert!(Arc::ptr_eq(&next[&limiter_key], &handles[&limiter_key]));
         assert!(Arc::ptr_eq(
             &next[&compressor_key],
             &handles[&compressor_key]
@@ -1254,6 +1270,7 @@ mod modulation_meter_tests {
         assert!(!removed.contains_key(&key));
         assert!(!removed.contains_key(&eq_key));
         assert!(!removed.contains_key(&compressor_key));
+        assert!(!removed.contains_key(&limiter_key));
         assert!(removed.contains_key(&amplitude));
         assert!(Arc::ptr_eq(&removed[&oscillator], &handles[&oscillator]));
         plan.project.tracks[0].instrument.as_mut().unwrap().layers[0]

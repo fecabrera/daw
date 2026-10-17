@@ -3793,7 +3793,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
         EffectInstance, EffectSettings, LfoInstance, Modulation, ModulationParameter,
         ModulationSourceId,
     };
-    for compressor in [false, true] {
+    for kind in 0..3 {
         let fixture = Fixture::new();
         let mut session = Session::default();
         let track = session.project.add_midi_track().unwrap();
@@ -3804,11 +3804,11 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             unit: lfo.id,
         };
         instrument.main.lfos.push(lfo);
-        let mut effect = if compressor {
-            EffectInstance::compressor()
-        } else {
-            EffectInstance::equalizer()
-        };
+        let mut effect = [
+            EffectInstance::equalizer,
+            EffectInstance::compressor,
+            EffectInstance::limiter,
+        ][kind]();
         let (open, collapsed, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => {
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
@@ -3816,22 +3816,26 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             EffectSettings::Compressor(s) => {
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
+            EffectSettings::Limiter(s) => {
+                (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
+            }
             _ => unreachable!(),
         };
         *open = true;
         *collapsed = true;
-        *routes = if compressor {
-            ModulationParameter::COMPRESSOR
-        } else {
-            ModulationParameter::EQUALIZER
-        }
-        .into_iter()
-        .map(|parameter| Modulation {
-            source: Some(source),
-            amount: -parameter.limit() * 0.5,
-            ..Modulation::new(parameter)
-        })
-        .collect();
+        *routes = [
+            &ModulationParameter::EQUALIZER[..],
+            &ModulationParameter::COMPRESSOR[..],
+            &ModulationParameter::LIMITER[..],
+        ][kind]
+            .iter()
+            .copied()
+            .map(|parameter| Modulation {
+                source: Some(source),
+                amount: -parameter.limit() * 0.5,
+                ..Modulation::new(parameter)
+            })
+            .collect();
         session.project.tracks[0].effects.push(effect.clone());
         session.save(&fixture.0.join("effect-modulation")).unwrap();
         let mut reopened = Session::open(&fixture.0.join("effect-modulation")).unwrap();

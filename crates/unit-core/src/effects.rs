@@ -198,6 +198,7 @@ impl EffectSettings {
             Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Eq3(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Compressor(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::Limiter(s) => crate::ModulationDestinationSettings::modulations(s),
             _ => &[],
         }
     }
@@ -209,6 +210,7 @@ impl EffectSettings {
             Self::Drive(s) => &mut s.modulations,
             Self::Eq3(s) => &mut s.modulations,
             Self::Compressor(s) => &mut s.modulations,
+            Self::Limiter(s) => &mut s.modulations,
             _ => &mut [],
         }
     }
