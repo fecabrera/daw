@@ -293,7 +293,7 @@ fn component_double_click_adds_once_and_catalog_focus_and_selection_follow_share
     key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
     assert_eq!(
         app.instrument_catalog.selection,
-        HashSet::from([crate::instrument_catalog::ENTRIES[0].0])
+        HashSet::from([crate::instrument_catalog::ENTRIES[0].type_id])
     );
     key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
     assert_eq!(app.instrument_catalog.selection.len(), 1);
@@ -521,7 +521,7 @@ fn dragging_an_unselected_component_replaces_library_selection_and_existing_enve
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
     assert_eq!(
         app.instrument_catalog.selection,
-        HashSet::from([crate::instrument_catalog::ENTRIES[0].0])
+        HashSet::from([crate::instrument_catalog::ENTRIES[0].type_id])
     );
     frame(&mut app, &ctx, vec![button(end, false)]);
     let target = &app.session.project.tracks[0]

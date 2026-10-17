@@ -742,7 +742,7 @@ impl Default for DawUi {
                 effects_catalog::ENTRIES.map(|(id, name, _)| (id, name)),
             ),
             instrument_catalog: catalog::Catalog::new(
-                instrument_catalog::ENTRIES.map(|(id, name, _)| (id, name)),
+                instrument_catalog::ENTRIES.map(|entry| (entry.type_id, entry.name)),
             ),
             instrument_catalog_visible: false,
             component_drag: None,

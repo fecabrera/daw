@@ -2346,3 +2346,13 @@ Focused checks passed with the workspace Cargo cache: double-click/select-all, E
 Formatting, strict workspace Clippy, documentation link targets, and `git diff --check` passed. `cargo test --workspace` passed: 721 tests, zero failures, and two existing expanded time-stretch matrices ignored, including all 403 UI tests.
 
 `cargo build -p daw-cli` and `python3 tools/check_cli.py` passed. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Native UI/device behavior and Windows/Linux builds were not checked. Automated egui input checks do not establish native pointer behavior.
+
+## Registered component drops on Main — 2026-10-17
+
+An empty Main row rejected Macro catalog drops because the drag handler kept an older Envelope/LFO type allowlist. The regression failed before the fix and passed after it. Main accepts Envelope, LFO, and Macro drops across its label and body in compact and expanded rows. Oscillator and Amplitude remain regular-layer components.
+
+Catalog registrations now contain the layer installation function and optional Main installation function. Catalog additions, drop eligibility, and unsupported-target hints use this one definition. New registrations automatically gain catalog drop support on their registered destinations, without changes to the drag handler. Preview inspects the registration without constructing units or assigning IDs; existing release-only commits, core installed-component transfer eligibility, and cancellation remain shared. See [registration requirements](component-editing.md#registering-instrument-components).
+
+Focused egui checks passed for every registered component in both themes, both Main row sizes, label/body targets, fast motion-and-release, clean previews, unsupported-only drops, and mixed selections on populated Main. A synthetic new type ID passes through the same registration checks and addition functions, with zero installation calls during preview; unregistered IDs, invalid owners, and absent Main installers stay rejected. Existing instrument catalog, cancellation, selection, and Main layout checks also passed.
+
+Checks with the workspace Cargo cache passed: formatting, strict workspace Clippy, `cargo test --workspace` (723 tests, zero failures, two existing expanded time-stretch matrices ignored, including all 405 UI tests), documentation link targets, and `git diff --check`. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Native UI/device behavior and Windows/Linux builds were not checked. CLI smoke checks were not repeated for this UI-only change.

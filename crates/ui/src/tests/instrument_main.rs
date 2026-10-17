@@ -136,7 +136,7 @@ fn main_accepts_shared_modulators_from_catalog_and_rejects_audio_components() {
     assert_eq!(app.instrument_ui.selected_layer, Some(main));
     let toggle = app.instrument_catalog_bounds.toggle.center();
     click(&mut app, &ctx, toggle, false);
-    for index in [0, 1, 2, 3] {
+    for index in 0..crate::instrument_catalog::ENTRIES.len() {
         let point = app.instrument_catalog_bounds.entries[index].center();
         click(&mut app, &ctx, point, false);
         key(&mut app, &ctx, egui::Key::Enter, false, false);
@@ -145,6 +145,7 @@ fn main_accepts_shared_modulators_from_catalog_and_rejects_audio_components() {
     assert!(instrument.layers[0].oscillators.is_empty() && !instrument.layers[0].amplitude.present);
     assert_eq!(instrument.main.envelopes.len(), 1);
     assert_eq!(instrument.main.lfos.len(), 1);
+    assert_eq!(instrument.main.macro_module.controls.len(), 1);
     assert_ne!(
         instrument.main.envelopes[0].mode,
         daw_core::EnvelopeMode::PerNote
@@ -152,6 +153,7 @@ fn main_accepts_shared_modulators_from_catalog_and_rejects_audio_components() {
     let sources = crate::modulation_panel::sources(Some(instrument));
     assert!(sources.iter().any(|s| s.label == "Main · Envelope 1"));
     assert!(sources.iter().any(|s| s.label == "Main · LFO 1"));
+    assert!(sources.iter().any(|s| s.label == "Main · Macro 1"));
     let point = app.instrument_catalog_bounds.entries[2].center();
     frame(
         &mut app,
@@ -187,7 +189,110 @@ fn main_accepts_shared_modulators_from_catalog_and_rejects_audio_components() {
     let point = app.instrument_ui.main_bounds.lfos[0].center();
     click(&mut app, &ctx, point, false);
     assert_eq!(app.instrument_ui.selected_layer, Some(main));
+    // A mixed group remains eligible through its Macro entry on a populated Main.
+    let oscillator = app.instrument_catalog_bounds.entries[0].center();
+    click(&mut app, &ctx, oscillator, false);
+    let macro_entry = app.instrument_catalog_bounds.entries[4].center();
+    click(&mut app, &ctx, macro_entry, true);
+    let before = app.session.project.tracks[0].instrument.clone().unwrap();
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            egui::Event::PointerMoved(macro_entry),
+            button(macro_entry, true),
+        ],
+    );
+    let end = app.instrument_ui.main_bounds.row.right_center() - Vec2::new(20.0, 0.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    assert_eq!(app.instrument_catalog_bounds.drop_target, Some(main));
+    assert_eq!(
+        app.session.project.tracks[0].instrument.as_ref().unwrap(),
+        &before
+    );
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    let mut expected = before;
+    expected.main.macro_module.add();
+    // Addition receives a fresh identity; all previous component data stays unchanged.
+    let actual = app.session.project.tracks[0].instrument.as_ref().unwrap();
+    expected.main.macro_module.controls[1].id = actual.main.macro_module.controls[1].id;
+    assert_eq!(actual, &expected);
     app.session.project.validate().unwrap();
+}
+
+#[test]
+fn empty_main_accepts_catalog_drops_across_its_label_and_body() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for index in 0..crate::instrument_catalog::ENTRIES.len() {
+                for label in [false, true] {
+                    for fast in [false, true] {
+                        let (mut app, ctx, _) = setup(theme);
+                        app.timeline_effects_visible = false;
+                        let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+                        i.layers[0].collapsed = true;
+                        i.main.collapsed = compact;
+                        let main = i.main.id;
+                        frame(&mut app, &ctx, vec![]);
+                        let toggle = app.instrument_catalog_bounds.toggle.center();
+                        click(&mut app, &ctx, toggle, false);
+                        app.dirty = false;
+                        let original = serde_json::to_value(&app.session.project).unwrap();
+                        let source = app.instrument_catalog_bounds.entries[index].center();
+                        let row = app.instrument_ui.main_bounds.row;
+                        let end = if label {
+                            app.instrument_ui.main_bounds.label.center()
+                        } else {
+                            Pos2::new(row.right() - 20.0, row.center().y)
+                        };
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(source), button(source, true)],
+                        );
+                        assert!(app.component_drag.is_some());
+                        let supported = crate::instrument_catalog::ENTRIES[index].supports_main();
+                        if !fast {
+                            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                            assert_eq!(
+                                app.instrument_catalog_bounds.drop_target,
+                                supported.then_some(main),
+                                "index {index}, compact {compact}, label {label}"
+                            );
+                            assert_eq!(
+                                serde_json::to_value(&app.session.project).unwrap(),
+                                original
+                            );
+                            assert!(!app.dirty);
+                        }
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![egui::Event::PointerMoved(end), button(end, false)],
+                        );
+                        assert!(app.component_drag.is_none());
+                        assert_eq!(app.dirty, supported);
+                        let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
+                        assert_eq!(i.main.envelopes.len(), usize::from(index == 1));
+                        assert_eq!(i.main.lfos.len(), usize::from(index == 2));
+                        assert_eq!(i.main.macro_module.controls.len(), usize::from(index == 4));
+                        if let Some(e) = i.main.envelopes.first() {
+                            assert_eq!(e.mode, daw_core::EnvelopeMode::Legato);
+                        }
+                        if !supported {
+                            assert_eq!(
+                                serde_json::to_value(&app.session.project).unwrap(),
+                                original
+                            );
+                        } else {
+                            assert_eq!(app.instrument_ui.selected_layer, Some(main));
+                        }
+                        app.session.project.validate().unwrap();
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[test]

@@ -41,6 +41,14 @@ The UI shares `instrument_component_drag.rs` for catalog and installed-component
 
 Saved transfers use the existing project fields. Save/reopen and Save As preserve the result. Renderer preparation and publication use the existing project-change path; live playback and offline export share the resulting model. This feature does not add cross-track transfers, component multi-selection, arbitrary unit ordering, or a second Amplitude stage. Automated checks and native platform limits are recorded in [validation](validation.md).
 
+## Registering instrument components
+
+Register each catalog component once in `instrument_catalog.rs::ENTRIES`, with its stable type ID, display name, and layer installation function. `Entry::layer` makes it available to regular layers. Add `.with_main(add_to_main)` when the component also supports Main. Installation functions update the existing project settings and retain each component's restoration rules.
+
+The catalog list, double-click/Enter additions, drag eligibility, and unsupported-target tooltips read this registration. No component type allowlist belongs in the drag handler. A new registration automatically participates in catalog drops for its supported destinations, including empty and compact rows. Unknown IDs and unsupported targets remain invalid. Mixed selections add only compatible entries, in catalog order.
+
+Eligibility checks inspect the registered functions without calling them. They must not create units, assign IDs, or change settings during preview. Only a valid release or explicit catalog addition invokes installation. Installed component moves and copies continue to use core `Project::can_transfer_component` and the shared transaction; a new transferable component needs its core editing behavior, not another UI drop filter. Portable DSP construction remains in the host.
+
 ## Panel borders
 
 Timeline track/Master, regular layer, and Main selection outlines meet all four edges without an inset. They paint after neutral dividers and row fills so no side of the stroke is covered. The fixed Layers header separator paints after scrolling content. Main owns one top separator on the preceding layer's bottom pixel. Its components omit their separate top and bottom unit edges, and header fills cover the reserved top frame space without moving controls; the adjacent effects lane or status panel owns that separator. These borders share the existing panel and theme helpers in both themes and at both row heights.

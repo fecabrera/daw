@@ -108,10 +108,7 @@ impl DawUi {
         let duplicate = ui.input(|i| clip_copy_modifier(i.modifiers));
         let target = target.filter(|(id, _)| match &drag.source {
             ComponentDragSource::Catalog { types, .. } => {
-                *id != settings.main.id
-                    || types
-                        .iter()
-                        .any(|t| ["daw.envelope", "daw.lfo"].contains(t))
+                crate::instrument_catalog::can_add_components(settings, *id, types)
             }
             ComponentDragSource::Installed { owner, component } => self
                 .session

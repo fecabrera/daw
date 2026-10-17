@@ -2,35 +2,73 @@
 use super::*;
 use crate::instrument_component_drag::{ComponentDrag, ComponentDragSource};
 
+/// Register construction once. Available constructors also define valid catalog drop targets.
 #[derive(Clone, Copy)]
-pub(super) enum Component {
-    Oscillator,
-    Envelope,
-    Lfo,
-    Amplitude,
-    Macro,
+pub(super) struct Entry {
+    pub type_id: &'static str,
+    pub name: &'static str,
+    add_layer: fn(&mut daw_core::InstrumentLayerSettings),
+    add_main: Option<fn(&mut daw_core::InstrumentBusSettings)>,
 }
-
-pub(super) const ENTRIES: [(&str, &str, Component); 5] = [
-    ("daw.oscillator", "Oscillator", Component::Oscillator),
-    ("daw.envelope", "Envelope", Component::Envelope),
-    ("daw.lfo", "LFO", Component::Lfo),
-    ("daw.amplitude", "Amplitude", Component::Amplitude),
-    ("daw.macro", "Macro", Component::Macro),
-];
-
-impl Component {
-    pub(super) fn add_to(self, layer: &mut daw_core::InstrumentLayerSettings) {
-        match self {
-            Self::Oscillator => layer.oscillators.push(Default::default()),
-            // Each Envelope is independent; Amplitude is a single retained audio stage.
-            Self::Envelope => add_envelope(&mut layer.envelopes),
-            Self::Lfo => add_lfo(&mut layer.lfos),
-            Self::Macro => layer.macro_module.add(),
-            Self::Amplitude => layer.amplitude.present = true,
+impl Entry {
+    const fn layer(
+        type_id: &'static str,
+        name: &'static str,
+        add: fn(&mut daw_core::InstrumentLayerSettings),
+    ) -> Self {
+        Self {
+            type_id,
+            name,
+            add_layer: add,
+            add_main: None,
+        }
+    }
+    const fn with_main(mut self, add: fn(&mut daw_core::InstrumentBusSettings)) -> Self {
+        self.add_main = Some(add);
+        self
+    }
+    pub(super) fn supports_main(self) -> bool {
+        self.add_main.is_some()
+    }
+    fn can_add(self, settings: &daw_core::InstrumentSettings, owner: Id) -> bool {
+        if owner == settings.main.id {
+            self.supports_main()
+        } else {
+            settings.layers.iter().any(|layer| layer.id == owner)
+        }
+    }
+    fn add_to(self, settings: &mut daw_core::InstrumentSettings, owner: Id) {
+        if owner == settings.main.id {
+            if let Some(add) = self.add_main {
+                add(&mut settings.main);
+            }
+        } else if let Some(layer) = settings.layers.iter_mut().find(|layer| layer.id == owner) {
+            (self.add_layer)(layer);
         }
     }
 }
+
+pub(super) const ENTRIES: [Entry; 5] = [
+    Entry::layer("daw.oscillator", "Oscillator", |l| {
+        l.oscillators.push(Default::default())
+    }),
+    Entry::layer("daw.envelope", "Envelope", |l| {
+        add_envelope(&mut l.envelopes)
+    })
+    .with_main(|main| {
+        add_envelope(&mut main.envelopes);
+        for envelope in &mut main.envelopes {
+            if envelope.mode == daw_core::EnvelopeMode::PerNote {
+                envelope.mode = daw_core::EnvelopeMode::Legato;
+            }
+        }
+    }),
+    Entry::layer("daw.lfo", "LFO", |l| add_lfo(&mut l.lfos))
+        .with_main(|main| add_lfo(&mut main.lfos)),
+    Entry::layer("daw.amplitude", "Amplitude", |l| l.amplitude.present = true),
+    Entry::layer("daw.macro", "Macro", |l| l.macro_module.add())
+        .with_main(|main| main.macro_module.add()),
+];
 
 fn add_envelope(envelopes: &mut Vec<daw_core::EnvelopeInstance>) {
     if let Some(e) = envelopes.iter_mut().find(|e| !e.present) {
@@ -52,38 +90,40 @@ pub(super) fn add_components(
     layer_id: Id,
     types: &[&str],
 ) {
-    if settings.main.id == layer_id {
-        for (id, _, component) in ENTRIES {
-            if !types.contains(&id) {
-                continue;
-            }
-            match component {
-                Component::Envelope => {
-                    add_envelope(&mut settings.main.envelopes);
-                    for e in &mut settings.main.envelopes {
-                        if e.mode == daw_core::EnvelopeMode::PerNote {
-                            e.mode = daw_core::EnvelopeMode::Legato;
-                        }
-                    }
-                }
-                Component::Lfo => add_lfo(&mut settings.main.lfos),
-                Component::Macro => settings.main.macro_module.add(),
-                Component::Oscillator | Component::Amplitude => {}
-            }
-        }
-        return;
-    }
-    if let Some(layer) = settings
-        .layers
-        .iter_mut()
-        .find(|layer| layer.id == layer_id)
-    {
-        for (id, _, component) in ENTRIES {
-            if types.contains(&id) {
-                component.add_to(layer);
-            }
+    add_registered(&ENTRIES, settings, layer_id, types);
+}
+
+fn add_registered(
+    entries: &[Entry],
+    settings: &mut daw_core::InstrumentSettings,
+    owner: Id,
+    types: &[&str],
+) {
+    for entry in entries {
+        if types.contains(&entry.type_id) {
+            entry.add_to(settings, owner);
         }
     }
+}
+
+/// Check registration metadata only; previewing must never construct units or assign IDs.
+pub(super) fn can_add_components(
+    settings: &daw_core::InstrumentSettings,
+    owner: Id,
+    types: &[&str],
+) -> bool {
+    can_add_registered(&ENTRIES, settings, owner, types)
+}
+
+fn can_add_registered(
+    entries: &[Entry],
+    settings: &daw_core::InstrumentSettings,
+    owner: Id,
+    types: &[&str],
+) -> bool {
+    entries
+        .iter()
+        .any(|entry| types.contains(&entry.type_id) && entry.can_add(settings, owner))
 }
 
 #[cfg(test)]
@@ -151,8 +191,12 @@ impl DawUi {
                 .and_then(|t| t.instrument.as_ref())
                 .is_some_and(|i| i.main.id == owner)
         }) {
-            for index in [0, 3] {
-                output.rows[index].clone().on_hover_text("Main accepts Envelope and LFO components. Drag this component onto a regular layer.");
+            for (index, entry) in ENTRIES.iter().enumerate() {
+                if !entry.supports_main() {
+                    output.rows[index].clone().on_hover_text(
+                        "This component requires a regular layer. Drag it onto a regular layer.",
+                    );
+                }
             }
         }
         if enabled
@@ -239,5 +283,70 @@ impl DawUi {
             })
             .or_else(|| instrument.layers.first())?;
         Some((track.id, layer.id))
+    }
+}
+
+#[cfg(test)]
+mod registration_tests {
+    use super::*;
+    thread_local! { static CONSTRUCTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+
+    #[test]
+    fn new_registration_enables_placement_without_a_type_allowlist_or_preview_construction() {
+        let entries = [Entry::layer("test.future", "Future", |layer| {
+            CONSTRUCTIONS.with(|n| n.set(n.get() + 1));
+            layer.macro_module.add();
+        })
+        .with_main(|main| {
+            CONSTRUCTIONS.with(|n| n.set(n.get() + 1));
+            main.macro_module.add();
+        })];
+        let mut settings = daw_core::InstrumentSettings::default();
+        let layer = settings.layers[0].id;
+        let main = settings.main.id;
+        let before = settings.clone();
+        CONSTRUCTIONS.with(|n| n.set(0));
+        for owner in [layer, main] {
+            assert!(can_add_registered(
+                &entries,
+                &settings,
+                owner,
+                &["test.future"]
+            ));
+            assert!(!can_add_registered(
+                &entries,
+                &settings,
+                owner,
+                &["test.unregistered"]
+            ));
+        }
+        assert!(!can_add_registered(
+            &entries,
+            &settings,
+            Id::nil(),
+            &["test.future"]
+        ));
+        assert_eq!(settings, before);
+        assert_eq!(CONSTRUCTIONS.with(|n| n.get()), 0);
+        for owner in [layer, main] {
+            add_registered(&entries, &mut settings, owner, &["test.future"]);
+        }
+        assert_eq!(CONSTRUCTIONS.with(|n| n.get()), 2);
+        assert!(settings.layers[0].macro_module.present && settings.main.macro_module.present);
+        assert!(settings.valid());
+        let layer_only = [Entry {
+            add_main: None,
+            ..entries[0]
+        }];
+        assert!(!can_add_registered(
+            &layer_only,
+            &settings,
+            main,
+            &["test.future"]
+        ));
+        let before = settings.clone();
+        add_registered(&layer_only, &mut settings, main, &["test.future"]);
+        assert_eq!(settings, before);
+        assert_eq!(CONSTRUCTIONS.with(|n| n.get()), 2);
     }
 }
