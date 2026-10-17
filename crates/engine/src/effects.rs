@@ -12,7 +12,7 @@ enum RuntimeEffect {
     Eq3(Box<Equalizer>, Vec<super::modulation::Route>),
     Drive(Box<Drive>, Vec<super::modulation::Route>),
     AutoFilter(Box<AutoFilter>, Vec<super::modulation::Route>),
-    Compressor(Box<Compressor>),
+    Compressor(Box<Compressor>, Vec<super::modulation::Route>),
     Ott(Box<Ott>),
     Limiter(Box<Limiter>),
 }
@@ -61,7 +61,18 @@ impl RuntimeEffect {
                     ..Default::default()
                 },
             ),
-            Self::Compressor(unit) => unit.process_sample(input),
+            Self::Compressor(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::Ott(unit) => unit.process_sample(input),
             Self::Limiter(unit) => unit.process_sample(input),
         }
@@ -87,7 +98,12 @@ impl RuntimeEffect {
                     r.reset();
                 }
             }
-            Self::Compressor(unit) => unit.reset(),
+            Self::Compressor(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
             Self::Ott(unit) => unit.reset(),
             Self::Limiter(unit) => unit.reset(),
         }
@@ -98,7 +114,7 @@ impl RuntimeEffect {
             (Self::Ott(unit), EffectSettings::Ott(settings)) => unit.retarget(settings),
             (Self::Limiter(unit), EffectSettings::Limiter(settings)) => unit.retarget(settings),
             (Self::Drive(unit, _), EffectSettings::Drive(settings)) => unit.retarget(settings),
-            (Self::Compressor(unit), EffectSettings::Compressor(settings)) => {
+            (Self::Compressor(unit, _), EffectSettings::Compressor(settings)) => {
                 unit.retarget(settings)
             }
             (Self::AutoFilter(unit, _), EffectSettings::AutoFilter(settings)) => {
@@ -182,9 +198,14 @@ impl EffectChain {
                             )),
                             EffectSettings::Missing { .. } => None,
                             EffectSettings::Compressor(settings) => {
-                                Some(RuntimeEffect::Compressor(Box::new(Compressor::new(
-                                    context, settings,
-                                ))))
+                                Some(RuntimeEffect::Compressor(
+                                    Box::new(Compressor::new(context, settings)),
+                                    settings
+                                        .modulations
+                                        .iter()
+                                        .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                        .collect(),
+                                ))
                             }
                         },
                     )
@@ -210,8 +231,11 @@ impl EffectChain {
                     RuntimeEffect::AutoFilter(_, new_routes),
                 )
                 | (RuntimeEffect::Drive(_, old_routes), RuntimeEffect::Drive(_, new_routes))
-                | (RuntimeEffect::Eq3(_, old_routes), RuntimeEffect::Eq3(_, new_routes)) =
-                    (&mut *previous, &mut *next)
+                | (RuntimeEffect::Eq3(_, old_routes), RuntimeEffect::Eq3(_, new_routes))
+                | (
+                    RuntimeEffect::Compressor(_, old_routes),
+                    RuntimeEffect::Compressor(_, new_routes),
+                ) = (&mut *previous, &mut *next)
                 {
                     daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
                 }
@@ -230,12 +254,15 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => Some(unit.effective_parameters()),
+            Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
+                Some(unit.effective_parameters())
+            }
             _ => None,
         }
     }
     pub fn set_meter(&mut self, id: Id, meter: &Arc<AtomicU32>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
-            Some((_, Some(RuntimeEffect::Compressor(unit)))) => {
+            Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
                 unit.set_gain_reduction_meter(meter.clone())
             }
             Some((_, Some(RuntimeEffect::Limiter(unit)))) => {

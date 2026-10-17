@@ -3,9 +3,9 @@ use crate::{
     knobs::{self, Knob, KnobSpec},
     meters,
     midi_editor::UNIT_STRIP_WIDTH,
-    panels, rows, theme,
+    panels, parameter_knobs, rows, theme,
 };
-use daw_core::{CompressorDetection, CompressorSettings};
+use daw_core::{CompressorDetection, CompressorSettings, ModulationParameter as Parameter};
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
@@ -14,110 +14,56 @@ pub(super) struct Bounds {
     pub controls: [[Rect; 3]; 3],
     pub sections: [Rect; 3],
 }
-fn db(value: f32) -> String {
-    format!("{value:.1} dB")
-}
-fn time(value: f32) -> String {
-    if value < 10.0 {
-        format!("{value:.1} ms")
-    } else {
-        format!("{value:.0} ms")
-    }
-}
-fn timing(name: &'static str, min: f32, max: f32, reset: f32) -> KnobSpec {
-    let spec = KnobSpec::new(name, min..=max, reset, 0.1);
-    let spec = if min < 1.0 {
-        spec.scale(
-            |v| (v / 0.1).ln() / 2000_f32.ln(),
-            |p| 0.1 * 2000_f32.powf(p),
-            |v, d| v * 2_f32.powf(d / 24.0),
-        )
-    } else {
-        spec.scale(
-            |v| (v / 10.0).ln() / 200_f32.ln(),
-            |p| 10.0 * 200_f32.powf(p),
-            |v, d| v * 2_f32.powf(d / 24.0),
-        )
-    };
-    spec.value_label(time).format(time).endpoint_labels(
-        if min < 1.0 { "0.1" } else { "10" },
-        if max == 200.0 { "200" } else { "2k" },
-    )
-}
 fn row(
     ui: &mut Ui,
     settings: &mut CompressorSettings,
     column: usize,
     row: usize,
     reduction_db: f32,
+    markers: &[Option<knobs::ModulationMarker>; 7],
 ) -> Rect {
     knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
-        match (column, row) {
-            (0, 0) => ui.add(Knob::new(
-                &mut s.threshold_db,
-                KnobSpec::new("Threshold", -60.0..=0.0, -18.0, 0.1)
-                    .value_label(db)
-                    .format(|v| format!("{v:.1} dBFS"))
-                    .endpoint_labels("−60", "0"),
-            )),
-            (0, 1) => ui.add(Knob::new(
-                &mut s.ratio,
-                KnobSpec::new("Ratio", 1.0..=20.0, 4.0, 0.1)
-                    .value_label(|v| format!("{v:.1}:1"))
-                    .format(|v| format!("{v:.1}:1"))
-                    .endpoint_labels("1:1", "20:1"),
-            )),
-            (0, 2) => {
-                let mut position = f32::from(s.detection == CompressorDetection::Rms);
-                let response = ui.add(Knob::new(
-                    &mut position,
-                    KnobSpec::new("Detection mode", 0.0..=1.0, 0.0, 1.0)
-                        .two_way_labels("Peak", "RMS")
-                        .format(|v| {
-                            if v == 0.0 {
-                                "Peak".into()
-                            } else {
-                                "RMS".into()
-                            }
-                        }),
-                ));
-                if response.changed() {
-                    s.detection = if position == 0.0 {
-                        CompressorDetection::Peak
-                    } else {
-                        CompressorDetection::Rms
-                    };
-                }
-                response
-            }
-            (1, 0) => ui.add(Knob::new(
-                &mut s.attack_ms,
-                timing("Attack", 0.1, 200.0, 10.0),
-            )),
-            (1, 1) => ui.add(Knob::new(
-                &mut s.release_ms,
-                timing("Release", 10.0, 2000.0, 100.0),
-            )),
-            (1, 2) => ui.add(Knob::new(
-                &mut s.knee_db,
-                KnobSpec::new("Knee", 0.0..=24.0, 6.0, 0.1)
-                    .value_label(db)
-                    .format(db)
-                    .endpoint_labels("0", "24"),
-            )),
-            (2, 0) => {
-                knobs::gain_with_markers_named(ui, &mut s.level_db, "Compressor output level")
-            }
-            (2, 1) => ui.add(Knob::new(
-                &mut s.dry_wet,
-                KnobSpec::new("Dry/wet", 0.0..=1.0, 1.0, 0.01)
-                    .value_label(|v| format!("{:.0}%", v * 100.0))
-                    .format(|v| format!("{:.0}%", v * 100.0))
-                    .endpoint_labels("Dry", "Wet"),
-            )),
-            (2, 2) => meters::gain_reduction(ui, reduction_db),
-            _ => unreachable!(),
+        if (column, row) == (2, 2) {
+            return meters::gain_reduction(ui, reduction_db);
         }
+        if (column, row) == (0, 2) {
+            let mut position = f32::from(s.detection == CompressorDetection::Rms);
+            let response = ui.add(Knob::new(
+                &mut position,
+                KnobSpec::new("Detection mode", 0.0..=1.0, 0.0, 1.0)
+                    .two_way_labels("Peak", "RMS")
+                    .format(|v| {
+                        if v == 0.0 {
+                            "Peak".into()
+                        } else {
+                            "RMS".into()
+                        }
+                    }),
+            ));
+            if response.changed() {
+                s.detection = if position == 0.0 {
+                    CompressorDetection::Peak
+                } else {
+                    CompressorDetection::Rms
+                };
+            }
+            return response;
+        }
+        let (index, value) = match (column, row) {
+            (0, 0) => (0, &mut s.threshold_db),
+            (0, 1) => (1, &mut s.ratio),
+            (1, 0) => (2, &mut s.attack_ms),
+            (1, 1) => (3, &mut s.release_ms),
+            (1, 2) => (4, &mut s.knee_db),
+            (2, 0) => (5, &mut s.level_db),
+            (2, 1) => (6, &mut s.dry_wet),
+            _ => unreachable!(),
+        };
+        let mut spec = parameter_knobs::destination(Parameter::COMPRESSOR[index]);
+        if index == 5 {
+            spec = spec.named("Compressor output level");
+        }
+        ui.add(Knob::new(value, spec).modulated(markers[index].as_ref(), &mut s.modulation_open))
     })
     .rect
 }
@@ -127,7 +73,46 @@ pub(super) fn show(
     compact: bool,
     height: f32,
     reduction_db: f32,
+    sources: &[crate::modulation_panel::Source],
+    live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
+        |ui| show_inner(ui, settings, compact, height, reduction_db, sources, live),
+    )
+    .inner
+}
+fn show_inner(
+    ui: &mut Ui,
+    settings: &mut CompressorSettings,
+    compact: bool,
+    height: f32,
+    reduction_db: f32,
+    sources: &[crate::modulation_panel::Source],
+    live: Option<daw_engine::ModulationSnapshot>,
+) -> (Bounds, egui::Response) {
+    let bases = [
+        settings.threshold_db,
+        settings.ratio,
+        settings.attack_ms,
+        settings.release_ms,
+        settings.knee_db,
+        settings.level_db,
+        settings.dry_wet,
+    ];
+    let markers = std::array::from_fn(|i| {
+        crate::modulation_panel::marker(
+            &settings.modulations,
+            sources,
+            Parameter::COMPRESSOR[i],
+            bases[i],
+            settings.enabled,
+            None,
+            [live.map(|v| v[i]), None],
+        )
+    });
+    let open = settings.modulation_open;
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
         header: Rect::NOTHING,
@@ -169,6 +154,7 @@ pub(super) fn show(
                                                         column,
                                                         index,
                                                         reduction_db,
+                                                        &markers,
                                                     );
                                                 }
                                             }
@@ -195,11 +181,17 @@ pub(super) fn show(
                         panels::unit_divider(ui, rect.left(), rect.y_range().into());
                     }
                 }
+                if open {
+                    let last = bounds.sections[2];
+                    panels::unit_divider(ui, last.right(), last.y_range().into());
+                    crate::modulation_panel::body(ui, &mut settings.modulations, sources, <CompressorSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS, <CompressorSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
+                }
             });
         },
     );
     settings.enabled = enabled;
     settings.collapsed = collapsed;
+    crate::modulation_panel::toggle(ui, &result.header, collapsed, &mut settings.modulation_open);
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
     (bounds, result.header)

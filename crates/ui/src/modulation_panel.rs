@@ -438,6 +438,15 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::CompressorThreshold => offsets.map(|o| (base + o).clamp(-60.0, 0.0)),
+        ModulationParameter::CompressorRatio => offsets.map(|o| (base + o).clamp(1.0, 20.0)),
+        ModulationParameter::CompressorKnee => offsets.map(|o| (base + o).clamp(0.0, 24.0)),
+        ModulationParameter::CompressorAttack => {
+            offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(0.1, 200.0))
+        }
+        ModulationParameter::CompressorRelease => {
+            offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(10.0, 2000.0))
+        }
         ModulationParameter::EqLowGain
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
@@ -454,10 +463,7 @@ pub(super) fn marker(
         ModulationParameter::Resonance
         | ModulationParameter::EqLowQ
         | ModulationParameter::EqHighQ => offsets.map(|o| (base + o).clamp(0.1, 10.0)),
-        ModulationParameter::Level => {
-            offsets.map(|o| (base + o).clamp(daw_core::SILENT_GAIN_DB, 12.0))
-        }
-        ModulationParameter::Volume => {
+        ModulationParameter::Level | ModulationParameter::Volume => {
             if base <= daw_core::SILENT_GAIN_DB {
                 [daw_core::SILENT_GAIN_DB; 2]
             } else {
@@ -497,6 +503,12 @@ pub(super) fn marker(
         lines.push("Moving dot: processed value.".into());
     }
     let format_value = |value: f32| match parameter {
+        ModulationParameter::CompressorThreshold => format!("{value:.1} dBFS"),
+        ModulationParameter::CompressorRatio => format!("{value:.1}:1"),
+        ModulationParameter::CompressorKnee => format!("{value:.1} dB"),
+        ModulationParameter::CompressorAttack | ModulationParameter::CompressorRelease => {
+            format!("{value:.1} ms")
+        }
         ModulationParameter::Pitch => format!("{value:+.2} semitones"),
         ModulationParameter::Frequency
         | ModulationParameter::ColorFrequency
@@ -657,6 +669,17 @@ mod tests {
             (Frequency, 1000.0, 6.0, [1000.0, 20000.0]),
             (Resonance, 2.0, -10.0, [0.1, 2.0]),
             (Level, 0.0, 24.0, [0.0, 12.0]),
+            (
+                Level,
+                daw_core::SILENT_GAIN_DB,
+                24.0,
+                [daw_core::SILENT_GAIN_DB; 2],
+            ),
+            (CompressorThreshold, -18.0, -60.0, [-60.0, -18.0]),
+            (CompressorRatio, 4.0, 19.0, [4.0, 20.0]),
+            (CompressorKnee, 6.0, 24.0, [6.0, 24.0]),
+            (CompressorAttack, 10.0, 6.0, [10.0, 200.0]),
+            (CompressorRelease, 100.0, -6.0, [10.0, 100.0]),
             (DryWet, 0.7, 1.0, [0.7, 1.0]),
         ] {
             assert_eq!(

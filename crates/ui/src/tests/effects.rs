@@ -3873,6 +3873,14 @@ fn modifier_drag_copies_selected_effects_in_chain_order_with_new_ids() {
         for collapsed in [false, true] {
             for master in [false, true] {
                 let (mut app, _, ctx, ids) = chain_fixture(compact, collapsed);
+                let third = &mut app.session.project.tracks[0].effects[2];
+                third.unit = daw_core::EffectSettings::Compressor(daw_core::CompressorSettings {
+                    collapsed,
+                    modulations: vec![daw_core::Modulation::new(
+                        daw_core::ModulationParameter::CompressorKnee,
+                    )],
+                    ..Default::default()
+                });
                 for effect in &mut app.session.project.tracks[0].effects {
                     if let daw_core::EffectSettings::Eq3(s) = &mut effect.unit {
                         s.modulations.push(daw_core::Modulation {

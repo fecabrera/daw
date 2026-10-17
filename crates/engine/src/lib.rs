@@ -151,7 +151,7 @@ pub fn pan_coefficients(pan: f32, mono: bool) -> [f32; 2] {
     }
 }
 
-/// Capacity for the largest current set of processed destination controls (the EQ's seven).
+/// Capacity for the largest current set of processed destination controls (seven).
 pub const MODULATION_SNAPSHOT_SIZE: usize = 7;
 pub type ModulationSnapshot = [f32; MODULATION_SNAPSHOT_SIZE];
 fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
@@ -341,7 +341,7 @@ impl Renderer {
         self.modulation_snapshot(target)
             .map(|v| std::array::from_fn(|i| v[i]))
     }
-    /// Full destination readings. EQ uses EQUALIZER order; added unused slots contain NaN.
+    /// Full readings. EQ/Compressor use their parameter-list order; added unused slots contain NaN.
     pub fn modulation_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {
         match target {
             ModulationTarget::Effect(id) => {

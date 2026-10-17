@@ -31,8 +31,48 @@ fn eq_gain() -> KnobSpec {
         .format(|v| format!("{v:.1} dB"))
         .endpoint_labels("−24", "+24")
 }
+fn compressor_time(attack: bool) -> KnobSpec {
+    let spec = if attack {
+        KnobSpec::new("Attack", 0.1..=200.0, 10.0, 0.1).scale(
+            |v| (v / 0.1).ln() / 2000_f32.ln(),
+            |p| 0.1 * 2000_f32.powf(p),
+            |v, d| v * 2_f32.powf(d / 24.0),
+        )
+    } else {
+        KnobSpec::new("Release", 10.0..=2000.0, 100.0, 0.1).scale(
+            |v| (v / 10.0).ln() / 200_f32.ln(),
+            |p| 10.0 * 200_f32.powf(p),
+            |v, d| v * 2_f32.powf(d / 24.0),
+        )
+    };
+    fn time(v: f32) -> String {
+        if v < 10.0 {
+            format!("{v:.1} ms")
+        } else {
+            format!("{v:.0} ms")
+        }
+    }
+    spec.value_label(time).format(time).endpoint_labels(
+        if attack { "0.1" } else { "10" },
+        if attack { "200" } else { "2k" },
+    )
+}
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::CompressorThreshold => KnobSpec::new("Threshold", -60.0..=0.0, -18.0, 0.1)
+            .value_label(|v| format!("{v:.1} dB"))
+            .format(|v| format!("{v:.1} dBFS"))
+            .endpoint_labels("−60", "0"),
+        Parameter::CompressorRatio => KnobSpec::new("Ratio", 1.0..=20.0, 4.0, 0.1)
+            .value_label(|v| format!("{v:.1}:1"))
+            .format(|v| format!("{v:.1}:1"))
+            .endpoint_labels("1:1", "20:1"),
+        Parameter::CompressorAttack => compressor_time(true),
+        Parameter::CompressorRelease => compressor_time(false),
+        Parameter::CompressorKnee => KnobSpec::new("Knee", 0.0..=24.0, 6.0, 0.1)
+            .value_label(|v| format!("{v:.1} dB"))
+            .format(|v| format!("{v:.1} dB"))
+            .endpoint_labels("0", "24"),
         Parameter::MacroValue => percent("Macro value", 0.0),
         Parameter::LfoDepth => percent("LFO depth", 1.0),
         Parameter::LfoRate => KnobSpec::new("LFO rate", 0.01..=20.0, 2.0, 0.01)
@@ -122,6 +162,30 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−24", "+24"],
             ),
+            Parameter::CompressorThreshold => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: -1.0,
+                },
+                signed_db,
+                ["−60", "+60"],
+            ),
+            Parameter::CompressorKnee => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_db,
+                ["−24", "+24"],
+            ),
+            Parameter::CompressorRatio => (
+                AmountMapping::Offset {
+                    origin: 1.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.1}:1"),
+                ["−19", "+19"],
+            ),
             Parameter::Pitch => (
                 AmountMapping::Offset {
                     origin: 0.0,
@@ -139,7 +203,9 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−24", "+24"],
             ),
-            Parameter::Frequency
+            Parameter::CompressorAttack
+            | Parameter::CompressorRelease
+            | Parameter::Frequency
             | Parameter::LfoRate
             | Parameter::EqLowFrequency
             | Parameter::EqHighFrequency => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),

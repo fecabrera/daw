@@ -3,7 +3,7 @@ use super::*;
 use crate::parameter_knobs;
 use daw_core::ModulationParameter as P;
 
-const PARAMETERS: [P; 21] = [
+const PARAMETERS: [P; 26] = [
     P::Pitch,
     P::Amplitude,
     P::Frequency,
@@ -25,16 +25,28 @@ const PARAMETERS: [P; 21] = [
     P::EqHighGain,
     P::EqHighFrequency,
     P::EqHighQ,
+    P::CompressorThreshold,
+    P::CompressorRatio,
+    P::CompressorAttack,
+    P::CompressorRelease,
+    P::CompressorKnee,
 ];
 
 fn native_value(parameter: P, amount: f32) -> f32 {
     match parameter {
         P::Pitch | P::EqLowGain | P::EqMidGain | P::EqHighGain => amount,
         P::Amplitude => 20.0 * (1.0 - amount.abs()).log10(),
-        P::Level | P::Volume => -amount.abs(),
-        P::Frequency | P::ColorFrequency | P::LfoRate | P::EqLowFrequency | P::EqHighFrequency => {
+        P::Level | P::Volume | P::CompressorThreshold => -amount.abs(),
+        P::Frequency
+        | P::ColorFrequency
+        | P::LfoRate
+        | P::EqLowFrequency
+        | P::EqHighFrequency
+        | P::CompressorAttack
+        | P::CompressorRelease => {
             parameter_knobs::destination(parameter).reset * 2.0_f32.powf(amount)
         }
+        P::CompressorRatio => 1.0 + amount.abs(),
         P::Resonance | P::EqLowQ | P::EqHighQ => 0.1 + amount.abs(),
         _ => amount.abs(),
     }
@@ -49,8 +61,10 @@ fn direction(parameter: P, amount: f32) -> f32 {
         | P::EqMidGain
         | P::EqHighGain
         | P::EqLowFrequency
-        | P::EqHighFrequency => 1.0,
-        P::Amplitude | P::Level | P::Volume => -amount.signum(),
+        | P::EqHighFrequency
+        | P::CompressorAttack
+        | P::CompressorRelease => 1.0,
+        P::Amplitude | P::Level | P::Volume | P::CompressorThreshold => -amount.signum(),
         _ => amount.signum(),
     }
 }

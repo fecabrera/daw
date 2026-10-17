@@ -5,7 +5,7 @@ use super::{KnobSpec, ParameterScale};
 pub(crate) enum AmountMapping {
     /// Signed offsets in destination units. Gain mirrors its attenuation curve.
     Offset { origin: f32, direction: f32 },
-    /// Saved octaves correspond to ratios on the destination's frequency scale.
+    /// Saved octaves correspond to ratios on the destination's frequency or time scale.
     Octaves,
     /// Saved envelope depth corresponds to attenuation on the destination's gain scale.
     Depth,

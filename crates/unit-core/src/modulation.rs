@@ -80,8 +80,23 @@ pub enum ModulationParameter {
     EqHighGain,
     EqHighFrequency,
     EqHighQ,
+    CompressorThreshold,
+    CompressorRatio,
+    CompressorAttack,
+    CompressorRelease,
+    CompressorKnee,
 }
 impl ModulationParameter {
+    /// Continuous Compressor controls, in UI/telemetry order. Detection remains discrete.
+    pub const COMPRESSOR: [Self; 7] = [
+        Self::CompressorThreshold,
+        Self::CompressorRatio,
+        Self::CompressorAttack,
+        Self::CompressorRelease,
+        Self::CompressorKnee,
+        Self::Level,
+        Self::DryWet,
+    ];
     /// Fixed band controls, in UI/telemetry order. Mid uses the outer boundaries and Q.
     pub const EQUALIZER: [Self; 7] = [
         Self::EqLowGain,
@@ -103,6 +118,11 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::CompressorThreshold => "Threshold",
+            Self::CompressorRatio => "Ratio",
+            Self::CompressorAttack => "Attack",
+            Self::CompressorRelease => "Release",
+            Self::CompressorKnee => "Knee",
             Self::EqLowGain => "Low · Gain",
             Self::EqLowFrequency => "Low · Frequency",
             Self::EqLowQ => "Low · Q",
@@ -128,6 +148,10 @@ impl ModulationParameter {
     }
     pub fn limit(self) -> f32 {
         match self {
+            Self::CompressorThreshold => 60.0,
+            Self::CompressorRatio => 19.0,
+            Self::CompressorKnee => 24.0,
+            Self::CompressorAttack | Self::CompressorRelease => 6.0,
             Self::Pitch => 48.0,
             Self::Frequency | Self::LfoRate | Self::EqLowFrequency | Self::EqHighFrequency => 6.0,
             Self::ColorFrequency => 3.0,
@@ -140,6 +164,9 @@ impl ModulationParameter {
     }
     pub fn unit(self) -> &'static str {
         match self {
+            Self::CompressorThreshold | Self::CompressorKnee => "dB",
+            Self::CompressorRatio => ":1",
+            Self::CompressorAttack | Self::CompressorRelease => "oct",
             Self::Pitch => "semitones",
             Self::Frequency
             | Self::ColorFrequency

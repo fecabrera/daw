@@ -304,3 +304,9 @@ impl ModulationDestinationSettings for crate::InstrumentLayerSettings {
         )
     }
 }
+
+destination_settings!(
+    crate::CompressorSettings,
+    &ModulationParameter::COMPRESSOR,
+    Shared
+);

@@ -3788,28 +3788,43 @@ fn macro_strips_routing_and_presentation_survive_save_as_duplication_and_rate_ch
 }
 
 #[test]
-fn eq_modulation_survives_save_as_duplication_and_processing_rate_changes() {
+fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() {
     use daw_core::{
         EffectInstance, EffectSettings, LfoInstance, Modulation, ModulationParameter,
         ModulationSourceId,
     };
-    let fixture = Fixture::new();
-    let mut session = Session::default();
-    let track = session.project.add_midi_track().unwrap();
-    let instrument = session.project.tracks[0].instrument.as_mut().unwrap();
-    let lfo = LfoInstance::default();
-    let source = ModulationSourceId {
-        layer: instrument.main.id,
-        unit: lfo.id,
-    };
-    instrument.main.lfos.push(lfo);
-    let mut effect = EffectInstance::equalizer();
-    let EffectSettings::Eq3(settings) = &mut effect.unit else {
-        unreachable!()
-    };
-    settings.modulation_open = true;
-    settings.collapsed = true;
-    settings.modulations = ModulationParameter::EQUALIZER
+    for compressor in [false, true] {
+        let fixture = Fixture::new();
+        let mut session = Session::default();
+        let track = session.project.add_midi_track().unwrap();
+        let instrument = session.project.tracks[0].instrument.as_mut().unwrap();
+        let lfo = LfoInstance::default();
+        let source = ModulationSourceId {
+            layer: instrument.main.id,
+            unit: lfo.id,
+        };
+        instrument.main.lfos.push(lfo);
+        let mut effect = if compressor {
+            EffectInstance::compressor()
+        } else {
+            EffectInstance::equalizer()
+        };
+        let (open, collapsed, routes) = match &mut effect.unit {
+            EffectSettings::Eq3(s) => {
+                (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
+            }
+            EffectSettings::Compressor(s) => {
+                (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
+            }
+            _ => unreachable!(),
+        };
+        *open = true;
+        *collapsed = true;
+        *routes = if compressor {
+            ModulationParameter::COMPRESSOR
+        } else {
+            ModulationParameter::EQUALIZER
+        }
         .into_iter()
         .map(|parameter| Modulation {
             source: Some(source),
@@ -3817,30 +3832,31 @@ fn eq_modulation_survives_save_as_duplication_and_processing_rate_changes() {
             ..Modulation::new(parameter)
         })
         .collect();
-    session.project.tracks[0].effects.push(effect.clone());
-    session.save(&fixture.0.join("eq-modulation")).unwrap();
-    let mut reopened = Session::open(&fixture.0.join("eq-modulation")).unwrap();
-    reopened
-        .save(&fixture.0.join("eq-modulation-copy"))
-        .unwrap();
-    let mut copied = Session::open(&fixture.0.join("eq-modulation-copy")).unwrap();
-    assert_eq!(copied.project.tracks[0].effects, vec![effect.clone()]);
-    copied
-        .project
-        .edit(daw_core::Edit::DuplicateTrack {
-            track_id: track,
-            new_track_id: daw_core::Id::new_v4(),
-        })
-        .unwrap();
-    copied.project.validate().unwrap();
-    assert_eq!(copied.project.tracks[1].effects[0].unit, effect.unit);
-    assert_ne!(copied.project.tracks[1].effects[0].id, effect.id);
-    let changed = copied.with_audio_settings(96000, 256).unwrap();
-    changed.project.validate().unwrap();
-    for index in 0..2 {
-        assert_eq!(
-            changed.project.tracks[index].effects,
-            copied.project.tracks[index].effects
-        );
+        session.project.tracks[0].effects.push(effect.clone());
+        session.save(&fixture.0.join("effect-modulation")).unwrap();
+        let mut reopened = Session::open(&fixture.0.join("effect-modulation")).unwrap();
+        reopened
+            .save(&fixture.0.join("effect-modulation-copy"))
+            .unwrap();
+        let mut copied = Session::open(&fixture.0.join("effect-modulation-copy")).unwrap();
+        assert_eq!(copied.project.tracks[0].effects, vec![effect.clone()]);
+        copied
+            .project
+            .edit(daw_core::Edit::DuplicateTrack {
+                track_id: track,
+                new_track_id: daw_core::Id::new_v4(),
+            })
+            .unwrap();
+        copied.project.validate().unwrap();
+        assert_eq!(copied.project.tracks[1].effects[0].unit, effect.unit);
+        assert_ne!(copied.project.tracks[1].effects[0].id, effect.id);
+        let changed = copied.with_audio_settings(96000, 256).unwrap();
+        changed.project.validate().unwrap();
+        for index in 0..2 {
+            assert_eq!(
+                changed.project.tracks[index].effects,
+                copied.project.tracks[index].effects
+            );
+        }
     }
 }

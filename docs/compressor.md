@@ -42,3 +42,27 @@ Processing, reset, and compatible retargeting do not allocate, perform I/O, or a
 State uses type ID `daw.compressor`, version 1. Core validation rejects non-finite/out-of-range controls atomically. Settings, IDs, and presentation survive save/open, Save As, and project rate changes. Track copies receive new effect IDs. Unknown future versions retain their opaque payload and bypass with the shared unavailable-effect warning. Lookahead, automatic makeup gain, external sidechain routing, and detector high-pass controls are outside this version.
 
 Master supports this unit through the same Timeline catalog and controls. Its independent saved chain processes the summed track bus before Master gain and output meters; see [Master effects](modular-audio-units.md#master-effects-implementation--2026-10-14).
+
+## Modulation — 2026-10-17
+
+Compressor consumes shared control outputs through the [portable source and destination contract](modulation.md). Sources can be Retrigger/Legato Envelopes, LFOs, and Macro strips in its own MIDI instrument, including Main. Per note and foreign instrument sources fail core validation. Audio tracks and Master can retain unassigned connections but cannot reference instrument providers. Disconnect a connected Envelope from track effects before changing it to Per note. Disabled, removed, unavailable, or unassigned sources contribute neutral offsets through the common resolver.
+
+| Destination | Signed Amount range | Application and final bounds |
+| --- | --- | --- |
+| Threshold | −60 to +60 dB | Add to Threshold; clamp to −60–0 dBFS. |
+| Ratio | −19 to +19 ratio units | Add to the ratio's numerator, then clamp to 1:1–20:1. An offset of +2 changes 4:1 to 6:1. |
+| Attack | −6 to +6 octaves | Multiply duration by `2^offset`; clamp to 0.1–200 ms. |
+| Release | −6 to +6 octaves | Multiply duration by `2^offset`; clamp to 10–2000 ms. |
+| Knee | −24 to +24 dB | Add to Knee width; clamp to 0–24 dB. |
+| Level | −24 to +24 dB | Add to output level, capped at +12 dB. Exact base silence stays silent. |
+| Dry/Wet | −1 to +1 | Add to the wet fraction; clamp to 0–1. |
+
+An octave here is a ratio of durations: +1 doubles the time, and −1 halves it. Amounts multiply the cached source value and weight. Same-target routes sum before the common 1 ms offset smoother and final bounds; total Level offsets are bounded to ±96 dB before gain conversion. Base controls, amounts/power, source enable, and bypass retain their existing 5 ms ramps. Ratio retains its base slope ramp and receives modulation in ratio units; Attack/Release offsets add in log-time space. Nonfinite standalone offsets contribute neutral targets. Zero effective offsets retain the existing unmodulated DSP path and arithmetic.
+
+Peak/RMS and unit power remain discrete controls. The gain-reduction meter remains read-only and reports actual compression before Dry/Wet and Level, including the effect of modulated Threshold, Ratio, Knee, and timing. Bypass passes unscaled dry audio while both detectors, the reduction envelope, and modulation continue advancing. Modulation changes no base settings and adds no lookahead or latency.
+
+The secondary-color header dot opens the shared Source/Destination/Amount strips on the right. Reuse connection Plus, Power/Mod N footers, context-menu removal, and strip reordering. Regular controls and the gain-reduction meter remain visible. Compact mode retains unit/connection footers and hides controls and the meter; horizontal collapse hides the body. The seven parameter knobs reuse shared status dots, correlated-source range arcs, source/amount tooltips, click-to-open controls, and actual processed-value markers. Pointers and readouts retain base values. Normal and Amount controls derive from the same definitions in `parameter_knobs.rs`, including time scales, ratio steps, gain marks, Shift adjustment, and neutral-zero Amount reset.
+
+Saved Compressor version 1 adds optional `modulation_open` and `modulations`, defaulting closed/empty for older projects. Visibility edits use the normal effect transaction and mark the project modified. Save/reopen, Save As, effect reorder, track duplication, processing-rate changes, and provider moves retain settings, source identities, and routes. Effect drag copies receive fresh route IDs. Invalid parameters, amounts, route IDs/targets, or source references reject the complete edit. Compatible renderer updates preserve detector/reduction history, in-flight base ramps, and route smoothing by stable ID. Seek/Stop reset state; Pause and loops retain existing transport behavior.
+
+The host prepares route vectors and atomic snapshot handles before publication. `process_modulation` consumes cached providers once per destination sample; Compressor does not look up or advance a source. `ModulationSmoother` applies its offsets. The existing seven-reading snapshot carries Threshold dBFS, Ratio, Attack/Release ms, Knee dB, Level dB, and Dry/Wet, in that order. No UI clock simulates modulation. Sampling, reset, snapshots, and compatible retargeting allocate and lock nothing in the callback. External sidechains, audio-derived modulation outputs, cross-track routes, and new detector controls remain outside this change.

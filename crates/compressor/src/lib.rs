@@ -9,6 +9,10 @@ use std::sync::{
     atomic::{AtomicU32, Ordering},
 };
 
+mod modulation;
+#[cfg(test)]
+mod modulation_tests;
+
 const RMS: Meter = Meter::Rms(0.01);
 
 struct Ramp {
@@ -68,6 +72,8 @@ pub struct Compressor {
     coefficients: [f64; 2],
     reduction_db: f64,
     meter: Option<Arc<AtomicU32>>,
+    external: daw_unit_core::ModulationSmoother<7>,
+    effective: [f32; 9],
 }
 impl Compressor {
     /// Prepare with validated settings on a control thread.
@@ -87,8 +93,10 @@ impl Compressor {
             coefficients: [0.0; 2],
             reduction_db: 0.0,
             meter: None,
+            external: daw_unit_core::ModulationSmoother::new(context),
+            effective: Self::values(settings),
         };
-        unit.configure();
+        unit.configure([unit.effective[3], unit.effective[4]]);
         unit
     }
     fn values(settings: &CompressorSettings) -> [f32; 9] {
@@ -119,9 +127,8 @@ impl Compressor {
     pub fn gain_reduction_db(&self) -> f32 {
         self.reduction_db as f32 * self.parameters[8].value
     }
-    fn configure(&mut self) {
-        for index in 0..2 {
-            let time = self.parameters[index + 3].value;
+    fn configure(&mut self, times: [f32; 2]) {
+        for (index, time) in times.into_iter().enumerate() {
             if time != self.configured_times[index] {
                 self.coefficients[index] =
                     (-1.0 / (f64::from(time).exp() * 0.001 * self.rate)).exp();
@@ -141,7 +148,7 @@ impl EffectUnit for Compressor {
             type_id: COMPRESSOR_TYPE_ID,
             name: "Compressor",
             is_source: false,
-            inputs: &[PortKind::StereoAudio],
+            inputs: &[PortKind::StereoAudio, PortKind::Modulation],
             outputs: &[PortKind::StereoAudio],
         }
     }
@@ -153,14 +160,17 @@ impl EffectUnit for Compressor {
             parameter.reset();
         }
         self.reduction_db = 0.0;
-        self.configure();
+        self.external.reset();
+        self.effective = self.parameters.each_ref().map(|p| p.value);
+        self.configure([self.effective[3], self.effective[4]]);
         self.publish();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        for parameter in &mut self.parameters {
-            parameter.advance();
-        }
-        self.configure();
+        self.process_modulated(input, [0.0; 7])
+    }
+}
+impl Compressor {
+    fn process_effective_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
         let input = input.map(|value| if value.is_finite() { value } else { 0.0 });
         let peak = input[0].abs().max(input[1].abs());
         let mut rms: f32 = 0.0;
@@ -174,10 +184,10 @@ impl EffectUnit for Compressor {
                 rms = rms.max(level);
             }
         }
-        let p = &self.parameters;
-        let detected = peak * (1.0 - p[5].value) + rms * p[5].value;
+        let p = &self.effective;
+        let detected = peak * (1.0 - p[5]) + rms * p[5];
         let level_db = 20.0 * detected.max(1e-20).log10();
-        let target = f64::from(reduction(level_db, p[0].value, p[1].value, p[2].value));
+        let target = f64::from(reduction(level_db, p[0], p[1], p[2]));
         let coefficient = self.coefficients[usize::from(target < self.reduction_db)];
         self.reduction_db = target + coefficient * (self.reduction_db - target);
         if self.reduction_db < 1e-8 {
@@ -186,9 +196,9 @@ impl EffectUnit for Compressor {
         let gain = f64::from(amplitude(-(self.reduction_db as f32)));
         let output = input.map(|dry| {
             let dry = f64::from(dry);
-            let mix = f64::from(p[7].value);
-            let enabled = f64::from(p[8].value);
-            let wet = dry * ((1.0 - mix) + gain * mix) * f64::from(p[6].value);
+            let mix = f64::from(p[7]);
+            let enabled = f64::from(p[8]);
+            let wet = dry * ((1.0 - mix) + gain * mix) * f64::from(p[6]);
             (dry * (1.0 - enabled) + wet * enabled).clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
                 as f32
         });

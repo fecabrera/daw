@@ -16,6 +16,10 @@ pub struct CompressorSettings {
     pub version: u32,
     pub enabled: bool,
     pub collapsed: bool,
+    #[serde(default)]
+    pub modulation_open: bool,
+    #[serde(default)]
+    pub modulations: Vec<crate::Modulation>,
     pub threshold_db: f32,
     pub ratio: f32,
     pub detection: CompressorDetection,
@@ -32,6 +36,8 @@ impl Default for CompressorSettings {
             version: COMPRESSOR_STATE_VERSION,
             enabled: true,
             collapsed: false,
+            modulation_open: false,
+            modulations: Vec::new(),
             threshold_db: -18.0,
             ratio: 4.0,
             detection: CompressorDetection::Peak,
@@ -56,5 +62,6 @@ impl CompressorSettings {
             && bounded(self.knee_db, 0.0, 24.0)
             && bounded(self.level_db, crate::SILENT_GAIN_DB, 12.0)
             && bounded(self.dry_wet, 0.0, 1.0)
+            && crate::ModulationDestinationSettings::valid_modulations(self)
     }
 }

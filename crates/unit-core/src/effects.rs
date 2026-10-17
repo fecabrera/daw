@@ -197,6 +197,7 @@ impl EffectSettings {
             Self::AutoFilter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Eq3(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::Compressor(s) => crate::ModulationDestinationSettings::modulations(s),
             _ => &[],
         }
     }
@@ -207,6 +208,7 @@ impl EffectSettings {
             Self::AutoFilter(s) => &mut s.modulations,
             Self::Drive(s) => &mut s.modulations,
             Self::Eq3(s) => &mut s.modulations,
+            Self::Compressor(s) => &mut s.modulations,
             _ => &mut [],
         }
     }
