@@ -81,6 +81,7 @@ impl Project {
                 };
                 if duplicate {
                     sampler.id = Id::new_v4();
+                    fresh_routes(&mut sampler.modulations);
                 }
                 instrument
                     .layers
@@ -300,6 +301,9 @@ fn remap_consumers(
 ) {
     for layer in &mut instrument.layers {
         remap_source(&mut layer.oscillator_modulations, old, new);
+        if let Some(sampler) = &mut layer.sampler {
+            remap_source(&mut sampler.modulations, old, new);
+        }
         remap_source(&mut layer.amplitude.modulations, old, new);
         remap_source(&mut layer.macro_module.modulations, old, new);
         for lfo in &mut layer.lfos {

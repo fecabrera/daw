@@ -434,7 +434,7 @@ impl DawUi {
                                                         let mut previous: Option<Rect> = None;
                                                         for component in layer.visible_components() {
                                                             let rect = ui.push_id(component, |ui| match component {
-                                                                daw_core::InstrumentComponent::Sampler => Some(self.sampler_unit(ui, track.id, layer, height, compact)),
+                                                                daw_core::InstrumentComponent::Sampler => Some(self.sampler_unit(ui, track.id, layer, &modulation_sources, height, compact)),
                                                                 daw_core::InstrumentComponent::Oscillators => {
                                                                     let (rect, header, power) = self.oscillator_unit(ui, track.id, layer, height, compact, &modulation_sources);
                                                                     oscillator_panel = Some(rect);

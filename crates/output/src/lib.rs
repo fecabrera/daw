@@ -1169,8 +1169,22 @@ mod modulation_meter_tests {
             layer: layer.id,
             oscillator: layer.oscillators[0].id,
         };
+        let sample_layer = daw_core::InstrumentLayerSettings {
+            sampler: Some(Default::default()),
+            ..Default::default()
+        };
+        let sampler = ModulationTarget::Sampler {
+            track,
+            layer: sample_layer.id,
+        };
+        plan.project.tracks[1]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers
+            .push(sample_layer);
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 6);
+        assert_eq!(handles.len(), 7);
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1215,7 +1229,14 @@ mod modulation_meter_tests {
             compressor.map(f32::to_bits),
             std::array::from_fn(|i| handles[&compressor_key][i].load(Ordering::Relaxed))
         );
+        let reading = renderer.modulation_snapshot(sampler).unwrap();
+        assert!(reading.iter().all(|v| v.is_nan()));
+        assert_eq!(
+            reading.map(f32::to_bits),
+            std::array::from_fn(|i| handles[&sampler][i].load(Ordering::Relaxed))
+        );
         let next = modulation_meters(&plan, &handles);
+        assert!(Arc::ptr_eq(&next[&sampler], &handles[&sampler]));
         assert!(Arc::ptr_eq(
             &next[&compressor_key],
             &handles[&compressor_key]
@@ -1239,5 +1260,7 @@ mod modulation_meter_tests {
             .oscillators
             .clear();
         assert!(!modulation_meters(&plan, &handles).contains_key(&oscillator));
+        plan.project.tracks[0].instrument.as_mut().unwrap().layers[1].sampler = None;
+        assert!(!modulation_meters(&plan, &handles).contains_key(&sampler));
     }
 }

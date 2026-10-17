@@ -463,7 +463,9 @@ pub(super) fn marker(
         ModulationParameter::Resonance
         | ModulationParameter::EqLowQ
         | ModulationParameter::EqHighQ => offsets.map(|o| (base + o).clamp(0.1, 10.0)),
-        ModulationParameter::Level | ModulationParameter::Volume => {
+        ModulationParameter::SamplerGain
+        | ModulationParameter::Level
+        | ModulationParameter::Volume => {
             if base <= daw_core::SILENT_GAIN_DB {
                 [daw_core::SILENT_GAIN_DB; 2]
             } else {
@@ -497,6 +499,8 @@ pub(super) fn marker(
             "Moving dots: lowest and highest active voice transpose, excluding MIDI note pitch."
                 .into(),
         );
+    } else if parameter == ModulationParameter::SamplerGain {
+        lines.push("Moving dots: lowest and highest active Sampler gain, including power/base smoothing; velocity, boundary fades, and Amplitude excluded.".into());
     } else if parameter == ModulationParameter::Frequency {
         lines.push("Moving dot: processed value; Frequency shows both stereo channels.".into());
     } else {
@@ -522,6 +526,7 @@ pub(super) fn marker(
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => format!("{value:.1} dB"),
         ModulationParameter::Amplitude
+        | ModulationParameter::SamplerGain
         | ModulationParameter::Level
         | ModulationParameter::Volume => {
             if value <= daw_core::SILENT_GAIN_DB {
@@ -669,6 +674,13 @@ mod tests {
             (Frequency, 1000.0, 6.0, [1000.0, 20000.0]),
             (Resonance, 2.0, -10.0, [0.1, 2.0]),
             (Level, 0.0, 24.0, [0.0, 12.0]),
+            (SamplerGain, -6.0, 24.0, [-6.0, 12.0]),
+            (
+                SamplerGain,
+                daw_core::SILENT_GAIN_DB,
+                24.0,
+                [daw_core::SILENT_GAIN_DB; 2],
+            ),
             (
                 Level,
                 daw_core::SILENT_GAIN_DB,

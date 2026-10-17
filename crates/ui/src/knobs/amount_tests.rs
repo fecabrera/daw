@@ -3,7 +3,8 @@ use super::*;
 use crate::parameter_knobs;
 use daw_core::ModulationParameter as P;
 
-const PARAMETERS: [P; 26] = [
+const PARAMETERS: [P; 27] = [
+    P::SamplerGain,
     P::Pitch,
     P::Amplitude,
     P::Frequency,
@@ -36,7 +37,7 @@ fn native_value(parameter: P, amount: f32) -> f32 {
     match parameter {
         P::Pitch | P::EqLowGain | P::EqMidGain | P::EqHighGain => amount,
         P::Amplitude => 20.0 * (1.0 - amount.abs()).log10(),
-        P::Level | P::Volume | P::CompressorThreshold => -amount.abs(),
+        P::SamplerGain | P::Level | P::Volume | P::CompressorThreshold => -amount.abs(),
         P::Frequency
         | P::ColorFrequency
         | P::LfoRate
@@ -64,7 +65,9 @@ fn direction(parameter: P, amount: f32) -> f32 {
         | P::EqHighFrequency
         | P::CompressorAttack
         | P::CompressorRelease => 1.0,
-        P::Amplitude | P::Level | P::Volume | P::CompressorThreshold => -amount.signum(),
+        P::Amplitude | P::SamplerGain | P::Level | P::Volume | P::CompressorThreshold => {
+            -amount.signum()
+        }
         _ => amount.signum(),
     }
 }

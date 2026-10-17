@@ -341,7 +341,8 @@ impl Renderer {
     /// Read the last processed parameters without advancing DSP or allocating.
     /// Auto-filter returns cutoff L/R Hz, Q, level dB, wet fraction.
     /// Drive returns Volume dB, Gain, Tone, Color strength, Color frequency Hz. Amplitude returns
-    /// the highest voice gain in dB in slot 0; unused slots are zero.
+    /// the highest voice gain in dB in slot 0. Sampler keeps position in slot 0 and
+    /// lowest/highest active gain dB in slots 1/2; unavailable readings are NaN.
     pub fn modulation_values(&self, target: ModulationTarget) -> Option<[f32; 5]> {
         self.modulation_snapshot(target)
             .map(|v| std::array::from_fn(|i| v[i]))
@@ -356,9 +357,22 @@ impl Renderer {
                     .tracks
                     .iter()
                     .position(|t| t.id == track)?;
-                Some(parameter_snapshot([self.midi[index]
+                let midi = self.midi[index].as_ref()?;
+                if !self.plan.project.tracks[index]
+                    .instrument
                     .as_ref()?
-                    .sampler_position(layer)]))
+                    .layers
+                    .iter()
+                    .any(|l| l.id == layer && l.sampler.is_some())
+                {
+                    return None;
+                }
+                let gain = midi.sampler_gain(layer);
+                Some(parameter_snapshot([
+                    midi.sampler_position(layer),
+                    gain[0],
+                    gain[1],
+                ]))
             }
             ModulationTarget::Effect(id) => {
                 self.master_effects.modulation_values(id).or_else(|| {

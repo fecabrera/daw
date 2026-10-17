@@ -1825,12 +1825,20 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let mut eq_reference = Equalizer::new(context, &EqSettings::default());
         let mut drive = Drive::new(context, &DriveSettings::default());
         let mut drive_reference = Drive::new(context, &DriveSettings::default());
+        let sample_audio = std::sync::Arc::new(vec![[0.2, -0.1]; rate as usize]);
+        let mut sampler =
+            daw_sampler::Sampler::new(context, &SamplerSettings::default(), sample_audio.clone());
+        let mut sampler_reference =
+            daw_sampler::Sampler::new(context, &SamplerSettings::default(), sample_audio);
+        sampler.note_on();
+        sampler_reference.note_on();
         for descriptor in [
             amp.descriptor(),
             filter.descriptor(),
             drive.descriptor(),
             eq.descriptor(),
             compressor.descriptor(),
+            sampler.descriptor(),
         ] {
             assert!(descriptor.consumes_modulation());
             assert!(!descriptor.provides_modulation());
@@ -1856,6 +1864,7 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let mut eq_routes = routes(Equalizer::MODULATION_PARAMETERS, &eq_amounts);
         let compressor_amounts = [-12.0, 2.0, 1.0, -1.0, 3.0, 6.0, -0.25];
         let mut compressor_routes = routes(Compressor::MODULATION_PARAMETERS, &compressor_amounts);
+        let mut sampler_routes = routes(daw_sampler::Sampler::MODULATION_PARAMETERS, &[-6.0]);
         envelope.note_on();
         ALLOCATIONS.with(|count| count.set(0));
         TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
@@ -1870,6 +1879,12 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
                 frame: u64::from(frame),
                 ..Default::default()
             };
+            let sample =
+                process_modulation(&mut sampler, &mut sampler_routes, [0.0; 2], &[], &cached, c);
+            let neutral = sampler_reference.next_sample();
+            for ch in 0..2 {
+                assert!((sample[ch] - neutral[ch] * sampler.effective_gain()).abs() < 1e-6);
+            }
             assert_eq!(
                 process_modulation(&mut eq, &mut eq_routes, input, &[], &cached, c),
                 eq_reference.process_modulated(
@@ -3374,5 +3389,219 @@ fn sampler_trigger_changes_apply_to_new_notes_without_cutting_or_reviving_existi
             TRACK_ALLOCATIONS.with(|c| c.set(false));
             assert_eq!(ALLOCATIONS.with(Cell::get), 0);
         }
+    }
+}
+
+fn sampler_modulated_plan(rate: u32, trigger: SamplerTrigger, provider: usize) -> RenderPlan {
+    let mut p = sampler_plan(rate, trigger);
+    let asset = p.project.tracks[0].clips[0].asset_id;
+    let pattern = p
+        .project
+        .assets
+        .iter_mut()
+        .find(|a| a.id == asset)
+        .unwrap()
+        .midi_pattern
+        .as_mut()
+        .unwrap();
+    pattern.notes.push(MidiNote {
+        id: Id::new_v4(),
+        start_tick: 60,
+        length_ticks: 120,
+        pitch: 72,
+        velocity: 127,
+    });
+    let i = p.project.tracks[0].instrument.as_mut().unwrap();
+    let source = match provider {
+        0..=2 => {
+            let mut env = EnvelopeInstance {
+                mode: [
+                    EnvelopeMode::PerNote,
+                    EnvelopeMode::Retrigger,
+                    EnvelopeMode::Legato,
+                ][provider],
+                ..Default::default()
+            };
+            env.settings.attack.time_ms = 80.0;
+            env.settings.release.time_ms = 80.0;
+            let owner = if provider == 0 {
+                i.layers[0].id
+            } else {
+                i.main.id
+            };
+            let source = ModulationSourceId {
+                layer: owner,
+                unit: env.id,
+            };
+            if provider == 0 {
+                i.layers[0].envelopes.push(env);
+            } else {
+                i.main.envelopes.push(env);
+            }
+            source
+        }
+        3 => {
+            let mut lfo = LfoInstance::default();
+            lfo.settings.rate_hz = 5.0;
+            let source = ModulationSourceId {
+                layer: i.main.id,
+                unit: lfo.id,
+            };
+            i.main.lfos.push(lfo);
+            source
+        }
+        _ => {
+            i.main.macro_module.add();
+            let control = &mut i.main.macro_module.controls[0];
+            control.settings.value = 0.75;
+            ModulationSourceId {
+                layer: i.main.id,
+                unit: control.id,
+            }
+        }
+    };
+    let s = i.layers[0].sampler.as_mut().unwrap();
+    s.gain_db = -6.0;
+    let mut route = Modulation::new(ModulationParameter::SamplerGain);
+    route.source = Some(source);
+    route.amount = 12.0;
+    s.modulations.push(route);
+    p.project.validate().unwrap();
+    p
+}
+#[test]
+fn sampler_gain_modulation_shares_per_note_and_main_sources_with_live_export_and_random_access() {
+    for rate in SAMPLE_RATES {
+        for trigger in [SamplerTrigger::OneShot, SamplerTrigger::Gate] {
+            for provider in 0..5 {
+                let p = sampler_modulated_plan(rate, trigger, provider);
+                let mut expected = vec![[0.0; 2]; rate as usize / 3];
+                Renderer::new(p.clone()).render_offline(&mut expected);
+                let mut neutral = p.clone();
+                neutral.project.tracks[0]
+                    .instrument
+                    .as_mut()
+                    .unwrap()
+                    .layers[0]
+                    .sampler
+                    .as_mut()
+                    .unwrap()
+                    .modulations
+                    .clear();
+                let mut unmodulated = vec![[0.0; 2]; expected.len()];
+                Renderer::new(neutral).render_offline(&mut unmodulated);
+                assert_ne!(expected, unmodulated, "provider {provider}");
+                let mut blocked = Renderer::new(p.clone());
+                let mut actual = vec![[0.0; 2]; expected.len()];
+                for block in actual.chunks_mut(127) {
+                    blocked.render_offline(block);
+                }
+                assert_eq!(actual, expected);
+                let mut random = [[0.0; 2]; 64];
+                p.render(u64::from(rate / 10), &mut random);
+                assert_eq!(
+                    &random,
+                    &expected[rate as usize / 10..rate as usize / 10 + 64]
+                );
+                let track = p.project.tracks[0].id;
+                let layer = p.project.tracks[0].instrument.as_ref().unwrap().layers[0].id;
+                let target = daw_engine::ModulationTarget::Sampler { track, layer };
+                let mut live = Renderer::new(p);
+                live.play();
+                ALLOCATIONS.with(|c| c.set(0));
+                TRACK_ALLOCATIONS.with(|c| c.set(true));
+                let mut distinct_gains = false;
+                for (frame, sample) in expected.iter().enumerate() {
+                    let actual = live.next_sample();
+                    assert!((actual[0] + 2.0 * actual[1]).abs() < 1e-6);
+                    if frame > rate as usize / 200 {
+                        assert_eq!(actual, *sample);
+                    }
+                    let snapshot = live.modulation_snapshot(target).unwrap();
+                    if snapshot[1].is_finite() {
+                        assert!(snapshot[1] <= snapshot[2] && snapshot[2] <= 12.001);
+                        distinct_gains |= snapshot[2] - snapshot[1] > 0.1;
+                    }
+                }
+                TRACK_ALLOCATIONS.with(|c| c.set(false));
+                assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+                if provider == 0 {
+                    assert!(distinct_gains);
+                }
+                assert!(expected[rate as usize / 4..].iter().all(|s| *s == [0.0; 2]));
+            }
+        }
+    }
+}
+#[test]
+fn sampler_gain_route_updates_preserve_positions_smoother_and_route_history_without_allocation() {
+    let p = sampler_modulated_plan(48000, SamplerTrigger::OneShot, 0);
+    let mut old = Renderer::new(p.clone());
+    let mut reference = Renderer::new(p.clone());
+    old.play();
+    reference.play();
+    for _ in 0..2000 {
+        assert_eq!(old.next_sample(), reference.next_sample());
+    }
+    let mut presentation = p.clone();
+    let s = presentation.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0]
+        .sampler
+        .as_mut()
+        .unwrap();
+    s.modulation_open = true;
+    s.collapsed = true;
+    let mut same = Renderer::new(presentation.clone());
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACK_ALLOCATIONS.with(|c| c.set(true));
+    same.inherit(&mut old);
+    for _ in 0..256 {
+        assert_eq!(same.next_sample(), reference.next_sample());
+    }
+    TRACK_ALLOCATIONS.with(|c| c.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    for change in 0..4 {
+        let s = presentation.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .sampler
+            .as_mut()
+            .unwrap();
+        match change {
+            0 => {
+                let mut r = s.modulations[0];
+                r.id = Id::new_v4();
+                r.amount = -6.0;
+                s.modulations.push(r);
+            }
+            1 => s.modulations.reverse(),
+            2 => s.modulations[0].enabled = false,
+            _ => s.modulations.clear(),
+        }
+        let mut next = Renderer::new(presentation.clone());
+        let track = presentation.project.tracks[0].id;
+        let layer = presentation.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .id;
+        let target = daw_engine::ModulationTarget::Sampler { track, layer };
+        let position = same.modulation_snapshot(target).unwrap()[0];
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        next.inherit(&mut same);
+        assert_eq!(next.modulation_snapshot(target).unwrap()[0], position);
+        for _ in 0..256 {
+            assert!(next.next_sample().iter().all(|v| v.is_finite()));
+        }
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        same = next;
     }
 }

@@ -3895,6 +3895,13 @@ fn sampler_files_regions_durations_and_root_metadata_survive_storage_and_rate_ch
     );
     assert_eq!(serde_json::to_value(&session.project).unwrap(), before);
     let mut instrument = session.project.tracks[0].instrument.clone().unwrap();
+    instrument.main.lfos.push(daw_core::LfoInstance::default());
+    let mut route = daw_core::Modulation::new(daw_core::ModulationParameter::SamplerGain);
+    route.source = Some(daw_core::ModulationSourceId {
+        layer: instrument.main.id,
+        unit: instrument.main.lfos[0].id,
+    });
+    route.amount = -12.0;
     let s = instrument.layers[0].sampler.as_mut().unwrap();
     s.start_frame = 1200;
     s.end_frame = 3600;
@@ -3903,6 +3910,8 @@ fn sampler_files_regions_durations_and_root_metadata_survive_storage_and_rate_ch
     s.root_note = 61;
     s.trigger = SamplerTrigger::Gate;
     s.collapsed = true;
+    s.modulation_open = true;
+    s.modulations.push(route);
     session = session
         .with_edit(Edit::SetInstrument {
             track_id: track,
@@ -3932,6 +3941,8 @@ fn sampler_files_regions_durations_and_root_metadata_survive_storage_and_rate_ch
         assert_eq!(s.start_frame, (f64::from(rate) / 40.0).round() as u64);
         assert_eq!(changed.audio[&id].samples.len(), rate as usize / 10);
         assert_eq!(s.trigger, SamplerTrigger::Gate);
+        assert!(s.modulation_open);
+        assert_eq!(s.modulations, vec![route]);
     }
     let mut instrument = copied.project.tracks[0].instrument.clone().unwrap();
     let s = instrument.layers[0].sampler.as_mut().unwrap();

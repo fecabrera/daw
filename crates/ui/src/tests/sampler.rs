@@ -748,3 +748,92 @@ fn sampler_duration_input_keeps_fixed_width_and_centered_text_in_display_and_edi
         }
     }
 }
+
+#[test]
+fn sampler_gain_modulation_reuses_header_strips_source_picker_marker_and_saved_visibility() {
+    for color in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _) = fixture(color);
+        let layer = &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        layer.envelopes[0].present = true;
+        let source = daw_core::ModulationSourceId {
+            layer: layer.id,
+            unit: layer.envelopes[0].id,
+        };
+        frame(&mut app, &ctx, vec![]);
+        let panel = app.instrument_ui.samplers[0].panel;
+        let toggle = Pos2::new(panel.right() - 13.0, panel.top() + 12.0);
+        app.dirty = false;
+        click(&mut app, &ctx, toggle, false);
+        frame(&mut app, &ctx, vec![]);
+        assert!(state(&app).modulation_open && app.dirty);
+        assert!((app.instrument_ui.samplers[0].panel.height() - panel.height()).abs() < 0.01);
+        click(
+            &mut app,
+            &ctx,
+            Pos2::new(panel.right() + 18.0, panel.center().y + 12.0),
+            false,
+        );
+        assert_eq!(state(&app).modulations.len(), 1);
+        let route = state(&app).modulations[0];
+        assert_eq!(route.parameter, daw_core::ModulationParameter::SamplerGain);
+        assert!(route.source.is_none() && route.amount == 0.0 && route.enabled);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let source_picker = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == "None" => {
+                    Some(Rect::from_min_size(t.pos, t.galley.size()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        choose_dropdown(&mut app, &ctx, source_picker, "Layer 1 · Envelope 1");
+        assert_eq!(state(&app).modulations[0].source, Some(source));
+        let s = app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .sampler
+            .as_mut()
+            .unwrap();
+        s.modulations[0].amount = -12.0;
+        s.modulation_open = false;
+        frame(&mut app, &ctx, vec![]);
+        app.dirty = false;
+        let gain = app.instrument_ui.samplers[0].gain;
+        let marker = knobs::modulation_marker_rect(gain);
+        let base = state(&app).gain_db;
+        click(&mut app, &ctx, marker.center(), false);
+        frame(&mut app, &ctx, vec![]);
+        assert!(state(&app).modulation_open && app.dirty);
+        assert_eq!(state(&app).gain_db, base);
+        assert!(app.component_drag.is_none());
+        let saved = serde_json::to_vec(&app.session.project).unwrap();
+        let reopened: daw_core::Project = serde_json::from_slice(&saved).unwrap();
+        reopened.validate().unwrap();
+        assert_eq!(
+            reopened.tracks[0].instrument,
+            app.session.project.tracks[0].instrument
+        );
+        for compact in [false, true] {
+            for collapsed in [false, true] {
+                let layer = &mut app.session.project.tracks[0]
+                    .instrument
+                    .as_mut()
+                    .unwrap()
+                    .layers[0];
+                layer.collapsed = compact;
+                layer.sampler.as_mut().unwrap().collapsed = collapsed;
+                frame(&mut app, &ctx, vec![]);
+                let bounds = &app.instrument_ui.samplers[0];
+                assert_eq!(bounds.gain.is_positive(), !compact && !collapsed);
+                assert_eq!(bounds.controls.is_positive(), !collapsed);
+            }
+        }
+    }
+}

@@ -467,6 +467,7 @@ impl Project {
                     .modulations
                     .iter()
                     .chain(&l.oscillator_modulations)
+                    .chain(l.sampler.iter().flat_map(|s| &s.modulations))
             }) {
                 if route.source.is_some_and(|source| {
                     !t.instrument

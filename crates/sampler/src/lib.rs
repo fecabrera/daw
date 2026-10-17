@@ -1,6 +1,7 @@
 //! Prepared stereo sample playback. The host owns loading, stretching, notes, and buffers.
 use daw_unit_core::{PortKind, ProcessingContext, SILENT_GAIN_DB, SamplerSettings, UnitDescriptor};
 use std::sync::Arc;
+mod modulation;
 
 pub struct Sampler {
     samples: Arc<Vec<[f32; 2]>>,
@@ -10,6 +11,8 @@ pub struct Sampler {
     target: f32,
     remaining: u32,
     fade_frames: u32,
+    external: daw_unit_core::ModulationSmoother<1>,
+    effective_gain: f32,
 }
 impl Sampler {
     pub fn new(
@@ -22,6 +25,8 @@ impl Sampler {
             samples,
             position: 0,
             active: false,
+            external: daw_unit_core::ModulationSmoother::new(context),
+            effective_gain: target,
             gain: target,
             target,
             remaining: 0,
@@ -33,7 +38,7 @@ impl Sampler {
             type_id: "daw.sampler",
             name: "Sampler",
             is_source: true,
-            inputs: &[],
+            inputs: &[PortKind::Modulation],
             outputs: &[PortKind::StereoAudio],
         }
     }
@@ -47,6 +52,8 @@ impl Sampler {
         if !self.active {
             self.gain = self.target;
             self.remaining = 0;
+            self.external.reset();
+            self.effective_gain = self.target;
         }
         self.position = 0;
         self.active = !self.samples.is_empty();
@@ -56,6 +63,8 @@ impl Sampler {
         self.active = false;
         self.gain = self.target;
         self.remaining = 0;
+        self.external.reset();
+        self.effective_gain = self.target;
     }
     pub fn advance(&mut self, frames: u64) {
         if self.active {
@@ -73,10 +82,9 @@ impl Sampler {
         self.active.then_some(self.position)
     }
     pub fn next_sample(&mut self) -> [f32; 2] {
-        if self.remaining > 0 {
-            self.gain += (self.target - self.gain) / self.remaining as f32;
-            self.remaining -= 1;
-        }
+        self.process_modulated(0.0)
+    }
+    fn render_sample(&mut self) -> [f32; 2] {
         if !self.active {
             return [0.0; 2];
         }
@@ -93,7 +101,7 @@ impl Sampler {
         self.active = self.position < self.samples.len() as u64;
         sample.map(|v| {
             if v.is_finite() {
-                (f64::from(v) * f64::from(self.gain) * f64::from(edge))
+                (f64::from(v) * f64::from(self.effective_gain) * f64::from(edge))
                     .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
             } else {
                 0.0

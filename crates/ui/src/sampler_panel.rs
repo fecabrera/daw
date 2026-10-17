@@ -103,6 +103,7 @@ impl DawUi {
         ui: &mut egui::Ui,
         track: Id,
         layer: &mut InstrumentLayerSettings,
+        sources: &[modulation_panel::Source],
         height: f32,
         compact: bool,
     ) -> Rect {
@@ -112,7 +113,24 @@ impl DawUi {
         let mut enabled = s.enabled;
         let mut collapsed = s.collapsed;
         let margin = panels::PanelStyle::default().margin;
-        let result = panels::PanelStyle {
+        let open = s.modulation_open;
+        let live = self.output.as_ref().and_then(|o| {
+            o.modulation_values(daw_engine::ModulationTarget::Sampler {
+                track,
+                layer: layer_id,
+            })
+        });
+        let marker = modulation_panel::marker(
+            &s.modulations,
+            sources,
+            daw_core::ModulationParameter::SamplerGain,
+            s.gain_db,
+            s.enabled,
+            None,
+            [live.map(|v| v[1]), live.map(|v| v[2])],
+        );
+        let result = ui.scope_builder(egui::UiBuilder::new().ui_stack_info(
+            egui::UiStackInfo::default().with_tag("unit-modulation-button")), |ui| panels::PanelStyle {
             margin: 0,
             ..Default::default()
         }
@@ -322,9 +340,11 @@ impl DawUi {
                             if !compact {
                                 bounds.gain = knobs::row(
                                     ui,
-                                    &mut s.gain_db,
+                                    s,
                                     knobs::CHOICE_SIZE,
-                                    knobs::gain_with_markers,
+                                    |ui, s| ui.add(knobs::Knob::new(&mut s.gain_db,
+                                        parameter_knobs::destination(daw_core::ModulationParameter::SamplerGain))
+                                        .modulated(marker.as_ref(), &mut s.modulation_open)),
                                 )
                                 .rect;
                                 for _ in 0..2 {
@@ -346,11 +366,19 @@ impl DawUi {
                         })
                     });
                     bounds.controls = strip.response.rect;
+                    if open {
+                        panels::unit_divider(ui, strip.response.rect.right(), strip.response.rect.y_range().into());
+                        modulation_panel::body(ui, &mut s.modulations, sources,
+                            <SamplerSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS,
+                            <SamplerSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
+                    }
                 });
             },
-        );
+        )).inner;
         s.enabled = enabled;
         s.collapsed = collapsed;
+        let toggle =
+            modulation_panel::toggle(ui, &result.header, s.collapsed, &mut s.modulation_open);
         bounds.panel = result.response.rect.intersect(ui.clip_rect());
         let carrying = ui.input(|i| !i.raw.hovered_files.is_empty())
             || self
@@ -363,7 +391,7 @@ impl DawUi {
         self.start_installed_component_drag(
             ui,
             &result.header,
-            &[result.power.rect],
+            &[result.power.rect, toggle],
             track,
             layer_id,
             InstrumentComponent::Sampler,

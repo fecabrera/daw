@@ -2507,3 +2507,22 @@ Both-theme egui checks cover both selectors, actual stretch preparation, retaine
 `cargo test --workspace --offline` passes: 781 tests pass, including all 433 UI tests; two existing expanded time-stretch acceptance matrices remain ignored.
 
 `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, repository-relative documentation link targets, and `git diff --check` pass. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched. Native pointer/display-scale, audio-device, Windows, and Linux checks were not performed.
+
+
+## Sampler Gain modulation — 2026-10-17
+
+Sampler Gain now consumes the shared portable modulation API in PerNote scope. It accepts local Per note Envelopes and shared Envelope/LFO/Macro values from its MIDI instrument, including Main. The typed `SamplerGain` parameter uses signed ±24 dB amounts. Source publication/discovery, route validation/resolution, 5 ms source/route ramps, the common 1 ms offset smoother, destination-matched amount knobs, connection strips, indicators, and identity-based retargeting remain shared code. Sampler owns final gain conversion and bounds, exact base silence, and its existing gain/power/boundary ramps. It publishes no control source and adds no other modulation targets. See [Sampler Gain modulation](sampler.md#gain-modulation--2026-10-17), the [shared contract](modulation.md#sampler-gain-destination), and the [acceptance requirements](../specs/mvp-iteration-1.md#sampler-gain-modulation--2026-10-17).
+
+Focused automated checks pass:
+
+- Portable checks cover local/shared inputs, signed cancellation, neutral sample-exact stereo audio, 1 ms smoothing, final gain bounds, exact silence/power, reset, nonfinite offsets, and source immutability at all six processing rates. Settings checks cover legacy empty/closed defaults, saved round trips, null fields, invalid parameters/targets/amounts/IDs, and duplicate route IDs.
+- Core checks cover atomic failure for missing/foreign providers, fresh route IDs on Sampler copies, retained source assignments, provider remapping in every Sampler consumer, and destination moves. Project workflows retain modulation and visibility through save/reopen, Save As, and every processing-rate change.
+- Renderer checks cover overlapping notes with Per note/Retrigger/Legato Envelopes and Main LFO/Macro providers, One-shot/Gate, processed gain extrema, linked stereo, and live/export/block/random-access parity at all six rates. Compatible route additions/reordering/power/removal and presentation edits retain source positions and route/offset history without callback allocations. The existing portable-protocol fan-out check now includes Sampler and cached Envelope publication.
+- Both-theme egui checks cover the shared header dot, unassigned zero-amount additions, Per note source selection, Gain marker actions without base changes, saved visibility, and compact/collapsed controls. The shared amount-knob matrix now includes Sampler Gain for native scales, pointer/keyboard/Shift behavior, reset, and disabled guards. The shared range-marker matrix includes Gain bounds and exact silence.
+- Output checks include Sampler in prepared snapshot publication without advancing DSP, stable handle retention, unavailable readings, and removal. Position remains in slot 0; active voice gain extrema use slots 1/2.
+
+`cargo test --workspace --offline` passes: 787 tests pass, including all 434 UI tests; two existing expanded time-stretch acceptance matrices remain ignored.
+
+`cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, `cargo build --locked -p daw-cli --offline`, and `python3 tools/check_cli.py` pass. CLI smoke checks cover WAV/MP3 formats/bitrates, repeatable output, missing sources, eight-track projects, overwrite protection, and exit codes. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched. Commands used the default Cargo cache. Repository-relative documentation link targets and `git diff --check` pass.
+
+Native pointer/trackpad, display-scale, audible device/callback timing, Windows, and Linux checks were not performed. Automated egui, DSP, and renderer checks do not establish those native behaviors.

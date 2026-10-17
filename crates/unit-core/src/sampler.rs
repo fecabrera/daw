@@ -53,6 +53,10 @@ pub struct SamplerSettings {
     pub start_frame: u64,
     pub end_frame: u64,
     pub gain_db: f32,
+    #[serde(default)]
+    pub modulation_open: bool,
+    #[serde(default)]
+    pub modulations: Vec<crate::Modulation>,
     pub trigger: SamplerTrigger,
     pub mode: SamplerMode,
     pub time_ms: f64,
@@ -83,6 +87,8 @@ impl Default for SamplerSettings {
             start_frame: 0,
             end_frame: 0,
             gain_db: 0.0,
+            modulation_open: false,
+            modulations: Vec::new(),
             trigger: SamplerTrigger::OneShot,
             mode: SamplerMode::Off,
             time_ms: 1000.0,
@@ -105,6 +111,7 @@ impl SamplerSettings {
             && self.root_note <= 127
             && self.gain_db.is_finite()
             && (SILENT_GAIN_DB..=12.0).contains(&self.gain_db)
+            && crate::ModulationDestinationSettings::valid_modulations(self)
             && self.time_ms.is_finite()
             && self.time_ms > 0.0
             && self.bars > 0
@@ -220,5 +227,59 @@ mod tests {
         saved.as_object_mut().unwrap().remove("sampler");
         let legacy: crate::InstrumentLayerSettings = serde_json::from_value(saved).unwrap();
         assert!(legacy.sampler.is_none() && legacy.valid());
+    }
+}
+
+#[cfg(test)]
+mod modulation_tests {
+    use super::*;
+    use crate::{Modulation, ModulationParameter as P};
+    #[test]
+    fn gain_routes_preserve_legacy_defaults_and_validate_typed_saved_data() {
+        let base = SamplerSettings::default();
+        let mut json = serde_json::to_value(&base).unwrap();
+        json.as_object_mut().unwrap().remove("modulations");
+        json.as_object_mut().unwrap().remove("modulation_open");
+        let old: SamplerSettings = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(old, base);
+        for field in ["modulations", "modulation_open"] {
+            let mut invalid = json.clone();
+            invalid[field] = serde_json::Value::Null;
+            assert!(serde_json::from_value::<SamplerSettings>(invalid).is_err());
+        }
+        let mut s = base;
+        let mut r = Modulation::new(P::SamplerGain);
+        r.amount = -24.0;
+        s.modulations.push(r);
+        s.modulation_open = true;
+        assert!(s.valid());
+        assert_eq!(
+            serde_json::from_value::<SamplerSettings>(serde_json::to_value(&s).unwrap()).unwrap(),
+            s
+        );
+        for invalid in [
+            Modulation {
+                parameter: P::Pitch,
+                ..r
+            },
+            Modulation {
+                target: Some(s.id),
+                ..r
+            },
+            Modulation { amount: 24.1, ..r },
+            Modulation {
+                amount: f32::NAN,
+                ..r
+            },
+            Modulation {
+                id: Uuid::nil(),
+                ..r
+            },
+        ] {
+            s.modulations[0] = invalid;
+            assert!(!s.valid());
+        }
+        s.modulations = vec![r, r];
+        assert!(!s.valid());
     }
 }

@@ -22,6 +22,7 @@ struct LayerVoice {
     id: Id,
     sources: Vec<OscillatorVoice>,
     sampler: Option<daw_sampler::Sampler>,
+    sampler_routes: Vec<Route>,
     one_shot: bool,
     one_shot_target: bool,
     gate: Envelope,
@@ -86,6 +87,9 @@ impl Voice {
             layer.gate.note_on();
             if let Some(s) = &mut layer.sampler {
                 s.note_on();
+                for route in &mut layer.sampler_routes {
+                    route.reset();
+                }
             }
         }
         self.velocity = f32::from(velocity) / 127.0;
@@ -121,6 +125,9 @@ impl Voice {
             layer.gate.reset();
             if let Some(s) = &mut layer.sampler {
                 s.reset();
+            }
+            for route in &mut layer.sampler_routes {
+                route.reset();
             }
             layer.amplitude.reset();
             for r in &mut layer.routes {
@@ -252,10 +259,16 @@ impl LayerVoice {
                     * s.gain
             })
             .sum::<f32>();
-        let mut stereo = self
-            .sampler
-            .as_mut()
-            .map_or([sources; 2], |s| s.next_sample());
+        let mut stereo = self.sampler.as_mut().map_or([sources; 2], |s| {
+            process_modulation(
+                s,
+                &mut self.sampler_routes,
+                [0.0; 2],
+                local,
+                shared,
+                context,
+            )
+        });
         let shaped = process_modulation(
             &mut self.amplitude,
             &mut self.routes,
@@ -487,6 +500,12 @@ impl MidiTrackRuntime {
                                     ),
                                 )
                             }),
+                            sampler_routes: layer
+                                .sampler
+                                .iter()
+                                .flat_map(|s| &s.modulations)
+                                .map(|r| Route::new(*r, project.sample_rate_hz))
+                                .collect(),
                             one_shot_target: layer
                                 .sampler
                                 .as_ref()
@@ -748,6 +767,10 @@ impl MidiTrackRuntime {
                     &mut layer.routes,
                     &mut next_layer.routes,
                 );
+                daw_unit_core::retarget_modulation_routes(
+                    &mut layer.sampler_routes,
+                    &mut next_layer.sampler_routes,
+                );
                 layer.amplitude.retarget(&next_layer.amplitude);
                 // Trigger edits apply to new notes; held/released notes keep their gate behavior.
                 layer.one_shot_target = next_layer.one_shot_target;
@@ -861,6 +884,28 @@ impl MidiTrackRuntime {
                 range[0] = range[0].min(pitch);
                 range[1] = range[1].max(pitch);
             }
+        }
+        range.map(|v| if v.is_finite() { v } else { f32::NAN })
+    }
+    /// Active Sampler gain extrema in dB. Exclude velocity, boundary fades and Amplitude.
+    pub fn sampler_gain(&self, layer: Id) -> [f32; 2] {
+        let mut range = [f32::INFINITY, f32::NEG_INFINITY];
+        for sampler in self
+            .voices
+            .iter()
+            .filter(|v| v.active_last_sample)
+            .filter_map(|v| v.layers.iter().find(|l| l.id == layer))
+            .filter_map(|l| l.sampler.as_ref())
+            .filter(|s| s.active())
+        {
+            let gain = sampler.effective_gain();
+            let db = if gain > 0.0 {
+                20.0 * gain.log10()
+            } else {
+                daw_core::SILENT_GAIN_DB
+            };
+            range[0] = range[0].min(db);
+            range[1] = range[1].max(db);
         }
         range.map(|v| if v.is_finite() { v } else { f32::NAN })
     }

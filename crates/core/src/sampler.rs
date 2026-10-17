@@ -152,3 +152,112 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod modulation_tests {
+    use super::*;
+    #[test]
+    fn sampler_gain_routes_validate_atomically_and_follow_destination_copies_and_provider_moves() {
+        let mut p = Project::default();
+        let track = p.add_midi_track().unwrap();
+        let i = p.tracks[0].instrument.as_mut().unwrap();
+        i.layers
+            .extend((0..3).map(|_| InstrumentLayerSettings::default()));
+        let from = i.layers[0].id;
+        let to = i.layers[1].id;
+        let provider_to = i.layers[2].id;
+        let moved_to = i.layers[3].id;
+        i.layers[0].envelopes[0].present = true;
+        let provider = i.layers[0].envelopes[0].id;
+        let mut route = Modulation::new(ModulationParameter::SamplerGain);
+        route.source = Some(ModulationSourceId {
+            layer: from,
+            unit: provider,
+        });
+        route.amount = -12.0;
+        i.layers[0].sampler = Some(SamplerSettings {
+            modulation_open: true,
+            modulations: vec![route],
+            ..Default::default()
+        });
+        p.validate().unwrap();
+        let before = serde_json::to_value(&p).unwrap();
+        for source in [
+            ModulationSourceId {
+                layer: Id::new_v4(),
+                unit: provider,
+            },
+            ModulationSourceId {
+                layer: from,
+                unit: Id::new_v4(),
+            },
+        ] {
+            let mut invalid = p.tracks[0].instrument.clone().unwrap();
+            invalid.layers[0].sampler.as_mut().unwrap().modulations[0].source = Some(source);
+            assert!(
+                p.edit(Edit::SetInstrument {
+                    track_id: track,
+                    instrument: Some(invalid)
+                })
+                .is_err()
+            );
+            assert_eq!(serde_json::to_value(&p).unwrap(), before);
+        }
+        p.edit(Edit::TransferInstrumentComponent {
+            track_id: track,
+            source: from,
+            destination: to,
+            component: InstrumentComponent::Sampler,
+            destination_index: None,
+            duplicate: true,
+        })
+        .unwrap();
+        let i = p.tracks[0].instrument.as_ref().unwrap();
+        let original = i.layers[0].sampler.as_ref().unwrap();
+        let copy = i.layers[1].sampler.as_ref().unwrap();
+        assert_ne!(copy.id, original.id);
+        assert_ne!(copy.modulations[0].id, original.modulations[0].id);
+        assert_eq!(copy.modulations[0].source, route.source);
+        assert!(copy.modulation_open);
+        // The destination already retains the same envelope ID, so the transfer remaps it.
+        p.edit(Edit::TransferInstrumentComponent {
+            track_id: track,
+            source: from,
+            destination: provider_to,
+            component: InstrumentComponent::Envelope(provider),
+            destination_index: None,
+            duplicate: false,
+        })
+        .unwrap();
+        let i = p.tracks[0].instrument.as_ref().unwrap();
+        let new_source = i.layers[0].sampler.as_ref().unwrap().modulations[0]
+            .source
+            .unwrap();
+        assert_eq!(new_source.layer, provider_to);
+        assert_ne!(new_source.unit, provider);
+        assert_eq!(
+            i.layers[1].sampler.as_ref().unwrap().modulations[0].source,
+            Some(new_source)
+        );
+        p.edit(Edit::TransferInstrumentComponent {
+            track_id: track,
+            source: from,
+            destination: moved_to,
+            component: InstrumentComponent::Sampler,
+            destination_index: None,
+            duplicate: false,
+        })
+        .unwrap();
+        let i = p.tracks[0].instrument.as_ref().unwrap();
+        assert!(i.layers[0].sampler.is_none());
+        assert_eq!(
+            i.layers[3].sampler.as_ref().unwrap().modulations[0].id,
+            route.id
+        );
+        assert_eq!(
+            i.layers[3].sampler.as_ref().unwrap().modulations[0].source,
+            Some(new_source)
+        );
+        p.validate().unwrap();
+    }
+}

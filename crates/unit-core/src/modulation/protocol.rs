@@ -310,3 +310,9 @@ destination_settings!(
     &ModulationParameter::COMPRESSOR,
     Shared
 );
+
+destination_settings!(
+    crate::SamplerSettings,
+    &[ModulationParameter::SamplerGain],
+    PerNote
+);

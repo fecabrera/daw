@@ -80,6 +80,7 @@ pub enum ModulationParameter {
     EqHighGain,
     EqHighFrequency,
     EqHighQ,
+    SamplerGain,
     CompressorThreshold,
     CompressorRatio,
     CompressorAttack,
@@ -118,6 +119,7 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::SamplerGain => "Gain",
             Self::CompressorThreshold => "Threshold",
             Self::CompressorRatio => "Ratio",
             Self::CompressorAttack => "Attack",
@@ -156,9 +158,12 @@ impl ModulationParameter {
             Self::Frequency | Self::LfoRate | Self::EqLowFrequency | Self::EqHighFrequency => 6.0,
             Self::ColorFrequency => 3.0,
             Self::Resonance | Self::EqLowQ | Self::EqHighQ => 10.0,
-            Self::Level | Self::Volume | Self::EqLowGain | Self::EqMidGain | Self::EqHighGain => {
-                24.0
-            }
+            Self::SamplerGain
+            | Self::Level
+            | Self::Volume
+            | Self::EqLowGain
+            | Self::EqMidGain
+            | Self::EqHighGain => 24.0,
             _ => 1.0,
         }
     }
@@ -174,9 +179,12 @@ impl ModulationParameter {
             | Self::EqLowFrequency
             | Self::EqHighFrequency => "oct",
             Self::Resonance | Self::EqLowQ | Self::EqHighQ => "Q",
-            Self::Level | Self::Volume | Self::EqLowGain | Self::EqMidGain | Self::EqHighGain => {
-                "dB"
-            }
+            Self::SamplerGain
+            | Self::Level
+            | Self::Volume
+            | Self::EqLowGain
+            | Self::EqMidGain
+            | Self::EqHighGain => "dB",
             _ => "",
         }
     }
