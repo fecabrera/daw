@@ -116,13 +116,18 @@ fn bind_effect_meters(renderer: &mut Renderer, meters: &HashMap<Id, Arc<AtomicU3
         renderer.set_effect_meter(*id, meter.clone());
     }
 }
-fn ott_meters(
+fn band_meters(
     plan: &RenderPlan,
     previous: &HashMap<Id, Arc<[AtomicU32; 3]>>,
 ) -> HashMap<Id, Arc<[AtomicU32; 3]>> {
     plan.project
         .all_effects()
-        .filter(|effect| matches!(effect.unit, daw_core::EffectSettings::Ott(_)))
+        .filter(|effect| {
+            matches!(
+                effect.unit,
+                daw_core::EffectSettings::Ott(_) | daw_core::EffectSettings::Eq3(_)
+            )
+        })
         .map(|effect| {
             (
                 effect.id,
@@ -131,9 +136,9 @@ fn ott_meters(
         })
         .collect()
 }
-fn bind_ott_meters(renderer: &mut Renderer, meters: &HashMap<Id, Arc<[AtomicU32; 3]>>) {
+fn bind_band_meters(renderer: &mut Renderer, meters: &HashMap<Id, Arc<[AtomicU32; 3]>>) {
     for (id, meter) in meters {
-        renderer.set_ott_meter(*id, meter.clone());
+        renderer.set_band_meter(*id, meter.clone());
     }
 }
 fn modulation_meters(
@@ -237,7 +242,7 @@ pub struct AudioOutput {
     pub description: String,
     track_meters: HashMap<Id, Arc<StereoMeter>>,
     effect_meters: HashMap<Id, Arc<AtomicU32>>,
-    ott_meters: HashMap<Id, Arc<[AtomicU32; 3]>>,
+    band_meters: HashMap<Id, Arc<[AtomicU32; 3]>>,
     modulation_meters: HashMap<ModulationTarget, Arc<[AtomicU32; 5]>>,
 }
 impl AudioOutput {
@@ -270,7 +275,7 @@ impl AudioOutput {
         let status = Arc::new(Status::default());
         let meters = track_meters(&plan, &HashMap::new());
         let reductions = effect_meters(&plan, &HashMap::new());
-        let changes = ott_meters(&plan, &HashMap::new());
+        let changes = band_meters(&plan, &HashMap::new());
         let modulation = modulation_meters(&plan, &HashMap::new());
         // Retried stream construction happens before playback; each attempt receives fresh queues.
         let build = |cfg: &cpal::StreamConfig| -> Result<BuiltStream, String> {
@@ -285,7 +290,7 @@ impl AudioOutput {
                 rate,
             )?;
             bind_effect_meters(&mut state.renderer, &reductions);
-            bind_ott_meters(&mut state.renderer, &changes);
+            bind_band_meters(&mut state.renderer, &changes);
             state.renderer.bind_modulation(&modulation);
             macro_rules! stream {
                 ($t:ty) => {
@@ -335,7 +340,7 @@ impl AudioOutput {
             description,
             track_meters: meters,
             effect_meters: reductions,
-            ott_meters: changes,
+            band_meters: changes,
             modulation_meters: modulation,
         })
     }
@@ -353,16 +358,16 @@ impl AudioOutput {
         }
         let meters = track_meters(&plan, &self.track_meters);
         let reductions = effect_meters(&plan, &self.effect_meters);
-        let changes = ott_meters(&plan, &self.ott_meters);
+        let changes = band_meters(&plan, &self.band_meters);
         let modulation = modulation_meters(&plan, &self.modulation_meters);
         let mut prepared = PreparedRenderer::new(plan, &meters);
         bind_effect_meters(&mut prepared, &reductions);
-        bind_ott_meters(&mut prepared, &changes);
+        bind_band_meters(&mut prepared, &changes);
         prepared.bind_modulation(&modulation);
         self.send(Command::Plan(Box::new(prepared)))?;
         self.track_meters = meters;
         self.effect_meters = reductions;
-        self.ott_meters = changes;
+        self.band_meters = changes;
         self.modulation_meters = modulation;
         Ok(())
     }
@@ -387,10 +392,17 @@ impl AudioOutput {
             .map_or(0.0, |meter| f32::from_bits(meter.load(Ordering::Relaxed)))
     }
     pub fn ott_gain_change_db(&self, id: Id) -> [f32; 3] {
+        self.band_monitor_values(id)
+    }
+    /// Linear Low/Mid/High output peaks. Stopped or absent outputs show silence.
+    pub fn eq_band_levels(&self, id: Id) -> [f32; 3] {
+        self.band_monitor_values(id)
+    }
+    fn band_monitor_values(&self, id: Id) -> [f32; 3] {
         if !self.status.playing.load(Ordering::Relaxed) {
             return [0.0; 3];
         }
-        self.ott_meters.get(&id).map_or([0.0; 3], |meter| {
+        self.band_meters.get(&id).map_or([0.0; 3], |meter| {
             std::array::from_fn(|i| f32::from_bits(meter[i].load(Ordering::Relaxed)))
         })
     }
@@ -1024,28 +1036,31 @@ mod compressor_meter_tests {
 }
 
 #[cfg(test)]
-mod ott_meter_tests {
+mod band_meter_tests {
     use super::*;
 
     #[test]
-    fn effect_meter_handles_follow_ids_and_report_callback_compression() {
-        for master in [false, true] {
+    fn band_meter_handles_follow_ids_and_report_callback_levels_or_compression() {
+        for (master, eq) in [(false, false), (true, false), (false, true), (true, true)] {
             let mut plan = crate::tests::transport_plan();
-            let mut effect = daw_core::EffectInstance::ott();
-            let daw_core::EffectSettings::Ott(settings) = &mut effect.unit else {
-                unreachable!()
+            let mut effect = if eq {
+                daw_core::EffectInstance::equalizer()
+            } else {
+                daw_core::EffectInstance::ott()
             };
-            settings.bands[0].attack_ms = 0.1;
+            if let daw_core::EffectSettings::Ott(settings) = &mut effect.unit {
+                settings.bands[0].attack_ms = 0.1;
+            }
             let id = effect.id;
             effect_test_chain(&mut plan, master).push(effect.clone());
-            let meters = ott_meters(&plan, &HashMap::new());
+            let meters = band_meters(&plan, &HashMap::new());
             let (producer, consumer) = RingBuffer::new(32);
             let (retire, _retired) = RingBuffer::new(64);
             let status = Arc::new(Status::default());
             let tracks = track_meters(&plan, &HashMap::new());
             let mut callback =
                 Callback::new(plan.clone(), &tracks, consumer, retire, status, 48_000).unwrap();
-            bind_ott_meters(&mut callback.renderer, &meters);
+            bind_band_meters(&mut callback.renderer, &meters);
             let mut producer = producer;
             producer
                 .push(Command::Play)
@@ -1057,17 +1072,18 @@ mod ott_meter_tests {
             assert!(
                 meters[&id]
                     .iter()
-                    .any(|m| f32::from_bits(m.load(Ordering::Relaxed)).abs() > 1.0)
+                    .any(|m| f32::from_bits(m.load(Ordering::Relaxed)).abs()
+                        > if eq { 0.01 } else { 1.0 })
             );
             let mut other = effect;
             other.id = Id::new_v4();
             let second = other.id;
             effect_test_chain(&mut plan, master).insert(0, other);
-            let updated = ott_meters(&plan, &meters);
+            let updated = band_meters(&plan, &meters);
             assert!(Arc::ptr_eq(&updated[&id], &meters[&id]));
             assert!(!Arc::ptr_eq(&updated[&second], &meters[&id]));
             effect_test_chain(&mut plan, master).retain(|effect| effect.id != id);
-            let removed = ott_meters(&plan, &updated);
+            let removed = band_meters(&plan, &updated);
             assert!(!removed.contains_key(&id));
             assert!(Arc::ptr_eq(&removed[&second], &updated[&second]));
             producer

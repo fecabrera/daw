@@ -460,6 +460,7 @@ impl DawUi {
                                                         settings,
                                                         compact,
                                                         strip.height(),
+                                                        self.output.as_ref().map_or([0.0; 3], |output| output.eq_band_levels(effect.id)),
                                                     );
                                                 let power = _bounds.power;
                                                 #[cfg(test)]

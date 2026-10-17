@@ -237,7 +237,7 @@ pub(super) fn show(
                 bounds.sections[section] = rect;
                 if section > 0 { panels::unit_divider(ui, rect.left(), rect.y_range().into()); }
                 if !compact && section < 3 {
-                    let rail = Rect::from_min_size(rect.min + Vec2::new(f32::from(panel.margin), 2.0), Vec2::new(rect.width() - 2.0 * f32::from(panel.margin), 4.0));
+                    let rail = meters::unit_monitor_rail(rect, panel.margin);
                     bounds.meters[section] = rail;
                     meters::gain_change(ui, rail, name, gains[section]);
                 }

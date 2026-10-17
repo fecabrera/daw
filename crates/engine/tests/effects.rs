@@ -144,6 +144,12 @@ fn prepared_updates_preserve_history_and_retarget_without_callback_allocations()
     add_eq(&mut plan);
     let mut reference = Renderer::new(plan.clone());
     let mut current = Renderer::new(plan.clone());
+    current.set_band_meter(
+        plan.project.tracks[0].effects[0].id,
+        Arc::new(std::array::from_fn(|_| {
+            std::sync::atomic::AtomicU32::new(0)
+        })),
+    );
     reference.play();
     current.play();
     for _ in 0..700 {
@@ -1050,4 +1056,70 @@ fn limiter_live_export_retarget_meter_and_reset_remain_allocation_free() {
     changed.next_sample();
     TRACK_ALLOCATIONS.with(|v| v.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}
+
+#[test]
+fn eq_band_meters_preserve_audio_history_and_do_not_allocate_on_track_or_master() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    for master in [false, true] {
+        let mut plan = plan(48000, false);
+        add_eq(&mut plan);
+        if master {
+            plan.project.master.effects = std::mem::take(&mut plan.project.tracks[0].effects);
+        }
+        let effects = if master {
+            &plan.project.master.effects
+        } else {
+            &plan.project.tracks[0].effects
+        };
+        let id = effects[0].id;
+        let meter = Arc::new(std::array::from_fn(|_| AtomicU32::new(0)));
+        let mut current = Renderer::new(plan.clone());
+        current.set_band_meter(id, meter.clone());
+        let mut reference = Renderer::new(plan.clone());
+        current.play();
+        reference.play();
+        for _ in 0..2000 {
+            assert_eq!(current.next_sample(), reference.next_sample());
+        }
+        assert!(f32::from_bits(meter[1].load(Ordering::Relaxed)) > 0.1);
+        let effects = if master {
+            &mut plan.project.master.effects
+        } else {
+            &mut plan.project.tracks[0].effects
+        };
+        let EffectSettings::Eq3(settings) = &mut effects[0].unit else {
+            unreachable!()
+        };
+        settings.collapsed = true;
+        let mut next = Renderer::new(plan.clone());
+        next.set_band_meter(id, meter.clone());
+        ALLOCATIONS.with(|count| count.set(0));
+        TRACK_ALLOCATIONS.with(|value| value.set(true));
+        next.inherit(&mut current);
+        for _ in 0..1000 {
+            assert_eq!(next.next_sample(), reference.next_sample());
+        }
+        next.pause();
+        // Pause completes the existing 5 ms output transition before freezing DSP.
+        for _ in 0..300 {
+            next.next_sample();
+        }
+        let snapshot = meter.each_ref().map(|cell| cell.load(Ordering::Relaxed));
+        for _ in 0..100 {
+            next.next_sample();
+        }
+        assert_eq!(
+            snapshot,
+            meter.each_ref().map(|cell| cell.load(Ordering::Relaxed))
+        );
+        next.play();
+        next.seek(1000);
+        assert!(meter.iter().all(|cell| cell.load(Ordering::Relaxed) == 0));
+        next.next_sample();
+        next.stop();
+        assert!(meter.iter().all(|cell| cell.load(Ordering::Relaxed) == 0));
+        TRACK_ALLOCATIONS.with(|value| value.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    }
 }

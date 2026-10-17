@@ -2410,3 +2410,20 @@ Completed checks with the workspace Cargo cache:
 - Repository-relative documentation targets exist, and `git diff --check` passes.
 
 Native mouse/keyboard, display-scale, audible device, Windows, and Linux checks were not performed. Automated egui and renderer tests do not establish those native behaviors.
+
+## Three-band EQ output monitors — 2026-10-17
+
+Each Low/Mid/High strip now has a four-point horizontal rail below the shared unit header. The rails reuse Limiter geometry/painting, the common −60 to 0 dBFS mapping and peak text, and OTT's prepared three-band atomic handle path. Track and Master instances share the same integration. Unit height, knobs, footers, audio, and saved fields remain unchanged. Compact lanes and horizontally collapsed units hide the rails; inactive playback displays empty rails.
+
+Independent portable analysis filters measure the final EQ output, with a combined stereo peak, instant attack, and 300 ms release. Analysis uses two-pole low-pass/high-pass filters at Q = 1/√2; Mid cascades both. The outer frequency controls set the ordered boundaries. Their finite slopes overlap near the boundaries; these readings are filtered band-level estimates. Gain/cuts affect the measured signal, and unit bypass shows dry output. Stop/seek reset monitoring, while compatible updates retain its history and stable handles.
+
+Focused checks pass:
+
+- Portable tests cover frequency isolation, higher-channel peak detection, gain response, bypass, all-band silence, reset, and sample-exact unchanged audio at all six processing rates. A focused analysis check covers moved/crossed/equal boundaries, peak decay, silence, and nonfinite monitor input.
+- Renderer tests cover track and Master monitoring, sample-exact compatible presentation updates, pause after the existing output fade, seek/Stop reset, and zero callback allocations. The existing EQ update test also runs with monitoring attached through parameter retargeting and transport changes.
+- Output tests cover EQ levels and existing OTT gain changes on tracks and Master. Handles retain identity through reordering, stay independent for new instances, and are pruned on removal. Stop clears the handles.
+- Both-theme egui checks cover per-strip geometry, knob clearance/alignment, half-scale mapping, silence, headroom/error color, compact/collapsed visibility, and read-only track/Master clicks without saved changes or a dirty project.
+
+`cargo test --workspace --offline` passes: 748 tests pass, including 419 UI tests; two existing expanded time-stretch acceptance matrices remain ignored. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, the CLI build, and `python3 tools/check_cli.py` pass. The CLI checks cover WAV/MP3 formats and bitrates, deterministic output, missing sources, eight-track projects, overwrite protection, and exit codes. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched. Repository-relative documentation link targets and `git diff --check` pass. Commands used the default Cargo cache; the repository-local cache was absent.
+
+Native mouse/trackpad, display-scale, audible device/callback timing, Windows, and Linux checks were not performed. Automated egui and renderer checks do not establish those native behaviors.

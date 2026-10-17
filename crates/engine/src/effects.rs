@@ -219,11 +219,11 @@ impl EffectChain {
             _ => {}
         }
     }
-    pub fn set_ott_meter(&mut self, id: Id, meter: &Arc<[AtomicU32; 3]>) {
-        if let Some((_, Some(RuntimeEffect::Ott(unit)))) =
-            self.units.iter_mut().find(|(effect, _)| *effect == id)
-        {
-            unit.set_gain_change_meter(meter.clone());
+    pub fn set_band_meter(&mut self, id: Id, meter: &Arc<[AtomicU32; 3]>) {
+        match self.units.iter_mut().find(|(effect, _)| *effect == id) {
+            Some((_, Some(RuntimeEffect::Ott(unit)))) => unit.set_gain_change_meter(meter.clone()),
+            Some((_, Some(RuntimeEffect::Eq3(unit)))) => unit.set_band_level_meter(meter.clone()),
+            _ => {}
         }
     }
     pub fn sample(

@@ -1,6 +1,6 @@
 # Modular audio units design and decisions
 
-Status: design baseline with implemented track/Master effects and MIDI sources; graph and beat work pending. Last updated: 2026-10-15.
+Status: design baseline with implemented track/Master effects and MIDI sources; graph and beat work pending. Last updated: 2026-10-17.
 
 Users build MIDI instruments in Instrument and configure track and Master effect chains in Timeline, with MIDI track effects also available in Instrument. These replace the earlier combined Units view. The planned track types are audio, MIDI, and beat. Audio tracks will accept effects; MIDI tracks will accept sources and effects. A future Editor view will provide an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor will provide step toggles in audio or MIDI lanes, each with its own sources and effects. Every unit will use a shared core and support independent distribution. These are confirmed requirements. The Units MVP scope below is accepted. Detailed API, layout, and packaging choices remain proposals or implementation details.
 
@@ -475,3 +475,7 @@ Shift-click toggles component units within one lane. Selected headers move or du
 ## Selected component removal — 2026-10-17
 
 Delete/Backspace removes selected installed component units from the focused regular-layer or Main lane through one instrument edit. Reuse the effect key handler and pane guards; preserve text editing, consume repeats, retain lane focus after removal, and protect selected clips. Retain removed Envelope/LFO/Macro/Amplitude settings and routes for catalog restoration; Oscillator removal discards its sources and pitch routes. See [component removal](component-editing.md#removing-selected-component-units).
+
+## Three-band EQ output monitors — 2026-10-17
+
+[Three-band EQ](equalizer.md) adds a read-only output-level rail in each Low/Mid/High strip. Reuse the Limiter's thin horizontal rail geometry/painting, the common dBFS mapping, and OTT's prepared three-band atomic handle path. Independent portable analysis filters follow the EQ's smoothed outer frequency boundaries and combine stereo peaks with a 300 ms release. They observe final output, including band cuts and dry bypass, without entering the audio path or adding latency. Keep the existing unit height, control positions, compact/collapse rules, saved format, stable effect IDs, and callback constraints. Stop/seek reset monitoring; inactive output displays empty rails. See the linked guide and [acceptance requirements](../specs/mvp-iteration-1.md#three-band-eq-output-monitors--2026-10-17) for measurement limits and validation scope.

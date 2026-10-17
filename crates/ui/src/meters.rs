@@ -327,6 +327,61 @@ pub fn channel(ui: &mut Ui, label: &str, height: f32, peak: f32, clipped: bool) 
     })
 }
 
+/// Fit a four-point monitor above standard knob rows without changing unit height.
+pub fn unit_monitor_rail(strip: Rect, margin: i8) -> Rect {
+    Rect::from_min_size(
+        strip.min + Vec2::new(f32::from(margin), 2.0),
+        Vec2::new(strip.width() - 2.0 * f32::from(margin), 4.0),
+    )
+}
+
+fn horizontal_rail(ui: &Ui, rail: Rect, progress: f32, color: egui::Color32) {
+    ui.painter()
+        .rect_filled(rail, 1.0, theme::palette(ui.ctx()).input);
+    if progress > 0.0 {
+        ui.painter().rect_filled(
+            Rect::from_min_size(rail.min, Vec2::new(rail.width() * progress, rail.height())),
+            1.0,
+            color,
+        );
+    }
+}
+
+/// Stereo peak level using the shared −60 to 0 dBFS scale; retain headroom in readings.
+pub fn band_level_rail(ui: &mut Ui, rail: Rect, name: &str, peak: f32) {
+    let peak = if peak.is_finite() { peak.max(0.0) } else { 0.0 };
+    let palette = theme::palette(ui.ctx());
+    horizontal_rail(
+        ui,
+        rail,
+        position_for_peak(peak),
+        if peak > 1.0 {
+            palette.error
+        } else {
+            theme::accent(ui.ctx())
+        },
+    );
+    let db = if peak > 0.0 {
+        20.0 * peak.log10()
+    } else {
+        f32::NEG_INFINITY
+    };
+    let level = peak_text(peak);
+    let response = ui.interact(rail, ui.id().with(("band-level", name)), Sense::hover());
+    response.widget_info(|| {
+        let mut info = egui::WidgetInfo::labeled(
+            egui::WidgetType::ProgressIndicator,
+            ui.is_enabled(),
+            format!("{name} output level: {level} dBFS"),
+        );
+        info.value = db.is_finite().then_some(f64::from(db));
+        info
+    });
+    response.on_hover_text(format!(
+        "{name} output level: {level} dBFS (display range −60 to 0 dBFS)"
+    ));
+}
+
 /// Thin limiter monitor fits above the standard knob rows without changing unit height.
 pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reduction_db: f32) {
     let db = if reduction_db.is_finite() {
@@ -334,16 +389,7 @@ pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reduction_db: f32) {
     } else {
         0.0
     };
-    ui.painter()
-        .rect_filled(rail, 1.0, theme::palette(ui.ctx()).input);
-    ui.painter().rect_filled(
-        Rect::from_min_size(
-            rail.min,
-            Vec2::new(rail.width() * (db / 24.0).min(1.0), rail.height()),
-        ),
-        1.0,
-        theme::accent(ui.ctx()),
-    );
+    horizontal_rail(ui, rail, (db / 24.0).min(1.0), theme::accent(ui.ctx()));
     let response = ui.interact(rail, ui.id().with("limiter-reduction"), Sense::hover());
     response.widget_info(|| {
         let mut info = egui::WidgetInfo::labeled(

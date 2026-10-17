@@ -4,6 +4,8 @@ use daw_unit_core::{
 };
 use fundsp::{audionode::AudioNode, svf::*};
 
+mod monitor;
+
 #[derive(Clone)]
 enum Filter {
     LowShelf(FixedSvf<f64, LowshelfMode<f64>>),
@@ -307,6 +309,7 @@ pub struct Equalizer {
     target: f32,
     remaining: u32,
     fade_frames: u32,
+    monitor: monitor::Monitor,
 }
 impl Equalizer {
     /// Prepare on a control thread with valid settings and a supported processing rate.
@@ -322,6 +325,7 @@ impl Equalizer {
             target: mix,
             remaining: 0,
             fade_frames: (context.sample_rate_hz / 200).max(1),
+            monitor: monitor::Monitor::new(context.sample_rate_hz),
         }
     }
     /// Retarget without allocating or resetting filter history. Display-only changes are no-ops.
@@ -334,6 +338,14 @@ impl Equalizer {
             self.target = target;
             self.remaining = self.fade_frames;
         }
+    }
+    /// Attach prepared stereo-peak monitors in Low/Mid/High order on the control thread.
+    /// Values are linear amplitudes of the filtered unit output, with a 300 ms release.
+    pub fn set_band_level_meter(
+        &mut self,
+        meter: std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>,
+    ) {
+        self.monitor.attach(meter);
     }
 }
 impl EffectUnit for Equalizer {
@@ -354,6 +366,7 @@ impl EffectUnit for Equalizer {
         self.mid_shelf.reset();
         self.mix = self.target;
         self.remaining = 0;
+        self.monitor.reset();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
         for band in &mut self.bands {
@@ -390,13 +403,119 @@ impl EffectUnit for Equalizer {
             self.mix += (self.target - self.mix) / self.remaining as f32;
             self.remaining -= 1;
         }
-        std::array::from_fn(|ch| input[ch] + (wet[ch] - input[ch]) * self.mix)
+        let output = std::array::from_fn(|ch| input[ch] + (wet[ch] - input[ch]) * self.mix);
+        self.monitor
+            .sample(output, self.bands[0].current[0], self.bands[2].current[0]);
+        output
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn read_meter(meter: &[std::sync::atomic::AtomicU32; 3]) -> [f32; 3] {
+        std::array::from_fn(|i| f32::from_bits(meter[i].load(std::sync::atomic::Ordering::Relaxed)))
+    }
+
+    #[test]
+    fn band_levels_follow_output_frequency_gain_and_stereo_at_every_rate() {
+        use std::sync::{Arc, atomic::AtomicU32};
+        for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+            let context = ProcessingContext {
+                sample_rate_hz: rate,
+                max_block_frames: 512,
+            };
+            for (band, hz) in [(0, 40.0), (1, 800.0), (2, 12000.0)] {
+                let settings = EqSettings::default();
+                let meter = Arc::new(std::array::from_fn(|_| AtomicU32::new(0)));
+                let mut eq = Equalizer::new(context, &settings);
+                let mut reference = Equalizer::new(context, &settings);
+                eq.set_band_level_meter(meter.clone());
+                for frame in 0..rate / 10 {
+                    let sample = (frame as f32 * hz * std::f32::consts::TAU / rate as f32).sin();
+                    // The right channel is louder; monitoring must inspect both channels.
+                    let input = [sample * 0.1, sample * 0.4];
+                    assert_eq!(eq.process_sample(input), reference.process_sample(input));
+                }
+                let levels = read_meter(&meter);
+                assert!(
+                    (0.32..0.45).contains(&levels[band]),
+                    "rate={rate} band={band}: {levels:?}"
+                );
+                for (other, level) in levels.into_iter().enumerate() {
+                    if other != band {
+                        assert!(level < levels[band] * 0.25, "{levels:?}");
+                    }
+                }
+                let before = levels[band];
+                let mut boosted = settings.clone();
+                boosted.bands[band].gain_db = 12.0;
+                eq.retarget(&boosted);
+                for frame in 0..rate / 10 {
+                    let sample =
+                        (frame as f32 * hz * std::f32::consts::TAU / rate as f32).sin() * 0.4;
+                    eq.process_sample([sample, 0.0]);
+                }
+                assert!(read_meter(&meter)[band] > before * 3.0);
+                // Bypass shows the actual dry output; all band cuts show silence after decay.
+                boosted.enabled = false;
+                eq.retarget(&boosted);
+                eq.reset();
+                for frame in 0..rate / 10 {
+                    let sample =
+                        (frame as f32 * hz * std::f32::consts::TAU / rate as f32).sin() * 0.4;
+                    eq.process_sample([sample; 2]);
+                }
+                assert!(read_meter(&meter)[band] < before * 1.2);
+                boosted.enabled = true;
+                for band in &mut boosted.bands {
+                    band.enabled = false;
+                }
+                eq.retarget(&boosted);
+                eq.reset();
+                for _ in 0..rate / 100 {
+                    eq.process_sample([0.4; 2]);
+                }
+                assert!(read_meter(&meter).iter().all(|v| *v < 0.001));
+                eq.reset();
+                assert_eq!(read_meter(&meter), [0.0; 3]);
+            }
+        }
+    }
+
+    #[test]
+    fn band_monitor_follows_ordered_frequency_boundaries_and_releases_on_silence() {
+        use std::sync::{Arc, atomic::AtomicU32};
+        let mut monitor = monitor::Monitor::new(48000);
+        let meter = Arc::new(std::array::from_fn(|_| AtomicU32::new(0)));
+        monitor.attach(meter.clone());
+        let run = |monitor: &mut monitor::Monitor, low, high| {
+            for frame in 0..24000 {
+                let sample = (frame as f32 * 800.0 * std::f32::consts::TAU / 48000.0).sin() * 0.4;
+                monitor.sample([sample; 2], low, high);
+            }
+        };
+        run(&mut monitor, 250.0, 2500.0);
+        assert!(read_meter(&meter)[1] > 0.35);
+        monitor.reset();
+        run(&mut monitor, 2500.0, 250.0);
+        assert!(read_meter(&meter)[1] > 0.35);
+        monitor.reset();
+        run(&mut monitor, 2000.0, 10000.0);
+        let moved = read_meter(&meter);
+        assert!(moved[0] > 0.35 && moved[1] < moved[0] * 0.2, "{moved:?}");
+        monitor.reset();
+        run(&mut monitor, 1000.0, 1000.0);
+        assert_eq!(read_meter(&meter)[1], 0.0);
+        let before = read_meter(&meter)[0];
+        for _ in 0..48000 {
+            monitor.sample([0.0; 2], 1000.0, 1000.0);
+        }
+        assert!(read_meter(&meter)[0] < before * 0.05);
+        monitor.sample([f32::NAN, f32::INFINITY], 1000.0, 1000.0);
+        assert!(read_meter(&meter).iter().all(|v| v.is_finite()));
+    }
+
     fn response(settings: &EqSettings, rate: u32, hz: f32) -> f32 {
         let mut eq = Equalizer::new(
             ProcessingContext {

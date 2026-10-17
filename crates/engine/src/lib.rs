@@ -435,9 +435,17 @@ impl Renderer {
         id: Id,
         meter: std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>,
     ) {
-        self.master_effects.set_ott_meter(id, &meter);
+        self.set_band_meter(id, meter);
+    }
+    /// Attach prepared EQ level or OTT gain-change handles by stable effect identity.
+    pub fn set_band_meter(
+        &mut self,
+        id: Id,
+        meter: std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>,
+    ) {
+        self.master_effects.set_band_meter(id, &meter);
         for effects in &mut self.effects {
-            effects.set_ott_meter(id, &meter);
+            effects.set_band_meter(id, &meter);
         }
     }
     pub fn inherit(&mut self, old: &mut Self) {

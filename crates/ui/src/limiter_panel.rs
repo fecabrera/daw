@@ -129,9 +129,9 @@ pub(super) fn show(
                         .rect;
                     bounds.sections[column] = rect;
                     if !compact && column == 0 {
-                        let rail = Rect::from_min_size(
-                            rect.min + Vec2::new(f32::from(panel.margin), 2.0),
-                            Vec2::new(2.0 * UNIT_STRIP_WIDTH - 2.0 * f32::from(panel.margin), 4.0),
+                        let rail = meters::unit_monitor_rail(
+                            rect.with_max_x(rect.left() + 2.0 * UNIT_STRIP_WIDTH),
+                            panel.margin,
                         );
                         bounds.meter = rail;
                         meters::gain_reduction_rail(ui, rail, reduction_db);

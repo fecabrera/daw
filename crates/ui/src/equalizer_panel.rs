@@ -1,6 +1,7 @@
 use crate::{
     icons,
     knobs::{self, Knob, KnobSpec},
+    meters,
     midi_editor::UNIT_STRIP_WIDTH,
     panels, rows, theme,
 };
@@ -12,6 +13,7 @@ pub(super) struct Bounds {
     pub power: Rect,
     pub knobs: [[Rect; 3]; 3],
     pub bands: [Rect; 3],
+    pub meters: [Rect; 3],
 }
 
 fn gain_spec() -> KnobSpec {
@@ -51,6 +53,7 @@ pub(super) fn show(
     settings: &mut EqSettings,
     compact: bool,
     height: f32,
+    levels: [f32; 3],
 ) -> (Bounds, egui::Response) {
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
@@ -58,6 +61,7 @@ pub(super) fn show(
         power: Rect::NOTHING,
         knobs: [[Rect::NOTHING; 3]; 3],
         bands: [Rect::NOTHING; 3],
+        meters: [Rect::NOTHING; 3],
     };
     let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(
         ui,
@@ -65,7 +69,16 @@ pub(super) fn show(
         height,
         &mut settings.enabled,
         &mut settings.collapsed,
-        |ui| body(ui, &mut settings.bands, panel.margin, compact, &mut bounds),
+        |ui| {
+            body(
+                ui,
+                &mut settings.bands,
+                panel.margin,
+                compact,
+                levels,
+                &mut bounds,
+            )
+        },
     );
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
@@ -77,6 +90,7 @@ fn body(
     bands: &mut [daw_core::EqBandSettings; 3],
     margin: i8,
     compact: bool,
+    levels: [f32; 3],
     bounds: &mut Bounds,
 ) {
     ui.horizontal_top(|ui| {
@@ -102,6 +116,11 @@ fn body(
                     });
                 })
             }).inner.response.rect;
+            if !compact {
+                let rail = meters::unit_monitor_rail(strip, margin);
+                bounds.meters[index] = rail;
+                meters::band_level_rail(ui, rail, name, levels[index]);
+            }
             if index > 0 { panels::unit_divider(ui, strip.left(), strip.y_range().into()); }
         }
     });
@@ -142,4 +161,106 @@ fn controls(
         })
         .rect,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn level_rails_fit_each_strip_and_leave_controls_and_saved_settings_unchanged() {
+        for color_theme in [
+            crate::settings::ColorTheme::Dark,
+            crate::settings::ColorTheme::Light,
+        ] {
+            for compact in [false, true] {
+                for collapsed in [false, true] {
+                    let ctx = egui::Context::default();
+                    theme::configure(&ctx);
+                    crate::fonts::configure(&ctx);
+                    theme::apply(
+                        &ctx,
+                        crate::settings::AppSettings {
+                            theme: color_theme,
+                            ..Default::default()
+                        },
+                    );
+                    let mut settings = EqSettings {
+                        collapsed,
+                        ..Default::default()
+                    };
+                    let original = settings.clone();
+                    let mut bounds = None;
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                Vec2::new(800.0, 600.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            egui::CentralPanel::default().show(ui, |ui| {
+                                bounds = Some(
+                                    show(
+                                        ui,
+                                        &mut settings,
+                                        compact,
+                                        if compact { 68.0 } else { 244.0 },
+                                        [0.0, 10_f32.powf(-30.0 / 20.0), 2.0],
+                                    )
+                                    .0,
+                                );
+                            });
+                        },
+                    );
+                    output.textures_delta.clear();
+                    let bounds = bounds.unwrap();
+                    assert_eq!(settings, original);
+                    for index in 0..3 {
+                        let rail = bounds.meters[index];
+                        if compact || collapsed {
+                            assert!(!rail.is_positive());
+                        } else {
+                            assert_eq!(rail.height(), 4.0);
+                            assert_eq!(
+                                rail.width(),
+                                UNIT_STRIP_WIDTH
+                                    - 2.0 * f32::from(panels::PanelStyle::default().margin)
+                            );
+                            assert!(rail.top() >= bounds.header.bottom());
+                            assert!(rail.bottom() < bounds.knobs[index][0].top());
+                            assert!(
+                                (rail.center().x - bounds.knobs[index][0].center().x).abs() < 0.01
+                            );
+                            let expected = [0.0, rail.width() * 0.5, rail.width()][index];
+                            let color = if index == 2 {
+                                theme::palette(&ctx).error
+                            } else {
+                                theme::accent(&ctx)
+                            };
+                            let fills: Vec<_> = output
+                                .shapes
+                                .iter()
+                                .filter_map(|shape| match &shape.shape {
+                                    egui::Shape::Rect(rect)
+                                        if rect.rect.min == rail.min && rect.fill == color =>
+                                    {
+                                        Some(rect.rect)
+                                    }
+                                    _ => None,
+                                })
+                                .collect();
+                            if index == 0 {
+                                assert!(fills.is_empty());
+                            } else {
+                                assert_eq!(fills.len(), 1);
+                                assert!((fills[0].width() - expected).abs() < 0.01);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

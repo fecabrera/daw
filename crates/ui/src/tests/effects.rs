@@ -4081,3 +4081,59 @@ fn effect_copies_keep_modulation_settings_but_receive_new_route_ids() {
     assert_eq!(settings, original.unit);
     app.session.project.validate().unwrap();
 }
+
+#[test]
+fn eq_level_rails_are_read_only_and_hide_with_compact_or_collapsed_units() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for master in [false, true] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.select_track(track, false);
+            if master {
+                app.master_selected = true;
+                app.selected_track = None;
+            }
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.set_view_mode(ViewMode::Timeline, &ctx);
+            if master {
+                app.session
+                    .project
+                    .master
+                    .effects
+                    .push(daw_core::EffectInstance::equalizer());
+            } else {
+                app.session.project.tracks[0]
+                    .effects
+                    .push(daw_core::EffectInstance::equalizer());
+            }
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let original = serde_json::to_string(&app.session.project).unwrap();
+            let rails = app.effects_bounds.units[0].meters;
+            for rail in rails {
+                assert!(rail.is_positive());
+                click(&mut app, &ctx, rail.center());
+                assert_eq!(
+                    serde_json::to_string(&app.session.project).unwrap(),
+                    original
+                );
+                assert!(!app.dirty);
+            }
+            let compact = app.effects_bounds.lane_compact.center();
+            click(&mut app, &ctx, compact);
+            frame(&mut app, &ctx, vec![]);
+            assert!(
+                app.effects_bounds.units[0]
+                    .meters
+                    .iter()
+                    .all(|rect| !rect.is_positive())
+            );
+        }
+    }
+}
