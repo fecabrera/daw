@@ -35,6 +35,14 @@ Each regular layer and Main save a `component_order` list in instrument version 
 
 This order changes presentation only. Provider vectors, source-strip order, parameter values, routes, audio topology, phases, and held notes retain their existing behavior. Save/reopen, Save As, track duplication, rate changes, layer reorder, and view switches retain the layout. Component identities and order policy live in `unit-core`; core transactions and the UI use those shared definitions.
 
+## Removing selected component units
+
+With the component lane focused, press Delete or Backspace to remove every selected unit through one `Edit::SetInstrument`. This works on regular layers and Main, with compact rows and collapsed units. Surviving units, layer/track/clip selection, and clips stay unchanged. The lane keeps keyboard focus after removal, including when empty. Held-key repeats and additional deletion presses with no selected units do not remove clips or mark the project modified.
+
+Envelope, LFO, Macro, and Amplitude retain their settings, identities, connections, and saved unit positions when removed. Re-add them through the catalog to restore them. Removing the Oscillator unit discards its sources and their pitch routes, as individual source removal does. Main itself is never removed by this action.
+
+Effects and components share `unit_selection::delete_pressed` for key handling and pane-focus guards. Text editors keep Delete/Backspace for editing. Extra Alt/Ctrl/Command modifiers, pointer gestures, drags, jobs, dialogs, disabled UI, and window/pane focus loss block unit removal. Blocked keys and held-key repeats cannot fall through to clip deletion while the unit pane owns them. Portable owner settings validate the full removal group before changing any member; invalid or empty groups make no edit.
+
 ## Reordering strips
 
 Drag unused space inside an oscillator strip to reorder sources within the Oscillator unit. The same gesture can insert that source between oscillators in another layer. The insertion line marks its position; dropping on a layer label appends it. Source UUIDs and pitch routes stay unchanged during reordering. Source controls and routes remain attached by ID when the displayed Osc N numbers change.

@@ -97,6 +97,29 @@ fn place_units(
     Some(true)
 }
 
+/// Both layer types retain the same provider settings when their panels are removed.
+fn remove_providers(
+    units: &[InstrumentComponent],
+    envelopes: &mut [crate::EnvelopeInstance],
+    lfos: &mut [crate::LfoInstance],
+    macros: &mut crate::MacroModuleSettings,
+) {
+    for unit in units {
+        match *unit {
+            InstrumentComponent::Envelope(id) => {
+                envelopes.iter_mut().find(|e| e.id == id).unwrap().present = false
+            }
+            InstrumentComponent::Lfo(id) => {
+                lfos.iter_mut().find(|l| l.id == id).unwrap().present = false
+            }
+            InstrumentComponent::Macros => macros.present = false,
+            InstrumentComponent::Oscillators
+            | InstrumentComponent::Oscillator(_)
+            | InstrumentComponent::Amplitude => {}
+        }
+    }
+}
+
 impl InstrumentLayerSettings {
     fn component_inventory(&self) -> Vec<InstrumentComponent> {
         std::iter::once(InstrumentComponent::Oscillators)
@@ -126,6 +149,31 @@ impl InstrumentLayerSettings {
             .into_iter()
             .filter(|c| self.has_component(*c))
             .collect()
+    }
+    /// Remove installed units together. Retained providers/stages keep their IDs and settings.
+    /// Oscillator removal follows source-strip removal: discard sources and their pitch routes.
+    pub fn remove_components(&mut self, units: &[InstrumentComponent]) -> Option<bool> {
+        if units
+            .iter()
+            .enumerate()
+            .any(|(n, c)| !self.has_component(*c) || units[..n].contains(c))
+        {
+            return None;
+        }
+        remove_providers(
+            units,
+            &mut self.envelopes,
+            &mut self.lfos,
+            &mut self.macro_module,
+        );
+        if units.contains(&InstrumentComponent::Oscillators) {
+            self.oscillators.clear();
+            self.oscillator_modulations.clear();
+        }
+        if units.contains(&InstrumentComponent::Amplitude) {
+            self.amplitude.present = false;
+        }
+        Some(!units.is_empty())
     }
     pub fn valid_component_order(&self) -> bool {
         valid(&self.component_order, &self.component_inventory())
@@ -184,6 +232,23 @@ impl InstrumentBusSettings {
             .filter(|c| self.has_component(*c))
             .collect()
     }
+    /// Main retains removed provider settings and identities for catalog restoration.
+    pub fn remove_components(&mut self, units: &[InstrumentComponent]) -> Option<bool> {
+        if units
+            .iter()
+            .enumerate()
+            .any(|(n, c)| !self.has_component(*c) || units[..n].contains(c))
+        {
+            return None;
+        }
+        remove_providers(
+            units,
+            &mut self.envelopes,
+            &mut self.lfos,
+            &mut self.macro_module,
+        );
+        Some(!units.is_empty())
+    }
     pub fn valid_component_order(&self) -> bool {
         valid(&self.component_order, &self.component_inventory())
     }
@@ -220,6 +285,68 @@ impl InstrumentBusSettings {
 mod tests {
     use super::*;
     use crate::*;
+    #[test]
+    fn removal_keeps_retained_settings_and_layout_and_rejects_invalid_groups_atomically() {
+        use InstrumentComponent::*;
+        let mut layer = InstrumentLayerSettings::default();
+        layer.oscillators.push(Default::default());
+        layer.envelopes[0].present = true;
+        layer.lfos.push(Default::default());
+        layer.macro_module.add();
+        layer.amplitude.present = true;
+        layer.oscillator_modulations.push(Modulation {
+            target: Some(layer.oscillators[0].id),
+            amount: 12.0,
+            ..Modulation::new(ModulationParameter::Pitch)
+        });
+        let envelope = Envelope(layer.envelopes[0].id);
+        layer.move_component(Amplitude, 1).unwrap();
+        let before = layer.clone();
+        for units in [
+            vec![envelope, Lfo(Uuid::new_v4())],
+            vec![envelope, envelope],
+            vec![Oscillator(layer.oscillators[0].id)],
+        ] {
+            assert_eq!(layer.remove_components(&units), None);
+            assert_eq!(layer, before);
+        }
+        assert_eq!(layer.remove_components(&[]), Some(false));
+        let all = layer.visible_components();
+        assert_eq!(layer.remove_components(&all), Some(true));
+        assert!(layer.visible_components().is_empty());
+        assert!(layer.oscillators.is_empty() && layer.oscillator_modulations.is_empty());
+        layer = serde_json::from_str(&serde_json::to_string(&layer).unwrap()).unwrap();
+        layer.envelopes[0].present = true;
+        layer.lfos[0].present = true;
+        layer.macro_module.present = true;
+        layer.amplitude.present = true;
+        let mut expected = before;
+        expected.oscillators.clear();
+        expected.oscillator_modulations.clear();
+        assert_eq!(layer, expected);
+        assert!(layer.valid());
+        let mut bus = InstrumentBusSettings {
+            envelopes: layer.envelopes.clone(),
+            lfos: layer.lfos.clone(),
+            macro_module: layer.macro_module.clone(),
+            ..Default::default()
+        };
+        for envelope in &mut bus.envelopes {
+            envelope.mode = EnvelopeMode::Legato;
+        }
+        let before = bus.clone();
+        assert_eq!(bus.remove_components(&[envelope, Amplitude]), None);
+        assert_eq!(bus, before);
+        let all = bus.visible_components();
+        assert_eq!(bus.remove_components(&all), Some(true));
+        assert!(bus.visible_components().is_empty());
+        bus = serde_json::from_str(&serde_json::to_string(&bus).unwrap()).unwrap();
+        bus.envelopes[0].present = true;
+        bus.lfos[0].present = true;
+        bus.macro_module.present = true;
+        assert_eq!(bus, before);
+        assert!(bus.valid());
+    }
     #[test]
     fn component_layout_pins_sources_and_retains_hidden_identity_without_changing_units() {
         use InstrumentComponent::*;

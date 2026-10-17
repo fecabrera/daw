@@ -2,7 +2,12 @@
 use super::*;
 
 impl DawUi {
-    pub(super) fn component_selection(&mut self, ui: &mut egui::Ui, track: Id) {
+    pub(super) fn component_selection(
+        &mut self,
+        ui: &mut egui::Ui,
+        track: Id,
+        settings: &mut daw_core::InstrumentSettings,
+    ) {
         let available = self.edit_environment_available() && ui.is_enabled();
         let dragging = self.component_drag.as_ref().is_some_and(|d| d.active)
             || self.strip_dragging
@@ -19,6 +24,7 @@ impl DawUi {
                 .selected_components
                 .iter()
                 .any(|(id, _)| id == owner)
+                || keyboard.has_focus()
             {
                 self.instrument_ui.component_focus.set(ui, *viewport, true);
                 if self.instrument_ui.component_refocus {
@@ -62,6 +68,7 @@ impl DawUi {
             .lost(ui.ctx(), available, dragging)
         {
             self.instrument_ui.selected_components.clear();
+            self.instrument_ui.component_focus = Default::default();
         }
         self.instrument_ui.selected_components.retain(|key| {
             self.instrument_ui
@@ -69,6 +76,46 @@ impl DawUi {
                 .iter()
                 .any(|(id, unit, _)| (*id, *unit) == *key)
         });
+        let delete = crate::unit_selection::delete_pressed(
+            ui,
+            &self.instrument_ui.component_focus,
+            self.effects_editing_enabled(ui),
+            self.component_drag.is_some() || self.effects_drag.is_some() || dragging,
+        );
+        if delete
+            && let Some((owner, _)) = self
+                .instrument_ui
+                .selected_components
+                .iter()
+                .next()
+                .copied()
+        {
+            let units: Vec<_> = self
+                .instrument_ui
+                .selected_components
+                .iter()
+                .map(|(_, c)| *c)
+                .collect();
+            let removed = if owner == settings.main.id {
+                settings.main.remove_components(&units)
+            } else {
+                settings
+                    .layers
+                    .iter_mut()
+                    .find(|l| l.id == owner)
+                    .and_then(|l| l.remove_components(&units))
+            };
+            if removed == Some(true) {
+                self.instrument_ui.selected_components.clear();
+                if let Some(keyboard) =
+                    ui.ctx()
+                        .read_response(ui.id().with((track, owner, "component-selection")))
+                {
+                    keyboard.request_focus();
+                }
+                ui.ctx().request_repaint();
+            }
+        }
         // Paint every selected unit after row fills and dividers, with its lane's scroll clip.
         for (owner, viewport) in &self.instrument_ui.component_viewports {
             let mut clipped = ui.new_child(egui::UiBuilder::new().max_rect(*viewport));

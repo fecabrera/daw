@@ -471,3 +471,7 @@ Instrument components reuse effect-unit selection outlines and click/focus helpe
 ## Component group editing — 2026-10-17
 
 Shift-click toggles component units within one lane. Selected headers move or duplicate the complete group in display order within/between regular layers and Main. Effects and components share selection/group-capture and insertion/no-op helpers. Audio sources stay first, and Oscillator/Macro transfers retain their merge rules. Core prepares one validated Batch edit through the existing member transfer/remapping functions; one incompatible member rejects the whole drop. Existing settings, saved layout, renderer publication, and source-assignment rules apply. See [component editing](component-editing.md#selecting-and-reordering-component-units). This supersedes the earlier component multi-selection limit.
+
+## Selected component removal — 2026-10-17
+
+Delete/Backspace removes selected installed component units from the focused regular-layer or Main lane through one instrument edit. Reuse the effect key handler and pane guards; preserve text editing, consume repeats, retain lane focus after removal, and protect selected clips. Retain removed Envelope/LFO/Macro/Amplitude settings and routes for catalog restoration; Oscillator removal discards its sources and pitch routes. See [component removal](component-editing.md#removing-selected-component-units).

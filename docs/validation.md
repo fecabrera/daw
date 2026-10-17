@@ -2393,3 +2393,20 @@ Completed checks:
 Effects and components share `unit_selection::select`, lane-order group capture, and `drag::group_insertion`, in addition to existing focus, outline, pointer, insertion-line, scroll, and cancellation primitives. Core prepares one validated Batch edit through the existing member transfer/remapping rules and shared `unit-core` placement. Selection stays in UI state; the existing component-order fields save the result without a format change. The earlier component multi-selection limit is superseded. Selection across lanes, cross-track transfers, and a second Amplitude stage remain outside this change.
 
 Native mouse/trackpad, display-scale, audible device, Windows, and Linux checks were not performed. Automated input/render tests do not establish those native behaviors.
+
+## Selected component keyboard removal — 2026-10-17
+
+Delete/Backspace removes the selected component group from its focused regular-layer or Main lane through one `Edit::SetInstrument`. Effects and components share the same deletion-key handler and pane guards. Removal retains surviving units and track/clip state. The lane keeps keyboard focus when it becomes empty, and repeat or empty-selection presses cannot delete clips. Text editors retain their deletion keys.
+
+Focused checks pass for both keys, themes, row heights, expanded/collapsed units, partial/complete selections, settings/route retention, oscillator source/pitch-route cleanup, selected-clip protection, and clean repeats. Guard checks cover extra modifiers, pointer/drag gestures, disabled/modal UI, window/pane focus loss, view changes, and active naming. A real Macro name editor accepts Delete/Backspace and commits its replacement text without removing the component. The existing effect Power-click selection regression and effect deletion checks pass after extraction of the shared handler.
+
+Portable owner settings reject invalid, duplicate, and individual-strip groups before mutation. Removed provider/stage settings and unit positions survive serialization and restoration. Oscillator removal discards sources and pitch routes; all other retained component settings stay intact. The existing project fields and instrument version remain unchanged.
+
+Completed checks with the workspace Cargo cache:
+
+- `cargo fmt --all --check`, strict workspace Clippy, and `cargo test --workspace` pass. All 743 tests pass, including 417 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored.
+- The CLI build and `python3 tools/check_cli.py` pass, covering WAV/MP3 output, bitrates, repeatability, missing sources, eight-track projects, overwrite protection, and exit codes.
+- `sh tools/package_macos.sh debug` succeeds and rebuilds `target/debug/DAW.app`. The running app was not relaunched.
+- Repository-relative documentation targets exist, and `git diff --check` passes.
+
+Native mouse/keyboard, display-scale, audible device, Windows, and Linux checks were not performed. Automated egui and renderer tests do not establish those native behaviors.

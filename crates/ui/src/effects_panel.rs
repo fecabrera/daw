@@ -641,39 +641,14 @@ impl DawUi {
         allowed: bool,
         keyboard_focus: &egui::Response,
     ) {
-        if !ui.input(|input| {
-            input.key_pressed(egui::Key::Delete) || input.key_pressed(egui::Key::Backspace)
-        }) || self.effects_drag.is_some()
-            || self.strip_dragging
-            || crate::strip_reorder::dragging(ui.ctx())
-            || ui.input(|input| input.pointer.any_down())
-            || self.effects_lane_focus.lost(ui.ctx(), allowed, false)
-        {
-            return;
-        }
-        let delete = ui.input_mut(|input| {
-            let mut delete = false;
-            input.events.retain(|event| {
-                if let egui::Event::Key {
-                    key: egui::Key::Delete | egui::Key::Backspace,
-                    pressed: true,
-                    repeat,
-                    modifiers,
-                    ..
-                } = event
-                    && !modifiers.alt
-                    && !modifiers.ctrl
-                    && !modifiers.command
-                    && !modifiers.mac_cmd
-                {
-                    // Consume repeats too, so the same key cannot reach clip shortcuts.
-                    delete |= !repeat;
-                    return false;
-                }
-                true
-            });
-            delete
-        });
+        let delete = crate::unit_selection::delete_pressed(
+            ui,
+            &self.effects_lane_focus,
+            allowed,
+            self.effects_drag.is_some()
+                || self.strip_dragging
+                || crate::strip_reorder::dragging(ui.ctx()),
+        );
         if delete && !self.selected_effects.is_empty() {
             effects.retain(|effect| !self.selected_effects.contains(&effect.id));
             self.selected_effects.clear();

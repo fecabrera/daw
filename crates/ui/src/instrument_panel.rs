@@ -33,6 +33,7 @@ impl InstrumentUi {
     pub(super) fn cancel(&mut self) {
         self.selected_components.clear();
         self.component_refocus = false;
+        self.component_focus = Default::default();
         self.name_edit = None;
         self.macro_name_edit = None;
         self.drag = None;
@@ -641,7 +642,7 @@ impl DawUi {
             self.instrument_catalog_bounds.layer_viewport = scroll.inner_rect;
             self.instrument_catalog_bounds.layer_scroll = scroll.state.offset.y;
         }
-        self.component_selection(ui, track.id);
+        self.component_selection(ui, track.id, &mut settings);
         if let Some((edit, selected)) = self.finish_component_drag(
             ui,
             track.id,

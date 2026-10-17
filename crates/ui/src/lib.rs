@@ -1851,7 +1851,8 @@ impl DawUi {
                 if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
                     self.toggle_playback();
                 }
-                if self.view_mode != ViewMode::Edit
+                if ui.is_enabled()
+                    && self.view_mode != ViewMode::Edit
                     && self.clip_actions_available(&ctx)
                     && ctx.input(|i| {
                         i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)

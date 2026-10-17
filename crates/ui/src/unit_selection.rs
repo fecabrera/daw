@@ -54,3 +54,49 @@ pub(super) fn drag_group<T: Copy + Eq + std::hash::Hash>(
         vec![anchor]
     }
 }
+
+/// A unit pane owns deletion keys even when a held key, modifier or drag blocks removal.
+/// Text editors keep their events; repeats cannot fall through to clip shortcuts.
+pub(super) fn delete_pressed(
+    ui: &Ui,
+    pane: &SelectionFocus,
+    allowed: bool,
+    dragging: bool,
+) -> bool {
+    if !ui.input(|input| {
+        input.key_pressed(egui::Key::Delete) || input.key_pressed(egui::Key::Backspace)
+    }) {
+        return false;
+    }
+    let text_editing = ui
+        .ctx()
+        .memory(|memory| memory.focused())
+        .is_some_and(|id| egui::TextEdit::load_state(ui.ctx(), id).is_some());
+    if text_editing || pane.lost(ui.ctx(), true, false) {
+        return false;
+    }
+    let remove = allowed && ui.is_enabled() && !dragging && !ui.input(|i| i.pointer.any_down());
+    ui.input_mut(|input| {
+        let mut delete = false;
+        input.events.retain(|event| {
+            if let egui::Event::Key {
+                key: egui::Key::Delete | egui::Key::Backspace,
+                pressed: true,
+                repeat,
+                modifiers,
+                ..
+            } = event
+            {
+                delete |= remove
+                    && !repeat
+                    && !modifiers.alt
+                    && !modifiers.ctrl
+                    && !modifiers.command
+                    && !modifiers.mac_cmd;
+                return false;
+            }
+            true
+        });
+        delete
+    })
+}

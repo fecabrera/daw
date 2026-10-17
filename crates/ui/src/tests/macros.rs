@@ -315,7 +315,7 @@ fn macro_strip_context_menu_removes_only_its_target_on_release() {
     }
 }
 
-fn begin_macro_rename(app: &mut DawUi, ctx: &egui::Context, name: &str) {
+pub(super) fn begin_macro_rename(app: &mut DawUi, ctx: &egui::Context, name: &str) {
     let mut output = ctx.run_ui(
         egui::RawInput {
             time: Some(ctx.input(|i| i.time) + 0.6),

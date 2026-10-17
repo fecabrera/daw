@@ -1421,3 +1421,346 @@ fn component_group_noop_cancel_invalid_target_and_unselected_anchor_keep_effect_
         }
     }
 }
+
+fn component_delete_key(key: egui::Key, repeat: bool, modifiers: egui::Modifiers) -> egui::Event {
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat,
+        modifiers,
+    }
+}
+
+#[test]
+fn component_delete_removes_the_selected_group_retains_settings_and_protects_clips() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for main in [false, true] {
+                for collapsed in [false, true] {
+                    for all in [false, true] {
+                        if all && !collapsed {
+                            continue;
+                        }
+                        for key in [egui::Key::Delete, egui::Key::Backspace] {
+                            let (mut app, ctx, owner, _) =
+                                order_setup(theme, compact, main, collapsed);
+                            let track = app.session.project.tracks[0].id;
+                            let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+                            if main {
+                                i.main.macro_module.add();
+                                i.main.macro_module.collapsed = collapsed;
+                            } else {
+                                i.layers[0].macro_module.add();
+                                i.layers[0].macro_module.collapsed = collapsed;
+                                i.layers[0].amplitude.present = true;
+                            }
+                            let envelope = if main {
+                                i.main.envelopes[0].id
+                            } else {
+                                i.layers[0].envelopes[0].id
+                            };
+                            let oscillator = i.layers[0].oscillators[0].id;
+                            i.layers[0]
+                                .oscillator_modulations
+                                .push(daw_core::Modulation {
+                                    target: Some(oscillator),
+                                    amount: 12.0,
+                                    ..daw_core::Modulation::new(
+                                        daw_core::ModulationParameter::Pitch,
+                                    )
+                                });
+                            i.layers[0]
+                                .amplitude
+                                .modulations
+                                .push(daw_core::Modulation {
+                                    source: Some(daw_core::ModulationSourceId {
+                                        layer: owner,
+                                        unit: envelope,
+                                    }),
+                                    amount: 0.6,
+                                    ..daw_core::Modulation::new(
+                                        daw_core::ModulationParameter::Amplitude,
+                                    )
+                                });
+                            let clip = app.session.project.add_midi_pattern(track, 0).unwrap();
+                            app.selected_clip = Some(clip);
+                            app.selected_clips.insert(clip);
+                            frame(&mut app, &ctx, vec![]);
+                            frame(&mut app, &ctx, vec![]);
+                            let before = app.session.project.tracks[0].clone();
+                            let units: Vec<_> = app
+                                .instrument_ui
+                                .component_slots
+                                .iter()
+                                .filter(|(id, c, _)| {
+                                    *id == owner
+                                        && (all
+                                            || matches!(
+                                                c,
+                                                InstrumentComponent::Envelope(_)
+                                                    | InstrumentComponent::Lfo(_)
+                                            ))
+                                })
+                                .map(|(_, c, _)| *c)
+                                .collect();
+                            for (n, c) in units.iter().enumerate() {
+                                click_component(&mut app, &ctx, owner, *c, n > 0);
+                            }
+                            assert_eq!(
+                                app.instrument_ui.selected_components,
+                                units.iter().map(|c| (owner, *c)).collect()
+                            );
+                            app.dirty = false;
+                            frame(
+                                &mut app,
+                                &ctx,
+                                vec![component_delete_key(key, false, egui::Modifiers::SHIFT)],
+                            );
+                            assert!(app.error.is_none(), "{:?}", app.error);
+                            assert!(app.dirty);
+                            assert!(app.instrument_ui.selected_components.is_empty());
+                            let mut expected = before.instrument.clone().unwrap();
+                            for c in &units {
+                                match *c {
+                                    InstrumentComponent::Oscillators => {
+                                        expected.layers[0].oscillators.clear();
+                                        expected.layers[0].oscillator_modulations.clear();
+                                    }
+                                    InstrumentComponent::Envelope(id) => {
+                                        if main {
+                                            expected
+                                                .main
+                                                .envelopes
+                                                .iter_mut()
+                                                .find(|e| e.id == id)
+                                                .unwrap()
+                                                .present = false;
+                                        } else {
+                                            expected.layers[0]
+                                                .envelopes
+                                                .iter_mut()
+                                                .find(|e| e.id == id)
+                                                .unwrap()
+                                                .present = false;
+                                        }
+                                    }
+                                    InstrumentComponent::Lfo(id) => {
+                                        if main {
+                                            expected
+                                                .main
+                                                .lfos
+                                                .iter_mut()
+                                                .find(|l| l.id == id)
+                                                .unwrap()
+                                                .present = false;
+                                        } else {
+                                            expected.layers[0]
+                                                .lfos
+                                                .iter_mut()
+                                                .find(|l| l.id == id)
+                                                .unwrap()
+                                                .present = false;
+                                        }
+                                    }
+                                    InstrumentComponent::Macros => {
+                                        if main {
+                                            expected.main.macro_module.present = false;
+                                        } else {
+                                            expected.layers[0].macro_module.present = false;
+                                        }
+                                    }
+                                    InstrumentComponent::Amplitude => {
+                                        expected.layers[0].amplitude.present = false
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
+                            assert_eq!(
+                                app.session.project.tracks[0].instrument,
+                                Some(expected.clone())
+                            );
+                            assert_eq!(app.selected_track, Some(track));
+                            assert_eq!(app.selected_clip, Some(clip));
+                            assert_eq!(
+                                serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
+                                serde_json::to_value(&before.clips).unwrap()
+                            );
+                            app.dirty = false;
+                            for repeat in [true, true, true, false] {
+                                frame(
+                                    &mut app,
+                                    &ctx,
+                                    vec![component_delete_key(key, repeat, egui::Modifiers::NONE)],
+                                );
+                            }
+                            assert_eq!(app.session.project.tracks[0].instrument, Some(expected));
+                            assert_eq!(
+                                serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
+                                serde_json::to_value(&before.clips).unwrap()
+                            );
+                            assert!(!app.dirty);
+                            app.session.project.validate().unwrap();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn component_delete_respects_focus_text_modifiers_modal_and_drag_guards() {
+    for guard in [
+        "repeat",
+        "ctrl",
+        "alt",
+        "command",
+        "outside",
+        "surrender",
+        "window",
+        "disabled",
+        "modal",
+        "drag",
+        "pointer",
+        "view",
+        "name",
+    ] {
+        let (mut app, ctx, owner, moving) =
+            order_setup(settings::ColorTheme::Dark, true, false, true);
+        let track = app.session.project.tracks[0].id;
+        let clip = app.session.project.add_midi_pattern(track, 0).unwrap();
+        app.selected_clip = Some(clip);
+        app.selected_clips.insert(clip);
+        click_component(&mut app, &ctx, owner, moving, false);
+        let original = app.session.project.tracks[0].instrument.clone();
+        let clips = serde_json::to_value(&app.session.project.tracks[0].clips).unwrap();
+        let mut modifiers = egui::Modifiers::NONE;
+        match guard {
+            "repeat" => ctx.input_mut(|input| {
+                input.keys_down.insert(egui::Key::Delete);
+            }),
+            "ctrl" => modifiers = egui::Modifiers::CTRL,
+            "alt" => modifiers = egui::Modifiers::ALT,
+            "command" => modifiers = egui::Modifiers::COMMAND,
+            "outside" => {
+                let point = app.midi_editor.layer_bounds[&owner].label.center();
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point), event(point, true, false)],
+                );
+                frame(&mut app, &ctx, vec![event(point, false, false)]);
+                // Another pane owns its own clip shortcuts.
+                app.selected_clip = None;
+                app.selected_clips.clear();
+            }
+            "surrender" => {
+                let id = ctx.memory(|m| m.focused()).unwrap();
+                ctx.memory_mut(|m| m.surrender_focus(id));
+                app.selected_clip = None;
+                app.selected_clips.clear();
+            }
+            "modal" => app.unsaved_prompt = true,
+            "drag" => {
+                let p = source(&app, owner, moving);
+                start(&mut app, &ctx, p);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(p + Vec2::new(30.0, 0.0))],
+                );
+            }
+            "pointer" => {
+                let p = app.midi_editor.layer_bounds[&owner].oscillators[0].center();
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(p), event(p, true, false)],
+                );
+            }
+            "view" => {
+                app.set_view_mode(ViewMode::Mixer, &ctx);
+                app.selected_clip = None;
+                app.selected_clips.clear();
+            }
+            "name" => {
+                app.track_name_edit = Some(TrackNameEdit {
+                    track,
+                    text: "MIDI 1".into(),
+                    focus: false,
+                })
+            }
+            _ => {}
+        }
+        app.dirty = false;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                focused: guard != "window",
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                events: vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    component_delete_key(egui::Key::Delete, guard == "repeat", modifiers),
+                ],
+                ..Default::default()
+            },
+            |ui| {
+                ui.add_enabled_ui(guard != "disabled", |ui| app.show(ui));
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(
+            app.session.project.tracks[0].instrument, original,
+            "{guard}"
+        );
+        assert_eq!(
+            serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
+            clips,
+            "{guard}"
+        );
+        assert!(!app.dirty, "{guard}");
+    }
+}
+
+#[test]
+fn component_delete_edits_macro_name_text_without_removing_units() {
+    for key in [egui::Key::Delete, egui::Key::Backspace] {
+        let (mut app, ctx, owner, _) = order_setup(settings::ColorTheme::Dark, false, true, false);
+        let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        i.main.envelopes[0].collapsed = true;
+        i.main.lfos[0].collapsed = true;
+        i.main.macro_module.add();
+        frame(&mut app, &ctx, vec![]);
+        click_component(&mut app, &ctx, owner, InstrumentComponent::Macros, false);
+        super::macros::begin_macro_rename(&mut app, &ctx, "Macro 1");
+        let before = app.session.project.tracks[0].instrument.clone();
+        app.dirty = false;
+        frame(
+            &mut app,
+            &ctx,
+            vec![component_delete_key(key, false, egui::Modifiers::NONE)],
+        );
+        assert!(app.instrument_ui.macro_name_edit.is_some());
+        assert_eq!(app.session.project.tracks[0].instrument, before);
+        assert!(!app.dirty);
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::Text("Tone".into()),
+                component_delete_key(egui::Key::Enter, false, egui::Modifiers::NONE),
+            ],
+        );
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .main
+                .macro_module
+                .controls[0]
+                .display_name(0),
+            "Tone"
+        );
+    }
+}
