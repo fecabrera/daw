@@ -82,13 +82,9 @@ pub(super) fn body(
                 ui.set_min_height(body_height(compact));
                 if !compact {
                     knobs::row(ui, &mut settings.timing, knobs::CHOICE_SIZE, timing);
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
-                        egui::Layout::top_down(egui::Align::Center),
-                        |ui| {
-                            note_mode(ui, mode, shared_only);
-                        },
-                    );
+                    crate::modulation_panel::selector_row(ui, "Mode", |ui| {
+                        note_mode(ui, mode, shared_only)
+                    });
                     ui.allocate_exact_size(
                         Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
                         Sense::hover(),
@@ -245,11 +241,9 @@ fn timing(ui: &mut Ui, timing: &mut EnvelopeTiming) -> egui::Response {
     )
 }
 fn note_mode(ui: &mut Ui, mode: &mut EnvelopeMode, shared_only: bool) -> egui::Response {
-    ui.vertical_centered(|ui| {
-        ui.label(egui::RichText::new("Mode").size(panels::HEADER_FONT_SIZE));
-        egui::ComboBox::from_id_salt("envelope-mode")
+    egui::ComboBox::from_id_salt("envelope-mode")
             .selected_text(egui::RichText::new(mode.label()).size(panels::HEADER_FONT_SIZE))
-            .width(ui.available_width())
+            .width(crate::modulation_panel::SELECTOR_WIDTH)
             .truncate()
             .show_ui(ui, |ui| {
                 for choice in EnvelopeMode::ALL {
@@ -259,8 +253,7 @@ fn note_mode(ui: &mut Ui, mode: &mut EnvelopeMode, shared_only: bool) -> egui::R
                         "Per note is unavailable on Main and for shared modulation consumers.",
                     );
                 }
-            }).response
-    }).inner.on_hover_text(
+            }).response.on_hover_text(
         "Per note: independent envelope and duration. Retrigger: restart for every note using its length. Legato: keep the first held note's envelope and duration until the last note ends.",
     )
 }

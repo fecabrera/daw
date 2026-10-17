@@ -7,6 +7,7 @@ use crate::{
 use daw_core::{InstrumentSettings, Modulation, ModulationParameter, ModulationSourceId};
 use daw_unit_core::{ModulationRange, ModulationScope};
 use egui::{Rect, Ui, Vec2};
+pub(super) const SELECTOR_WIDTH: f32 = 65.0;
 #[derive(Clone)]
 pub(super) struct Source {
     pub id: ModulationSourceId,
@@ -164,11 +165,10 @@ pub(super) fn targeted_body(
                                     },
                                     |s| s.label.as_str(),
                                 );
-                            rows::centered(ui, knobs::CHOICE_SIZE, |ui| {
-                                ui.set_min_height(knobs::CHOICE_SIZE);
+                            selector_row(ui, "Source", |ui| {
                                 egui::ComboBox::from_id_salt("source")
                                     .selected_text(egui::RichText::new(selected).size(panels::HEADER_FONT_SIZE))
-                                    .width(65.0)
+                                    .width(SELECTOR_WIDTH)
                                     .truncate()
                                     .show_ui(ui, |ui| {
                                         ui.selectable_value(&mut route.source, None, "None");
@@ -183,11 +183,10 @@ pub(super) fn targeted_body(
                                     .response
                                     .on_hover_text(if scope==ModulationScope::PerNote {"Modulation source"}else{"Shared modulation source. Per-note sources cannot feed this unit."})
                             });
-                            rows::centered(ui, knobs::CHOICE_SIZE, |ui| {
-                                ui.set_min_height(knobs::CHOICE_SIZE);
+                            selector_row(ui, "Destination", |ui| {
                                 egui::ComboBox::from_id_salt("parameter")
                                     .selected_text(egui::RichText::new(targets.iter().find(|t| t.parameter == route.parameter && t.id == route.target).map_or("Unavailable", |t| t.label.as_str())).size(panels::HEADER_FONT_SIZE))
-                                    .width(65.0)
+                                    .width(SELECTOR_WIDTH)
                                     .truncate()
                                     .show_ui(ui, |ui| {
                                         for target in targets {
@@ -275,6 +274,28 @@ pub(super) fn targeted_body(
         route.target = targets[0].id;
         routes.push(route);
     }
+}
+
+/// Keep the label and dropdown inside the same standard control row.
+pub(super) fn selector_row(
+    ui: &mut Ui,
+    label: &str,
+    selector: impl FnOnce(&mut Ui) -> egui::Response,
+) {
+    ui.allocate_ui_with_layout(
+        Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
+        egui::Layout::top_down(egui::Align::Center),
+        |ui| {
+            ui.set_min_height(knobs::CHOICE_SIZE);
+            ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING) * 0.5;
+            ui.label(
+                egui::RichText::new(label)
+                    .size(panels::HEADER_FONT_SIZE)
+                    .color(theme::palette(ui.ctx()).secondary),
+            );
+            selector(ui);
+        },
+    );
 }
 
 /// Apply destination-owned limits to both the possible-range arc and its tooltip.

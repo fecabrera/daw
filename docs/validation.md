@@ -2294,3 +2294,17 @@ Checks with the workspace Cargo cache selected:
 - Changed documentation links and `git diff --check`: passed.
 
 Native UI/device playback and Windows/Linux builds were not run. Automated egui checks do not establish native pointer or device behavior.
+
+
+## Modulation selector labels — 2026-10-16
+
+Expanded modulation strips now show Source and Destination above their respective dropdowns through the shared `modulation_panel.rs` row helper. Captions use the shared 11-point secondary theme text. Control rows keep their existing height, and modulation footers remain aligned with the regular controls. Compact strips retain their footer-only layout. Oscillator, Amplitude, Auto-filter, Drive, and LFO reuse these labels. Envelope Mode reuses the same labeled row, secondary caption color, spacing, and dropdown width. See [shared modulation controls](modulation.md#repeated-destinations).
+
+Checks with the workspace Cargo cache selected:
+
+- `cargo test --workspace`: 706 passed, zero failed, two existing expanded time-stretch matrices ignored.
+- All 398 existing UI tests also passed after the final Envelope Mode style change, including expanded modulation controls, footer alignment, selection, reordering, and both-theme unit geometry.
+- Formatting, strict workspace Clippy, and `git diff --check`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+
+Native UI, audio-device playback, and Windows/Linux builds were not run. CLI smoke checks were not repeated for this UI-only change.
