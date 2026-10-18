@@ -73,6 +73,7 @@ pub(super) fn key(app: &mut DawUi, ctx: &egui::Context, key: egui::Key, shift: b
 
 fn fixture(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id, [Id; 2]) {
     let mut app = DawUi::default();
+    app.instrument_catalog.expand_folders();
     let track = app.session.project.add_midi_track().unwrap();
     let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
     instrument.layers[0].collapsed = true;
@@ -96,6 +97,94 @@ fn fixture(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id, [Id; 2]) {
     (app, ctx, track, layers)
 }
 
+#[test]
+fn both_catalogs_start_collapsed_and_retain_independent_expansion_choices() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for view in [ViewMode::Timeline, ViewMode::Instrument] {
+            let mut app = DawUi::default();
+            let track = app.session.project.add_midi_track().unwrap();
+            app.select_track(track, false);
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme,
+                    ..Default::default()
+                },
+            );
+            app.set_view_mode(view, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let original = serde_json::to_value(&app.session.project).unwrap();
+            assert!(app.effects_bounds.folders.iter().all(Rect::is_positive));
+            assert_eq!(
+                [
+                    app.effects_bounds.entry,
+                    app.effects_bounds.auto_filter_entry,
+                    app.effects_bounds.compressor_entry,
+                    app.effects_bounds.ott_entry,
+                    app.effects_bounds.limiter_entry,
+                    app.effects_bounds.drive_entry,
+                ],
+                [Rect::NOTHING; 6]
+            );
+            let folder = app.effects_bounds.folders[0].center();
+            click(&mut app, &ctx, folder, false);
+            assert!(app.effects_bounds.entry.is_positive());
+            assert!(app.effects_bounds.auto_filter_entry.is_positive());
+            assert_eq!(app.effects_bounds.compressor_entry, Rect::NOTHING);
+            assert_eq!(app.effects_bounds.drive_entry, Rect::NOTHING);
+            for _ in 0..2 {
+                let toggle = app.effects_bounds.library_toggle.center();
+                click(&mut app, &ctx, toggle, false);
+            }
+            assert!(app.effects_bounds.entry.is_positive());
+            app.set_view_mode(ViewMode::Instrument, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            let toggle = app.instrument_catalog_bounds.toggle.center();
+            click(&mut app, &ctx, toggle, false);
+            assert!(
+                app.instrument_catalog_bounds
+                    .folders
+                    .iter()
+                    .all(Rect::is_positive)
+            );
+            assert_eq!(app.instrument_catalog_bounds.entries, [Rect::NOTHING; 6]);
+            let sources = app.instrument_catalog_bounds.folders[0].center();
+            click(&mut app, &ctx, sources, false);
+            assert!(app.instrument_catalog_bounds.entries[0].is_positive());
+            assert!(app.instrument_catalog_bounds.entries[5].is_positive());
+            for index in [1, 2, 3, 4] {
+                assert_eq!(app.instrument_catalog_bounds.entries[index], Rect::NOTHING);
+            }
+            let toggle = app.effects_bounds.library_toggle.center();
+            click(&mut app, &ctx, toggle, false);
+            assert!(app.effects_bounds.entry.is_positive());
+            assert_eq!(app.effects_bounds.compressor_entry, Rect::NOTHING);
+            assert_eq!(app.effects_bounds.drive_entry, Rect::NOTHING);
+            let toggle = app.instrument_catalog_bounds.toggle.center();
+            click(&mut app, &ctx, toggle, false);
+            assert!(app.instrument_catalog_bounds.entries[0].is_positive());
+            assert_eq!(app.instrument_catalog_bounds.entries[1], Rect::NOTHING);
+            let sources = app.instrument_catalog_bounds.folders[0].center();
+            click(&mut app, &ctx, sources, false);
+            key(&mut app, &ctx, egui::Key::ArrowDown, false, false);
+            key(&mut app, &ctx, egui::Key::Enter, false, false);
+            for index in [1, 2, 4] {
+                assert!(app.instrument_catalog_bounds.entries[index].is_positive());
+            }
+            assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
+            assert_eq!(app.instrument_catalog_bounds.entries[3], Rect::NOTHING);
+            assert!(app.component_drag.is_none() && app.effects_drag.is_none());
+            assert_eq!(
+                serde_json::to_value(&app.session.project).unwrap(),
+                original
+            );
+            assert!(!app.dirty);
+        }
+    }
+}
+
 fn open(app: &mut DawUi, ctx: &egui::Context) {
     let point = app.instrument_catalog_bounds.toggle.center();
     click(app, ctx, point, false);
@@ -112,6 +201,10 @@ pub(super) fn add_component(app: &mut DawUi, ctx: &egui::Context, layer: Id, ind
     let effects_was_open = app.timeline_catalog_visible;
     if !was_open {
         open(app, ctx);
+    }
+    if !app.instrument_catalog_bounds.entries[index].is_positive() {
+        app.instrument_catalog.expand_folders();
+        frame(app, ctx, vec![]);
     }
     // Separate this click from earlier button and context-menu clicks.
     for _ in 0..40 {

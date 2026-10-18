@@ -2624,3 +2624,15 @@ The Effects catalog now groups 3-band EQ and Auto-filter under EQ & Filters; Com
 `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched.
 
 Native pointer/trackpad, display-scale, accessibility-client, Windows, and Linux checks were not performed. Automated egui checks do not establish native rendering or input behavior. This change does not alter audio processing or project serialization.
+
+## Collapsed catalog defaults — 2026-10-17
+
+`Catalog::with_folders` now initializes every category as collapsed. Instrument components and Effects use this same default without adapter-specific overrides. This supersedes the initial expanded defaults recorded in the earlier category entries. User expansion choices remain independent UI state for each catalog and survive catalog/view switches during the application session.
+
+A fresh-application egui regression covers both themes and initial Timeline/Instrument views. It checks hidden children in both catalogs, mouse expansion, keyboard opening of a collapsed folder, untouched categories remaining collapsed, independent expansion choices across catalog switches, hide/show retention, no drag capture, unchanged project data, and a clean modified flag. `cargo test -p daw-ui --offline both_catalogs_start_collapsed -- --nocapture` passes. Existing control fixtures now explicitly expand folders through a shared test-only helper when they need visible entries; startup tests use the actual default.
+
+`cargo test --workspace --offline` passes: 807 tests pass, including all 449 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored. `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. Local Markdown file/heading links and `git diff --check` pass. Current user guides, component/editing specifications, architecture summaries, and repository instructions now state the collapsed default. Historical validation remains intact.
+
+`CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched.
+
+Native appearance, pointer/trackpad, display-scale, accessibility-client, Windows, and Linux checks were not performed. Automated egui checks do not establish native rendering or input behavior. This change does not alter audio processing or project serialization.

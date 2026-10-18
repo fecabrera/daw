@@ -5,6 +5,7 @@ fn categorized_catalog_fixture(
     target: &str,
 ) -> (DawUi, egui::Context) {
     let mut app = DawUi::default();
+    app.effects_catalog.expand_folders();
     let track = app.session.project.add_midi_track().unwrap();
     app.select_track(track, false);
     let ctx = context();
@@ -3215,6 +3216,7 @@ fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
         let (mut app, mut track) = fixture();
         if view == ViewMode::Instrument {
             app = DawUi::default();
+            app.effects_catalog.expand_folders();
             track = app.session.project.add_midi_track().unwrap();
         }
         let ctx = context();
@@ -3891,6 +3893,7 @@ fn selecting_master_shows_its_independent_chain_and_restores_track_effects_in_th
         assert!(app.session.project.master.effects.is_empty());
     }
     let mut app = DawUi::default();
+    app.effects_catalog.expand_folders();
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
@@ -3908,6 +3911,7 @@ fn selecting_master_shows_its_independent_chain_and_restores_track_effects_in_th
 fn instrument_reuses_the_effects_toolbar_catalog_and_lane_with_shared_visibility() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let mut app = DawUi::default();
+        app.effects_catalog.expand_folders();
         let track = app.session.project.add_midi_track().unwrap();
         app.select_track(track, false);
         app.session.project.tracks[0]
@@ -3985,6 +3989,7 @@ fn effects_lane_toolbar_stays_pinned_and_edits_saved_compact_state() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for target in ["track", "master", "instrument"] {
             let mut app = DawUi::default();
+            app.effects_catalog.expand_folders();
             let track = app.session.project.add_midi_track().unwrap();
             app.select_track(track, false);
             let effects: Vec<_> = (0..10)

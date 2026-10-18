@@ -110,10 +110,18 @@ impl Catalog {
                     .enumerate()
                     .filter_map(|(index, entry)| types.contains(&entry.0).then_some(index))
                     .collect(),
-                open: true,
+                open: false,
             })
             .collect();
         self
+    }
+
+    /// Set up control tests that require visible entries; startup tests use the default.
+    #[cfg(test)]
+    pub fn expand_folders(&mut self) {
+        for folder in &mut self.folders {
+            folder.open = true;
+        }
     }
 
     fn visible_rows(&self) -> Vec<Row> {

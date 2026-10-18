@@ -4,7 +4,7 @@ An instrument creates audio from MIDI notes. Effects change audio from a track o
 
 ## Instrument components
 
-The Instrument components catalog has three folders. Each folder starts open. Click its row to hide or show its components. Folder choices remain in place while the application is open.
+The Instrument components catalog has three folders. Each folder starts collapsed. Click its row to hide or show its components. Folder choices remain in place while the application is open.
 
 | Folder | Component | Use |
 | --- | --- | --- |
@@ -37,7 +37,7 @@ The Effects catalog has three folders in Timeline and Instrument:
 | Dynamics | [Compressor](../effects/compressor.md), [OTT](../effects/ott.md), [Limiter](../effects/limiter.md) |
 | Distortion | [Drive](../effects/drive.md) |
 
-Folders start open. Click a folder to hide or show its effects. Use Up/Down to move through visible rows. Enter or Space toggles a focused folder; Left closes it and Right opens it. Left on an effect closes its folder. Closing a folder deselects its hidden effects. Each catalog retains its own folder choices while the application is open.
+Folders start collapsed. Click a folder to hide or show its effects. Use Up/Down to move through visible rows. Enter or Space toggles a focused folder; Left closes it and Right opens it. Left on an effect closes its folder. Closing a folder deselects its hidden effects. Each catalog retains its own folder choices while the application is open.
 
 Select the destination track or Master before adding an effect. Double-click an effect to add it. Shift-click selects effects across open folders; Enter on an effect adds the selection in folder order. Drag selected effects into the lane to choose their insertion point, then release to add them. Escape or an invalid drop cancels. Scroll when the catalog does not fit.
 

@@ -507,9 +507,9 @@ Delete/Backspace removes selected installed component units from the focused reg
 
 ## Instrument catalog categories — 2026-10-17
 
-Group registered components under Sources (Oscillator, Sampler), Modulators (Envelope, LFO, Macro), and Processors (Amplitude). All folders start open and retain expansion as application UI state. Reuse the shared catalog, `ControlPanel` row painting, selection/focus, keyboard navigation, and drag capture. See [catalog folders](../editing/components.md#instrument-catalog-folders) for registration, visible-row order, scrolling, hidden selection pruning, guards, and acceptance.
+Group registered components under Sources (Oscillator, Sampler), Modulators (Envelope, LFO, Macro), and Processors (Amplitude). All folders start collapsed and retain expansion as application UI state. Reuse the shared catalog, `ControlPanel` row painting, selection/focus, keyboard navigation, and drag capture. See [catalog folders](../editing/components.md#instrument-catalog-folders) for registration, visible-row order, scrolling, hidden selection pruning, guards, and acceptance.
 
 
 ## Effects catalog categories — 2026-10-17
 
-Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), and Distortion (Drive). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially open. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
+Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), and Distortion (Drive). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.

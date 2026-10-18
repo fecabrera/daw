@@ -137,6 +137,7 @@ fn lfo_panel_uses_shared_height_power_and_seven_editable_controls_in_both_themes
 #[test]
 fn lfo_catalog_enter_and_drag_share_the_existing_component_actions() {
     let mut app = DawUi::default();
+    app.instrument_catalog.expand_folders();
     let track = app.session.project.add_midi_track().unwrap();
     app.select_track(track, false);
     let ctx = context();

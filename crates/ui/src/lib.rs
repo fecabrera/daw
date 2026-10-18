@@ -4630,6 +4630,7 @@ mod tests {
 
     fn fixture() -> (DawUi, Id) {
         let mut app = DawUi::default();
+        app.effects_catalog.expand_folders();
         let track = app.session.project.add_track().unwrap();
         let asset = Id::new_v4();
         app.session.project.assets.push(daw_core::Asset {

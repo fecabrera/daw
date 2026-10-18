@@ -2,6 +2,7 @@ use super::instrument_catalog::{click, key};
 use super::*;
 fn setup(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id) {
     let mut app = DawUi::default();
+    app.instrument_catalog.expand_folders();
     let track = app.session.project.add_midi_track().unwrap();
     app.select_track(track, false);
     let ctx = context();
