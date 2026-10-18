@@ -480,7 +480,9 @@ pub(super) fn marker(
         | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
         ModulationParameter::LfoRate => offsets.map(|o| (base * 2.0_f32.powf(o)).max(0.0)),
         ModulationParameter::Pitch => offsets.map(|o| base + o.clamp(-96.0, 96.0)),
-        ModulationParameter::Frequency
+        ModulationParameter::StereoSpreadLowerFrequency
+        | ModulationParameter::StereoSpreadUpperFrequency
+        | ModulationParameter::Frequency
         | ModulationParameter::EqLowFrequency
         | ModulationParameter::EqHighFrequency => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(20.0, 20_000.0))
@@ -499,6 +501,10 @@ pub(super) fn marker(
             } else {
                 offsets.map(|o| (base + o.clamp(-96.0, 96.0)).clamp(daw_core::SILENT_GAIN_DB, 12.0))
             }
+        }
+        ModulationParameter::StereoSpreadLowerIntensity
+        | ModulationParameter::StereoSpreadUpperIntensity => {
+            offsets.map(|o| (base + o).clamp(-1.0, 1.0))
         }
         ModulationParameter::OttLowDepth
         | ModulationParameter::OttMidDepth
@@ -545,6 +551,13 @@ pub(super) fn marker(
             "Crossovers retain a 1 Hz gap; High is raised when modulated boundaries meet.".into(),
         );
     }
+    if matches!(
+        parameter,
+        ModulationParameter::StereoSpreadLowerFrequency
+            | ModulationParameter::StereoSpreadUpperFrequency
+    ) {
+        lines.push("Frequencies retain a 1 Hz gap; Lower is limited below Upper when modulated boundaries meet.".into());
+    }
     let format_value = |value: f32| match parameter {
         ModulationParameter::DirectionMixerDirection => format!("{value:.0}°"),
         ModulationParameter::DirectionMixerSpread => format!("{value:.2}"),
@@ -568,7 +581,9 @@ pub(super) fn marker(
             format!("{value:.1} ms")
         }
         ModulationParameter::Pitch => format!("{value:+.2} semitones"),
-        ModulationParameter::OttLowFrequency
+        ModulationParameter::StereoSpreadLowerFrequency
+        | ModulationParameter::StereoSpreadUpperFrequency
+        | ModulationParameter::OttLowFrequency
         | ModulationParameter::OttHighFrequency
         | ModulationParameter::Frequency
         | ModulationParameter::ColorFrequency
@@ -597,7 +612,9 @@ pub(super) fn marker(
                 format!("{value:.1} dB")
             }
         }
-        ModulationParameter::OttLowDepth
+        ModulationParameter::StereoSpreadLowerIntensity
+        | ModulationParameter::StereoSpreadUpperIntensity
+        | ModulationParameter::OttLowDepth
         | ModulationParameter::OttMidDepth
         | ModulationParameter::OttHighDepth
         | ModulationParameter::MacroValue

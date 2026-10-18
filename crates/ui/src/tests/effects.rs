@@ -348,8 +348,22 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1], entries[6]],
+                vec![
+                    entries[3], entries[4], entries[5], entries[1], entries[6], entries[7],
+                ],
+            ), // Stereo Spread.
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![
+                    entries[3], entries[4], entries[5], entries[1], entries[6], entries[7],
+                ],
             ), // No wrap.
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![entries[3], entries[4], entries[5], entries[1], entries[6]],
+            ), // Direction Mixer.
             (
                 egui::Key::ArrowUp,
                 true,
@@ -425,7 +439,7 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         let blank = Rect::from_min_max(
             Pos2::new(
                 app.effects_bounds.library.left(),
-                app.effects_bounds.direction_mixer_entry.bottom(),
+                app.effects_bounds.stereo_spread_entry.bottom(),
             ),
             app.effects_bounds.library.max,
         );
@@ -4552,6 +4566,93 @@ fn direction_mixer_controls_and_catalog_use_shared_track_master_and_instrument_a
                     .all(|r| !r.is_positive())
             );
             let point = app.effects_bounds.direction_mixer_units[0].header.center();
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::Delete, false);
+            assert!(app.effect_chain(owner).unwrap().0.is_empty());
+        }
+    }
+}
+
+#[test]
+fn stereo_spread_shared_controls_add_edit_reset_and_remove_on_every_target() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+            let point = app.effects_bounds.stereo_spread_entry.center();
+            assert!(app.effects_bounds.stereo_spread_entry.is_positive());
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::Enter, false);
+            frame(&mut app, &ctx, vec![]);
+            let owner = app.effects_target().unwrap();
+            let daw_core::EffectSettings::StereoSpread(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert_eq!(*s, daw_core::StereoSpreadSettings::default());
+            let b = &app.effects_bounds.stereo_spread_units[0];
+            assert!(b.controls.iter().all(|r| r.is_positive()));
+            for section in b.sections {
+                assert_eq!(section.width(), 90.0);
+            }
+            assert!(
+                b.sections
+                    .windows(2)
+                    .all(|p| p[0].right() == p[1].left() && p[0].height() == p[1].height())
+            );
+            for i in 0..4 {
+                let point = app.effects_bounds.stereo_spread_units[0].controls[i].center();
+                drag_control(
+                    &mut app,
+                    &ctx,
+                    point,
+                    Vec2::new(0.0, if i == 3 { 18.0 } else { -18.0 }),
+                );
+            }
+            let point = app.effects_bounds.stereo_spread_units[0].controls[4].center();
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::ArrowRight, false);
+            let daw_core::EffectSettings::StereoSpread(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert!(s.lower_intensity > 0.0 && s.upper_intensity > 0.0);
+            assert!(s.lower_frequency_hz > 20.0 && s.upper_frequency_hz < 20000.0);
+            assert_eq!(s.order, 9);
+            assert!(s.valid());
+            for i in 0..5 {
+                let point = app.effects_bounds.stereo_spread_units[0].controls[i].center();
+                end_click_sequence(&mut app, &ctx);
+                click(&mut app, &ctx, point);
+                click(&mut app, &ctx, point);
+            }
+            let daw_core::EffectSettings::StereoSpread(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert_eq!(*s, daw_core::StereoSpreadSettings::default());
+            let point = app.effects_bounds.stereo_spread_units[0].power.center();
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, point);
+            let daw_core::EffectSettings::StereoSpread(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert!(!s.enabled);
+            let point = app.effects_bounds.lane_compact.center();
+            click(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert!(
+                app.effects_bounds.stereo_spread_units[0]
+                    .controls
+                    .iter()
+                    .all(|r| !r.is_positive())
+            );
+            let point = app.effects_bounds.stereo_spread_units[0].header.center();
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Delete, false);
             assert!(app.effect_chain(owner).unwrap().0.is_empty());

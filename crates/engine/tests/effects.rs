@@ -1246,3 +1246,79 @@ fn direction_mixer_lr_spread_changes_stereo_width_on_tracks_master_and_live_upda
         }
     }
 }
+
+#[test]
+fn stereo_spread_live_offline_master_and_prepared_order_updates_share_processing() {
+    for rate in SAMPLE_RATES {
+        for master in [false, true] {
+            let baseline = plan(rate, true);
+            let mut p = baseline.clone();
+            let mut effect = EffectInstance::stereo_spread();
+            let EffectSettings::StereoSpread(s) = &mut effect.unit else {
+                unreachable!()
+            };
+            s.lower_intensity = 0.5;
+            s.upper_intensity = 0.5;
+            let id = effect.id;
+            if master {
+                p.project.master.effects.push(effect);
+            } else {
+                p.project.tracks[0].effects.push(effect);
+            }
+            let mut expected = vec![[0.0; 2]; 8192];
+            Renderer::new(p.clone()).render_offline(&mut expected);
+            let mut dry = vec![[0.0; 2]; 8192];
+            Renderer::new(baseline).render_offline(&mut dry);
+            assert!(expected.iter().any(|[l, r]| (l - r).abs() > 0.001));
+            let mut live = Renderer::new(p.clone());
+            live.play();
+            for (frame, sample) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                assert!(((sample[0] + sample[1]) * 0.5 - dry[frame][0]).abs() < 1e-6);
+                if frame >= rate as usize / 200 {
+                    for ch in 0..2 {
+                        assert!((actual[ch] - sample[ch]).abs() < 1e-6);
+                    }
+                }
+            }
+            let mut output = vec![[0.0; 2]; 8192];
+            let mut blocks = Renderer::new(p.clone());
+            for buffer in output.chunks_mut(128) {
+                blocks.render_offline(buffer);
+            }
+            assert_eq!(output, expected);
+            let mut random = [[0.0; 2]; 64];
+            p.render(1000, &mut random);
+            assert_eq!(random.as_slice(), &expected[1000..1064]);
+            live.seek(1000);
+            for _ in 0..512 {
+                live.next_sample();
+            }
+            let chain = if master {
+                &mut p.project.master.effects
+            } else {
+                &mut p.project.tracks[0].effects
+            };
+            let EffectSettings::StereoSpread(s) = &mut chain[0].unit else {
+                unreachable!()
+            };
+            s.order = 12;
+            s.lower_frequency_hz = 1000.0;
+            let mut replacement = Renderer::new(p.clone());
+            ALLOCATIONS.with(|c| c.set(0));
+            TRACK_ALLOCATIONS.with(|c| c.set(true));
+            replacement.inherit(&mut live);
+            for _ in 0..rate / 50 {
+                assert!(replacement.next_sample().iter().all(|v| v.is_finite()));
+            }
+            let snapshot = replacement
+                .modulation_snapshot(daw_engine::ModulationTarget::Effect(id))
+                .unwrap();
+            assert!((snapshot[2] - 1000.0).abs() < 0.02);
+            replacement.seek(1000);
+            replacement.stop();
+            TRACK_ALLOCATIONS.with(|c| c.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        }
+    }
+}

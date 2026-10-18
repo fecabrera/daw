@@ -768,4 +768,9 @@ Verify enabled and initially disabled units, immediate clearing, no writes while
 
 ## Direction Mixer — 2026-10-18
 
-Follow [Direction Mixer](../effects/direction-mixer.md) for stereo and M/S input interpretation, direction/width equations, ranges/defaults, one-strip layout, shared modulation targets, route/source scope, and zero-latency bypass. Register Stereo in the categorized Effects catalog while preserving existing entry indices. Verify portable DSP at every rate, track/Master decoding, live/export/block/seek/loop parity, allocation-free replacement, common snapshots, model/storage/source-remapping rules, both-theme controls and connections, and unchanged existing effects. Keep executed results in [validation history](../validation/README.md).
+Follow [Direction Mixer](../effects/direction-mixer.md) for stereo and M/S input interpretation, direction/width equations, ranges/defaults, one-strip layout, shared modulation targets, route/source scope, and zero-latency bypass. Use Imaging in the categorized Effects catalog while preserving existing entry indices. Verify portable DSP at every rate, track/Master decoding, live/export/block/seek/loop parity, allocation-free replacement, common snapshots, model/storage/source-remapping rules, both-theme controls and connections, and unchanged existing effects. Keep executed results in [validation history](../validation/README.md).
+
+
+## Stereo Spread — 2026-10-18
+
+Follow [Stereo Spread](../effects/stereo-spread.md) for the three-strip control layout, signed intensities and zero defaults, logarithmic frequency bounds, integer Order, independent spectral matrix, fixed banks, smooth transitions, shared modulation/snapshots, persistence, and callback constraints. Verify all project rates, mono fold-down and alternating channel emphasis, signed/base/modulated behavior, out-of-range attenuation, shared/local scope, rapid updates, track/Master/live/export/random-access/loop parity, storage/remapping, native amount controls, both themes, and catalog/selection guards. Record completed checks and reference/native limits in [validation history](../validation/README.md).

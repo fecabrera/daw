@@ -6,6 +6,7 @@ use daw_drive::Drive;
 use daw_equalizer::Equalizer;
 use daw_limiter::Limiter;
 use daw_ott::Ott;
+use daw_stereo_spread::StereoSpread;
 use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_modulation};
 use std::sync::{Arc, atomic::AtomicU32};
 
@@ -17,6 +18,7 @@ enum RuntimeEffect {
     Ott(Box<Ott>, Vec<super::modulation::Route>),
     Limiter(Box<Limiter>, Vec<super::modulation::Route>),
     DirectionMixer(Box<DirectionMixer>, Vec<super::modulation::Route>),
+    StereoSpread(Box<StereoSpread>, Vec<super::modulation::Route>),
 }
 impl RuntimeEffect {
     fn sample(
@@ -99,6 +101,18 @@ impl RuntimeEffect {
                     ..Default::default()
                 },
             ),
+            Self::StereoSpread(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::DirectionMixer(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -152,6 +166,12 @@ impl RuntimeEffect {
                     route.reset();
                 }
             }
+            Self::StereoSpread(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
             Self::DirectionMixer(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -165,6 +185,9 @@ impl RuntimeEffect {
             (Self::Eq3(unit, _), EffectSettings::Eq3(settings)) => unit.retarget(settings),
             (Self::Ott(unit, _), EffectSettings::Ott(settings)) => unit.retarget(settings),
             (Self::Limiter(unit, _), EffectSettings::Limiter(settings)) => unit.retarget(settings),
+            (Self::StereoSpread(unit, _), EffectSettings::StereoSpread(settings)) => {
+                unit.retarget(settings)
+            }
             (Self::DirectionMixer(unit, _), EffectSettings::DirectionMixer(settings)) => {
                 unit.retarget(settings)
             }
@@ -261,6 +284,16 @@ impl EffectChain {
                                     .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
                                     .collect(),
                             )),
+                            EffectSettings::StereoSpread(settings) => {
+                                Some(RuntimeEffect::StereoSpread(
+                                    Box::new(StereoSpread::new(context, settings)),
+                                    settings
+                                        .modulations
+                                        .iter()
+                                        .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                        .collect(),
+                                ))
+                            }
                             EffectSettings::DirectionMixer(settings) => {
                                 Some(RuntimeEffect::DirectionMixer(
                                     Box::new(DirectionMixer::new(context, settings)),
@@ -319,6 +352,10 @@ impl EffectChain {
                 | (
                     RuntimeEffect::DirectionMixer(_, old_routes),
                     RuntimeEffect::DirectionMixer(_, new_routes),
+                )
+                | (
+                    RuntimeEffect::StereoSpread(_, old_routes),
+                    RuntimeEffect::StereoSpread(_, new_routes),
                 ) = (&mut *previous, &mut *next)
                 {
                     daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
@@ -344,6 +381,9 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Limiter(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::StereoSpread(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::DirectionMixer(unit, _)))) => {

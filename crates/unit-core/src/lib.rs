@@ -20,6 +20,8 @@ mod auto_filter;
 mod modulation;
 pub use modulation::*;
 mod compressor;
+mod stereo_spread;
+pub use stereo_spread::{STEREO_SPREAD_STATE_VERSION, STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
 mod direction_mixer;
 pub use direction_mixer::{
     DIRECTION_MIXER_STATE_VERSION, DIRECTION_MIXER_TYPE_ID, DirectionMixerInput,

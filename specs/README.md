@@ -27,6 +27,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [OTT](effects/ott.md)
 - [Limiter](effects/limiter.md)
 - [Direction Mixer](effects/direction-mixer.md)
+- [Stereo Spread](effects/stereo-spread.md)
 
 ## Modulation and audio
 

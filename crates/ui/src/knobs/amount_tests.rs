@@ -3,7 +3,7 @@ use super::*;
 use crate::parameter_knobs;
 use daw_core::ModulationParameter as P;
 
-const PARAMETERS: [P; 50] = [
+const PARAMETERS: [P; 54] = [
     P::OttLowFrequency,
     P::OttHighFrequency,
     P::OttLowDepth,
@@ -23,6 +23,10 @@ const PARAMETERS: [P; 50] = [
     P::OttHighRelease,
     P::DirectionMixerDirection,
     P::DirectionMixerSpread,
+    P::StereoSpreadLowerIntensity,
+    P::StereoSpreadUpperIntensity,
+    P::StereoSpreadLowerFrequency,
+    P::StereoSpreadUpperFrequency,
     P::LimiterInput,
     P::LimiterRelease,
     P::LimiterLookahead,
@@ -74,7 +78,9 @@ fn native_value(parameter: P, amount: f32) -> f32 {
         P::LimiterCeiling | P::SamplerGain | P::Level | P::Volume | P::CompressorThreshold => {
             -amount.abs()
         }
-        P::OttLowFrequency
+        P::StereoSpreadLowerFrequency
+        | P::StereoSpreadUpperFrequency
+        | P::OttLowFrequency
         | P::OttHighFrequency
         | P::OttLowAttack
         | P::OttLowRelease
@@ -114,7 +120,9 @@ fn direction(parameter: P, amount: f32) -> f32 {
         | P::OttMidRelease
         | P::OttHighAttack
         | P::OttHighRelease => 1.0,
-        P::LimiterInput
+        P::StereoSpreadLowerFrequency
+        | P::StereoSpreadUpperFrequency
+        | P::LimiterInput
         | P::LimiterRelease
         | P::Pitch
         | P::Frequency
@@ -182,7 +190,16 @@ fn modulation_keyboard_steps_and_mouse_sensitivity_match_the_native_destination_
         assert_eq!(amount.discrete_step, native.discrete_step);
         assert_eq!(amount.reference_step, native.reference_step);
         assert_eq!(amount.reference_values, native.reference_values);
-        for value in [-0.25 * parameter.limit(), 0.25 * parameter.limit()] {
+        // Upper Frequency resets at its upper bound. Keep native comparison values
+        // inside the base knob range; signed amount bounds are tested separately.
+        let values = if parameter == P::StereoSpreadLowerFrequency {
+            [0.5, 1.5]
+        } else if parameter == P::StereoSpreadUpperFrequency {
+            [-1.5, -0.5]
+        } else {
+            [-0.25 * parameter.limit(), 0.25 * parameter.limit()]
+        };
+        for value in values {
             let native_start = native_value(parameter, value);
             let signed_direction = direction(parameter, value);
             let expected = native

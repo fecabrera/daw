@@ -159,6 +159,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::Compressor(_)
                     | daw_core::EffectSettings::Limiter(_)
                     | daw_core::EffectSettings::DirectionMixer(_)
+                    | daw_core::EffectSettings::StereoSpread(_)
                     | daw_core::EffectSettings::Ott(_)
             )
         })
@@ -1278,8 +1279,17 @@ mod modulation_meter_tests {
             s.spread = 0.5;
         }
         plan.project.tracks[0].effects.push(direction);
+        let mut spread = daw_core::EffectInstance::stereo_spread();
+        let spread_key = ModulationTarget::Effect(spread.id);
+        if let daw_core::EffectSettings::StereoSpread(s) = &mut spread.unit {
+            s.lower_intensity = 0.2;
+            s.upper_intensity = 0.8;
+            s.lower_frequency_hz = 400.0;
+            s.upper_frequency_hz = 10000.0;
+        }
+        plan.project.tracks[0].effects.push(spread);
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 10);
+        assert_eq!(handles.len(), 11);
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1292,6 +1302,11 @@ mod modulation_meter_tests {
             &renderer.modulation_snapshot(direction_key).unwrap()[..2],
             &[45.0, 0.5]
         );
+        let spread = renderer.modulation_snapshot(spread_key).unwrap();
+        for (actual, expected) in spread[..4].iter().zip([0.2, 0.8, 400.0, 10000.0]) {
+            assert!((actual - expected).abs() < 0.02);
+        }
+        assert!(spread[4..].iter().all(|v| v.is_nan()));
         let expected = renderer.modulation_snapshot(key).unwrap();
         let frame = renderer.playhead;
         renderer.publish_track_peaks();

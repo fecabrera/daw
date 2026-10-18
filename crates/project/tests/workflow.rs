@@ -3793,7 +3793,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
         EffectInstance, EffectSettings, LfoInstance, Modulation, ModulationParameter,
         ModulationSourceId,
     };
-    for kind in 0..5 {
+    for kind in 0..6 {
         let fixture = Fixture::new();
         let mut session = Session::default();
         let track = session.project.add_midi_track().unwrap();
@@ -3810,6 +3810,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             EffectInstance::limiter,
             EffectInstance::ott,
             EffectInstance::direction_mixer,
+            EffectInstance::stereo_spread,
         ][kind]();
         let (open, collapsed, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => {
@@ -3819,6 +3820,14 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
             EffectSettings::Limiter(s) => {
+                (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
+            }
+            EffectSettings::StereoSpread(s) => {
+                s.lower_intensity = 0.2;
+                s.upper_intensity = 0.8;
+                s.lower_frequency_hz = 500.0;
+                s.upper_frequency_hz = 12000.0;
+                s.order = 11;
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
             EffectSettings::DirectionMixer(s) => {
@@ -3840,6 +3849,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             &ModulationParameter::LIMITER[..],
             &ModulationParameter::OTT[..],
             &ModulationParameter::DIRECTION_MIXER[..],
+            &ModulationParameter::STEREO_SPREAD[..],
         ][kind]
             .iter()
             .copied()

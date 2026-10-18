@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+daw-stereo-spread.workspace = true
 daw-direction-mixer.workspace = true
 daw-sampler.workspace = true
 daw-macro.workspace = true

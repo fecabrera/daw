@@ -50,7 +50,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 7] = [
+pub(super) const ENTRIES: [Entry; 8] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -92,6 +92,12 @@ pub(super) const ENTRIES: [Entry; 7] = [
         "Direction Mixer",
         Category::Imaging,
         daw_core::EffectInstance::direction_mixer,
+    ),
+    Entry::new(
+        daw_core::STEREO_SPREAD_TYPE_ID,
+        "Stereo Spread",
+        Category::Imaging,
+        daw_core::EffectInstance::stereo_spread,
     ),
 ];
 

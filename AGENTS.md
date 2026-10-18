@@ -43,6 +43,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/sampler` | Portable prepared stereo sample playback, local position, gain/power ramps, and boundary fades; no project, UI, media, or device dependencies. |
 | `crates/oscillator` | FunDSP-backed oscillator sources behind the shared unit API; keep backend types private. |
 | `crates/equalizer` | Reusable stereo 3-band EQ behind the shared effect API; keep FunDSP types private. |
+| `crates/stereo-spread` | Portable spectral stereo widening with private FunDSP filter banks and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/direction-mixer` | Portable stereo direction/width and M/S decoding through the shared effect and modulation APIs; no DAW, UI, or device dependencies. |
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
 | `crates/auto-filter` | Portable stereo filter and transport-locked LFO behind the shared effect API; keep FunDSP types private. |
@@ -172,6 +173,8 @@ The audio callback must remain nonblocking and must not allocate or perform file
 - Limiter uses Limit (Input, Release, Lookahead) and Out (Ceiling, Peak/True Peak, L/R/M/S) strips with a thin gain-reduction rail. Keep linked L/R, independent M/S plus linked final protection, fixed bypass latency, and shared engine alignment/preroll. Use the shared modulation API for Input, Release, Lookahead, and Ceiling; keep Mode/Routing discrete and gain reduction read-only. Reuse routing, smoothing, destination-matched amount knobs, connection strips, indicators, and prepared snapshots. Follow [Limiter](specs/effects/limiter.md) for ranges, reconstruction limits, state migration, transport, and allocation-free processing.
 
 - Direction Mixer uses one standard Stereo strip with L/R–M/S Input, Direction, and Spread. M/S decodes incoming left-as-Mid/right-as-Side to L/R; it is not a processing basis for ordinary stereo. Reuse the shared unit shell, two-way selector, angle knob, destination-derived Spread/Amount controls, modulation routes/indicators/snapshots, and categorized catalog. Direction and Spread are shared destinations; Input stays discrete. Direction follows its knob: negative angles move the center left, positive angles move it right, for base settings and modulation. Follow [Direction Mixer](specs/effects/direction-mixer.md) for the matrix, defaults, bounds, angle convention, smoothing, and persistence.
+
+- Stereo Spread uses Lower/Upper Intensity and Frequency strips plus a stepped Order strip under Imaging. Intensities are signed −100% to +100%, default to zero, and reverse the generated pattern when their signs change. Frequency defaults are 20 Hz and 20 kHz; Order defaults to 8 bands. Reuse shared unit controls, modulation source/destination APIs, ramp/smoother, parameter/amount definitions, and prepared snapshots. Keep bands/history and smooth Order transitions allocation-free. Follow [Stereo Spread](specs/effects/stereo-spread.md) for its independent DSP, bounds, persistence, and reference limits.
 
 ## Persistence and export
 

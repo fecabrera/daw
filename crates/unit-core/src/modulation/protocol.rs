@@ -330,3 +330,9 @@ destination_settings!(
     &ModulationParameter::DIRECTION_MIXER,
     Shared
 );
+
+destination_settings!(
+    crate::StereoSpreadSettings,
+    &ModulationParameter::STEREO_SPREAD,
+    Shared
+);

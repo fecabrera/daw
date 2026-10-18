@@ -61,6 +61,7 @@ mod mixer;
 mod modulation_panel;
 mod ott_panel;
 mod parameter_knobs;
+mod stereo_spread_panel;
 mod strip_reorder;
 mod timeline_toolbar;
 mod track_overview;

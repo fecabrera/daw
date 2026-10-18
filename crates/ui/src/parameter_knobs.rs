@@ -11,6 +11,14 @@ fn percent(name: &'static str, reset: f32) -> KnobSpec {
         .format(percentage)
         .endpoint_labels("0", "100")
 }
+fn spread_intensity(name: &'static str) -> KnobSpec {
+    KnobSpec::new(name, -1.0..=1.0, 0.0, 0.01)
+        .centered(0.0)
+        .bipolar()
+        .value_label(percentage)
+        .format(percentage)
+        .endpoint_labels("−100", "+100")
+}
 fn frequency(name: &'static str, reset: f32) -> KnobSpec {
     KnobSpec::new(name, 20.0..=20_000.0, reset, 1.0)
         .scale(
@@ -86,6 +94,10 @@ fn ott_frequency(low: bool) -> KnobSpec {
 }
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::StereoSpreadLowerIntensity => spread_intensity("Lower intensity"),
+        Parameter::StereoSpreadUpperIntensity => spread_intensity("Upper intensity"),
+        Parameter::StereoSpreadLowerFrequency => frequency("Lower frequency", 20.0),
+        Parameter::StereoSpreadUpperFrequency => frequency("Upper frequency", 20_000.0),
         Parameter::DirectionMixerDirection => crate::lfo_controls::phase_spec("Direction"),
         Parameter::DirectionMixerSpread => KnobSpec::new("Spread", 0.0..=2.0, 1.0, 0.01)
             .centered(1.0)
@@ -328,7 +340,9 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−24", "+24"],
             ),
-            Parameter::OttLowFrequency
+            Parameter::StereoSpreadLowerFrequency
+            | Parameter::StereoSpreadUpperFrequency
+            | Parameter::OttLowFrequency
             | Parameter::OttHighFrequency
             | Parameter::OttLowAttack
             | Parameter::OttMidAttack
@@ -352,7 +366,9 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_q,
                 ["−10", "+10"],
             ),
-            Parameter::OttLowDepth
+            Parameter::StereoSpreadLowerIntensity
+            | Parameter::StereoSpreadUpperIntensity
+            | Parameter::OttLowDepth
             | Parameter::OttMidDepth
             | Parameter::OttHighDepth
             | Parameter::MacroValue

@@ -100,6 +100,10 @@ pub enum ModulationParameter {
     EqHighQ,
     DirectionMixerDirection,
     DirectionMixerSpread,
+    StereoSpreadLowerIntensity,
+    StereoSpreadUpperIntensity,
+    StereoSpreadLowerFrequency,
+    StereoSpreadUpperFrequency,
     LimiterInput,
     LimiterRelease,
     LimiterLookahead,
@@ -112,6 +116,12 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    pub const STEREO_SPREAD: [Self; 4] = [
+        Self::StereoSpreadLowerIntensity,
+        Self::StereoSpreadUpperIntensity,
+        Self::StereoSpreadLowerFrequency,
+        Self::StereoSpreadUpperFrequency,
+    ];
     pub const DIRECTION_MIXER: [Self; 2] =
         [Self::DirectionMixerDirection, Self::DirectionMixerSpread];
     /// Fixed OTT identities: crossovers, Low/Mid/High band controls, Level, Dry/Wet.
@@ -193,6 +203,10 @@ impl ModulationParameter {
             Self::OttHighRelease => "High · Release",
             Self::DirectionMixerDirection => "Direction",
             Self::DirectionMixerSpread => "Spread",
+            Self::StereoSpreadLowerIntensity => "Lower · Intensity",
+            Self::StereoSpreadUpperIntensity => "Upper · Intensity",
+            Self::StereoSpreadLowerFrequency => "Lower · Frequency",
+            Self::StereoSpreadUpperFrequency => "Upper · Frequency",
             Self::LimiterInput => "Input",
             Self::LimiterRelease => "Release",
             Self::LimiterLookahead => "Lookahead",
@@ -249,6 +263,7 @@ impl ModulationParameter {
             Self::LimiterLookahead => 10.0,
             Self::DirectionMixerDirection => 180.0,
             Self::DirectionMixerSpread => 2.0,
+            Self::StereoSpreadLowerFrequency | Self::StereoSpreadUpperFrequency => 6.0,
             Self::CompressorThreshold => 60.0,
             Self::CompressorRatio => 19.0,
             Self::CompressorKnee => 24.0,
@@ -288,6 +303,7 @@ impl ModulationParameter {
             Self::LimiterLookahead => "ms",
             Self::DirectionMixerDirection => "°",
             Self::DirectionMixerSpread => "",
+            Self::StereoSpreadLowerFrequency | Self::StereoSpreadUpperFrequency => "oct",
             Self::CompressorThreshold | Self::CompressorKnee => "dB",
             Self::CompressorRatio => ":1",
             Self::CompressorAttack | Self::CompressorRelease => "oct",
