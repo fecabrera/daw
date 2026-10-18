@@ -204,7 +204,7 @@ fn show_inner(
                 if !compact && section < 3 {
                     let rail = meters::unit_monitor_rail(rect, panel.margin);
                     bounds.meters[section] = rail;
-                    meters::gain_change(ui, rail, name, gains[section]);
+                    meters::gain_change(ui, rail, name, gains[section], settings.bands[section].enabled);
                 }
             }
             if open {
@@ -222,4 +222,99 @@ fn show_inner(
     bounds.header = result.header.rect;
     bounds.power = result.power.rect;
     (bounds, result.header)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn band_meter_colors_follow_each_band_power_without_changing_readings_or_settings() {
+        for color_theme in [
+            crate::settings::ColorTheme::Dark,
+            crate::settings::ColorTheme::Light,
+        ] {
+            for enabled in [false, true] {
+                for disabled_band in 0..=3 {
+                    for gain in [-12.0, 0.0, 12.0] {
+                        let ctx = egui::Context::default();
+                        theme::configure(&ctx);
+                        crate::fonts::configure(&ctx);
+                        theme::apply(
+                            &ctx,
+                            crate::settings::AppSettings {
+                                theme: color_theme,
+                                ..Default::default()
+                            },
+                        );
+                        let mut settings = OttSettings {
+                            enabled,
+                            ..Default::default()
+                        };
+                        for (index, band) in settings.bands.iter_mut().enumerate() {
+                            band.enabled = index != disabled_band;
+                        }
+                        let saved = settings.clone();
+                        let mut bounds = None;
+                        let mut output = ctx.run_ui(
+                            egui::RawInput {
+                                screen_rect: Some(Rect::from_min_size(
+                                    egui::Pos2::ZERO,
+                                    Vec2::new(1000.0, 400.0),
+                                )),
+                                ..Default::default()
+                            },
+                            |ui| {
+                                egui::CentralPanel::default().show(ui, |ui| {
+                                    bounds = Some(
+                                        show(ui, &mut settings, false, 244.0, [gain; 3], &[], None)
+                                            .0,
+                                    );
+                                });
+                            },
+                        );
+                        output.textures_delta.clear();
+                        assert_eq!(settings, saved);
+                        let palette = theme::palette(&ctx);
+                        for (index, rail) in bounds.unwrap().meters.into_iter().enumerate() {
+                            let fills: Vec<_> = output
+                                .shapes
+                                .iter()
+                                .filter_map(|shape| match &shape.shape {
+                                    egui::Shape::Rect(rect)
+                                        if rail.contains_rect(rect.rect)
+                                            && rect.rect.width() > 0.0
+                                            && [
+                                                theme::accent(&ctx),
+                                                palette.meter,
+                                                palette.secondary,
+                                            ]
+                                            .contains(&rect.fill) =>
+                                    {
+                                        Some(rect)
+                                    }
+                                    _ => None,
+                                })
+                                .collect();
+                            if !enabled || gain == 0.0 {
+                                assert!(fills.is_empty());
+                            } else {
+                                assert_eq!(fills.len(), 1);
+                                let expected = if index == disabled_band {
+                                    palette.secondary
+                                } else if gain > 0.0 {
+                                    palette.meter
+                                } else {
+                                    theme::accent(&ctx)
+                                };
+                                assert_eq!(fills[0].fill, expected);
+                                assert!((fills[0].rect.width() - rail.width() * 0.25).abs() < 0.01);
+                                assert_eq!(fills[0].rect.center().x < rail.center().x, gain < 0.0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -17,7 +17,7 @@ const MARKS: [i32; 15] = [
 ];
 
 /// Signed band gain monitor. Center is unity; left is reduction, right is boost.
-pub fn gain_change(ui: &mut Ui, rail: Rect, name: &str, gain_db: f32) {
+pub fn gain_change(ui: &mut Ui, rail: Rect, name: &str, gain_db: f32, enabled: bool) {
     let db = if gain_db.is_finite() { gain_db } else { 0.0 };
     let palette = theme::palette(ui.ctx());
     let painter = ui.painter();
@@ -30,11 +30,15 @@ pub fn gain_change(ui: &mut Ui, rail: Rect, name: &str, gain_db: f32) {
     painter.rect_filled(
         fill,
         1.0,
-        if db > 0.0 {
-            palette.meter
-        } else {
-            theme::accent(ui.ctx())
-        },
+        band_color(
+            ui,
+            enabled,
+            if db > 0.0 {
+                palette.meter
+            } else {
+                theme::accent(ui.ctx())
+            },
+        ),
     );
     painter.vline(
         rail.center().x,
@@ -352,6 +356,15 @@ fn horizontal_rail(ui: &Ui, rail: Rect, progress: f32, color: egui::Color32) {
     }
 }
 
+/// Disabled bands share the theme's secondary color for every monitor type.
+fn band_color(ui: &Ui, enabled: bool, active: egui::Color32) -> egui::Color32 {
+    if enabled {
+        active
+    } else {
+        theme::palette(ui.ctx()).secondary
+    }
+}
+
 /// Stereo peak level using the shared −60 to 0 dBFS scale; retain headroom in readings.
 pub fn band_level_rail(ui: &mut Ui, rail: Rect, name: &str, peak: f32, enabled: bool) {
     let peak = if peak.is_finite() { peak.max(0.0) } else { 0.0 };
@@ -360,13 +373,15 @@ pub fn band_level_rail(ui: &mut Ui, rail: Rect, name: &str, peak: f32, enabled: 
         ui,
         rail,
         position_for_peak(peak),
-        if !enabled {
-            palette.secondary
-        } else if peak > 1.0 {
-            palette.error
-        } else {
-            theme::accent(ui.ctx())
-        },
+        band_color(
+            ui,
+            enabled,
+            if peak > 1.0 {
+                palette.error
+            } else {
+                theme::accent(ui.ctx())
+            },
+        ),
     );
     let db = if peak > 0.0 {
         20.0 * peak.log10()

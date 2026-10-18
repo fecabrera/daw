@@ -2658,3 +2658,15 @@ The shared storage regression covers initially disabled attachment, clearing, su
 `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. `cargo build -p daw-cli --offline` and `python3 tools/check_cli.py` pass, including deterministic WAV/MP3 export and existing error/overwrite checks. Local Markdown links pass: 481 links across 53 files. User guides, implementation specifications, acceptance requirements, and repository instructions document the shared rule for current and future effect meters.
 
 `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched. Native appearance, display-scale, audio-device, Windows, and Linux checks were not performed. Automated shape and callback checks do not establish native rendering or device timing.
+
+## Disabled OTT band meter color — 2026-10-17
+
+OTT now passes each band's enabled state to `meters::gain_change`. Its signed gain-change monitor and EQ's level monitor reuse `band_color`: a disabled band uses the theme's secondary fill for either boost or reduction. Enabled bands retain their existing colors. Meter values, signed scale, center marker, geometry, tooltips, and audio processing remain unchanged. Whole-unit off still clears and suspends all meters through the shared lifecycle.
+
+`cargo test -p daw-ui --offline band_meter_colors_follow_each_band_power` passes. The new panel regression covers each disabled band independently and all bands enabled, both themes, signed boost/reduction and zero readings, retained fill width/direction, unchanged saved settings, and empty rails when the whole unit is off.
+
+`cargo test --workspace --offline` passes: 811 tests pass, including all 451 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored. Existing EQ band colors and shared whole-unit meter bypass regressions pass. `git diff --check` passes.
+
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. Local Markdown links pass: 481 links across 53 files. The OTT user guide describes the disabled-band color; implementation details remain in the OTT and shared meter specifications.
+
+`CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched. Native appearance, display-scale, Windows, and Linux checks were not performed. Automated shape checks do not establish native rasterization.

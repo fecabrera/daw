@@ -522,4 +522,6 @@ All effect-unit level, gain-change, and gain-reduction monitors stop when their 
 
 EQ resets its independent analysis filters/peaks and skips analysis while disabled. Other effects keep their detector and audio histories running for their existing bypass and latency behavior; only meter publication stops. Re-enabling resumes measured readings without changing saved band settings. No project format change is required.
 
+EQ and OTT band monitors share `meters::band_color` for inactive styling. A disabled band uses the theme's secondary fill while an enabled band retains its monitor's normal level, overload, boost, or reduction color. This changes presentation only; whole-unit off still clears every rail.
+
 Each effect panel uses `meters::unit_reading` to mask queued or stale readings with zero while its saved unit state is off. Reuse the ordinary rail/numeric renderers, tooltips, accessibility, and compact/collapse behavior. This leaves empty rails and zero readings visible while an asynchronous renderer update is pending. Measurement and presentation must not change audio or mark the project modified.
