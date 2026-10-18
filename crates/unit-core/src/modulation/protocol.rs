@@ -324,3 +324,9 @@ destination_settings!(
 );
 
 destination_settings!(crate::OttSettings, &ModulationParameter::OTT, Shared);
+
+destination_settings!(
+    crate::DirectionMixerSettings,
+    &ModulationParameter::DIRECTION_MIXER,
+    Shared
+);

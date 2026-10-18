@@ -1,5 +1,8 @@
 mod sampler;
-pub use daw_unit_core::{SamplerInput, SamplerMode, SamplerSettings, SamplerTrigger};
+pub use daw_unit_core::{
+    DIRECTION_MIXER_TYPE_ID, DirectionMixerInput, DirectionMixerSettings, SamplerInput,
+    SamplerMode, SamplerSettings, SamplerTrigger,
+};
 mod midi;
 pub use daw_unit_core::{
     AUTO_FILTER_TYPE_ID, AutoFilterSettings, COMPRESSOR_TYPE_ID, CompressorDetection,

@@ -4,15 +4,22 @@ enum Category {
     EqAndFilters,
     Dynamics,
     Distortion,
+    Imaging,
 }
 impl Category {
-    const ALL: [Self; 3] = [Self::EqAndFilters, Self::Dynamics, Self::Distortion];
+    const ALL: [Self; 4] = [
+        Self::EqAndFilters,
+        Self::Dynamics,
+        Self::Distortion,
+        Self::Imaging,
+    ];
 
     fn name(self) -> &'static str {
         match self {
             Self::EqAndFilters => "EQ & Filters",
             Self::Dynamics => "Dynamics",
             Self::Distortion => "Distortion",
+            Self::Imaging => "Imaging",
         }
     }
 }
@@ -43,7 +50,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 6] = [
+pub(super) const ENTRIES: [Entry; 7] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -79,6 +86,12 @@ pub(super) const ENTRIES: [Entry; 6] = [
         "Limiter",
         Category::Dynamics,
         daw_core::EffectInstance::limiter,
+    ),
+    Entry::new(
+        daw_core::DIRECTION_MIXER_TYPE_ID,
+        "Direction Mixer",
+        Category::Imaging,
+        daw_core::EffectInstance::direction_mixer,
     ),
 ];
 

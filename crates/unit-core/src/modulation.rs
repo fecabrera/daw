@@ -98,6 +98,8 @@ pub enum ModulationParameter {
     EqHighGain,
     EqHighFrequency,
     EqHighQ,
+    DirectionMixerDirection,
+    DirectionMixerSpread,
     LimiterInput,
     LimiterRelease,
     LimiterLookahead,
@@ -110,6 +112,8 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    pub const DIRECTION_MIXER: [Self; 2] =
+        [Self::DirectionMixerDirection, Self::DirectionMixerSpread];
     /// Fixed OTT identities: crossovers, Low/Mid/High band controls, Level, Dry/Wet.
     pub const OTT: [Self; 19] = [
         Self::OttLowFrequency,
@@ -187,6 +191,8 @@ impl ModulationParameter {
             Self::OttHighOutput => "High · Output",
             Self::OttHighAttack => "High · Attack",
             Self::OttHighRelease => "High · Release",
+            Self::DirectionMixerDirection => "Direction",
+            Self::DirectionMixerSpread => "Spread",
             Self::LimiterInput => "Input",
             Self::LimiterRelease => "Release",
             Self::LimiterLookahead => "Lookahead",
@@ -241,6 +247,8 @@ impl ModulationParameter {
             Self::LimiterInput | Self::LimiterCeiling => 24.0,
             Self::LimiterRelease => 6.0,
             Self::LimiterLookahead => 10.0,
+            Self::DirectionMixerDirection => 180.0,
+            Self::DirectionMixerSpread => 2.0,
             Self::CompressorThreshold => 60.0,
             Self::CompressorRatio => 19.0,
             Self::CompressorKnee => 24.0,
@@ -278,6 +286,8 @@ impl ModulationParameter {
             Self::LimiterInput | Self::LimiterCeiling => "dB",
             Self::LimiterRelease => "oct",
             Self::LimiterLookahead => "ms",
+            Self::DirectionMixerDirection => "°",
+            Self::DirectionMixerSpread => "",
             Self::CompressorThreshold | Self::CompressorKnee => "dB",
             Self::CompressorRatio => ":1",
             Self::CompressorAttack | Self::CompressorRelease => "oct",

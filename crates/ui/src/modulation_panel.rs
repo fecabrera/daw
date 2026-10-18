@@ -438,6 +438,10 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::DirectionMixerDirection => {
+            offsets.map(|o| (base + o).clamp(-180.0, 180.0))
+        }
+        ModulationParameter::DirectionMixerSpread => offsets.map(|o| (base + o).clamp(0.0, 2.0)),
         ModulationParameter::OttLowFrequency => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(20.0, 2000.0))
         }
@@ -542,6 +546,8 @@ pub(super) fn marker(
         );
     }
     let format_value = |value: f32| match parameter {
+        ModulationParameter::DirectionMixerDirection => format!("{value:.0}°"),
+        ModulationParameter::DirectionMixerSpread => format!("{value:.2}"),
         ModulationParameter::OttLowRelease
         | ModulationParameter::OttMidRelease
         | ModulationParameter::OttHighRelease => format!("{value:.1} ms"),

@@ -309,6 +309,9 @@ impl Renderer {
                 daw_core::EffectSettings::Limiter(_) => {
                     daw_unit_core::LIMITER_TYPE_ID.hash(&mut hash)
                 }
+                daw_core::EffectSettings::DirectionMixer(_) => {
+                    daw_unit_core::DIRECTION_MIXER_TYPE_ID.hash(&mut hash)
+                }
                 daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
             }
         }

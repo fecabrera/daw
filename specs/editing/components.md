@@ -100,6 +100,7 @@ The Effects catalog uses the same `Catalog::with_folders`, `ControlPanel` folder
 | EQ & Filters | 3-band EQ, Auto-filter |
 | Dynamics | Compressor, OTT, Limiter |
 | Distortion | Drive |
+| Imaging | Direction Mixer |
 
 Entry indices and effect type IDs remain stable. Visible folder order determines Shift ranges, selected-type capture, Enter additions, and library group drops. Both addition paths instantiate through `effects_catalog::instantiate` in captured order; do not restore registration-array order when building a selected group. Construct fresh instances only for an explicit addition or a valid release. Preview and cancellation create no effect instances or project edits.
 

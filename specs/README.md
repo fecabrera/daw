@@ -26,6 +26,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Compressor](effects/compressor.md)
 - [OTT](effects/ott.md)
 - [Limiter](effects/limiter.md)
+- [Direction Mixer](effects/direction-mixer.md)
 
 ## Modulation and audio
 

@@ -512,7 +512,7 @@ Group registered components under Sources (Oscillator, Sampler), Modulators (Env
 
 ## Effects catalog categories — 2026-10-17
 
-Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), and Distortion (Drive). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
+Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), Distortion (Drive), and Imaging (Direction Mixer). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
 
 ## Effect meter lifecycle
 
@@ -525,3 +525,7 @@ EQ resets its independent analysis filters/peaks and skips analysis while disabl
 EQ and OTT band monitors share `meters::band_color` for inactive styling. A disabled band uses the theme's secondary fill while an enabled band retains its monitor's normal level, overload, boost, or reduction color. This changes presentation only; whole-unit off still clears every rail.
 
 Each effect panel uses `meters::unit_reading` to mask queued or stale readings with zero while its saved unit state is off. Reuse the ordinary rail/numeric renderers, tooltips, accessibility, and compact/collapse behavior. This leaves empty rails and zero readings visible while an asynchronous renderer update is pending. Measurement and presentation must not change audio or mark the project modified.
+
+## Direction Mixer — 2026-10-18
+
+[Direction Mixer](../effects/direction-mixer.md) decodes optional M/S input and controls stereo direction and spread in one standard strip. Its portable crate owns matrix DSP, base ramps, and bounds. Reuse the shared source/destination contract for Direction and Spread, the common unit shell and parameter controls, serial track/Master execution, processed-value snapshots, validation, identity retention, and persistence. Register it under Imaging through the existing categorized catalog. See the linked specification for equations, input normalization, angle landmarks, modulation units, and acceptance.

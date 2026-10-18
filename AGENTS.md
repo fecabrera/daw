@@ -43,6 +43,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/sampler` | Portable prepared stereo sample playback, local position, gain/power ramps, and boundary fades; no project, UI, media, or device dependencies. |
 | `crates/oscillator` | FunDSP-backed oscillator sources behind the shared unit API; keep backend types private. |
 | `crates/equalizer` | Reusable stereo 3-band EQ behind the shared effect API; keep FunDSP types private. |
+| `crates/direction-mixer` | Portable stereo direction/width and M/S decoding through the shared effect and modulation APIs; no DAW, UI, or device dependencies. |
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
 | `crates/auto-filter` | Portable stereo filter and transport-locked LFO behind the shared effect API; keep FunDSP types private. |
 | `crates/ott` | Portable three-band upward/downward dynamics, phase-matched crossovers, and signed gain monitoring; keep FunDSP types private. |
@@ -169,6 +170,8 @@ The audio callback must remain nonblocking and must not allocate or perform file
 - OTT exposes both crossovers, each band's Depth/Input/Output/Attack/Release, Level, and Dry/Wet through the shared modulation API. Keep Peak/RMS and power discrete and gain-change rails read-only. Reuse typed routing, smoothing, parameter-derived controls, indicators, snapshots, and history retargeting. Preserve phase matching and neutral audio; keep final parameter bounds and active crossover ordering in portable OTT. Follow [OTT](specs/effects/ott.md#modulation--2026-10-17).
 
 - Limiter uses Limit (Input, Release, Lookahead) and Out (Ceiling, Peak/True Peak, L/R/M/S) strips with a thin gain-reduction rail. Keep linked L/R, independent M/S plus linked final protection, fixed bypass latency, and shared engine alignment/preroll. Use the shared modulation API for Input, Release, Lookahead, and Ceiling; keep Mode/Routing discrete and gain reduction read-only. Reuse routing, smoothing, destination-matched amount knobs, connection strips, indicators, and prepared snapshots. Follow [Limiter](specs/effects/limiter.md) for ranges, reconstruction limits, state migration, transport, and allocation-free processing.
+
+- Direction Mixer uses one standard Stereo strip with L/R–M/S Input, Direction, and Spread. M/S decodes incoming left-as-Mid/right-as-Side to L/R; it is not a processing basis for ordinary stereo. Reuse the shared unit shell, two-way selector, angle knob, destination-derived Spread/Amount controls, modulation routes/indicators/snapshots, and categorized catalog. Direction and Spread are shared destinations; Input stays discrete. Direction follows its knob: negative angles move the center left, positive angles move it right, for base settings and modulation. Follow [Direction Mixer](specs/effects/direction-mixer.md) for the matrix, defaults, bounds, angle convention, smoothing, and persistence.
 
 ## Persistence and export
 

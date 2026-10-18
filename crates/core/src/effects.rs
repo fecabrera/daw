@@ -616,12 +616,14 @@ mod effect_modulation_tests {
             EffectInstance::compressor,
             EffectInstance::limiter,
             EffectInstance::ott,
+            EffectInstance::direction_mixer,
         ][kind]();
         let (open, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Compressor(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Limiter(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Ott(s) => (&mut s.modulation_open, &mut s.modulations),
+            EffectSettings::DirectionMixer(s) => (&mut s.modulation_open, &mut s.modulations),
             _ => unreachable!(),
         };
         *open = true;
@@ -630,6 +632,7 @@ mod effect_modulation_tests {
             &ModulationParameter::COMPRESSOR[..],
             &ModulationParameter::LIMITER[..],
             &ModulationParameter::OTT[..],
+            &ModulationParameter::DIRECTION_MIXER[..],
         ][kind]
             .iter()
             .copied()
@@ -639,11 +642,25 @@ mod effect_modulation_tests {
                 ..Modulation::new(parameter)
             })
             .collect();
+        if kind == 4 {
+            let EffectSettings::DirectionMixer(s) = &mut effect.unit else {
+                unreachable!()
+            };
+            let extra: Vec<_> = s
+                .modulations
+                .iter()
+                .map(|r| Modulation {
+                    id: Id::new_v4(),
+                    ..*r
+                })
+                .collect();
+            s.modulations.extend(extra);
+        }
         (p, track, effect)
     }
     #[test]
     fn effect_modulation_defaults_roundtrip_and_invalid_edits_are_atomic() {
-        for kind in 0..4 {
+        for kind in 0..5 {
             let (mut p, track, effect) = fixture(kind);
             p.edit(Edit::SetEffects {
                 track_id: track,
@@ -684,6 +701,7 @@ mod effect_modulation_tests {
                 EffectInstance::compressor,
                 EffectInstance::limiter,
                 EffectInstance::ott,
+                EffectInstance::direction_mixer,
             ][kind]()
             .unit;
             let mut legacy = serde_json::to_value(&expected).unwrap();
@@ -709,7 +727,7 @@ mod effect_modulation_tests {
 
     #[test]
     fn effect_modulation_uses_same_instrument_shared_sources_and_follows_provider_moves() {
-        for kind in 0..4 {
+        for kind in 0..5 {
             let (mut p, track, effect) = fixture(kind);
             let source = effect.unit.modulations()[0].source.unwrap();
             let mut instrument = p.tracks[0].instrument.clone().unwrap();

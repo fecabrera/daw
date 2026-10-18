@@ -1123,3 +1123,126 @@ fn eq_band_meters_preserve_audio_history_and_do_not_allocate_on_track_or_master(
         assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     }
 }
+
+#[test]
+fn direction_mixer_ms_decode_matches_predecoded_audio_on_tracks_and_master() {
+    for rate in SAMPLE_RATES {
+        for master in [false, true] {
+            let baseline = plan(rate, false);
+            let mut encoded = baseline.clone();
+            let mut effect = EffectInstance::direction_mixer();
+            let EffectSettings::DirectionMixer(settings) = &mut effect.unit else {
+                unreachable!()
+            };
+            settings.input = DirectionMixerInput::MidSide;
+            if master {
+                encoded.project.master.effects.push(effect);
+            } else {
+                encoded.project.tracks[0].effects.push(effect);
+            }
+            let mut decoded = baseline.clone();
+            for audio in decoded.audio.values_mut() {
+                audio.samples = Arc::new(
+                    audio
+                        .samples
+                        .iter()
+                        .map(|[mid, side]| [mid + side, mid - side])
+                        .collect(),
+                );
+            }
+            let mut actual = vec![[0.0; 2]; 8192];
+            let mut expected = actual.clone();
+            Renderer::new(encoded).render_offline(&mut actual);
+            Renderer::new(decoded).render_offline(&mut expected);
+            for (a, b) in actual.iter().zip(&expected) {
+                for ch in 0..2 {
+                    assert!(
+                        (a[ch] - b[ch]).abs() < 1e-7,
+                        "rate={rate} master={master}: {a:?} {b:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn direction_mixer_lr_spread_changes_stereo_width_on_tracks_master_and_live_updates() {
+    for rate in SAMPLE_RATES {
+        for master in [false, true] {
+            let mut baseline = plan(rate, false);
+            for audio in baseline.audio.values_mut() {
+                // Different tones ensure real stereo content, rather than two copies of mono.
+                audio.samples = Arc::new(
+                    (0..8192)
+                        .map(|frame| {
+                            [440.0, 731.0].map(|hz| {
+                                (frame as f32 * hz * std::f32::consts::TAU / rate as f32).sin()
+                                    * 0.1
+                            })
+                        })
+                        .collect(),
+                );
+            }
+            let mut dry = vec![[0.0; 2]; 8192];
+            Renderer::new(baseline.clone()).render_offline(&mut dry);
+            assert!(dry.iter().any(|[left, right]| (left - right).abs() > 0.1));
+            let effect = EffectInstance::direction_mixer();
+            let chain = if master {
+                &mut baseline.project.master.effects
+            } else {
+                &mut baseline.project.tracks[0].effects
+            };
+            chain.push(effect);
+            for (spread, mid_gain, side_gain) in [
+                (0.0, 1.0, 0.0),
+                (0.5, 1.0, 0.5),
+                (1.0, 1.0, 1.0),
+                (1.25, 0.818, 1.0),
+                (1.5, 0.65, 1.0),
+                (1.75, 0.482, 1.0),
+                (2.0, 0.3, 1.0),
+            ] {
+                let mut changed = baseline.clone();
+                let chain = if master {
+                    &mut changed.project.master.effects
+                } else {
+                    &mut changed.project.tracks[0].effects
+                };
+                let EffectSettings::DirectionMixer(settings) = &mut chain[0].unit else {
+                    unreachable!()
+                };
+                settings.spread = spread;
+                let mut actual = vec![[0.0; 2]; 8192];
+                Renderer::new(changed.clone()).render_offline(&mut actual);
+                let mut old = Renderer::new(baseline.clone());
+                old.play();
+                for _ in 0..1000 {
+                    old.next_sample();
+                }
+                let mut live = Renderer::new(changed);
+                live.inherit(&mut old);
+                for (frame, sample) in actual.iter().enumerate() {
+                    let [left, right] = dry[frame];
+                    let mid = (left + right) * 0.5 * mid_gain;
+                    let side = (left - right) * 0.5 * side_gain;
+                    let expected = [mid + side, mid - side];
+                    for ch in 0..2 {
+                        assert!(
+                            (sample[ch] - expected[ch]).abs() < 1e-7,
+                            "rate={rate} master={master} spread={spread}: {sample:?} != {expected:?}"
+                        );
+                    }
+                    if frame >= 1000 {
+                        let playing = live.next_sample();
+                        if frame >= 1000 + rate as usize / 200 {
+                            for ch in 0..2 {
+                                assert!((playing[ch] - sample[ch]).abs() < 1e-7);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

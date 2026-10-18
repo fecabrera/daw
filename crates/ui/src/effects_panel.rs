@@ -22,6 +22,7 @@ pub(crate) struct EffectsUiBounds {
     pub compressor_entry: Rect,
     pub ott_entry: Rect,
     pub limiter_entry: Rect,
+    pub direction_mixer_entry: Rect,
     pub lane_toolbar: Rect,
     pub lane_compact: Rect,
     pub chain: Vec<(Id, Rect)>,
@@ -33,6 +34,7 @@ pub(crate) struct EffectsUiBounds {
     pub compressor_units: Vec<crate::compressor_panel::Bounds>,
     pub ott_units: Vec<crate::ott_panel::Bounds>,
     pub limiter_units: Vec<crate::limiter_panel::Bounds>,
+    pub direction_mixer_units: Vec<crate::direction_mixer_panel::Bounds>,
 }
 
 #[cfg(test)]
@@ -53,6 +55,7 @@ impl Default for EffectsUiBounds {
             compressor_entry: Rect::NOTHING,
             ott_entry: Rect::NOTHING,
             limiter_entry: Rect::NOTHING,
+            direction_mixer_entry: Rect::NOTHING,
             lane_toolbar: Rect::NOTHING,
             lane_compact: Rect::NOTHING,
             chain: vec![],
@@ -64,6 +67,7 @@ impl Default for EffectsUiBounds {
             compressor_units: vec![],
             ott_units: vec![],
             limiter_units: vec![],
+            direction_mixer_units: vec![],
         }
     }
 }
@@ -158,6 +162,7 @@ impl DawUi {
             self.effects_bounds.compressor_units.clear();
             self.effects_bounds.ott_units.clear();
             self.effects_bounds.limiter_units.clear();
+            self.effects_bounds.direction_mixer_units.clear();
         }
         let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
         ui.painter()
@@ -196,6 +201,7 @@ impl DawUi {
             self.effects_bounds.compressor_entry = Rect::NOTHING;
             self.effects_bounds.ott_entry = Rect::NOTHING;
             self.effects_bounds.limiter_entry = Rect::NOTHING;
+            self.effects_bounds.direction_mixer_entry = Rect::NOTHING;
         }
         ui.horizontal_top(|ui| {
             if let Some(library) = library.as_ref() {
@@ -266,6 +272,9 @@ impl DawUi {
                                     }
                                     daw_core::OTT_TYPE_ID => {
                                         self.effects_bounds.ott_entry = response.rect
+                                    }
+                                    daw_core::DIRECTION_MIXER_TYPE_ID => {
+                                        self.effects_bounds.direction_mixer_entry = response.rect;
                                     }
                                     daw_core::LIMITER_TYPE_ID => {
                                         self.effects_bounds.limiter_entry = response.rect
@@ -538,6 +547,14 @@ impl DawUi {
                                                 let power = _bounds.power;
                                                 #[cfg(test)]
                                                 self.effects_bounds.limiter_units.push(_bounds);
+                                                (header, power)
+                                            }
+                                            daw_core::EffectSettings::DirectionMixer(settings) => {
+                                                let (bounds, header) = crate::direction_mixer_panel::show(ui, settings, compact, strip.height(), &modulation_sources,
+                                                    self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))));
+                                                let power = bounds.power;
+                                                #[cfg(test)]
+                                                self.effects_bounds.direction_mixer_units.push(bounds);
                                                 (header, power)
                                             }
                                             daw_core::EffectSettings::Missing {

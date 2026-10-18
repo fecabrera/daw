@@ -1096,6 +1096,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-direction-mixer"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
+]
+
+[[package]]
 name = "daw-drive"
 version = "0.1.0"
 dependencies = [
@@ -1111,6 +1118,7 @@ dependencies = [
  "daw-auto-filter",
  "daw-compressor",
  "daw-core",
+ "daw-direction-mixer",
  "daw-drive",
  "daw-envelope",
  "daw-equalizer",

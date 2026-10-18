@@ -3,7 +3,7 @@ use super::*;
 use crate::parameter_knobs;
 use daw_core::ModulationParameter as P;
 
-const PARAMETERS: [P; 48] = [
+const PARAMETERS: [P; 50] = [
     P::OttLowFrequency,
     P::OttHighFrequency,
     P::OttLowDepth,
@@ -21,6 +21,8 @@ const PARAMETERS: [P; 48] = [
     P::OttHighOutput,
     P::OttHighAttack,
     P::OttHighRelease,
+    P::DirectionMixerDirection,
+    P::DirectionMixerSpread,
     P::LimiterInput,
     P::LimiterRelease,
     P::LimiterLookahead,
@@ -56,7 +58,8 @@ const PARAMETERS: [P; 48] = [
 
 fn native_value(parameter: P, amount: f32) -> f32 {
     match parameter {
-        P::OttLowInput
+        P::DirectionMixerDirection
+        | P::OttLowInput
         | P::OttLowOutput
         | P::OttMidInput
         | P::OttMidOutput
@@ -89,14 +92,15 @@ fn native_value(parameter: P, amount: f32) -> f32 {
         | P::CompressorRelease => {
             parameter_knobs::destination(parameter).reset * 2.0_f32.powf(amount)
         }
-        P::CompressorRatio => 1.0 + amount.abs(),
+        P::CompressorRatio | P::DirectionMixerSpread => 1.0 + amount.abs(),
         P::Resonance | P::EqLowQ | P::EqHighQ => 0.1 + amount.abs(),
         _ => amount.abs(),
     }
 }
 fn direction(parameter: P, amount: f32) -> f32 {
     match parameter {
-        P::OttLowInput
+        P::DirectionMixerDirection
+        | P::OttLowInput
         | P::OttLowOutput
         | P::OttMidInput
         | P::OttMidOutput

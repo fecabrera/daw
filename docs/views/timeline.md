@@ -29,4 +29,4 @@ Horizontal scrolling moves the timeline while track controls stay fixed. Pinch z
 
 ## Add effects
 
-Select a track or Master, then use the [Effects catalog](instrument.md#effects). Browse EQ & Filters, Dynamics, and Distortion. Double-click an effect, select effects and press Enter, or drag them into the effects lane. Click a folder to hide or show its entries.
+Select a track or Master, then use the [Effects catalog](instrument.md#effects). Browse EQ & Filters, Dynamics, Distortion, and Imaging. Double-click an effect, select effects and press Enter, or drag them into the effects lane. Click a folder to hide or show its entries.

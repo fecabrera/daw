@@ -30,6 +30,7 @@ mod auto_filter_panel;
 mod catalog;
 mod compressor_panel;
 pub mod dialogs;
+mod direction_mixer_panel;
 mod drag;
 mod drive_panel;
 mod effects_catalog;

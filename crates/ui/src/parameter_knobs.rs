@@ -86,6 +86,12 @@ fn ott_frequency(low: bool) -> KnobSpec {
 }
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::DirectionMixerDirection => crate::lfo_controls::phase_spec("Direction"),
+        Parameter::DirectionMixerSpread => KnobSpec::new("Spread", 0.0..=2.0, 1.0, 0.01)
+            .centered(1.0)
+            .value_label(|v| format!("{v:.2}"))
+            .format(|v| format!("{v:.2}"))
+            .endpoint_labels("0", "2"),
         Parameter::OttLowFrequency => ott_frequency(true),
         Parameter::OttHighFrequency => ott_frequency(false),
         Parameter::OttLowDepth | Parameter::OttMidDepth | Parameter::OttHighDepth => {
@@ -232,6 +238,22 @@ fn signed_pitch(value: f32) -> String {
 pub(super) fn amount(parameter: Parameter) -> KnobSpec {
     let (mapping, format, endpoints): (AmountMapping, fn(f32) -> String, [&str; 2]) =
         match parameter {
+            Parameter::DirectionMixerDirection => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.0}°"),
+                ["−180", "+180"],
+            ),
+            Parameter::DirectionMixerSpread => (
+                AmountMapping::Offset {
+                    origin: 1.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.2}"),
+                ["−2", "+2"],
+            ),
             Parameter::OttLowInput
             | Parameter::OttMidInput
             | Parameter::OttHighInput

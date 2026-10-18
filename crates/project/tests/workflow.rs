@@ -3793,7 +3793,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
         EffectInstance, EffectSettings, LfoInstance, Modulation, ModulationParameter,
         ModulationSourceId,
     };
-    for kind in 0..4 {
+    for kind in 0..5 {
         let fixture = Fixture::new();
         let mut session = Session::default();
         let track = session.project.add_midi_track().unwrap();
@@ -3809,6 +3809,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             EffectInstance::compressor,
             EffectInstance::limiter,
             EffectInstance::ott,
+            EffectInstance::direction_mixer,
         ][kind]();
         let (open, collapsed, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => {
@@ -3818,6 +3819,12 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
             EffectSettings::Limiter(s) => {
+                (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
+            }
+            EffectSettings::DirectionMixer(s) => {
+                s.input = daw_core::DirectionMixerInput::MidSide;
+                s.direction_degrees = 30.0;
+                s.spread = 0.6;
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
             EffectSettings::Ott(s) => {
@@ -3832,6 +3839,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             &ModulationParameter::COMPRESSOR[..],
             &ModulationParameter::LIMITER[..],
             &ModulationParameter::OTT[..],
+            &ModulationParameter::DIRECTION_MIXER[..],
         ][kind]
             .iter()
             .copied()

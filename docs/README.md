@@ -28,6 +28,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 - [Compressor](effects/compressor.md)
 - [OTT](effects/ott.md)
 - [Limiter](effects/limiter.md)
+- [Direction Mixer](effects/direction-mixer.md)
 
 ## Workflows and limits
 

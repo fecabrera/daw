@@ -47,6 +47,8 @@ fn effect_category_folders_share_navigation_and_retain_only_visible_selections()
                 b.limiter_entry,
                 b.folders[2],
                 b.drive_entry,
+                b.folders[3],
+                b.direction_mixer_entry,
             ];
             assert!(
                 rows.windows(2)
@@ -107,6 +109,7 @@ fn effect_category_group_additions_and_drops_follow_display_order_for_every_targ
                     b.compressor_entry.center(),
                     b.auto_filter_entry.center(),
                     b.entry.center(),
+                    b.direction_mixer_entry.center(),
                 ];
                 for (index, point) in points.into_iter().enumerate() {
                     click_effect_with_shift(&mut app, &ctx, point, index != 0);
@@ -150,7 +153,8 @@ fn effect_category_group_additions_and_drops_follow_display_order_for_every_targ
                         daw_core::COMPRESSOR_TYPE_ID,
                         daw_core::OTT_TYPE_ID,
                         daw_core::LIMITER_TYPE_ID,
-                        daw_core::DRIVE_TYPE_ID
+                        daw_core::DRIVE_TYPE_ID,
+                        daw_core::DIRECTION_MIXER_TYPE_ID
                     ]
                 );
                 assert_eq!(
@@ -159,7 +163,7 @@ fn effect_category_group_additions_and_drops_follow_display_order_for_every_targ
                         .map(|effect| effect.id)
                         .collect::<HashSet<_>>()
                         .len(),
-                    6
+                    7
                 );
                 assert!(app.effects_drag.is_none());
                 assert!(app.dirty);
@@ -335,7 +339,27 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                 egui::Key::ArrowDown,
                 true,
                 vec![entries[3], entries[4], entries[5], entries[1]],
+            ), // Imaging folder.
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![entries[3], entries[4], entries[5], entries[1], entries[6]],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![entries[3], entries[4], entries[5], entries[1], entries[6]],
             ), // No wrap.
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![entries[3], entries[4], entries[5], entries[1]],
+            ), // Imaging folder.
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![entries[3], entries[4], entries[5], entries[1]],
+            ), // Drive.
             (
                 egui::Key::ArrowUp,
                 true,
@@ -358,12 +382,14 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                 expected.into_iter().collect()
             );
         }
+        end_click_sequence(&mut app, &ctx);
         let point = app.effects_bounds.compressor_entry.center();
         click_effect_with_shift(&mut app, &ctx, point, true);
         assert_eq!(
             app.effects_catalog.selection,
             HashSet::from([entries[0], entries[3]])
         );
+        end_click_sequence(&mut app, &ctx);
         click_effect_with_shift(&mut app, &ctx, point, true);
         assert_eq!(app.effects_catalog.selection, HashSet::from([entries[0]]));
         library_key(&mut app, &ctx, egui::Key::Escape, false);
@@ -399,7 +425,7 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         let blank = Rect::from_min_max(
             Pos2::new(
                 app.effects_bounds.library.left(),
-                app.effects_bounds.drive_entry.bottom(),
+                app.effects_bounds.direction_mixer_entry.bottom(),
             ),
             app.effects_bounds.library.max,
         );
@@ -4451,6 +4477,84 @@ fn eq_level_rails_are_read_only_and_hide_with_compact_or_collapsed_units() {
                     .iter()
                     .all(|rect| !rect.is_positive())
             );
+        }
+    }
+}
+
+#[test]
+fn direction_mixer_controls_and_catalog_use_shared_track_master_and_instrument_actions() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            assert!(shapes.iter().any(|shape| matches!(
+                &shape.shape,
+                egui::Shape::Text(text) if text.galley.text() == "Imaging"
+            )));
+            let point = app.effects_bounds.direction_mixer_entry.center();
+            assert!(app.effects_bounds.direction_mixer_entry.is_positive());
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::Enter, false);
+            frame(&mut app, &ctx, vec![]);
+            let owner = app.effects_target().unwrap();
+            let saved = app.effect_chain(owner).unwrap().0[0].clone();
+            let daw_core::EffectSettings::DirectionMixer(s) = &saved.unit else {
+                unreachable!()
+            };
+            assert_eq!(*s, daw_core::DirectionMixerSettings::default());
+            assert!(
+                app.effects_bounds.direction_mixer_units[0]
+                    .controls
+                    .iter()
+                    .all(|r| r.is_positive())
+            );
+            let point = app.effects_bounds.direction_mixer_units[0].controls[2].center();
+            drag_control(&mut app, &ctx, point, Vec2::new(0.0, -18.0));
+            let daw_core::EffectSettings::DirectionMixer(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert_eq!(s.input, daw_core::DirectionMixerInput::LeftRight);
+            assert_eq!(s.direction_degrees, 0.0);
+            assert!(s.spread > 1.0);
+            let point = app.effects_bounds.direction_mixer_units[0].controls[0].center();
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::ArrowRight, false);
+            for i in [1, 2] {
+                let point = app.effects_bounds.direction_mixer_units[0].controls[i].center();
+                drag_control(&mut app, &ctx, point, Vec2::new(0.0, -18.0));
+            }
+            let daw_core::EffectSettings::DirectionMixer(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert_eq!(s.input, daw_core::DirectionMixerInput::MidSide);
+            assert!(s.direction_degrees > 0.0 && s.spread > 1.0);
+            let point = app.effects_bounds.direction_mixer_units[0].power.center();
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, point);
+            let daw_core::EffectSettings::DirectionMixer(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert!(!s.enabled);
+            let point = app.effects_bounds.lane_compact.center();
+            click(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert!(
+                app.effects_bounds.direction_mixer_units[0]
+                    .controls
+                    .iter()
+                    .all(|r| !r.is_positive())
+            );
+            let point = app.effects_bounds.direction_mixer_units[0].header.center();
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::Delete, false);
+            assert!(app.effect_chain(owner).unwrap().0.is_empty());
         }
     }
 }

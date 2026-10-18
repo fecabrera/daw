@@ -158,6 +158,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::Compressor(_)
                     | daw_core::EffectSettings::Limiter(_)
+                    | daw_core::EffectSettings::DirectionMixer(_)
                     | daw_core::EffectSettings::Ott(_)
             )
         })
@@ -1270,8 +1271,15 @@ mod modulation_meter_tests {
             .unwrap()
             .layers
             .push(sample_layer);
+        let mut direction = daw_core::EffectInstance::direction_mixer();
+        let direction_key = ModulationTarget::Effect(direction.id);
+        if let daw_core::EffectSettings::DirectionMixer(s) = &mut direction.unit {
+            s.direction_degrees = 45.0;
+            s.spread = 0.5;
+        }
+        plan.project.tracks[0].effects.push(direction);
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 9);
+        assert_eq!(handles.len(), 10);
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1280,6 +1288,10 @@ mod modulation_meter_tests {
         for _ in 0..512 {
             renderer.next_sample();
         }
+        assert_eq!(
+            &renderer.modulation_snapshot(direction_key).unwrap()[..2],
+            &[45.0, 0.5]
+        );
         let expected = renderer.modulation_snapshot(key).unwrap();
         let frame = renderer.playhead;
         renderer.publish_track_peaks();

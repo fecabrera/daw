@@ -20,6 +20,11 @@ mod auto_filter;
 mod modulation;
 pub use modulation::*;
 mod compressor;
+mod direction_mixer;
+pub use direction_mixer::{
+    DIRECTION_MIXER_STATE_VERSION, DIRECTION_MIXER_TYPE_ID, DirectionMixerInput,
+    DirectionMixerSettings,
+};
 mod limiter;
 pub use limiter::{
     LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterMode, LimiterRouting, LimiterSettings,
