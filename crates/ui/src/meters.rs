@@ -348,14 +348,16 @@ fn horizontal_rail(ui: &Ui, rail: Rect, progress: f32, color: egui::Color32) {
 }
 
 /// Stereo peak level using the shared −60 to 0 dBFS scale; retain headroom in readings.
-pub fn band_level_rail(ui: &mut Ui, rail: Rect, name: &str, peak: f32) {
+pub fn band_level_rail(ui: &mut Ui, rail: Rect, name: &str, peak: f32, enabled: bool) {
     let peak = if peak.is_finite() { peak.max(0.0) } else { 0.0 };
     let palette = theme::palette(ui.ctx());
     horizontal_rail(
         ui,
         rail,
         position_for_peak(peak),
-        if peak > 1.0 {
+        if !enabled {
+            palette.secondary
+        } else if peak > 1.0 {
             palette.error
         } else {
             theme::accent(ui.ctx())

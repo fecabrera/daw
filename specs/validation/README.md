@@ -2636,3 +2636,13 @@ A fresh-application egui regression covers both themes and initial Timeline/Inst
 `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched.
 
 Native appearance, pointer/trackpad, display-scale, accessibility-client, Windows, and Linux checks were not performed. Automated egui checks do not establish native rendering or input behavior. This change does not alter audio processing or project serialization.
+
+## Disabled EQ band meter color — 2026-10-17
+
+The EQ passes each band's enabled state to the shared `band_level_rail` renderer. Disabled bands use the theme's secondary fill, including readings above 0 dBFS. Enabled bands retain accent and overload colors. Meter scale, readings, layout, tooltips, and audio processing remain unchanged. The user guide and implementation specification describe the color rule separately.
+
+The existing meter-layout regression now checks each band disabled independently, with the other bands enabled, plus all bands enabled. It covers both themes, silent/normal/overload readings, compact and collapsed visibility, rail dimensions, control alignment, and unchanged saved settings. The focused meter test passes. `cargo test --workspace --offline` passes: 807 tests pass, including all 449 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored.
+
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. Local Markdown links pass: 475 links across 53 files. `git diff --check` passes. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched.
+
+Native appearance, display-scale, Windows, and Linux checks were not performed. Automated egui shape checks do not establish native rasterization.
