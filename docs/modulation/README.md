@@ -37,9 +37,12 @@ Assigned knobs have a status dot. Filled means active; hollow means inactive. Ho
 | Macro | Value for each strip |
 | 3-band EQ | Low/Mid/High Gain; Low/High Frequency and Q |
 | Drive | Volume, Gain, Tone, Color strength, Color frequency |
+| Bitcrusher | Drive, Resolution, Downsampling, Level, Dry/Wet; Resolution and Downsampling retain whole steps |
 | Auto-filter | Frequency, Resonance, Level, Dry/Wet |
 | Compressor | Threshold, Ratio, Attack, Release, Knee, Level, Dry/Wet |
 | Limiter | Input, Release, Lookahead, Ceiling |
 | OTT | Low/High crossover; Low/Mid/High Depth, Input, Output, Attack, Release; Level, Dry/Wet |
+| Direction Mixer | Direction, Spread |
+| Stereo Spread | Lower/Upper Intensity, Lower/Upper Frequency |
 
 Unit power, discrete mode/shape choices, and read-only meters are not destinations. See the individual [component and effect guides](../views/instrument.md) for parameter behavior and limits.

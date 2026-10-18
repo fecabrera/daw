@@ -192,8 +192,10 @@ impl KnobSpec {
 
     fn value(self, normalized: f32) -> f32 {
         if let Some(scale) = self.amount_scale {
-            return scale
-                .value(normalized.clamp(0.0, 1.0))
+            let value = scale.value(normalized.clamp(0.0, 1.0));
+            return self
+                .discrete_step
+                .map_or(value, |step| (value / step).round() * step)
                 .clamp(self.min, self.max);
         }
         if let Some(scale) = self.scale {

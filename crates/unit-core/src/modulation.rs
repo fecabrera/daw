@@ -100,6 +100,9 @@ pub enum ModulationParameter {
     EqHighQ,
     DirectionMixerDirection,
     DirectionMixerSpread,
+    BitcrusherDrive,
+    BitcrusherResolution,
+    BitcrusherDownsampling,
     StereoSpreadLowerIntensity,
     StereoSpreadUpperIntensity,
     StereoSpreadLowerFrequency,
@@ -116,6 +119,13 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    pub const BITCRUSHER: [Self; 5] = [
+        Self::BitcrusherDrive,
+        Self::BitcrusherResolution,
+        Self::BitcrusherDownsampling,
+        Self::Level,
+        Self::DryWet,
+    ];
     pub const STEREO_SPREAD: [Self; 4] = [
         Self::StereoSpreadLowerIntensity,
         Self::StereoSpreadUpperIntensity,
@@ -203,6 +213,9 @@ impl ModulationParameter {
             Self::OttHighRelease => "High · Release",
             Self::DirectionMixerDirection => "Direction",
             Self::DirectionMixerSpread => "Spread",
+            Self::BitcrusherDrive => "Drive",
+            Self::BitcrusherResolution => "Resolution",
+            Self::BitcrusherDownsampling => "Downsampling",
             Self::StereoSpreadLowerIntensity => "Lower · Intensity",
             Self::StereoSpreadUpperIntensity => "Upper · Intensity",
             Self::StereoSpreadLowerFrequency => "Lower · Frequency",
@@ -261,6 +274,9 @@ impl ModulationParameter {
             Self::LimiterInput | Self::LimiterCeiling => 24.0,
             Self::LimiterRelease => 6.0,
             Self::LimiterLookahead => 10.0,
+            Self::BitcrusherDrive => 24.0,
+            Self::BitcrusherResolution => 23.0,
+            Self::BitcrusherDownsampling => 39.0,
             Self::DirectionMixerDirection => 180.0,
             Self::DirectionMixerSpread => 2.0,
             Self::StereoSpreadLowerFrequency | Self::StereoSpreadUpperFrequency => 6.0,
@@ -301,6 +317,9 @@ impl ModulationParameter {
             Self::LimiterInput | Self::LimiterCeiling => "dB",
             Self::LimiterRelease => "oct",
             Self::LimiterLookahead => "ms",
+            Self::BitcrusherDrive => "dB",
+            Self::BitcrusherResolution => "bits",
+            Self::BitcrusherDownsampling => "×",
             Self::DirectionMixerDirection => "°",
             Self::DirectionMixerSpread => "",
             Self::StereoSpreadLowerFrequency | Self::StereoSpreadUpperFrequency => "oct",

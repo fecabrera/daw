@@ -35,7 +35,7 @@ The Effects catalog has four folders in Timeline and Instrument:
 | --- | --- |
 | EQ & Filters | [3-band EQ](../effects/equalizer.md), [Auto-filter](../effects/auto-filter.md) |
 | Dynamics | [Compressor](../effects/compressor.md), [OTT](../effects/ott.md), [Limiter](../effects/limiter.md) |
-| Distortion | [Drive](../effects/drive.md) |
+| Distortion | [Drive](../effects/drive.md), [Bitcrusher](../effects/bitcrusher.md) |
 | Imaging | [Direction Mixer](../effects/direction-mixer.md), [Stereo Spread](../effects/stereo-spread.md) |
 
 Folders start collapsed. Click a folder to hide or show its effects. Use Up/Down to move through visible rows. Enter or Space toggles a focused folder; Left closes it and Right opens it. Left on an effect closes its folder. Closing a folder deselects its hidden effects. Each catalog retains its own folder choices while the application is open.

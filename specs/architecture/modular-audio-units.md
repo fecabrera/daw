@@ -512,7 +512,7 @@ Group registered components under Sources (Oscillator, Sampler), Modulators (Env
 
 ## Effects catalog categories — 2026-10-17
 
-Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), Distortion (Drive), and Imaging (Direction Mixer, Stereo Spread). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
+Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), Distortion (Drive, Bitcrusher), and Imaging (Direction Mixer, Stereo Spread). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
 
 ## Effect meter lifecycle
 
@@ -534,3 +534,8 @@ Each effect panel uses `meters::unit_reading` to mask queued or stale readings w
 ## Stereo Spread — 2026-10-18
 
 [Stereo Spread](../effects/stereo-spread.md) adds alternating spectral widening for mono/stereo input under Imaging. Its portable crate owns private FunDSP banks, mono-preserving Side generation, signed intensity interpolation, bounded frequency ordering, 5 ms base/bypass/Order transitions, and callback-safe history. Reuse the common typed modulation contract for both intensities and frequencies, shared ramps/smoother, catalog/panels/knobs/connections, snapshots, and track/Master render paths. Intensities default to 0%, the range defaults to 20 Hz–20 kHz, and Order defaults to 8 whole bands. The linked specification defines the independent filter response and reference-comparison limits.
+
+
+## Bitcrusher — 2026-10-18
+
+[Bitcrusher](../effects/bitcrusher.md) adds Drive, whole-step Resolution/Downsampling, Level, and Dry/Wet under Distortion. Its portable crate owns symmetric quantization, silence preservation, a linked stereo capture clock, bounds, shared base/offset smoothing, and callback-safe history. Reuse the common source/destination API for all five controls, existing Level/DryWet targets, shared catalog/panels/knobs/amounts/connections, snapshots, and track/Master rendering. The linked specification defines integer persistence, quantization, capture/transition rules, defaults, and acceptance.

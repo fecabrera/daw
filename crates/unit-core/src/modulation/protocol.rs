@@ -336,3 +336,9 @@ destination_settings!(
     &ModulationParameter::STEREO_SPREAD,
     Shared
 );
+
+destination_settings!(
+    crate::BitcrusherSettings,
+    &ModulationParameter::BITCRUSHER,
+    Shared
+);

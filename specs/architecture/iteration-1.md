@@ -774,3 +774,8 @@ Follow [Direction Mixer](../effects/direction-mixer.md) for stereo and M/S input
 ## Stereo Spread — 2026-10-18
 
 Follow [Stereo Spread](../effects/stereo-spread.md) for the three-strip control layout, signed intensities and zero defaults, logarithmic frequency bounds, integer Order, independent spectral matrix, fixed banks, smooth transitions, shared modulation/snapshots, persistence, and callback constraints. Verify all project rates, mono fold-down and alternating channel emphasis, signed/base/modulated behavior, out-of-range attenuation, shared/local scope, rapid updates, track/Master/live/export/random-access/loop parity, storage/remapping, native amount controls, both themes, and catalog/selection guards. Record completed checks and reference/native limits in [validation history](../validation/README.md).
+
+
+## Bitcrusher — 2026-10-18
+
+Follow [Bitcrusher](../effects/bitcrusher.md) for the Crush/Output layout, 1–24-bit Resolution and 1–40× Downsampling in whole steps, Drive/Level/DryWet ranges and defaults, independent quantization/sample-hold DSP, shared modulation, snapshots, persistence, and callback constraints. Verify all rates/depths/ratios, channel timing, silence/headroom/bypass, whole-step modulation, shared/local scope, track/Master/live/export/block/seek/loop parity, history/allocation guarantees, storage/remapping, native amount controls, both themes, and shared catalog guards. Record executed checks and remaining native limits in [validation history](../validation/README.md).

@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+daw-bitcrusher.workspace = true
 daw-stereo-spread.workspace = true
 daw-direction-mixer.workspace = true
 daw-sampler.workspace = true

@@ -1421,3 +1421,60 @@ fn stereo_spread_modulation_markers_share_sources_controls_and_connection_openin
         }
     }
 }
+
+#[test]
+fn bitcrusher_modulation_markers_share_sources_controls_and_connection_opening() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _) = fixture(theme);
+        let main = &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .main;
+        main.macro_module.add();
+        let source = daw_core::ModulationSourceId {
+            layer: main.id,
+            unit: main.macro_module.controls[0].id,
+        };
+        let mut effect = daw_core::EffectInstance::bitcrusher();
+        let daw_core::EffectSettings::Bitcrusher(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.modulations = daw_core::ModulationParameter::BITCRUSHER
+            .into_iter()
+            .map(|parameter| daw_core::Modulation {
+                source: Some(source),
+                amount: parameter.limit() * 0.5,
+                ..daw_core::Modulation::new(parameter)
+            })
+            .collect();
+        app.session.project.tracks[0].effects.push(effect);
+        app.session.project.validate().unwrap();
+        for i in 0..5 {
+            let daw_core::EffectSettings::Bitcrusher(s) =
+                &mut app.session.project.tracks[0].effects[0].unit
+            else {
+                unreachable!()
+            };
+            s.modulation_open = false;
+            let before = s.clone();
+            frame(&mut app, &ctx, vec![]);
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let point =
+                knobs::modulation_marker_rect(app.effects_bounds.bitcrusher_units[0].controls[i])
+                    .center();
+            click(&mut app, &ctx, point, false);
+            frame(&mut app, &ctx, vec![]);
+            let daw_core::EffectSettings::Bitcrusher(s) =
+                &app.session.project.tracks[0].effects[0].unit
+            else {
+                unreachable!()
+            };
+            let mut expected = before;
+            expected.modulation_open = true;
+            assert_eq!(*s, expected);
+            assert!(app.dirty && app.effects_drag.is_none());
+        }
+    }
+}

@@ -160,6 +160,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::Limiter(_)
                     | daw_core::EffectSettings::DirectionMixer(_)
                     | daw_core::EffectSettings::StereoSpread(_)
+                    | daw_core::EffectSettings::Bitcrusher(_)
                     | daw_core::EffectSettings::Ott(_)
             )
         })
@@ -1288,8 +1289,18 @@ mod modulation_meter_tests {
             s.upper_frequency_hz = 10000.0;
         }
         plan.project.tracks[0].effects.push(spread);
+        let mut crusher = daw_core::EffectInstance::bitcrusher();
+        let crusher_key = ModulationTarget::Effect(crusher.id);
+        if let daw_core::EffectSettings::Bitcrusher(s) = &mut crusher.unit {
+            s.drive_db = 6.0;
+            s.resolution_bits = 8;
+            s.downsampling = 7;
+            s.level_db = -6.0;
+            s.dry_wet = 0.75;
+        }
+        plan.project.tracks[0].effects.push(crusher);
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 11);
+        assert_eq!(handles.len(), 12);
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1302,6 +1313,11 @@ mod modulation_meter_tests {
             &renderer.modulation_snapshot(direction_key).unwrap()[..2],
             &[45.0, 0.5]
         );
+        let crusher = renderer.modulation_snapshot(crusher_key).unwrap();
+        for (actual, expected) in crusher[..5].iter().zip([6.0, 8.0, 7.0, -6.0, 0.75]) {
+            assert!((actual - expected).abs() < 1e-5);
+        }
+        assert!(crusher[5..].iter().all(|v| v.is_nan()));
         let spread = renderer.modulation_snapshot(spread_key).unwrap();
         for (actual, expected) in spread[..4].iter().zip([0.2, 0.8, 400.0, 10000.0]) {
             assert!((actual - expected).abs() < 0.02);

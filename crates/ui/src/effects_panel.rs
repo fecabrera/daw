@@ -24,6 +24,7 @@ pub(crate) struct EffectsUiBounds {
     pub limiter_entry: Rect,
     pub direction_mixer_entry: Rect,
     pub stereo_spread_entry: Rect,
+    pub bitcrusher_entry: Rect,
     pub lane_toolbar: Rect,
     pub lane_compact: Rect,
     pub chain: Vec<(Id, Rect)>,
@@ -37,6 +38,7 @@ pub(crate) struct EffectsUiBounds {
     pub limiter_units: Vec<crate::limiter_panel::Bounds>,
     pub direction_mixer_units: Vec<crate::direction_mixer_panel::Bounds>,
     pub stereo_spread_units: Vec<crate::stereo_spread_panel::Bounds>,
+    pub bitcrusher_units: Vec<crate::bitcrusher_panel::Bounds>,
 }
 
 #[cfg(test)]
@@ -59,6 +61,7 @@ impl Default for EffectsUiBounds {
             limiter_entry: Rect::NOTHING,
             direction_mixer_entry: Rect::NOTHING,
             stereo_spread_entry: Rect::NOTHING,
+            bitcrusher_entry: Rect::NOTHING,
             lane_toolbar: Rect::NOTHING,
             lane_compact: Rect::NOTHING,
             chain: vec![],
@@ -72,6 +75,7 @@ impl Default for EffectsUiBounds {
             limiter_units: vec![],
             direction_mixer_units: vec![],
             stereo_spread_units: vec![],
+            bitcrusher_units: vec![],
         }
     }
 }
@@ -168,6 +172,7 @@ impl DawUi {
             self.effects_bounds.limiter_units.clear();
             self.effects_bounds.direction_mixer_units.clear();
             self.effects_bounds.stereo_spread_units.clear();
+            self.effects_bounds.bitcrusher_units.clear();
         }
         let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
         ui.painter()
@@ -208,6 +213,7 @@ impl DawUi {
             self.effects_bounds.limiter_entry = Rect::NOTHING;
             self.effects_bounds.direction_mixer_entry = Rect::NOTHING;
             self.effects_bounds.stereo_spread_entry = Rect::NOTHING;
+            self.effects_bounds.bitcrusher_entry = Rect::NOTHING;
         }
         ui.horizontal_top(|ui| {
             if let Some(library) = library.as_ref() {
@@ -281,6 +287,9 @@ impl DawUi {
                                     }
                                     daw_core::STEREO_SPREAD_TYPE_ID => {
                                         self.effects_bounds.stereo_spread_entry = response.rect;
+                                    }
+                                    daw_core::BITCRUSHER_TYPE_ID => {
+                                        self.effects_bounds.bitcrusher_entry = response.rect;
                                     }
                                     daw_core::DIRECTION_MIXER_TYPE_ID => {
                                         self.effects_bounds.direction_mixer_entry = response.rect;
@@ -564,6 +573,14 @@ impl DawUi {
                                                 let power = bounds.power;
                                                 #[cfg(test)]
                                                 self.effects_bounds.stereo_spread_units.push(bounds);
+                                                (header, power)
+                                            }
+                                            daw_core::EffectSettings::Bitcrusher(settings) => {
+                                                let (bounds, header) = crate::bitcrusher_panel::show(ui, settings, compact, strip.height(), &modulation_sources,
+                                                    self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))));
+                                                let power = bounds.power;
+                                                #[cfg(test)]
+                                                self.effects_bounds.bitcrusher_units.push(bounds);
                                                 (header, power)
                                             }
                                             daw_core::EffectSettings::DirectionMixer(settings) => {

@@ -43,6 +43,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/sampler` | Portable prepared stereo sample playback, local position, gain/power ramps, and boundary fades; no project, UI, media, or device dependencies. |
 | `crates/oscillator` | FunDSP-backed oscillator sources behind the shared unit API; keep backend types private. |
 | `crates/equalizer` | Reusable stereo 3-band EQ behind the shared effect API; keep FunDSP types private. |
+| `crates/bitcrusher` | Portable stereo quantization, whole-ratio sample holding, and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/stereo-spread` | Portable spectral stereo widening with private FunDSP filter banks and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/direction-mixer` | Portable stereo direction/width and M/S decoding through the shared effect and modulation APIs; no DAW, UI, or device dependencies. |
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
@@ -175,6 +176,8 @@ The audio callback must remain nonblocking and must not allocate or perform file
 - Direction Mixer uses one standard Stereo strip with L/R–M/S Input, Direction, and Spread. M/S decodes incoming left-as-Mid/right-as-Side to L/R; it is not a processing basis for ordinary stereo. Reuse the shared unit shell, two-way selector, angle knob, destination-derived Spread/Amount controls, modulation routes/indicators/snapshots, and categorized catalog. Direction and Spread are shared destinations; Input stays discrete. Direction follows its knob: negative angles move the center left, positive angles move it right, for base settings and modulation. Follow [Direction Mixer](specs/effects/direction-mixer.md) for the matrix, defaults, bounds, angle convention, smoothing, and persistence.
 
 - Stereo Spread uses Lower/Upper Intensity and Frequency strips plus a stepped Order strip under Imaging. Intensities are signed −100% to +100%, default to zero, and reverse the generated pattern when their signs change. Frequency defaults are 20 Hz and 20 kHz; Order defaults to 8 bands. Reuse shared unit controls, modulation source/destination APIs, ramp/smoother, parameter/amount definitions, and prepared snapshots. Keep bands/history and smooth Order transitions allocation-free. Follow [Stereo Spread](specs/effects/stereo-spread.md) for its independent DSP, bounds, persistence, and reference limits.
+
+- Bitcrusher uses Crush (Drive, Resolution, Downsampling) and Output (Level, Dry/Wet) strips under Distortion. Keep Resolution at whole 1–24 bits and Downsampling at whole 1–40× in saved data, controls, and effective modulated values. Reuse shared panels, knobs, native amount adapters, source/destination routing, ramps/smoother, and prepared snapshots. Keep one stereo capture clock, independent held channel values, exact silence/bypass, compatible history, and callback operations allocation-free. Follow [Bitcrusher](specs/effects/bitcrusher.md) for quantization, capture timing, bounds, defaults, persistence, and acceptance.
 
 ## Persistence and export
 

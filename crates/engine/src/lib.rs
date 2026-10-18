@@ -312,6 +312,9 @@ impl Renderer {
                 daw_core::EffectSettings::StereoSpread(_) => {
                     daw_unit_core::STEREO_SPREAD_TYPE_ID.hash(&mut hash)
                 }
+                daw_core::EffectSettings::Bitcrusher(_) => {
+                    daw_unit_core::BITCRUSHER_TYPE_ID.hash(&mut hash)
+                }
                 daw_core::EffectSettings::DirectionMixer(_) => {
                     daw_unit_core::DIRECTION_MIXER_TYPE_ID.hash(&mut hash)
                 }

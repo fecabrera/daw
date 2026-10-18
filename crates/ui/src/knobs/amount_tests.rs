@@ -3,7 +3,7 @@ use super::*;
 use crate::parameter_knobs;
 use daw_core::ModulationParameter as P;
 
-const PARAMETERS: [P; 54] = [
+const PARAMETERS: [P; 57] = [
     P::OttLowFrequency,
     P::OttHighFrequency,
     P::OttLowDepth,
@@ -23,6 +23,9 @@ const PARAMETERS: [P; 54] = [
     P::OttHighRelease,
     P::DirectionMixerDirection,
     P::DirectionMixerSpread,
+    P::BitcrusherDrive,
+    P::BitcrusherResolution,
+    P::BitcrusherDownsampling,
     P::StereoSpreadLowerIntensity,
     P::StereoSpreadUpperIntensity,
     P::StereoSpreadLowerFrequency,
@@ -98,7 +101,10 @@ fn native_value(parameter: P, amount: f32) -> f32 {
         | P::CompressorRelease => {
             parameter_knobs::destination(parameter).reset * 2.0_f32.powf(amount)
         }
-        P::CompressorRatio | P::DirectionMixerSpread => 1.0 + amount.abs(),
+        P::BitcrusherResolution
+        | P::BitcrusherDownsampling
+        | P::CompressorRatio
+        | P::DirectionMixerSpread => 1.0 + amount.abs(),
         P::Resonance | P::EqLowQ | P::EqHighQ => 0.1 + amount.abs(),
         _ => amount.abs(),
     }

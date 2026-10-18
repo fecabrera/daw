@@ -1,4 +1,5 @@
 use daw_auto_filter::AutoFilter;
+use daw_bitcrusher::Bitcrusher;
 use daw_compressor::Compressor;
 use daw_core::{EffectInstance, EffectSettings, Id, Track};
 use daw_direction_mixer::DirectionMixer;
@@ -19,6 +20,7 @@ enum RuntimeEffect {
     Limiter(Box<Limiter>, Vec<super::modulation::Route>),
     DirectionMixer(Box<DirectionMixer>, Vec<super::modulation::Route>),
     StereoSpread(Box<StereoSpread>, Vec<super::modulation::Route>),
+    Bitcrusher(Box<Bitcrusher>, Vec<super::modulation::Route>),
 }
 impl RuntimeEffect {
     fn sample(
@@ -113,6 +115,18 @@ impl RuntimeEffect {
                     ..Default::default()
                 },
             ),
+            Self::Bitcrusher(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::DirectionMixer(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -172,6 +186,12 @@ impl RuntimeEffect {
                     route.reset();
                 }
             }
+            Self::Bitcrusher(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
             Self::DirectionMixer(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -186,6 +206,9 @@ impl RuntimeEffect {
             (Self::Ott(unit, _), EffectSettings::Ott(settings)) => unit.retarget(settings),
             (Self::Limiter(unit, _), EffectSettings::Limiter(settings)) => unit.retarget(settings),
             (Self::StereoSpread(unit, _), EffectSettings::StereoSpread(settings)) => {
+                unit.retarget(settings)
+            }
+            (Self::Bitcrusher(unit, _), EffectSettings::Bitcrusher(settings)) => {
                 unit.retarget(settings)
             }
             (Self::DirectionMixer(unit, _), EffectSettings::DirectionMixer(settings)) => {
@@ -294,6 +317,16 @@ impl EffectChain {
                                         .collect(),
                                 ))
                             }
+                            EffectSettings::Bitcrusher(settings) => {
+                                Some(RuntimeEffect::Bitcrusher(
+                                    Box::new(Bitcrusher::new(context, settings)),
+                                    settings
+                                        .modulations
+                                        .iter()
+                                        .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                        .collect(),
+                                ))
+                            }
                             EffectSettings::DirectionMixer(settings) => {
                                 Some(RuntimeEffect::DirectionMixer(
                                     Box::new(DirectionMixer::new(context, settings)),
@@ -356,6 +389,10 @@ impl EffectChain {
                 | (
                     RuntimeEffect::StereoSpread(_, old_routes),
                     RuntimeEffect::StereoSpread(_, new_routes),
+                )
+                | (
+                    RuntimeEffect::Bitcrusher(_, old_routes),
+                    RuntimeEffect::Bitcrusher(_, new_routes),
                 ) = (&mut *previous, &mut *next)
                 {
                     daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
@@ -384,6 +421,9 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::StereoSpread(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::Bitcrusher(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::DirectionMixer(unit, _)))) => {

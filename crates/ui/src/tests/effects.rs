@@ -242,7 +242,7 @@ fn effect_category_scrolling_keeps_selection_and_the_header_fixed() {
                 size,
             );
         }
-        assert!(library.contains_rect(app.effects_bounds.drive_entry));
+        assert!(library.contains_rect(app.effects_bounds.stereo_spread_entry));
         assert_eq!(app.effects_bounds.header, header);
         assert_eq!(
             app.effects_catalog.selection,
@@ -317,7 +317,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
         let point = app.effects_bounds.auto_filter_entry.center();
         click(&mut app, &ctx, point);
         for (key, shift, expected) in [
-            (egui::Key::ArrowDown, false, vec![]), // Dynamics folder.
+            (egui::Key::ArrowDown, false, vec![]),
             (egui::Key::ArrowDown, false, vec![entries[3]]),
             (egui::Key::ArrowDown, true, vec![entries[3], entries[4]]),
             (
@@ -329,7 +329,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                 egui::Key::ArrowDown,
                 true,
                 vec![entries[3], entries[4], entries[5]],
-            ), // Distortion folder.
+            ),
             (
                 egui::Key::ArrowDown,
                 true,
@@ -338,42 +338,58 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1]],
-            ), // Imaging folder.
+                vec![entries[3], entries[4], entries[5], entries[1], entries[8]],
+            ),
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1], entries[6]],
+                vec![entries[3], entries[4], entries[5], entries[1], entries[8]],
             ),
             (
                 egui::Key::ArrowDown,
                 true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[6], entries[7],
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[6],
                 ],
-            ), // Stereo Spread.
+            ),
             (
                 egui::Key::ArrowDown,
                 true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[6], entries[7],
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[6],
+                    entries[7],
                 ],
-            ), // No wrap.
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[6],
+                    entries[7],
+                ],
+            ),
             (
                 egui::Key::ArrowUp,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1], entries[6]],
-            ), // Direction Mixer.
+                vec![
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[6],
+                ],
+            ),
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![entries[3], entries[4], entries[5], entries[1], entries[8]],
+            ),
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![entries[3], entries[4], entries[5], entries[1], entries[8]],
+            ),
             (
                 egui::Key::ArrowUp,
                 true,
                 vec![entries[3], entries[4], entries[5], entries[1]],
-            ), // Imaging folder.
-            (
-                egui::Key::ArrowUp,
-                true,
-                vec![entries[3], entries[4], entries[5], entries[1]],
-            ), // Drive.
+            ),
             (
                 egui::Key::ArrowUp,
                 true,
@@ -386,7 +402,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             ),
             (egui::Key::ArrowUp, true, vec![entries[3], entries[4]]),
             (egui::Key::ArrowUp, true, vec![entries[3]]),
-            (egui::Key::ArrowUp, false, vec![]), // Dynamics folder.
+            (egui::Key::ArrowUp, false, vec![]),
             (egui::Key::ArrowUp, false, vec![entries[2]]),
             (egui::Key::ArrowUp, false, vec![entries[0]]),
         ] {
@@ -4653,6 +4669,102 @@ fn stereo_spread_shared_controls_add_edit_reset_and_remove_on_every_target() {
                     .all(|r| !r.is_positive())
             );
             let point = app.effects_bounds.stereo_spread_units[0].header.center();
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::Delete, false);
+            assert!(app.effect_chain(owner).unwrap().0.is_empty());
+        }
+    }
+}
+
+#[test]
+fn bitcrusher_shared_controls_add_edit_reset_and_remove_on_every_target() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+            let point = app.effects_bounds.bitcrusher_entry.center();
+            assert!(app.effects_bounds.bitcrusher_entry.is_positive());
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::Enter, false);
+            frame(&mut app, &ctx, vec![]);
+            let owner = app.effects_target().unwrap();
+            let daw_core::EffectSettings::Bitcrusher(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert_eq!(*s, daw_core::BitcrusherSettings::default());
+            let b = &app.effects_bounds.bitcrusher_units[0];
+            assert!(b.controls.iter().all(|r| r.is_positive()));
+            for section in b.sections {
+                assert_eq!(section.width(), 90.0);
+            }
+            assert!(
+                b.sections
+                    .windows(2)
+                    .all(|p| p[0].right() == p[1].left() && p[0].height() == p[1].height())
+            );
+            for (index, key) in [
+                (0, egui::Key::ArrowRight),
+                (1, egui::Key::ArrowLeft),
+                (2, egui::Key::ArrowRight),
+                (3, egui::Key::ArrowLeft),
+                (4, egui::Key::ArrowLeft),
+            ] {
+                end_click_sequence(&mut app, &ctx);
+                let point = app.effects_bounds.bitcrusher_units[0].controls[index].center();
+                click(&mut app, &ctx, point);
+                library_key(&mut app, &ctx, key, false);
+            }
+            let daw_core::EffectSettings::Bitcrusher(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert!(s.drive_db > 0.0 && s.level_db < 0.0 && s.dry_wet < 1.0);
+            assert_eq!((s.resolution_bits, s.downsampling), (23, 2));
+            assert!(s.valid());
+            // Pointer drags retain whole steps too.
+            for index in [1, 2] {
+                let point = app.effects_bounds.bitcrusher_units[0].controls[index].center();
+                drag_control(&mut app, &ctx, point, Vec2::new(0.0, -18.0));
+            }
+            let daw_core::EffectSettings::Bitcrusher(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert!(s.valid() && s.downsampling > 2);
+            for i in 0..5 {
+                let point = app.effects_bounds.bitcrusher_units[0].controls[i].center();
+                end_click_sequence(&mut app, &ctx);
+                click(&mut app, &ctx, point);
+                click(&mut app, &ctx, point);
+            }
+            let daw_core::EffectSettings::Bitcrusher(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert_eq!(*s, daw_core::BitcrusherSettings::default());
+            let point = app.effects_bounds.bitcrusher_units[0].power.center();
+            end_click_sequence(&mut app, &ctx);
+            click(&mut app, &ctx, point);
+            let daw_core::EffectSettings::Bitcrusher(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert!(!s.enabled);
+            let point = app.effects_bounds.lane_compact.center();
+            click(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert!(
+                app.effects_bounds.bitcrusher_units[0]
+                    .controls
+                    .iter()
+                    .all(|r| !r.is_positive())
+            );
+            let point = app.effects_bounds.bitcrusher_units[0].header.center();
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Delete, false);
             assert!(app.effect_chain(owner).unwrap().0.is_empty());

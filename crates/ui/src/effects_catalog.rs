@@ -50,7 +50,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 8] = [
+pub(super) const ENTRIES: [Entry; 9] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -98,6 +98,12 @@ pub(super) const ENTRIES: [Entry; 8] = [
         "Stereo Spread",
         Category::Imaging,
         daw_core::EffectInstance::stereo_spread,
+    ),
+    Entry::new(
+        daw_core::BITCRUSHER_TYPE_ID,
+        "Bitcrusher",
+        Category::Distortion,
+        daw_core::EffectInstance::bitcrusher,
     ),
 ];
 

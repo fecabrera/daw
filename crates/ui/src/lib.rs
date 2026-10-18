@@ -27,6 +27,7 @@ mod amplitude_panel;
 #[cfg(any(target_os = "windows", target_os = "linux", test))]
 mod application_menu;
 mod auto_filter_panel;
+mod bitcrusher_panel;
 mod catalog;
 mod compressor_panel;
 pub mod dialogs;

@@ -1,4 +1,5 @@
 mod sampler;
+pub use daw_unit_core::{BITCRUSHER_TYPE_ID, BitcrusherSettings};
 pub use daw_unit_core::{
     DIRECTION_MIXER_TYPE_ID, DirectionMixerInput, DirectionMixerSettings, SamplerInput,
     SamplerMode, SamplerSettings, SamplerTrigger,

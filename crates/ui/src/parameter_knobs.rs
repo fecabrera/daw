@@ -94,6 +94,23 @@ fn ott_frequency(low: bool) -> KnobSpec {
 }
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::BitcrusherDrive => KnobSpec::new("Drive", 0.0..=24.0, 0.0, 0.1)
+            .reference_step(6.0)
+            .value_label(|v| format!("{v:.1} dB"))
+            .format(|v| format!("{v:.1} dB"))
+            .endpoint_labels("0", "+24"),
+        Parameter::BitcrusherResolution => KnobSpec::new("Resolution", 1.0..=24.0, 24.0, 1.0)
+            .stepped(1.0)
+            .reference_step(4.0)
+            .value_label(|v| format!("{v:.0} bit"))
+            .format(|v| format!("{v:.0} bit"))
+            .endpoint_labels("1", "24"),
+        Parameter::BitcrusherDownsampling => KnobSpec::new("Downsampling", 1.0..=40.0, 1.0, 1.0)
+            .stepped(1.0)
+            .reference_step(5.0)
+            .value_label(|v| format!("{v:.0}×"))
+            .format(|v| format!("{v:.0}×"))
+            .endpoint_labels("1", "40"),
         Parameter::StereoSpreadLowerIntensity => spread_intensity("Lower intensity"),
         Parameter::StereoSpreadUpperIntensity => spread_intensity("Upper intensity"),
         Parameter::StereoSpreadLowerFrequency => frequency("Lower frequency", 20.0),
@@ -250,6 +267,30 @@ fn signed_pitch(value: f32) -> String {
 pub(super) fn amount(parameter: Parameter) -> KnobSpec {
     let (mapping, format, endpoints): (AmountMapping, fn(f32) -> String, [&str; 2]) =
         match parameter {
+            Parameter::BitcrusherDrive => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_db,
+                ["−24", "+24"],
+            ),
+            Parameter::BitcrusherResolution => (
+                AmountMapping::Offset {
+                    origin: 1.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.0} bits"),
+                ["−23", "+23"],
+            ),
+            Parameter::BitcrusherDownsampling => (
+                AmountMapping::Offset {
+                    origin: 1.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.0}×"),
+                ["−39", "+39"],
+            ),
             Parameter::DirectionMixerDirection => (
                 AmountMapping::Offset {
                     origin: 0.0,

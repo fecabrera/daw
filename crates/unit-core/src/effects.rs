@@ -2,6 +2,7 @@ use crate::{
     AUTO_FILTER_STATE_VERSION, AUTO_FILTER_TYPE_ID, AutoFilterSettings, COMPRESSOR_STATE_VERSION,
     COMPRESSOR_TYPE_ID, CompressorSettings, DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveSettings,
 };
+use crate::{BITCRUSHER_STATE_VERSION, BITCRUSHER_TYPE_ID, BitcrusherSettings};
 use crate::{DIRECTION_MIXER_STATE_VERSION, DIRECTION_MIXER_TYPE_ID, DirectionMixerSettings};
 use crate::{LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterSettings};
 use crate::{OTT_STATE_VERSION, OTT_TYPE_ID, OttSettings};
@@ -78,6 +79,7 @@ pub enum EffectSettings {
     Limiter(LimiterSettings),
     DirectionMixer(DirectionMixerSettings),
     StereoSpread(StereoSpreadSettings),
+    Bitcrusher(BitcrusherSettings),
     Missing {
         type_id: String,
         state: serde_json::Value,
@@ -93,6 +95,10 @@ impl Serialize for EffectSettings {
         let stored = match self {
             Self::StereoSpread(settings) => StoredEffect {
                 type_id: STEREO_SPREAD_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::Bitcrusher(settings) => StoredEffect {
+                type_id: BITCRUSHER_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
             },
             Self::DirectionMixer(settings) => StoredEffect {
@@ -134,7 +140,17 @@ impl Serialize for EffectSettings {
 impl<'de> Deserialize<'de> for EffectSettings {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let stored = StoredEffect::deserialize(deserializer)?;
-        if stored.type_id == STEREO_SPREAD_TYPE_ID
+        if stored.type_id == BITCRUSHER_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|version| version <= u64::from(BITCRUSHER_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::Bitcrusher)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == STEREO_SPREAD_TYPE_ID
             && stored
                 .state
                 .get("version")
@@ -233,6 +249,7 @@ impl EffectSettings {
             Self::Limiter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::DirectionMixer(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::StereoSpread(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::Bitcrusher(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Ott(s) => crate::ModulationDestinationSettings::modulations(s),
             _ => &[],
         }
@@ -248,6 +265,7 @@ impl EffectSettings {
             Self::Limiter(s) => &mut s.modulations,
             Self::DirectionMixer(s) => &mut s.modulations,
             Self::StereoSpread(s) => &mut s.modulations,
+            Self::Bitcrusher(s) => &mut s.modulations,
             Self::Ott(s) => &mut s.modulations,
             _ => &mut [],
         }
@@ -263,6 +281,7 @@ impl EffectSettings {
             Self::Limiter(settings) => settings.valid(),
             Self::DirectionMixer(settings) => settings.valid(),
             Self::StereoSpread(settings) => settings.valid(),
+            Self::Bitcrusher(settings) => settings.valid(),
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
                     EQ_TYPE_ID => Some(EQ_STATE_VERSION),
@@ -273,6 +292,7 @@ impl EffectSettings {
                     LIMITER_TYPE_ID => Some(LIMITER_STATE_VERSION),
                     DIRECTION_MIXER_TYPE_ID => Some(DIRECTION_MIXER_STATE_VERSION),
                     STEREO_SPREAD_TYPE_ID => Some(STEREO_SPREAD_STATE_VERSION),
+                    BITCRUSHER_TYPE_ID => Some(BITCRUSHER_STATE_VERSION),
                     _ => None,
                 };
                 !type_id.trim().is_empty()
@@ -296,6 +316,12 @@ impl EffectInstance {
         Self {
             id: uuid::Uuid::new_v4(),
             unit: EffectSettings::StereoSpread(StereoSpreadSettings::default()),
+        }
+    }
+    pub fn bitcrusher() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::Bitcrusher(BitcrusherSettings::default()),
         }
     }
     pub fn direction_mixer() -> Self {

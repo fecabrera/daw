@@ -478,6 +478,13 @@ pub(super) fn marker(
         | ModulationParameter::EqLowGain
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
+        ModulationParameter::BitcrusherDrive => offsets.map(|o| (base + o).clamp(0.0, 24.0)),
+        ModulationParameter::BitcrusherResolution => {
+            offsets.map(|o| (base + o).round().clamp(1.0, 24.0))
+        }
+        ModulationParameter::BitcrusherDownsampling => {
+            offsets.map(|o| (base + o).round().clamp(1.0, 40.0))
+        }
         ModulationParameter::LfoRate => offsets.map(|o| (base * 2.0_f32.powf(o)).max(0.0)),
         ModulationParameter::Pitch => offsets.map(|o| base + o.clamp(-96.0, 96.0)),
         ModulationParameter::StereoSpreadLowerFrequency
@@ -559,6 +566,9 @@ pub(super) fn marker(
         lines.push("Frequencies retain a 1 Hz gap; Lower is limited below Upper when modulated boundaries meet.".into());
     }
     let format_value = |value: f32| match parameter {
+        ModulationParameter::BitcrusherDrive => format!("{value:.1} dB"),
+        ModulationParameter::BitcrusherResolution => format!("{value:.0} bit"),
+        ModulationParameter::BitcrusherDownsampling => format!("{value:.0}×"),
         ModulationParameter::DirectionMixerDirection => format!("{value:.0}°"),
         ModulationParameter::DirectionMixerSpread => format!("{value:.2}"),
         ModulationParameter::OttLowRelease
