@@ -106,11 +106,13 @@ The audio callback must remain nonblocking and must not allocate or perform file
 - Do not decode audio, build peaks, stretch clips, serialize manifests, show dialogs, log, acquire locks, or wait on channels in the callback.
 - Prepare renderers, buffers, meter handles, and queue capacity on a control or worker thread. Retire old renderers and final audio owners outside the callback.
 - Use the existing bounded `rtrb` queues and atomic status values. Handle queue-full and device-failure paths without blocking the callback.
-- Effect meters must reuse `unit-core::UnitMeter` and `meters::unit_reading` for the [shared bypass lifecycle](specs/architecture/modular-audio-units.md#effect-meter-lifecycle). Whole-unit off clears all readings and suspends publication until re-enabled. Retain handles until processor retirement; preserve audio ramps, detector history, and latency.
+- All current and future unit meters must reuse `unit-core::UnitMeter` and `meters::unit_reading` for the [shared bypass lifecycle](specs/architecture/modular-audio-units.md#effect-meter-lifecycle). Disabled units clear all their meters, show empty rails and zero numeric readings, and stop updates until re-enabled. Mask queued or stale readings while the unit is off. Retain handles until processor retirement; preserve audio ramps, detector history, and latency.
 - Run import, source preparation, project I/O, stretching, and export through the existing worker/job paths. Keep expensive work out of egui painting and input handlers.
 - Stage changes and publish them after successful work. Retain current project state on failure or cancellation. Route errors and warnings through the existing UI/CLI reporting paths.
 
 ## UI conventions
+
+- Disabled bands use the theme's secondary grey for meter fills, including boost, reduction, overload, and residual readings during band transitions. Reuse `meters::band_color` for this rule across current and future band monitors. Keep the meter's scale, readings, geometry, tooltips, and accessibility unchanged.
 
 - Register instrument catalog components once in `instrument_catalog.rs::ENTRIES`, using `Entry::layer` with its category and an optional `.with_main` installation function. Registration drives category membership, catalog additions, drag eligibility, and unsupported-target hints. Reuse the optional folders in `catalog.rs` and shared `ControlPanel` rows; do not maintain separate component lists for folders. Do not add component type allowlists to drag handlers. Preview checks must inspect registration metadata without invoking constructors or assigning IDs. Installed transfers continue through core `Project::can_transfer_component` and its transaction. See [component registration](specs/editing/components.md#registering-instrument-components).
 
