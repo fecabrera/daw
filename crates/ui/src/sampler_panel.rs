@@ -447,8 +447,10 @@ impl DawUi {
             let audio = if let Some(hover) = hover {
                 hover.into_audio()?
             } else {
-                daw_media::decode_wav_at_rate(&path, session.project.sample_rate_hz)
-                    .map_err(|e| e.to_string())?
+                daw_media::decode_wav_cached(&path, session.project.sample_rate_hz, &|| {
+                    cancel.load(Ordering::Relaxed)
+                })
+                .map_err(|e| e.to_string())?
             };
             session
                 .with_sampler_decoded(target.0, target.1, &path, audio, &|| {

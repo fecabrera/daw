@@ -55,8 +55,8 @@ impl Session {
     }
     pub fn with_sampler_file(&self, track: Id, layer: Id, path: &Path) -> Result<Self> {
         let path = absolute(path)?;
-        let data =
-            daw_media::decode_wav_at_rate(&path, self.project.sample_rate_hz).map_err(error)?;
+        let data = daw_media::decode_wav_cached(&path, self.project.sample_rate_hz, &|| false)
+            .map_err(error)?;
         self.with_sampler_decoded(track, layer, &path, data, &|| false)
     }
     /// Consume audio already decoded by the shared file-hover worker.
@@ -151,6 +151,8 @@ impl Session {
                 continue;
             };
             let count = usize::try_from(s.end_frame - s.start_frame).map_err(error)?;
+            daw_media::register_audio(source);
+            let reservation = daw_media::AudioReservation::new(count as u64, 0).map_err(error)?;
             let mut samples = Vec::new();
             samples.try_reserve_exact(count).map_err(error)?;
             for local in s.start_frame..s.end_frame {
@@ -166,6 +168,7 @@ impl Session {
                 );
             }
             let selected = daw_media::prepared_audio(source, samples);
+            drop(reservation); // selected is now registered as a retained PCM owner.
             let length = s
                 .output_frames(self.project.sample_rate_hz, self.project.tempo_bpm)
                 .ok_or_else(|| error("Unsupported sampler duration"))?;

@@ -1,4 +1,14 @@
 use super::*;
+use std::hash::BuildHasher;
+static ROUTE_HASH: std::sync::OnceLock<std::collections::hash_map::RandomState> =
+    std::sync::OnceLock::new();
+fn route_bucket(route: &ModulationRoute, count: usize) -> usize {
+    (ROUTE_HASH
+        .get()
+        .expect("prepared route hash seed")
+        .hash_one((route.settings.id, route.settings.target))
+        % count as u64) as usize
+}
 
 #[derive(Clone, Copy)]
 /// Shared finite linear ramp for control values and contribution weights.
@@ -37,16 +47,37 @@ impl ModulationRamp {
     }
 }
 
+#[derive(Clone, Copy)]
+struct SourceBinding {
+    source: ModulationSourceId,
+    local_generation: u64,
+    shared_generation: u64,
+    local_slot: Option<usize>,
+    shared_slot: Option<usize>,
+}
+
 /// Prepared route with a shared 5 ms amount/power ramp. Retarget by stable route ID.
 pub struct ModulationRoute {
     pub settings: Modulation,
     amount: ModulationRamp,
     frames: u32,
+    binding: Option<SourceBinding>,
+    local_slot: Option<usize>,
+    shared_slot: Option<usize>,
+    // Intrusive scratch table for allocation-free history matching. Never read while sampling.
+    match_head: usize,
+    match_next: usize,
 }
 impl ModulationRoute {
     pub fn new(settings: Modulation, rate: u32) -> Self {
+        ROUTE_HASH.get_or_init(std::collections::hash_map::RandomState::new);
         Self {
+            match_head: usize::MAX,
+            match_next: usize::MAX,
             settings,
+            binding: None,
+            local_slot: None,
+            shared_slot: None,
             amount: ModulationRamp::new(if settings.enabled && settings.valid() {
                 settings.amount
             } else {
@@ -62,18 +93,82 @@ impl ModulationRoute {
         self.settings = next.settings;
         self.amount.set(next.amount.target, self.frames);
     }
+    fn value<'a>(
+        &mut self,
+        local: &'a [ModulationValue],
+        shared: &'a [ModulationValue],
+        context: ModulationContext,
+    ) -> Option<(&'a ModulationValue, bool)> {
+        let source = self.settings.source?;
+        if let Some(shared_index) = context.shared_sources
+            && (context.local_sources.is_some() || local.is_empty())
+        {
+            let local_generation = context.local_sources.map_or(0, |i| i.generation);
+            if self.binding.is_none_or(|b| {
+                (b.source, b.local_generation, b.shared_generation)
+                    != (source, local_generation, shared_index.generation)
+            }) {
+                self.binding = Some(SourceBinding {
+                    source,
+                    local_generation,
+                    shared_generation: shared_index.generation,
+                    local_slot: context.local_sources.and_then(|i| i.position(source)),
+                    shared_slot: shared_index.position(source),
+                });
+            }
+            let SourceBinding {
+                local_slot,
+                shared_slot,
+                ..
+            } = self.binding?;
+            if let Some(value) = local_slot
+                .and_then(|i| local.get(i))
+                .filter(|v| v.source == source)
+            {
+                return Some((value, true));
+            }
+            return shared_slot
+                .and_then(|i| shared.get(i))
+                .filter(|v| v.source == source)
+                .map(|v| (v, false));
+        }
+        // Slice-only clients remain supported. Validate cached hits and retain local
+        // precedence even when callers replace or reorder their publication buffers.
+        if self
+            .local_slot
+            .and_then(|i| local.get(i))
+            .is_none_or(|v| v.source != source)
+        {
+            self.local_slot = local.iter().position(|v| v.source == source);
+        }
+        if let Some(i) = self.local_slot {
+            return Some((&local[i], true));
+        }
+        if self
+            .shared_slot
+            .and_then(|i| shared.get(i))
+            .is_none_or(|v| v.source != source)
+        {
+            self.shared_slot = shared.iter().position(|v| v.source == source);
+        }
+        self.shared_slot.map(|i| (&shared[i], false))
+    }
     pub fn sample(
         &mut self,
         local: &[ModulationValue],
         shared: &[ModulationValue],
     ) -> Option<(f32, f32, bool, ModulationRange, ModulationBehavior)> {
+        self.sample_context(local, shared, ModulationContext::default())
+            .map(|(v, a, p, r, b, _)| (v, a, p, r, b))
+    }
+    fn sample_context(
+        &mut self,
+        local: &[ModulationValue],
+        shared: &[ModulationValue],
+        context: ModulationContext,
+    ) -> Option<(f32, f32, bool, ModulationRange, ModulationBehavior, bool)> {
         let amount = self.amount.next_value();
-        let source = self.settings.source?;
-        let (value, per_note) = if let Some(v) = local.iter().find(|v| v.source == source) {
-            (v, true)
-        } else {
-            (shared.iter().find(|v| v.source == source)?, false)
-        };
+        let (value, per_note) = self.value(local, shared, context)?;
         if !amount.is_finite()
             || amount == 0.0
             || !value.value.is_finite()
@@ -88,6 +183,7 @@ impl ModulationRoute {
                 per_note,
                 value.range,
                 value.behavior,
+                value.owns_release(context.release_age),
             ))
         }
     }
@@ -143,11 +239,11 @@ impl ModulationInputs {
         let mut continuous = 0.0;
         for route in routes {
             // Advance every route ramp once even if a caller supplies an unsupported target.
-            let sample = route.sample(local, shared);
+            let sample = route.sample_context(local, shared, context);
             if route.settings.target != target || !parameters.contains(&route.settings.parameter) {
                 continue;
             }
-            if let Some((value, amount, per_note, range, behavior)) = sample {
+            if let Some((value, amount, per_note, range, behavior, owns_release)) = sample {
                 if let Some(index) = route.settings.parameter.offset_index() {
                     inputs.offsets[index] += value * amount;
                     continue;
@@ -169,10 +265,7 @@ impl ModulationInputs {
                 deltas[0] += amount * (value - gate);
                 deltas[1] += amount * (value - 1.0);
                 if !per_note && value > 0.0 {
-                    shared_release |= shared.iter().any(|v| {
-                        Some(v.source) == route.settings.source
-                            && v.owns_release(context.release_age)
-                    });
+                    shared_release |= owns_release;
                 }
                 effective += 1;
                 direct = Some((value, amount, per_note));
@@ -333,13 +426,100 @@ pub fn retarget_modulation_routes(
     current: &mut Vec<ModulationRoute>,
     prepared: &mut Vec<ModulationRoute>,
 ) {
-    for next in prepared.iter_mut() {
-        if let Some(route) = current.iter_mut().find(|r| {
-            r.settings.id == next.settings.id && r.settings.target == next.settings.target
-        }) {
-            route.retarget(next);
-            std::mem::swap(route, next);
+    if current.len() <= 16 {
+        // Avoid table setup for the common small connection strip.
+        for next in prepared.iter_mut() {
+            if let Some(route) = current.iter_mut().find(|r| {
+                (r.settings.id, r.settings.target) == (next.settings.id, next.settings.target)
+            }) {
+                route.retarget(next);
+                std::mem::swap(route, next);
+            }
+        }
+    } else {
+        let count = current.len();
+        for route in current.iter_mut() {
+            route.match_head = usize::MAX;
+        }
+        for i in 0..count {
+            let bucket = route_bucket(&current[i], count);
+            current[i].match_next = current[bucket].match_head;
+            current[bucket].match_head = i;
+        }
+        for next in prepared.iter_mut() {
+            let mut index = current[route_bucket(next, count)].match_head;
+            while index != usize::MAX {
+                let route = &mut current[index];
+                if (route.settings.id, route.settings.target)
+                    == (next.settings.id, next.settings.target)
+                {
+                    route.retarget(next);
+                    let (head, link) = (route.match_head, route.match_next);
+                    std::mem::swap(route, next);
+                    // A bucket can occupy the matched slot. Preserve its links after the swap.
+                    current[index].match_head = head;
+                    current[index].match_next = link;
+                    break;
+                }
+                index = route.match_next;
+            }
         }
     }
     std::mem::swap(current, prepared);
+}
+
+#[cfg(test)]
+mod matching_tests {
+    use super::*;
+    #[test]
+    fn history_table_handles_collisions_removals_and_incoming_order() {
+        let source = ModulationSourceId {
+            layer: uuid::Uuid::new_v4(),
+            unit: uuid::Uuid::new_v4(),
+        };
+        let mut current = Vec::new();
+        // Force a collision chain independently of the process-randomized hash seed.
+        while current.len() < 32 {
+            let mut settings = Modulation::new(ModulationParameter::Level);
+            settings.source = Some(source);
+            settings.amount = 0.2 + current.len() as f32 * 0.01;
+            let route = ModulationRoute::new(settings, 48_000);
+            if route_bucket(&route, 32) == 0 {
+                current.push(route);
+            }
+        }
+        let expected: Vec<_> = current
+            .iter()
+            .rev()
+            .step_by(2)
+            .map(|r| (r.settings.id, r.settings.amount))
+            .collect();
+        let mut prepared: Vec<_> = current
+            .iter()
+            .rev()
+            .step_by(2)
+            .map(|r| {
+                let mut settings = r.settings;
+                settings.amount = 0.8;
+                ModulationRoute::new(settings, 48_000)
+            })
+            .collect();
+        let missing = Modulation::new(ModulationParameter::Level);
+        prepared.push(ModulationRoute::new(missing, 48_000));
+        retarget_modulation_routes(&mut current, &mut prepared);
+        let value = ModulationValue {
+            source,
+            value: 0.5,
+            weight: 1.0,
+            range: ModulationRange::Unipolar,
+            behavior: ModulationBehavior::Continuous,
+            release_age: None,
+        };
+        for (route, (id, previous)) in current.iter_mut().zip(expected) {
+            assert_eq!(route.settings.id, id);
+            let amount = route.sample(&[], &[value]).unwrap().1;
+            assert!((amount - (previous + (0.8 - previous) / 240.0)).abs() < 1e-6);
+        }
+        assert_eq!(current.last().unwrap().settings.id, missing.id);
+    }
 }

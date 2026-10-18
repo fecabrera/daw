@@ -214,17 +214,21 @@ impl ModulationOutput {
 
 /// Destination timing and note lifecycle supplied by the host. No transport or device dependency.
 #[derive(Clone, Copy, Debug)]
-pub struct ModulationContext {
+pub struct ModulationContext<'a> {
+    pub local_sources: Option<&'a super::ModulationSourceIndex>,
+    pub shared_sources: Option<&'a super::ModulationSourceIndex>,
     pub frame: u64,
     pub tempo_bpm: f32,
     pub note_gate: f32,
     pub release_age: Option<u64>,
 }
-impl Default for ModulationContext {
+impl Default for ModulationContext<'_> {
     fn default() -> Self {
         Self {
             frame: 0,
             tempo_bpm: 120.0,
+            local_sources: None,
+            shared_sources: None,
             note_gate: 1.0,
             release_age: None,
         }

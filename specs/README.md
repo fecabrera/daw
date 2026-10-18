@@ -7,6 +7,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [MVP scope and architecture](architecture/mvp-scope.md).
 - [Iteration 1 implementation specification](architecture/iteration-1.md).
 - [Modular audio units](architecture/modular-audio-units.md).
+- [Prepared rendering and performance](architecture/performance.md).
 
 ## Instruments and editing
 
@@ -40,3 +41,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 ## Evidence
 
 [Validation history](validation/README.md) records completed checks and unverified behavior. It is historical evidence, not a substitute for current requirements. Keep dates and original results when moving or correcting records.
+
+- [Performance audit — 2026-10-18](validation/performance-audit-2026-10-18.md): measured CPU/allocation baselines, scaling findings, proposed remediations, and native verification gaps.
+
+- [Performance remediation — 2026-10-18](validation/performance-remediation-2026-10-18.md): implemented changes, before/after evidence, and remaining checks.

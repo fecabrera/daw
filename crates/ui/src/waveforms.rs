@@ -11,6 +11,9 @@ pub(super) fn paint(
     colors: crate::theme::ClipColors,
     unprepared: Option<daw_core::ClipStretch>,
 ) {
+    if !body.intersect(painter.clip_rect()).is_positive() {
+        return;
+    }
     let channels = usize::from(audio.metadata.channels).clamp(1, 2);
     let height = body.height() / channels as f32;
     let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));

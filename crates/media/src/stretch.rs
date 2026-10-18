@@ -65,8 +65,32 @@ fn stretch_audio_with_engine_cancellable(
         return Err(Error("Time stretch cancelled".into()));
     }
     engine.validate().map_err(|e| Error(e.to_string()))?;
+    if cancelled() {
+        return Err(Error("Time stretch cancelled".into()));
+    }
+    if !ratio.valid() {
+        return Err(Error("Unsupported clip stretch ratio".into()));
+    }
+    if ratio.source_frames == ratio.output_frames {
+        return Ok(audio.clone());
+    }
+    crate::register_audio(audio);
+    let frames = ratio
+        .scale(audio.samples.len() as u64)
+        .ok_or_else(|| Error("Stretched audio is too long".into()))?;
+    // Integrated materializes planar/interleaved input and output; native scratch is
+    // library-owned and is not represented as a strict RSS guarantee.
+    let scratch = if engine.id == StretchEngineId::Integrated {
+        (audio.samples.len() as u64)
+            .saturating_mul(8)
+            .saturating_add(frames.saturating_mul(8))
+    } else {
+        0
+    };
+    let _reservation =
+        crate::AudioReservation::new(frames, scratch.saturating_add(16 * 1024 * 1024))?;
     match engine.id {
-        StretchEngineId::RubberBand => stretch_audio_cancellable(audio, ratio, cancelled),
+        StretchEngineId::RubberBand => stretch_audio_inner(audio, ratio, cancelled),
         StretchEngineId::Integrated => {
             let ratio = timestretch::Ratio::new(ratio.output_frames, ratio.source_frames)
                 .map_err(|e| Error(e.to_string()))?;
@@ -101,6 +125,27 @@ pub fn stretch_audio(audio: &AudioData, ratio: ClipStretch) -> Result<AudioData>
     stretch_audio_cancellable(audio, ratio, &|| false)
 }
 fn stretch_audio_cancellable(
+    audio: &AudioData,
+    ratio: ClipStretch,
+    cancelled: &impl Fn() -> bool,
+) -> Result<AudioData> {
+    if cancelled() {
+        return Err(Error("Time stretch cancelled".into()));
+    }
+    if !ratio.valid() {
+        return Err(Error("Unsupported clip stretch ratio".into()));
+    }
+    if ratio.source_frames == ratio.output_frames {
+        return Ok(audio.clone());
+    }
+    crate::register_audio(audio);
+    let frames = ratio
+        .scale(audio.samples.len() as u64)
+        .ok_or_else(|| Error("Stretched audio is too long".into()))?;
+    let _reservation = crate::AudioReservation::new(frames, 16 * 1024 * 1024)?;
+    stretch_audio_inner(audio, ratio, cancelled)
+}
+fn stretch_audio_inner(
     audio: &AudioData,
     ratio: ClipStretch,
     cancelled: &impl Fn() -> bool,
@@ -223,12 +268,14 @@ pub fn prepared_audio(audio: &AudioData, samples: Vec<[f32; 2]>) -> AudioData {
             peak
         })
         .collect();
-    AudioData {
+    let prepared = AudioData {
         sample_rate_hz: audio.sample_rate_hz,
         samples: Arc::new(samples),
         peaks: Arc::new(peaks),
         metadata: audio.metadata.clone(),
-    }
+    };
+    crate::register_audio(&prepared);
+    prepared
 }
 
 #[cfg(test)]

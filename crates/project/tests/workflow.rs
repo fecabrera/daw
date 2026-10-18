@@ -4065,3 +4065,49 @@ fn sampler_clip_assignment_reuses_trim_repeat_and_stretch_mapping_without_changi
     assert_eq!(assigned.project.tracks[0].clips[0].length_frames, 4800);
     assert_eq!(assigned.project.assets.len(), session.project.assets.len());
 }
+
+#[test]
+fn decoded_sources_share_storage_without_sharing_asset_identity_and_refresh_on_replacement() {
+    let f = Fixture::new();
+    let source = f.wav("shared.wav", 48_000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    session.import(&source, None, 10_000).unwrap();
+    let ids: Vec<_> = session.project.assets.iter().map(|a| a.id).collect();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+    assert!(std::sync::Arc::ptr_eq(
+        &session.audio[&ids[0]].samples,
+        &session.audio[&ids[1]].samples
+    ));
+    session.save(&f.0).unwrap();
+    let opened = Session::open(&f.0).unwrap();
+    assert!(std::sync::Arc::ptr_eq(
+        &opened.audio[&ids[0]].samples,
+        &opened.audio[&ids[1]].samples
+    ));
+    // Different header/data length invalidates the source revision even on coarse timestamp filesystems.
+    f.wav("shared.wav", 96_000, 2, 24, false);
+    let replaced = Session::open(&f.0).unwrap();
+    assert!(!std::sync::Arc::ptr_eq(
+        &opened.audio[&ids[0]].samples,
+        &replaced.audio[&ids[0]].samples
+    ));
+    assert_eq!(replaced.audio[&ids[0]].metadata.sample_rate_hz, 96_000);
+    assert!(daw_media::decode_wav_cached(&source, 48_000, &|| true).is_err());
+    let before = session.project.clone();
+    assert!(
+        session
+            .with_processing_settings_cancellable(
+                96_000,
+                512,
+                session.project.stretch_engine,
+                &|| true
+            )
+            .is_err()
+    );
+    assert_eq!(
+        serde_json::to_value(&session.project).unwrap(),
+        serde_json::to_value(&before).unwrap()
+    );
+}

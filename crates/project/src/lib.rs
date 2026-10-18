@@ -126,7 +126,7 @@ impl Session {
             };
             let path = self.source_path(asset)?;
             let audio = if path.exists() {
-                daw_media::decode_wav_at_rate(&path, sample_rate_hz).map_err(error)?
+                daw_media::decode_wav_cached(&path, sample_rate_hz, cancelled).map_err(error)?
             } else {
                 next.warnings.push(format!(
                     "{}: source unavailable; converted cached audio",
@@ -276,8 +276,9 @@ impl Session {
                 Err(e) => return Err(error(format!("{}: {e}", path.display()))),
                 _ => {}
             }
-            let data = daw_media::decode_wav_at_rate(&path, session.project.sample_rate_hz)
-                .map_err(error)?;
+            let data =
+                daw_media::decode_wav_cached(&path, session.project.sample_rate_hz, &|| false)
+                    .map_err(error)?;
             if (data.samples.len() as u64) < asset.decoded_frame_count {
                 session.warnings.push(format!("Source {} is shorter than saved metadata; unavailable ranges render as silence",path.display()));
             } else if data.metadata.sample_rate_hz != asset.source_metadata.sample_rate_hz
@@ -319,8 +320,8 @@ impl Session {
     }
     pub fn import(&mut self, path: &Path, track: Option<Id>, start: u64) -> Result<Id> {
         let path = absolute(path)?;
-        let data =
-            daw_media::decode_wav_at_rate(&path, self.project.sample_rate_hz).map_err(error)?;
+        let data = daw_media::decode_wav_cached(&path, self.project.sample_rate_hz, &|| false)
+            .map_err(error)?;
         self.import_decoded(&path, data, track, start)
     }
     /// Import audio prepared by the file-drag preview worker without decoding it again.

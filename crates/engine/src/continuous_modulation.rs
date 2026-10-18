@@ -63,6 +63,7 @@ impl ProviderControl {
     pub fn tick(
         &mut self,
         values: &[ModulationValue],
+        index: &ModulationSourceIndex,
         context: ModulationSourceContext,
     ) -> ModulationValue {
         fn sample<D: ModulationSource + ModulationDestination<Audio = ()>>(
@@ -70,6 +71,7 @@ impl ProviderControl {
             output: &mut ModulationOutput,
             routes: &mut [Route],
             values: &[ModulationValue],
+            index: &ModulationSourceIndex,
             context: ModulationSourceContext,
         ) -> ModulationValue {
             process_modulation(
@@ -79,6 +81,7 @@ impl ProviderControl {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: Some(index),
                     frame: context.frame,
                     tempo_bpm: context.tempo_bpm,
                     ..Default::default()
@@ -92,9 +95,17 @@ impl ProviderControl {
                 &mut self.output,
                 &mut self.routes,
                 values,
+                index,
                 context,
             ),
-            Unit::Macro(u) => sample(u, &mut self.output, &mut self.routes, values, context),
+            Unit::Macro(u) => sample(
+                u,
+                &mut self.output,
+                &mut self.routes,
+                values,
+                index,
+                context,
+            ),
         }
     }
     pub fn values(&self) -> [f32; 2] {

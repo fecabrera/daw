@@ -26,6 +26,29 @@ pub fn centered_with_id<R>(
         .inner
 }
 
+/// Preserve fixed row geometry and offscreen drop bounds without constructing controls.
+/// Call only outside active interactions or text editing.
+pub fn placeholder(
+    ui: &mut Ui,
+    id: impl egui::AsIdSalt,
+    width: f32,
+    height: f32,
+) -> (egui::Rect, egui::Rect) {
+    centered_with_id(ui, id, height, |ui| {
+        let panel = ui
+            .allocate_exact_size(Vec2::new(width, height), egui::Sense::hover())
+            .0;
+        let lane = ui
+            .allocate_exact_size(
+                Vec2::new(ui.available_width(), height),
+                egui::Sense::hover(),
+            )
+            .0;
+        (panel, lane)
+    })
+    .inner
+}
+
 /// Keep form controls aligned after a shared label column.
 pub fn field<R>(
     ui: &mut Ui,

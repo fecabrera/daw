@@ -1,3 +1,5 @@
+mod index;
+pub use index::ModulationSourceIndex;
 mod graph;
 mod protocol;
 mod runtime;
@@ -50,7 +52,7 @@ impl Default for EnvelopeInstance {
     }
 }
 /// Stable provider identity; the historical JSON key is retained for existing projects.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ModulationSourceId {
     pub layer: Uuid,
     #[serde(rename = "envelope", alias = "unit")]

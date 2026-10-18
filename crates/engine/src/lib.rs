@@ -4,6 +4,7 @@ mod latency;
 mod lfo;
 mod midi;
 mod modulation;
+mod schedule;
 use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
 use daw_media::AudioData;
 use std::collections::HashMap;
@@ -37,6 +38,8 @@ impl RenderPlan {
                 .iter()
                 .any(|t| t.kind == daw_core::TrackKind::Midi)
     }
+    /// Exact isolated sample. Effects/MIDI require replay from zero: use a persistent
+    /// `Renderer::render_offline_at` for sequential or forward-range consumers.
     pub fn sample_at(&self, frame: u64) -> [f32; 2] {
         if self.needs_stateful_render() {
             let mut output = [[0.0; 2]];
@@ -76,12 +79,7 @@ impl RenderPlan {
         if self.needs_stateful_render() {
             let mut renderer = Renderer::new(self.clone());
             renderer.seek(0);
-            let mut scratch = [[0.0; 2]; 512];
-            while renderer.playhead < start {
-                let frames = (start - renderer.playhead).min(scratch.len() as u64) as usize;
-                renderer.render_offline(&mut scratch[..frames]);
-            }
-            renderer.render_offline(out);
+            renderer.render_offline_at(start, out);
             return;
         }
         for (i, s) in out.iter_mut().enumerate() {
@@ -89,36 +87,6 @@ impl RenderPlan {
         }
     }
 }
-/// Clip bus before track effects and mixing controls. Missing ranges feed zeros into effects.
-fn audio_source(
-    plan: &RenderPlan,
-    track: &daw_core::Track,
-    frame: u64,
-) -> ([f32; 2], Option<bool>) {
-    let Some(clip) = track
-        .clips
-        .iter()
-        .find(|clip| frame >= clip.start_frame && frame < clip.end())
-    else {
-        return ([0.0; 2], None);
-    };
-    let Some(audio) = plan.audio_for_clip(clip) else {
-        return ([0.0; 2], None);
-    };
-    let local = frame - clip.start_frame;
-    let source_frame = clip.source_frame(local);
-    let fade = sample_fade(clip, local, source_frame, plan.project.sample_rate_hz);
-    (
-        audio
-            .samples
-            .get(source_frame as usize)
-            .copied()
-            .unwrap_or_default()
-            .map(|value| value * fade),
-        Some(audio.metadata.channels == 1),
-    )
-}
-
 fn sample_fade(clip: &daw_core::Clip, local: u64, source_frame: u64, sample_rate_hz: u32) -> f32 {
     let outer = clip_fade_at_rate(local, clip.length_frames, sample_rate_hz);
     clip.repeat.map_or(outer, |repeat| {
@@ -189,7 +157,12 @@ pub enum ModulationTarget {
 }
 
 pub struct Renderer {
+    /// Immutable prepared model. Replace it through a new renderer and `inherit`.
     pub plan: RenderPlan,
+    end_frame: u64,
+    audio_tracks: Vec<schedule::AudioTrack>,
+    track_index: HashMap<Id, usize>,
+    effect_tracks: HashMap<Id, Option<usize>>,
     pub playhead: u64,
     pub playing: bool,
     paused: bool,
@@ -209,6 +182,14 @@ pub struct Renderer {
     latent_held_mix: [f32; 2],
     source_fingerprint: u64,
 }
+/// Coherent transport metadata for worker preparation; no DSP ownership crosses threads here.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TransportState {
+    pub frame: u64,
+    pub playing: bool,
+    pub paused: bool,
+    pub playback_start: Option<u64>,
+}
 struct TrackGains {
     id: Id,
     value: [f32; 4],
@@ -218,12 +199,35 @@ struct TrackGains {
 }
 impl Renderer {
     pub fn new(plan: RenderPlan) -> Self {
+        let end_frame = plan.project.end();
+        let track_index = plan
+            .project
+            .tracks
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.id, i))
+            .collect();
+        let effect_tracks = plan
+            .project
+            .tracks
+            .iter()
+            .enumerate()
+            .flat_map(|(i, t)| t.effects.iter().map(move |e| (e.id, Some(i))))
+            .chain(plan.project.master.effects.iter().map(|e| (e.id, None)))
+            .collect();
+        let audio_tracks = plan
+            .project
+            .tracks
+            .iter()
+            .map(|t| schedule::AudioTrack::new(&plan, t))
+            .collect();
+        let any_solo = plan.project.tracks.iter().any(|t| t.soloed);
         let gains = plan
             .project
             .tracks
             .iter()
             .map(|t| {
-                let gate = if plan.project.audible(t) {
+                let gate = if daw_core::mix_audible(t.muted, t.soloed, any_solo) {
                     linear_gain(t.gain_db)
                 } else {
                     0.0
@@ -325,6 +329,10 @@ impl Renderer {
         let alignment = latency::Alignment::new(&plan.project);
         let mut renderer = Self {
             alignment,
+            end_frame,
+            audio_tracks,
+            track_index,
+            effect_tracks,
             midi,
             effects,
             master_effects,
@@ -360,12 +368,7 @@ impl Renderer {
     pub fn modulation_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {
         match target {
             ModulationTarget::Sampler { track, layer } => {
-                let index = self
-                    .plan
-                    .project
-                    .tracks
-                    .iter()
-                    .position(|t| t.id == track)?;
+                let index = *self.track_index.get(&track)?;
                 let midi = self.midi[index].as_ref()?;
                 if !self.plan.project.tracks[index]
                     .instrument
@@ -383,32 +386,19 @@ impl Renderer {
                     gain[1],
                 ]))
             }
-            ModulationTarget::Effect(id) => {
-                self.master_effects.modulation_values(id).or_else(|| {
-                    self.effects
-                        .iter()
-                        .find_map(|chain| chain.modulation_values(id))
-                })
-            }
+            ModulationTarget::Effect(id) => match self.effect_tracks.get(&id)? {
+                Some(index) => self.effects[*index].modulation_values(id),
+                None => self.master_effects.modulation_values(id),
+            },
             ModulationTarget::Macro { track, layer, unit } => {
-                let index = self
-                    .plan
-                    .project
-                    .tracks
-                    .iter()
-                    .position(|t| t.id == track)?;
+                let index = *self.track_index.get(&track)?;
                 let value = self.midi[index]
                     .as_ref()?
                     .provider_values(daw_core::ModulationSourceId { layer, unit })?[0];
                 Some(parameter_snapshot([value]))
             }
             ModulationTarget::Lfo { track, layer, unit } => {
-                let index = self
-                    .plan
-                    .project
-                    .tracks
-                    .iter()
-                    .position(|t| t.id == track)?;
+                let index = *self.track_index.get(&track)?;
                 let [depth, hz] = self.midi[index]
                     .as_ref()?
                     .provider_values(daw_core::ModulationSourceId { layer, unit })?;
@@ -419,12 +409,7 @@ impl Renderer {
                 layer,
                 oscillator,
             } => {
-                let index = self
-                    .plan
-                    .project
-                    .tracks
-                    .iter()
-                    .position(|t| t.id == track)?;
+                let index = *self.track_index.get(&track)?;
                 if !self.plan.project.tracks[index]
                     .instrument
                     .as_ref()?
@@ -440,12 +425,7 @@ impl Renderer {
                 Some(parameter_snapshot([min, max]))
             }
             ModulationTarget::Amplitude { track, layer } => {
-                let index = self
-                    .plan
-                    .project
-                    .tracks
-                    .iter()
-                    .position(|t| t.id == track)?;
+                let index = *self.track_index.get(&track)?;
                 if !self.plan.project.tracks[index]
                     .instrument
                     .as_ref()?
@@ -499,15 +479,51 @@ impl Renderer {
             effects.set_band_meter(id, &meter);
         }
     }
-    pub fn inherit(&mut self, old: &mut Self) {
-        let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
+    /// The native host checks this before callback inheritance. Incompatible latency
+    /// needs worker pre-roll; direct/offline users retain synchronous inheritance.
+    pub fn can_inherit_without_preroll(&self, old: &Self) -> bool {
         let new_loop = &self.plan.project.transport.r#loop;
         let old_loop = &old.plan.project.transport.r#loop;
-        let aligned = self.alignment.compatible(&old.alignment)
+        self.alignment.compatible(&old.alignment)
             && (self.alignment.total == 0
                 || (new_loop.enabled == old_loop.enabled
                     && new_loop.start_frame == old_loop.start_frame
-                    && new_loop.end_frame == old_loop.end_frame));
+                    && new_loop.end_frame == old_loop.end_frame))
+    }
+    pub fn transport_state(&self) -> TransportState {
+        TransportState {
+            frame: self.playhead,
+            playing: self.playing,
+            paused: self.paused,
+            playback_start: self.playback_start,
+        }
+    }
+    /// Control/worker thread only: reconstruct sources and alignment at the requested clock.
+    pub fn prepare_transport(&mut self, state: TransportState) {
+        self.playhead = state.frame;
+        self.playing = state.playing && self.end_frame > 0;
+        self.paused = state.paused;
+        self.playback_start = state.playback_start;
+        self.reset_processing();
+        self.prime_latency(self.playing || self.paused);
+    }
+    /// Bounded activation of a worker-prepared transport, retaining the output fade.
+    pub fn activate_transport(&mut self, old: &Self) {
+        self.ramp = old.ramp;
+        self.previous = old.previous;
+        self.transition_from = old.previous;
+        self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
+    }
+    /// Resume an already prepared paused transport without resetting its history.
+    pub fn resume(&mut self) {
+        if self.end_frame > 0 {
+            self.playing = true;
+            self.paused = false;
+        }
+    }
+    pub fn inherit(&mut self, old: &mut Self) {
+        let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1);
+        let aligned = self.can_inherit_without_preroll(old);
         self.playhead = old.playhead;
         self.playing = old.playing;
         self.paused = old.paused;
@@ -526,12 +542,7 @@ impl Renderer {
         }
         for (index, runtime) in self.midi.iter_mut().enumerate() {
             let id = self.plan.project.tracks[index].id;
-            if let Some(previous) = old
-                .plan
-                .project
-                .tracks
-                .iter()
-                .position(|track| track.id == id)
+            if let Some(&previous) = old.track_index.get(&id)
                 && runtime
                     .as_ref()
                     .zip(old.midi[previous].as_ref())
@@ -548,12 +559,14 @@ impl Renderer {
             self.master_effects
                 .inherit_chain(&mut old.master_effects, &self.plan.project.master.effects);
             for (effects, track) in self.effects.iter_mut().zip(&self.plan.project.tracks) {
-                effects.inherit(&mut old.effects, track);
+                if let Some(&index) = old.track_index.get(&track.id) {
+                    effects.inherit_chain(&mut old.effects[index], &track.effects);
+                }
             }
         }
         for g in &mut self.gains {
-            if let Some(o) = old.gains.iter().find(|o| o.id == g.id) {
-                g.value = o.value;
+            if let Some(&index) = old.track_index.get(&g.id) {
+                g.value = old.gains[index].value;
             } else {
                 g.value = [0.0; 4];
             }
@@ -621,7 +634,7 @@ impl Renderer {
         self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
     }
     pub fn play(&mut self) {
-        if self.plan.project.end() > 0 {
+        if self.end_frame > 0 {
             if !self.playing && !self.paused {
                 self.playback_start = Some(self.playhead);
             }
@@ -657,6 +670,19 @@ impl Renderer {
             self.seek(start);
         }
     }
+    /// Exact range from the current offline history. Forward requests reuse DSP state;
+    /// backwards requests reset and replay. Construct a dedicated renderer starting at zero.
+    pub fn render_offline_at(&mut self, start: u64, out: &mut [[f32; 2]]) {
+        if start < self.playhead {
+            self.seek(0);
+        }
+        let mut scratch = [[0.0; 2]; 512];
+        while self.playhead < start {
+            let count = (start - self.playhead).min(scratch.len() as u64) as usize;
+            self.render_offline(&mut scratch[..count]);
+        }
+        self.render_offline(out);
+    }
     pub fn render_offline(&mut self, out: &mut [[f32; 2]]) {
         if self.alignment.live && self.alignment.total > 0 {
             self.reset_processing();
@@ -683,7 +709,7 @@ impl Renderer {
             let (source, mono) = if let Some(runtime) = midi {
                 (runtime.sample(frame), Some(true))
             } else {
-                audio_source(&self.plan, track, frame)
+                self.audio_tracks[index].sample(track, frame)
             };
             let source = effects.sample(
                 source,
@@ -691,14 +717,16 @@ impl Renderer {
                 frame,
                 self.plan.project.tempo_bpm,
                 loop_region,
-                midi.as_ref().map_or(&[], |r| r.modulation_values()),
+                (
+                    midi.as_ref().map_or(&[], |r| r.modulation_values()),
+                    midi.as_ref().map(|r| r.modulation_sources()),
+                ),
             );
             let (source, mono) = self.alignment.tracks[index].tick(source);
-            if self.plan.project.audible(track) {
-                let pan = pan_coefficients(track.pan, mono);
-                for ch in 0..2 {
-                    mix[ch] += source[ch] * linear_gain(track.gain_db) * pan[ch];
-                }
+            let gains = self.gains[index].target;
+            let offset = if mono { 0 } else { 2 };
+            for ch in 0..2 {
+                mix[ch] += source[ch] * gains[offset + ch];
             }
         }
         let frame = latency::delayed_frame(frame, self.alignment.track_max, loop_region);
@@ -709,10 +737,10 @@ impl Renderer {
                 frame,
                 self.plan.project.tempo_bpm,
                 loop_region,
-                &[],
+                (&[], None),
             )
             .0
-            .map(|value| value * linear_gain(self.plan.project.master.gain_db))
+            .map(|value| value * self.master_target)
     }
     /// Reset once per output buffer, outside the per-sample loop.
     pub fn reset_track_peaks(&mut self) {
@@ -748,7 +776,7 @@ impl Renderer {
                 self.transition_from = self.previous;
                 self.transition = (self.plan.project.sample_rate_hz / 200).max(1);
             }
-            if self.playing && !l.enabled && self.playhead >= self.plan.project.end() {
+            if self.playing && !l.enabled && self.playhead >= self.end_frame {
                 self.playing = false;
             }
             if !self.playing && self.alignment.total > 0 {
@@ -791,7 +819,7 @@ impl Renderer {
                             Some(true),
                         )
                     } else {
-                        audio_source(&self.plan, track, frame)
+                        self.audio_tracks[index].sample(track, frame)
                     };
                     let (source, mono) = effects.sample(
                         source,
@@ -799,7 +827,10 @@ impl Renderer {
                         frame,
                         self.plan.project.tempo_bpm,
                         loop_region,
-                        midi.as_ref().map_or(&[], |r| r.modulation_values()),
+                        (
+                            midi.as_ref().map_or(&[], |r| r.modulation_values()),
+                            midi.as_ref().map(|r| r.modulation_sources()),
+                        ),
                     );
                     let (source, mono) = self.alignment.tracks[index].tick((source, mono));
                     let base = if mono { 0 } else { 2 };
@@ -817,7 +848,7 @@ impl Renderer {
                         latency::delayed_frame(frame, self.alignment.track_max, loop_region),
                         self.plan.project.tempo_bpm,
                         loop_region,
-                        &[],
+                        (&[], None),
                     )
                     .0;
                 self.latent_held_mix = mix;

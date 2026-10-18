@@ -35,9 +35,38 @@ impl Control {
     }
 }
 
+/// Event-prefix metadata. Envelope note-on resets its contour, so exact reconstruction
+/// needs only the latest retrigger, the current/last legato group, and its final release.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct NoteState {
+    held: usize,
+    durations: [Option<u64>; 2],
+    starts: [Option<u64>; 2],
+    released: Option<u64>,
+}
+impl NoteState {
+    pub fn record(&mut self, on: bool, frame: u64, duration: u64) {
+        if on {
+            self.starts[0] = Some(frame);
+            self.durations[0] = Some(duration);
+            if self.held == 0 {
+                self.starts[1] = Some(frame);
+                self.durations[1] = Some(duration);
+            }
+            self.held += 1;
+        } else {
+            self.held = self.held.saturating_sub(1);
+            if self.held == 0 {
+                self.released = Some(frame);
+            }
+        }
+    }
+}
+
 pub(crate) struct SharedControls {
     pub controls: Vec<Control>,
     pub values: Vec<ModulationValue>,
+    pub index: daw_unit_core::ModulationSourceIndex,
     providers: Vec<ProviderControl>,
     held: usize,
     note_durations: [Option<u64>; 2],
@@ -47,7 +76,7 @@ pub(crate) struct SharedControls {
 }
 impl SharedControls {
     pub fn new(controls: Vec<Control>) -> Self {
-        let values = controls
+        let values: Vec<_> = controls
             .iter()
             .map(|e| ModulationValue {
                 range: daw_unit_core::ModulationRange::Unipolar,
@@ -60,6 +89,7 @@ impl SharedControls {
             .collect();
         Self {
             controls,
+            index: daw_unit_core::ModulationSourceIndex::from_values(&values),
             values,
             providers: Vec::new(),
             held: 0,
@@ -96,6 +126,7 @@ impl SharedControls {
                 behavior: daw_unit_core::ModulationBehavior::Continuous,
                 release_age: None,
             }));
+        self.index = daw_unit_core::ModulationSourceIndex::from_values(&self.values);
         self.providers = providers;
         self
     }
@@ -119,6 +150,38 @@ impl SharedControls {
         self.frame = 0;
         self.release_frames = 0;
     }
+    pub fn reconstruct(&mut self, state: NoteState, frame: u64) {
+        self.reset_notes();
+        self.held = state.held;
+        self.note_durations = state.durations;
+        let end = if state.held == 0 {
+            state.released.unwrap_or(frame)
+        } else {
+            frame
+        };
+        self.note_ages = state
+            .starts
+            .map(|start| start.map_or(0, |start| end.saturating_sub(start)));
+        self.release_frames = if state.held == 0 {
+            frame.saturating_sub(state.released.unwrap_or(0))
+        } else {
+            0
+        };
+        self.frame = frame;
+        for control in &mut self.controls {
+            let index = usize::from(control.mode == EnvelopeMode::Legato);
+            if let Some(start) = state.starts[index] {
+                control
+                    .envelope
+                    .note_on_with_duration(state.durations[index]);
+                control.envelope.advance(end.saturating_sub(start));
+                if state.held == 0 {
+                    control.envelope.note_off();
+                    control.envelope.advance(frame.saturating_sub(end));
+                }
+            }
+        }
+    }
     pub fn end(&mut self) {
         self.held = 0;
         self.release_frames = 0;
@@ -126,6 +189,7 @@ impl SharedControls {
             e.envelope.note_off();
         }
     }
+    #[cfg(test)]
     pub fn advance_to(&mut self, frame: u64) {
         if self.held > 0 {
             for age in &mut self.note_ages {
@@ -182,7 +246,8 @@ impl SharedControls {
             }
         }
         for (index, provider) in self.providers.iter_mut().enumerate() {
-            self.values[self.controls.len() + index] = provider.tick(&self.values, context);
+            self.values[self.controls.len() + index] =
+                provider.tick(&self.values, &self.index, context);
         }
     }
     pub fn provider_values(&self, id: ModulationSourceId) -> Option<[f32; 2]> {
@@ -216,6 +281,7 @@ impl SharedControls {
         }
         std::mem::swap(&mut self.controls, &mut next.controls);
         std::mem::swap(&mut self.values, &mut next.values);
+        std::mem::swap(&mut self.index, &mut next.index);
     }
 }
 #[cfg(test)]
@@ -258,6 +324,48 @@ mod tests {
                 max_block_frames: 32,
             },
         )])
+    }
+    #[test]
+    fn indexed_shared_restart_matches_complete_event_replay() {
+        // Includes simultaneous notes, a long release, retriggers, idle gaps and new legato groups.
+        let events = [
+            (0, true, 80),
+            (30, true, 40),
+            (70, false, 0),
+            (80, false, 0),
+            (100, true, 20),
+            (120, false, 0),
+            (400, true, 30),
+            (430, false, 0),
+        ];
+        for mode in [EnvelopeMode::Retrigger, EnvelopeMode::Legato] {
+            for frame in [
+                0, 29, 30, 70, 80, 99, 100, 119, 120, 180, 399, 400, 430, 1000,
+            ] {
+                let mut reference = shared(mode);
+                let mut state = NoteState::default();
+                for &(at, on, duration) in events.iter().filter(|e| e.0 <= frame) {
+                    reference.advance_to(at);
+                    reference.event(on, on.then_some(duration));
+                    state.record(on, at, duration);
+                }
+                reference.advance_to(frame);
+                let mut indexed = shared(mode);
+                indexed.reconstruct(state, frame);
+                for _ in 0..10 {
+                    reference.tick(Default::default());
+                    indexed.tick(Default::default());
+                    for (a, b) in indexed.values.iter().zip(&reference.values) {
+                        assert_eq!(
+                            (a.value, a.weight, a.release_age),
+                            (b.value, b.weight, b.release_age)
+                        );
+                    }
+                }
+                assert_eq!(indexed.note_ages, reference.note_ages);
+                assert_eq!(indexed.note_durations, reference.note_durations);
+            }
+        }
     }
     #[test]
     fn shared_retrigger_and_legato_count_held_notes_and_release_after_the_last_off() {

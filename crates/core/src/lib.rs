@@ -447,6 +447,8 @@ impl Project {
                 return Err(invalid("Unsupported source metadata"));
             }
         }
+        let assets: std::collections::HashMap<_, _> =
+            self.assets.iter().map(|a| (a.id, a)).collect();
         for t in &self.tracks {
             if !ids.insert(t.id) {
                 return Err(invalid("Duplicate track ID"));
@@ -504,8 +506,10 @@ impl Project {
                 if !ids.insert(c.id) {
                     return Err(invalid("Duplicate clip ID"));
                 }
-                self.validate_clip(c)?;
-                let asset = self.assets.iter().find(|a| a.id == c.asset_id).unwrap();
+                let asset = assets
+                    .get(&c.asset_id)
+                    .ok_or_else(|| invalid("Clip references a missing asset record"))?;
+                self.validate_clip_asset(c, asset)?;
                 if (t.kind == TrackKind::Midi) != asset.midi_pattern.is_some() {
                     return Err(invalid("Clip source type does not match track type"));
                 }
@@ -528,6 +532,10 @@ impl Project {
             .iter()
             .find(|a| a.id == c.asset_id)
             .ok_or_else(|| invalid("Clip references a missing asset record"))?;
+        self.validate_clip_asset(c, a)
+    }
+    fn validate_clip_asset(&self, c: &Clip, a: &Asset) -> Result<()> {
+        let invalid = |s: &str| Error(s.into());
         if c.repeat.is_some_and(|repeat| {
             repeat.length_frames == 0 || repeat.phase_frame >= repeat.length_frames
         }) {
@@ -573,11 +581,17 @@ impl Project {
         Ok(id)
     }
     pub fn edit(&mut self, command: Edit) -> Result<()> {
+        *self = self.edited(command)?;
+        Ok(())
+    }
+
+    /// Prepare one validated transaction without changing the original project.
+    /// Hosts can stage media against this value without cloning the model a second time.
+    pub fn edited(&self, command: Edit) -> Result<Self> {
         let mut next = self.clone();
         next.apply_edit(command)?;
         next.validate()?;
-        *self = next;
-        Ok(())
+        Ok(next)
     }
 
     fn apply_edit(&mut self, command: Edit) -> Result<()> {

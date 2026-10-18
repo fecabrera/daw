@@ -1,6 +1,6 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use daw_core::Id;
-use daw_engine::{ModulationTarget, RenderPlan, Renderer};
+use daw_engine::{ModulationTarget, RenderPlan, Renderer, TransportState};
 use rtrb::{Consumer, Producer, RingBuffer};
 use rubato::Resampler;
 use std::collections::HashMap;
@@ -12,10 +12,21 @@ use std::sync::{
 type ModulationMeter = Arc<[AtomicU32; daw_engine::MODULATION_SNAPSHOT_SIZE]>;
 
 mod meters;
+mod performance;
+mod preparation;
+#[cfg(test)]
+mod preparation_tests;
 pub use meters::StereoMeter;
+pub use performance::{Performance, PerformanceSnapshot};
 
 #[derive(Default)]
 pub struct Status {
+    pub performance: Performance,
+    transport_sequence: AtomicU64,
+    paused: AtomicBool,
+    playback_start: AtomicU64,
+    requested_revision: AtomicU64,
+    applied_revision: AtomicU64,
     pub playhead: AtomicU64,
     pub playing: AtomicBool,
     pub can_return_to_playback_start: AtomicBool,
@@ -24,16 +35,47 @@ pub struct Status {
 }
 impl Status {
     fn publish_transport(&self, renderer: &Renderer) {
+        self.transport_sequence.fetch_add(1, Ordering::AcqRel);
+        let state = renderer.transport_state();
+        self.paused.store(state.paused, Ordering::Relaxed);
+        self.playback_start
+            .store(state.playback_start.unwrap_or(0), Ordering::Relaxed);
         self.playhead.store(renderer.playhead, Ordering::Relaxed);
         self.playing.store(renderer.playing, Ordering::Relaxed);
         self.can_return_to_playback_start
             .store(renderer.can_return_to_playback_start(), Ordering::Relaxed);
+        self.transport_sequence.fetch_add(1, Ordering::Release);
+    }
+    fn transport(&self) -> TransportState {
+        loop {
+            let sequence = self.transport_sequence.load(Ordering::Acquire);
+            if !sequence.is_multiple_of(2) {
+                std::hint::spin_loop();
+                continue;
+            }
+            let state = TransportState {
+                frame: self.playhead.load(Ordering::Relaxed),
+                playing: self.playing.load(Ordering::Relaxed),
+                paused: self.paused.load(Ordering::Relaxed),
+                playback_start: self
+                    .can_return_to_playback_start
+                    .load(Ordering::Relaxed)
+                    .then(|| self.playback_start.load(Ordering::Relaxed)),
+            };
+            if self.transport_sequence.load(Ordering::Acquire) == sequence {
+                return state;
+            }
+        }
     }
 }
 // Prepared on the application thread and retired there. The callback only reads
 // the existing meter handles and writes atomics; it does not allocate or lock.
 struct PreparedRenderer {
     renderer: Renderer,
+    revision: u64,
+    prepared_transport: bool,
+    reprepare: Option<TransportState>,
+    ready_at: Option<std::time::Instant>,
     meters: Vec<Arc<StereoMeter>>,
     modulation: Vec<(ModulationTarget, ModulationMeter)>,
 }
@@ -47,6 +89,10 @@ impl PreparedRenderer {
             .collect();
         Self {
             renderer: Renderer::new(plan),
+            revision: 0,
+            prepared_transport: false,
+            reprepare: None,
+            ready_at: None,
             meters: handles,
             modulation: Vec::new(),
         }
@@ -244,9 +290,15 @@ fn modulation_meters(
 }
 enum Command {
     Plan(Box<PreparedRenderer>),
+    PauseAt(u64),
+    ResumeAt(u64),
+    #[cfg(test)]
     Play,
+    #[cfg(test)]
     Pause,
+    #[cfg(test)]
     Stop,
+    #[cfg(test)]
     Seek(u64),
 }
 type BuiltStream = (
@@ -255,9 +307,14 @@ type BuiltStream = (
     Consumer<Box<PreparedRenderer>>,
 );
 pub struct AudioOutput {
+    plan: Arc<RenderPlan>,
+    desired_transport: Option<(u64, TransportState)>,
     project_rate_hz: u32,
     buffer_size_frames: u32,
     _stream: cpal::Stream,
+    preparation: preparation::Worker,
+    prepare_revision: u64,
+    prepared: Option<preparation::Ready>,
     commands: Producer<Command>,
     retired: Consumer<Box<PreparedRenderer>>,
     pub status: Arc<Status>,
@@ -352,10 +409,18 @@ impl AudioOutput {
             stream_config.buffer_size,
             buffer_size_frames
         );
+        status
+            .playhead
+            .store(plan.project.transport.playhead_frame, Ordering::Relaxed);
         Ok(Self {
+            plan: Arc::new(plan),
+            desired_transport: None,
             project_rate_hz,
             buffer_size_frames,
             _stream: stream,
+            preparation: preparation::Worker::new()?,
+            prepare_revision: 0,
+            prepared: None,
             commands,
             retired,
             status,
@@ -372,26 +437,53 @@ impl AudioOutput {
             .push(command)
             .map_err(|_| "Audio command queue is full; try again".into())
     }
+    fn bindings(&self) -> preparation::Bindings {
+        preparation::Bindings {
+            tracks: self.track_meters.clone(),
+            effects: self.effect_meters.clone(),
+            bands: self.band_meters.clone(),
+            modulation: self.modulation_meters.clone(),
+        }
+    }
+    /// Latest requested transport until activation; useful for pending Play/Pause/Seek UI.
+    pub fn transport_intent(&self) -> TransportState {
+        self.current_transport()
+    }
+    fn current_transport(&self) -> TransportState {
+        self.desired_transport
+            .filter(|(revision, _)| {
+                *revision > self.status.applied_revision.load(Ordering::Acquire)
+            })
+            .map_or_else(|| self.status.transport(), |(_, state)| state)
+    }
+    fn prepare(&mut self, state: Option<TransportState>) {
+        self.prepare_revision = self
+            .preparation
+            .submit(self.plan.clone(), self.bindings(), state);
+        self.status
+            .requested_revision
+            .store(self.prepare_revision, Ordering::Release);
+        self.desired_transport = state.map(|state| (self.prepare_revision, state));
+        self.prepared = None;
+    }
     pub fn sync(&mut self, plan: RenderPlan) -> Result<(), String> {
         if plan.project.sample_rate_hz != self.project_rate_hz
             || plan.project.buffer_size_frames != self.buffer_size_frames
         {
             return Err("Recreate output after changing project audio settings".into());
         }
-        let meters = track_meters(&plan, &self.track_meters);
-        let reductions = effect_meters(&plan, &self.effect_meters);
-        let changes = band_meters(&plan, &self.band_meters);
-        let modulation = modulation_meters(&plan, &self.modulation_meters);
-        let mut prepared = PreparedRenderer::new(plan, &meters);
-        bind_effect_meters(&mut prepared, &reductions);
-        bind_band_meters(&mut prepared, &changes);
-        prepared.bind_modulation(&modulation);
-        self.send(Command::Plan(Box::new(prepared)))?;
-        self.track_meters = meters;
-        self.effect_meters = reductions;
-        self.band_meters = changes;
-        self.modulation_meters = modulation;
+        self.drain();
+        let transport = self
+            .desired_transport
+            .filter(|(r, _)| *r > self.status.applied_revision.load(Ordering::Acquire))
+            .map(|(_, s)| s);
+        self.plan = Arc::new(plan);
+        self.prepare(transport);
         Ok(())
+    }
+    /// Register once after the UI creates output; worker completion wakes idle painting.
+    pub fn set_waker(&self, wake: impl Fn() + Send + Sync + 'static) {
+        self.preparation.set_waker(wake);
     }
     pub fn track_meter(&self, id: Id) -> Option<&StereoMeter> {
         self.track_meters.get(&id).map(AsRef::as_ref)
@@ -436,20 +528,108 @@ impl AudioOutput {
         })
     }
     pub fn play(&mut self) -> Result<(), String> {
-        self.send(Command::Play)
+        self.drain();
+        let mut state = self.current_transport();
+        if state.playing {
+            return Ok(());
+        }
+        let resume = state.paused && !self.preparing();
+        if !state.paused {
+            state.playback_start = Some(state.frame);
+        }
+        state.playing = true;
+        state.paused = false;
+        if resume {
+            self.immediate(state, true)
+        } else {
+            self.prepare(Some(state));
+            Ok(())
+        }
     }
     pub fn pause(&mut self) -> Result<(), String> {
-        self.send(Command::Pause)
+        self.drain();
+        let mut state = self.current_transport();
+        state.paused |= state.playing;
+        state.playing = false;
+        if self.preparing() {
+            self.prepare(Some(state));
+            Ok(())
+        } else {
+            self.immediate(state, false)
+        }
+    }
+    fn immediate(&mut self, state: TransportState, resume: bool) -> Result<(), String> {
+        if self.commands.is_full() {
+            return Err("Audio command queue is full; try again".into());
+        }
+        let revision = self.preparation.cancel();
+        self.prepare_revision = revision;
+        self.status
+            .requested_revision
+            .store(revision, Ordering::Release);
+        self.desired_transport = Some((revision, state));
+        self.send(if resume {
+            Command::ResumeAt(revision)
+        } else {
+            Command::PauseAt(revision)
+        })
     }
     pub fn stop(&mut self) -> Result<(), String> {
-        self.send(Command::Stop)
+        self.drain();
+        let mut state = self.current_transport();
+        state.frame = state.playback_start.take().unwrap_or(state.frame);
+        state.playing = false;
+        state.paused = false;
+        self.prepare(Some(state));
+        Ok(())
     }
     pub fn seek(&mut self, frame: u64) -> Result<(), String> {
-        self.send(Command::Seek(frame))
+        self.drain();
+        let mut state = self.current_transport();
+        state.frame = frame;
+        self.prepare(Some(state));
+        Ok(())
+    }
+    pub fn preparing(&self) -> bool {
+        self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire)
     }
     pub fn drain(&mut self) {
-        while let Ok(old) = self.retired.pop() {
-            drop(old);
+        while let Ok(mut old) = self.retired.pop() {
+            if old.revision == self.prepare_revision
+                && let Some(transport) = old.reprepare.take()
+            {
+                self.desired_transport = Some((old.revision, transport));
+                self.preparation.reprepare(
+                    preparation::Ready {
+                        revision: old.revision,
+                        renderer: old,
+                        bindings: self.bindings(),
+                    },
+                    transport,
+                );
+            } else {
+                drop(old);
+            }
+        }
+        if let Some(ready) = self.preparation.take()
+            && ready.revision == self.prepare_revision
+        {
+            self.prepared = Some(ready);
+        }
+        if let Some(mut ready) = self.prepared.take() {
+            match self.commands.push(Command::Plan(ready.renderer)) {
+                Ok(()) => {
+                    self.track_meters = ready.bindings.tracks;
+                    self.effect_meters = ready.bindings.effects;
+                    self.band_meters = ready.bindings.bands;
+                    self.modulation_meters = ready.bindings.modulation;
+                }
+                Err(rtrb::PushError::Full(Command::Plan(renderer))) => {
+                    ready.renderer = renderer;
+                    self.prepared = Some(ready);
+                }
+                Err(_) => unreachable!("only a prepared plan was submitted"),
+            }
         }
     }
 }
@@ -458,6 +638,7 @@ struct Callback {
     commands: Consumer<Command>,
     retired: Producer<Box<PreparedRenderer>>,
     pending: Option<Box<PreparedRenderer>>,
+    suspended_transport: Option<TransportState>,
     status: Arc<Status>,
     converter: Option<rubato::FftFixedIn<f32>>,
     input: Vec<Vec<f32>>,
@@ -504,6 +685,7 @@ impl Callback {
             commands,
             retired,
             pending: None,
+            suspended_transport: None,
             status,
             converter,
             input,
@@ -514,6 +696,7 @@ impl Callback {
         })
     }
     fn update(&mut self) {
+        let started = std::time::Instant::now();
         for _ in 0..8 {
             let command = if let Some(pending) = self.pending.take() {
                 Command::Plan(pending)
@@ -529,29 +712,83 @@ impl Callback {
                         self.pending = Some(next);
                         break;
                     }
-                    next.inherit(&mut self.renderer);
+                    if next.revision != self.status.requested_revision.load(Ordering::Acquire) {
+                        let _ = self.retired.push(next);
+                        continue;
+                    }
+                    if next.prepared_transport {
+                        self.suspended_transport = None;
+                        next.activate_transport(&self.renderer);
+                        self.discard_buffered_output();
+                    } else if self.suspended_transport.is_none()
+                        && next.can_inherit_without_preroll(&self.renderer)
+                    {
+                        next.inherit(&mut self.renderer);
+                    } else {
+                        // Hold the exact block-boundary position while worker pre-roll runs.
+                        // Keep rendering the old 5 ms pause fade; never prime on this thread.
+                        let transport = *self
+                            .suspended_transport
+                            .get_or_insert_with(|| self.renderer.transport_state());
+                        next.reprepare = Some(transport);
+                        self.renderer.pause();
+                        self.discard_buffered_output();
+                        let _ = self.retired.push(next);
+                        continue;
+                    }
+                    if let Some(ready_at) = next.ready_at {
+                        self.status.performance.prepared_wait(
+                            ready_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+                        );
+                    }
+                    let revision = next.revision;
                     let old = std::mem::replace(&mut self.renderer, next);
+                    self.status.publish_transport(&self.renderer);
+                    self.status
+                        .applied_revision
+                        .store(revision, Ordering::Release);
                     // A single producer owns this queue; the capacity check guarantees success.
                     let _ = self.retired.push(old);
                 }
+                Command::PauseAt(revision) | Command::ResumeAt(revision) => {
+                    if revision == self.status.requested_revision.load(Ordering::Acquire) {
+                        if matches!(command, Command::ResumeAt(_)) {
+                            self.renderer.resume();
+                        } else {
+                            self.renderer.pause();
+                        }
+                        self.discard_buffered_output();
+                        self.status.publish_transport(&self.renderer);
+                        self.status
+                            .applied_revision
+                            .store(revision, Ordering::Release);
+                    }
+                }
+                #[cfg(test)]
                 Command::Play => {
                     self.renderer.play();
                     self.discard_buffered_output();
                 }
+                #[cfg(test)]
                 Command::Pause => {
                     self.renderer.pause();
                     self.discard_buffered_output();
                 }
+                #[cfg(test)]
                 Command::Stop => {
                     self.renderer.stop();
                     self.discard_buffered_output();
                 }
+                #[cfg(test)]
                 Command::Seek(frame) => {
                     self.renderer.seek(frame);
                     self.discard_buffered_output();
                 }
             }
         }
+        self.status
+            .performance
+            .commands(started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64);
     }
     fn discard_buffered_output(&mut self) {
         // Discard cached samples from before the command. Keep filter history so
@@ -597,10 +834,12 @@ where
     T: cpal::SizedSample + cpal::FromSample<f32>,
 {
     let channels = usize::from(config.channels);
+    let device_rate = config.sample_rate.0;
     device
         .build_output_stream(
             config,
             move |data: &mut [T], _| {
+                let started = std::time::Instant::now();
                 callback.update();
                 callback.renderer.reset_track_peaks();
                 callback.rendered_input = false;
@@ -628,8 +867,14 @@ where
                 }
                 callback.status.meter.publish_peaks(peaks);
                 callback.status.publish_transport(&callback.renderer);
+                callback.status.performance.callback(
+                    started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+                    data.len() / channels,
+                    device_rate,
+                );
             },
             move |_| {
+                status.performance.device_failure();
                 status.failed.store(true, Ordering::Relaxed);
                 status.playing.store(false, Ordering::Relaxed);
             },

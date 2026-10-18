@@ -64,6 +64,8 @@ pub struct Limiter {
     external: daw_unit_core::ModulationSmoother<4>,
     effective: [f64; 6],
     gains: [f64; 3],
+    timing: (usize, f64),
+    coefficients: [f64; 2],
     true_peak: bool,
     guard: true_peak::Guard,
     reduction_db: f32,
@@ -90,6 +92,8 @@ impl Limiter {
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: Self::values(settings),
             gains: [1.0; 3],
+            timing: (usize::MAX, f64::NAN),
+            coefficients: [0.0; 2],
             true_peak: settings.mode == LimiterMode::TruePeak,
             guard: true_peak::Guard::new(),
             reduction_db: 0.0,
@@ -203,12 +207,18 @@ impl Limiter {
             )
         };
         let ceiling = p[3] * (1.0 - 1e-7);
-        let attack = if lookahead == 0 {
-            0.0
-        } else {
-            (-3.0 / lookahead as f64).exp()
-        };
-        let release = (-1.0 / (p[1] * 0.001 * f64::from(self.rate))).exp();
+        if self.timing.0 != lookahead {
+            self.coefficients[0] = if lookahead == 0 {
+                0.0
+            } else {
+                (-3.0 / lookahead as f64).exp()
+            };
+        }
+        if self.timing.1 != p[1] {
+            self.coefficients[1] = (-1.0 / (p[1] * 0.001 * f64::from(self.rate))).exp();
+        }
+        self.timing = (lookahead, p[1]);
+        let [attack, release] = self.coefficients;
         for (gain, detected) in self.gains.iter_mut().zip(detected) {
             let target = (ceiling / detected.max(1e-30)).min(1.0);
             let coefficient = if target < *gain { attack } else { release };

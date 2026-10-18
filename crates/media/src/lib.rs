@@ -2,7 +2,11 @@ use daw_core::{SAMPLE_RATE, SourceMetadata};
 use rubato::Resampler;
 use std::{fs::File, path::Path, sync::Arc};
 
+mod cache;
 mod export;
+mod memory;
+pub use cache::decode_wav_cached;
+pub use memory::{AUDIO_MEMORY_BUDGET_BYTES, AudioReservation, register_audio};
 mod stretch;
 pub use export::{
     AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, Mp3Bitrate, WavCodec, WavEncoder,
@@ -41,6 +45,18 @@ pub fn decode_wav(path: &Path) -> Result<AudioData> {
 }
 
 pub fn decode_wav_at_rate(path: &Path, sample_rate_hz: u32) -> Result<AudioData> {
+    decode_wav_cancellable(path, sample_rate_hz, &|| false)
+}
+
+/// Decode on a worker. Cancellation is checked between packets, conversion blocks and peaks.
+pub fn decode_wav_cancellable(
+    path: &Path,
+    sample_rate_hz: u32,
+    cancelled: &impl Fn() -> bool,
+) -> Result<AudioData> {
+    if cancelled() {
+        return Err(Error("Audio preparation cancelled".into()));
+    }
     if !daw_core::SAMPLE_RATES.contains(&sample_rate_hz) {
         return Err(Error("Unsupported processing sample rate".into()));
     }
@@ -60,6 +76,19 @@ pub fn decode_wav_at_rate(path: &Path, sample_rate_hz: u32) -> Result<AudioData>
             path.display()
         )));
     }
+    let target_frames = (declared_frames as u64)
+        .checked_mul(u64::from(sample_rate_hz))
+        .map(|n| n.div_ceil(u64::from(spec.sample_rate)))
+        .ok_or_else(|| Error("Audio preparation exceeds supported bounds".into()))?;
+    let scratch = if spec.sample_rate == sample_rate_hz {
+        0
+    } else {
+        (declared_frames as u64).saturating_mul(8)
+    };
+    let _reservation = AudioReservation::new(
+        target_frames,
+        scratch.saturating_add(resample_scratch(spec.sample_rate, sample_rate_hz)?),
+    )?;
     let metadata = SourceMetadata {
         sample_rate_hz: spec.sample_rate,
         channels: spec.channels,
@@ -92,7 +121,14 @@ pub fn decode_wav_at_rate(path: &Path, sample_rate_hz: u32) -> Result<AudioData>
         .make(&track.codec_params, &DecoderOptions::default())
         .map_err(|e| err(&e))?;
     let mut samples = Vec::new();
+    samples
+        .try_reserve_exact(declared_frames)
+        .map_err(|e| err(&e))?;
+    let mut buffer: Option<SampleBuffer<f32>> = None;
     loop {
+        if cancelled() {
+            return Err(Error("Audio preparation cancelled".into()));
+        }
         let packet = match format.next_packet() {
             Ok(p) => p,
             Err(symphonia::core::errors::Error::IoError(e))
@@ -106,13 +142,23 @@ pub fn decode_wav_at_rate(path: &Path, sample_rate_hz: u32) -> Result<AudioData>
             continue;
         }
         let audio = decoder.decode(&packet).map_err(|e| err(&e))?;
-        let mut buffer = SampleBuffer::<f32>::new(audio.capacity() as u64, *audio.spec());
+        let capacity = audio.capacity() * usize::from(spec.channels);
+        if buffer.as_ref().is_none_or(|b| b.capacity() < capacity) {
+            buffer = Some(SampleBuffer::<f32>::new(
+                audio.capacity() as u64,
+                *audio.spec(),
+            ));
+        }
+        let buffer = buffer.as_mut().unwrap();
         buffer.copy_interleaved_ref(audio);
         for frame in buffer.samples().chunks_exact(usize::from(spec.channels)) {
             let l = frame[0];
             let r = if spec.channels == 1 { l } else { frame[1] };
             if !l.is_finite() || !r.is_finite() {
                 return Err(Error("Source contains non-finite samples".into()));
+            }
+            if samples.len() == declared_frames {
+                return Err(Error("WAV sample data exceeds its declared length".into()));
             }
             samples.push([l, r]);
         }
@@ -127,30 +173,51 @@ pub fn decode_wav_at_rate(path: &Path, sample_rate_hz: u32) -> Result<AudioData>
         )));
     }
     if spec.sample_rate != sample_rate_hz {
-        samples = resample(&samples, spec.sample_rate, sample_rate_hz)?;
+        samples = convert_samples(&samples, spec.sample_rate, sample_rate_hz, cancelled)?;
     }
-    let peaks = samples
-        .chunks(256)
-        .map(|chunk| {
-            let mut result = [[f32::INFINITY, f32::NEG_INFINITY]; 2];
-            for s in chunk {
-                for ch in 0..2 {
-                    result[ch][0] = result[ch][0].min(s[ch]);
-                    result[ch][1] = result[ch][1].max(s[ch]);
-                }
-            }
-            result
-        })
-        .collect();
-    Ok(AudioData {
+    if cancelled() {
+        return Err(Error("Audio preparation cancelled".into()));
+    }
+    let peaks = prepare_peaks(&samples, cancelled)?;
+    let audio = AudioData {
         sample_rate_hz,
         samples: Arc::new(samples),
         metadata,
         peaks: Arc::new(peaks),
-    })
+    };
+    register_audio(&audio);
+    Ok(audio)
 }
 
 pub fn resample(samples: &[[f32; 2]], input_rate: u32, output_rate: u32) -> Result<Vec<[f32; 2]>> {
+    resample_cancellable(samples, input_rate, output_rate, &|| false)
+}
+pub fn resample_cancellable(
+    samples: &[[f32; 2]],
+    input_rate: u32,
+    output_rate: u32,
+    cancelled: &impl Fn() -> bool,
+) -> Result<Vec<[f32; 2]>> {
+    let scratch = resample_scratch(input_rate, output_rate)?;
+    let frames = (samples.len() as u64)
+        .checked_mul(u64::from(output_rate))
+        .map(|n| n.div_ceil(u64::from(input_rate)))
+        .ok_or_else(|| Error("Resampled audio exceeds supported bounds".into()))?;
+    let _reservation = AudioReservation::new(
+        frames,
+        scratch.saturating_add((samples.len() as u64).saturating_mul(8)),
+    )?;
+    convert_samples(samples, input_rate, output_rate, cancelled)
+}
+fn convert_samples(
+    samples: &[[f32; 2]],
+    input_rate: u32,
+    output_rate: u32,
+    cancelled: &impl Fn() -> bool,
+) -> Result<Vec<[f32; 2]>> {
+    if cancelled() {
+        return Err(Error("Audio preparation cancelled".into()));
+    }
     if input_rate == 0 || output_rate == 0 || samples.iter().flatten().any(|s| !s.is_finite()) {
         return Err(Error("Invalid resampling input".into()));
     }
@@ -162,26 +229,36 @@ pub fn resample(samples: &[[f32; 2]], input_rate: u32, output_rate: u32) -> Resu
             .map_err(|e| Error(e.to_string()))?;
     let input_size = converter.input_frames_next();
     let delay = converter.output_delay();
-    let target =
-        (samples.len() as u64 * u64::from(output_rate)).div_ceil(u64::from(input_rate)) as usize;
+    let target = usize::try_from(
+        (samples.len() as u128 * u128::from(output_rate)).div_ceil(u128::from(input_rate)),
+    )
+    .map_err(|_| Error("Resampled audio exceeds supported bounds".into()))?;
     let mut out = Vec::new();
+    out.try_reserve_exact(target)
+        .map_err(|e| Error(format!("Cannot reserve resampled audio: {e}")))?;
+    let mut input = converter.input_buffer_allocate(true);
+    let mut block = converter.output_buffer_allocate(true);
     let mut position = 0;
-    while out.len() < target + delay {
-        let mut input = vec![vec![0.0; input_size]; 2];
+    let mut produced = 0usize;
+    while out.len() < target {
+        if cancelled() {
+            return Err(Error("Audio preparation cancelled".into()));
+        }
         for (channel, buffer) in input.iter_mut().enumerate() {
             for (i, value) in buffer.iter_mut().enumerate() {
-                if let Some(s) = samples.get(position + i) {
-                    *value = s[channel];
-                }
+                *value = samples.get(position + i).map_or(0.0, |s| s[channel]);
             }
         }
-        let block = converter
-            .process(&input, None)
+        let (_, frames) = converter
+            .process_into_buffer(&input, &mut block, None)
             .map_err(|e| Error(e.to_string()))?;
-        out.extend(block[0].iter().zip(&block[1]).map(|(l, r)| [*l, *r]));
+        let first = delay.saturating_sub(produced).min(frames);
+        let count = (frames - first).min(target - out.len());
+        out.extend((first..first + count).map(|i| [block[0][i], block[1][i]]));
+        produced += frames;
         position += input_size;
     }
-    Ok(out[delay..delay + target].to_vec())
+    Ok(out)
 }
 
 impl AudioData {
@@ -189,25 +266,110 @@ impl AudioData {
         if self.sample_rate_hz == sample_rate_hz {
             return Ok(self.clone());
         }
-        let samples = resample(&self.samples, self.sample_rate_hz, sample_rate_hz)?;
-        let peaks = samples
-            .chunks(256)
-            .map(|chunk| {
-                let mut peak = [[f32::INFINITY, f32::NEG_INFINITY]; 2];
-                for sample in chunk {
-                    for ch in 0..2 {
-                        peak[ch][0] = peak[ch][0].min(sample[ch]);
-                        peak[ch][1] = peak[ch][1].max(sample[ch]);
-                    }
-                }
-                peak
-            })
-            .collect();
-        Ok(Self {
+        if self.sample_rate_hz == 0 || !daw_core::SAMPLE_RATES.contains(&sample_rate_hz) {
+            return Err(Error("Unsupported processing sample rate".into()));
+        }
+        register_audio(self);
+        let target = (self.samples.len() as u64)
+            .checked_mul(u64::from(sample_rate_hz))
+            .map(|n| n.div_ceil(u64::from(self.sample_rate_hz)))
+            .ok_or_else(|| Error("Audio preparation exceeds supported bounds".into()))?;
+        let _reservation = AudioReservation::new(
+            target,
+            resample_scratch(self.sample_rate_hz, sample_rate_hz)?,
+        )?;
+        let samples = convert_samples(&self.samples, self.sample_rate_hz, sample_rate_hz, &|| {
+            false
+        })?;
+        let peaks = prepare_peaks(&samples, &|| false)?;
+        let audio = Self {
             sample_rate_hz,
             samples: Arc::new(samples),
             metadata: self.metadata.clone(),
             peaks: Arc::new(peaks),
+        };
+        register_audio(&audio);
+        Ok(audio)
+    }
+}
+
+// Conservative setup estimate for the pinned FftFixedIn converter: rational-rate
+// FFT blocks plus planning/scratch allowance. Reject pathological WAV rates before construction.
+fn resample_scratch(input_rate: u32, output_rate: u32) -> Result<u64> {
+    if input_rate == 0 || output_rate == 0 {
+        return Err(Error("Invalid resampling rate".into()));
+    }
+    if input_rate == output_rate {
+        return Ok(16 * 1024 * 1024);
+    }
+    let (mut a, mut b) = (u64::from(input_rate), u64::from(output_rate));
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    let input = u64::from(input_rate) / a;
+    let output = u64::from(output_rate) / a;
+    let blocks = 512_u64.div_ceil(input);
+    let bytes = (input + output)
+        .saturating_mul(blocks)
+        .saturating_mul(256)
+        .saturating_add(16 * 1024 * 1024);
+    if bytes > AUDIO_MEMORY_BUDGET_BYTES {
+        return Err(Error(
+            "Resampling setup exceeds the audio memory budget".into(),
+        ));
+    }
+    Ok(bytes)
+}
+
+fn prepare_peaks(
+    samples: &[[f32; 2]],
+    cancelled: &impl Fn() -> bool,
+) -> Result<Vec<[[f32; 2]; 2]>> {
+    samples
+        .chunks(256)
+        .map(|chunk| {
+            if cancelled() {
+                return Err(Error("Audio preparation cancelled".into()));
+            }
+            let mut peak = [[f32::INFINITY, f32::NEG_INFINITY]; 2];
+            for sample in chunk {
+                for ch in 0..2 {
+                    peak[ch][0] = peak[ch][0].min(sample[ch]);
+                    peak[ch][1] = peak[ch][1].max(sample[ch]);
+                }
+            }
+            Ok(peak)
         })
+        .collect()
+}
+
+#[cfg(test)]
+mod preparation_tests {
+    use super::*;
+    use std::cell::Cell;
+    #[test]
+    fn conversion_cancels_between_blocks_and_peaks_cancel_before_publication() {
+        assert!(resample(&[[0.0; 2]], 1, 192_000).is_err());
+        assert!(resample(&[[0.0; 2]], u32::MAX, 48_000).is_err());
+        let audio = vec![[0.2, -0.1]; 48_000];
+        let polls = Cell::new(0);
+        let result = resample_cancellable(&audio, 48_000, 96_000, &|| {
+            polls.set(polls.get() + 1);
+            polls.get() > 3
+        });
+        assert!(result.unwrap_err().to_string().contains("cancelled"));
+        assert_eq!(polls.get(), 4);
+        assert!(prepare_peaks(&audio, &|| true).is_err());
+        for frames in [0, 1, 1023, 1024, 1025] {
+            let source = vec![[0.2, -0.1]; frames];
+            for rate in daw_core::SAMPLE_RATES {
+                let output = resample(&source, 48_000, rate).unwrap();
+                assert_eq!(output.len(), (frames * rate as usize).div_ceil(48_000));
+                assert!(output.iter().flatten().all(|s| s.is_finite()));
+                if rate == 48_000 {
+                    assert_eq!(output, source);
+                }
+            }
+        }
     }
 }

@@ -1423,3 +1423,65 @@ fn bitcrusher_track_master_live_offline_blocks_and_compatible_updates_share_cloc
         }
     }
 }
+
+#[test]
+fn persistent_offline_ranges_preserve_history_and_reset_for_backward_requests() {
+    let mut plan = plan(48_000, false);
+    add_eq(&mut plan);
+    plan.project.tracks[0]
+        .effects
+        .push(EffectInstance::limiter());
+    let mut expected = vec![[0.0; 2]; 8192];
+    Renderer::new(plan.clone()).render_offline(&mut expected);
+    let mut renderer = Renderer::new(plan);
+    for (start, count) in [
+        (0, 32),
+        (32, 512),
+        (2000, 41),
+        (2041, 512),
+        (100, 64),
+        (5000, 33),
+    ] {
+        let mut actual = vec![[0.0; 2]; count];
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        renderer.render_offline_at(start, &mut actual);
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert_eq!(actual, expected[start as usize..start as usize + count]);
+    }
+}
+
+#[test]
+fn worker_prepared_transport_activation_does_not_allocate_or_prime_latency() {
+    for rate in daw_core::SAMPLE_RATES {
+        let mut plan = plan(rate, false);
+        for _ in 0..8 {
+            plan.project.tracks[0]
+                .effects
+                .push(EffectInstance::limiter());
+        }
+        let mut old = Renderer::new(plan.clone());
+        old.play();
+        for _ in 0..32 {
+            old.next_sample();
+        }
+        let mut prepared = Renderer::new(plan);
+        prepared.prepare_transport(daw_engine::TransportState {
+            frame: 4000,
+            playing: true,
+            paused: false,
+            playback_start: Some(0),
+        });
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        prepared.activate_transport(&old);
+        let state = prepared.transport_state();
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert_eq!(state.frame, 4000);
+        assert!(state.playing);
+        assert_eq!(state.playback_start, Some(0));
+        assert!(prepared.latency_frames() > 0);
+    }
+}

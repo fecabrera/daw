@@ -17,9 +17,10 @@ struct NoteEvent {
 struct PatternClip {
     clip: Clip,
     events: Vec<NoteEvent>,
+    note_states: Vec<super::modulation::NoteState>,
+    slot_starts: Vec<Vec<usize>>,
 }
 struct LayerVoice {
-    id: Id,
     sources: Vec<OscillatorVoice>,
     sampler: Option<daw_sampler::Sampler>,
     sampler_routes: Vec<Route>,
@@ -34,9 +35,11 @@ struct LayerVoice {
 }
 struct Voice {
     active_last_sample: bool,
+    sleeping: bool,
     layers: Vec<LayerVoice>,
     controls: Vec<Control>,
     values: Vec<ModulationValue>,
+    local_sources: daw_unit_core::ModulationSourceIndex,
     current: Option<Id>,
     velocity: f32,
     pitch: u8,
@@ -63,6 +66,7 @@ struct OscillatorVoice {
 }
 impl Voice {
     fn note_on(&mut self, id: Id, pitch: u8, velocity: u8, duration_frames: u64) {
+        self.sleeping = false;
         let idle = self.transition == 0
             && self.layers.iter().all(LayerVoice::is_idle)
             && self.controls.iter().all(|e| e.envelope.is_idle());
@@ -117,6 +121,7 @@ impl Voice {
     }
     fn reset(&mut self) {
         self.active_last_sample = false;
+        self.sleeping = true;
         self.end_note();
         for e in &mut self.controls {
             e.reset();
@@ -163,23 +168,30 @@ impl Voice {
             }
         }
     }
-    fn sample(&mut self, shared: &[ModulationValue]) -> [f32; 2] {
+    fn sample(
+        &mut self,
+        shared: &[ModulationValue],
+        shared_sources: &daw_unit_core::ModulationSourceIndex,
+        shared_release: Option<u64>,
+    ) -> [f32; 2] {
         if self.current.is_some() {
             self.held_frames = self.held_frames.saturating_add(1);
         } else {
             self.release_frames = self.release_frames.saturating_add(1);
         }
-        if self.controls.iter().all(|e| e.envelope.is_idle())
-            && self.layers.iter().all(LayerVoice::is_idle)
-            && self.transition == 0
-            && !shared
-                .iter()
-                .any(|v| v.owns_release(Some(self.release_frames)))
+        let shared_tail = shared_release == Some(self.release_frames);
+        if !shared_tail
+            && (self.sleeping
+                || (self.controls.iter().all(|e| e.envelope.is_idle())
+                    && self.layers.iter().all(LayerVoice::is_idle)
+                    && self.transition == 0))
         {
+            self.sleeping = true;
             self.active_last_sample = false;
             self.previous = [0.0; 2];
             return [0.0; 2];
         }
+        self.sleeping = false;
         self.active_last_sample = true;
         for (e, v) in self.controls.iter_mut().zip(&mut self.values) {
             *v = e.tick();
@@ -189,6 +201,8 @@ impl Voice {
             let value = layer.sample(
                 &self.values,
                 shared,
+                &self.local_sources,
+                shared_sources,
                 if self.current.is_none() {
                     Some(self.release_frames)
                 } else {
@@ -221,6 +235,8 @@ impl LayerVoice {
         &mut self,
         local: &[ModulationValue],
         shared: &[ModulationValue],
+        local_sources: &daw_unit_core::ModulationSourceIndex,
+        shared_sources: &daw_unit_core::ModulationSourceIndex,
         release_age: Option<u64>,
     ) -> [f32; 2] {
         if self.gain_remaining > 0 {
@@ -237,6 +253,8 @@ impl LayerVoice {
             base_gate
         };
         let context = ModulationContext {
+            local_sources: Some(local_sources),
+            shared_sources: Some(shared_sources),
             note_gate: gate,
             release_age,
             ..Default::default()
@@ -301,13 +319,24 @@ fn bus_gains(gain_db: f32, pan: f32) -> [f32; 2] {
     std::array::from_fn(|ch| gain * (pan[ch] / center[ch]))
 }
 
+fn output_frame(clip: &Clip, frame: u64) -> u64 {
+    clip.stretch.map_or(frame, |s| {
+        (u128::from(frame) * u128::from(s.output_frames))
+            .div_ceil(u128::from(s.source_frames))
+            .min(u128::from(u64::MAX)) as u64
+    })
+}
+
 fn note_frequency(pitch: u8, transpose: i8) -> f32 {
     440.0 * 2.0_f32.powf((f32::from(pitch) + f32::from(transpose) - 69.0) / 12.0)
 }
 
 pub(crate) struct MidiTrackRuntime {
+    layer_index: std::collections::HashMap<Id, usize>,
+    oscillator_index: std::collections::HashMap<(Id, Id), usize>,
     voices: Vec<Voice>,
     clips: Vec<PatternClip>,
+    clip_ranges: super::schedule::Ranges,
     sample_rate_hz: u32,
     fingerprint: u64,
     held_sample: [f32; 2],
@@ -415,9 +444,25 @@ impl MidiTrackRuntime {
                 voice_count = voice_count.max(free_at.len());
                 // Ends precede starts at a shared boundary; ID breaks simultaneous-on ties.
                 events.sort_by_key(|e| (e.frame, e.on.is_some(), e.note));
+                let mut state = super::modulation::NoteState::default();
+                let mut slot_starts = vec![Vec::new(); free_at.len()];
+                let note_states = events
+                    .iter()
+                    .enumerate()
+                    .map(|(index, e)| {
+                        let frame = output_frame(clip, e.frame);
+                        state.record(e.on.is_some(), frame, e.duration_frames);
+                        if e.on.is_some() {
+                            slot_starts[e.slot].push(index);
+                        }
+                        state
+                    })
+                    .collect();
                 Some(PatternClip {
                     clip: clip.clone(),
                     events,
+                    note_states,
+                    slot_starts,
                 })
             })
             .collect();
@@ -473,6 +518,16 @@ impl MidiTrackRuntime {
             )
         };
         Some(Self {
+            layer_index: layers.iter().enumerate().map(|(i, l)| (l.id, i)).collect(),
+            oscillator_index: layers
+                .iter()
+                .flat_map(|l| {
+                    l.oscillators
+                        .iter()
+                        .enumerate()
+                        .map(move |(i, s)| ((l.id, s.id), i))
+                })
+                .collect(),
             main_gain: bus_gains(instrument.main.gain_db, instrument.main.pan),
             main_target: bus_gains(instrument.main.gain_db, instrument.main.pan),
             main_remaining: 0,
@@ -483,10 +538,10 @@ impl MidiTrackRuntime {
             voices: (0..voice_count)
                 .map(|_| Voice {
                     active_last_sample: false,
+                    sleeping: true,
                     layers: layers
                         .iter()
                         .map(|layer| LayerVoice {
-                            id: layer.id,
                             sampler: layer.sampler.as_ref().map(|s| {
                                 daw_sampler::Sampler::new(
                                     ProcessingContext {
@@ -614,6 +669,17 @@ impl MidiTrackRuntime {
                                 })
                         })
                         .collect(),
+                    local_sources: daw_unit_core::ModulationSourceIndex::new(
+                        layers.iter().flat_map(|l| {
+                            l.envelopes
+                                .iter()
+                                .filter(|e| e.mode == EnvelopeMode::PerNote)
+                                .map(|e| ModulationSourceId {
+                                    layer: l.id,
+                                    unit: e.id,
+                                })
+                        }),
+                    ),
                     current: None,
                     velocity: 0.0,
                     pitch: 69,
@@ -627,6 +693,9 @@ impl MidiTrackRuntime {
                     release_frames: 0,
                 })
                 .collect(),
+            clip_ranges: super::schedule::Ranges::new(
+                clips.iter().map(|p| (p.clip.start_frame, p.clip.end())),
+            ),
             clips,
             sample_rate_hz: project.sample_rate_hz,
             last_clip: None,
@@ -736,9 +805,13 @@ impl MidiTrackRuntime {
             self.main_remaining = fade_frames;
         }
         self.shared.retarget(&mut prepared.shared);
+        std::mem::swap(&mut self.layer_index, &mut prepared.layer_index);
+        std::mem::swap(&mut self.oscillator_index, &mut prepared.oscillator_index);
         // Adding the first LFO also installs its prepared note-origin schedule.
         std::mem::swap(&mut self.lfo_notes, &mut prepared.lfo_notes);
         for (voice, next) in self.voices.iter_mut().zip(&mut prepared.voices) {
+            // New controls can extend a live release; re-evaluate activity once after retarget.
+            voice.sleeping = false;
             for n in &mut next.controls {
                 if let Some(e) = voice.controls.iter_mut().find(|e| e.source == n.source) {
                     e.retarget(n);
@@ -754,6 +827,7 @@ impl MidiTrackRuntime {
             }
             std::mem::swap(&mut voice.controls, &mut next.controls);
             std::mem::swap(&mut voice.values, &mut next.values);
+            std::mem::swap(&mut voice.local_sources, &mut next.local_sources);
             let idle = voice.transition == 0
                 && voice.layers.iter().all(LayerVoice::is_idle)
                 && voice.controls.iter().all(|e| e.envelope.is_idle())
@@ -824,8 +898,14 @@ impl MidiTrackRuntime {
         let mut sum = [0.0; 2];
         self.shared
             .tick(self.lfo_notes.context(frame, self.tempo_bpm));
+        let shared_release = self
+            .shared
+            .values
+            .iter()
+            .find(|v| v.owns_release(v.release_age))
+            .and_then(|v| v.release_age);
         for voice in &mut self.voices {
-            let sample = voice.sample(&self.shared.values);
+            let sample = voice.sample(&self.shared.values, &self.shared.index, shared_release);
             for ch in 0..2 {
                 sum[ch] += sample[ch];
             }
@@ -834,6 +914,9 @@ impl MidiTrackRuntime {
     }
     pub fn provider_values(&self, id: daw_unit_core::ModulationSourceId) -> Option<[f32; 2]> {
         self.shared.provider_values(id)
+    }
+    pub fn modulation_sources(&self) -> &daw_unit_core::ModulationSourceIndex {
+        &self.shared.index
     }
     pub fn modulation_values(&self) -> &[ModulationValue] {
         &self.shared.values
@@ -865,7 +948,11 @@ impl MidiTrackRuntime {
         self.voices
             .iter()
             .filter(|voice| voice.active_last_sample)
-            .filter_map(|voice| voice.layers.iter().find(|l| l.id == layer))
+            .filter_map(|voice| {
+                self.layer_index
+                    .get(&layer)
+                    .and_then(|&i| voice.layers.get(i))
+            })
             .map(|l| l.amplitude.effective_gain())
             .fold(0.0, f32::max)
     }
@@ -873,11 +960,15 @@ impl MidiTrackRuntime {
     pub fn oscillator_pitch(&self, layer: Id, oscillator: Id) -> [f32; 2] {
         let mut range = [f32::INFINITY, f32::NEG_INFINITY];
         for voice in self.voices.iter().filter(|v| v.active_last_sample) {
-            if let Some(source) = voice
-                .layers
-                .iter()
-                .find(|l| l.id == layer)
-                .and_then(|l| l.sources.iter().find(|s| s.id == oscillator))
+            if let Some(source) = self
+                .layer_index
+                .get(&layer)
+                .and_then(|&i| voice.layers.get(i))
+                .and_then(|l| {
+                    self.oscillator_index
+                        .get(&(layer, oscillator))
+                        .and_then(|&i| l.sources.get(i))
+                })
             {
                 let pitch = 12.0 * (source.frequency / note_frequency(voice.pitch, 0)).log2()
                     + source.source.pitch_offset();
@@ -894,7 +985,7 @@ impl MidiTrackRuntime {
             .voices
             .iter()
             .filter(|v| v.active_last_sample)
-            .filter_map(|v| v.layers.iter().find(|l| l.id == layer))
+            .filter_map(|v| self.layer_index.get(&layer).and_then(|&i| v.layers.get(i)))
             .filter_map(|l| l.sampler.as_ref())
             .filter(|s| s.active())
         {
@@ -913,18 +1004,15 @@ impl MidiTrackRuntime {
         self.voices
             .iter()
             .filter(|v| v.active_last_sample)
-            .filter_map(|v| v.layers.iter().find(|l| l.id == layer))
+            .filter_map(|v| self.layer_index.get(&layer).and_then(|&i| v.layers.get(i)))
             .filter_map(|l| l.sampler.as_ref())
             .filter_map(|s| s.position())
             .max()
             .map_or(f32::NAN, |p| p as f32)
     }
     pub fn sample(&mut self, frame: u64) -> [f32; 2] {
-        let sample = if let Some(prepared) = self
-            .clips
-            .iter()
-            .find(|c| frame >= c.clip.start_frame && frame < c.clip.end())
-        {
+        let sample = if let Some(index) = self.clip_ranges.at(frame) {
+            let prepared = &self.clips[index];
             let clip = &prepared.clip;
             let position = clip.source_frame(frame - clip.start_frame);
             let source = clip
@@ -933,35 +1021,33 @@ impl MidiTrackRuntime {
             let restarted = self.last_clip != Some(clip.id)
                 || self.last_source.is_none_or(|last| source < last);
             if restarted {
-                self.shared.reset_notes();
-                for voice in &mut self.voices {
-                    voice.reset();
-                }
                 self.next_event = prepared.events.partition_point(|e| e.frame <= source);
-                // Reconstruct every held note after seeks, trims, and repeat boundaries.
-                // Slots and release-tail capacity were assigned before publication.
-                for event in &prepared.events[..self.next_event] {
-                    let voice = &mut self.voices[event.slot];
-                    let event_frame = clip.stretch.map_or(event.frame, |stretch| {
-                        // Events fire when the floor-mapped source clock reaches their frame.
-                        (u128::from(event.frame) * u128::from(stretch.output_frames))
-                            .div_ceil(u128::from(stretch.source_frames))
-                            .min(u128::from(u64::MAX)) as u64
+                let state = self
+                    .next_event
+                    .checked_sub(1)
+                    .map_or_else(Default::default, |i| prepared.note_states[i]);
+                self.shared.reconstruct(state, position);
+                for (slot, voice) in self.voices.iter_mut().enumerate() {
+                    voice.reset();
+                    let event = prepared.slot_starts.get(slot).and_then(|starts| {
+                        let next = starts.partition_point(|&i| prepared.events[i].frame <= source);
+                        next.checked_sub(1).map(|i| &prepared.events[starts[i]])
                     });
-                    self.shared.advance_to(event_frame);
-                    self.shared
-                        .event(event.on.is_some(), event.on.map(|_| event.duration_frames));
-                    voice.advance_envelopes(event_frame.saturating_sub(voice.reconstructed_at));
-                    if let Some((pitch, velocity)) = event.on {
+                    if let Some(event) = event {
+                        let (pitch, velocity) = event.on.unwrap();
+                        let start = output_frame(clip, event.frame);
+                        let end = start.saturating_add(event.duration_frames);
                         voice.note_on(event.note, pitch, velocity, event.duration_frames);
-                    } else if voice.current == Some(event.note) {
-                        voice.end_note();
+                        voice.advance_envelopes(position.min(end).saturating_sub(start));
+                        voice.reconstructed_at = start;
+                        if position >= end {
+                            voice.end_note();
+                            voice.advance_envelopes(position - end);
+                            voice.reconstructed_at = end;
+                        }
+                    } else {
+                        voice.advance_envelopes(position);
                     }
-                    voice.reconstructed_at = event_frame;
-                }
-                self.shared.advance_to(position);
-                for voice in &mut self.voices {
-                    voice.advance_envelopes(position.saturating_sub(voice.reconstructed_at));
                 }
             } else {
                 while let Some(event) = prepared
@@ -1212,6 +1298,78 @@ mod note_timing_tests {
                 sought.sample(repeat_length - 1);
                 sought.sample(repeat_length + age);
                 assert!((sought.voices[0].controls[0].envelope.level() - expected).abs() < 1e-6);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod restart_index_tests {
+    use super::*;
+    #[test]
+    fn indexed_voice_restart_matches_full_prefix_replay_after_slot_reuse() {
+        for stretch in [None, daw_core::ClipStretch::new(2, 3)] {
+            let mut project = Project::default();
+            let track = project.add_midi_track().unwrap();
+            let clip_id = project.add_midi_pattern(track, 0).unwrap();
+            project
+                .edit(daw_core::Edit::ReplaceMidiPattern {
+                    clip_id,
+                    pattern: daw_core::MidiPattern {
+                        length_ticks: 128 * 480,
+                        notes: (0..128)
+                            .map(|i| daw_core::MidiNote {
+                                id: Id::new_v4(),
+                                start_tick: i * 480,
+                                length_ticks: if i % 3 == 0 { 960 } else { 240 },
+                                pitch: 50 + (i % 24) as u8,
+                                velocity: 80,
+                            })
+                            .collect(),
+                    },
+                })
+                .unwrap();
+            project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
+            project.tracks[0].clips[0].stretch = stretch;
+            project.tracks[0].clips[0].length_frames = 3_000_000;
+            for frame in [0, 6000, 24_000, 100_000, 1_000_000] {
+                let mut indexed = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+                let mut reference = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+                let prepared = &reference.clips[0];
+                let clip = &prepared.clip;
+                let position = clip.source_frame(frame);
+                let source = clip
+                    .stretch
+                    .map_or(position, |s| s.original_frame(position));
+                reference.next_event = prepared.events.partition_point(|e| e.frame <= source);
+                reference.shared.reset_notes();
+                for v in &mut reference.voices {
+                    v.reset();
+                }
+                for event in &prepared.events[..reference.next_event] {
+                    let at = output_frame(clip, event.frame);
+                    reference.shared.advance_to(at);
+                    reference
+                        .shared
+                        .event(event.on.is_some(), event.on.map(|_| event.duration_frames));
+                    let voice = &mut reference.voices[event.slot];
+                    voice.advance_envelopes(at.saturating_sub(voice.reconstructed_at));
+                    if let Some((pitch, velocity)) = event.on {
+                        voice.note_on(event.note, pitch, velocity, event.duration_frames);
+                    } else if voice.current == Some(event.note) {
+                        voice.end_note();
+                    }
+                    voice.reconstructed_at = at;
+                }
+                reference.shared.advance_to(position);
+                for voice in &mut reference.voices {
+                    voice.advance_envelopes(position.saturating_sub(voice.reconstructed_at));
+                }
+                reference.last_clip = Some(clip.id);
+                reference.last_source = Some(source);
+                for at in frame..frame + 300 {
+                    assert_eq!(indexed.sample(at), reference.sample(at));
+                }
             }
         }
     }

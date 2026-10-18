@@ -28,7 +28,10 @@ impl RuntimeEffect {
         input: [f32; 2],
         frame: u64,
         tempo: f32,
-        values: &[daw_core::ModulationValue],
+        (values, sources): (
+            &[daw_core::ModulationValue],
+            Option<&daw_unit_core::ModulationSourceIndex>,
+        ),
     ) -> [f32; 2] {
         match self {
             Self::Eq3(unit, routes) => process_modulation(
@@ -38,6 +41,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
                     ..Default::default()
@@ -50,6 +54,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
                     ..Default::default()
@@ -62,6 +67,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
                     ..Default::default()
@@ -74,6 +80,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
                     ..Default::default()
@@ -86,6 +93,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
                     ..Default::default()
@@ -98,6 +106,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
                     ..Default::default()
@@ -110,6 +119,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
                     ..Default::default()
@@ -122,6 +132,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
                     ..Default::default()
@@ -134,6 +145,7 @@ impl RuntimeEffect {
                 &[],
                 values,
                 ModulationContext {
+                    shared_sources: sources,
                     frame,
                     tempo_bpm: tempo,
                     ..Default::default()
@@ -228,7 +240,7 @@ impl RuntimeEffect {
 }
 
 pub(super) struct EffectChain {
-    id: Option<Id>,
+    index: std::collections::HashMap<Id, usize>,
     mono: bool,
     units: Vec<(Id, Option<RuntimeEffect>)>,
 }
@@ -251,8 +263,9 @@ impl EffectChain {
             sample_rate_hz,
             max_block_frames,
         };
+        let _ = id;
         Self {
-            id,
+            index: effects.iter().enumerate().map(|(i, e)| (e.id, i)).collect(),
             mono: false,
             units: effects
                 .iter()
@@ -354,17 +367,13 @@ impl EffectChain {
                 .collect(),
         }
     }
-    pub fn inherit(&mut self, old: &mut [Self], track: &Track) {
-        let Some(previous) = old.iter_mut().find(|item| item.id == self.id) else {
-            return;
-        };
-        self.inherit_chain(previous, &track.effects);
-    }
     pub fn inherit_chain(&mut self, previous: &mut Self, settings: &[EffectInstance]) {
         self.mono = previous.mono;
         for ((id, next), settings) in self.units.iter_mut().zip(settings) {
-            if let Some((_, Some(previous))) =
-                previous.units.iter_mut().find(|(old_id, _)| id == old_id)
+            if let Some((_, Some(previous))) = previous
+                .index
+                .get(id)
+                .and_then(|&i| previous.units.get_mut(i))
                 && let Some(next) = next
             {
                 if let (
@@ -404,7 +413,7 @@ impl EffectChain {
         }
     }
     pub fn modulation_values(&self, id: Id) -> Option<super::ModulationSnapshot> {
-        match self.units.iter().find(|(effect, _)| *effect == id) {
+        match self.index.get(&id).and_then(|&i| self.units.get(i)) {
             Some((_, Some(RuntimeEffect::AutoFilter(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
@@ -464,7 +473,10 @@ impl EffectChain {
         mut frame: u64,
         tempo: f32,
         loop_region: Option<(u64, u64)>,
-        values: &[daw_core::ModulationValue],
+        values: (
+            &[daw_core::ModulationValue],
+            Option<&daw_unit_core::ModulationSourceIndex>,
+        ),
     ) -> ([f32; 2], bool) {
         if let Some(mono) = mono {
             self.mono = mono;

@@ -16,6 +16,7 @@ A modulation output carries a normalized control value. A modulation input is a 
 | `ModulationSourceId` | Identifies a provider by stable layer and unit IDs, without naming its concrete unit type. |
 | `ModulationDestinationSettings` | Declares supported parameters and scope; exposes saved routes and uses common route validation. |
 | `ModulationDestination` | Declares the same parameters/scope as its settings and consumes typed `ModulationInputs`. Its audio type can be mono or stereo. |
+| `ModulationSourceIndex` | Prepared source-slot lookup with generation identity; pass local/shared indices through `ModulationContext` and rebuild after publication order changes. |
 | `ModulationRoute` | Resolves a cached source and smooths route amount/power changes. |
 | `ModulationTargetId` | Identifies a repeated destination instance independently of its display position. |
 | `ModulationInputs` | Filters the optional instance identity and sums supported routes by parameter identity and resolves the amplitude gate/release rules. Declaration order does not determine a parameter's meaning. |
@@ -167,3 +168,7 @@ The UI reuses the same connection body, header dot, Gain-derived signed amount k
 ## Bitcrusher destinations
 
 [Bitcrusher](../effects/bitcrusher.md#shared-modulation) declares five Shared destinations: Drive, Resolution, Downsampling, Level, and Dry/Wet. Three typed targets append slots 53–55 for 56 total; Level/DryWet reuse their existing identities. Amounts are ±24 dB, ±23 bits, ±39 ratio steps, ±24 dB, and ±100 percentage points. Resolve all routes through the same cached source/destination entry point, sums/ramps, scope checks, and offset smoother. The processor owns final bounds, rounding Resolution/Downsampling to whole values, quantization, and capture timing. Reuse destination-derived native amount adapters, connection controls, rounded range indicators, prepared five-value snapshots with unused NaNs, and stable-ID retargeting. Base fields use integer Resolution/Downsampling; route amounts may remain fractional before final DSP rounding.
+
+## Prepared lookup and history matching
+
+Hosts publish values with matching `ModulationSourceIndex` generations. Shared routes cache validated local/shared slots and missing-source results. Local precedence, dynamic range/behavior, contour release ownership, scope checks, and smoothers stay in the common resolver. Legacy slice-only calls retain checked cached hits. Compatible history retargeting uses preallocated route scratch links for hashed identity matching, with a bounded direct path for small lists; incoming summation order stays unchanged. See [performance requirements](../architecture/performance.md#modulation-and-inheritance).

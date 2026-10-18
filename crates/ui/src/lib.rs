@@ -720,6 +720,7 @@ pub struct DawUi {
     selection_bounds: [Rect; 4],
     dirty: bool,
     sync_needed: bool,
+    repaint_until: Option<std::time::Instant>,
     job: Option<mpsc::Receiver<Result<Job, String>>>,
     busy: String,
     settings_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
@@ -809,6 +810,7 @@ impl Default for DawUi {
             selection_bounds: [Rect::NOTHING; 4],
             dirty: false,
             sync_needed: false,
+            repaint_until: None,
             job: None,
             busy: String::new(),
             settings_cancel: None,
@@ -930,6 +932,7 @@ impl DawUi {
         self.error = Some(error.to_string());
     }
     fn changed(&mut self) {
+        self.repaint_until = Some(std::time::Instant::now() + Duration::from_millis(250));
         self.dirty = true;
         self.sync_needed = true;
     }
@@ -1064,8 +1067,10 @@ impl DawUi {
         self.run_job("Importing WAV and building waveform", move || {
             let audio = match prepared {
                 Some(prepared) => prepared.into_audio()?,
-                None => daw_media::decode_wav_at_rate(&path, session.project.sample_rate_hz)
-                    .map_err(|error| error.to_string())?,
+                None => {
+                    daw_media::decode_wav_cached(&path, session.project.sample_rate_hz, &|| false)
+                        .map_err(|error| error.to_string())?
+                }
             };
             // A drop can arrive before decoding finishes. Use the actual duration
             // and the release frame's snapping setting on the import worker.
@@ -1174,7 +1179,7 @@ impl DawUi {
                         .output
                         .as_ref()
                         .map_or(self.session.project.transport.playhead_frame, |output| {
-                            output.status.playhead.load(Ordering::Relaxed)
+                            output.transport_intent().frame
                         });
                     session.project.transport.playhead_frame = session
                         .project
@@ -1295,7 +1300,7 @@ impl DawUi {
     fn is_playing(&self) -> bool {
         self.output
             .as_ref()
-            .is_some_and(|o| o.status.playing.load(Ordering::Relaxed))
+            .is_some_and(|o| o.transport_intent().playing)
     }
     fn toggle_playback(&mut self) {
         if self.is_playing() {
@@ -1311,12 +1316,9 @@ impl DawUi {
     fn stop_action(&self) -> transport_controls::StopAction {
         transport_controls::StopAction::from_transport(
             self.is_playing(),
-            self.output.as_ref().is_some_and(|output| {
-                output
-                    .status
-                    .can_return_to_playback_start
-                    .load(Ordering::Relaxed)
-            }),
+            self.output
+                .as_ref()
+                .is_some_and(|output| output.transport_intent().playback_start.is_some()),
             self.session.project.transport.playhead_frame,
         )
     }
@@ -1337,9 +1339,8 @@ impl DawUi {
         }
     }
     fn edit(&mut self, command: Edit) {
-        let mut project = self.session.project.clone();
-        match project.edit(command) {
-            Ok(()) => {
+        match self.session.project.edited(command) {
+            Ok(project) => {
                 if self.session.sampler_preparation_needed(&project) {
                     let mut session = self.session.clone();
                     session.project = project;
@@ -1640,6 +1641,10 @@ impl DawUi {
             self.instrument_ui.cancel();
         }
         let ctx = ui.ctx().clone();
+        if let Some(output) = &self.output {
+            let wake = ctx.clone();
+            output.set_waker(move || wake.request_repaint());
+        }
         self.poll();
         if self.instrument_ui.track != self.selected_track {
             self.instrument_ui.cancel();
@@ -1665,8 +1670,7 @@ impl DawUi {
         }
         if let Some(output) = &mut self.output {
             output.drain();
-            self.session.project.transport.playhead_frame =
-                output.status.playhead.load(Ordering::Relaxed);
+            self.session.project.transport.playhead_frame = output.transport_intent().frame;
             if output.status.failed.load(Ordering::Relaxed) {
                 self.error=Some("Audio output failed or disconnected. Playback stopped. Editing and export remain available.".into());
                 self.output = None;
@@ -1901,7 +1905,18 @@ impl DawUi {
                 }
             }
         }
-        ctx.request_repaint_after(Duration::from_millis(16));
+        let now = std::time::Instant::now();
+        if self.is_playing()
+            || self.output.as_ref().is_some_and(|o| o.preparing())
+            || self.job.is_some()
+            || self.sync_needed
+            || self.file_hover.as_ref().is_some_and(|h| h.audio.is_none())
+        {
+            self.repaint_until = Some(now + Duration::from_millis(250));
+        }
+        if self.repaint_until.is_some_and(|until| now < until) {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
     }
     fn file_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);
@@ -3381,13 +3396,30 @@ impl DawUi {
         ui.ctx().request_repaint();
     }
     fn tracks(&mut self, ui: &mut egui::Ui) -> Vec<(Id, Rect)> {
-        let tracks = self.session.project.tracks.clone();
+        let tracks: Vec<_> = self.session.project.tracks.iter().map(|t| t.id).collect();
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             let count = tracks.len();
             let mut outlines = Vec::with_capacity(count);
             let mut context_action = None;
-            for (index, track) in tracks.into_iter().enumerate() {
+            for (index, id) in tracks.into_iter().enumerate() {
+                let row = Rect::from_min_size(
+                    ui.next_widget_position(),
+                    Vec2::new(ui.available_width(), ROW_HEIGHT),
+                );
+                let interacting = self.drag.is_some()
+                    || self.track_drag.is_some()
+                    || self.marquee.is_some()
+                    || self.track_name_edit.is_some()
+                    || ui.ctx().egui_wants_keyboard_input();
+                if !interacting && !row.intersects(ui.clip_rect().expand(ROW_HEIGHT)) {
+                    let (panel, lane) = rows::placeholder(ui, id, TRACK_WIDTH, ROW_HEIGHT);
+                    self.lane_bounds.insert(id, lane);
+                    outlines.push((id, panel));
+                    continue;
+                }
+                // Only visible/interactive rows need an owned editing snapshot.
+                let track = self.session.project.tracks[index].clone();
                 rows::centered_with_id(ui, track.id, ROW_HEIGHT, |ui| {
                     let inner = ui.allocate_ui_with_layout(
                         Vec2::new(TRACK_WIDTH, ROW_HEIGHT),

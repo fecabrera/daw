@@ -25,6 +25,8 @@ Duplicating into new track space creates fresh track defaults. Group paste also 
 
 The ruler uses four beats per bar, with bars and beats counted from 1. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI timing follows tempo.
 
+A seek during playback keeps the current audio running until the new position is ready, then fades to it. Changes that alter effect latency can briefly pause playback while the new processing is prepared, then resume at the same position. Pause and resume retain the current sound state.
+
 Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a MIDI clip to open it in [Editor](editor.md).
 
 ## Add effects

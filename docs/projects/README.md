@@ -16,6 +16,12 @@ Processing rates are 44.1, 48, 88.2, 96, 176.4, and 192 kHz; the default is 48 k
 
 Audio settings changes prepare the required audio before replacing the session. Success stops playback so you can restart it with the new settings. Failure or cancellation retains the previous project and playback.
 
+## Large audio files
+
+Audio preparation uses a shared 2 GiB budget for decoded samples and working buffers. Long files, high processing rates, and stretched copies need more space. If preparation exceeds the budget, shorten the source, use a lower processing rate, or close an unused project and try again. A failed import or settings change retains the current project and playback. This budget is not a limit on track count or total application memory.
+
+Repeated imports of the same unchanged file can share audio storage. They remain separate assets and clips. If a file changes while it is being prepared, retry the operation after the file has finished saving.
+
 ## Export
 
 Choose an export destination and format. WAV supports PCM16, PCM24, and float32 at the project rate; PCM24 is the default. MP3 supports 128, 192, 256, and 320 kbps; the default is 192 kbps. MP3 uses 48 kHz when the project rate is higher.

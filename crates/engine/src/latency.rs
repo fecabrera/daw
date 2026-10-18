@@ -27,6 +27,7 @@ pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
 }
 pub(super) struct Alignment {
     pub tracks: Vec<Delay>,
+    index: std::collections::HashMap<Id, usize>,
     pub track_max: u64,
     pub total: u64,
     pub live: bool,
@@ -42,7 +43,7 @@ impl Alignment {
             .max()
             .unwrap_or(0);
         let total = track_max + chain_frames(&project.master.effects, rate);
-        let tracks = project
+        let tracks: Vec<_> = project
             .tracks
             .iter()
             .map(|t| Delay {
@@ -55,6 +56,7 @@ impl Alignment {
             })
             .collect();
         Self {
+            index: tracks.iter().enumerate().map(|(i, t)| (t.id, i)).collect(),
             tracks,
             track_max,
             total,
@@ -71,14 +73,15 @@ impl Alignment {
             && self.track_max == old.track_max
             && self.tracks.len() == old.tracks.len()
             && self.tracks.iter().all(|a| {
-                old.tracks
-                    .iter()
-                    .any(|b| a.id == b.id && a.samples.len() == b.samples.len())
+                old.index
+                    .get(&a.id)
+                    .is_some_and(|&i| a.samples.len() == old.tracks[i].samples.len())
             })
     }
     pub fn inherit(&mut self, old: &mut Self) {
         for a in &mut self.tracks {
-            if let Some(b) = old.tracks.iter_mut().find(|b| a.id == b.id) {
+            if let Some(&index) = old.index.get(&a.id) {
+                let b = &mut old.tracks[index];
                 std::mem::swap(&mut a.samples, &mut b.samples);
                 a.index = b.index;
             }
