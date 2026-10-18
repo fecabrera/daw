@@ -129,6 +129,7 @@ fn show_inner(
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
+    let gains = meters::unit_reading(settings.enabled, gains);
     let mut bases = [0.0; 19];
     bases[0] = settings.low_frequency_hz;
     bases[1] = settings.high_frequency_hz;

@@ -1,12 +1,9 @@
 //! Stereo limiter with fixed host-compensated latency and allocation-free processing.
 use daw_unit_core::{
     EffectUnit, LIMITER_TYPE_ID, LimiterMode, LimiterRouting, LimiterSettings, PortKind,
-    ProcessingContext, UnitDescriptor,
+    ProcessingContext, UnitDescriptor, UnitMeter,
 };
-use std::sync::{
-    Arc,
-    atomic::{AtomicU32, Ordering},
-};
+use std::sync::{Arc, atomic::AtomicU32};
 mod modulation;
 mod true_peak;
 
@@ -70,7 +67,7 @@ pub struct Limiter {
     true_peak: bool,
     guard: true_peak::Guard,
     reduction_db: f32,
-    meter: Option<Arc<AtomicU32>>,
+    meter: UnitMeter<AtomicU32>,
 }
 impl Limiter {
     /// Fixed maximum lookahead plus the reconstruction guard block, even when bypassed.
@@ -96,7 +93,7 @@ impl Limiter {
             true_peak: settings.mode == LimiterMode::TruePeak,
             guard: true_peak::Guard::new(),
             reduction_db: 0.0,
-            meter: None,
+            meter: UnitMeter::new(settings.enabled),
         }
     }
     fn values(s: &LimiterSettings) -> [f64; 6] {
@@ -110,22 +107,20 @@ impl Limiter {
         ]
     }
     pub fn retarget(&mut self, settings: &LimiterSettings) {
+        self.meter.set_enabled(settings.enabled);
         for (parameter, value) in self.parameters.iter_mut().zip(Self::values(settings)) {
             parameter.retarget(value, (self.rate / 200).max(1));
         }
         self.true_peak = settings.mode == LimiterMode::TruePeak;
     }
     pub fn set_gain_reduction_meter(&mut self, meter: Arc<AtomicU32>) {
-        meter.store(self.reduction_db.to_bits(), Ordering::Relaxed);
-        self.meter = Some(meter);
+        self.meter.attach(meter, self.reduction_db);
     }
     pub fn gain_reduction_db(&self) -> f32 {
         self.reduction_db
     }
     fn publish(&self) {
-        if let Some(meter) = &self.meter {
-            meter.store(self.reduction_db.to_bits(), Ordering::Relaxed);
-        }
+        self.meter.publish(self.reduction_db);
     }
     fn update_peak(&mut self, index: usize, value: [f64; 3]) {
         let mut node = self.tree_size + index;

@@ -106,6 +106,7 @@ The audio callback must remain nonblocking and must not allocate or perform file
 - Do not decode audio, build peaks, stretch clips, serialize manifests, show dialogs, log, acquire locks, or wait on channels in the callback.
 - Prepare renderers, buffers, meter handles, and queue capacity on a control or worker thread. Retire old renderers and final audio owners outside the callback.
 - Use the existing bounded `rtrb` queues and atomic status values. Handle queue-full and device-failure paths without blocking the callback.
+- Effect meters must reuse `unit-core::UnitMeter` and `meters::unit_reading` for the [shared bypass lifecycle](specs/architecture/modular-audio-units.md#effect-meter-lifecycle). Whole-unit off clears all readings and suspends publication until re-enabled. Retain handles until processor retirement; preserve audio ramps, detector history, and latency.
 - Run import, source preparation, project I/O, stretching, and export through the existing worker/job paths. Keep expensive work out of egui painting and input handlers.
 - Stage changes and publish them after successful work. Retain current project state on failure or cancellation. Route errors and warnings through the existing UI/CLI reporting paths.
 

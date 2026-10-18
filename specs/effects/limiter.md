@@ -6,7 +6,7 @@ Implemented on 2026-10-14. `daw-limiter` owns portable stereo DSP. Saved setting
 
 ## Controls
 
-Two standard 90-point strips use three shared knob rows and the regular unit header/footer. Limit contains Input, Release, Lookahead. Out contains Ceiling, Mode, Routing. A thin read-only gain-reduction rail sits below the header without increasing the shared unit height. The rail shows 0–24 dB; its tooltip and accessibility value retain larger reductions. Compact mode hides knob rows and the meter. Horizontal collapse, enable state, instance IDs, catalog actions, selection, reordering, and deletion use the shared unit shell and effects lane.
+Two standard 90-point strips use three shared knob rows and the regular unit header/footer. Limit contains Input, Release, Lookahead. Out contains Ceiling, Mode, Routing. A thin read-only gain-reduction rail sits below the header without increasing the shared unit height. The rail shows 0–24 dB; its tooltip and accessibility value retain larger reductions. Whole-unit off clears the meter and suspends atomic publication through the [shared effect-meter lifecycle](../architecture/modular-audio-units.md#effect-meter-lifecycle). The panel masks queued readings through `meters::unit_reading`. Re-enabling resumes publication while preserving detector, delay, and bypass-ramp behavior. Compact mode hides knob rows and the meter. Horizontal collapse, enable state, instance IDs, catalog actions, selection, reordering, and deletion use the shared unit shell and effects lane.
 
 | Setting | Default | Accepted range/options |
 | --- | --- | --- |

@@ -92,6 +92,7 @@ fn show_inner(
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
+    let reduction_db = meters::unit_reading(settings.enabled, reduction_db);
     let bases = [
         settings.threshold_db,
         settings.ratio,

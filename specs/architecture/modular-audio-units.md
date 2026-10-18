@@ -480,7 +480,7 @@ Delete/Backspace removes selected installed component units from the focused reg
 
 ## Three-band EQ output monitors — 2026-10-17
 
-[Three-band EQ](../effects/equalizer.md) adds a read-only output-level rail in each Low/Mid/High strip. Reuse the Limiter's thin horizontal rail geometry/painting, the common dBFS mapping, and OTT's prepared three-band atomic handle path. Independent portable analysis filters follow the EQ's smoothed outer frequency boundaries and combine stereo peaks with a 300 ms release. They observe final output, including band cuts and dry bypass, without entering the audio path or adding latency. Keep the existing unit height, control positions, compact/collapse rules, saved format, stable effect IDs, and callback constraints. Stop/seek reset monitoring; inactive output displays empty rails. See the linked guide and [acceptance requirements](iteration-1.md#three-band-eq-output-monitors--2026-10-17) for measurement limits and validation scope.
+[Three-band EQ](../effects/equalizer.md) adds a read-only output-level rail in each Low/Mid/High strip. Reuse the Limiter's thin horizontal rail geometry/painting, the common dBFS mapping, and OTT's prepared three-band atomic handle path. Independent portable analysis filters follow the EQ's smoothed outer frequency boundaries and combine stereo peaks with a 300 ms release. They observe final output, including band cuts, while the unit is enabled; bypass clears the monitors and suspends analysis. They run without entering the audio path or adding latency. Keep the existing unit height, control positions, compact/collapse rules, saved format, stable effect IDs, and callback constraints. Stop/seek reset monitoring; inactive output displays empty rails. See the linked guide and [acceptance requirements](iteration-1.md#three-band-eq-output-monitors--2026-10-17) for measurement limits and validation scope.
 
 ## Three-band EQ modulation — 2026-10-17
 
@@ -513,3 +513,13 @@ Group registered components under Sources (Oscillator, Sampler), Modulators (Env
 ## Effects catalog categories — 2026-10-17
 
 Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), and Distortion (Drive). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
+
+## Effect meter lifecycle
+
+All effect-unit level, gain-change, and gain-reduction monitors stop when their owning unit is disabled. This applies to EQ, Compressor, Limiter, and OTT and to future metered effects. Individual band switches retain each unit's documented semantics. Track and Master output meters continue measuring their output buses during effect bypass.
+
+`unit-core::UnitMeter` owns the enabled state and optional prepared atomic handle. `MeterStorage` supports scalar `AtomicU32` readings and fixed-size atomic arrays through the same lifecycle. Attaching publishes the current reading for an enabled unit or zero for a disabled unit. The enabled-to-disabled transition writes zero once; subsequent publication calls do not write until re-enabled. Keep handles owned until processor retirement; enable changes, publication, reset, and compatible renderer retargeting must not allocate, lock, or release final owners in the callback. Existing host meter discovery, binding, and stable-ID retention remain shared.
+
+EQ resets its independent analysis filters/peaks and skips analysis while disabled. Other effects keep their detector and audio histories running for their existing bypass and latency behavior; only meter publication stops. Re-enabling resumes measured readings without changing saved band settings. No project format change is required.
+
+Each effect panel uses `meters::unit_reading` to mask queued or stale readings with zero while its saved unit state is off. Reuse the ordinary rail/numeric renderers, tooltips, accessibility, and compact/collapse behavior. This leaves empty rails and zero readings visible while an asynchronous renderer update is pending. Measurement and presentation must not change audio or mark the project modified.

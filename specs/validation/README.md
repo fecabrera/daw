@@ -2646,3 +2646,15 @@ The existing meter-layout regression now checks each band disabled independently
 `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. Local Markdown links pass: 475 links across 53 files. `git diff --check` passes. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched.
 
 Native appearance, display-scale, Windows, and Linux checks were not performed. Automated egui shape checks do not establish native rasterization.
+
+## Shared effect meter bypass lifecycle — 2026-10-17
+
+EQ, Compressor, Limiter, and OTT now use `unit-core::UnitMeter` for scalar and band-meter publication. Whole-unit off clears the attached readings once and suppresses later writes until re-enabled. Handles remain owned until processor retirement. EQ resets and suspends its independent analysis; audio processing, detector histories, existing bypass ramps, and latency retain their contracts. Every effect panel uses `meters::unit_reading` to hide queued nonzero readings while its saved power state is off. This supersedes EQ dry-output monitoring during bypass and the earlier rule that whole-unit bypass did not affect its rails. Individual EQ band cuts retain their secondary-grey meter fill while the whole unit is enabled.
+
+The shared storage regression covers initially disabled attachment, clearing, suppressed writes, resumption, scalar/array storage, and retained handle owners. The output regression covers all four effects on tracks and Master, repeated off/on changes through compatible prepared renderer updates, immediate clearing, and sentinel values that prove no writes occur during bypass. The panel regression supplies stale nonzero readings to all four effects in both themes and checks empty disabled rails against enabled fills. The existing EQ layout test also covers whole-unit power with independent band states, silent/normal/overload readings, and compact/collapsed geometry. Focused portable-unit, output, and UI checks pass.
+
+`cargo test --workspace --offline` passes: 810 tests pass, including all 450 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored. `git diff --check` and the staged-file whitespace check pass.
+
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. `cargo build -p daw-cli --offline` and `python3 tools/check_cli.py` pass, including deterministic WAV/MP3 export and existing error/overwrite checks. Local Markdown links pass: 481 links across 53 files. User guides, implementation specifications, acceptance requirements, and repository instructions document the shared rule for current and future effect meters.
+
+`CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched. Native appearance, display-scale, audio-device, Windows, and Linux checks were not performed. Automated shape and callback checks do not establish native rendering or device timing.

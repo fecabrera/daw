@@ -338,7 +338,7 @@ impl Equalizer {
             target: mix,
             remaining: 0,
             fade_frames: (context.sample_rate_hz / 200).max(1),
-            monitor: monitor::Monitor::new(context.sample_rate_hz),
+            monitor: monitor::Monitor::new(context.sample_rate_hz, settings.enabled),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: settings.bands.map(values),
         }
@@ -350,6 +350,7 @@ impl Equalizer {
         }
         let target = if settings.enabled { 1.0 } else { 0.0 };
         if target != self.target {
+            self.monitor.set_enabled(settings.enabled);
             self.target = target;
             self.remaining = self.fade_frames;
         }
@@ -476,7 +477,7 @@ mod tests {
                     eq.process_sample([sample, 0.0]);
                 }
                 assert!(read_meter(&meter)[band] > before * 3.0);
-                // Bypass shows the actual dry output; all band cuts show silence after decay.
+                // Bypass disconnects monitoring; all band cuts show silence after decay.
                 boosted.enabled = false;
                 eq.retarget(&boosted);
                 eq.reset();
@@ -485,7 +486,7 @@ mod tests {
                         (frame as f32 * hz * std::f32::consts::TAU / rate as f32).sin() * 0.4;
                     eq.process_sample([sample; 2]);
                 }
-                assert!(read_meter(&meter)[band] < before * 1.2);
+                assert_eq!(read_meter(&meter), [0.0; 3]);
                 boosted.enabled = true;
                 for band in &mut boosted.bands {
                     band.enabled = false;
@@ -505,7 +506,7 @@ mod tests {
     #[test]
     fn band_monitor_follows_ordered_frequency_boundaries_and_releases_on_silence() {
         use std::sync::{Arc, atomic::AtomicU32};
-        let mut monitor = monitor::Monitor::new(48000);
+        let mut monitor = monitor::Monitor::new(48000, true);
         let meter = Arc::new(std::array::from_fn(|_| AtomicU32::new(0)));
         monitor.attach(meter.clone());
         let run = |monitor: &mut monitor::Monitor, low, high| {

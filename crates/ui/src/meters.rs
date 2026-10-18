@@ -2,6 +2,11 @@ use crate::theme;
 use egui::{Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 
 const MIN_DBFS: f32 = -60.0;
+
+/// Hide queued or stale readings as soon as the unit's saved power state is off.
+pub fn unit_reading<T: Default>(enabled: bool, reading: T) -> T {
+    if enabled { reading } else { T::default() }
+}
 const CHANNEL_WIDTH: f32 = 8.0;
 const CHANNEL_SPACING: f32 = 4.0;
 const SCALE_INSET: f32 = 5.0;
@@ -410,6 +415,130 @@ pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reduction_db: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn effect_panels_clear_stale_readings_when_the_unit_is_disabled() {
+        for color_theme in [
+            crate::settings::ColorTheme::Dark,
+            crate::settings::ColorTheme::Light,
+        ] {
+            for kind in 0..4 {
+                for enabled in [false, true] {
+                    let ctx = egui::Context::default();
+                    theme::configure(&ctx);
+                    crate::fonts::configure(&ctx);
+                    theme::apply(
+                        &ctx,
+                        crate::settings::AppSettings {
+                            theme: color_theme,
+                            ..Default::default()
+                        },
+                    );
+                    let mut rails = Vec::new();
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(1000.0, 400.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            egui::CentralPanel::default().show(ui, |ui| match kind {
+                                0 => {
+                                    let mut settings = daw_core::EqSettings {
+                                        enabled,
+                                        ..Default::default()
+                                    };
+                                    rails.extend(
+                                        crate::equalizer_panel::show(
+                                            ui,
+                                            &mut settings,
+                                            false,
+                                            244.0,
+                                            [2.0; 3],
+                                            &[],
+                                            None,
+                                        )
+                                        .0
+                                        .meters,
+                                    );
+                                }
+                                1 => {
+                                    let mut settings = daw_core::CompressorSettings {
+                                        enabled,
+                                        ..Default::default()
+                                    };
+                                    rails.push(
+                                        crate::compressor_panel::show(
+                                            ui,
+                                            &mut settings,
+                                            false,
+                                            244.0,
+                                            12.0,
+                                            &[],
+                                            None,
+                                        )
+                                        .0
+                                        .controls[2][2],
+                                    );
+                                }
+                                2 => {
+                                    let mut settings = daw_core::LimiterSettings {
+                                        enabled,
+                                        ..Default::default()
+                                    };
+                                    rails.push(
+                                        crate::limiter_panel::show(
+                                            ui,
+                                            &mut settings,
+                                            false,
+                                            244.0,
+                                            12.0,
+                                            &[],
+                                            None,
+                                        )
+                                        .0
+                                        .meter,
+                                    );
+                                }
+                                _ => {
+                                    let mut settings = daw_core::OttSettings {
+                                        enabled,
+                                        ..Default::default()
+                                    };
+                                    rails.extend(
+                                        crate::ott_panel::show(
+                                            ui,
+                                            &mut settings,
+                                            false,
+                                            244.0,
+                                            [-12.0, 8.0, -3.0],
+                                            &[],
+                                            None,
+                                        )
+                                        .0
+                                        .meters,
+                                    );
+                                }
+                            });
+                        },
+                    );
+                    output.textures_delta.clear();
+                    let palette = theme::palette(&ctx);
+                    for rail in rails {
+                        assert!(rail.is_positive());
+                        let filled = output.shapes.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::Rect(rect) if rail.contains_rect(rect.rect)
+                                && [theme::accent(&ctx), palette.error, palette.meter].contains(&rect.fill)
+                                && rect.rect.width() > 0.0
+                        ));
+                        assert_eq!(filled, enabled, "effect={kind} enabled={enabled}");
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn either_channel_click_clears_stereo_warning_in_scaled_and_compact_meters() {

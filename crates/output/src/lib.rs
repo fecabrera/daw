@@ -1066,6 +1066,79 @@ mod band_meter_tests {
     use super::*;
 
     #[test]
+    fn all_effect_meters_clear_on_bypass_and_resume_after_compatible_updates() {
+        for master in [false, true] {
+            for make in [
+                daw_core::EffectInstance::equalizer,
+                daw_core::EffectInstance::compressor,
+                daw_core::EffectInstance::limiter,
+                daw_core::EffectInstance::ott,
+            ] {
+                let mut plan = crate::tests::transport_plan();
+                let mut effect = make();
+                match &mut effect.unit {
+                    daw_core::EffectSettings::Compressor(s) => {
+                        s.threshold_db = -36.0;
+                        s.attack_ms = 0.1;
+                    }
+                    daw_core::EffectSettings::Limiter(s) => s.input_db = 24.0,
+                    _ => {}
+                }
+                effect_test_chain(&mut plan, master).push(effect);
+                let scalar = effect_meters(&plan, &HashMap::new());
+                let bands = band_meters(&plan, &HashMap::new());
+                let cells: Vec<_> = scalar
+                    .values()
+                    .map(AsRef::as_ref)
+                    .chain(bands.values().flat_map(|m| m.iter()))
+                    .collect();
+                let tracks = track_meters(&plan, &HashMap::new());
+                let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
+                bind_effect_meters(&mut renderer, &scalar);
+                bind_band_meters(&mut renderer, &bands);
+                renderer.play();
+                for _ in 0..2000 {
+                    renderer.next_sample();
+                }
+                assert!(cells.iter().any(|cell| cell.load(Ordering::Relaxed) != 0));
+                for enabled in [false, true, false, true] {
+                    match &mut effect_test_chain(&mut plan, master)[0].unit {
+                        daw_core::EffectSettings::Eq3(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Compressor(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Limiter(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Ott(s) => s.enabled = enabled,
+                        _ => unreachable!(),
+                    }
+                    let mut next = PreparedRenderer::new(plan.clone(), &tracks);
+                    bind_effect_meters(&mut next, &scalar);
+                    bind_band_meters(&mut next, &bands);
+                    next.inherit(&mut renderer);
+                    renderer = next;
+                    if !enabled {
+                        assert!(cells.iter().all(|cell| cell.load(Ordering::Relaxed) == 0));
+                        // No writes while bypassed, even as audio and detector history advance.
+                        for cell in &cells {
+                            cell.store(123, Ordering::Relaxed);
+                        }
+                    }
+                    for _ in 0..2000 {
+                        renderer.next_sample();
+                    }
+                    if enabled {
+                        assert!(cells.iter().any(|cell| cell.load(Ordering::Relaxed) != 0));
+                    } else {
+                        assert!(cells.iter().all(|cell| cell.load(Ordering::Relaxed) == 123));
+                        // Restore a valid zero reading before preparing the next renderer.
+                        for cell in &cells {
+                            cell.store(0, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn band_meter_handles_follow_ids_and_report_callback_levels_or_compression() {
         for (master, eq) in [(false, false), (true, false), (false, true), (true, true)] {
             let mut plan = crate::tests::transport_plan();

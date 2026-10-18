@@ -41,6 +41,7 @@ fn show_inner(
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
+    let levels = meters::unit_reading(settings.enabled, levels);
     let bases = [
         settings.bands[0].gain_db,
         settings.bands[0].frequency_hz,
@@ -198,7 +199,7 @@ mod tests {
             crate::settings::ColorTheme::Dark,
             crate::settings::ColorTheme::Light,
         ] {
-            for compact in [false, true] {
+            for (enabled, compact) in [(true, false), (false, false), (true, true), (false, true)] {
                 for collapsed in [false, true] {
                     for disabled_band in 0..=3 {
                         for peak in [0.0, 10_f32.powf(-30.0 / 20.0), 2.0] {
@@ -213,6 +214,7 @@ mod tests {
                                 },
                             );
                             let mut settings = EqSettings {
+                                enabled,
                                 collapsed,
                                 ..Default::default()
                             };
@@ -267,7 +269,7 @@ mod tests {
                                             < 0.01
                                     );
                                     let expected = rail.width()
-                                        * if peak == 0.0 {
+                                        * if peak == 0.0 || !enabled {
                                             0.0
                                         } else if peak > 1.0 {
                                             1.0
@@ -294,7 +296,7 @@ mod tests {
                                             _ => None,
                                         })
                                         .collect();
-                                    if peak == 0.0 {
+                                    if peak == 0.0 || !enabled {
                                         assert!(fills.is_empty());
                                     } else {
                                         assert_eq!(fills.len(), 1);

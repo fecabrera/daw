@@ -26,7 +26,7 @@ Turning a band off bypasses its compression while keeping the band audible and i
 
 ## Gain-change monitors
 
-Each band's horizontal meter is centered at 0 dB. Left indicates reduction; right indicates boost. Its visible range is ±24 dB. Hover for the actual value beyond the rail. The reading shows compression gain, excluding Input/Output balance, Dry/Wet, and Level. Stopped or paused playback shows zero.
+Each band's horizontal meter is centered at 0 dB. Left indicates reduction; right indicates boost. Its visible range is ±24 dB. Hover for the actual value beyond the rail. The reading shows compression gain, excluding Input/Output balance, Dry/Wet, and Level. Turning the unit off clears all three meters and stops their updates. Turning it on resumes monitoring. Stopped or paused playback also shows zero.
 
 ## Modulation
 

@@ -1,17 +1,17 @@
 //! Three-band upward/downward compression with private FunDSP crossovers and detectors.
 use daw_unit_core::{
     CompressorDetection, EffectUnit, OTT_TYPE_ID, OttBandSettings, OttSettings, PortKind,
-    ProcessingContext, UnitDescriptor,
+    ProcessingContext, UnitDescriptor, UnitMeter,
 };
 use fundsp::{
     audionode::AudioNode,
     dynamics::{Meter, MeterState},
     svf::{FixedSvf, HighpassMode, LowpassMode, SvfParams},
 };
-use std::sync::{
-    Arc,
-    atomic::{AtomicU32, Ordering},
-};
+use std::sync::{Arc, atomic::AtomicU32};
+
+#[cfg(test)]
+use std::sync::atomic::Ordering;
 
 const RMS: Meter = Meter::Rms(0.01);
 
@@ -242,7 +242,7 @@ pub struct Ott {
     splits: [Split; 3],
     bands: [Band; 3],
     fade_frames: u32,
-    meter: Option<Arc<[AtomicU32; 3]>>,
+    meter: UnitMeter<[AtomicU32; 3]>,
 }
 impl Ott {
     pub fn new(context: ProcessingContext, settings: &OttSettings) -> Self {
@@ -258,7 +258,7 @@ impl Ott {
             ],
             bands: settings.bands.map(|s| Band::new(rate, s)),
             fade_frames: (rate / 200).max(1),
-            meter: None,
+            meter: UnitMeter::new(settings.enabled),
         }
     }
     fn values(s: &OttSettings) -> [f32; 6] {
@@ -272,6 +272,7 @@ impl Ott {
         ]
     }
     pub fn retarget(&mut self, settings: &OttSettings) {
+        self.meter.set_enabled(settings.enabled);
         let values = Self::values(settings);
         let crossover_changed = self.parameters[..2]
             .iter()
@@ -296,15 +297,10 @@ impl Ott {
     }
     /// Attach on the control thread. Positive values mean boost, negative values reduction.
     pub fn set_gain_change_meter(&mut self, meter: Arc<[AtomicU32; 3]>) {
-        self.meter = Some(meter);
-        self.publish();
+        self.meter.attach(meter, self.gain_change_db());
     }
     fn publish(&self) {
-        if let Some(meter) = &self.meter {
-            for (m, gain) in meter.iter().zip(self.gain_change_db()) {
-                m.store(gain.to_bits(), Ordering::Relaxed);
-            }
-        }
+        self.meter.publish(self.gain_change_db());
     }
 }
 impl EffectUnit for Ott {

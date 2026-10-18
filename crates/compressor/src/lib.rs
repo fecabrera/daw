@@ -1,14 +1,13 @@
 //! Linked stereo feed-forward compressor. FunDSP detector types remain private.
 use daw_unit_core::{
     COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings, EffectUnit, PortKind,
-    ProcessingContext, UnitDescriptor,
+    ProcessingContext, UnitDescriptor, UnitMeter,
 };
 use fundsp::dynamics::{Meter, MeterState};
-use std::sync::{
-    Arc,
-    atomic::{AtomicU32, Ordering},
-};
+use std::sync::{Arc, atomic::AtomicU32};
 
+#[cfg(test)]
+use std::sync::atomic::Ordering;
 mod modulation;
 #[cfg(test)]
 mod modulation_tests;
@@ -71,7 +70,7 @@ pub struct Compressor {
     configured_times: [f32; 2],
     coefficients: [f64; 2],
     reduction_db: f64,
-    meter: Option<Arc<AtomicU32>>,
+    meter: UnitMeter<AtomicU32>,
     external: daw_unit_core::ModulationSmoother<7>,
     effective: [f32; 9],
 }
@@ -92,7 +91,7 @@ impl Compressor {
             configured_times: [f32::NAN; 2],
             coefficients: [0.0; 2],
             reduction_db: 0.0,
-            meter: None,
+            meter: UnitMeter::new(settings.enabled),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: Self::values(settings),
         };
@@ -114,14 +113,14 @@ impl Compressor {
     }
     /// Keep detector/envelope history and unrelated in-flight ramps on compatible edits.
     pub fn retarget(&mut self, settings: &CompressorSettings) {
+        self.meter.set_enabled(settings.enabled);
         for (parameter, target) in self.parameters.iter_mut().zip(Self::values(settings)) {
             parameter.retarget(target, self.fade_frames);
         }
     }
     /// Optional lock-free monitoring handle. Attach on a control thread.
     pub fn set_gain_reduction_meter(&mut self, meter: Arc<AtomicU32>) {
-        meter.store(self.gain_reduction_db().to_bits(), Ordering::Relaxed);
-        self.meter = Some(meter);
+        self.meter.attach(meter, self.gain_reduction_db());
     }
     /// Compression before the dry/wet blend, zero when bypassed.
     pub fn gain_reduction_db(&self) -> f32 {
@@ -137,9 +136,7 @@ impl Compressor {
         }
     }
     fn publish(&self) {
-        if let Some(meter) = &self.meter {
-            meter.store(self.gain_reduction_db().to_bits(), Ordering::Relaxed);
-        }
+        self.meter.publish(self.gain_reduction_db());
     }
 }
 impl EffectUnit for Compressor {

@@ -17,7 +17,7 @@ Input raises or lowers the signal before limiting. Release sets recovery time. L
 
 Peak works on sample peaks. True Peak also estimates peaks between samples. L/R uses linked stereo reduction. M/S treats the center and side content separately, then applies final stereo peak protection.
 
-The read-only rail shows gain reduction from 0–24 dB; hover for larger readings. Compact and collapsed units hide it. Header power bypasses limiting while retaining the unit's delay and settings.
+The read-only rail shows gain reduction from 0–24 dB; hover for larger readings. Compact and collapsed units hide it. Header power bypasses limiting while retaining the unit's delay and settings. Turning the unit off clears the rail and stops meter updates. Turning it on resumes monitoring.
 
 ## Modulation
 
