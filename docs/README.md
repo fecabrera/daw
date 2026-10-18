@@ -36,6 +36,6 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 
 - [Modulation](modulation/README.md) and [Oscillator pitch modulation](modulation/oscillator-pitch.md).
 - [Moving and copying units](editing/units.md).
-- [Time stretching](audio/time-stretch.md).
+- [Time stretching and offline pitch changes](audio/time-stretch.md).
 - [Projects, settings, and export](projects/README.md).
 - [Features and roadmap](roadmap.md).

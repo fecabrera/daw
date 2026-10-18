@@ -1,6 +1,6 @@
 # Independent implementation record
 
-Implementation record updated: 2026-10-15. Status: experimental.
+Implementation record updated: 2026-10-18. Status: experimental.
 
 The mandatory rule in `specs/audio/timestretch.md` applies: under no circumstances take code directly from Rubber Band. Copies, ports, translations, adaptations, mechanical rewrites, and indirect reuse are prohibited. No Rubber Band DSP implementation source was consulted for this implementation. The new engine and tests were written in this task from the mathematical design below. This is a provenance record, not a certification of formal clean-room development or legal clearance.
 
@@ -31,6 +31,14 @@ Research context: Axel Röbel, [A new approach to transient processing in the ph
 The analysis also measures flatness within the band containing the middle 90% of spectral energy when it spans at least one eighth of the analyzed bins. This avoids classifying band-limited cymbal/noise material as tonal solely because its low or high frequency margins are empty. Narrow tonal peaks retain the long-window path.
 
 This is transient protection, not whole-file loudness normalization. Short pulses can have lower whole-file RMS after expansion because their attacks retain their duration while the spacing increases. The detector can miss attacks masked by a louder sustained signal. Dense events shorten the guard regions. Source-wide window selection remains a limitation, and sustained cymbal tails still need listening assessment. No subjective equivalence with R3 is claimed.
+
+## Offline pitch composition
+
+Research input: Julius O. Smith, [Windowed Sinc Interpolation](https://www.dsprelated.com/freebooks/pasp/Windowed_Sinc_Interpolation.html), mathematical band-limited interpolation and the low-pass requirement when reducing sample count. This extension uses those sampling equations. No third-party implementation, code, coefficient table, or test fixture was copied. No Rubber Band implementation source was inspected. The existing independently written reference adapter was read and now supplies its requested factor through the same public constructor.
+
+Independent design: convert semitones `a` to frequency factor `s = 2^(a/12)`. Keep the final rational frame count `M`, stretch to `K = max(1, round(M*s))` with the existing linked processor, then sample that intermediate at positions `j*K/M`. The effective pitch error from integer rounding decreases with result length; very short files cannot establish meaningful pitch. Borrow input when staging needs no duration change. Zero pitch delegates to the original implementation without interpolation.
+
+The new `pitch.rs` independently implements a centered Blackman-windowed sinc, cutoff `0.94/max(1,K/M)`, radius `ceil(32/cutoff)`, 1,025 stored fractional phases with linear coefficient interpolation, and f64 accumulation. These numerical choices, table layout, progress stages, memory accounting, and tests were designed here. Normalize each kernel's DC sum, never the processed signal's loudness. Both channels share identical weights and source positions. Bounds use zero extension; no extra filter delay is returned. This finite filter can attenuate the upper transition band and ring at boundaries. Formants shift with the signal. Full listening/performance acceptance and future DAW consumer design remain open. The existing stretch revision remains 2; the added optional pitch path has revision 1.
 
 ## Dependencies and reuse
 

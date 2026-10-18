@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 license = "BSD-2-Clause"
-description = "Independent experimental offline pitch-preserving time stretching"
+description = "Independent experimental offline time stretching and pitch shifting"
 
 [dependencies]
 rustfft = "=6.4.1"

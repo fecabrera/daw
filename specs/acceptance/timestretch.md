@@ -59,7 +59,7 @@ Waveform difference, spectral error, crest factor, correlation, and integrated l
 | --- | --- |
 | TS-01 | Validate rates, channels, ratios/components, layout, and finite input before processing, including identity. Invalid requests return typed errors without input-dependent panics or partial publication. |
 | TS-02 | Exactly `M` frames for every valid matrix case. Empty input returns empty output; nonempty input rounding to zero returns `OutputTooShort`. Test half-frame rounding and overflow without allocating huge files. |
-| TS-03 | Ratio 1 preserves finite sample bits, including signed zero, at every rate and both channel layouts. |
+| TS-03 | Ratio 1 with pitch 0 preserves finite sample bits, including signed zero, at every rate and both channel layouts. |
 | TS-04 | Silence stays exactly silent and accepted output is finite. Very large finite fixtures complete finitely or return an explicit numerical/resource error. Moderate headroom fixtures succeed without clipping/normalization. |
 | TS-05 | Qualifying sine pitch error is at most 5 cents ordinary / 15 cents extreme. Inspect harmonic-stack spectra separately for lost/duplicated partials; include them in listening. |
 | TS-06 | Qualifying proportional stereo residual is at most -80 dB for `a=0,0.5,1,-1`. Anti-phase does not collapse to silence. Silent-channel peak is at most 1e-7 with active-channel peak 0.5. Swapping channels swaps output within 1e-6 absolute sample error. Mono processing agrees with either channel of dual-mono processing within 1e-6 absolute error. |
@@ -75,6 +75,21 @@ Waveform difference, spectral error, crest factor, correlation, and integrated l
 | TS-16 | A minimal external Rust consumer processes sample buffers using only the `timestretch` dependency and portable parameters. Inspect resolved dependencies and build/test it without DAW crates, configuration, project files, native C/C++, or Rubber Band. No UI/event-loop initialization or working-directory assumption occurs. |
 
 TS-10/12 must not exempt ordinary audible clips from pitch checks. Requirements apply to the engine's actual output before DAW clip fades, gain, or effects.
+
+## Offline pitch extension gate
+
+TS-01–16 retain their pitch-0 meaning. The new portable pitch path adds the following checks; this does not grant stable release or DAW pitch acceptance. Ordinary combined cases have both duration and pitch factors in 1/2–2. Other supported combinations are extreme. Qualifying tones still need at least 20 cycles in the middle half, and their expected shifted frequency must be below the filter transition band/output Nyquist. Near-cutoff attenuation is a separate filter measurement, not a waived general pitch error.
+
+| ID | Test and pass condition |
+| --- | --- |
+| TP-01 | Finite fractional −24..=24 semitones, default 0; invalid values return `InvalidPitch`. Existing request API remains usable. Zero pitch equals the original path sample-for-sample, including signed-zero identity. |
+| TP-02 | Output frames equal the original rational `M` at every rate and selected duration/pitch endpoints. Cover combined private 1/32 and 32 staging, short/empty/DC/silence, and typed zero-rounded output/resource errors. |
+| TP-03 | Qualifying shifted tones meet 5-cent/0.5 dB ordinary and 15-cent/1.5 dB extreme limits without normalization. Cover all six rates, positive/negative/fractional offsets, low/mid/high tones, and combined duration extremes. |
+| TP-04 | Stereo proportional/anti-phase/silent-channel, mono equivalence, channel swap, and determinism retain TS-06/11 limits. Unrelated channel frequency and fixed same-tone phase relationships remain intact. Headroom is not clipped; numerical failures are explicit. |
+| TP-05 | Independently generated above-Nyquist content is attenuated by at least 70 dB in the isolated +12 semitone/downsample-by-two path. Check passband tones separately. No length-changing fallback or hidden gain matching. |
+| TP-06 | Monotonic progress and cancellation through validation, stretching, table setup, and resampling. Major simultaneous buffers are preflighted against the same configured memory limit; overflow and injected small budgets fail before publication. |
+| TP-07 | Standalone `process`, `compare`, and wrappers preserve requested pitch identity, duration, rate/channels, source safety, and exit codes. All three engines receive the same factor. Known-tone metrics accept a correct shift and reject an unshifted result; zero remains compatible. |
+| TP-08 | External portable consumer and reference-disabled core/tool builds retain the independent dependency boundary. Document the equations, independent interpolation source, table design, revisions, and no-formant/no-live-processing limits. Listening/full-corpus performance and cross-platform acceptance remain separate. |
 
 ## Optional DAW integration gate
 

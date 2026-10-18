@@ -2,6 +2,7 @@
 use crate::audio::{Audio, Result};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
+use timestretch::Pitch;
 pub fn diagnostics(audio: &Audio) -> Value {
     let invalid = audio.samples.iter().filter(|s| !s.is_finite()).count();
     let peak = audio
@@ -95,18 +96,20 @@ pub fn fixture(
     input: &Audio,
     output: &Audio,
     ratio: timestretch::Ratio,
+    pitch: Pitch,
 ) -> Result<Value> {
     let Some(path) = path else {
         return Ok(json!({"status":"unavailable","reason":"no known-signal manifest"}));
     };
     let spec: Value = serde_json::from_slice(&fs::read(path)?)?;
-    analyze(&spec, input, output, ratio)
+    analyze(&spec, input, output, ratio, pitch)
 }
 fn analyze(
     spec: &Value,
     input: &Audio,
     output: &Audio,
     ratio: timestretch::Ratio,
+    pitch: Pitch,
 ) -> Result<Value> {
     if spec["schema_version"] != 1
         || !matches!(
@@ -128,18 +131,22 @@ fn analyze(
     {
         return Err("invalid measured output layout, length, or samples".into());
     }
-    let ordinary = (0.5..=2.).contains(&ratio.as_f64());
+    let ordinary = (0.5..=2.).contains(&ratio.as_f64()) && (0.5..=2.).contains(&pitch.factor());
     let mut result = json!({"profile":spec["metric_profile"],"quality_acceptance":"specified metrics only; other gates unassessed"});
     let mut measurements = 0;
     if let Some(hz) = spec["frequency_hz"]
         .as_f64()
         .filter(|f| f.is_finite() && *f > 0.)
     {
+        let expected_hz = hz * pitch.factor();
+        if expected_hz >= f64::from(output.rate) / 2.0 {
+            return Err("shifted test frequency is at or above Nyquist".into());
+        }
         let (_, input_rms) = tone(input)?;
         let (frequency, output_rms) = tone(output)?;
-        let cents = 1200. * (frequency / hz).log2();
+        let cents = 1200. * (frequency / expected_hz).log2();
         let level_db = 20. * (output_rms / input_rms).log10();
-        result["tone"] = json!({"frequency_hz":frequency,"pitch_error_cents":cents,"level_error_db":level_db,"pitch_pass":cents.abs()<=if ordinary{5.}else{15.},"level_pass":level_db.abs()<=if ordinary{0.5}else{1.5}});
+        result["tone"] = json!({"frequency_hz":frequency,"expected_frequency_hz":expected_hz,"pitch_error_cents":cents,"level_error_db":level_db,"pitch_pass":cents.abs()<=if ordinary{5.}else{15.},"level_pass":level_db.abs()<=if ordinary{0.5}else{1.5}});
         measurements += 1;
         if let Some(expected_phase) = spec["stereo_phase_radians"].as_f64() {
             if output.channels != 2 {
@@ -149,7 +156,7 @@ fn analyze(
             for (c, phase) in phases.iter_mut().enumerate() {
                 let (mut sine, mut cosine) = (0., 0.);
                 for i in output.frames() / 4..output.frames() * 3 / 4 {
-                    let a = i as f64 * hz * std::f64::consts::TAU / f64::from(output.rate);
+                    let a = i as f64 * expected_hz * std::f64::consts::TAU / f64::from(output.rate);
                     let value = f64::from(output.samples[2 * i + c]);
                     sine += value * a.sin();
                     cosine += value * a.cos();
@@ -230,15 +237,24 @@ mod tests {
         let ratio = timestretch::Ratio::new(1, 1).unwrap();
         let spec = json!({"schema_version":1,"metric_profile":"synthetic-v1","prepared_sha256":input.hash(),"frequency_hz":440.,"channel_factor":0.5});
         assert_eq!(
-            analyze(&spec, &input, &input, ratio).unwrap()["tone"]["pitch_pass"],
+            analyze(&spec, &input, &input, ratio, Pitch::UNISON).unwrap()["tone"]["pitch_pass"],
             true
         );
         assert_eq!(
-            analyze(&spec, &input, &make(880., 0.4), ratio).unwrap()["tone"]["pitch_pass"],
+            analyze(&spec, &input, &make(880., 0.4), ratio, Pitch::UNISON).unwrap()["tone"]["pitch_pass"],
+            false
+        );
+        let up = Pitch::from_semitones(12.0).unwrap();
+        assert_eq!(
+            analyze(&spec, &input, &make(880., 0.4), ratio, up).unwrap()["tone"]["pitch_pass"],
+            true
+        );
+        assert_eq!(
+            analyze(&spec, &input, &input, ratio, up).unwrap()["tone"]["pitch_pass"],
             false
         );
         assert_eq!(
-            analyze(&spec, &input, &make(440., 0.8), ratio).unwrap()["tone"]["level_pass"],
+            analyze(&spec, &input, &make(440., 0.8), ratio, Pitch::UNISON).unwrap()["tone"]["level_pass"],
             false
         );
         let mut reversed = make(440., 0.4);
@@ -246,23 +262,25 @@ mod tests {
             f.swap(0, 1);
         }
         assert_eq!(
-            analyze(&spec, &input, &reversed, ratio).unwrap()["stereo_relationship"]["pass"],
+            analyze(&spec, &input, &reversed, ratio, Pitch::UNISON).unwrap()["stereo_relationship"]
+                ["pass"],
             false
         );
         for f in reversed.samples.chunks_exact_mut(2) {
             f[1] = f[0];
         }
         assert_eq!(
-            analyze(&spec, &input, &reversed, ratio).unwrap()["stereo_relationship"]["pass"],
+            analyze(&spec, &input, &reversed, ratio, Pitch::UNISON).unwrap()["stereo_relationship"]
+                ["pass"],
             false
         );
         reversed.samples.pop();
-        assert!(analyze(&spec, &input, &reversed, ratio).is_err());
+        assert!(analyze(&spec, &input, &reversed, ratio, Pitch::UNISON).is_err());
         reversed = make(440., 0.);
-        assert!(analyze(&spec, &input, &reversed, ratio).is_err());
+        assert!(analyze(&spec, &input, &reversed, ratio, Pitch::UNISON).is_err());
         reversed = make(440., 0.4);
         reversed.samples[0] = f32::NAN;
-        assert!(analyze(&spec, &input, &reversed, ratio).is_err());
+        assert!(analyze(&spec, &input, &reversed, ratio, Pitch::UNISON).is_err());
         let mut event_input = Audio {
             rate: 48000,
             channels: 1,
@@ -281,7 +299,7 @@ mod tests {
             *s = 0.5;
         }
         assert_eq!(
-            analyze(&spec, &event_input, &delayed, ratio).unwrap()["events"][0]["timing_pass"],
+            analyze(&spec, &event_input, &delayed, ratio, Pitch::UNISON).unwrap()["events"][0]["timing_pass"],
             false
         );
     }

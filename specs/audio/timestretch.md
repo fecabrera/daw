@@ -18,7 +18,7 @@ Any prohibited material blocks acceptance. Remove it and replace the affected wo
 
 Develop an independent, reusable Rust time stretch library. Name the package and library `timestretch`, at `crates/timestretch`. License its original code under BSD-2-Clause, consistent with the repository [LICENSE](../../LICENSE). The current use cases bound the initial requirements; using the library must not require a DAW, project model, or this application's runtime. Keep it suitable for extraction into its own repository once stable.
 
-The processor changes duration while preserving pitch. It processes a complete in-memory source at one constant ratio. The caller owns threading and result publication. Provide an independent command-line tool at `crates/timestretch-cli`, package `timestretch-cli`, binary `timestretch`, for file processing and three-engine comparisons. The DAW is one optional consumer, described separately below.
+The processor changes duration while preserving pitch by default. An optional constant pitch offset changes pitch independently of duration. It processes a complete in-memory source at one constant ratio and pitch offset. The caller owns threading and result publication. Provide an independent command-line tool at `crates/timestretch-cli`, package `timestretch-cli`, binary `timestretch`, for file processing and three-engine comparisons. The DAW is one optional consumer, described separately below.
 
 | Item | Contract |
 | --- | --- |
@@ -26,10 +26,11 @@ The processor changes duration while preserving pitch. It processes a complete i
 | Samples | `f32`, including finite headroom above unity |
 | Processing rates | 44100, 48000, 88200, 96000, 176400, 192000 Hz; fixed initial supported set, independent of any project |
 | Duration ratio | Output duration / source duration; inclusive range 1/8–8 |
+| Pitch offset | Optional constant −24 to +24 semitones, including fractional values; default 0 |
 | Timing | Exact integer output length; internal delay compensated |
 | Evaluation | Standalone file tool comparing Timestretch, Rubber Band R2, and Rubber Band R3; optional DAW engine selector |
 
-Live stretching, ratio automation, independent pitch/formant controls, tempo detection, warp markers, more than two channels, plugin/device management, and GPU processing are outside this version. The portable API has no track, clip, MIDI, project, transport, or device concepts. Within the DAW, MIDI stretching continues to retime MIDI data through its existing model; there are no per-clip engine or quality choices in this version.
+Live stretching, ratio/pitch automation, formant preservation, tempo detection, warp markers, more than two channels, plugin/device management, and GPU processing are outside this version. The portable API has no track, clip, MIDI, project, transport, or device concepts. Within the DAW, MIDI stretching continues to retime MIDI data through its existing model; there are no per-clip pitch, engine, or quality choices in this version.
 
 ## Portable crate
 
@@ -53,13 +54,13 @@ Use checked widened integer arithmetic. `3/2` makes audio 1.5 times as long. Do 
 
 Validate the request before shortcuts. Empty input returns an empty result. Nonempty input that rounds to `M == 0` returns `OutputTooShort`, rather than silently rounding to one frame. Invalid ratios/components, layout, rates, arithmetic, and resource limits return typed errors without publication. The DAW additionally retains its positive clip-length guards.
 
-At ratio 1, preserve every finite input sample bit, including signed zero. No spectral processing or additional delay is permitted. File metadata, WAV encoding, and waveform peaks are caller concerns.
+At ratio 1 and pitch 0, preserve every finite input sample bit, including signed zero. No spectral processing or additional delay is permitted. File metadata, WAV encoding, and waveform peaks are caller concerns.
 
 The processor must:
 
 - Reject NaN and infinity. Retain finite headroom without input/output clipping or automatic normalization.
 - Produce finite output or return an explicit numerical/resource error. Large finite values must not silently generate nonfinite audio or cause input-dependent panics.
-- Preserve pitch within the acceptance limits. Short inputs cannot silently fall back to pitch-changing resampling.
+- Meet the requested pitch within the acceptance limits. At pitch 0, short inputs cannot silently fall back to pitch-changing resampling.
 - Preserve mono equivalence, channel order, silence in a silent channel, and fixed channel relationships. Linked analysis must not collapse stereo to mono.
 - Compensate analysis/synthesis delay internally so returned frame zero corresponds to source time zero. Preserve source events near both boundaries within the stated tolerances.
 - Bound the result to `M`, without an additional audible tail or unexplained leading/trailing silence.
@@ -72,6 +73,20 @@ Published spectral and time-domain methods may be combined. Method choice does n
 The engine maintains phase continuity when spectral peaks change and protects detected attacks during expansion. The attack detector uses shared stereo energy. Short regions around detected attacks retain their original speed and phase; gaps absorb the remaining requested duration. Onsets stay anchored to the global ratio, and the exact output-length contract remains unchanged. Compression uses a linear time map with the same phase-continuity rule. See the [independent design record](../../crates/timestretch/PROVENANCE.md#phase-continuity-and-attack-preservation) for equations, thresholds, sources, and limits.
 
 The engine applies no automatic gain matching or normalization. Attack protection can reduce average level on sparse percussion as the interval between intact pulses increases. Missed/masked attacks, dense events, source-wide window choice, and cymbal-tail quality remain listening targets.
+
+## Offline pitch processing
+
+`Pitch::from_semitones(f64)` validates finite offsets in −24..=24 and returns `InvalidPitch` otherwise. `Pitch::UNISON` and `Default` are 0. `Pitch::factor()` returns `2^(semitones/12)`. `Request::with_pitch(Pitch)` returns `PitchRequest { stretch: Request, pitch: Pitch }`; the existing request fields and constructor remain source-compatible. Both request types expose `process` and `process_with_progress`. Zero pitch delegates to the original path, including its bit-preserving identity and resource/error semantics.
+
+Final output length remains the integer-rational `M` defined above. Pitch does not change the public duration ratio or frame count. Let `s` be the pitch factor. The private intermediate contains `K = max(1, round(M*s))` frames. Prepare the existing linked-stereo stretcher at exact private ratio `K/N`, then resample this buffer at step `K/M` to exactly `M` frames. Private staging ratios may extend approximately from 1/32 to 32; the public duration range stays 1/8–8. When `K == N`, borrow the validated source directly. Constant per-channel DC and silence use the existing direct path. For tiny results, integer rounding can prevent a meaningful pitch measurement; do not claim pitch accuracy outside the acceptance metric domain.
+
+Resampling uses a shared centered Blackman-windowed sinc table, independently derived from the interpolation equation in the [provenance record](../../crates/timestretch/PROVENANCE.md#offline-pitch-composition). With input step `d = K/M`, use normalized cutoff `c = 0.94/max(1,d)`, radius `ceil(32/c)`, and `2*radius+1` taps. At distance `x`, the coefficient is `c*sinc(c*x)*(0.42 + 0.5*cos(pi*x/radius) + 0.08*cos(2*pi*x/radius))` within the radius and zero outside. Here `sinc(z) = sin(pi*z)/(pi*z)`. Normalize each phase's coefficient sum for unity DC, not for signal-dependent loudness. Store 1,025 phase kernels in f64 and linearly interpolate between adjacent phases. Both channels use identical positions/weights. Source bounds use zero extension; frame zero has no added filter delay. Accumulate in f64, reject nonfinite f32 results, and retain finite headroom without clipping.
+
+The filter removes frequencies that would cross output Nyquist during upward shifting. It has a finite transition band and can ring near boundaries. Formants move with pitch; no formant correction or reference-equivalence claim is made. Stretch transients still use the existing linked analysis, with their intermediate waveform subsequently resampled.
+
+Before allocation, account for the larger of the intermediate stretch working set and `4*channels*(K+M) + filter_table_bytes`. The stretch estimate includes f64 overlap, intermediate f32 output, transient storage, and the existing conservative FFT allowance. Drop spectral scratch before allocating the filter table and final output. Immutable input, FFT planner internals, and allocator overhead retain their existing accounting limits. Checked arithmetic and fallible major-buffer allocation return `ResourceLimit`. Progress maps validation to 0–0.05, stretching to 0.05–0.8, table setup to 0.8–0.85, and output conversion to 0.85–1. Check cancellation during table setup and at most every 256 output frames, in addition to existing analysis/synthesis checkpoints. No partial output escapes.
+
+The original stretch algorithm and its `REVISION = 2` remain unchanged. The new optional path has `PITCH_REVISION = 1`. Reports or consumer caches for nonzero pitch must include both revisions, the exact pitch offset, processing rate, channels, duration ratio, and source identity. This addition does not migrate or reinterpret saved DAW engine revisions. DAW consumers still call the original zero-pitch request.
 
 ## Resources and failure handling
 
@@ -90,8 +105,8 @@ The following commands are implemented by the standalone `timestretch` binary in
 | Engine ID | Processing configuration |
 | --- | --- |
 | `timestretch` | Independent Rust engine, current implementation |
-| `rubberband-r2` | Rubber Band R2/Faster, offline, linked stereo, pitch factor 1, internal threading disabled |
-| `rubberband-r3` | Rubber Band R3/Finer, offline, linked stereo, pitch factor 1, internal threading disabled |
+| `rubberband-r2` | Rubber Band R2/Faster, offline, linked stereo, requested pitch factor (default 1), internal threading disabled |
+| `rubberband-r3` | Rubber Band R3/Finer, offline, linked stereo, requested pitch factor (default 1), internal threading disabled |
 
 Use an explicit engine selection in the reference API and verify the reported engine version. Never label an R3 result R2 or let either reference silently fall back. Pin the native Rubber Band/binding versions and record all actual options, including defaults, in reports. Keep native reference dependencies and notices isolated from the BSD engine crate. A standard comparison build includes both reference engines. A build lacking a reference fails comparison clearly instead of producing an incomplete success.
 
@@ -105,12 +120,13 @@ timestretch compare --input input.wav --ratio 3/2 --sample-rate 48000 \
 | --- | --- |
 | `--input PATH` | Required mono/stereo PCM16, PCM24, or float32 WAV |
 | `--ratio P/Q` | Required output/source duration ratio; finite decimal text also parses as an exact rational |
+| `--pitch-semitones N` | Optional finite −24..=24 constant offset; default 0; independent of duration |
 | `--sample-rate HZ` | Processing rate, default 48000; explicit and recorded, independent of DAW settings |
 | `--output-dir PATH` | Required new or empty directory for all renders and reports |
 | `--fixture-manifest PATH` | Optional versioned synthetic-fixture metadata for known-signal metrics |
 | `--timeout-seconds N` | Positive per-engine timeout; default 600 seconds |
 
-Use one DAW-independent decoder/converter path for all three backends. Validate, decode, and convert the complete source before stretching. Preserve native mono/stereo channel count in the tool; the DAW may adapt mono to its stereo bus separately. Each reference adapter receives identical finite samples, rate, ratio, and target-length policy. The command applies no clip fades, effects, pan, normalization, or limiter. Use reference APIs rather than external Rubber Band command defaults.
+Use one DAW-independent decoder/converter path for all three backends. Validate, decode, and convert the complete source before stretching. Preserve native mono/stereo channel count in the tool; the DAW may adapt mono to its stereo bus separately. Each reference adapter receives identical finite samples, rate, duration ratio, pitch factor, and target-length policy. The command applies no clip fades, effects, pan, normalization, or limiter. Use reference APIs rather than external Rubber Band command defaults.
 
 Write `timestretch.wav`, `rubberband-r2.wav`, `rubberband-r3.wav`, three per-engine JSON reports, and `comparison.json`. Audio is float32 WAV with the prepared channel count and rate, retaining headroom without dither or clipping. Keep raw reference frames/length diagnostics before any documented adapter delay/one-frame length correction; do not hide missing tails or larger discrepancies to force a match. DSP acceptance limits apply to the new engine; a reference's measured quality failure is reported as a reference result, not used to relax a new-engine criterion.
 
@@ -149,6 +165,8 @@ Comparison reports raw peak/RMS, lengths, nonfinite counts, times, and applicabl
 Benchmark invokes all three engines for every case. Time setup, analysis, synthesis, draining, and output allocation. Separately report decoding, conversion, encoding, startup, analysis of results, and total command wall time; exclude these from engine time. Run measured operations serially with a monotonic timer, rotate all three engine orders, discard warmups, and report median/minimum/maximum/median absolute deviation. Five runs cannot establish a p99. Output per-run JSON and summary JSON/CSV; a single-file run does not certify full-corpus coverage.
 
 Reports include schema version, file/prepared/output hashes, input/output channels and frames, rate, rational ratio, engine ID/revision/native versions/options, source/build identity and dirty state, target/profile, CPU/OS, thread policy, timings, and failure status. Collect peak process resident memory with units/method where supported, otherwise mark unavailable; it is not engine scratch memory. The R3 run remains the initial performance/listening acceptance baseline; report R2 separately, without selecting whichever reference gives the easier pass.
+
+An additive `pitch` object in schema 1 records semitones, factor, and the Integrated pitch revision (null for references). Backend options record the actual pitch scale. Comparison validates pitch identity as well as hashes/length. Both Python wrappers forward the pitch option; benchmark JSON/CSV rows and summaries retain it. Known-sine manifests still describe the input frequency: expected output frequency and stereo-phase projections use `frequency_hz * pitch_factor`. Reject an at/above-Nyquist expected tone as unmeasurable. Pitch 0 keeps existing metric thresholds; for nonzero pitch, ordinary tone thresholds require both duration and pitch factors in 1/2–2. Arbitrary-file diagnostics do not infer pitch-quality passes.
 
 Reject input/output/report aliases, including canonical paths and existing file identities. Refuse nonempty comparison/benchmark destinations. Validate first and stage complete files beside destinations. Publish the success summary last with output hashes. On partial publication, report failure and identify artifacts; multiple renames are not an atomic group replacement. Never overwrite the source, even with `--overwrite`.
 
@@ -222,4 +240,4 @@ Review further primary publications before selecting transient/stereo/multi-reso
 
 ## Sampler consumer — 2026-10-17
 
-[Sampler](../instruments/sampler.md) reuses the selected project stretch backend/revision for its prepared region. The project worker first composes the input clip's trim/repeat/stretch mapping and selected region, then prepares one complete mono/stereo buffer at a constant duration ratio. Time sets milliseconds; Bars derives duration from project tempo. The existing positive-frame and 1/8–8 bounds apply, and failure/cancellation retains the original project and audio. This consumer adds no live stretching, ratio automation, pitch shifting, or library algorithm changes. Sampler root note remains metadata until a separate pitch-support design is implemented.
+[Sampler](../instruments/sampler.md) reuses the selected project stretch backend/revision for its prepared region. The project worker first composes the input clip's trim/repeat/stretch mapping and selected region, then prepares one complete mono/stereo buffer at a constant duration ratio. Time sets milliseconds; Bars derives duration from project tempo. The existing positive-frame and 1/8–8 bounds apply, and failure/cancellation retains the original project and audio. This consumer adds no live stretching, ratio automation, or pitch shifting. The portable library's new pitch API is not yet connected to Sampler; root note remains metadata until a separate consumer design is implemented.

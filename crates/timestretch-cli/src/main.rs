@@ -11,11 +11,11 @@ use std::{
     process::{Command, ExitCode, Stdio},
     time::{Duration, Instant},
 };
-use timestretch::Ratio;
+use timestretch::{Pitch, Ratio};
 #[derive(Parser)]
 #[command(
     version,
-    about = "Independent time stretch processing and three-engine comparison"
+    about = "Offline time stretching, pitch shifting, and three-engine comparison"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -38,6 +38,9 @@ struct Input {
     input: PathBuf,
     #[arg(long)]
     ratio: Ratio,
+    /// Constant pitch shift in semitones, independent of duration (-24..=24).
+    #[arg(long, default_value = "0", allow_hyphen_values = true)]
+    pitch_semitones: Pitch,
     #[arg(long,default_value="48000",value_parser=rate)]
     sample_rate: u32,
 }
@@ -159,7 +162,8 @@ fn process(p: Process) -> Result<()> {
     let (input, decode, conversion) = audio::read(&p.input.input, p.input.sample_rate)?;
     let prepared_hash = input.hash();
     let engine_start = Instant::now();
-    let (output, details) = backend::process(&input, p.input.ratio, &p.engine)?;
+    let (output, details) =
+        backend::process(&input, p.input.ratio, p.input.pitch_semitones, &p.engine)?;
     let engine_seconds = engine_start.elapsed().as_secs_f64();
     let analysis_start = Instant::now();
     let diagnostics = metrics::diagnostics(&output);
@@ -168,6 +172,7 @@ fn process(p: Process) -> Result<()> {
         &input,
         &output,
         p.input.ratio,
+        p.input.pitch_semitones,
     )?;
     let analysis = analysis_start.elapsed().as_secs_f64();
     let audio_temp = stage(&p.output)?;
@@ -179,6 +184,7 @@ fn process(p: Process) -> Result<()> {
         "file_sha256":source_hash,"prepared_sha256":prepared_hash,"output_file_sha256":output_hash,"output_sample_sha256":output.hash(),
         "sample_rate":input.rate,"channels":input.channels,"input_frames":input.frames(),"output_frames":output.frames(),"expected_frames":p.input.ratio.output_frames(input.frames())?,
         "ratio":{"numerator":p.input.ratio.numerator(),"denominator":p.input.ratio.denominator()},
+        "pitch":{"semitones":p.input.pitch_semitones.semitones(),"factor":p.input.pitch_semitones.factor(),"revision":if p.engine=="timestretch" {Some(timestretch::PITCH_REVISION)}else{None}},
         "build":{"package_version":env!("CARGO_PKG_VERSION"),"revision":env!("BUILD_REVISION"),"dirty":env!("BUILD_DIRTY"),"target":env!("BUILD_TARGET"),"profile":env!("BUILD_PROFILE")},
         "host":{"os":std::env::consts::OS,"architecture":std::env::consts::ARCH,"available_parallelism":std::thread::available_parallelism().map(|n|n.get()).ok(),"cpu_model":std::env::var("PROCESSOR_IDENTIFIER").unwrap_or_else(|_|"unavailable".into())},
         "timings_seconds":{"decode":decode,"conversion":conversion,"engine":engine_seconds,"encoding":encoding,"analysis":analysis,"command_before_publication":wall.elapsed().as_secs_f64()},
@@ -254,6 +260,8 @@ fn compare(c: Compare) -> Result<()> {
             .arg(engine)
             .arg("--ratio")
             .arg(c.input.ratio.to_string())
+            .arg("--pitch-semitones")
+            .arg(c.input.pitch_semitones.semitones().to_string())
             .arg("--sample-rate")
             .arg(c.input.sample_rate.to_string())
             .stdin(Stdio::null())
@@ -290,6 +298,9 @@ fn compare(c: Compare) -> Result<()> {
             if result["status"] != "complete"
                 || result["engine"] != engine
                 || result["output_frames"] != result["expected_frames"]
+                || result["pitch"]["semitones"].as_f64()
+                    != Some(c.input.pitch_semitones.semitones())
+                || result["pitch"]["factor"].as_f64() != Some(c.input.pitch_semitones.factor())
                 || result["output_file_sha256"] != audio::file_hash(&output)?
             {
                 return Err("invalid result identity/length/hash".into());

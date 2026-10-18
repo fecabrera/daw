@@ -1,25 +1,24 @@
 use crate::audio::{Audio, Result};
 use serde_json::{Value, json};
-use timestretch::{Ratio, Request};
+use timestretch::{Pitch, Ratio, Request};
 pub const ENGINES: [&str; 3] = ["timestretch", "rubberband-r2", "rubberband-r3"];
-pub fn process(audio: &Audio, ratio: Ratio, engine: &str) -> Result<(Audio, Value)> {
+pub fn process(audio: &Audio, ratio: Ratio, pitch: Pitch, engine: &str) -> Result<(Audio, Value)> {
     let (samples, details) = if engine == "timestretch" {
-        let output = Request::new(audio.rate, audio.channels, ratio).process_with_progress(
-            &audio.samples,
-            |_| {
+        let output = Request::new(audio.rate, audio.channels, ratio)
+            .with_pitch(pitch)
+            .process_with_progress(&audio.samples, |_| {
                 if crate::cancelled() {
                     std::ops::ControlFlow::Break(())
                 } else {
                     std::ops::ControlFlow::Continue(())
                 }
-            },
-        )?;
+            })?;
         (
             output,
-            json!({"algorithm":"linked-phase-vocoder", "revision":timestretch::REVISION, "threads":1}),
+            json!({"algorithm":"linked-phase-vocoder", "revision":timestretch::REVISION, "pitch_revision":timestretch::PITCH_REVISION,"pitch_scale":pitch.factor(),"threads":1}),
         )
     } else {
-        reference(audio, ratio, engine)?
+        reference(audio, ratio, pitch, engine)?
     };
     if samples.len() != ratio.output_frames(audio.frames())? * audio.channels
         || samples.iter().any(|s| !s.is_finite())
@@ -36,11 +35,11 @@ pub fn process(audio: &Audio, ratio: Ratio, engine: &str) -> Result<(Audio, Valu
     ))
 }
 #[cfg(not(feature = "rubberband-reference"))]
-fn reference(_: &Audio, _: Ratio, _: &str) -> Result<(Vec<f32>, Value)> {
+fn reference(_: &Audio, _: Ratio, _: Pitch, _: &str) -> Result<(Vec<f32>, Value)> {
     Err("Rubber Band references unavailable: rebuild with rubberband-reference".into())
 }
 #[cfg(feature = "rubberband-reference")]
-fn reference(audio: &Audio, ratio: Ratio, engine: &str) -> Result<(Vec<f32>, Value)> {
+fn reference(audio: &Audio, ratio: Ratio, pitch: Pitch, engine: &str) -> Result<(Vec<f32>, Value)> {
     use rubberband::{Options, Stretcher};
     let version = match engine {
         "rubberband-r2" => 2,
@@ -63,7 +62,7 @@ fn reference(audio: &Audio, ratio: Ratio, engine: &str) -> Result<(Vec<f32>, Val
         audio.channels as u32,
         options,
         ratio.as_f64(),
-        1.0,
+        pitch.factor(),
     );
     if processor.engine_version() != version {
         return Err("Rubber Band returned the wrong engine version".into());
@@ -135,6 +134,6 @@ fn reference(audio: &Audio, ratio: Ratio, engine: &str) -> Result<(Vec<f32>, Val
         output,
         json!({"native_version":"4.0.0", "binding_version":"0.1.5", "sys_version":"0.1.4", "engine_version":version,
         "options_bits":if version==2 {0x10010000u32} else {0x30010000u32}, "options":["offline","channels-together","threading-never","stretch-elastic","transients-crisp","detector-compound","phase-laminar","window-standard","smoothing-off","formant-shifted","pitch-high-speed"],
-        "pitch_scale":1.0,"raw_frames":raw_frames,"raw_sample_sha256":raw_hash,"length_adjustment_frames":expected as i128-raw_frames as i128,"delay_compensation":"native offline", "threads":1}),
+        "pitch_scale":pitch.factor(),"raw_frames":raw_frames,"raw_sample_sha256":raw_hash,"length_adjustment_frames":expected as i128-raw_frames as i128,"delay_compensation":"native offline", "threads":1}),
     ))
 }

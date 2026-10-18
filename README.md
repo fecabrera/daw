@@ -14,6 +14,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Projects:** save and open projects, with configurable audio processing settings.
 - **Appearance:** dark and light themes, accent colors, and colored clips.
 - **Export and CLI:** export stereo WAV or MP3 files; validate projects and render audio from the command line.
+- **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 
 ## Status and planned work
 
@@ -131,7 +132,7 @@ Workers also upload command logs as `logs-test-<OS>-<architecture>` and `logs-bu
 
 - [User guide](docs/README.md): working with clips, instruments, modulation, and effects.
 - [Features and roadmap](docs/roadmap.md), including current limits and planned capabilities.
-- [Time stretching](docs/audio/time-stretch.md) and the [standalone comparison tool guide](crates/timestretch-cli/README.md).
+- [Time stretching and offline pitch changes](docs/audio/time-stretch.md) and the [standalone comparison tool guide](crates/timestretch-cli/README.md).
 - [Implementation specifications](specs/README.md): architecture, data formats, requirements, and acceptance criteria.
 - [Validation records](specs/validation/README.md): completed checks and remaining verification limits.
 - [Repository instructions](AGENTS.md): contribution rules and development workflows.

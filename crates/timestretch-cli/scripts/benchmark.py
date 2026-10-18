@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import hashlib
+import math
 from fractions import Fraction
 import pathlib
 import statistics
@@ -38,6 +39,7 @@ def run(args):
                     command = [args.binary, 'process', '--input', args.input,
                                '--output', str(stem.with_suffix('.wav')), '--report', str(report_path),
                                '--engine', engine, '--ratio', ratio, '--sample-rate', str(rate)]
+                    command += ['--pitch-semitones', str(args.pitch_semitones)]
                     started = time.monotonic()
                     child = None
                     try:
@@ -47,7 +49,9 @@ def run(args):
                         if code:
                             raise RuntimeError(f'engine exited with {code}; see {stem}.log')
                         report = json.loads(report_path.read_text())
-                        current = (report['file_sha256'], report['prepared_sha256'], report['expected_frames'])
+                        current = (report['file_sha256'], report['prepared_sha256'], report['expected_frames'], report['pitch']['semitones'])
+                        if report['pitch']['semitones'] != args.pitch_semitones:
+                            raise RuntimeError('pitch identity mismatch')
                         if hashlib.sha256(stem.with_suffix('.wav').read_bytes()).hexdigest() != report['output_file_sha256']:
                             raise RuntimeError('output hash mismatch')
                         if report['status'] != 'complete' or report['engine'] != engine or report['output_frames'] != report['expected_frames']:
@@ -55,7 +59,7 @@ def run(args):
                         if identity is not None and identity != current:
                             raise RuntimeError('input identity changed across engines or repetitions')
                         identity = current
-                        rows.append(dict(rate=rate, ratio=ratio, engine=engine, repetition=repetition,
+                        rows.append(dict(rate=rate, ratio=ratio, pitch_semitones=args.pitch_semitones, engine=engine, repetition=repetition,
                                          warmup=repetition < args.warmups,
                                          engine_seconds=report['timings_seconds']['engine'],
                                          child_wall_seconds=time.monotonic()-started,
@@ -64,13 +68,13 @@ def run(args):
                         if child and child.poll() is None:
                             child.kill()
                             child.wait()
-                        failures.append(dict(rate=rate, ratio=ratio, engine=engine,
+                        failures.append(dict(rate=rate, ratio=ratio, pitch_semitones=args.pitch_semitones, engine=engine,
                                              repetition=repetition, error=str(error)))
                     except KeyboardInterrupt:
                         if child and child.poll() is None:
                             child.terminate()
                             child.wait()
-                        failures.append(dict(rate=rate, ratio=ratio, engine=engine, error='cancelled'))
+                        failures.append(dict(rate=rate, ratio=ratio, pitch_semitones=args.pitch_semitones, engine=engine, error='cancelled'))
                         (directory / 'failures.json').write_text(json.dumps(failures, indent=2))
                         raise
     summary = []
@@ -80,7 +84,7 @@ def run(args):
                 values = [r['engine_seconds'] for r in rows if not r['warmup']
                           and (r['rate'], r['ratio'], r['engine']) == (rate, ratio, engine)]
                 if len(values) == args.runs:
-                    summary.append(dict(rate=rate, ratio=ratio, engine=engine, **summarize(values)))
+                    summary.append(dict(rate=rate, ratio=ratio, pitch_semitones=args.pitch_semitones, engine=engine, **summarize(values)))
     for item in summary:
         reference = next((r for r in summary if (r['rate'], r['ratio'], r['engine']) == (item['rate'], item['ratio'], 'rubberband-r3')), None)
         item['median_time_relative_to_r3'] = item['median'] / reference['median'] if reference and reference['median'] else None
@@ -103,6 +107,7 @@ def main():
     parser.add_argument('--binary', required=True)
     parser.add_argument('--input', required=True)
     parser.add_argument('--ratios', nargs='+', required=True)
+    parser.add_argument('--pitch-semitones', type=float, default=0.0)
     parser.add_argument('--sample-rates', type=int, nargs='+', default=[48000])
     parser.add_argument('--warmups', type=int, default=1)
     parser.add_argument('--runs', type=int, default=5)
@@ -111,6 +116,8 @@ def main():
     args = parser.parse_args()
     if args.warmups < 0 or args.runs < 1 or args.timeout_seconds < 1:
         parser.error('warmups must be nonnegative; runs and timeout must be positive')
+    if not math.isfinite(args.pitch_semitones) or not -24 <= args.pitch_semitones <= 24:
+        parser.error('pitch must be finite and between -24 and +24 semitones')
     try:
         if any(Fraction(r) < Fraction(1, 8) or Fraction(r) > 8 for r in args.ratios):
             parser.error('ratios must be between 1/8 and 8')

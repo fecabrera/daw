@@ -100,6 +100,8 @@ fn comparison_requires_all_three_engines_and_matching_inputs() {
             "source.wav",
             "--ratio",
             "3/2",
+            "--pitch-semitones",
+            "-7.5",
             "--output-dir",
             "comparison",
         ],
@@ -117,6 +119,8 @@ fn comparison_requires_all_three_engines_and_matching_inputs() {
         for report in reports {
             assert_eq!(report["prepared_sha256"], reports[0]["prepared_sha256"]);
             assert_eq!(report["output_frames"], 36000);
+            assert_eq!(report["pitch"]["semitones"], -7.5);
+            assert_eq!(report["backend"]["pitch_scale"], report["pitch"]["factor"]);
         }
         assert_eq!(reports[0]["revision"], timestretch::REVISION);
         assert_eq!(reports[1]["revision"], 1);
@@ -144,5 +148,80 @@ fn comparison_requires_all_three_engines_and_matching_inputs() {
         .status
         .code(),
         Some(2)
+    );
+}
+
+#[test]
+fn pitch_process_preserves_duration_and_reports_shifted_known_tone() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path();
+    wav(&dir.join("source.wav"));
+    let args = [
+        "process",
+        "--input",
+        "source.wav",
+        "--output",
+        "base.wav",
+        "--report",
+        "base.json",
+        "--engine",
+        "timestretch",
+        "--ratio",
+        "1",
+    ];
+    assert!(run(dir, &args).status.success());
+    let base: Value = serde_json::from_slice(&fs::read(dir.join("base.json")).unwrap()).unwrap();
+    fs::write(dir.join("tone.json"), serde_json::to_vec(&serde_json::json!({
+        "schema_version":1,"metric_profile":"synthetic-v1", "prepared_sha256":base["prepared_sha256"],
+        "frequency_hz":440.0,"channel_factor":-1.0,"stereo_phase_radians":std::f64::consts::PI
+    })).unwrap()).unwrap();
+    for semitones in ["-12", "7.5", "12"] {
+        let mut pitched = args.to_vec();
+        pitched[4] = "shift.wav";
+        pitched[6] = "shift.json";
+        pitched.extend([
+            "--pitch-semitones",
+            semitones,
+            "--fixture-manifest",
+            "tone.json",
+            "--overwrite",
+        ]);
+        let result = run(dir, &pitched);
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let report: Value =
+            serde_json::from_slice(&fs::read(dir.join("shift.json")).unwrap()).unwrap();
+        assert_eq!(report["output_frames"], 24000);
+        assert_eq!(
+            report["pitch"]["semitones"],
+            semitones.parse::<f64>().unwrap()
+        );
+        assert_eq!(report["pitch"]["revision"], timestretch::PITCH_REVISION);
+        for field in ["pitch_pass", "level_pass"] {
+            assert_eq!(report["fixture_metrics"]["tone"][field], true, "{report}");
+        }
+        assert_eq!(report["fixture_metrics"]["stereo_phase"]["pass"], true);
+        assert_eq!(
+            report["fixture_metrics"]["stereo_relationship"]["pass"],
+            true
+        );
+    }
+    for invalid in ["NaN", "inf", "25", "-25"] {
+        let mut invalid_args = args.to_vec();
+        invalid_args.extend(["--pitch-semitones", invalid]);
+        assert_eq!(run(dir, &invalid_args).status.code(), Some(2));
+    }
+    // The explicit unison flag must preserve the previous default bytes.
+    let mut zero = args.to_vec();
+    zero[4] = "zero.wav";
+    zero[6] = "zero.json";
+    zero.extend(["--pitch-semitones", "0"]);
+    assert!(run(dir, &zero).status.success());
+    assert_eq!(
+        fs::read(dir.join("base.wav")).unwrap(),
+        fs::read(dir.join("zero.wav")).unwrap()
     );
 }

@@ -1,8 +1,10 @@
-//! Independent offline time stretching. Input and output are interleaved f32 frames.
+//! Independent offline time stretching and pitch shifting, with interleaved f32 frames.
 //! Call on a worker: processing allocates and blocks. No files, devices, or threads.
 #![forbid(unsafe_code)]
+mod pitch;
 mod spectral;
 mod transients;
+pub use pitch::{PITCH_REVISION, Pitch, PitchRequest};
 use std::{fmt, ops::ControlFlow, str::FromStr};
 
 /// Processing identity for caches and reports; requests always use this implementation.
@@ -12,6 +14,7 @@ pub const SAMPLE_RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     InvalidRatio,
+    InvalidPitch,
     InvalidRate,
     InvalidLayout,
     NonfiniteInput,
@@ -24,6 +27,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::InvalidRatio => "duration ratio must be between 1/8 and 8",
+            Self::InvalidPitch => "pitch must be finite and between -24 and +24 semitones",
             Self::InvalidRate => "unsupported sample rate",
             Self::InvalidLayout => "expected complete interleaved mono or stereo frames",
             Self::NonfiniteInput => "input contains NaN or infinity",
@@ -121,6 +125,21 @@ pub struct Request {
     pub memory_limit_bytes: usize,
 }
 impl Request {
+    /// Add an independent constant pitch shift without changing the duration ratio.
+    /// ```
+    /// use timestretch::{Pitch, Ratio, Request};
+    /// let request = Request::new(48000, 1, Ratio::new(1, 1)?)
+    ///     .with_pitch(Pitch::from_semitones(7.0)?);
+    /// let output = request.process(&vec![0.25; 4800])?;
+    /// assert_eq!(output.len(), 4800);
+    /// # Ok::<(), timestretch::Error>(())
+    /// ```
+    pub fn with_pitch(self, pitch: Pitch) -> PitchRequest {
+        PitchRequest {
+            stretch: self,
+            pitch,
+        }
+    }
     pub fn new(sample_rate: u32, channels: usize, ratio: Ratio) -> Self {
         Self {
             sample_rate,
@@ -139,45 +158,17 @@ impl Request {
         mut progress: impl FnMut(f32) -> ControlFlow<()>,
     ) -> Result<Vec<f32>, Error> {
         checkpoint(&mut progress, 0.0)?;
-        if !SAMPLE_RATES.contains(&self.sample_rate) {
-            return Err(Error::InvalidRate);
-        }
-        if !(1..=2).contains(&self.channels) || !input.len().is_multiple_of(self.channels) {
-            return Err(Error::InvalidLayout);
-        }
-        let frames = input.len() / self.channels;
-        let output_frames = self.ratio.output_frames(frames)?;
+        let (frames, output_frames) = self.dimensions(input)?;
         let samples = output_frames
             .checked_mul(self.channels)
             .ok_or(Error::ResourceLimit)?;
         // f64 overlap accumulation, final f32 output, bounded FFT workspace,
         // and worst-case transient observations/regions (one per 30 ms).
-        let transient_storage = (frames / (self.sample_rate as usize * 30 / 1000) + 1)
-            .checked_mul(32)
-            .ok_or(Error::ResourceLimit)?;
-        let storage = samples
-            .checked_mul(12)
-            .and_then(|n| n.checked_add(8 * 1024 * 1024))
-            .and_then(|n| n.checked_add(transient_storage))
-            .ok_or(Error::ResourceLimit)?;
+        let storage = self.storage(frames, output_frames)?;
         if storage > self.memory_limit_bytes {
             return Err(Error::ResourceLimit);
         }
-        let mut constant = true;
-        for (i, block) in input.chunks(8192).enumerate() {
-            if block.iter().any(|s| !s.is_finite()) {
-                return Err(Error::NonfiniteInput);
-            }
-            for (offset, sample) in block.iter().enumerate() {
-                if sample.to_bits() != input[(i * 8192 + offset) % self.channels].to_bits() {
-                    constant = false;
-                }
-            }
-            checkpoint(
-                &mut progress,
-                0.05 * (i * 8192) as f32 / input.len().max(1) as f32,
-            )?;
-        }
+        let constant = self.validate_samples(input, &mut progress)?;
         if frames == 0 || self.ratio.numerator == self.ratio.denominator {
             let mut output = buffer(input.len(), 0.0)?;
             for (i, (src, dst)) in input.chunks(8192).zip(output.chunks_mut(8192)).enumerate() {
@@ -206,6 +197,49 @@ impl Request {
             return Ok(output);
         }
         spectral::process(self, input, output_frames, &mut progress)
+    }
+    fn dimensions(self, input: &[f32]) -> Result<(usize, usize), Error> {
+        if !SAMPLE_RATES.contains(&self.sample_rate) {
+            return Err(Error::InvalidRate);
+        }
+        if !(1..=2).contains(&self.channels) || !input.len().is_multiple_of(self.channels) {
+            return Err(Error::InvalidLayout);
+        }
+        let frames = input.len() / self.channels;
+        Ok((frames, self.ratio.output_frames(frames)?))
+    }
+    fn storage(self, frames: usize, output_frames: usize) -> Result<usize, Error> {
+        let transient_storage = (frames / (self.sample_rate as usize * 30 / 1000) + 1)
+            .checked_mul(32)
+            .ok_or(Error::ResourceLimit)?;
+        output_frames
+            .checked_mul(self.channels)
+            .and_then(|n| n.checked_mul(12))
+            .and_then(|n| n.checked_add(8 * 1024 * 1024))
+            .and_then(|n| n.checked_add(transient_storage))
+            .ok_or(Error::ResourceLimit)
+    }
+    fn validate_samples(
+        self,
+        input: &[f32],
+        progress: &mut impl FnMut(f32) -> ControlFlow<()>,
+    ) -> Result<bool, Error> {
+        let mut constant = true;
+        for (i, block) in input.chunks(8192).enumerate() {
+            if block.iter().any(|s| !s.is_finite()) {
+                return Err(Error::NonfiniteInput);
+            }
+            for (offset, sample) in block.iter().enumerate() {
+                if sample.to_bits() != input[(i * 8192 + offset) % self.channels].to_bits() {
+                    constant = false;
+                }
+            }
+            checkpoint(
+                progress,
+                0.05 * (i * 8192) as f32 / input.len().max(1) as f32,
+            )?;
+        }
+        Ok(constant)
     }
 }
 fn checkpoint(progress: &mut impl FnMut(f32) -> ControlFlow<()>, value: f32) -> Result<(), Error> {

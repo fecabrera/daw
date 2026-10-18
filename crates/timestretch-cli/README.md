@@ -1,4 +1,4 @@
-# Standalone time stretch comparison
+# Standalone time stretch and pitch comparison
 
 Build from the repository with `cargo build -p timestretch-cli --release`. The resulting binary is `target/release/timestretch` (`.exe` on Windows). The tool depends on no DAW crate, project, configuration, graphics, or audio device.
 
@@ -8,6 +8,8 @@ The default build includes Rubber Band R2 and R3 references. It needs the C++ co
 timestretch compare --input input.wav --ratio 3/2 --sample-rate 48000 --output-dir comparison
 timestretch process --input input.wav --engine timestretch --ratio 1.5 \
   --output output.wav --report output.json
+timestretch process --input input.wav --engine timestretch --ratio 1 \
+  --pitch-semitones -12 --output lower.wav --report lower.json
 python3 /path/to/scripts/compare.py --binary /path/to/timestretch \
   --input input.wav --ratio 3/2 --output-dir comparison
 python3 /path/to/scripts/benchmark.py --binary /path/to/timestretch \
@@ -19,17 +21,21 @@ python3 /path/to/scripts/benchmark.py --binary /path/to/timestretch \
 
 Inputs: mono/stereo PCM16, PCM24, or float32 WAV. Processing rates: 44100, 48000 (default), 88200, 96000, 176400, 192000. Ratio is output/input duration, a fraction or decimal between 1/8 and 8. Outputs are float32 WAV with original channel count and preserved headroom. Conversion is identical for all engines. No normalization, limiting, pan, effects, or clip fades are applied.
 
+`--pitch-semitones` accepts a constant −24 to +24 semitone offset, including fractional values. It defaults to 0. Positive raises pitch and negative lowers it; `--ratio 1` retains duration. Both commands and both Python scripts accept this option. Comparisons pass the same pitch factor to all three engines. Formant preservation and automated pitch changes are unavailable; high frequencies can be attenuated during upward shifts. Pitch processing remains experimental.
+
 Use a new or empty comparison/benchmark directory. `process --overwrite` permits replacing output/report files after successful staging, never the input or fixture manifest. Canonical and hard-link aliases are rejected. The success summary is published last. Multiple destination files do not form an atomic filesystem transaction; a partial publication reports the audio path already published. Exit codes: 0 complete processing, 1 processing/I/O/incomplete comparison, 2 invalid arguments.
 
 ## Reports and metrics
 
 Reports contain source/prepared/output SHA-256 identities, exact ratio, channels/rate/frame counts, engine revision/options/native versions, build identity, host information, diagnostics, and separate decode/conversion/engine/encoding/measurement timings. Peak RSS is explicitly unavailable in this version; do not interpret it as zero or as engine scratch usage. Benchmark rotates engine order, discards warmups, retains runs/failures, and emits JSON/CSV median/min/max/MAD summaries. R3 is the fixed comparison baseline. File processing success is not a quality acceptance result.
 
+The additive `pitch` report object records semitones, frequency factor, and the Integrated pitch-path revision. The existing stretch revision remains 2; the pitch-path revision is 1. Reference reports retain their own revision and record their actual pitch scale. Benchmark rows and summaries include the requested semitone value. Prepared-input hashes describe the unchanged input; pitch belongs to the processing identity.
+
 `--fixture-manifest` accepts a JSON object with `schema_version: 1`, `metric_profile: "synthetic-v1"`, and `prepared_sha256` matching the hash from a process report. Include `generator` and `seed` metadata when generating fixtures. Supported measurements:
 
-- `frequency_hz`: known sine frequency. Pitch uses interpolated rising zero crossings in the middle half; require at least 20 cycles. Level compares source/output RMS there. `tone-v1` is also accepted for tone-only manifests.
+- `frequency_hz`: known input sine frequency. The expected output is this frequency multiplied by the requested pitch factor. Pitch uses interpolated rising zero crossings in the middle half; require at least 20 cycles. Level compares source/output RMS there. A shifted tone at or above the output Nyquist frequency cannot receive a tone pass. `tone-v1` is also accepted for tone-only manifests.
 - `channel_factor`: expected R/L multiplier. Report normalized residual power in dB; exact zero is the string `"-inf"`.
-- `stereo_phase_radians`: expected R-minus-L phase for the supplied sine frequency, measured with sine/cosine projections.
+- `stereo_phase_radians`: expected R-minus-L phase for the supplied sine, measured with sine/cosine projections at the shifted frequency.
 - `events`: ordered, non-overlapping `{ "start_frame": ..., "end_frame": ... }` regions, one expected event per region, in prepared-input frames. Use a forward 1 ms mean-square envelope and its first 10% peak crossing; width is the cumulative-energy 10–90% span, ties earliest. Regions map by duration ratio. Missing events or invalid regions fail measurement.
 
 Metrics report their pass/fail flags. Unspecified metrics remain unassessed. Arbitrary files get diagnostics, not invented pitch/transient acceptance. Keep raw outputs for listening. Full corpus performance and listening acceptance remain separate work.
