@@ -282,6 +282,7 @@ fn transport_monitor_control(
 
 enum Job {
     AudioSettings(Session),
+    SamplerEdit(Session, Option<(Id, Vec<Id>)>),
     Loaded(Session, bool),
     Saved(Session),
     Exported(Vec<String>),
@@ -1193,6 +1194,18 @@ impl DawUi {
                     self.dirty = true;
                     self.sync_needed = false;
                 }
+                Ok(Job::SamplerEdit(session, placement)) => {
+                    self.notices = session.warnings.clone();
+                    self.session = session;
+                    if let Some((track, clips)) = placement {
+                        self.select_track(track, false);
+                        self.selected_clip = clips.first().copied();
+                        self.selected_clips = clips.into_iter().collect();
+                    }
+                    self.prune_clip_selection();
+                    self.prune_track_selection();
+                    self.changed();
+                }
                 Ok(Job::Loaded(session, dirty)) => {
                     self.loop_drag = None;
                     self.track_drag = None;
@@ -1341,15 +1354,7 @@ impl DawUi {
     fn edit(&mut self, command: Edit) {
         match self.session.project.edited(command) {
             Ok(project) => {
-                if self.session.sampler_preparation_needed(&project) {
-                    let mut session = self.session.clone();
-                    session.project = project;
-                    self.run_sampler_job("Preparing sampler", move |cancel| {
-                        session
-                            .prepare_stretches_cancellable(&|| cancel.load(Ordering::Relaxed))
-                            .map_err(|e| e.to_string())?;
-                        Ok(session)
-                    });
+                if self.prepare_sampler_edit(&project, None) {
                     return;
                 }
                 self.session.project = project;
@@ -1531,6 +1536,11 @@ impl DawUi {
             .collect();
         match project.edit(Edit::OverwriteClips(placements)) {
             Ok(()) => {
+                let mut ids: Vec<_> = clips.iter().map(|entry| entry.clip.id).collect();
+                ids.swap(0, primary);
+                if self.prepare_sampler_edit(&project, Some((clips[primary].track, ids))) {
+                    return;
+                }
                 self.session.project = project;
                 self.select_track(clips[primary].track, false);
                 self.selected_clip = Some(clips[primary].clip.id);

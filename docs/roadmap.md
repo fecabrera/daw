@@ -15,7 +15,7 @@ DAW provides audio and MIDI arrangement, layered instruments, effects, mixing, a
 
 Projects reference external audio recordings. Saving does not bundle those files. Missing recordings remain visible and play as silence. Keep recordings available when moving a project to another computer.
 
-Undo/redo is not available. Sampler plays at the original pitch; root note is descriptive only. Export ends at the arranged project duration and does not append effect tails. Mobile delivery is outside the current release scope.
+Undo/redo is not available. Sampler supports root-relative playback across the full MIDI note range. Export ends at the arranged project duration and does not append effect tails. Mobile delivery is outside the current release scope.
 
 ## Planned work
 

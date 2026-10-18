@@ -69,6 +69,7 @@ fn plan(waveform: Waveform, rate: u32) -> RenderPlan {
     RenderPlan {
         project,
         audio: HashMap::new(),
+        sampler_audio: Default::default(),
         stretched_audio: HashMap::new(),
     }
 }
@@ -3225,6 +3226,7 @@ fn sampler_plan(rate: u32, trigger: SamplerTrigger) -> RenderPlan {
     layer.amplitude = Default::default();
     layer.sampler = Some(SamplerSettings {
         id,
+        root_note: 20,
         trigger,
         end_frame: length,
         input: Some(SamplerInput {
@@ -3269,7 +3271,7 @@ fn sampler_plan(rate: u32, trigger: SamplerTrigger) -> RenderPlan {
 }
 
 #[test]
-fn sampler_one_shot_gate_stereo_pitch_metadata_and_render_paths_agree_at_all_rates() {
+fn sampler_one_shot_gate_stereo_root_playback_and_render_paths_agree_at_all_rates() {
     for rate in SAMPLE_RATES {
         for trigger in [SamplerTrigger::OneShot, SamplerTrigger::Gate] {
             let p = sampler_plan(rate, trigger);
@@ -3368,7 +3370,6 @@ fn sampler_gain_power_presentation_and_voice_positions_survive_compatible_update
         .as_mut()
         .unwrap();
     s.collapsed = true;
-    s.root_note = 73;
     let mut next = Renderer::new(next_plan.clone());
     ALLOCATIONS.with(|c| c.set(0));
     TRACK_ALLOCATIONS.with(|c| c.set(true));
@@ -3477,7 +3478,7 @@ fn sampler_modulated_plan(rate: u32, trigger: SamplerTrigger, provider: usize) -
         id: Id::new_v4(),
         start_tick: 60,
         length_ticks: 120,
-        pitch: 72,
+        pitch: 20,
         velocity: 127,
     });
     let i = p.project.tracks[0].instrument.as_mut().unwrap();
@@ -3537,6 +3538,79 @@ fn sampler_modulated_plan(rate: u32, trigger: SamplerTrigger, provider: usize) -
     s.modulations.push(route);
     p.project.validate().unwrap();
     p
+}
+
+#[test]
+fn sampler_prepared_pitch_banks_switch_notes_and_retarget_without_callback_allocation() {
+    for rate in SAMPLE_RATES {
+        let mut p = sampler_plan(rate, SamplerTrigger::OneShot);
+        p.project.stretch_engine = StretchEngine::INTEGRATED;
+        let asset = p.project.tracks[0].clips[0].asset_id;
+        let pattern = p
+            .project
+            .assets
+            .iter_mut()
+            .find(|a| a.id == asset)
+            .unwrap()
+            .midi_pattern
+            .as_mut()
+            .unwrap();
+        pattern.notes = [20, 32, 44, 45]
+            .into_iter()
+            .enumerate()
+            .map(|(i, pitch)| MidiNote {
+                id: Id::new_v4(),
+                start_tick: i as u32 * 120,
+                length_ticks: 120,
+                pitch,
+                velocity: 127,
+            })
+            .collect();
+        let s = p.project.samplers().next().unwrap();
+        let prepared = daw_media::PreparedSampler::new_cancellable(
+            &p.audio[&s.input.as_ref().unwrap().asset_id],
+            s,
+            u64::from(rate) / 5,
+            p.project.stretch_engine,
+            &[20, 32, 44, 45],
+            None,
+            &|| false,
+        )
+        .unwrap();
+        p.sampler_audio.insert(s.id, prepared);
+        let mut expected = vec![[0.0; 2]; rate as usize];
+        Renderer::new(p.clone()).render_offline(&mut expected);
+        for onset in [0, rate / 16, rate / 8] {
+            assert!(expected[(onset + rate / 20) as usize][0] > 0.1);
+        }
+        assert!(expected[rate as usize * 3 / 20][0] > 0.7);
+        assert!(
+            expected[rate as usize * 3 / 4..]
+                .iter()
+                .all(|s| *s == [0.0; 2])
+        );
+        let mut live = Renderer::new(p.clone());
+        let mut next = Renderer::new(p);
+        live.play();
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        ALLOCATIONS.with(|c| c.set(0));
+        for (i, expected) in expected.iter().enumerate() {
+            if i == rate as usize / 8 {
+                next.inherit(&mut live);
+                std::mem::swap(&mut next, &mut live);
+            }
+            let actual = live.next_sample();
+            if i > rate as usize / 200 {
+                assert_eq!(&actual, expected);
+            }
+        }
+        live.seek(u64::from(rate / 3));
+        live.pause();
+        live.play();
+        live.stop();
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    }
 }
 #[test]
 fn sampler_gain_modulation_shares_per_note_and_main_sources_with_live_export_and_random_access() {

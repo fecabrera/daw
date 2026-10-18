@@ -24,21 +24,21 @@ Open File > Project Settings and choose Time stretch engine.
 
 Apply prepares the audio before changing the project. A successful engine change stops playback; press Play to audition it. Cancel or a preparation error retains the old engine and playback. If a saved engine is unavailable, the application reports an error instead of silently substituting another one.
 
-The engine choice saves with the project and applies to audio stretching, including [Sampler duration](../instruments/sampler.md). It is not a per-clip choice. Engine changes retain clip positions, source selection, and stretch ratios.
+The engine choice saves with the project and applies to audio stretching, including [Sampler duration and note pitch](../instruments/sampler.md). It is not a per-clip choice. Engine changes retain clip positions, source selection, and stretch ratios.
 
 ## Current limits
 
-Pitch shifting is not available through this workflow. The experimental engine has automated checks, but broader listening, performance, and platform acceptance remain incomplete. Use representative audio to judge it for a project.
+Timeline clips have no pitch control. Sampler changes pitch relative to its root note, across the full MIDI range. The experimental engine has automated checks, but broader listening, performance, and platform acceptance remain incomplete. Use representative audio to judge it for a project.
 
 A separate command-line comparison tool can process WAV files with the Integrated engine and Rubber Band reference engines. See its [tool guide](../../crates/timestretch-cli/README.md) for commands and reports.
 
 ## Offline pitch changes in the standalone tool
 
-The separate tool can raise or lower a WAV file's pitch while retaining its duration. Add `--pitch-semitones` to `process` or `compare`. Positive values raise pitch; negative values lower it. Values from −24 to +24 are supported, including fractional semitones.
+The separate tool can raise or lower a WAV file's pitch while retaining its duration. Add `--pitch-semitones` to `process` or `compare`. Positive values raise pitch; negative values lower it. Values from −127 to +127 are supported, including fractional semitones.
 
 ```sh
 timestretch process --input input.wav --engine timestretch --ratio 1 \
   --pitch-semitones -12 --output lower.wav --report lower.json
 ```
 
-Use `--ratio` to change duration at the same time. A pitch offset of 0 keeps the existing pitch-preserving behavior. Pitch changes are experimental and do not preserve vocal formants. Strong upward shifts can reduce high-frequency content. The tool writes a separate output file and retains the original recording. Timeline and Sampler do not yet expose this pitch control.
+Use `--ratio` to change duration at the same time. A pitch offset of 0 keeps the existing pitch-preserving behavior. Pitch changes are experimental and do not preserve vocal formants. Strong upward shifts can reduce high-frequency content. The tool writes a separate output file and retains the original recording. Timeline has no pitch control. Sampler uses MIDI notes relative to its root note to choose pitch within the same range.

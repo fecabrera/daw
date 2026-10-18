@@ -239,6 +239,13 @@ impl DawUi {
         match self.move_project(&previews, &previews, false) {
             Ok(next) => {
                 let track = next.tracks[previews[primary].track_index].id;
+                let mut ids: Vec<_> = previews.iter().map(|preview| preview.clip.id).collect();
+                if let Some(primary) = ids.iter().position(|id| *id == drag.clip.id) {
+                    ids.swap(0, primary);
+                }
+                if self.prepare_sampler_edit(&next, Some((track, ids))) {
+                    return;
+                }
                 self.selected_clip = Some(drag.clip.id);
                 self.selected_clips = previews.iter().map(|preview| preview.clip.id).collect();
                 self.session.project = next;

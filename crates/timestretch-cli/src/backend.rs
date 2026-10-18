@@ -15,7 +15,7 @@ pub fn process(audio: &Audio, ratio: Ratio, pitch: Pitch, engine: &str) -> Resul
             })?;
         (
             output,
-            json!({"algorithm":"linked-phase-vocoder", "revision":timestretch::REVISION, "pitch_revision":timestretch::PITCH_REVISION,"pitch_scale":pitch.factor(),"threads":1}),
+            json!({"algorithm":"linked-phase-vocoder", "revision":timestretch::REVISION, "pitch_revision":timestretch::PITCH_REVISION,"pitch_scale":pitch.factor(),"pitch_stages":pitch.stages().map(|p| p.semitones()).collect::<Vec<_>>(),"threads":1}),
         )
     } else {
         reference(audio, ratio, pitch, engine)?
@@ -40,6 +40,25 @@ fn reference(_: &Audio, _: Ratio, _: Pitch, _: &str) -> Result<(Vec<f32>, Value)
 }
 #[cfg(feature = "rubberband-reference")]
 fn reference(audio: &Audio, ratio: Ratio, pitch: Pitch, engine: &str) -> Result<(Vec<f32>, Value)> {
+    if pitch.stages().len() > 1 {
+        let mut prepared: Option<Audio> = None;
+        let mut stages = Vec::new();
+        for (index, stage) in pitch.stages().enumerate() {
+            let input = prepared.as_ref().unwrap_or(audio);
+            let duration = if index == 0 { ratio } else { Ratio::new(1, 1)? };
+            let (samples, details) = reference(input, duration, stage, engine)?;
+            stages.push(details);
+            prepared = Some(Audio {
+                samples,
+                rate: audio.rate,
+                channels: audio.channels,
+            });
+        }
+        let mut details = stages.last().unwrap().clone();
+        details["pitch_scale"] = json!(pitch.factor());
+        details["pitch_stages"] = json!(stages);
+        return Ok((prepared.unwrap().samples, details));
+    }
     use rubberband::{Options, Stretcher};
     let version = match engine {
         "rubberband-r2" => 2,

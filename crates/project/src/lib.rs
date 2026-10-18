@@ -57,6 +57,7 @@ pub fn project_folder_name(name: &str) -> Result<&str> {
 pub struct Session {
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
+    pub sampler_audio: HashMap<Id, daw_media::PreparedSampler>,
     pub stretched_audio: HashMap<(Id, ClipStretch), daw_media::PreparedStretch>,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
@@ -145,6 +146,7 @@ impl Session {
         RenderPlan {
             project: self.project.clone(),
             audio: self.audio.clone(),
+            sampler_audio: self.sampler_audio.clone(),
             stretched_audio: self.stretched_audio.clone(),
         }
     }
@@ -218,6 +220,7 @@ impl Session {
         let mut next = self.clone();
         next.stretched_audio = prepared;
         next.prepare_sampler_audio(cancelled)?;
+        self.sampler_audio = next.sampler_audio;
         self.stretched_audio = next.stretched_audio;
         self.audio = next.audio;
         Ok(())
@@ -230,6 +233,7 @@ impl Session {
         let mut session = Self {
             project,
             audio: HashMap::new(),
+            sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             folder: Some(folder),
             warnings: vec![],

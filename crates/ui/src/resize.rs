@@ -155,6 +155,9 @@ impl DawUi {
                     })
             });
         if changed {
+            if self.prepare_sampler_edit(&next, None) {
+                return;
+            }
             self.session.project = next;
             self.prune_clip_selection();
             self.changed();

@@ -923,6 +923,7 @@ mod tests {
             repeat: None,
         });
         RenderPlan {
+            sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             project,
             audio: HashMap::from([(
@@ -1187,6 +1188,7 @@ mod tests {
     #[test]
     fn track_meter_latches_stereo_and_follows_track_identity() {
         let mut plan = RenderPlan {
+            sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             project: daw_core::Project::default(),
             audio: HashMap::new(),
@@ -1219,6 +1221,7 @@ mod tests {
     fn callback_resamples_without_device_and_retires_plans() {
         for rate in [44_100, 48_000, 96_000] {
             let plan = RenderPlan {
+                sampler_audio: Default::default(),
                 stretched_audio: HashMap::new(),
                 project: daw_core::Project::default(),
                 audio: HashMap::new(),

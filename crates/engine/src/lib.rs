@@ -13,6 +13,7 @@ use std::collections::HashMap;
 pub struct RenderPlan {
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
+    pub sampler_audio: HashMap<Id, daw_media::PreparedSampler>,
     pub stretched_audio: HashMap<(Id, ClipStretch), daw_media::PreparedStretch>,
 }
 impl RenderPlan {
@@ -273,7 +274,14 @@ impl Renderer {
             .project
             .tracks
             .iter()
-            .map(|track| midi::MidiTrackRuntime::with_audio(&plan.project, track, &plan.audio))
+            .map(|track| {
+                midi::MidiTrackRuntime::with_audio(
+                    &plan.project,
+                    track,
+                    &plan.audio,
+                    &plan.sampler_audio,
+                )
+            })
             .collect();
         // Prepare source identity off the callback. Mixer/source control changes need only
         // parameter ramps; restarting the output transition would modulate a held sample.
@@ -929,6 +937,7 @@ mod tests {
             repeat: None,
         });
         RenderPlan {
+            sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             project,
             audio: HashMap::from([(

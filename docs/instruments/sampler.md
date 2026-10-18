@@ -1,6 +1,6 @@
 # Sampler
 
-Sampler plays a selected audio region for each MIDI note. It is a source component for regular MIDI instrument layers. All notes currently play at the sample's original pitch; root note is descriptive only.
+Sampler plays a selected audio region for each MIDI note. It is a source component for regular MIDI instrument layers. MIDI notes play relative to the sample's root note, across the full piano-roll range.
 
 ## Load a sample
 
@@ -18,7 +18,7 @@ The ruler and waveform grid follow the region's effective playback duration and 
 | Control | Use |
 | --- | --- |
 | Gain | Silence through +12 dB, default 0 dB. Accepts Envelope, LFO, and Macro modulation. |
-| Root note | Default C4. Drag to change notes or click to type a natural note name and octave. Use the adjacent sharp toggle where valid. Names match the piano roll, C−1 through G9. This does not transpose playback yet. |
+| Root note | Default C4. Drag to change notes or click to type a natural note name and octave. Use the adjacent sharp toggle where valid. Names match the piano roll, C−1 through G9. This is the MIDI note that plays the sample at its original pitch. |
 | Duration mode | Off, Time (ms), or Bars; default Off. Choose it from the dropdown beside the duration value. |
 | Duration | Drag or type the target duration. Off shows the original region duration as a disabled millisecond value. Time uses positive milliseconds; Bars uses whole four-beat bars with a minimum of 1. |
 | Trigger | One-shot or Gate, default One-shot. |
@@ -29,12 +29,24 @@ One-shot plays to the region's end after note-off. Gate follows note-off and any
 
 Root note and sharp share one input group. Duration value and mode share another; Trigger sits beside them below the preview. Enter or focus loss accepts valid typed values; Escape cancels. Root-note drags apply on release and cancel with Escape or focus loss.
 
+## Play different pitches
+
+Set Root note to the note heard in the original sample. For example, with C4 as the root, C4 plays the original pitch, C5 plays one octave higher, and C3 plays one octave lower. Root note does not detect or correct the recording's tuning.
+
+Every MIDI note from C−1 to G9 plays relative to the root. Pitch changes retain the selected duration in Off, Time, and Bars modes. One-shot and Gate keep their normal release behavior.
+
+Sampler uses the Time stretch engine selected in Project Settings: Rubber Band or Integrated (experimental). Adding or changing MIDI pitches can require sample preparation before the edit applies. Root-note, region, duration, tempo, and processing-setting changes can also require preparation. Cancel or a preparation error keeps the previous settings and audio. Longer samples and more distinct pitches require more time and memory; shorten the selection if preparation reports a memory limit.
+
+Very large shifts can reduce sound quality and require more preparation time. Notes can become inaudible if the recording shifts below the audible range or above half the project sample rate. Pitch changes do not preserve vocal formants. Strong upward shifts can reduce high-frequency content. The sample preview stays at the root pitch and shows the common duration.
+
 ## Gain modulation
 
 Use the header's secondary-color dot to open connections. Gain accepts Per note Envelopes and shared Envelope, LFO, or Macro sources from the same instrument, including Main. Amount spans −24 to +24 dB per connection. The base Gain stays unchanged, and exact base silence stays silent. Pitch, duration, root note, region, and Trigger do not accept modulation.
 
 ## Files and limits
 
+Existing projects use their saved root note for pitch playback. Non-root notes can therefore sound different from earlier versions.
+
 Replacing audio selects the new full input while retaining an explicitly set duration target. Preparation failure or cancellation keeps the previous sample and playback. Missing recordings stay visible and play as silence; shortened recordings supply silence for unavailable parts. Saving and Save As retain external file references and do not bundle recordings.
 
-Reverse playback, internal looping, slicing, automatic pitch/tempo detection, multisampling, and pitch shifting are not available. See [time stretching](../audio/time-stretch.md) and [modulation](../modulation/README.md).
+Reverse playback, internal looping, slicing, automatic pitch/tempo detection, multisampling, and live pitch modulation are not available. See [time stretching](../audio/time-stretch.md) and [modulation](../modulation/README.md).

@@ -4,7 +4,7 @@ use crate::{Error, Ratio, Request, buffer, checkpoint};
 use std::{borrow::Cow, f64::consts::PI, ops::ControlFlow, str::FromStr};
 
 /// Version of the optional pitch path. Zero pitch retains `REVISION` unchanged.
-pub const PITCH_REVISION: u32 = 1;
+pub const PITCH_REVISION: u32 = 2;
 
 /// Constant equal-tempered pitch offset, independent of output duration.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -12,7 +12,7 @@ pub struct Pitch(f64);
 impl Pitch {
     pub const UNISON: Self = Self(0.0);
     pub fn from_semitones(semitones: f64) -> Result<Self, Error> {
-        if !semitones.is_finite() || !(-24.0..=24.0).contains(&semitones) {
+        if !semitones.is_finite() || !(-127.0..=127.0).contains(&semitones) {
             return Err(Error::InvalidPitch);
         }
         Ok(Self(if semitones == 0.0 { 0.0 } else { semitones }))
@@ -22,6 +22,18 @@ impl Pitch {
     }
     pub fn factor(self) -> f64 {
         (self.0 / 12.0).exp2()
+    }
+    /// Bounded offline passes whose pitch offsets sum to this request. A pass spans
+    /// at most two octaves, keeping private intermediate/filter sizes bounded.
+    /// Apply the duration ratio only to the first pass; later passes retain duration.
+    pub fn stages(self) -> impl ExactSizeIterator<Item = Self> {
+        let count = (self.0.abs() / 24.0).ceil().max(1.0) as usize;
+        (0..count).map(move |i| {
+            // Lowering uses the remainder first, keeping the final analysis above
+            // the lowest target fundamentals instead of close to DC.
+            let index = if self.0 < 0.0 { count - 1 - i } else { i };
+            Self(self.0.signum() * (self.0.abs() - index as f64 * 24.0).min(24.0))
+        })
     }
 }
 impl FromStr for Pitch {
@@ -39,24 +51,158 @@ pub struct PitchRequest {
     pub pitch: Pitch,
 }
 impl PitchRequest {
-    pub fn process(self, input: &[f32]) -> Result<Vec<f32>, Error> {
-        self.process_with_progress(input, |_| ControlFlow::Continue(()))
+    /// Conservative working storage used by admission checks. Excludes immutable input,
+    /// FFT planner internals and allocator overhead, as in `process_with_progress`.
+    pub fn working_memory_bytes(self, input_frames: usize) -> Result<usize, Error> {
+        if !crate::SAMPLE_RATES.contains(&self.stretch.sample_rate) {
+            return Err(Error::InvalidRate);
+        }
+        if !(1..=2).contains(&self.stretch.channels) {
+            return Err(Error::InvalidLayout);
+        }
+        let output_frames = self.stretch.ratio.output_frames(input_frames)?;
+        if self.pitch == Pitch::UNISON || input_frames == 0 {
+            return self.stretch.storage(input_frames, output_frames);
+        }
+        if self.pitch.stages().len() == 1 {
+            return self
+                .layout(input_frames, output_frames)
+                .map(|(_, _, bytes)| bytes);
+        }
+        let retained = output_frames
+            .checked_mul(self.stretch.channels)
+            .and_then(|n| n.checked_mul(size_of::<f32>()))
+            .ok_or(Error::ResourceLimit)?;
+        let mut required = 0;
+        for (index, pitch) in self.pitch.stages().enumerate() {
+            let request = self.stage(index, pitch);
+            let frames = if index == 0 {
+                input_frames
+            } else {
+                output_frames
+            };
+            let bytes = if pitch.semitones() > 0.0 {
+                request.raise_layout(frames, output_frames)?.2
+            } else {
+                request.working_memory_bytes(frames)?
+            }
+            .checked_add(if index == 0 { 0 } else { retained })
+            .ok_or(Error::ResourceLimit)?;
+            required = required.max(bytes);
+        }
+        Ok(required)
     }
-    /// Progress includes validation, intermediate stretching, and filtered resampling.
-    pub fn process_with_progress(
+    fn stage(self, index: usize, pitch: Pitch) -> Self {
+        Self {
+            pitch,
+            stretch: Request {
+                ratio: if index == 0 {
+                    self.stretch.ratio
+                } else {
+                    Ratio {
+                        numerator: 1,
+                        denominator: 1,
+                    }
+                },
+                ..self.stretch
+            },
+        }
+    }
+    fn process_staged(
         self,
         input: &[f32],
         mut progress: impl FnMut(f32) -> ControlFlow<()>,
     ) -> Result<Vec<f32>, Error> {
-        let request = self.stretch;
-        if self.pitch == Pitch::UNISON {
-            return request.process_with_progress(input, progress);
-        }
         checkpoint(&mut progress, 0.0)?;
-        let (frames, output_frames) = request.dimensions(input)?;
-        if frames == 0 {
-            return request.process_with_progress(input, progress);
+        let (frames, _) = self.stretch.dimensions(input)?;
+        if self.working_memory_bytes(frames)? > self.stretch.memory_limit_bytes {
+            return Err(Error::ResourceLimit);
         }
+        let count = self.pitch.stages().len() as f32;
+        let mut prepared = Cow::Borrowed(input);
+        for (index, pitch) in self.pitch.stages().enumerate() {
+            let mut stage = self.stage(index, pitch);
+            if index > 0 {
+                stage.stretch.memory_limit_bytes = stage
+                    .stretch
+                    .memory_limit_bytes
+                    .checked_sub(
+                        prepared
+                            .len()
+                            .checked_mul(size_of::<f32>())
+                            .ok_or(Error::ResourceLimit)?,
+                    )
+                    .ok_or(Error::ResourceLimit)?;
+            }
+            let mut report = |p| progress((index as f32 + p) / count);
+            let output = if pitch.semitones() > 0.0 {
+                stage.process_raise(&prepared, &mut report)?
+            } else {
+                stage.process_single(&prepared, &mut report)?
+            };
+            prepared = Cow::Owned(output);
+        }
+        Ok(prepared.into_owned())
+    }
+    // For large upward shifts, raise frequency before spectral analysis. This keeps
+    // low MIDI fundamentals out of the sub-bin region of the first analysis window.
+    fn raise_layout(
+        self,
+        frames: usize,
+        output_frames: usize,
+    ) -> Result<(usize, Filter, usize), Error> {
+        let intermediate = (frames as f64 / self.pitch.factor()).round().max(1.0) as usize;
+        let filter = Filter::layout(frames as f64 / intermediate as f64)?;
+        let retained = intermediate
+            .checked_mul(self.stretch.channels)
+            .and_then(|n| n.checked_mul(size_of::<f32>()))
+            .ok_or(Error::ResourceLimit)?;
+        let bytes = self
+            .stretch
+            .storage(intermediate, output_frames)?
+            .max(filter.storage_bytes)
+            .checked_add(retained)
+            .ok_or(Error::ResourceLimit)?;
+        Ok((intermediate, filter, bytes))
+    }
+    fn process_raise(
+        self,
+        input: &[f32],
+        mut progress: impl FnMut(f32) -> ControlFlow<()>,
+    ) -> Result<Vec<f32>, Error> {
+        checkpoint(&mut progress, 0.0)?;
+        let (frames, output_frames) = self.stretch.dimensions(input)?;
+        if frames == 0 {
+            return self.stretch.process_with_progress(input, progress);
+        }
+        let (intermediate, filter, bytes) = self.raise_layout(frames, output_frames)?;
+        if bytes > self.stretch.memory_limit_bytes {
+            return Err(Error::ResourceLimit);
+        }
+        if self.stretch.validate_samples(input, &mut progress)? {
+            return self
+                .stretch
+                .process_with_progress(input, |p| progress(0.05 + 0.95 * p));
+        }
+        let prepared = filter.resample(
+            input,
+            self.stretch.channels,
+            intermediate,
+            frames as f64 / intermediate as f64,
+            &mut |p| progress(0.05 + p * 0.25),
+        )?;
+        let request = Request {
+            ratio: Ratio {
+                numerator: output_frames as u64,
+                denominator: intermediate as u64,
+            },
+            memory_limit_bytes: self.stretch.memory_limit_bytes - prepared.len() * size_of::<f32>(),
+            ..self.stretch
+        };
+        request.process_with_progress(&prepared, |p| progress(0.3 + p * 0.7))
+    }
+    fn layout(self, frames: usize, output_frames: usize) -> Result<(usize, Filter, usize), Error> {
+        let request = self.stretch;
         // The final length is always the original integer-rational duration.
         // Rounding this private intermediate length cannot change that contract.
         let intermediate = (output_frames as f64 * self.pitch.factor())
@@ -77,13 +223,45 @@ impl PitchRequest {
             .and_then(|n| n.checked_mul(size_of::<f32>()))
             .and_then(|n| n.checked_add(filter.storage_bytes))
             .ok_or(Error::ResourceLimit)?;
-        if request
+        let bytes = request
             .storage(frames, intermediate)?
-            .max(resampling_storage)
-            > request.memory_limit_bytes
-        {
+            .max(resampling_storage);
+        Ok((intermediate, filter, bytes))
+    }
+    pub fn process(self, input: &[f32]) -> Result<Vec<f32>, Error> {
+        self.process_with_progress(input, |_| ControlFlow::Continue(()))
+    }
+    /// Progress includes validation, intermediate stretching, and filtered resampling.
+    pub fn process_with_progress(
+        self,
+        input: &[f32],
+        progress: impl FnMut(f32) -> ControlFlow<()>,
+    ) -> Result<Vec<f32>, Error> {
+        if self.pitch.stages().len() > 1 {
+            self.process_staged(input, progress)
+        } else {
+            self.process_single(input, progress)
+        }
+    }
+    fn process_single(
+        self,
+        input: &[f32],
+        mut progress: impl FnMut(f32) -> ControlFlow<()>,
+    ) -> Result<Vec<f32>, Error> {
+        let request = self.stretch;
+        if self.pitch == Pitch::UNISON {
+            return request.process_with_progress(input, progress);
+        }
+        checkpoint(&mut progress, 0.0)?;
+        let (frames, output_frames) = request.dimensions(input)?;
+        if frames == 0 {
+            return request.process_with_progress(input, progress);
+        }
+        let (intermediate, filter, bytes) = self.layout(frames, output_frames)?;
+        if bytes > request.memory_limit_bytes {
             return Err(Error::ResourceLimit);
         }
+        let step = intermediate as f64 / output_frames as f64;
         if request.validate_samples(input, &mut progress)? {
             // DC (including digital silence) is invariant under either operation.
             return request.process_with_progress(input, |p| progress(0.05 + 0.95 * p));

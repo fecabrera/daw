@@ -177,6 +177,7 @@ mod tests {
                 RenderPlan {
                     project: project.clone(),
                     audio: Default::default(),
+                    sampler_audio: Default::default(),
                     stretched_audio: Default::default(),
                 },
                 Bindings::default(),

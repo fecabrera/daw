@@ -90,7 +90,7 @@ impl Voice {
             layer.one_shot = layer.one_shot_target;
             layer.gate.note_on();
             if let Some(s) = &mut layer.sampler {
-                s.note_on();
+                s.note_on_at(pitch);
                 for route in &mut layer.sampler_routes {
                     route.reset();
                 }
@@ -354,12 +354,18 @@ impl MidiTrackRuntime {
     /// Build schedules and DSP state before publication. No callback allocations.
     #[cfg(test)]
     pub fn new(project: &Project, track: &Track) -> Option<Self> {
-        Self::with_audio(project, track, &std::collections::HashMap::new())
+        Self::with_audio(
+            project,
+            track,
+            &std::collections::HashMap::new(),
+            &std::collections::HashMap::new(),
+        )
     }
     pub fn with_audio(
         project: &Project,
         track: &Track,
         audio: &std::collections::HashMap<Id, daw_media::AudioData>,
+        sampler_audio: &std::collections::HashMap<Id, daw_media::PreparedSampler>,
     ) -> Option<Self> {
         if track.kind != TrackKind::Midi {
             return None;
@@ -368,6 +374,27 @@ impl MidiTrackRuntime {
         // UI order and names do not change routing. Keep DSP order stable across row moves.
         let mut layers: Vec<_> = instrument.layers.iter().collect();
         layers.sort_by_key(|layer| layer.id);
+        let banks: Vec<_> = layers
+            .iter()
+            .map(|layer| {
+                layer.sampler.as_ref().map(|s| {
+                    let mut bank: daw_sampler::SampleBank = std::array::from_fn(|_| None);
+                    if let Some(prepared) = sampler_audio.get(&s.id) {
+                        for (offset, audio) in prepared.variants() {
+                            let note = i16::from(s.root_note) + i16::from(offset);
+                            if (0..=127).contains(&note) {
+                                bank[note as usize] = Some(audio.samples.clone());
+                            }
+                        }
+                    } else if let Some(audio) = audio.get(&s.id) {
+                        // Root-only callers retain their unshifted path. Never substitute it
+                        // for a missing non-root variant.
+                        bank[usize::from(s.root_note)] = Some(audio.samples.clone());
+                    }
+                    std::sync::Arc::new(bank)
+                })
+            })
+            .collect();
         let any_solo = layers.iter().any(|layer| layer.soloed);
         let fade_frames = (project.sample_rate_hz / 200).max(1);
         let mut voice_count = 0;
@@ -476,6 +503,13 @@ impl MidiTrackRuntime {
             layer.id.hash(&mut hash);
             if let Some(s) = &layer.sampler {
                 s.id.hash(&mut hash);
+                s.root_note.hash(&mut hash);
+                if let Some(prepared) = sampler_audio.get(&s.id) {
+                    for (offset, audio) in prepared.variants() {
+                        offset.hash(&mut hash);
+                        (std::sync::Arc::as_ptr(&audio.samples) as usize).hash(&mut hash);
+                    }
+                }
                 format!("{:?}", s.input).hash(&mut hash);
                 s.start_frame.hash(&mut hash);
                 s.end_frame.hash(&mut hash);
@@ -541,18 +575,16 @@ impl MidiTrackRuntime {
                     sleeping: true,
                     layers: layers
                         .iter()
-                        .map(|layer| LayerVoice {
+                        .zip(&banks)
+                        .map(|(layer, bank)| LayerVoice {
                             sampler: layer.sampler.as_ref().map(|s| {
-                                daw_sampler::Sampler::new(
+                                daw_sampler::Sampler::with_bank(
                                     ProcessingContext {
                                         sample_rate_hz: project.sample_rate_hz,
                                         max_block_frames: project.buffer_size_frames,
                                     },
                                     s,
-                                    audio.get(&s.id).map_or_else(
-                                        || std::sync::Arc::new(Vec::new()),
-                                        |a| a.samples.clone(),
-                                    ),
+                                    bank.as_ref().unwrap().clone(),
                                 )
                             }),
                             sampler_routes: layer

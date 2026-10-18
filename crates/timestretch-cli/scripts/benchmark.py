@@ -116,8 +116,8 @@ def main():
     args = parser.parse_args()
     if args.warmups < 0 or args.runs < 1 or args.timeout_seconds < 1:
         parser.error('warmups must be nonnegative; runs and timeout must be positive')
-    if not math.isfinite(args.pitch_semitones) or not -24 <= args.pitch_semitones <= 24:
-        parser.error('pitch must be finite and between -24 and +24 semitones')
+    if not math.isfinite(args.pitch_semitones) or not -127 <= args.pitch_semitones <= 127:
+        parser.error('pitch must be finite and between -127 and +127 semitones')
     try:
         if any(Fraction(r) < Fraction(1, 8) or Fraction(r) > 8 for r in args.ratios):
             parser.error('ratios must be between 1/8 and 8')

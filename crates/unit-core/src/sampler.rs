@@ -63,7 +63,7 @@ pub struct SamplerSettings {
     /// Whole four-beat bars, at least one.
     #[serde(deserialize_with = "whole_bars")]
     pub bars: u32,
-    /// Reference metadata only. Playback does not transpose yet.
+    /// MIDI note that plays the sample at its original pitch.
     pub root_note: u8,
 }
 // Accept numeric durations saved by the initial fractional-bar prototype.
@@ -98,6 +98,12 @@ impl Default for SamplerSettings {
     }
 }
 impl SamplerSettings {
+    /// Full MIDI range, relative to the saved root note.
+    pub fn pitch_offset(&self, note: u8) -> Option<i8> {
+        let offset = i16::from(note) - i16::from(self.root_note);
+        (note <= 127 && self.root_note <= 127).then_some(offset as i8)
+    }
+
     /// Initialize duration controls from output length; Bars rounds to whole four-beat bars.
     pub fn set_duration_from_frames(&mut self, frames: u64, rate: u32, tempo: f32) {
         self.time_ms = frames as f64 * 1000.0 / f64::from(rate);

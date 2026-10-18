@@ -2,6 +2,28 @@
 use std::{f64::consts::TAU, ops::ControlFlow};
 use timestretch::{Error, Pitch, Ratio, Request, SAMPLE_RATES};
 
+#[test]
+fn pitch_memory_estimate_matches_admission_and_rejects_invalid_dimensions() {
+    for offset in [-127.0, -24.0, 0.0, 24.0, 127.0] {
+        let mut request = Request::new(48000, 2, Ratio::new(3, 2).unwrap())
+            .with_pitch(Pitch::from_semitones(offset).unwrap());
+        let input: Vec<_> = (0..2048).map(|i| (i as f32 * 0.07).sin()).collect();
+        let bytes = request.working_memory_bytes(1024).unwrap();
+        request.stretch.memory_limit_bytes = bytes - 1;
+        assert_eq!(request.process(&input), Err(Error::ResourceLimit));
+        request.stretch.memory_limit_bytes = bytes;
+        assert_eq!(request.process(&input).unwrap().len(), 3072);
+        assert!(request.working_memory_bytes(usize::MAX).is_err());
+        request.stretch.channels = 3;
+        assert_eq!(
+            request.working_memory_bytes(1024),
+            Err(Error::InvalidLayout)
+        );
+        request.stretch.sample_rate = 0;
+        assert_eq!(request.working_memory_bytes(1024), Err(Error::InvalidRate));
+    }
+}
+
 fn sine(rate: u32, hz: f64, seconds: f64) -> Vec<f32> {
     (0..(f64::from(rate) * seconds).ceil() as usize)
         .map(|i| (TAU * hz * i as f64 / f64::from(rate)).sin() as f32 * 0.4)
@@ -52,12 +74,92 @@ fn check_tone(rate: u32, ratio: Ratio, semitones: f64) {
 }
 
 #[test]
+fn full_range_pitch_tones_preserve_frequency_and_duration() {
+    for (hz, semitones) in [
+        (440.0, -36.0),
+        (440.0, 36.0),
+        (8000.0, -96.0),
+        (32.0, 96.0),
+        (8.1757989156, 127.0),
+        (12543.853951, -127.0),
+    ] {
+        let pitch = Pitch::from_semitones(semitones).unwrap();
+        let expected = hz * pitch.factor();
+        let input = sine(48000, hz, (48.0 / hz).max(48.0 / expected).max(0.5));
+        let output = Request::new(48000, 1, Ratio::new(1, 1).unwrap())
+            .with_pitch(pitch)
+            .process(&input)
+            .unwrap();
+        assert_eq!(output.len(), input.len());
+        let middle = &output[output.len() / 4..output.len() * 3 / 4];
+        let cents = (frequency(middle, 48000) / expected).log2() * 1200.0;
+        let db = 20.0 * (rms(middle) / (0.4 / 2f64.sqrt())).log10();
+        assert!(
+            cents.abs() < 15.0,
+            "pitch={semitones}: {cents} cents, {db} dB"
+        );
+        assert!(db.abs() < 3.0, "pitch={semitones}: {db} dB");
+    }
+}
+
+#[test]
+fn full_range_stages_bound_memory_retain_stereo_and_cancel_between_passes() {
+    for offset in [-127.0, -96.0, -25.5, 25.5, 96.0, 127.0] {
+        let pitch = Pitch::from_semitones(offset).unwrap();
+        assert!(pitch.stages().all(|p| p.semitones().abs() <= 24.0));
+        assert!((pitch.stages().map(|p| p.semitones()).sum::<f64>() - offset).abs() < 1e-12);
+        for rate in SAMPLE_RATES {
+            let input: Vec<_> = sine(rate, 440.0, 0.025)
+                .iter()
+                .flat_map(|v| [*v, -*v])
+                .collect();
+            let request = Request::new(rate, 2, Ratio::new(3, 2).unwrap()).with_pitch(pitch);
+            assert!(request.working_memory_bytes(input.len() / 2).unwrap() < 32 * 1024 * 1024);
+            let output = request.process(&input).unwrap();
+            assert_eq!(
+                output.len(),
+                request
+                    .stretch
+                    .ratio
+                    .output_frames(input.len() / 2)
+                    .unwrap()
+                    * 2
+            );
+            assert!(
+                output
+                    .chunks_exact(2)
+                    .all(|s| s[0].is_finite() && (s[0] + s[1]).abs() < 0.0001)
+            );
+            let mut previous = 0.0;
+            assert_eq!(
+                request.process_with_progress(&input, |p| {
+                    assert!(p >= previous);
+                    previous = p;
+                    if p >= 0.55 {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                }),
+                Err(Error::Cancelled)
+            );
+        }
+    }
+}
+
+#[test]
 /// TP-01: invalid offsets and exact compatibility of the unison path.
 fn validation_and_zero_pitch_preserve_existing_contract() {
-    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -24.001, 24.001] {
+    for value in [
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        -127.001,
+        127.001,
+    ] {
         assert_eq!(Pitch::from_semitones(value), Err(Error::InvalidPitch));
     }
-    for text in ["NaN", "inf", "25", "-25", "invalid"] {
+    for text in ["NaN", "inf", "128", "-128", "invalid"] {
         assert_eq!(text.parse::<Pitch>(), Err(Error::InvalidPitch));
     }
     assert_eq!(Pitch::default(), Pitch::UNISON);

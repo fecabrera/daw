@@ -27,7 +27,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::InvalidRatio => "duration ratio must be between 1/8 and 8",
-            Self::InvalidPitch => "pitch must be finite and between -24 and +24 semitones",
+            Self::InvalidPitch => "pitch must be finite and between -127 and +127 semitones",
             Self::InvalidRate => "unsupported sample rate",
             Self::InvalidLayout => "expected complete interleaved mono or stereo frames",
             Self::NonfiniteInput => "input contains NaN or infinity",

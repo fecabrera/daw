@@ -209,7 +209,7 @@ fn pitch_process_preserves_duration_and_reports_shifted_known_tone() {
             true
         );
     }
-    for invalid in ["NaN", "inf", "25", "-25"] {
+    for invalid in ["NaN", "inf", "128", "-128"] {
         let mut invalid_args = args.to_vec();
         invalid_args.extend(["--pitch-semitones", invalid]);
         assert_eq!(run(dir, &invalid_args).status.code(), Some(2));
@@ -224,4 +224,57 @@ fn pitch_process_preserves_duration_and_reports_shifted_known_tone() {
         fs::read(dir.join("base.wav")).unwrap(),
         fs::read(dir.join("zero.wav")).unwrap()
     );
+}
+
+#[test]
+fn full_range_comparison_preserves_duration_and_reports_each_bounded_pass() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path();
+    wav(&dir.join("source.wav"));
+    for offset in ["-127", "127"] {
+        let destination = format!("pitch-{offset}");
+        let result = run(
+            dir,
+            &[
+                "compare",
+                "--input",
+                "source.wav",
+                "--ratio",
+                "3/2",
+                "--pitch-semitones",
+                offset,
+                "--output-dir",
+                &destination,
+            ],
+        );
+        let summary: Value = serde_json::from_slice(
+            &fs::read(dir.join(&destination).join("comparison.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            result.status.success(),
+            cfg!(feature = "rubberband-reference"),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let reports = summary["reports"].as_array().unwrap();
+        assert_eq!(
+            reports.len(),
+            if cfg!(feature = "rubberband-reference") {
+                3
+            } else {
+                1
+            }
+        );
+        for report in reports {
+            assert_eq!(report["output_frames"], 36000);
+            assert_eq!(report["pitch"]["semitones"], offset.parse::<f64>().unwrap());
+            assert_eq!(report["backend"]["pitch_scale"], report["pitch"]["factor"]);
+            assert_eq!(
+                report["backend"]["pitch_stages"].as_array().unwrap().len(),
+                6
+            );
+            assert_eq!(report["prepared_sha256"], reports[0]["prepared_sha256"]);
+        }
+    }
 }

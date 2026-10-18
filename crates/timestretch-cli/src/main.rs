@@ -38,7 +38,7 @@ struct Input {
     input: PathBuf,
     #[arg(long)]
     ratio: Ratio,
-    /// Constant pitch shift in semitones, independent of duration (-24..=24).
+    /// Constant pitch shift in semitones, independent of duration (-127..=127).
     #[arg(long, default_value = "0", allow_hyphen_values = true)]
     pitch_semitones: Pitch,
     #[arg(long,default_value="48000",value_parser=rate)]

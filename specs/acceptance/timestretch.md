@@ -82,7 +82,7 @@ TS-01–16 retain their pitch-0 meaning. The new portable pitch path adds the fo
 
 | ID | Test and pass condition |
 | --- | --- |
-| TP-01 | Finite fractional −24..=24 semitones, default 0; invalid values return `InvalidPitch`. Existing request API remains usable. Zero pitch equals the original path sample-for-sample, including signed-zero identity. |
+| TP-01 | Finite fractional −127..=127 semitones, default 0; invalid values return `InvalidPitch`. Existing request API remains usable. Zero pitch equals the original path sample-for-sample, including signed-zero identity. |
 | TP-02 | Output frames equal the original rational `M` at every rate and selected duration/pitch endpoints. Cover combined private 1/32 and 32 staging, short/empty/DC/silence, and typed zero-rounded output/resource errors. |
 | TP-03 | Qualifying shifted tones meet 5-cent/0.5 dB ordinary and 15-cent/1.5 dB extreme limits without normalization. Cover all six rates, positive/negative/fractional offsets, low/mid/high tones, and combined duration extremes. |
 | TP-04 | Stereo proportional/anti-phase/silent-channel, mono equivalence, channel swap, and determinism retain TS-06/11 limits. Unrelated channel frequency and fixed same-tone phase relationships remain intact. Headroom is not clipped; numerical failures are explicit. |
@@ -90,6 +90,8 @@ TS-01–16 retain their pitch-0 meaning. The new portable pitch path adds the fo
 | TP-06 | Monotonic progress and cancellation through validation, stretching, table setup, and resampling. Major simultaneous buffers are preflighted against the same configured memory limit; overflow and injected small budgets fail before publication. |
 | TP-07 | Standalone `process`, `compare`, and wrappers preserve requested pitch identity, duration, rate/channels, source safety, and exit codes. All three engines receive the same factor. Known-tone metrics accept a correct shift and reject an unshifted result; zero remains compatible. |
 | TP-08 | External portable consumer and reference-disabled core/tool builds retain the independent dependency boundary. Document the equations, independent interpolation source, table design, revisions, and no-formant/no-live-processing limits. Listening/full-corpus performance and cross-platform acceptance remain separate. |
+| TP-09 | Full MIDI-span requests use bounded passes whose offsets sum to the request, with the duration ratio applied once. Check ±127 endpoints, fractional multi-pass offsets, all six rates, linked stereo, exact duration, finite output, monotonic cancellation, and peak simultaneous memory admission. Qualifying wide-shift tones at ±36, ±96, and ±127 have at most 15 cents error and 3 dB steady-state level error. This separate wide-shift envelope does not relax the existing ≤24-semitone limits. |
+| TP-10 | Sampler maps every MIDI note 0–127 relative to every valid root without ±24 clamping. Prepare required variants with the selected project backend before publication; failure/cancellation retains the prior session. Verify note/root, duration, rate and engine changes, save/reopen, playback/export parity, and allocation-free note starts, seek and compatible renderer updates. Both native reference engines report each pass for wide CLI comparisons. |
 
 ## Optional DAW integration gate
 

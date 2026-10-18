@@ -4,32 +4,25 @@ use daw_core::{Edit, SamplerInput, SamplerSettings};
 
 impl Session {
     pub fn sampler_preparation_needed(&self, project: &Project) -> bool {
-        let key = |s: &SamplerSettings, p: &Project| {
-            (
-                s.id,
-                s.input.clone(),
-                s.start_frame,
-                s.end_frame,
-                s.output_frames(p.sample_rate_hz, p.tempo_bpm),
-            )
-        };
-        let mut old: Vec<_> = self
-            .project
-            .samplers()
-            .filter(|s| s.input.is_some())
-            .map(|s| key(s, &self.project))
-            .collect();
-        let mut new: Vec<_> = project
-            .samplers()
-            .filter(|s| s.input.is_some())
-            .map(|s| key(s, project))
-            .collect();
-        old.sort_by_key(|k| k.0);
-        new.sort_by_key(|k| k.0);
-        old != new
-            || project
-                .samplers()
-                .any(|s| s.input.is_some() && !self.audio.contains_key(&s.id))
+        let requests = sampler_requests(project);
+        self.sampler_audio.keys().any(|id| {
+            !requests
+                .iter()
+                .any(|(s, _)| s.id == *id && s.input.is_some())
+        }) || requests.iter().any(|(s, notes)| {
+            let Some(input) = &s.input else {
+                return false;
+            };
+            let Some(source) = self.audio_for_clip(&Clip::from(input)) else {
+                return self.audio.contains_key(&input.asset_id);
+            };
+            let Some(length) = s.output_frames(project.sample_rate_hz, project.tempo_bpm) else {
+                return true;
+            };
+            !self.sampler_audio.get(&s.id).is_some_and(|prepared| {
+                prepared.matches(source, s, length, project.stretch_engine, notes)
+            })
+        })
     }
     pub fn with_edit(&self, edit: Edit) -> Result<Self> {
         let mut next = self.clone();
@@ -138,8 +131,8 @@ impl Session {
         self.project.validate().map_err(error)
     }
     pub(super) fn prepare_sampler_audio(&mut self, cancelled: &impl Fn() -> bool) -> Result<()> {
-        let mut outputs = Vec::new();
-        for s in self.project.samplers() {
+        let mut outputs = HashMap::new();
+        for (s, notes) in sampler_requests(&self.project) {
             if cancelled() {
                 return Err(error("Sample preparation cancelled"));
             }
@@ -150,43 +143,66 @@ impl Session {
             let Some(source) = self.audio_for_clip(&clip) else {
                 continue;
             };
-            let count = usize::try_from(s.end_frame - s.start_frame).map_err(error)?;
-            daw_media::register_audio(source);
-            let reservation = daw_media::AudioReservation::new(count as u64, 0).map_err(error)?;
-            let mut samples = Vec::new();
-            samples.try_reserve_exact(count).map_err(error)?;
-            for local in s.start_frame..s.end_frame {
-                if local % 4096 == 0 && cancelled() {
-                    return Err(error("Sample preparation cancelled"));
-                }
-                samples.push(
-                    source
-                        .samples
-                        .get(clip.source_frame(local) as usize)
-                        .copied()
-                        .unwrap_or_default(),
-                );
-            }
-            let selected = daw_media::prepared_audio(source, samples);
-            drop(reservation); // selected is now registered as a retained PCM owner.
             let length = s
                 .output_frames(self.project.sample_rate_hz, self.project.tempo_bpm)
                 .ok_or_else(|| error("Unsupported sampler duration"))?;
-            let ratio = ClipStretch::new(count as u64, length)
-                .ok_or_else(|| error("Invalid sampler region"))?;
-            let prepared = daw_media::PreparedStretch::new_cancellable(
-                &selected,
-                ratio,
+            let prepared = daw_media::PreparedSampler::new_cancellable(
+                source,
+                s,
+                length,
                 self.project.stretch_engine,
+                &notes,
+                self.sampler_audio.get(&s.id),
                 cancelled,
             )
             .map_err(error)?;
-            outputs.push((s.id, prepared.audio));
+            outputs.insert(s.id, prepared);
         }
-        // Synthetic IDs cannot alias assets. Publish only after every buffer succeeds.
+        if cancelled() {
+            return Err(error("Sample preparation cancelled"));
+        }
+        // Publish every pitch together. Root buffers retain the existing preview lookup.
         self.audio
             .retain(|id, _| self.project.assets.iter().any(|a| a.id == *id));
-        self.audio.extend(outputs);
+        self.audio.extend(
+            outputs
+                .iter()
+                .map(|(id, prepared)| (*id, prepared.root_audio().clone())),
+        );
+        self.sampler_audio = outputs;
         Ok(())
     }
+}
+
+/// Prepare the unique pitches referenced by each track, including hidden pattern notes.
+/// Pattern copies and repeated clips share these buffers. Empty tracks need only the root.
+fn sampler_requests(project: &Project) -> Vec<(&SamplerSettings, Vec<u8>)> {
+    let mut requests = Vec::new();
+    for track in &project.tracks {
+        let Some(instrument) = &track.instrument else {
+            continue;
+        };
+        if !instrument.layers.iter().any(|l| l.sampler.is_some()) {
+            continue;
+        }
+        let mut notes: Vec<_> = track
+            .clips
+            .iter()
+            .filter_map(|clip| {
+                project
+                    .assets
+                    .iter()
+                    .find(|a| a.id == clip.asset_id)?
+                    .midi_pattern
+                    .as_ref()
+            })
+            .flat_map(|p| p.notes.iter().map(|n| n.pitch))
+            .collect();
+        notes.sort_unstable();
+        notes.dedup();
+        for sampler in instrument.layers.iter().filter_map(|l| l.sampler.as_ref()) {
+            requests.push((sampler, notes.clone()));
+        }
+    }
+    requests
 }

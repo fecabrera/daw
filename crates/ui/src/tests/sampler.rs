@@ -80,6 +80,101 @@ fn wait(app: &mut DawUi, ctx: &egui::Context) {
     assert!(app.job.is_none(), "sample job timed out");
     assert!(app.error.is_none(), "{:?}", app.error);
 }
+
+#[test]
+fn sampler_note_and_root_edits_prepare_before_publication_and_paste_prepares_destination() {
+    let (mut app, ctx, layer) = fixture(settings::ColorTheme::Dark);
+    let file = TestWav::new();
+    let track = app.selected_track.unwrap();
+    app.session = app
+        .session
+        .with_sampler_file(track, layer, &file.0)
+        .unwrap();
+    let clip = app.session.project.add_midi_pattern(track, 0).unwrap();
+    let pattern = daw_core::MidiPattern {
+        length_ticks: 3840,
+        notes: vec![daw_core::MidiNote {
+            id: Id::new_v4(),
+            start_tick: 0,
+            length_ticks: 960,
+            pitch: 72,
+            velocity: 127,
+        }],
+    };
+    let before = serde_json::to_value(&app.session.project).unwrap();
+    app.edit(Edit::ReplaceMidiPattern {
+        clip_id: clip,
+        pattern,
+    });
+    assert!(app.job.is_some());
+    assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+    wait(&mut app, &ctx);
+    let id = state(&app).id;
+    assert_eq!(
+        app.session.sampler_audio[&id]
+            .variants()
+            .map(|(offset, _)| offset)
+            .collect::<Vec<_>>(),
+        [0, 12]
+    );
+    let mut instrument = app.session.project.tracks[0].instrument.clone().unwrap();
+    instrument.layers[0].sampler.as_mut().unwrap().root_note = 61;
+    app.edit(Edit::SetInstrument {
+        track_id: track,
+        instrument: Some(instrument),
+    });
+    assert!(app.job.is_some());
+    assert_eq!(state(&app).root_note, 60);
+    wait(&mut app, &ctx);
+    assert_eq!(state(&app).root_note, 61);
+    assert_eq!(
+        app.session.sampler_audio[&id]
+            .variants()
+            .map(|(offset, _)| offset)
+            .collect::<Vec<_>>(),
+        [0, 11]
+    );
+
+    let destination = app.session.project.add_midi_track().unwrap();
+    let mut sampler = state(&app).clone();
+    sampler.id = Id::new_v4();
+    sampler.root_note = 60;
+    let new_id = sampler.id;
+    app.session.project.tracks[1]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0]
+        .sampler = Some(sampler);
+    app.session.prepare_stretches().unwrap();
+    let mut copy = app.session.project.tracks[0].clips[0].clone();
+    copy.start_frame = 0;
+    app.insert_clips(
+        app.session.project.clone(),
+        vec![SelectedClip {
+            track: destination,
+            track_index: 1,
+            clip: copy,
+        }],
+        0,
+    );
+    assert!(app.job.is_some());
+    assert!(app.session.project.tracks[1].clips.is_empty());
+    wait(&mut app, &ctx);
+    assert_eq!(app.session.project.tracks[1].clips.len(), 1);
+    assert_eq!(app.selected_track, Some(destination));
+    assert_eq!(
+        app.selected_clip,
+        Some(app.session.project.tracks[1].clips[0].id)
+    );
+    assert_eq!(
+        app.session.sampler_audio[&new_id]
+            .variants()
+            .map(|(offset, _)| offset)
+            .collect::<Vec<_>>(),
+        [0, 12]
+    );
+}
 #[test]
 fn sampler_catalog_root_sharp_controls_and_compact_layout_follow_shared_ui_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {

@@ -84,6 +84,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
                 peaks: Arc::new(vec![]),
             },
         )]),
+        sampler_audio: Default::default(),
         stretched_audio: HashMap::new(),
     }
 }

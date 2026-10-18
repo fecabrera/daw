@@ -3,8 +3,14 @@ use daw_unit_core::{PortKind, ProcessingContext, SILENT_GAIN_DB, SamplerSettings
 use std::sync::Arc;
 mod modulation;
 
+/// Immutable buffers indexed by MIDI note. Missing entries play silence.
+/// Keep the complete bank alive outside the callback; note changes only an index.
+pub type SampleBank = [Option<Arc<Vec<[f32; 2]>>>; 128];
+
 pub struct Sampler {
-    samples: Arc<Vec<[f32; 2]>>,
+    bank: Arc<SampleBank>,
+    note: u8,
+    root_note: u8,
     position: u64,
     active: bool,
     gain: f32,
@@ -20,9 +26,20 @@ impl Sampler {
         settings: &SamplerSettings,
         samples: Arc<Vec<[f32; 2]>>,
     ) -> Self {
+        let mut bank: SampleBank = std::array::from_fn(|_| None);
+        bank[usize::from(settings.root_note)] = Some(samples);
+        Self::with_bank(context, settings, Arc::new(bank))
+    }
+    pub fn with_bank(
+        context: ProcessingContext,
+        settings: &SamplerSettings,
+        bank: Arc<SampleBank>,
+    ) -> Self {
         let target = gain(settings);
         Self {
-            samples,
+            bank,
+            note: settings.root_note,
+            root_note: settings.root_note,
             position: 0,
             active: false,
             external: daw_unit_core::ModulationSmoother::new(context),
@@ -49,14 +66,24 @@ impl Sampler {
         }
     }
     pub fn note_on(&mut self) {
+        self.note_on_at(self.root_note);
+    }
+    pub fn note_on_at(&mut self, note: u8) {
         if !self.active {
             self.gain = self.target;
             self.remaining = 0;
             self.external.reset();
             self.effective_gain = self.target;
         }
+        self.note = note;
         self.position = 0;
-        self.active = !self.samples.is_empty();
+        self.active = !self.samples().is_empty();
+    }
+    fn samples(&self) -> &[[f32; 2]] {
+        self.bank
+            .get(usize::from(self.note))
+            .and_then(Option::as_deref)
+            .map_or(&[], Vec::as_slice)
     }
     pub fn reset(&mut self) {
         self.position = 0;
@@ -71,9 +98,9 @@ impl Sampler {
             self.position = self
                 .position
                 .saturating_add(frames)
-                .min(self.samples.len() as u64);
+                .min(self.samples().len() as u64);
         }
-        self.active &= self.position < self.samples.len() as u64;
+        self.active &= self.position < self.samples().len() as u64;
     }
     pub fn active(&self) -> bool {
         self.active
@@ -89,16 +116,16 @@ impl Sampler {
             return [0.0; 2];
         }
         let sample = self
-            .samples
+            .samples()
             .get(self.position as usize)
             .copied()
             .unwrap_or_default();
         // Five-millisecond boundaries keep region edits and one-shot ends free of hard cuts.
         let edge = (self.position as f32 / self.fade_frames as f32)
-            .min((self.samples.len() as u64 - self.position - 1) as f32 / self.fade_frames as f32)
+            .min((self.samples().len() as u64 - self.position - 1) as f32 / self.fade_frames as f32)
             .clamp(0.0, 1.0);
         self.position += 1;
-        self.active = self.position < self.samples.len() as u64;
+        self.active = self.position < self.samples().len() as u64;
         sample.map(|v| {
             if v.is_finite() {
                 (f64::from(v) * f64::from(self.effective_gain) * f64::from(edge))

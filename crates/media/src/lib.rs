@@ -7,10 +7,12 @@ mod export;
 mod memory;
 pub use cache::decode_wav_cached;
 pub use memory::{AUDIO_MEMORY_BUDGET_BYTES, AudioReservation, register_audio};
+mod sampler;
 mod stretch;
 pub use export::{
     AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, Mp3Bitrate, WavCodec, WavEncoder,
 };
+pub use sampler::PreparedSampler;
 pub use stretch::{PreparedStretch, prepared_audio, stretch_audio, stretch_audio_with_engine};
 use symphonia::core::{
     audio::SampleBuffer, codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,

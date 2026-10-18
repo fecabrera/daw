@@ -14,6 +14,8 @@ pub struct PreparedStretch {
     sample_rate_hz: u32,
     engine: StretchEngine,
     ratio: ClipStretch,
+    pitch: timestretch::Pitch,
+    pitch_revision: u32,
 }
 impl PreparedStretch {
     pub fn new(source: &AudioData, ratio: ClipStretch, engine: StretchEngine) -> Result<Self> {
@@ -25,19 +27,41 @@ impl PreparedStretch {
         engine: StretchEngine,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Self> {
+        Self::with_pitch_cancellable(source, ratio, engine, timestretch::Pitch::UNISON, cancelled)
+    }
+    pub fn with_pitch_cancellable(
+        source: &AudioData,
+        ratio: ClipStretch,
+        engine: StretchEngine,
+        pitch: timestretch::Pitch,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Self> {
         Ok(Self {
-            audio: stretch_audio_with_engine_cancellable(source, ratio, engine, cancelled)?,
+            audio: transform_audio(source, ratio, engine, pitch, cancelled)?,
             source: source.samples.clone(),
             sample_rate_hz: source.sample_rate_hz,
             engine,
             ratio,
+            pitch,
+            pitch_revision: timestretch::PITCH_REVISION,
         })
     }
     pub fn matches(&self, source: &AudioData, ratio: ClipStretch, engine: StretchEngine) -> bool {
+        self.matches_pitch(source, ratio, engine, timestretch::Pitch::UNISON)
+    }
+    pub fn matches_pitch(
+        &self,
+        source: &AudioData,
+        ratio: ClipStretch,
+        engine: StretchEngine,
+        pitch: timestretch::Pitch,
+    ) -> bool {
         Arc::ptr_eq(&self.source, &source.samples)
             && self.sample_rate_hz == source.sample_rate_hz
             && self.engine == engine
             && self.ratio == ratio
+            && self.pitch == pitch
+            && self.pitch_revision == timestretch::PITCH_REVISION
     }
 }
 impl std::ops::Deref for PreparedStretch {
@@ -61,6 +85,16 @@ fn stretch_audio_with_engine_cancellable(
     engine: StretchEngine,
     cancelled: &impl Fn() -> bool,
 ) -> Result<AudioData> {
+    transform_audio(audio, ratio, engine, timestretch::Pitch::UNISON, cancelled)
+}
+
+fn transform_audio(
+    audio: &AudioData,
+    ratio: ClipStretch,
+    engine: StretchEngine,
+    pitch: timestretch::Pitch,
+    cancelled: &impl Fn() -> bool,
+) -> Result<AudioData> {
     if cancelled() {
         return Err(Error("Time stretch cancelled".into()));
     }
@@ -71,7 +105,19 @@ fn stretch_audio_with_engine_cancellable(
     if !ratio.valid() {
         return Err(Error("Unsupported clip stretch ratio".into()));
     }
-    if ratio.source_frames == ratio.output_frames {
+    if engine.id == StretchEngineId::RubberBand && pitch.stages().len() > 1 {
+        let mut prepared = audio.clone();
+        for (index, stage) in pitch.stages().enumerate() {
+            let duration = if index == 0 {
+                ratio
+            } else {
+                ClipStretch::new(1, 1).unwrap()
+            };
+            prepared = transform_audio(&prepared, duration, engine, stage, cancelled)?;
+        }
+        return Ok(prepared);
+    }
+    if ratio.source_frames == ratio.output_frames && pitch == timestretch::Pitch::UNISON {
         return Ok(audio.clone());
     }
     crate::register_audio(audio);
@@ -87,10 +133,29 @@ fn stretch_audio_with_engine_cancellable(
     } else {
         0
     };
-    let _reservation =
-        crate::AudioReservation::new(frames, scratch.saturating_add(16 * 1024 * 1024))?;
+    // Reuse the engine's preflight estimate, including its private pitch intermediate.
+    let pitch_scratch =
+        if engine.id == StretchEngineId::Integrated && pitch != timestretch::Pitch::UNISON {
+            timestretch::Request::new(
+                audio.sample_rate_hz,
+                2,
+                timestretch::Ratio::new(ratio.output_frames, ratio.source_frames)
+                    .map_err(|e| Error(e.to_string()))?,
+            )
+            .with_pitch(pitch)
+            .working_memory_bytes(audio.samples.len())
+            .map_err(|e| Error(e.to_string()))? as u64
+        } else {
+            0
+        };
+    let _reservation = crate::AudioReservation::new(
+        frames,
+        scratch
+            .saturating_add(pitch_scratch)
+            .saturating_add(16 * 1024 * 1024),
+    )?;
     match engine.id {
-        StretchEngineId::RubberBand => stretch_audio_inner(audio, ratio, cancelled),
+        StretchEngineId::RubberBand => stretch_audio_inner(audio, ratio, pitch, cancelled),
         StretchEngineId::Integrated => {
             let ratio = timestretch::Ratio::new(ratio.output_frames, ratio.source_frames)
                 .map_err(|e| Error(e.to_string()))?;
@@ -106,6 +171,7 @@ fn stretch_audio_with_engine_cancellable(
                 .map_err(|e| Error(e.to_string()))?;
             input.extend(audio.samples.iter().flatten().copied());
             let output = timestretch::Request::new(audio.sample_rate_hz, 2, ratio)
+                .with_pitch(pitch)
                 .process_with_progress(&input, |_| {
                     if cancelled() {
                         std::ops::ControlFlow::Break(())
@@ -143,11 +209,12 @@ fn stretch_audio_cancellable(
         .scale(audio.samples.len() as u64)
         .ok_or_else(|| Error("Stretched audio is too long".into()))?;
     let _reservation = crate::AudioReservation::new(frames, 16 * 1024 * 1024)?;
-    stretch_audio_inner(audio, ratio, cancelled)
+    stretch_audio_inner(audio, ratio, timestretch::Pitch::UNISON, cancelled)
 }
 fn stretch_audio_inner(
     audio: &AudioData,
     ratio: ClipStretch,
+    pitch: timestretch::Pitch,
     cancelled: &impl Fn() -> bool,
 ) -> Result<AudioData> {
     if cancelled() {
@@ -163,7 +230,7 @@ fn stretch_audio_inner(
     if audio.samples.len() > u32::MAX as usize {
         return Err(Error("Source is too long for offline stretching".into()));
     }
-    if ratio.source_frames == ratio.output_frames {
+    if ratio.source_frames == ratio.output_frames && pitch == timestretch::Pitch::UNISON {
         return Ok(audio.clone());
     }
     let mut samples = Vec::new();
@@ -180,7 +247,7 @@ fn stretch_audio_inner(
                 | Options::CHANNELS_TOGETHER
                 | Options::THREADING_NEVER,
             ratio.ratio(),
-            1.0,
+            pitch.factor(),
         );
         if processor.engine_version() != 3 {
             return Err(Error("Rubber Band R3 is unavailable".into()));
