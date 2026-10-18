@@ -26,3 +26,7 @@ Duplicating into new track space creates fresh track defaults. Group paste also 
 The ruler uses four beats per bar, with bars and beats counted from 1. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI timing follows tempo.
 
 Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a MIDI clip to open it in [Editor](editor.md).
+
+## Add effects
+
+Select a track or Master, then use the [Effects catalog](instrument.md#effects). Browse EQ & Filters, Dynamics, and Distortion. Double-click an effect, select effects and press Enter, or drag them into the effects lane. Click a folder to hide or show its entries.

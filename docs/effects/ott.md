@@ -1,6 +1,6 @@
 # OTT
 
-OTT applies upward and downward compression independently to Low, Mid, and High bands. It can lift quiet detail and reduce louder peaks. Add it to an audio/MIDI track or Master from the Effects catalog.
+OTT applies upward and downward compression independently to Low, Mid, and High bands. It can lift quiet detail and reduce louder peaks. Add it to an audio/MIDI track or Master from Dynamics in the Effects catalog.
 
 ## Controls
 

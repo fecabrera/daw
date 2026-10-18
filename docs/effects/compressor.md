@@ -1,6 +1,6 @@
 # Compressor
 
-Compressor reduces loud passages according to Threshold and Ratio. Add it to an audio/MIDI track or Master from the Effects catalog.
+Compressor reduces loud passages according to Threshold and Ratio. Add it to an audio/MIDI track or Master from Dynamics in the Effects catalog.
 
 ## Controls
 

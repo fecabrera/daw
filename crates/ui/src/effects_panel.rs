@@ -13,6 +13,7 @@ pub(crate) struct EffectsUiBounds {
     pub library_toggle: Rect,
     pub lane_toggle: Rect,
     pub header: Rect,
+    pub folders: [Rect; effects_catalog::CATEGORY_COUNT],
     pub strip: Rect,
     pub scrollbar: Rect,
     pub entry: Rect,
@@ -43,6 +44,7 @@ impl Default for EffectsUiBounds {
             library_toggle: Rect::NOTHING,
             lane_toggle: Rect::NOTHING,
             header: Rect::NOTHING,
+            folders: [Rect::NOTHING; effects_catalog::CATEGORY_COUNT],
             strip: Rect::NOTHING,
             scrollbar: Rect::NOTHING,
             entry: Rect::NOTHING,
@@ -184,7 +186,8 @@ impl DawUi {
         let catalog_visible = self.timeline_catalog_visible || components_visible;
         let library = catalog_visible.then(|| panels::ControlPanel::begin(ui, upper));
         #[cfg(test)]
-        if !self.timeline_catalog_visible {
+        {
+            self.effects_bounds.folders = [Rect::NOTHING; effects_catalog::CATEGORY_COUNT];
             self.effects_bounds.library = Rect::NOTHING;
             self.effects_bounds.header = Rect::NOTHING;
             self.effects_bounds.entry = Rect::NOTHING;
@@ -234,17 +237,12 @@ impl DawUi {
                                 },
                             );
                             if output.add_selected {
-                                effects.extend(
-                                    effects_catalog::ENTRIES
-                                        .iter()
-                                        .filter(|(type_id, _, _)| {
-                                            self.effects_catalog.selection.contains(type_id)
-                                        })
-                                        .map(|(_, _, make)| make()),
-                                );
+                                effects.extend(effects_catalog::instantiate(
+                                    &self.effects_catalog.selected_types(),
+                                ));
                             }
                             if let Some(index) = output.double_clicked {
-                                effects.push((effects_catalog::ENTRIES[index].2)());
+                                effects.push((effects_catalog::ENTRIES[index].make)());
                             }
                             for &(index, ref response) in &output.rows {
                                 if allowed && lane_visible {
@@ -253,7 +251,7 @@ impl DawUi {
                                     );
                                 }
                                 #[cfg(test)]
-                                match effects_catalog::ENTRIES[index].0 {
+                                match effects_catalog::ENTRIES[index].type_id {
                                     daw_core::EQ_TYPE_ID => {
                                         self.effects_bounds.entry = response.rect
                                     }
@@ -279,6 +277,9 @@ impl DawUi {
                             {
                                 self.effects_bounds.library = catalog_rect;
                                 self.effects_bounds.header = output.header;
+                                for (index, response) in &output.folders {
+                                    self.effects_bounds.folders[*index] = response.rect;
+                                }
                             }
                             #[cfg(not(test))]
                             {

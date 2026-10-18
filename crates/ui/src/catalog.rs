@@ -15,7 +15,7 @@ pub(super) struct Catalog {
     selection_focus: crate::selection_focus::SelectionFocus,
 }
 
-/// Folders belong to the catalog, never to a saved instrument.
+/// Folders belong to the catalog, never to a saved project.
 struct Folder {
     name: &'static str,
     entries: Vec<usize>,

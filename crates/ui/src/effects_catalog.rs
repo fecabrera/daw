@@ -1,29 +1,110 @@
-type Entry = (&'static str, &'static str, fn() -> daw_core::EffectInstance);
+//! Effect registration and the shared categorized catalog adapter.
+#[derive(Clone, Copy, PartialEq)]
+enum Category {
+    EqAndFilters,
+    Dynamics,
+    Distortion,
+}
+impl Category {
+    const ALL: [Self; 3] = [Self::EqAndFilters, Self::Dynamics, Self::Distortion];
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::EqAndFilters => "EQ & Filters",
+            Self::Dynamics => "Dynamics",
+            Self::Distortion => "Distortion",
+        }
+    }
+}
+
+#[cfg(test)]
+pub(super) const CATEGORY_COUNT: usize = Category::ALL.len();
+
+#[derive(Clone, Copy)]
+pub(super) struct Entry {
+    pub type_id: &'static str,
+    pub name: &'static str,
+    category: Category,
+    pub make: fn() -> daw_core::EffectInstance,
+}
+impl Entry {
+    const fn new(
+        type_id: &'static str,
+        name: &'static str,
+        category: Category,
+        make: fn() -> daw_core::EffectInstance,
+    ) -> Self {
+        Self {
+            type_id,
+            name,
+            category,
+            make,
+        }
+    }
+}
+
 pub(super) const ENTRIES: [Entry; 6] = [
-    (
+    Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
+        Category::EqAndFilters,
         daw_core::EffectInstance::equalizer,
     ),
-    (
+    Entry::new(
         daw_core::DRIVE_TYPE_ID,
         "Drive",
+        Category::Distortion,
         daw_core::EffectInstance::drive,
     ),
-    (
+    Entry::new(
         daw_core::AUTO_FILTER_TYPE_ID,
         "Auto-filter",
+        Category::EqAndFilters,
         daw_core::EffectInstance::auto_filter,
     ),
-    (
+    Entry::new(
         daw_core::COMPRESSOR_TYPE_ID,
         "Compressor",
+        Category::Dynamics,
         daw_core::EffectInstance::compressor,
     ),
-    (daw_core::OTT_TYPE_ID, "OTT", daw_core::EffectInstance::ott),
-    (
+    Entry::new(
+        daw_core::OTT_TYPE_ID,
+        "OTT",
+        Category::Dynamics,
+        daw_core::EffectInstance::ott,
+    ),
+    Entry::new(
         daw_core::LIMITER_TYPE_ID,
         "Limiter",
+        Category::Dynamics,
         daw_core::EffectInstance::limiter,
     ),
 ];
+
+pub(super) fn catalog() -> crate::catalog::Catalog {
+    crate::catalog::Catalog::new(ENTRIES.map(|entry| (entry.type_id, entry.name))).with_folders(
+        Category::ALL.map(|category| {
+            (
+                category.name(),
+                ENTRIES
+                    .iter()
+                    .filter(|entry| entry.category == category)
+                    .map(|entry| entry.type_id)
+                    .collect(),
+            )
+        }),
+    )
+}
+
+/// Construct only on an explicit addition or valid drop, in captured display order.
+pub(super) fn instantiate<'a>(
+    types: &'a [&'a str],
+) -> impl Iterator<Item = daw_core::EffectInstance> + 'a {
+    types.iter().filter_map(|type_id| {
+        ENTRIES
+            .iter()
+            .find(|entry| entry.type_id == *type_id)
+            .map(|entry| (entry.make)())
+    })
+}

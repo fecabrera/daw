@@ -1,5 +1,252 @@
 use super::*;
 
+fn categorized_catalog_fixture(
+    theme: settings::ColorTheme,
+    target: &str,
+) -> (DawUi, egui::Context) {
+    let mut app = DawUi::default();
+    let track = app.session.project.add_midi_track().unwrap();
+    app.select_track(track, false);
+    let ctx = context();
+    app.set_settings(
+        &ctx,
+        settings::AppSettings {
+            theme,
+            ..Default::default()
+        },
+    );
+    app.set_view_mode(
+        if target == "instrument" {
+            ViewMode::Instrument
+        } else {
+            ViewMode::Timeline
+        },
+        &ctx,
+    );
+    app.master_selected = target == "master";
+    frame(&mut app, &ctx, vec![]);
+    app.dirty = false;
+    (app, ctx)
+}
+
+#[test]
+fn effect_category_folders_share_navigation_and_retain_only_visible_selections() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+            let original = serde_json::to_value(&app.session.project).unwrap();
+            let b = &app.effects_bounds;
+            let rows = [
+                b.folders[0],
+                b.entry,
+                b.auto_filter_entry,
+                b.folders[1],
+                b.compressor_entry,
+                b.ott_entry,
+                b.limiter_entry,
+                b.folders[2],
+                b.drive_entry,
+            ];
+            assert!(
+                rows.windows(2)
+                    .all(|pair| pair[0].bottom() <= pair[1].top())
+            );
+            assert!(rows.iter().all(|rect| b.library.contains_rect(*rect)));
+            let drive = b.drive_entry.center();
+            click(&mut app, &ctx, drive);
+            let compressor = app.effects_bounds.compressor_entry.center();
+            click_effect_with_shift(&mut app, &ctx, compressor, true);
+            let dynamics = app.effects_bounds.folders[1].center();
+            click(&mut app, &ctx, dynamics);
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(
+                app.effects_catalog.selected_types(),
+                vec![daw_core::DRIVE_TYPE_ID]
+            );
+            for hidden in [
+                app.effects_bounds.compressor_entry,
+                app.effects_bounds.ott_entry,
+                app.effects_bounds.limiter_entry,
+            ] {
+                assert_eq!(hidden, Rect::NOTHING);
+            }
+            assert!(app.effects_drag.is_none());
+            library_key(&mut app, &ctx, egui::Key::Enter, false);
+            assert!(app.effects_bounds.compressor_entry.is_positive());
+            library_key(&mut app, &ctx, egui::Key::ArrowLeft, false);
+            assert_eq!(app.effects_bounds.compressor_entry, Rect::NOTHING);
+            library_key(&mut app, &ctx, egui::Key::ArrowRight, false);
+            library_key(&mut app, &ctx, egui::Key::Space, false);
+            assert_eq!(app.effects_bounds.compressor_entry, Rect::NOTHING);
+            for _ in 0..2 {
+                let toggle = app.effects_bounds.library_toggle.center();
+                click(&mut app, &ctx, toggle);
+            }
+            assert_eq!(app.effects_bounds.compressor_entry, Rect::NOTHING);
+            assert_eq!(
+                serde_json::to_value(&app.session.project).unwrap(),
+                original
+            );
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn effect_category_group_additions_and_drops_follow_display_order_for_every_target() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            for drop in [false, true] {
+                let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+                let b = &app.effects_bounds;
+                let points = [
+                    b.drive_entry.center(),
+                    b.limiter_entry.center(),
+                    b.ott_entry.center(),
+                    b.compressor_entry.center(),
+                    b.auto_filter_entry.center(),
+                    b.entry.center(),
+                ];
+                for (index, point) in points.into_iter().enumerate() {
+                    click_effect_with_shift(&mut app, &ctx, point, index != 0);
+                }
+                let original = serde_json::to_value(&app.session.project).unwrap();
+                assert!(!app.dirty);
+                if drop {
+                    end_click_sequence(&mut app, &ctx);
+                    let start = app.effects_bounds.entry.center();
+                    let end = app.effects_bounds.lane_viewport.center();
+                    begin_effect_drag(&mut app, &ctx, start, end);
+                    assert!(
+                        app.effects_drag
+                            .as_ref()
+                            .is_some_and(|drag| drag.active && drag.is_library())
+                    );
+                    assert_eq!(
+                        serde_json::to_value(&app.session.project).unwrap(),
+                        original
+                    );
+                    assert!(!app.dirty);
+                    frame(&mut app, &ctx, vec![button(end, false)]);
+                } else {
+                    library_key(&mut app, &ctx, egui::Key::Enter, false);
+                }
+                let chain = app.effect_chain(app.effects_target().unwrap()).unwrap().0;
+                let types: Vec<_> = chain
+                    .iter()
+                    .map(|effect| {
+                        serde_json::to_value(&effect.unit).unwrap()["type_id"]
+                            .as_str()
+                            .unwrap()
+                            .to_owned()
+                    })
+                    .collect();
+                assert_eq!(
+                    types,
+                    [
+                        daw_core::EQ_TYPE_ID,
+                        daw_core::AUTO_FILTER_TYPE_ID,
+                        daw_core::COMPRESSOR_TYPE_ID,
+                        daw_core::OTT_TYPE_ID,
+                        daw_core::LIMITER_TYPE_ID,
+                        daw_core::DRIVE_TYPE_ID
+                    ]
+                );
+                assert_eq!(
+                    chain
+                        .iter()
+                        .map(|effect| effect.id)
+                        .collect::<HashSet<_>>()
+                        .len(),
+                    6
+                );
+                assert!(app.effects_drag.is_none());
+                assert!(app.dirty);
+            }
+        }
+    }
+}
+
+#[test]
+fn effect_category_folder_controls_respect_modal_focus_disabled_and_drag_guards() {
+    for guard in ["modal", "focus", "disabled", "drag"] {
+        let (mut app, ctx) = categorized_catalog_fixture(settings::ColorTheme::Dark, "track");
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        let folder = app.effects_bounds.folders[0].center();
+        if guard == "drag" {
+            let start = app.effects_bounds.entry.center();
+            let end = app.effects_bounds.lane_viewport.center();
+            begin_effect_drag(&mut app, &ctx, start, end);
+            library_key(&mut app, &ctx, egui::Key::Enter, false);
+        }
+        app.unsaved_prompt = guard == "modal";
+        for pressed in [true, false] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused: guard != "focus",
+                    events: vec![egui::Event::PointerMoved(folder), button(folder, pressed)],
+                    ..Default::default()
+                },
+                |ui| {
+                    if guard == "disabled" {
+                        ui.disable();
+                    }
+                    app.show(ui);
+                },
+            );
+            output.textures_delta.clear();
+        }
+        app.unsaved_prompt = false;
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.effects_bounds.entry.is_positive(), "{guard}");
+        assert!(app.effects_drag.is_none());
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn effect_category_scrolling_keeps_selection_and_the_header_fixed() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx) = categorized_catalog_fixture(theme, "track");
+        let entry = app.effects_bounds.entry.center();
+        click(&mut app, &ctx, entry);
+        let size = Vec2::new(1280.0, 480.0);
+        frame_shapes(&mut app, &ctx, vec![], size);
+        let library = app.effects_bounds.library;
+        let header = app.effects_bounds.header;
+        assert!(app.effects_bounds.drive_entry.bottom() > library.bottom());
+        let pointer = Pos2::new(library.center().x, library.bottom() - 12.0);
+        for _ in 0..10 {
+            frame_shapes(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        phase: egui::TouchPhase::Move,
+                        delta: Vec2::new(0.0, -100.0),
+                        modifiers: Default::default(),
+                    },
+                ],
+                size,
+            );
+        }
+        assert!(library.contains_rect(app.effects_bounds.drive_entry));
+        assert_eq!(app.effects_bounds.header, header);
+        assert_eq!(
+            app.effects_catalog.selection,
+            HashSet::from([daw_core::EQ_TYPE_ID])
+        );
+        assert!(!app.dirty);
+    }
+}
+
 fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
     frame(
         app,
@@ -61,31 +308,47 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
         frame(&mut app, &ctx, vec![]);
         app.dirty = false;
         let original = serde_json::to_string(&app.session.project).unwrap();
-        let entries = effects_catalog::ENTRIES.map(|entry| entry.0);
-        let point = app.effects_bounds.drive_entry.center();
+        let entries = effects_catalog::ENTRIES.map(|entry| entry.type_id);
+        let point = app.effects_bounds.auto_filter_entry.center();
         click(&mut app, &ctx, point);
         for (key, shift, expected) in [
-            (egui::Key::ArrowDown, false, vec![entries[2]]),
-            (egui::Key::ArrowDown, true, vec![entries[2], entries[3]]),
+            (egui::Key::ArrowDown, false, vec![]), // Dynamics folder.
+            (egui::Key::ArrowDown, false, vec![entries[3]]),
+            (egui::Key::ArrowDown, true, vec![entries[3], entries[4]]),
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[2], entries[3], entries[4]],
+                vec![entries[3], entries[4], entries[5]],
             ),
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[2], entries[3], entries[4], entries[5]],
+                vec![entries[3], entries[4], entries[5]],
+            ), // Distortion folder.
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![entries[3], entries[4], entries[5], entries[1]],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![entries[3], entries[4], entries[5], entries[1]],
+            ), // No wrap.
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![entries[3], entries[4], entries[5]],
             ),
             (
                 egui::Key::ArrowUp,
                 true,
-                vec![entries[2], entries[3], entries[4]],
+                vec![entries[3], entries[4], entries[5]],
             ),
-            (egui::Key::ArrowUp, true, vec![entries[2], entries[3]]),
-            (egui::Key::ArrowUp, true, vec![entries[2]]),
-            (egui::Key::ArrowUp, true, vec![entries[1], entries[2]]),
-            (egui::Key::ArrowUp, false, vec![entries[0]]),
+            (egui::Key::ArrowUp, true, vec![entries[3], entries[4]]),
+            (egui::Key::ArrowUp, true, vec![entries[3]]),
+            (egui::Key::ArrowUp, false, vec![]), // Dynamics folder.
+            (egui::Key::ArrowUp, false, vec![entries[2]]),
             (egui::Key::ArrowUp, false, vec![entries[0]]),
         ] {
             library_key(&mut app, &ctx, key, shift);
@@ -135,7 +398,7 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         let blank = Rect::from_min_max(
             Pos2::new(
                 app.effects_bounds.library.left(),
-                app.effects_bounds.limiter_entry.bottom(),
+                app.effects_bounds.drive_entry.bottom(),
             ),
             app.effects_bounds.library.max,
         );
@@ -490,11 +753,11 @@ fn effects_library_drag_uses_reorder_preview_and_inserts_group_on_release() {
             assert_eq!(effects.len(), 5);
             assert!(matches!(
                 effects[index].unit,
-                daw_core::EffectSettings::Drive(_)
+                daw_core::EffectSettings::Compressor(_)
             ));
             assert!(matches!(
                 effects[index + 1].unit,
-                daw_core::EffectSettings::Compressor(_)
+                daw_core::EffectSettings::Drive(_)
             ));
             assert_eq!(
                 effects
@@ -692,10 +955,17 @@ fn effect_catalog_colors_follow_hover_and_selection_without_editing_the_project(
                     })
                     .unwrap();
                 assert_eq!(text.override_text_color, Some(color));
-                assert_eq!(
-                    text.pos,
-                    entry.min + Vec2::splat(f32::from(theme::TOOLBAR_PADDING))
-                );
+                let folder = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == "EQ & Filters" => {
+                            Some(text)
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(text.pos.x, folder.pos.x);
+                assert_eq!(text.pos.y, entry.top() + f32::from(theme::TOOLBAR_PADDING));
                 assert!(
                     text.galley
                         .job
@@ -1749,7 +2019,7 @@ fn auto_filter_catalog_adds_independent_saved_units_and_respects_guards() {
     app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
     let entry = app.effects_bounds.auto_filter_entry.center();
-    assert!(entry.y > app.effects_bounds.drive_entry.bottom());
+    assert!(entry.y > app.effects_bounds.entry.bottom());
     app.dirty = false;
     click(&mut app, &ctx, entry);
     assert_eq!(
@@ -2966,7 +3236,8 @@ fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
         };
         let start = app.effects_bounds.entry.center();
         click(&mut app, &ctx, start);
-        library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
+        let drive = app.effects_bounds.drive_entry.center();
+        click_effect_with_shift(&mut app, &ctx, drive, true);
         let end = app.effects_bounds.lane_viewport.center();
         begin_effect_drag(&mut app, &ctx, start, end);
         assert!(

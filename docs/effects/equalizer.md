@@ -1,6 +1,6 @@
 # 3-band EQ
 
-Use 3-band EQ to balance or remove Low, Mid, and High frequency ranges. Select an audio/MIDI track or Master, then add it from the Effects catalog in Timeline or Instrument.
+Use 3-band EQ to balance or remove Low, Mid, and High frequency ranges. Select an audio/MIDI track or Master, then add it from EQ & Filters in the Effects catalog in Timeline or Instrument.
 
 ## Controls
 

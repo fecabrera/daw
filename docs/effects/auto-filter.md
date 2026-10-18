@@ -1,6 +1,6 @@
 # Auto-filter
 
-Auto-filter combines a stereo filter with a repeating frequency sweep. Add it to an audio/MIDI track or Master from the Effects catalog.
+Auto-filter combines a stereo filter with a repeating frequency sweep. Add it to an audio/MIDI track or Master from EQ & Filters in the Effects catalog.
 
 ## Controls
 

@@ -81,7 +81,7 @@ The component catalog groups registered entries in this order:
 | Modulators | Envelope, LFO, Macro |
 | Processors | Amplitude |
 
-`Entry::layer` requires a `Category`. `instrument_catalog.rs` defines the category order and labels; membership comes from each registration, without another component allowlist. Entry indices and type IDs remain stable. `catalog.rs` owns optional folders, visible-row order, selection, focus, keyboard input, and scroll state. Effects keeps its flat catalog through the same code. `ControlPanel` shares row geometry, text, selection painting, and theme colors; folder rows add the standard Lucide chevron and Folder/Folder Open icons. Component names are indented beneath folders. Stable widget IDs depend on folder/entry identity rather than visible position.
+`Entry::layer` requires a `Category`. `instrument_catalog.rs` defines the category order and labels; membership comes from each registration, without another component allowlist. Entry indices and type IDs remain stable. `catalog.rs` owns optional folders, visible-row order, selection, focus, keyboard input, and scroll state. Effects reuses these folders through its own category metadata; see [Effects catalog folders](#effects-catalog-folders). `ControlPanel` shares row geometry, text, selection painting, and theme colors; folder rows add the standard Lucide chevron and Folder/Folder Open icons. Component names are indented beneath folders. Stable widget IDs depend on folder/entry identity rather than visible position.
 
 All folders start expanded. Expansion is application UI state and survives catalog/view switches. It is not serialized with a project and never marks it modified. Folder rows cannot add components, arm component drags, or become members of a component selection. Collapsing a folder removes its children from selection, including the Shift-range baseline. Selections in other folders remain. Both group-drag capture and keyboard additions use visible component order and exclude closed folders.
 
@@ -90,6 +90,24 @@ Up/Down traverses visible folder and component rows without wrapping. Folder foc
 Use the shared vertical scroll area below the fixed catalog header. Clip row interaction to the viewport, keep the panel border continuous, and scroll keyboard destinations into view. Retain selection when its focused row scrolls offscreen through the shared `SelectionFocus` vertical-scroll mode. Keep scroll positions independent between the two catalogs. Hidden rows have no active drop/press targets. Existing component eligibility, layer/Main compatibility, source conflicts, transactions, and release-only drag commits remain unchanged.
 
 Acceptance covers both themes, category order, collapse/expand, hidden selection pruning, cross-folder selection/drag order, bounded keyboard navigation, Shift ranges, repeated-key guards, folder-state retention, small-height scrolling, and unchanged project data while browsing. Existing component addition, Main-target, cancellation, and Effects interaction tests must pass.
+
+## Effects catalog folders
+
+The Effects catalog uses the same `Catalog::with_folders`, `ControlPanel` folder/entry rows, icons, selection/focus, keyboard navigation, and scrolling as the Instrument catalog. Keep category membership in each `effects_catalog.rs::ENTRIES` registration. Each entry has a stable type ID, name, category, and constructor. Category order belongs to the Effects adapter; do not add a separate type allowlist to painting, keyboard, or drag handlers.
+
+| Category | Effects, in display order |
+| --- | --- |
+| EQ & Filters | 3-band EQ, Auto-filter |
+| Dynamics | Compressor, OTT, Limiter |
+| Distortion | Drive |
+
+Entry indices and effect type IDs remain stable. Visible folder order determines Shift ranges, selected-type capture, Enter additions, and library group drops. Both addition paths instantiate through `effects_catalog::instantiate` in captured order; do not restore registration-array order when building a selected group. Construct fresh instances only for an explicit addition or a valid release. Preview and cancellation create no effect instances or project edits.
+
+All categories start expanded. Expansion and scroll positions remain independent UI state for the two catalogs; retain them through catalog and Timeline/Instrument view switches, without project serialization or a modified flag. Reuse the folder keyboard and hidden-selection pruning contract above. A folder cannot become an effect selection, start an effect drag, or add an instance. Collapsing one prunes its child selections and Shift baseline; other folders retain their selected entries.
+
+Retain track/Master target dispatch, Instrument's selected MIDI target, installed-chain order/selection, insertion previews, edge scrolling, release-only commit, and all existing focus, text, disabled/modal, active-drag, target, chain-change, and cancellation guards. Scrolling preserves selection when the focused row leaves the viewport; the catalog header and final right divider stay fixed. Hidden children have no active hit regions.
+
+Acceptance covers both themes and Timeline track, Timeline Master, and Instrument targets: folder order, collapse/expand and keyboard behavior, hidden selection pruning, independent folder retention, cross-folder Enter/drop order and fresh IDs, clean previews/cancellation, focus/modal/disabled/drag guards, short-height scrolling, and retained existing unit behavior. Automated validation belongs in [validation history](../validation/README.md).
 
 ## Panel borders
 

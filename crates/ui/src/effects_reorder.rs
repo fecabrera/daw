@@ -208,10 +208,7 @@ impl DawUi {
             if let Some((_, index, true)) = target {
                 match drag.source {
                     DragSource::Library { types, .. } => {
-                        let added = effects_catalog::ENTRIES
-                            .iter()
-                            .filter(|entry| types.contains(&entry.0))
-                            .map(|entry| (entry.2)());
+                        let added = effects_catalog::instantiate(&types);
                         effects.splice(index..index, added);
                     }
                     DragSource::Chain { units, .. } if duplicate => {

@@ -2612,3 +2612,15 @@ The new egui regression covers every registered component as the first unit on e
 `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched.
 
 Native appearance, pointer/trackpad, display-scale, Windows, and Linux checks were not performed. Automated shape/geometry checks do not establish native rasterization or device behavior.
+
+## Effects catalog category folders — 2026-10-17
+
+The Effects catalog now groups 3-band EQ and Auto-filter under EQ & Filters; Compressor, OTT, and Limiter under Dynamics; and Drive under Distortion. Effect registration owns category membership and construction. The adapter reuses the Instrument catalog's `Catalog::with_folders`, `ControlPanel` folder/entry painting, visible-row navigation, selection/focus, hidden-selection pruning, scrolling, and press-time drag capture. Enter and valid group drops share effect construction in visible folder order. Folder browsing and cancelled previews do not edit the project.
+
+`cargo test -p daw-ui --offline` passes all 448 UI tests. Four new egui regressions cover both themes and Timeline track, Timeline Master, and Instrument targets: folder/entry order, keyboard collapse/expand, hidden selection pruning with other folders retained, hide/show retention, cross-folder Enter and drag addition order, release-only commit, fresh effect IDs, modal/focus/disabled/drag guards, short-height scrolling, fixed headers, and retained offscreen selection. Existing keyboard, blank-space, row-painting, and library-drag tests now use visible folder order; installed-chain move/copy/delete and all other UI checks pass.
+
+`cargo test --workspace --offline` passes: 806 tests pass, including all 448 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored. `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. Repository-relative Markdown file/heading links pass: 475 links across 53 files. User guides document folder controls and locations; registration, construction, order, and acceptance remain in `specs/` and contributor instructions in `AGENTS.md`. `git diff --check` passes.
+
+`CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched.
+
+Native pointer/trackpad, display-scale, accessibility-client, Windows, and Linux checks were not performed. Automated egui checks do not establish native rendering or input behavior. This change does not alter audio processing or project serialization.

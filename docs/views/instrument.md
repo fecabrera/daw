@@ -29,6 +29,18 @@ Layer controls stay in the left column; installed components appear to their rig
 
 ## Effects
 
-Available effects are [3-band EQ](../effects/equalizer.md), [Drive](../effects/drive.md), [Auto-filter](../effects/auto-filter.md), [Compressor](../effects/compressor.md), [OTT](../effects/ott.md), and [Limiter](../effects/limiter.md). Select the destination track or Master before adding an effect. Effects run in lane order. Master effects process the combined track mix.
+The Effects catalog has three folders in Timeline and Instrument:
+
+| Folder | Effects |
+| --- | --- |
+| EQ & Filters | [3-band EQ](../effects/equalizer.md), [Auto-filter](../effects/auto-filter.md) |
+| Dynamics | [Compressor](../effects/compressor.md), [OTT](../effects/ott.md), [Limiter](../effects/limiter.md) |
+| Distortion | [Drive](../effects/drive.md) |
+
+Folders start open. Click a folder to hide or show its effects. Use Up/Down to move through visible rows. Enter or Space toggles a focused folder; Left closes it and Right opens it. Left on an effect closes its folder. Closing a folder deselects its hidden effects. Each catalog retains its own folder choices while the application is open.
+
+Select the destination track or Master before adding an effect. Double-click an effect to add it. Shift-click selects effects across open folders; Enter on an effect adds the selection in folder order. Drag selected effects into the lane to choose their insertion point, then release to add them. Escape or an invalid drop cancels. Scroll when the catalog does not fit.
+
+Effects run in lane order. Master effects process the combined track mix.
 
 The header power control turns a unit on or off. Double-click its header to collapse or expand it. Off units keep their settings and remain editable. See [moving and copying units](../editing/units.md) and [modulation](../modulation/README.md).

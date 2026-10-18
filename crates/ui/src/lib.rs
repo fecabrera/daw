@@ -742,9 +742,7 @@ impl Default for DawUi {
     fn default() -> Self {
         Self {
             view_mode: mixer::ViewMode::default(),
-            effects_catalog: catalog::Catalog::new(
-                effects_catalog::ENTRIES.map(|(id, name, _)| (id, name)),
-            ),
+            effects_catalog: effects_catalog::catalog(),
             instrument_catalog: instrument_catalog::catalog(),
             instrument_catalog_visible: false,
             component_drag: None,

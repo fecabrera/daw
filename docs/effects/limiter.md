@@ -1,6 +1,6 @@
 # Limiter
 
-Limiter controls peaks toward a chosen output Ceiling. Add it to an audio/MIDI track or Master from the Effects catalog.
+Limiter controls peaks toward a chosen output Ceiling. Add it to an audio/MIDI track or Master from Dynamics in the Effects catalog.
 
 ## Controls
 
