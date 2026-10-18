@@ -289,6 +289,10 @@ impl PanelStyle {
             .stack()
             .iter()
             .any(|node| node.tags().contains(SHARED_TOP_BORDER_TAG));
+        let left_border = !ui
+            .stack()
+            .iter()
+            .any(|node| node.tags().contains(SHARED_LEFT_BORDER_TAG));
         let (enabled, collapsed) = states;
         let (name, compact_title) = title;
         let id = ui.id().with(("unit-header", name));
@@ -296,7 +300,7 @@ impl PanelStyle {
         let mut header_rect = Rect::NOTHING;
         let mut frame = self.frame(ui.ctx(), false).inner_margin(0);
         let outline = frame.stroke;
-        if !bottom_border || !top_border {
+        if !bottom_border || !top_border || !left_border {
             frame.stroke.color = Color32::TRANSPARENT;
         }
         let result = if is_collapsed {
@@ -431,7 +435,7 @@ impl PanelStyle {
             *collapsed = !is_collapsed;
             ui.ctx().request_repaint();
         }
-        if !bottom_border || !top_border {
+        if !bottom_border || !top_border || !left_border {
             let rect = result.response.rect.shrink(0.5);
             if top_border {
                 ui.painter().hline(rect.x_range(), rect.top(), outline);
@@ -439,11 +443,7 @@ impl PanelStyle {
             if bottom_border {
                 ui.painter().hline(rect.x_range(), rect.bottom(), outline);
             }
-            if !ui
-                .stack()
-                .iter()
-                .any(|node| node.tags().contains(SHARED_LEFT_BORDER_TAG))
-            {
+            if left_border {
                 ui.painter().vline(rect.left(), rect.y_range(), outline);
             }
             ui.painter().vline(rect.right(), rect.y_range(), outline);

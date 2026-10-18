@@ -362,6 +362,112 @@ fn layer_and_main_selection_strokes_stay_flush_and_paint_after_shared_dividers()
 }
 
 #[test]
+fn every_first_component_shares_one_divider_with_the_layers_column() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for collapsed in [false, true] {
+                for main in [false, true] {
+                    for entry in crate::instrument_catalog::ENTRIES {
+                        if main && !entry.supports_main() {
+                            continue;
+                        }
+                        let (mut app, ctx, _) = setup(theme);
+                        app.timeline_effects_visible = false;
+                        let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+                        let owner = if main {
+                            instrument.main.id
+                        } else {
+                            instrument.layers[0].id
+                        };
+                        crate::instrument_catalog::add_components(
+                            instrument,
+                            owner,
+                            &[entry.type_id],
+                        );
+                        let layer = &mut instrument.layers[0];
+                        layer.collapsed = compact;
+                        layer.oscillator_collapsed = collapsed;
+                        if let Some(sampler) = &mut layer.sampler {
+                            sampler.collapsed = collapsed;
+                        }
+                        layer.amplitude.collapsed = collapsed;
+                        layer.macro_module.collapsed = collapsed;
+                        for envelope in &mut layer.envelopes {
+                            envelope.collapsed = collapsed;
+                        }
+                        for lfo in &mut layer.lfos {
+                            lfo.collapsed = collapsed;
+                        }
+                        instrument.main.collapsed = compact;
+                        instrument.main.macro_module.collapsed = collapsed;
+                        for envelope in &mut instrument.main.envelopes {
+                            envelope.collapsed = collapsed;
+                        }
+                        for lfo in &mut instrument.main.lfos {
+                            lfo.collapsed = collapsed;
+                        }
+                        let saved = serde_json::to_value(&app.session.project).unwrap();
+                        app.dirty = false;
+                        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                        let label = if main {
+                            app.instrument_ui.main_bounds.label
+                        } else {
+                            app.midi_editor.layer_bounds[&owner].label
+                        };
+                        let first = app
+                            .instrument_ui
+                            .component_slots
+                            .iter()
+                            .find(|(id, _, _)| *id == owner)
+                            .unwrap()
+                            .2;
+                        assert_eq!(
+                            first.left(),
+                            label.right() - 1.0,
+                            "{} main {main} compact {compact} collapsed {collapsed}",
+                            entry.name
+                        );
+                        let point = Pos2::new(label.right() - 0.5, label.center().y);
+                        let border = Stroke::new(1.0, theme::palette(&ctx).border);
+                        let strokes = shapes
+                            .iter()
+                            .filter(|shape| {
+                                if !shape.clip_rect.contains(point) {
+                                    return false;
+                                }
+                                match &shape.shape {
+                                    egui::Shape::LineSegment { points, stroke } => {
+                                        *stroke == border
+                                            && points[0].x == points[1].x
+                                            && (points[0].x - point.x).abs() <= 1.0
+                                            && points[0].y <= point.y
+                                            && points[1].y >= point.y
+                                    }
+                                    egui::Shape::Rect(rect) => {
+                                        rect.stroke == border
+                                            && rect.rect.y_range().contains(point.y)
+                                            && ((rect.rect.left() - point.x).abs() <= 1.0
+                                                || (rect.rect.right() - point.x).abs() <= 1.0)
+                                    }
+                                    _ => false,
+                                }
+                            })
+                            .count();
+                        assert_eq!(
+                            strokes, 1,
+                            "{} main {main} compact {compact} collapsed {collapsed}",
+                            entry.name
+                        );
+                        assert_eq!(serde_json::to_value(&app.session.project).unwrap(), saved);
+                        assert!(!app.dirty);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn main_components_share_the_bottom_separator_with_the_lane_or_status_panel() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {

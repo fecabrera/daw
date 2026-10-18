@@ -2600,3 +2600,15 @@ Automated egui checks cover both themes, folder/component order, release-time co
 `cargo test --workspace --offline` passes: 801 tests pass, including all 443 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored. The existing Effects Escape regression confirms that arrow keys do not restart an empty entry selection. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, and `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` pass. The bundle is rebuilt at `target/debug/DAW.app`; the app was not launched. Repository-relative documentation file targets and heading anchors pass: 470 links across 53 Markdown files. The changed user guide contains operating instructions; implementation and validation details remain in `specs/`. `git diff --check` passes.
 
 Native pointer/trackpad, display-scale, accessibility-client, Windows, and Linux checks were not performed. Automated egui checks do not establish those native behaviors. This change does not alter audio processing or project serialization.
+
+## Shared layer dividers — 2026-10-17
+
+Regular-layer spacing now applies to every component type instead of checking only Oscillator, Sampler, Envelope, and Amplitude. This fixes the adjacent divider pixels beside LFO-only and Macro-only layers. Regular layers and Main reuse `SHARED_LEFT_BORDER_TAG`; the shared unit shell honors left-edge ownership independently of top/bottom-edge ownership. Frame dimensions and the other unit edges remain in place.
+
+The new egui regression covers every registered component as the first unit on each supported owner: 72 combinations of component/owner, theme, compact/expanded row, and collapsed/expanded unit. It checks the shared column coordinate, one visible neutral stroke, unchanged project data, and a clean modified flag. The existing Oscillator/Envelope geometry test checks the three retained unit edges instead of requiring duplicate complete border rectangles. Both focused tests pass.
+
+`cargo test --workspace --offline` passes: 802 tests pass, including all 444 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored. `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --offline -- -D warnings` pass. Local Markdown file/heading links and `git diff --check` pass. The user guide describes the controls column; exact spacing, border ownership, and acceptance remain in the component-editing specification.
+
+`CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not launched.
+
+Native appearance, pointer/trackpad, display-scale, Windows, and Linux checks were not performed. Automated shape/geometry checks do not establish native rasterization or device behavior.

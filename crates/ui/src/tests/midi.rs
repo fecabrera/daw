@@ -1692,9 +1692,17 @@ fn envelope_panel_matches_oscillator_height_and_stage_geometry_in_both_themes() 
                         && points[1] == Pos2::new(divider_x, envelope.bottom())
                         && stroke.width == 1.0 && stroke.color == theme::palette(&ctx).border)));
             for panel in [oscillator, envelope] {
-                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                    egui::Shape::Rect(frame) if frame.rect == panel
-                        && frame.stroke == egui::Stroke::new(1.0, theme::palette(&ctx).border))));
+                let edge = panel.shrink(0.5);
+                // The preceding column/unit owns the shared left edge.
+                for expected in [
+                    [edge.left_top(), edge.right_top()],
+                    [edge.left_bottom(), edge.right_bottom()],
+                    [edge.right_top(), edge.right_bottom()],
+                ] {
+                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::LineSegment { points, stroke }
+                            if *points == expected && *stroke == Stroke::new(1.0, theme::palette(&ctx).border))));
+                }
             }
             for (index, label) in ["Attack", "Decay", "Sustain", "Release"]
                 .into_iter()

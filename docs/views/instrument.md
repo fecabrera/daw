@@ -21,7 +21,7 @@ Use Up/Down to move through visible folders and components. On a folder, Enter o
 
 A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain Oscillator or Sampler. It cannot contain both. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a layer.
 
-Use the Layers Plus button to add another layer. Each layer has gain, pan, mute, and solo controls. Solo applies among the layers of that instrument. [Main](../instruments/main.md) controls their combined output and can hold shared modulators.
+Layer controls stay in the left column; installed components appear to their right. Use the Layers Plus button to add another layer. Each layer has gain, pan, mute, and solo controls. Solo applies among the layers of that instrument. [Main](../instruments/main.md) controls their combined output and can hold shared modulators.
 
 ## Amplitude
 

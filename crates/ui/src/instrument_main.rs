@@ -44,6 +44,7 @@ impl DawUi {
                 .id_salt((track, bus.id, "main"))
                 .ui_stack_info(
                     egui::UiStackInfo::default()
+                        .with_tag(panels::SHARED_LEFT_BORDER_TAG)
                         .with_tag(panels::SHARED_BOTTOM_BORDER_TAG)
                         .with_tag(panels::SHARED_TOP_BORDER_TAG),
                 )

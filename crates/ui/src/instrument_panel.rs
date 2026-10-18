@@ -218,23 +218,16 @@ impl DawUi {
                         self.scroll_layer_drag(ui);
                     }
                     for layer in &mut settings.layers {
-                        ui.push_id((track.id, layer.id), |ui| {
+                        ui.scope_builder(egui::UiBuilder::new().id_salt((track.id, layer.id)).ui_stack_info(
+                            egui::UiStackInfo::default().with_tag(panels::SHARED_LEFT_BORDER_TAG)
+                        ), |ui| {
                             // Use one presentation snapshot for the entire frame.
                             let compact = layer.collapsed;
                             let height = panels::unit_height(compact);
                             let row = ui
                                 .add_enabled_ui(self.component_drag.as_ref().is_none_or(|d| !d.active), |ui| {
                                     ui.horizontal_top(|ui| {
-                                        ui.spacing_mut().item_spacing.x =
-                                            if layer.oscillators.is_empty()
-                                                && layer.sampler.is_none()
-                                                && !layer.envelopes.iter().any(|e| e.present)
-                                                && !layer.amplitude.present
-                                            {
-                                                0.0
-                                            } else {
-                                                -1.0
-                                            };
+                                        ui.spacing_mut().item_spacing.x = -1.0;
                                         ui.spacing_mut().item_spacing.y = 0.0;
                                         let (label, response) = ui.allocate_exact_size(
                                             Vec2::new(LAYER_HEADER_WIDTH, height),
