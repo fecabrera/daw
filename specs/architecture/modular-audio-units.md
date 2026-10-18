@@ -503,3 +503,8 @@ Delete/Backspace removes selected installed component units from the focused reg
 ## OTT modulation — 2026-10-17
 
 [OTT](../effects/ott.md#modulation--2026-10-17) consumes 19 continuous controls through the shared source/destination API. Reuse the common provider cache, typed routing/scope validation, offset smoother, destination-matched controls/indicators, prepared 19-reading snapshots, and stable-ID history retention. Keep mode/power discrete and meters read-only. Preserve the DSP topology, bypass and band-enable meanings, fixed curves, stereo phase matching, and neutral audio. Portable OTT owns final bounds and crossover ordering. See the [acceptance requirements](iteration-1.md#ott-modulation--2026-10-17).
+
+
+## Instrument catalog categories — 2026-10-17
+
+Group registered components under Sources (Oscillator, Sampler), Modulators (Envelope, LFO, Macro), and Processors (Amplitude). All folders start open and retain expansion as application UI state. Reuse the shared catalog, `ControlPanel` row painting, selection/focus, keyboard navigation, and drag capture. See [catalog folders](../editing/components.md#instrument-catalog-folders) for registration, visible-row order, scrolling, hidden selection pruning, guards, and acceptance.

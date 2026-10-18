@@ -4,7 +4,7 @@ Amplitude controls the level and note-release shaping of one MIDI instrument lay
 
 ## Shape notes
 
-1. Add Amplitude and an Envelope from the Instrument component catalog.
+1. In the Instrument components catalog, add Amplitude from Processors and an Envelope from Modulators.
 2. Open Amplitude's modulation controls with the secondary-color header dot.
 3. Add a connection, select the Envelope, and adjust Amount.
 4. Set the Envelope's Attack, Decay, Sustain, and Release for the wanted contour.

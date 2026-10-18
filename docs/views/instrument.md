@@ -4,14 +4,18 @@ An instrument creates audio from MIDI notes. Effects change audio from a track o
 
 ## Instrument components
 
-| Component | Use |
-| --- | --- |
-| [Oscillator](../instruments/oscillator.md) | Generate Sine, Saw, Square, or Triangle tones. One Oscillator unit can contain several sources. |
-| [Sampler](../instruments/sampler.md) | Play a selected audio region when MIDI notes arrive. |
-| [Envelope](../instruments/envelope.md) | Shape a parameter over the life of a note. |
-| [LFO](../instruments/lfo.md) | Repeat a control pattern at a fixed or tempo-related rate. |
-| [Amplitude](../instruments/amplitude.md) | Set a layer's note level and connect level modulation. |
-| [Macro](../instruments/macro.md) | Control several parameters from one knob. |
+The Instrument components catalog has three folders. Each folder starts open. Click its row to hide or show its components. Folder choices remain in place while the application is open.
+
+| Folder | Component | Use |
+| --- | --- | --- |
+| Sources | [Oscillator](../instruments/oscillator.md) | Generate Sine, Saw, Square, or Triangle tones. One Oscillator unit can contain several sources. |
+| Sources | [Sampler](../instruments/sampler.md) | Play a selected audio region when MIDI notes arrive. |
+| Modulators | [Envelope](../instruments/envelope.md) | Shape a parameter over the life of a note. |
+| Modulators | [LFO](../instruments/lfo.md) | Repeat a control pattern at a fixed or tempo-related rate. |
+| Modulators | [Macro](../instruments/macro.md) | Control several parameters from one knob. |
+| Processors | [Amplitude](../instruments/amplitude.md) | Set a layer's note level and connect level modulation. |
+
+Use Up/Down to move through visible folders and components. On a folder, Enter or Space hides or shows its contents; Left closes it and Right opens it. Left on a component closes its folder. Closing a folder deselects its hidden components. Shift-click selects components across open folders, and Shift+Up/Down changes the selection range. Enter on a component adds the selected components. Scroll the catalog when its rows do not fit.
 
 ## Layers
 

@@ -186,7 +186,7 @@ fn catalog_keyboard_adds_selected_components_only_to_the_selected_layer() {
         assert_eq!(app.instrument_ui.selected_layer, Some(layers[1]));
         assert!(!app.dirty);
         open(&mut app, &ctx);
-        let point = app.instrument_catalog_bounds.entries[0].center();
+        let point = app.instrument_catalog_bounds.entries[1].center();
         click(&mut app, &ctx, point, false);
         key(&mut app, &ctx, egui::Key::ArrowDown, true, false);
         assert_eq!(app.instrument_catalog.selection.len(), 2);
@@ -197,7 +197,8 @@ fn catalog_keyboard_adds_selected_components_only_to_the_selected_layer() {
             instrument.layers[0].oscillators.is_empty()
                 && !instrument.layers[0].envelopes[0].present
         );
-        assert_eq!(instrument.layers[1].oscillators.len(), 1);
+        assert!(instrument.layers[1].oscillators.is_empty());
+        assert_eq!(instrument.layers[1].lfos.len(), 1);
         assert!(instrument.layers[1].envelopes[0].present);
         assert_eq!(instrument.layers[1].id, layers[1]);
         assert!(app.session.project.tracks[0].effects.is_empty());
@@ -291,12 +292,17 @@ fn component_double_click_adds_once_and_catalog_focus_and_selection_follow_share
     click(&mut app, &ctx, envelope, true);
     assert_eq!(app.instrument_catalog.selection.len(), 2);
     key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+    assert!(app.instrument_catalog.selection.is_empty()); // Modulators folder.
+    key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
     assert_eq!(
         app.instrument_catalog.selection,
-        HashSet::from([crate::instrument_catalog::ENTRIES[0].type_id])
+        HashSet::from(["daw.sampler"])
     );
     key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
-    assert_eq!(app.instrument_catalog.selection.len(), 1);
+    assert_eq!(
+        app.instrument_catalog.selection,
+        HashSet::from(["daw.oscillator"])
+    );
     key(&mut app, &ctx, egui::Key::Escape, false, false);
     assert!(app.instrument_catalog.selection.is_empty());
     click(&mut app, &ctx, envelope, false);
@@ -717,4 +723,285 @@ fn amplitude_double_click_adds_once_to_the_selected_layer() {
     app.dirty = false;
     key(&mut app, &ctx, egui::Key::Enter, false, false);
     assert!(!app.dirty);
+}
+
+#[test]
+fn category_folders_group_entries_and_hide_selected_children_without_editing_the_project() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _, _) = fixture(theme);
+        open(&mut app, &ctx);
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        let entries = app.instrument_catalog_bounds.entries;
+        let folders = app.instrument_catalog_bounds.folders;
+        let rows = [
+            folders[0], entries[0], entries[5], folders[1], entries[1], entries[2], entries[4],
+            folders[2], entries[3],
+        ];
+        assert!(
+            rows.windows(2)
+                .all(|pair| pair[0].bottom() <= pair[1].top())
+        );
+        assert!(
+            rows.iter()
+                .all(|rect| app.instrument_catalog_bounds.library.contains_rect(*rect))
+        );
+        click(&mut app, &ctx, entries[0].center(), false);
+        click(&mut app, &ctx, entries[1].center(), true);
+        click(&mut app, &ctx, folders[0].center(), false);
+        assert!(app.component_drag.is_none());
+        assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
+        assert_eq!(app.instrument_catalog_bounds.entries[5], Rect::NOTHING);
+        assert_eq!(
+            app.instrument_catalog.selection,
+            HashSet::from(["daw.envelope"])
+        );
+        for repeat in [false, true] {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat,
+                    modifiers: Default::default(),
+                }],
+            );
+            assert!(app.instrument_catalog_bounds.entries[0].is_positive());
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        assert_eq!(
+            app.instrument_catalog.selection,
+            HashSet::from(["daw.envelope"])
+        );
+        key(&mut app, &ctx, egui::Key::Space, false, false);
+        assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
+        let toggle = app.instrument_catalog_bounds.toggle.center();
+        click(&mut app, &ctx, toggle, false);
+        open(&mut app, &ctx);
+        assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn category_keyboard_navigation_uses_visible_rows_and_preserves_component_addition() {
+    let (mut app, ctx, _, _) = fixture(settings::ColorTheme::Dark);
+    open(&mut app, &ctx);
+    let source = app.instrument_catalog_bounds.entries[0].center();
+    click(&mut app, &ctx, source, false);
+    key(&mut app, &ctx, egui::Key::ArrowLeft, false, false);
+    assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
+    assert!(app.instrument_catalog.selection.is_empty());
+    key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+    key(&mut app, &ctx, egui::Key::Enter, false, false);
+    assert!(app.instrument_catalog_bounds.entries[0].is_positive());
+    key(&mut app, &ctx, egui::Key::ArrowLeft, false, false);
+    key(&mut app, &ctx, egui::Key::ArrowDown, false, false); // Modulators.
+    key(&mut app, &ctx, egui::Key::ArrowDown, false, false); // Envelope.
+    assert_eq!(
+        app.instrument_catalog.selection,
+        HashSet::from(["daw.envelope"])
+    );
+    key(&mut app, &ctx, egui::Key::ArrowDown, true, false);
+    key(&mut app, &ctx, egui::Key::ArrowDown, true, false);
+    assert_eq!(
+        app.instrument_catalog.selected_types(),
+        vec!["daw.envelope", "daw.lfo", "daw.macro"]
+    );
+    key(&mut app, &ctx, egui::Key::ArrowUp, true, false);
+    assert_eq!(
+        app.instrument_catalog.selected_types(),
+        vec!["daw.envelope", "daw.lfo"]
+    );
+    key(&mut app, &ctx, egui::Key::ArrowLeft, false, false);
+    assert_eq!(app.instrument_catalog_bounds.entries[1], Rect::NOTHING);
+    assert!(app.instrument_catalog.selection.is_empty());
+    key(&mut app, &ctx, egui::Key::ArrowRight, false, false);
+    key(&mut app, &ctx, egui::Key::ArrowDown, false, false);
+    key(&mut app, &ctx, egui::Key::Enter, false, false);
+    let layer = &app.session.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .layers[0];
+    assert!(layer.envelopes[0].present);
+    assert!(layer.oscillators.is_empty() && layer.lfos.is_empty());
+    assert!(app.dirty);
+}
+
+#[test]
+fn category_group_drag_uses_display_order_and_excludes_closed_folders() {
+    let (mut app, ctx, _, _) = fixture(settings::ColorTheme::Dark);
+    open(&mut app, &ctx);
+    for (index, shift) in [(3, false), (4, true), (1, true)] {
+        let point = app.instrument_catalog_bounds.entries[index].center();
+        click(&mut app, &ctx, point, shift);
+    }
+    start_component_drag(&mut app, &ctx, 1);
+    let crate::instrument_component_drag::ComponentDragSource::Catalog { types, .. } =
+        &app.component_drag.as_ref().unwrap().source
+    else {
+        panic!("expected catalog drag")
+    };
+    assert_eq!(types, &["daw.envelope", "daw.macro", "daw.amplitude"]);
+    let outside = app.effects_bounds.strip.center();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(outside), button(outside, false)],
+    );
+    for (index, shift) in [(3, false), (4, true), (1, true)] {
+        let point = app.instrument_catalog_bounds.entries[index].center();
+        click(&mut app, &ctx, point, shift);
+    }
+    let folder = app.instrument_catalog_bounds.folders[1].center();
+    click(&mut app, &ctx, folder, false);
+    assert!(app.component_drag.is_none());
+    assert_eq!(
+        app.instrument_catalog.selected_types(),
+        vec!["daw.amplitude"]
+    );
+    start_component_drag(&mut app, &ctx, 3);
+    let crate::instrument_component_drag::ComponentDragSource::Catalog { types, .. } =
+        &app.component_drag.as_ref().unwrap().source
+    else {
+        panic!("expected catalog drag")
+    };
+    assert_eq!(types, &["daw.amplitude"]);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn category_catalog_scrolls_in_a_short_viewport_and_keeps_the_header_fixed() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _, _) = fixture(theme);
+        open(&mut app, &ctx);
+        let source = app.instrument_catalog_bounds.entries[0].center();
+        click(&mut app, &ctx, source, false);
+        let size = Vec2::new(1280.0, 480.0);
+        frame_shapes(&mut app, &ctx, vec![], size);
+        let header = app.instrument_catalog_bounds.header;
+        let library = app.instrument_catalog_bounds.library;
+        assert!(app.instrument_catalog_bounds.entries[3].bottom() > library.bottom());
+        let pointer = Pos2::new(library.center().x, library.bottom() - 12.0);
+        for _ in 0..10 {
+            frame_shapes(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        phase: egui::TouchPhase::Move,
+                        delta: Vec2::new(0.0, -100.0),
+                        modifiers: Default::default(),
+                    },
+                ],
+                size,
+            );
+        }
+        let amplitude = app.instrument_catalog_bounds.entries[3];
+        assert!(library.contains_rect(amplitude));
+        assert_eq!(app.instrument_catalog_bounds.header, header);
+        assert_eq!(
+            app.instrument_catalog.selection,
+            HashSet::from(["daw.oscillator"])
+        );
+        frame_shapes(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+            size,
+        );
+        for _ in 0..30 {
+            frame_shapes(&mut app, &ctx, vec![], size);
+        }
+        // Each catalog retains its own scroll position.
+        for instrument in [false, true] {
+            let toggle = if instrument {
+                app.instrument_catalog_bounds.toggle.center()
+            } else {
+                app.effects_bounds.library_toggle.center()
+            };
+            for pressed in [true, false] {
+                frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(toggle), button(toggle, pressed)],
+                    size,
+                );
+            }
+            frame_shapes(&mut app, &ctx, vec![], size);
+            if instrument {
+                assert!(library.contains_rect(app.instrument_catalog_bounds.entries[3]));
+            } else {
+                assert!(app.effects_bounds.entry.top() >= app.effects_bounds.header.bottom());
+            }
+        }
+        assert!(app.instrument_catalog.selection.is_empty());
+        assert!(app.component_drag.is_none());
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn category_folders_cannot_toggle_during_disabled_or_modal_ui() {
+    for modal in [false, true] {
+        let (mut app, ctx, _, _) = fixture(settings::ColorTheme::Dark);
+        open(&mut app, &ctx);
+        let point = app.instrument_catalog_bounds.folders[0].center();
+        let original = serde_json::to_value(&app.session.project).unwrap();
+        app.settings_open = modal;
+        for pressed in [true, false] {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    events: vec![egui::Event::PointerMoved(point), button(point, pressed)],
+                    ..Default::default()
+                },
+                |ui| {
+                    if !modal {
+                        ui.disable();
+                    }
+                    app.show(ui);
+                },
+            );
+            output.textures_delta.clear();
+        }
+        app.settings_open = false;
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.instrument_catalog_bounds.entries[0].is_positive());
+        assert!(app.component_drag.is_none());
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            original
+        );
+        assert!(!app.dirty);
+    }
 }

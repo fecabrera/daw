@@ -65,11 +65,31 @@ Saved transfers use the existing project fields. Save/reopen and Save As preserv
 
 ## Registering instrument components
 
-Register each catalog component once in `instrument_catalog.rs::ENTRIES`, with its stable type ID, display name, and layer installation function. `Entry::layer` makes it available to regular layers. Add `.with_main(add_to_main)` when the component also supports Main. Installation functions update the existing project settings and retain each component's restoration rules.
+Register each catalog component once in `instrument_catalog.rs::ENTRIES`, with its stable type ID, display name, category, and layer installation function. `Entry::layer` makes it available to regular layers. Add `.with_main(add_to_main)` when the component also supports Main. Installation functions update the existing project settings and retain each component's restoration rules.
 
 The catalog list, double-click/Enter additions, drag eligibility, and unsupported-target tooltips read this registration. No component type allowlist belongs in the drag handler. A new registration automatically participates in catalog drops for its supported destinations, including empty and compact rows. Unknown IDs and unsupported targets remain invalid. Mixed selections add only compatible entries, in catalog order.
 
 Eligibility checks inspect the registered functions without calling them. They must not create units, assign IDs, or change settings during preview. Only a valid release or explicit catalog addition invokes installation. Installed component moves and copies continue to use core `Project::can_transfer_component` and the shared transaction; a new transferable component needs its core editing behavior, not another UI drop filter. Portable DSP construction remains in the host.
+
+## Instrument catalog folders
+
+The component catalog groups registered entries in this order:
+
+| Category | Components, in display order |
+| --- | --- |
+| Sources | Oscillator, Sampler |
+| Modulators | Envelope, LFO, Macro |
+| Processors | Amplitude |
+
+`Entry::layer` requires a `Category`. `instrument_catalog.rs` defines the category order and labels; membership comes from each registration, without another component allowlist. Entry indices and type IDs remain stable. `catalog.rs` owns optional folders, visible-row order, selection, focus, keyboard input, and scroll state. Effects keeps its flat catalog through the same code. `ControlPanel` shares row geometry, text, selection painting, and theme colors; folder rows add the standard Lucide chevron and Folder/Folder Open icons. Component names are indented beneath folders. Stable widget IDs depend on folder/entry identity rather than visible position.
+
+All folders start expanded. Expansion is application UI state and survives catalog/view switches. It is not serialized with a project and never marks it modified. Folder rows cannot add components, arm component drags, or become members of a component selection. Collapsing a folder removes its children from selection, including the Shift-range baseline. Selections in other folders remain. Both group-drag capture and keyboard additions use visible component order and exclude closed folders.
+
+Up/Down traverses visible folder and component rows without wrapping. Folder focus is separate from component selection. Unmodified movement onto a folder clears selection; Shift movement extends or shrinks ranges over component rows only. Enter/Space toggles the focused folder once per press, Left closes it, and Right opens it. Left on a component closes its parent folder and moves focus there. Enter on a component retains the shared once-per-press addition. Escape and pane-focus rules retain their existing behavior. Mouse folder activation commits on release; existing focus, modal, disabled-UI, and active-drag guards apply. Folder controls remain separate from empty-space deselection.
+
+Use the shared vertical scroll area below the fixed catalog header. Clip row interaction to the viewport, keep the panel border continuous, and scroll keyboard destinations into view. Retain selection when its focused row scrolls offscreen through the shared `SelectionFocus` vertical-scroll mode. Keep scroll positions independent between the two catalogs. Hidden rows have no active drop/press targets. Existing component eligibility, layer/Main compatibility, source conflicts, transactions, and release-only drag commits remain unchanged.
+
+Acceptance covers both themes, category order, collapse/expand, hidden selection pruning, cross-folder selection/drag order, bounded keyboard navigation, Shift ranges, repeated-key guards, folder-state retention, small-height scrolling, and unchanged project data while browsing. Existing component addition, Main-target, cancellation, and Effects interaction tests must pass.
 
 ## Panel borders
 

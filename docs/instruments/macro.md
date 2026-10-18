@@ -1,6 +1,6 @@
 # Macro
 
-A Macro provides a named Value knob that can control several parameters. Add Macro from the Instrument catalog to a layer or Main. Use its Plus strip or add Macro again to create more independent controls.
+A Macro provides a named Value knob that can control several parameters. Add Macro from Modulators in the Instrument components catalog to a layer or Main. Use its Plus strip or add Macro again to create more independent controls.
 
 ## Set up a Macro
 

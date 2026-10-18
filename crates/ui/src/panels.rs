@@ -75,7 +75,32 @@ impl ControlPanel {
     }
 
     /// Catalog entries share padding, small text, and the view controls' selected fill.
-    pub(super) fn catalog_item(&self, ui: &mut Ui, name: &str, selected: bool) -> Response {
+    pub(super) fn catalog_item(
+        &self,
+        ui: &mut Ui,
+        name: &str,
+        selected: bool,
+        indented: bool,
+    ) -> Response {
+        self.catalog_row(ui, name, selected, indented, None)
+    }
+
+    pub(super) fn catalog_folder(&self, ui: &mut Ui, name: &str, open: bool) -> Response {
+        self.catalog_row(ui, name, false, false, Some(open))
+            .on_hover_text(format!(
+                "{} {name}",
+                if open { "Collapse" } else { "Expand" }
+            ))
+    }
+
+    fn catalog_row(
+        &self,
+        ui: &mut Ui,
+        name: &str,
+        selected: bool,
+        indented: bool,
+        folder: Option<bool>,
+    ) -> Response {
         let padding = f32::from(crate::theme::TOOLBAR_PADDING);
         let palette = crate::theme::palette(ui.ctx());
         let galley = ui.painter().layout_no_wrap(
@@ -85,10 +110,23 @@ impl ControlPanel {
         );
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(self.rect.width() - 1.0, galley.size().y + 2.0 * padding),
-            egui::Sense::click_and_drag(),
+            if folder.is_some() {
+                egui::Sense::click()
+            } else {
+                egui::Sense::click_and_drag()
+            },
         );
         response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, name)
+            egui::WidgetInfo::selected(
+                if folder.is_some() {
+                    egui::WidgetType::CollapsingHeader
+                } else {
+                    egui::WidgetType::Button
+                },
+                ui.is_enabled(),
+                folder.unwrap_or(selected),
+                name,
+            )
         });
         let color = if selected || response.hovered() || response.has_focus() {
             palette.text
@@ -102,8 +140,44 @@ impl ControlPanel {
                 crate::theme::toggle_colors(ui.ctx(), true).0,
             );
         }
+        let icon_size = crate::icons::TOOLBAR_ICON_SIZE;
+        let indent = if indented {
+            2.0 * (icon_size + padding)
+        } else {
+            0.0
+        };
+        let text_offset = folder.map_or(indent, |_| 2.0 * (icon_size + padding));
+        if let Some(open) = folder {
+            let icons = [
+                if open {
+                    crate::icons::Lucide::ChevronDown
+                } else {
+                    crate::icons::Lucide::ChevronRight
+                },
+                if open {
+                    crate::icons::Lucide::FolderOpen
+                } else {
+                    crate::icons::Lucide::Folder
+                },
+            ];
+            for (index, icon) in icons.into_iter().enumerate() {
+                icon.size(icon_size).color(color).image().paint_at(
+                    ui,
+                    Rect::from_center_size(
+                        egui::pos2(
+                            rect.left()
+                                + padding
+                                + icon_size * 0.5
+                                + index as f32 * (icon_size + padding),
+                            rect.center().y,
+                        ),
+                        Vec2::splat(icon_size),
+                    ),
+                );
+            }
+        }
         ui.painter().galley_with_override_text_color(
-            rect.min + Vec2::splat(padding),
+            rect.min + Vec2::new(padding + text_offset, padding),
             galley,
             color,
         );

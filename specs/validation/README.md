@@ -2590,3 +2590,13 @@ Focused automated checks pass:
 `cargo build --locked -p daw-cli --offline` and `python3 tools/check_cli.py` pass. CLI smoke covers WAV/MP3 codecs and bitrates, repeatability, missing sources, eight-track projects, overwrite protection, and exit codes. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`; the app was not relaunched. Commands use the default Cargo cache.
 
 Native pointer/trackpad, display-scale, audible modulation/device callback timing, Windows, and Linux checks were not performed. Automated egui, DSP, and renderer checks do not establish those native behaviors.
+
+## Instrument catalog category folders — 2026-10-17
+
+The Instrument components catalog now uses Sources (Oscillator, Sampler), Modulators (Envelope, LFO, Macro), and Processors (Amplitude). Category membership comes from the existing component registration. Optional folders, visible-row keyboard navigation, press-time drag capture, and scrolling reuse the shared catalog and `ControlPanel` rows. Folder expansion is UI state and leaves project data unchanged.
+
+Automated egui checks cover both themes, folder/component order, release-time collapse/expand without component drag capture, hidden selection pruning, retained selections in other folders, Enter repeat protection, folder keyboard actions, bounded movement, Shift ranges, component addition, cross-folder drag order, and catalog/view-switch retention. Short-viewport checks cover scrolling below the fixed header, selection retention when its focused row moves offscreen, and independent Effects/Instrument scroll positions. Disabled and modal UI cannot toggle folders. The focused catalog command, `cargo test -p daw-ui --offline instrument_catalog -- --nocapture`, passes all 17 tests.
+
+`cargo test --workspace --offline` passes: 801 tests pass, including all 443 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored. The existing Effects Escape regression confirms that arrow keys do not restart an empty entry selection. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, and `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` pass. The bundle is rebuilt at `target/debug/DAW.app`; the app was not launched. Repository-relative documentation file targets and heading anchors pass: 470 links across 53 Markdown files. The changed user guide contains operating instructions; implementation and validation details remain in `specs/`. `git diff --check` passes.
+
+Native pointer/trackpad, display-scale, accessibility-client, Windows, and Linux checks were not performed. Automated egui checks do not establish those native behaviors. This change does not alter audio processing or project serialization.

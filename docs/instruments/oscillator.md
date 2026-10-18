@@ -1,6 +1,6 @@
 # Oscillator
 
-Oscillator generates tones for MIDI notes. Add it from the Instrument component catalog to a regular layer. A layer can use Oscillator or Sampler, not both.
+Oscillator generates tones for MIDI notes. Add it from Sources in the Instrument components catalog to a regular layer. A layer can use Oscillator or Sampler, not both.
 
 ## Controls
 

@@ -12,7 +12,7 @@ Use Gain to change the combined instrument level and Pan to position it. Default
 
 ## Add shared controls
 
-Select Main, then add Envelope, LFO, or Macro from the component catalog. You can also drag compatible installed components onto Main. Main does not accept audio sources, Amplitude, or Per note Envelopes.
+Select Main, then add Envelope, LFO, or Macro from Modulators in the component catalog. You can also drag compatible installed components onto Main. Main does not accept audio sources, Amplitude, or Per note Envelopes.
 
 New Main Envelopes start in Legato mode; Retrigger is also available. Main sources appear in destination lists with the Main prefix. They can control compatible parameters throughout the same instrument, including its track effects.
 

@@ -7,11 +7,30 @@ use std::collections::HashSet;
 pub(super) struct Catalog {
     entries: Vec<(&'static str, &'static str)>,
     pub selection: HashSet<&'static str>,
-    cursor: usize,
-    anchor: usize,
+    folders: Vec<Folder>,
+    cursor: Row,
+    anchor: Row,
     range_base: Option<HashSet<&'static str>>,
     focus: Option<egui::Id>,
     selection_focus: crate::selection_focus::SelectionFocus,
+}
+
+/// Folders belong to the catalog, never to a saved instrument.
+struct Folder {
+    name: &'static str,
+    entries: Vec<usize>,
+    open: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Row {
+    Folder(usize),
+    Entry(usize),
+}
+impl Default for Row {
+    fn default() -> Self {
+        Self::Entry(0)
+    }
 }
 
 #[derive(Default, PartialEq)]
@@ -31,7 +50,8 @@ pub(super) struct Interaction {
 
 pub(super) struct Output {
     pub header: egui::Rect,
-    pub rows: Vec<Response>,
+    pub rows: Vec<(usize, Response)>,
+    pub folders: Vec<(usize, Response)>,
     pub add_selected: bool,
     pub double_clicked: Option<usize>,
 }
@@ -50,11 +70,7 @@ impl Catalog {
         self.focus_row(ui, response);
         let id = self.entries[index].0;
         let types = if self.selection.contains(id) {
-            self.entries
-                .iter()
-                .filter(|entry| self.selection.contains(entry.0))
-                .map(|entry| entry.0)
-                .collect()
+            self.selected_types()
         } else {
             vec![id]
         };
@@ -77,6 +93,72 @@ impl Catalog {
             entries: entries.into_iter().collect(),
             ..Self::default()
         }
+    }
+
+    /// Keep entry indices stable while folders define display and navigation order.
+    pub fn with_folders(
+        mut self,
+        folders: impl IntoIterator<Item = (&'static str, Vec<&'static str>)>,
+    ) -> Self {
+        self.folders = folders
+            .into_iter()
+            .map(|(name, types)| Folder {
+                name,
+                entries: self
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| types.contains(&entry.0).then_some(index))
+                    .collect(),
+                open: true,
+            })
+            .collect();
+        self
+    }
+
+    fn visible_rows(&self) -> Vec<Row> {
+        if self.folders.is_empty() {
+            return (0..self.entries.len()).map(Row::Entry).collect();
+        }
+        self.folders
+            .iter()
+            .enumerate()
+            .flat_map(|(index, folder)| {
+                std::iter::once(Row::Folder(index)).chain(
+                    folder
+                        .entries
+                        .iter()
+                        .copied()
+                        .filter(|_| folder.open)
+                        .map(Row::Entry),
+                )
+            })
+            .collect()
+    }
+
+    pub fn selected_types(&self) -> Vec<&'static str> {
+        self.visible_rows()
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Entry(index) if self.selection.contains(self.entries[index].0) => {
+                    Some(self.entries[index].0)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn set_folder_open(&mut self, index: usize, open: bool) {
+        self.folders[index].open = open;
+        if !open {
+            // Hidden entries cannot be added or included in a later group drag.
+            for &entry in &self.folders[index].entries {
+                self.selection.remove(self.entries[entry].0);
+            }
+        }
+        self.cursor = Row::Folder(index);
+        self.anchor = self.cursor;
+        self.range_base = None;
     }
 
     pub fn show(
@@ -102,34 +184,67 @@ impl Catalog {
         let mut output = Output {
             header: header.response.rect,
             rows: Vec::with_capacity(self.entries.len()),
+            folders: Vec::with_capacity(self.folders.len()),
             add_selected: action == Action::Add,
             double_clicked: None,
         };
-        for index in 0..self.entries.len() {
-            let (type_id, name) = self.entries[index];
-            let response = ui.add_enabled_ui(interaction.rows_enabled, |ui| {
-                panel.catalog_item(ui, name, self.selection.contains(type_id))
-                    .on_hover_text(format!("Double-click to add {name}. Enter adds selected {noun}. Shift+click toggles selection."))
-            }).inner;
-            let clicked = response.clicked()
-                && ui.rect_contains_pointer(response.rect)
-                && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary));
-            if clicked {
-                self.click(index, ui.input(|input| input.modifiers.shift));
-                self.focus_row(ui, &response);
-            }
-            if action == Action::Move && self.is_cursor(index) {
-                self.focus_row(ui, &response);
-            }
-            if clicked && response.double_clicked() {
-                output.double_clicked = Some(index);
-            }
-            output.rows.push(response);
-        }
+        let scroll = egui::ScrollArea::vertical()
+            .id_salt(("catalog-rows", title))
+            .max_height((bounds.bottom() - header.response.rect.bottom()).max(0.0))
+            .show(ui, |ui| {
+                for row in self.visible_rows() {
+                    // Scope IDs by identity so collapsing an earlier folder cannot move focus.
+                    let response = ui.push_id(match row {
+                        Row::Folder(index) => ("catalog-folder", index),
+                        Row::Entry(index) => ("catalog-entry", index),
+                    }, |ui| match row {
+                        Row::Folder(index) => ui.add_enabled_ui(interaction.clear_on_empty, |ui| {
+                            panel.catalog_folder(ui, self.folders[index].name, self.folders[index].open)
+                        }).inner,
+                        Row::Entry(index) => {
+                            let (type_id, name) = self.entries[index];
+                            ui.add_enabled_ui(interaction.rows_enabled, |ui| {
+                                panel.catalog_item(ui, name, self.selection.contains(type_id), !self.folders.is_empty())
+                                    .on_hover_text(format!("Double-click to add {name}. Enter adds selected {noun}. Shift+click toggles selection."))
+                            }).inner
+                        }
+                    }).inner;
+                    let clicked = response.clicked()
+                        && ui.rect_contains_pointer(response.rect)
+                        && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary));
+                    if clicked {
+                        match row {
+                            Row::Folder(index) => {
+                                self.set_folder_open(index, !self.folders[index].open);
+                                ui.ctx().request_repaint();
+                            }
+                            Row::Entry(index) => self.click(index, ui.input(|input| input.modifiers.shift)),
+                        }
+                        self.focus_row(ui, &response);
+                    }
+                    if action == Action::Move && self.cursor == row {
+                        self.focus_row(ui, &response);
+                        response.scroll_to_me(None);
+                    }
+                    match row {
+                        Row::Folder(index) => output.folders.push((index, response)),
+                        Row::Entry(index) => {
+                            if clicked && response.double_clicked() {
+                                output.double_clicked = Some(index);
+                            }
+                            output.rows.push((index, response));
+                        }
+                    }
+                }
+            });
+        // Include folders in the occupied area; clicking one must not clear other selections.
         let bottom = output
             .rows
-            .last()
-            .map_or(header.response.rect.bottom(), |row| row.rect.bottom());
+            .iter()
+            .chain(&output.folders)
+            .map(|(_, response)| response.rect.bottom())
+            .fold(header.response.rect.bottom(), f32::max)
+            .min(scroll.inner_rect.bottom());
         let empty = egui::Rect::from_min_max(egui::pos2(bounds.left(), bottom), bounds.max);
         self.empty_region(ui, empty, self.entries.len(), interaction.empty_enabled);
         if interaction.clear_on_empty
@@ -137,7 +252,8 @@ impl Catalog {
             && !output
                 .rows
                 .iter()
-                .any(|row| ui.rect_contains_pointer(row.rect))
+                .chain(&output.folders)
+                .any(|(_, row)| ui.rect_contains_pointer(row.rect))
             && ui.input(|input| input.pointer.button_clicked(egui::PointerButton::Primary))
         {
             self.clear();
@@ -147,7 +263,7 @@ impl Catalog {
     }
 
     pub fn begin_frame(&mut self, ui: &Ui, bounds: egui::Rect) {
-        self.selection_focus.set(ui, bounds, false);
+        self.selection_focus.set_vertical_scroll(ui, bounds);
     }
 
     /// Claim only blank regions so egui's hit radius cannot activate adjacent controls.
@@ -193,8 +309,8 @@ impl Catalog {
         } else {
             self.selection = HashSet::from([type_id]);
         }
-        self.cursor = index;
-        self.anchor = index;
+        self.cursor = Row::Entry(index);
+        self.anchor = self.cursor;
         self.range_base = None;
     }
 
@@ -208,7 +324,10 @@ impl Catalog {
                     || (escape && memory.focused().is_none() && memory.had_focus_last_frame(id))
             })
         });
-        if !allowed || self.selection.is_empty() || !owns_focus {
+        if !allowed
+            || !owns_focus
+            || (self.selection.is_empty() && matches!(self.cursor, Row::Entry(_)))
+        {
             return Action::None;
         }
         let modifiers = ui.input(|input| input.modifiers);
@@ -220,7 +339,7 @@ impl Catalog {
             return Action::None;
         }
         if !modifiers.shift {
-            let add = ui.input_mut(|input| {
+            let enter = ui.input_mut(|input| {
                 let pressed = input.events.iter().any(|event| {
                     matches!(
                         event,
@@ -235,10 +354,56 @@ impl Catalog {
                 let consumed = input.consume_key(Modifiers::NONE, Key::Enter);
                 pressed && consumed
             });
-            if add {
-                return Action::Add;
+            if let Row::Folder(index) = self.cursor {
+                let toggle = enter
+                    || ui.input_mut(|input| {
+                        let pressed = input.events.iter().any(|event| {
+                            matches!(
+                                event,
+                                egui::Event::Key {
+                                    key: Key::Space,
+                                    pressed: true,
+                                    repeat: false,
+                                    ..
+                                }
+                            )
+                        });
+                        let consumed = input.consume_key(Modifiers::NONE, Key::Space);
+                        pressed && consumed
+                    });
+                let close =
+                    ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::ArrowLeft));
+                let open =
+                    ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::ArrowRight));
+                if toggle || close || open {
+                    let open = if toggle {
+                        !self.folders[index].open
+                    } else {
+                        open
+                    };
+                    self.set_folder_open(index, open);
+                    return Action::Move;
+                }
+            } else {
+                if enter && !self.selection.is_empty() {
+                    return Action::Add;
+                }
+                if let Row::Entry(entry) = self.cursor
+                    && let Some(folder) = self
+                        .folders
+                        .iter()
+                        .position(|folder| folder.entries.contains(&entry))
+                    && ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::ArrowLeft))
+                {
+                    self.set_folder_open(folder, false);
+                    return Action::Move;
+                }
             }
         }
+        let rows = self.visible_rows();
+        let Some(current) = rows.iter().position(|row| *row == self.cursor) else {
+            return Action::None;
+        };
         let keys = if modifiers.shift {
             Modifiers::SHIFT
         } else {
@@ -246,9 +411,9 @@ impl Catalog {
         };
         let movement = ui.input_mut(|input| {
             if input.consume_key(keys, Key::ArrowUp) {
-                Some(self.cursor.saturating_sub(1))
+                Some(current.saturating_sub(1))
             } else if input.consume_key(keys, Key::ArrowDown) {
-                Some((self.cursor + 1).min(self.entries.len() - 1))
+                Some((current + 1).min(rows.len() - 1))
             } else {
                 None
             }
@@ -261,12 +426,25 @@ impl Catalog {
                 .range_base
                 .get_or_insert_with(|| self.selection.clone());
             self.selection.clone_from(base);
-            for entry in &self.entries[self.anchor.min(next)..=self.anchor.max(next)] {
-                self.selection.insert(entry.0);
+            let anchor = rows
+                .iter()
+                .position(|row| *row == self.anchor)
+                .unwrap_or(current);
+            for row in &rows[anchor.min(next)..=anchor.max(next)] {
+                if let Row::Entry(index) = row {
+                    self.selection.insert(self.entries[*index].0);
+                }
             }
-            self.cursor = next;
+            self.cursor = rows[next];
         } else {
-            self.click(next, false);
+            match rows[next] {
+                Row::Entry(index) => self.click(index, false),
+                row @ Row::Folder(_) => {
+                    self.clear();
+                    self.cursor = row;
+                    self.anchor = row;
+                }
+            }
         }
         Action::Move
     }
@@ -286,14 +464,11 @@ impl Catalog {
                 id,
                 EventFilter {
                     vertical_arrows: true,
+                    horizontal_arrows: !self.folders.is_empty(),
                     escape: true,
                     ..Default::default()
                 },
             )
         });
-    }
-
-    pub fn is_cursor(&self, index: usize) -> bool {
-        self.cursor == index
     }
 }

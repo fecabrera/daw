@@ -6,6 +6,7 @@ pub(super) struct SelectionFocus {
     bounds: Option<Rect>,
     layer: Option<LayerId>,
     horizontal_scroll: bool,
+    vertical_scroll: bool,
 }
 
 impl SelectionFocus {
@@ -13,6 +14,12 @@ impl SelectionFocus {
         self.bounds = Some(bounds);
         self.layer = Some(ui.layer_id());
         self.horizontal_scroll = horizontal_scroll;
+        self.vertical_scroll = false;
+    }
+
+    pub fn set_vertical_scroll(&mut self, ui: &Ui, bounds: Rect) {
+        self.set(ui, bounds, false);
+        self.vertical_scroll = true;
     }
 
     pub fn owns(&self, ctx: &Context) -> bool {
@@ -22,11 +29,8 @@ impl SelectionFocus {
                 self.layer == Some(response.layer_id)
                     && self.bounds.is_some_and(|bounds| {
                         let center = response.rect.center();
-                        if self.horizontal_scroll {
-                            bounds.y_range().contains(center.y)
-                        } else {
-                            bounds.contains(center)
-                        }
+                        (self.horizontal_scroll || bounds.x_range().contains(center.x))
+                            && (self.vertical_scroll || bounds.y_range().contains(center.y))
                     })
             })
     }

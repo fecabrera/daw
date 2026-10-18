@@ -246,7 +246,7 @@ impl DawUi {
                             if let Some(index) = output.double_clicked {
                                 effects.push((effects_catalog::ENTRIES[index].2)());
                             }
-                            for (index, response) in output.rows.iter().enumerate() {
+                            for &(index, ref response) in &output.rows {
                                 if allowed && lane_visible {
                                     self.start_library_effect_drag(
                                         ui, response, selected, index, &effects,

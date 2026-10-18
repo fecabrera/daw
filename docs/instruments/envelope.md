@@ -1,6 +1,6 @@
 # Envelope
 
-An Envelope changes a control value over a note's life. Add it from the Instrument component catalog, then assign it in a receiving unit's [modulation controls](../modulation/README.md). Adding it alone makes no connection.
+An Envelope changes a control value over a note's life. Add it from Modulators in the Instrument components catalog, then assign it in a receiving unit's [modulation controls](../modulation/README.md). Adding it alone makes no connection.
 
 ## Stages and timing
 

@@ -2,11 +2,30 @@
 use super::*;
 use crate::instrument_component_drag::{ComponentDrag, ComponentDragSource};
 
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum Category {
+    Sources,
+    Modulators,
+    Processors,
+}
+impl Category {
+    const ALL: [Self; 3] = [Self::Sources, Self::Modulators, Self::Processors];
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Sources => "Sources",
+            Self::Modulators => "Modulators",
+            Self::Processors => "Processors",
+        }
+    }
+}
+
 /// Register construction once. Available constructors also define valid catalog drop targets.
 #[derive(Clone, Copy)]
 pub(super) struct Entry {
     pub type_id: &'static str,
     pub name: &'static str,
+    category: Category,
     add_layer: fn(&mut daw_core::InstrumentLayerSettings),
     add_main: Option<fn(&mut daw_core::InstrumentBusSettings)>,
     source: bool,
@@ -16,11 +35,13 @@ impl Entry {
     const fn layer(
         type_id: &'static str,
         name: &'static str,
+        category: Category,
         add: fn(&mut daw_core::InstrumentLayerSettings),
     ) -> Self {
         Self {
             type_id,
             name,
+            category,
             add_layer: add,
             add_main: None,
             source: false,
@@ -61,11 +82,11 @@ impl Entry {
 }
 
 pub(super) const ENTRIES: [Entry; 6] = [
-    Entry::layer("daw.oscillator", "Oscillator", |l| {
+    Entry::layer("daw.oscillator", "Oscillator", Category::Sources, |l| {
         l.oscillators.push(Default::default())
     })
     .source(|l| l.sampler.is_none()),
-    Entry::layer("daw.envelope", "Envelope", |l| {
+    Entry::layer("daw.envelope", "Envelope", Category::Modulators, |l| {
         add_envelope(&mut l.envelopes)
     })
     .with_main(|main| {
@@ -76,16 +97,37 @@ pub(super) const ENTRIES: [Entry; 6] = [
             }
         }
     }),
-    Entry::layer("daw.lfo", "LFO", |l| add_lfo(&mut l.lfos))
-        .with_main(|main| add_lfo(&mut main.lfos)),
-    Entry::layer("daw.amplitude", "Amplitude", |l| l.amplitude.present = true),
-    Entry::layer("daw.macro", "Macro", |l| l.macro_module.add())
-        .with_main(|main| main.macro_module.add()),
-    Entry::layer("daw.sampler", "Sampler", |l| {
+    Entry::layer("daw.lfo", "LFO", Category::Modulators, |l| {
+        add_lfo(&mut l.lfos)
+    })
+    .with_main(|main| add_lfo(&mut main.lfos)),
+    Entry::layer("daw.amplitude", "Amplitude", Category::Processors, |l| {
+        l.amplitude.present = true
+    }),
+    Entry::layer("daw.macro", "Macro", Category::Modulators, |l| {
+        l.macro_module.add()
+    })
+    .with_main(|main| main.macro_module.add()),
+    Entry::layer("daw.sampler", "Sampler", Category::Sources, |l| {
         l.sampler = Some(Default::default())
     })
     .source(|l| l.sampler.is_none() && l.oscillators.is_empty()),
 ];
+
+pub(super) fn catalog() -> catalog::Catalog {
+    catalog::Catalog::new(ENTRIES.map(|entry| (entry.type_id, entry.name))).with_folders(
+        Category::ALL.map(|category| {
+            (
+                category.name(),
+                ENTRIES
+                    .iter()
+                    .filter(|entry| entry.category == category)
+                    .map(|entry| entry.type_id)
+                    .collect(),
+            )
+        }),
+    )
+}
 
 fn add_envelope(envelopes: &mut Vec<daw_core::EnvelopeInstance>) {
     if let Some(e) = envelopes.iter_mut().find(|e| !e.present) {
@@ -162,6 +204,7 @@ pub(crate) struct Bounds {
     pub library: Rect,
     pub header: Rect,
     pub entries: [Rect; ENTRIES.len()],
+    pub folders: [Rect; Category::ALL.len()],
     pub drop_target: Option<Id>,
     pub drop_bounds: Rect,
     pub layer_viewport: Rect,
@@ -176,6 +219,7 @@ impl Default for Bounds {
             library: Rect::NOTHING,
             header: Rect::NOTHING,
             entries: [Rect::NOTHING; ENTRIES.len()],
+            folders: [Rect::NOTHING; Category::ALL.len()],
             drop_target: None,
             drop_bounds: Rect::NOTHING,
             layer_viewport: Rect::NOTHING,
@@ -221,9 +265,10 @@ impl DawUi {
                 .find(|t| t.id == track)
                 .and_then(|t| t.instrument.as_ref())
         {
-            for (index, entry) in ENTRIES.iter().enumerate() {
+            for (index, response) in &output.rows {
+                let entry = ENTRIES[*index];
                 if entry.source && !entry.can_add(settings, owner) {
-                    output.rows[index].clone().on_hover_text("A layer can contain Oscillator or Sampler. Remove its source or use Replace source in the installed source header menu.");
+                    response.clone().on_hover_text("A layer can contain Oscillator or Sampler. Remove its source or use Replace source in the installed source header menu.");
                 }
             }
         }
@@ -236,9 +281,10 @@ impl DawUi {
                 .and_then(|t| t.instrument.as_ref())
                 .is_some_and(|i| i.main.id == owner)
         }) {
-            for (index, entry) in ENTRIES.iter().enumerate() {
+            for (index, response) in &output.rows {
+                let entry = ENTRIES[*index];
                 if !entry.supports_main() {
-                    output.rows[index].clone().on_hover_text(
+                    response.clone().on_hover_text(
                         "This component requires a regular layer. Drag it onto a regular layer.",
                     );
                 }
@@ -248,8 +294,8 @@ impl DawUi {
             && self.component_drag.is_none()
             && let Some((track, _)) = target
         {
-            for (index, response) in output.rows.iter().enumerate() {
-                if let Some(start) = self.instrument_catalog.start_drag(ui, response, index)
+            for (index, response) in &output.rows {
+                if let Some(start) = self.instrument_catalog.start_drag(ui, response, *index)
                     && let Some(instrument) = self
                         .session
                         .project
@@ -278,8 +324,13 @@ impl DawUi {
         {
             self.instrument_catalog_bounds.library = bounds;
             self.instrument_catalog_bounds.header = output.header;
-            self.instrument_catalog_bounds.entries =
-                std::array::from_fn(|index| output.rows[index].rect);
+            self.instrument_catalog_bounds.entries = [Rect::NOTHING; ENTRIES.len()];
+            for (index, response) in &output.rows {
+                self.instrument_catalog_bounds.entries[*index] = response.rect;
+            }
+            for (index, response) in &output.folders {
+                self.instrument_catalog_bounds.folders[*index] = response.rect;
+            }
         }
         #[cfg(not(test))]
         {
@@ -298,7 +349,7 @@ impl DawUi {
                 .and_then(|track| track.instrument.clone())
                 .unwrap();
             let original = settings.clone();
-            let types: Vec<_> = self.instrument_catalog.selection.iter().copied().collect();
+            let types: Vec<_> = self.instrument_catalog.selected_types();
             add_components(&mut settings, layer_id, &types);
             if settings != original {
                 self.edit(Edit::SetInstrument {
@@ -338,14 +389,16 @@ mod registration_tests {
 
     #[test]
     fn new_registration_enables_placement_without_a_type_allowlist_or_preview_construction() {
-        let entries = [Entry::layer("test.future", "Future", |layer| {
-            CONSTRUCTIONS.with(|n| n.set(n.get() + 1));
-            layer.macro_module.add();
-        })
-        .with_main(|main| {
-            CONSTRUCTIONS.with(|n| n.set(n.get() + 1));
-            main.macro_module.add();
-        })];
+        let entries = [
+            Entry::layer("test.future", "Future", Category::Modulators, |layer| {
+                CONSTRUCTIONS.with(|n| n.set(n.get() + 1));
+                layer.macro_module.add();
+            })
+            .with_main(|main| {
+                CONSTRUCTIONS.with(|n| n.set(n.get() + 1));
+                main.macro_module.add();
+            }),
+        ];
         let mut settings = daw_core::InstrumentSettings::default();
         let layer = settings.layers[0].id;
         let main = settings.main.id;
