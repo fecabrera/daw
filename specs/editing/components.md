@@ -37,13 +37,19 @@ Each regular layer and Main save a `component_order` list in instrument version 
 
 This order changes presentation only. Provider vectors, source-strip order, parameter values, routes, audio topology, phases, and held notes retain their existing behavior. Save/reopen, Save As, track duplication, rate changes, layer reorder, and view switches retain the layout. Component identities and order policy live in `unit-core`; core transactions and the UI use those shared definitions.
 
+## Select All in installed-unit lanes
+
+Command+A on macOS or Ctrl+A on Windows/Linux selects every installed unit in the focused component or effects lane. Include horizontally scrolled-out, disabled, and collapsed units. Limit component selection to one regular layer or Main; limit effect selection to the active track/Master chain. Use the full installed inventory, not the clipped visible rectangles. Empty lane clicks retain pane keyboard focus, so the command also works without a current selection. Create the keyboard target through `unit_selection::keyboard_focus`, covering the lane with `Sense::focusable_noninteractive`. Keep child control click/drag gestures intact. Do not use a zero-area target: egui can surrender its focus when ownership checks read the response after a blank-space click. Resolve the clicked owner before handling shortcuts, including a click release and Select All in the same frame. An empty lane remains a clean no-op.
+
+Effects and components share `unit_selection::shortcuts` for Delete/Backspace and Select All key handling, and `unit_selection::select_all` for selection replacement. Reuse pane ownership, text editing, pointer/drag, enabled UI, window focus, job/dialog, and name-edit guards. Require the exact platform command modifier and ignore held-key repeats and extra modifiers. Consume blocked/repeated unit shortcuts while the pane owns them; leave text editors' keys intact. Preserve control focus, track/clip selections, unit order, and project data. Do not expand the selection into other lanes or catalogs. Select All must not dirty the project or publish an audio edit. Existing group movement/copy/removal consumes the resulting selection unchanged, with sources first.
+
 ## Removing selected component units
 
 With the component lane focused, press Delete or Backspace to remove every selected unit through one `Edit::SetInstrument`. This works on regular layers and Main, with compact rows and collapsed units. Surviving units, layer/track/clip selection, and clips stay unchanged. The lane keeps keyboard focus after removal, including when empty. Held-key repeats and additional deletion presses with no selected units do not remove clips or mark the project modified.
 
 Envelope, LFO, Macro, and Amplitude retain their settings, identities, connections, and saved unit positions when removed. Re-add them through the catalog to restore them. Removing the Oscillator unit discards its sources and their pitch routes, as individual source removal does. Main itself is never removed by this action.
 
-Effects and components share `unit_selection::delete_pressed` for key handling and pane-focus guards. Text editors keep Delete/Backspace for editing. Extra Alt/Ctrl/Command modifiers, pointer gestures, drags, jobs, dialogs, disabled UI, and window/pane focus loss block unit removal. Blocked keys and held-key repeats cannot fall through to clip deletion while the unit pane owns them. Portable owner settings validate the full removal group before changing any member; invalid or empty groups make no edit.
+Effects and components share `unit_selection::shortcuts` for key handling and pane-focus guards. Text editors keep Delete/Backspace for editing. Extra Alt/Ctrl/Command modifiers, pointer gestures, drags, jobs, dialogs, disabled UI, and window/pane focus loss block unit removal. Blocked keys and held-key repeats cannot fall through to clip deletion while the unit pane owns them. Portable owner settings validate the full removal group before changing any member; invalid or empty groups make no edit.
 
 ## Reordering strips
 

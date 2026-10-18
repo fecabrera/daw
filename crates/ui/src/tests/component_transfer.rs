@@ -1764,3 +1764,244 @@ fn component_delete_edits_macro_name_text_without_removing_units() {
         );
     }
 }
+
+#[test]
+fn component_select_all_is_lane_scoped_including_scrolled_units_and_keeps_the_project_clean() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for main in [false, true] {
+                for collapsed in [false, true] {
+                    let (mut app, ctx, owner, moving) =
+                        order_setup(theme, compact, main, collapsed);
+                    click_component(&mut app, &ctx, owner, moving, false);
+                    let original = serde_json::to_value(&app.session.project).unwrap();
+                    let tracks = app.selected_tracks.clone();
+                    let clips = app.selected_clips.clone();
+                    let expected: HashSet<_> = app
+                        .instrument_ui
+                        .component_slots
+                        .iter()
+                        .filter(|(id, _, _)| *id == owner)
+                        .map(|(id, c, _)| (*id, *c))
+                        .collect();
+                    app.dirty = false;
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![component_delete_key(
+                            egui::Key::A,
+                            false,
+                            egui::Modifiers::COMMAND,
+                        )],
+                    );
+                    assert_eq!(
+                        app.instrument_ui.selected_components, expected,
+                        "{main} {compact} {collapsed}"
+                    );
+                    assert!(app.selected_effects.is_empty());
+                    assert_eq!(app.selected_tracks, tracks);
+                    assert_eq!(app.selected_clips, clips);
+                    assert_eq!(
+                        serde_json::to_value(&app.session.project).unwrap(),
+                        original
+                    );
+                    assert!(!app.dirty);
+                    app.instrument_ui.selected_components.clear();
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::Key {
+                            key: egui::Key::A,
+                            physical_key: None,
+                            pressed: false,
+                            repeat: false,
+                            modifiers: egui::Modifiers::COMMAND,
+                        }],
+                    );
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![component_delete_key(
+                            egui::Key::A,
+                            false,
+                            egui::Modifiers::COMMAND,
+                        )],
+                    );
+                    assert_eq!(app.instrument_ui.selected_components, expected);
+                    assert!(!app.dirty);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn component_select_all_keeps_macro_text_selection_in_its_editor() {
+    let (mut app, ctx, owner, _) = order_setup(settings::ColorTheme::Dark, false, true, false);
+    let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    i.main.envelopes[0].collapsed = true;
+    i.main.lfos[0].collapsed = true;
+    i.main.macro_module.add();
+    frame(&mut app, &ctx, vec![]);
+    click_component(&mut app, &ctx, owner, InstrumentComponent::Macros, false);
+    super::macros::begin_macro_rename(&mut app, &ctx, "Macro 1");
+    frame(&mut app, &ctx, vec![egui::Event::Text("Long name".into())]);
+    let selected = app.instrument_ui.selected_components.clone();
+    frame(
+        &mut app,
+        &ctx,
+        vec![component_delete_key(
+            egui::Key::A,
+            false,
+            egui::Modifiers::COMMAND,
+        )],
+    );
+    assert_eq!(app.instrument_ui.selected_components, selected);
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            egui::Event::Text("Tone".into()),
+            component_delete_key(egui::Key::Enter, false, egui::Modifiers::NONE),
+        ],
+    );
+    assert_eq!(
+        app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .main
+            .macro_module
+            .controls[0]
+            .display_name(0),
+        "Tone"
+    );
+}
+
+#[test]
+fn component_select_all_respects_an_empty_focused_lane_when_components_are_added() {
+    let (mut app, ctx, owners) = setup(settings::ColorTheme::Dark, true);
+    let viewport = app
+        .instrument_ui
+        .component_viewports
+        .iter()
+        .find(|(id, _)| *id == owners[1])
+        .unwrap()
+        .1;
+    let point = viewport.center();
+    super::instrument_catalog::click(&mut app, &ctx, point, false);
+    frame(
+        &mut app,
+        &ctx,
+        vec![component_delete_key(
+            egui::Key::A,
+            false,
+            egui::Modifiers::COMMAND,
+        )],
+    );
+    assert!(app.instrument_ui.selected_components.is_empty());
+    assert!(!app.dirty);
+    let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    i.layers[1].macro_module.add();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: egui::Modifiers::COMMAND,
+        }],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![component_delete_key(
+            egui::Key::A,
+            false,
+            egui::Modifiers::COMMAND,
+        )],
+    );
+    assert_eq!(
+        app.instrument_ui.selected_components,
+        HashSet::from([(owners[1], InstrumentComponent::Macros)])
+    );
+    assert!(!app.dirty);
+}
+
+#[test]
+fn component_select_all_from_populated_lane_space_without_selecting_a_unit() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for main in [false, true] {
+            for compact in [false, true] {
+                for immediate in [false, true] {
+                    let (mut app, ctx, owner, _) = order_setup(theme, compact, main, true);
+                    let viewport = app
+                        .instrument_ui
+                        .component_viewports
+                        .iter()
+                        .find(|(id, _)| *id == owner)
+                        .unwrap()
+                        .1;
+                    let slots: Vec<_> = app
+                        .instrument_ui
+                        .component_slots
+                        .iter()
+                        .filter(|(id, _, _)| *id == owner)
+                        .copied()
+                        .collect();
+                    let end = slots.last().unwrap().2.right();
+                    let point = Pos2::new((end + viewport.right()) * 0.5, viewport.center().y);
+                    assert!(
+                        viewport.contains(point)
+                            && !slots.iter().any(|(_, _, r)| r.contains(point))
+                    );
+                    assert!(app.instrument_ui.selected_components.is_empty());
+                    let original = serde_json::to_value(&app.session.project).unwrap();
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(point), event(point, true, false)],
+                    );
+                    let mut events = vec![event(point, false, false)];
+                    if immediate {
+                        events.push(component_delete_key(
+                            egui::Key::A,
+                            false,
+                            egui::Modifiers::COMMAND,
+                        ));
+                    }
+                    frame(&mut app, &ctx, events);
+                    if !immediate {
+                        assert!(app.instrument_ui.component_focus.owns(&ctx));
+                        assert!(app.instrument_ui.selected_components.is_empty());
+                        // Real applications have idle paint frames between the click and shortcut.
+                        for _ in 0..3 {
+                            frame(&mut app, &ctx, vec![]);
+                        }
+                        frame(
+                            &mut app,
+                            &ctx,
+                            vec![component_delete_key(
+                                egui::Key::A,
+                                false,
+                                egui::Modifiers::COMMAND,
+                            )],
+                        );
+                    }
+                    assert_eq!(
+                        app.instrument_ui.selected_components,
+                        slots.iter().map(|(id, c, _)| (*id, *c)).collect(),
+                        "main={main}, compact={compact}, immediate={immediate}"
+                    );
+                    assert_eq!(
+                        serde_json::to_value(&app.session.project).unwrap(),
+                        original
+                    );
+                    assert!(!app.dirty);
+                }
+            }
+        }
+    }
+}

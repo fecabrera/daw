@@ -3072,93 +3072,114 @@ fn effect_delete_removes_selected_units_and_preserves_survivors_and_clips() {
     }
 }
 #[test]
-fn effect_delete_respects_focus_modifiers_modal_and_drag_guards() {
-    for guard in [
-        "catalog",
-        "outside",
-        "surrender",
-        "window",
-        "modal",
-        "disabled",
-        "drag",
-        "pointer",
-        "repeat",
-        "modifier",
-        "view",
-        "text",
-    ] {
-        let (mut app, _, ctx, ids) = chain_fixture(false, false);
-        let point = app.effects_bounds.units[0].header.center();
-        click(&mut app, &ctx, point);
-        assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
-        let original = app.session.project.clone();
-        app.dirty = false;
-        let mut modifiers = egui::Modifiers::NONE;
-        match guard {
-            "catalog" => {
-                let point = app.effects_bounds.entry.center();
-                click(&mut app, &ctx, point);
+fn effect_shortcuts_respect_focus_modifiers_modal_and_drag_guards() {
+    for select_all in [false, true] {
+        let key = if select_all {
+            egui::Key::A
+        } else {
+            egui::Key::Delete
+        };
+        for guard in [
+            "catalog",
+            "outside",
+            "surrender",
+            "window",
+            "modal",
+            "disabled",
+            "drag",
+            "pointer",
+            "repeat",
+            "modifier",
+            "view",
+            "text",
+        ] {
+            let (mut app, _, ctx, ids) = chain_fixture(false, false);
+            let point = app.effects_bounds.units[0].header.center();
+            click(&mut app, &ctx, point);
+            assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+            let original = app.session.project.clone();
+            app.dirty = false;
+            let mut modifiers = if select_all {
+                egui::Modifiers::COMMAND
+            } else {
+                egui::Modifiers::NONE
+            };
+            match guard {
+                "catalog" => {
+                    let point = app.effects_bounds.entry.center();
+                    click(&mut app, &ctx, point);
+                }
+                "outside" => {
+                    let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
+                    click(&mut app, &ctx, point);
+                }
+                "surrender" => {
+                    let id = ctx.memory(|memory| memory.focused()).unwrap();
+                    ctx.memory_mut(|memory| memory.surrender_focus(id));
+                }
+                "modal" => app.unsaved_prompt = true,
+                "drag" => begin_effect_drag(&mut app, &ctx, point, point + Vec2::new(50.0, 0.0)),
+                "pointer" => {
+                    let point = app.effects_bounds.units[0].knobs[0][0].center();
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(point), button(point, true)],
+                    );
+                }
+                "repeat" => {
+                    ctx.input_mut(|input| {
+                        input.keys_down.insert(key);
+                    });
+                }
+                "modifier" => {
+                    modifiers = if select_all {
+                        egui::Modifiers {
+                            shift: true,
+                            ..egui::Modifiers::COMMAND
+                        }
+                    } else {
+                        egui::Modifiers::CTRL
+                    }
+                }
+                "view" => app.set_view_mode(ViewMode::Mixer, &ctx),
+                "text" => {
+                    app.track_name_edit = Some(TrackNameEdit {
+                        track: original.tracks[0].id,
+                        text: original.tracks[0].name.clone(),
+                        focus: false,
+                    });
+                }
+                _ => {}
             }
-            "outside" => {
-                let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
-                click(&mut app, &ctx, point);
-            }
-            "surrender" => {
-                let id = ctx.memory(|memory| memory.focused()).unwrap();
-                ctx.memory_mut(|memory| memory.surrender_focus(id));
-            }
-            "modal" => app.unsaved_prompt = true,
-            "drag" => begin_effect_drag(&mut app, &ctx, point, point + Vec2::new(50.0, 0.0)),
-            "pointer" => {
-                let point = app.effects_bounds.units[0].knobs[0][0].center();
-                frame(
-                    &mut app,
-                    &ctx,
-                    vec![egui::Event::PointerMoved(point), button(point, true)],
-                );
-            }
-            "repeat" => {
-                ctx.input_mut(|input| {
-                    input.keys_down.insert(egui::Key::Delete);
-                });
-            }
-            "modifier" => modifiers = egui::Modifiers::CTRL,
-            "view" => app.set_view_mode(ViewMode::Mixer, &ctx),
-            "text" => {
-                app.track_name_edit = Some(TrackNameEdit {
-                    track: original.tracks[0].id,
-                    text: original.tracks[0].name.clone(),
-                    focus: false,
-                });
-            }
-            _ => {}
+            let events = vec![
+                egui::Event::ModifiersChanged(modifiers),
+                effect_delete_key(key, guard == "repeat", modifiers),
+            ];
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    focused: guard != "window",
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.add_enabled_ui(guard != "disabled", |ui| app.show(ui));
+                },
+            );
+            output.textures_delta.clear();
+            assert_eq!(
+                app.session.project.tracks[0].effects, original.tracks[0].effects,
+                "{guard}"
+            );
+            assert_eq!(
+                serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
+                serde_json::to_value(&original.tracks[0].clips).unwrap(),
+                "{guard}"
+            );
+            assert!(app.selected_effects.len() <= 1, "{guard}");
+            assert!(!app.dirty, "{guard}");
         }
-        let events = vec![
-            egui::Event::ModifiersChanged(modifiers),
-            effect_delete_key(egui::Key::Delete, guard == "repeat", modifiers),
-        ];
-        let mut output = ctx.run_ui(
-            egui::RawInput {
-                focused: guard != "window",
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
-                events,
-                ..Default::default()
-            },
-            |ui| {
-                ui.add_enabled_ui(guard != "disabled", |ui| app.show(ui));
-            },
-        );
-        output.textures_delta.clear();
-        assert_eq!(
-            app.session.project.tracks[0].effects, original.tracks[0].effects,
-            "{guard}"
-        );
-        assert_eq!(
-            serde_json::to_value(&app.session.project.tracks[0].clips).unwrap(),
-            serde_json::to_value(&original.tracks[0].clips).unwrap(),
-            "{guard}"
-        );
-        assert!(!app.dirty, "{guard}");
     }
 }
 
@@ -4768,6 +4789,89 @@ fn bitcrusher_shared_controls_add_edit_reset_and_remove_on_every_target() {
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Delete, false);
             assert!(app.effect_chain(owner).unwrap().0.is_empty());
+        }
+    }
+}
+
+#[test]
+fn effect_select_all_uses_only_the_focused_chain_including_scrolled_units_without_edits() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            for collapsed in [false, true] {
+                let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+                let mut effects: Vec<_> = (0..8)
+                    .map(|_| daw_core::EffectInstance::equalizer())
+                    .collect();
+                for e in &mut effects {
+                    let daw_core::EffectSettings::Eq3(s) = &mut e.unit else {
+                        unreachable!()
+                    };
+                    s.collapsed = collapsed;
+                }
+                let ids: HashSet<_> = effects.iter().map(|e| e.id).collect();
+                if target == "master" {
+                    app.session.project.master.effects = effects;
+                    app.session.project.master.effects_compact = collapsed;
+                } else {
+                    app.session.project.tracks[0].effects = effects;
+                    app.session.project.tracks[0].effects_compact = collapsed;
+                }
+                frame(&mut app, &ctx, vec![]);
+                let point = app.effects_bounds.units[0].header.center();
+                click(&mut app, &ctx, point);
+                let original = serde_json::to_value(&app.session.project).unwrap();
+                let tracks = app.selected_tracks.clone();
+                let clips = app.selected_clips.clone();
+                app.dirty = false;
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![effect_delete_key(
+                        egui::Key::A,
+                        false,
+                        egui::Modifiers::COMMAND,
+                    )],
+                );
+                assert_eq!(app.selected_effects, ids, "{target} {collapsed}");
+                assert_eq!(app.selected_tracks, tracks);
+                assert_eq!(app.selected_clips, clips);
+                assert_eq!(
+                    serde_json::to_value(&app.session.project).unwrap(),
+                    original
+                );
+                assert!(!app.dirty);
+                // Empty lane space retains focus for Select All without a prior selection.
+                let blank = app.effects_bounds.chain.last().unwrap().1.right_center()
+                    + Vec2::new(10.0, 0.0);
+                if app.effects_bounds.lane_viewport.contains(blank) {
+                    click(&mut app, &ctx, blank);
+                    assert!(app.selected_effects.is_empty());
+                } else {
+                    app.selected_effects.clear();
+                }
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::A,
+                        physical_key: None,
+                        pressed: false,
+                        repeat: false,
+                        modifiers: egui::Modifiers::COMMAND,
+                    }],
+                );
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![effect_delete_key(
+                        egui::Key::A,
+                        false,
+                        egui::Modifiers::COMMAND,
+                    )],
+                );
+                assert_eq!(app.selected_effects, ids);
+                assert!(!app.dirty);
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-//! Click, focus and outline rules shared by installed effect and instrument units.
+//! Selection, keyboard and outline rules shared by installed effect and instrument units.
 use crate::{panels, selection_focus::SelectionFocus};
 use egui::{Rect, Response, Ui};
 
@@ -8,6 +8,12 @@ pub(super) fn clicked(ui: &Ui, rect: Rect, allowed: bool) -> bool {
         && ui.input(|input| {
             input.focused && input.pointer.button_clicked(egui::PointerButton::Primary)
         })
+}
+
+/// Cover the pane without sensing clicks or drags, so child controls keep their gestures.
+/// A zero-area target loses focus when egui reads its response after a lane-space click.
+pub(super) fn keyboard_focus(ui: &mut Ui, bounds: Rect, id: egui::Id) -> Response {
+    ui.interact(bounds, id, egui::Sense::focusable_noninteractive())
 }
 
 pub(super) fn retain_focus(ui: &Ui, response: &Response, pane: &SelectionFocus) {
@@ -55,48 +61,78 @@ pub(super) fn drag_group<T: Copy + Eq + std::hash::Hash>(
     }
 }
 
-/// A unit pane owns deletion keys even when a held key, modifier or drag blocks removal.
-/// Text editors keep their events; repeats cannot fall through to clip shortcuts.
-pub(super) fn delete_pressed(
+#[derive(Default)]
+pub(super) struct Shortcuts {
+    pub delete: bool,
+    pub select_all: bool,
+}
+
+/// Unit panes consume their shortcuts even when repeats or gestures block the action.
+/// Text editors retain their keys. Unrelated input must not change pane focus.
+pub(super) fn shortcuts(
     ui: &Ui,
     pane: &SelectionFocus,
     allowed: bool,
     dragging: bool,
-) -> bool {
+) -> Shortcuts {
     if !ui.input(|input| {
-        input.key_pressed(egui::Key::Delete) || input.key_pressed(egui::Key::Backspace)
+        input.key_pressed(egui::Key::Delete)
+            || input.key_pressed(egui::Key::Backspace)
+            || input.events.iter().any(|event| {
+                matches!(event,
+                egui::Event::Key { key: egui::Key::A, pressed: true, modifiers, .. }
+                    if modifiers.command || modifiers.ctrl || modifiers.mac_cmd)
+            })
     }) {
-        return false;
+        return Shortcuts::default();
     }
     let text_editing = ui
         .ctx()
         .memory(|memory| memory.focused())
         .is_some_and(|id| egui::TextEdit::load_state(ui.ctx(), id).is_some());
     if text_editing || pane.lost(ui.ctx(), true, false) {
-        return false;
+        return Shortcuts::default();
     }
-    let remove = allowed && ui.is_enabled() && !dragging && !ui.input(|i| i.pointer.any_down());
+    let active = allowed && ui.is_enabled() && !dragging && !ui.input(|i| i.pointer.any_down());
     ui.input_mut(|input| {
-        let mut delete = false;
+        let mut actions = Shortcuts::default();
         input.events.retain(|event| {
             if let egui::Event::Key {
-                key: egui::Key::Delete | egui::Key::Backspace,
+                key,
                 pressed: true,
                 repeat,
                 modifiers,
                 ..
             } = event
             {
-                delete |= remove
-                    && !repeat
-                    && !modifiers.alt
-                    && !modifiers.ctrl
-                    && !modifiers.command
-                    && !modifiers.mac_cmd;
-                return false;
+                match key {
+                    egui::Key::Delete | egui::Key::Backspace => {
+                        actions.delete |= active
+                            && !repeat
+                            && !modifiers.alt
+                            && !modifiers.ctrl
+                            && !modifiers.command
+                            && !modifiers.mac_cmd;
+                        return false;
+                    }
+                    egui::Key::A if modifiers.command || modifiers.ctrl || modifiers.mac_cmd => {
+                        actions.select_all |=
+                            active && !repeat && modifiers.matches_exact(egui::Modifiers::COMMAND);
+                        return false;
+                    }
+                    _ => {}
+                }
             }
             true
         });
-        delete
+        actions
     })
+}
+
+pub(super) fn select_all<T: Eq + std::hash::Hash>(
+    selected: &mut std::collections::HashSet<T>,
+    units: impl IntoIterator<Item = T>,
+) {
+    selected.clear();
+    selected.extend(units);
 }

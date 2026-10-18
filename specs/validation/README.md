@@ -2827,3 +2827,35 @@ Completed focused checks:
 `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline -- -D warnings`, `cargo build -p daw-cli --offline`, and `python3 tools/check_cli.py` pass. The reference-enabled standalone binary is rebuilt after the reference-disabled check. All 588 local Markdown links across 62 files and tracked/staged whitespace checks pass. `CARGO_NET_OFFLINE=true sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`; the app is not launched.
 
 Full-corpus listening, native root-note/job interaction, physical-device behavior, controlled cancellation timing, long-source/parallel-job memory stress, Windows and Linux checks remain open. Large shifts can lose out-of-band content and accumulate processing artifacts. Formants are not preserved. Resource admission covers known buffers and scratch, not native-library process RSS. Automated DSP, rendering and egui checks do not establish native or perceptual acceptance.
+
+## Select All in installed-unit lanes — 2026-10-18
+
+Command+A on macOS or Ctrl+A on Windows/Linux selects all installed units in the focused regular-layer, Main, track-effects, or Master-effects lane. Selection includes units outside the horizontal viewport. Effects and components share `unit_selection::shortcuts` and `unit_selection::select_all`. Empty lane space retains keyboard focus, and text editors retain their own Select All behavior. Selection remains outside project data and audio processing.
+
+Focused checks pass for both themes, compact/expanded rows, collapsed/expanded units, track/Master/Instrument effects targets, regular layers/Main, scrolled units, empty selections, empty-lane focus followed by component addition, unchanged project/track/clip state, and actual Macro text replacement after Select All. The shared effects shortcut guard check covers pane/window focus, catalog/other-pane focus, modal/disabled UI, active pointer/drag gestures, held repeats, extra modifiers, view changes, and name editing. Existing deletion guard coverage remains in that same check.
+
+Completed checks with the workspace Cargo cache:
+
+- `cargo fmt --all --check` and strict workspace Clippy pass.
+- `cargo test --workspace` passes: 880 tests pass, including all 462 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`. The running app was not relaunched.
+- Repository-relative documentation targets exist, and `git diff --check` passes.
+
+This UI-only change does not alter project data or audio processing. CLI smoke checks were not repeated. Native keyboard/trackpad, display-scale, device, Windows, and Linux checks were not performed. Automated egui input tests do not establish native shortcut delivery.
+
+## Select All after component-lane blank-space clicks — 2026-10-18
+
+A reported follow-up exposed a gap in the preceding validation: it tested a lane with no units and a cleared selection that retained unit focus, but did not test blank space in a populated component lane. A new input test failed on that path before the fix. The zero-area keyboard target lost focus when egui re-read its response after the off-target click.
+
+Component and effects lanes now reuse `unit_selection::keyboard_focus` for a pane-wide, non-interactive keyboard target. Blank-space clicks explicitly request lane focus. Component shortcut dispatch also resolves the clicked owner before handling a shortcut on the same release frame. Child controls retain clicks, drags, and text input.
+
+The regression test passes in both themes, on regular layers/Main, with compact/expanded rows, with intervening idle frames, and with Select All on the same frame as mouse release. It starts with no unit selection, checks retained pane focus, selects the complete installed group, and verifies unchanged project data. The full UI suite passes all 463 tests, including existing control, scrolling, selection, group drag/copy, deletion, text editing, and cancellation checks. This supersedes the preceding incomplete blank-space coverage claim.
+
+Completed checks with the workspace Cargo cache:
+
+- `cargo fmt --all --check` and strict workspace Clippy pass.
+- `cargo test --workspace` passes: 881 tests pass, including all 463 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`. The running app was not relaunched.
+- Repository-relative documentation targets exist, and `git diff --check` passes.
+
+Native keyboard/trackpad, display-scale, device, Windows, and Linux checks were not performed. The headless regression establishes the reproduced focus fix, not native shortcut delivery. CLI smoke checks were not repeated for this UI-only correction.

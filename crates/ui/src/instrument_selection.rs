@@ -13,12 +13,18 @@ impl DawUi {
             || self.strip_dragging
             || crate::strip_reorder::dragging(ui.ctx());
         let allowed = available && !dragging && !self.instrument_ui.dragging();
+        let mut focused_owner = None;
         for (owner, viewport) in &self.instrument_ui.component_viewports {
-            let keyboard = ui.interact(
-                Rect::from_center_size(viewport.center(), Vec2::ZERO),
+            let keyboard = crate::unit_selection::keyboard_focus(
+                ui,
+                *viewport,
                 ui.id().with((track, owner, "component-selection")),
-                Sense::focusable_noninteractive(),
             );
+            let mut pane = selection_focus::SelectionFocus::default();
+            pane.set(ui, *viewport, true);
+            if pane.owns(ui.ctx()) {
+                focused_owner = Some(*owner);
+            }
             if self
                 .instrument_ui
                 .selected_components
@@ -53,7 +59,9 @@ impl DawUi {
                     );
                 } else {
                     self.instrument_ui.selected_components.clear();
+                    keyboard.request_focus();
                 }
+                focused_owner = Some(*owner);
                 self.instrument_ui.component_focus.set(ui, *viewport, true);
                 crate::unit_selection::retain_focus(
                     ui,
@@ -76,13 +84,26 @@ impl DawUi {
                 .iter()
                 .any(|(id, unit, _)| (*id, *unit) == *key)
         });
-        let delete = crate::unit_selection::delete_pressed(
+        let actions = crate::unit_selection::shortcuts(
             ui,
             &self.instrument_ui.component_focus,
             self.effects_editing_enabled(ui),
             self.component_drag.is_some() || self.effects_drag.is_some() || dragging,
         );
-        if delete
+        if actions.select_all
+            && let Some(owner) = focused_owner
+        {
+            crate::unit_selection::select_all(
+                &mut self.instrument_ui.selected_components,
+                self.instrument_ui
+                    .component_slots
+                    .iter()
+                    .filter(|(id, _, _)| *id == owner)
+                    .map(|(id, unit, _)| (*id, *unit)),
+            );
+            ui.ctx().request_repaint();
+        }
+        if actions.delete
             && let Some((owner, _)) = self
                 .instrument_ui
                 .selected_components

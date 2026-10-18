@@ -4,7 +4,9 @@ Use header dragging to arrange installed instrument components and effects. Use 
 
 ## Select and remove
 
-Click a unit to select it. Shift-click adds or removes units from the selection within the same lane. Click empty lane space to clear the selection. With that lane focused, Delete or Backspace removes selected units. Right-click a header for its removal menu.
+Click a unit to select it. Shift-click adds or removes units from the selection within the same lane. Click empty lane space to focus the lane and clear the selection. You do not need to select a unit first. With that lane focused, Command+A on macOS or Ctrl+A on Windows/Linux selects all installed units in that lane, including units outside the visible area. This works in regular layers, Main, and track or Master effects lanes. Delete or Backspace removes selected units. Right-click a header for its removal menu.
+
+Select All changes only the unit selection. It does not select units in other lanes or change the project. In a text field, the shortcut selects its text. Unit selection shortcuts are unavailable during active gestures, dialogs, or background work.
 
 Envelope, LFO, Macro, and Amplitude retain settings when removed; add them from the catalog to restore them. Removing Oscillator discards its sources and pitch connections. Removing Sampler discards its sample settings. Removing a component does not delete its external recording.
 

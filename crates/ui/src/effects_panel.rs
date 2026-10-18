@@ -447,13 +447,9 @@ impl DawUi {
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
         lane.set_clip_rect(content.intersect(ui.clip_rect()));
+        let keyboard_id = lane.id().with("effect-lane-keyboard-focus");
+        let keyboard_focus = crate::unit_selection::keyboard_focus(&mut lane, strip, keyboard_id);
         self.effects_lane_focus.set(&lane, strip, true);
-        // A zero-area keyboard target retains pane focus without covering unit hits.
-        let keyboard_focus = lane.interact(
-            Rect::from_center_size(strip.center(), Vec2::ZERO),
-            lane.id().with("effect-lane-keyboard-focus"),
-            Sense::focusable_noninteractive(),
-        );
         let scrolled = lane
             .add_enabled_ui(allowed, |ui| {
                 egui::ScrollArea::horizontal()
@@ -680,8 +676,9 @@ impl DawUi {
                 .any(|(_, rect)| lane.rect_contains_pointer(*rect))
         {
             self.selected_effects.clear();
+            keyboard_focus.request_focus();
         }
-        self.delete_effect_selection(&lane, effects, allowed, &keyboard_focus);
+        self.effect_selection_shortcuts(&lane, effects, allowed, &keyboard_focus);
         self.finish_effect_drag(
             &lane,
             effects,
@@ -695,14 +692,14 @@ impl DawUi {
         }
     }
 
-    fn delete_effect_selection(
+    fn effect_selection_shortcuts(
         &mut self,
         ui: &egui::Ui,
         effects: &mut Vec<daw_core::EffectInstance>,
         allowed: bool,
         keyboard_focus: &egui::Response,
     ) {
-        let delete = crate::unit_selection::delete_pressed(
+        let actions = crate::unit_selection::shortcuts(
             ui,
             &self.effects_lane_focus,
             allowed,
@@ -710,7 +707,14 @@ impl DawUi {
                 || self.strip_dragging
                 || crate::strip_reorder::dragging(ui.ctx()),
         );
-        if delete && !self.selected_effects.is_empty() {
+        if actions.select_all {
+            crate::unit_selection::select_all(
+                &mut self.selected_effects,
+                effects.iter().map(|e| e.id),
+            );
+            ui.ctx().request_repaint();
+        }
+        if actions.delete && !self.selected_effects.is_empty() {
             effects.retain(|effect| !self.selected_effects.contains(&effect.id));
             self.selected_effects.clear();
             // Keep focus on the pane after its focused unit disappears. A held Delete
