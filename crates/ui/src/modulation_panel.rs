@@ -379,10 +379,9 @@ pub(super) fn marker(
             "active"
         };
         lines.push(format!(
-            "{}: {:+.2} {} ({reason})",
+            "{}: {} ({reason})",
             source.map_or("None / unavailable", |s| s.label.as_str()),
-            route.amount,
-            parameter.unit()
+            crate::parameter_knobs::format_amount(parameter, route.amount)
         ));
         if reason != "active" {
             continue;
@@ -790,6 +789,9 @@ mod tests {
             [1000.0; 2]
         );
         for (parameter, base, amount, expected) in [
+            (EnvelopeAttack, 5.0, 2.0, [5.0, 20.0]),
+            (EnvelopeDecay, 1000.0, -1.0, [500.0, 1000.0]),
+            (EnvelopeRelease, 30.0, 6.0, [30.0, 1920.0]),
             (OttLowFrequency, 250.0, 6.0, [250.0, 2000.0]),
             (OttHighFrequency, 2500.0, -6.0, [200.0, 2500.0]),
             (OttLowDepth, 1.0, -1.0, [0.0, 1.0]),
@@ -848,6 +850,23 @@ mod tests {
                 .range,
                 expected
             );
+            if matches!(parameter, EnvelopeAttack | EnvelopeDecay | EnvelopeRelease) {
+                let tooltip = marker(
+                    &[route(&sources[0], parameter, amount)],
+                    &sources,
+                    parameter,
+                    base,
+                    true,
+                    None,
+                    [None; 2],
+                )
+                .unwrap()
+                .tooltip;
+                assert!(
+                    tooltip.contains(&crate::parameter_knobs::format_amount(parameter, amount))
+                );
+                assert!(!tooltip.contains("oct"));
+            }
         }
     }
     #[test]

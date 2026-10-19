@@ -271,6 +271,24 @@ fn signed_db(value: f32) -> String {
 fn signed_octaves(value: f32) -> String {
     format!("{value:+.2} oct")
 }
+// Presentation only: routes and the shared amount adapter retain logarithmic offsets.
+fn time_multiplier(value: f32) -> String {
+    let ratio = 2.0_f32.powf(value);
+    let text = if ratio < 1.0 {
+        format!("{ratio:.6}")
+    } else {
+        format!("{ratio:.2}")
+    };
+    format!("×{}", text.trim_end_matches('0').trim_end_matches('.'))
+}
+pub(super) fn format_amount(parameter: Parameter, value: f32) -> String {
+    match parameter {
+        Parameter::EnvelopeAttack | Parameter::EnvelopeDecay | Parameter::EnvelopeRelease => {
+            time_multiplier(value)
+        }
+        _ => format!("{value:+.2} {}", parameter.unit()),
+    }
+}
 fn signed_q(value: f32) -> String {
     format!("Q {value:+.2}")
 }
@@ -401,10 +419,10 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−24", "+24"],
             ),
-            Parameter::EnvelopeAttack
-            | Parameter::EnvelopeDecay
-            | Parameter::EnvelopeRelease
-            | Parameter::StereoSpreadLowerFrequency
+            Parameter::EnvelopeAttack | Parameter::EnvelopeDecay | Parameter::EnvelopeRelease => {
+                (AmountMapping::Octaves, time_multiplier, ["×1/64", "×64"])
+            }
+            Parameter::StereoSpreadLowerFrequency
             | Parameter::StereoSpreadUpperFrequency
             | Parameter::OttLowFrequency
             | Parameter::OttHighFrequency

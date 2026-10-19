@@ -1548,6 +1548,9 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
             assert!(get(&app).modulation_open);
             assert!(app.dirty);
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            label(&shapes, "×1");
+            label(&shapes, "×1/64");
+            label(&shapes, "×64");
             label(&shapes, "Source");
             label(&shapes, "Destination");
             let none = label(&shapes, "None");

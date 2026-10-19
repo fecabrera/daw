@@ -26,10 +26,12 @@ Use the secondary dot in the Envelope header to open its modulation controls. Ad
 
 | Destination | Amount | Effect |
 | --- | --- | --- |
-| Attack time, Decay time, Release time | −6 to +6 octaves | +1 doubles the time; −1 halves it. Times stay within 0–10 seconds. A base time of zero stays zero. |
+| Attack time, Decay time, Release time | ×1/64 to ×64 | ×1 is neutral; ×2 doubles the time; ×0.5 halves it. Times stay within 0–10 seconds. A base time of zero stays zero. |
 | Attack · Note, Decay · Note | −100% to +100% of the note | Add percentage points to the saved note fraction and clamp to 0–100%. |
 | Sustain | −100% to +100% | Add percentage points and clamp the held level to 0–100%. |
 | Attack curve, Decay curve, Release curve | −100% to +100% | Change curve strength within 0–100%. Linear shapes ignore strength. |
+
+The time multiplier describes the effect at full positive source output. For example, ×4 turns a 1-second Decay into 4 seconds at full output; a source at zero leaves the base time unchanged. At half source output, ×4 gives ×2. Bipolar sources can also move time in the opposite direction. Double-click Amount to reset to ×1. Existing projects keep the same sound and knob behavior.
 
 Time and note-relative destinations remain separate, so switching Timing keeps both sets of connections. Attack/Decay use the active Timing setting. Release always uses milliseconds. Timing, Mode, and curve shapes remain discrete controls.
 

@@ -82,10 +82,11 @@ Every expanded modulation strip labels its two dropdowns Source and Destination.
 
 All destination-owned modulation amount strips use `parameter_knobs.rs`. Its `destination` function is the normal knob definition used by Sampler, Amplitude, Auto-filter, Drive, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, and Bitcrusher; Pitch returns the same `knobs::pitch_spec` used by oscillators. Its `amount` function derives the signed amount control from that definition. New targets must register both their destination definition and their amount-unit mapping here. Do not create an unrelated generic amount knob in a unit panel.
 
-Amounts retain their existing stored units, bounds, and routing meaning. Zero remains neutral and double-click resets to zero. Endpoint labels and signed readouts show amount units, so a Frequency amount never pretends to be an absolute Hz setting. Idle rendering does not round saved fractional values.
+Amounts retain their existing stored units, bounds, and routing meaning. Zero remains neutral and double-click resets to zero. Endpoint labels and readouts show amount units (Envelope Time shows the corresponding positive multiplier), so a Frequency amount never pretends to be an absolute Hz setting. Idle rendering does not round saved fractional values.
 
 | Target | Saved amount range | Shared style and interaction |
 | --- | --- | --- |
+| Envelope Attack / Decay / Release Time | ±6 logarithmic octaves; displayed ×1/64 to ×64 | Reuse the shared octave adapter and native time scale without changing interaction. Display `2^amount` in readouts, tooltips, and assignment markers; zero/reset displays ×1. |
 | Limiter Input / Ceiling | ±24 dB | Reuse the native linear dB scales and 0.1 dB steps; Input retains its 6 dB reference marks. |
 | Limiter Release | ±6 octaves of duration | Reuse the native logarithmic duration scale through the shared octave adapter, with 1/24-octave keyboard steps. |
 | Limiter Lookahead | ±10 ms | Reuse the native linear millisecond scale and 0.1 ms steps, with neutral zero. |

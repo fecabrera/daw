@@ -2942,3 +2942,18 @@ Executed checks:
 - Changed documentation links resolve; working and cached diff checks pass.
 
 Native UI, display-scale, audio-device, Windows, and Linux checks were not performed. Existing note/seek reconstruction limits remain unchanged.
+
+## Envelope time multiplier display — 2026-10-19
+
+Attack/Decay/Release Time modulation amounts display multipliers in their shared knob readouts, tooltips, endpoints, and assignment-marker tooltips. Zero displays ×1; saved −6..+6 offsets display ×1/64..×64. Note fractions retain percentage displays. Source weighting, saved settings, DSP, smoothing, limits, and amount interaction mapping are unchanged.
+
+The regression check compares the existing shared time adapter's positions, keyboard results, drag sensitivity, endpoints, and reset value while checking multiplier formatting. Marker checks retain actual duration ranges and verify multiplier tooltips. Headless panel checks verify neutral and endpoint labels for regular/Main Envelopes in both themes.
+
+Executed checks:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
+- `cargo test --workspace` passes: 913 tests, no failures, and two existing expanded time-stretch matrices ignored. All 474 UI tests pass.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`; the running app was not restarted.
+- Changed documentation links resolve; working and cached diff checks pass.
+
+Native UI, display-scale, Windows, and Linux checks were not performed. This presentation change does not change the audio processing path; no new device check or CLI smoke run was performed.

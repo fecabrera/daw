@@ -370,3 +370,39 @@ fn all_amount_controls_retain_idle_values_and_share_keyboard_disabled_reset_and_
         }
     }
 }
+
+#[test]
+fn envelope_time_multiplier_display_preserves_saved_amounts_and_existing_interaction() {
+    for parameter in [P::EnvelopeAttack, P::EnvelopeDecay, P::EnvelopeRelease] {
+        let spec = parameter_knobs::amount(parameter);
+        let previous = parameter_knobs::destination(parameter)
+            .modulation_amount(parameter.limit(), AmountMapping::Octaves);
+        assert_eq!((spec.min, spec.max, spec.reset), (-6.0, 6.0, 0.0));
+        for (saved, display) in [
+            (-6.0, "×0.015625"),
+            (-1.0, "×0.5"),
+            (0.0, "×1"),
+            (2.0, "×4"),
+            (6.0, "×64"),
+        ] {
+            assert_eq!((spec.format)(saved), display);
+            assert_eq!(spec.value_label.unwrap()(saved), display);
+            assert_eq!(parameter_knobs::format_amount(parameter, saved), display);
+            assert_eq!(spec.normalized(saved), previous.normalized(saved));
+            assert_eq!(
+                spec.keyboard_value(saved, 1.0).to_bits(),
+                previous.keyboard_value(saved, 1.0).to_bits()
+            );
+            assert_eq!(
+                spec.keyboard_value(saved, -1.0).to_bits(),
+                previous.keyboard_value(saved, -1.0).to_bits()
+            );
+        }
+        assert_eq!(spec.endpoint_labels, Some(["×1/64", "×64"]));
+        assert_eq!(spec.drag_factor(), previous.drag_factor());
+        for step in 0..=1000 {
+            let position = step as f32 / 1000.0;
+            assert_eq!(spec.value(position), previous.value(position));
+        }
+    }
+}
