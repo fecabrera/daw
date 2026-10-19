@@ -306,8 +306,8 @@ impl LayerVoice {
                     s.gain += (s.gain_target - s.gain) / s.gain_remaining as f32;
                     s.gain_remaining -= 1;
                 }
+                s.source.set_base_gain(s.gain);
                 process_modulation(&mut s.source, &mut s.routes, 0.0, local, shared, context)
-                    * s.gain
             })
             .sum::<f32>();
         let mut stereo = self.sampler.as_mut().map_or([sources; 2], |s| {
@@ -1239,9 +1239,14 @@ impl MidiTrackRuntime {
             .map(|l| l.amplitude.effective_gain())
             .fold(0.0, f32::max)
     }
-    /// Active-voice transpose extrema, excluding MIDI note pitch. No UI-side clock or synthesis.
-    pub fn oscillator_pitch(&self, layer: Id, oscillator: Id) -> [f32; 2] {
-        let mut range = [f32::INFINITY, f32::NEG_INFINITY];
+    /// Active-voice transpose and gain (dB) extrema. Exclude MIDI pitch, velocity and layer mixing.
+    pub fn oscillator_values(&self, layer: Id, oscillator: Id) -> [f32; 4] {
+        let mut range = [
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+        ];
         for voice in self.voices.iter().filter(|v| v.active_last_sample) {
             if let Some(source) = self
                 .layer_index
@@ -1257,6 +1262,14 @@ impl MidiTrackRuntime {
                     + source.source.pitch_offset();
                 range[0] = range[0].min(pitch);
                 range[1] = range[1].max(pitch);
+                let gain = source.source.effective_gain();
+                let db = if gain > 0.0 {
+                    20.0 * gain.log10()
+                } else {
+                    daw_core::SILENT_GAIN_DB
+                };
+                range[2] = range[2].min(db);
+                range[3] = range[3].max(db);
             }
         }
         range.map(|v| if v.is_finite() { v } else { f32::NAN })

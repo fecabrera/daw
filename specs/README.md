@@ -36,7 +36,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 ## Modulation and audio
 
 - [Shared modulation contract](modulation/contract.md).
-- [Oscillator pitch modulation](modulation/oscillator-pitch.md).
+- [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).
 - [Timestretch, offline pitch, and independent implementation rule](audio/timestretch.md).
 - [Timestretch acceptance plan](acceptance/timestretch.md).
 

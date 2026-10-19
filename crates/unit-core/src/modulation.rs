@@ -134,6 +134,7 @@ pub enum ModulationParameter {
     LimiterLookahead,
     LimiterCeiling,
     SamplerGain,
+    OscillatorGain,
     CompressorThreshold,
     CompressorRatio,
     CompressorAttack,
@@ -141,6 +142,7 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    pub const OSCILLATOR: [Self; 2] = [Self::Pitch, Self::OscillatorGain];
     pub const ENVELOPE: [Self; 9] = [
         Self::EnvelopeAttack,
         Self::EnvelopeDecay,
@@ -266,7 +268,7 @@ impl ModulationParameter {
             Self::LimiterRelease => "Release",
             Self::LimiterLookahead => "Lookahead",
             Self::LimiterCeiling => "Ceiling",
-            Self::SamplerGain => "Gain",
+            Self::SamplerGain | Self::OscillatorGain => "Gain",
             Self::CompressorThreshold => "Threshold",
             Self::CompressorRatio => "Ratio",
             Self::CompressorAttack => "Attack",
@@ -331,7 +333,8 @@ impl ModulationParameter {
             Self::Frequency | Self::LfoRate | Self::EqLowFrequency | Self::EqHighFrequency => 6.0,
             Self::ColorFrequency => 3.0,
             Self::Resonance | Self::EqLowQ | Self::EqHighQ => 10.0,
-            Self::SamplerGain
+            Self::OscillatorGain
+            | Self::SamplerGain
             | Self::Level
             | Self::Volume
             | Self::EqLowGain
@@ -377,7 +380,8 @@ impl ModulationParameter {
             | Self::EqLowFrequency
             | Self::EqHighFrequency => "oct",
             Self::Resonance | Self::EqLowQ | Self::EqHighQ => "Q",
-            Self::SamplerGain
+            Self::OscillatorGain
+            | Self::SamplerGain
             | Self::Level
             | Self::Volume
             | Self::EqLowGain

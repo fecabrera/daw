@@ -476,10 +476,11 @@ impl Renderer {
                 {
                     return None;
                 }
-                let [min, max] = self.midi[index]
-                    .as_ref()?
-                    .oscillator_pitch(layer, oscillator);
-                Some(parameter_snapshot([min, max]))
+                Some(parameter_snapshot(
+                    self.midi[index]
+                        .as_ref()?
+                        .oscillator_values(layer, oscillator),
+                ))
             }
             ModulationTarget::Amplitude { track, layer } => {
                 let index = *self.track_index.get(&track)?;

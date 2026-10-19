@@ -944,10 +944,14 @@ impl DawUi {
             .oscillators
             .iter()
             .enumerate()
-            .map(|(i, s)| crate::modulation_panel::Target {
-                parameter: daw_core::ModulationParameter::Pitch,
-                id: Some(s.id),
-                label: format!("Osc {} · Pitch", i + 1),
+            .flat_map(|(i, s)| {
+                daw_core::ModulationParameter::OSCILLATOR.map(|parameter| {
+                    crate::modulation_panel::Target {
+                        parameter,
+                        id: Some(s.id),
+                        label: format!("Osc {} · {}", i + 1, parameter.label()),
+                    }
+                })
             })
             .collect();
         let unit_enabled = layer.oscillator_enabled;
@@ -987,9 +991,10 @@ impl DawUi {
                     for (index, oscillator) in oscillators.iter_mut().enumerate() {
                         let target_routes: Vec<_> = routes.iter().filter(|r| r.target == Some(oscillator.id)).copied().collect();
                         let live = self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Oscillator { track, layer: layer_id, oscillator: oscillator.id }))
-                            .map_or([None; 2], |v| [v[0], v[1]].map(|v| v.is_finite().then_some(v)));
+                            .map_or([None; 4], |v| [v[0], v[1], v[2], v[3]].map(|v| v.is_finite().then_some(v)));
                         let marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::Pitch,
-                            f32::from(oscillator.transpose), unit_enabled && !oscillator.muted, None, live);
+                            f32::from(oscillator.transpose), unit_enabled && !oscillator.muted, None, [live[0], live[1]]);
+                        let gain_marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::OscillatorGain, oscillator.gain_db, unit_enabled && !oscillator.muted, None, [live[2], live[3]]);
                         let strip = ui.scope_builder(
                             egui::UiBuilder::new()
                                 .id_salt(("oscillator-strip", track, oscillator.id))
@@ -1029,7 +1034,7 @@ impl DawUi {
                                                             ui,
                                                             &mut oscillator.gain_db,
                                                             knobs::CHOICE_SIZE,
-                                                            knobs::gain_with_markers,
+                                                            |ui, value| ui.add(knobs::Knob::new(value, knobs::marked_gain_spec()).modulated(gain_marker.as_ref(), modulation_open)),
                                                         ),
                                                     ]);
                                                 }

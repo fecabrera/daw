@@ -214,6 +214,7 @@ pub(super) fn destination(parameter: Parameter) -> KnobSpec {
             .endpoint_labels("0.01", "20"),
         Parameter::Pitch => knobs::pitch_spec(),
         Parameter::Amplitude => knobs::marked_gain_spec(),
+        Parameter::OscillatorGain => knobs::marked_gain_spec().named("Oscillator gain"),
         Parameter::SamplerGain => knobs::marked_gain_spec().named("Sampler gain"),
         Parameter::Level => knobs::marked_gain_spec().named("Filter output level"),
         Parameter::Volume => knobs::marked_gain_spec().named("Drive volume"),
@@ -389,7 +390,10 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 ["−48", "+48"],
             ),
             Parameter::Amplitude => (AmountMapping::Depth, signed_depth, ["−100", "+100"]),
-            Parameter::SamplerGain | Parameter::Level | Parameter::Volume => (
+            Parameter::OscillatorGain
+            | Parameter::SamplerGain
+            | Parameter::Level
+            | Parameter::Volume => (
                 AmountMapping::Offset {
                     origin: 0.0,
                     direction: -1.0,

@@ -1,4 +1,4 @@
-# Oscillator pitch modulation
+# Oscillator pitch and gain modulation
 
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/modulation/oscillator-pitch.md).
 
@@ -41,3 +41,11 @@ Instrument version 3 saves each oscillator's `id`, layer-owned `oscillator_modul
 Older projects default to no pitch routes and closed controls. Missing oscillator IDs migrate deterministically in original list order, skipping explicit IDs. This preserves identical legacy sources without duplicate identities and gives repeated loads the same IDs. Explicit null, malformed, nil, or duplicate IDs are rejected by deserialization or validation. Saved IDs are never regenerated. Save/reopen, Save As, sample-rate changes, and track duplication preserve routing and presentation.
 
 All route vectors, source instances, and telemetry handles are prepared outside the audio callback. Sampling, smoothing, telemetry publication, reset, and compatible retargeting allocate nothing and perform no file I/O or locking.
+
+## Per-oscillator Gain
+
+Implemented on 2026-10-19. The same stable oscillator target ID accepts `OscillatorGain` alongside `Pitch`, declared once in `ModulationParameter::OSCILLATOR`. Target pickers enumerate `Osc N · Pitch` and `Osc N · Gain` for every strip. Routes use the existing layer-owned vector, validation, source scope, source cache, route ramps, transfer/removal logic, and saved expansion state. Existing projects need no migration; missing connections remain empty. Gain amounts are signed dB in −24..+24. Invalid targets and amounts fail the existing transaction validation.
+
+The portable Oscillator resolves both offsets through the typed entry point and one shared two-value additive smoother. The host supplies its existing 5 ms smoothed linear base gain (including source mute) through `set_base_gain`; the portable unit applies `base_gain × 10^(offset / 20)` before voice velocity and Amplitude. Sum limits are ±96 dB before conversion, and final gain is limited to +12 dB. Exactly zero base gain remains silent. Neutral offsets preserve the former sample multiplication exactly. `SourceUnit::next_sample` retains its standalone unmodulated waveform API. No routing, lookup, allocation, or new gain ramp is added to the host.
+
+Compatible updates retain both smoothers and route history by oscillator UUID. Reordering, moves and copies reuse the shared targeted component transfer rules; copies receive fresh oscillator/route IDs. Gain routes do not own note release. Oscillator telemetry retains Pitch extrema in slots 0–1 and adds processed Gain extrema in dB in slots 2–3, excluding velocity and later mixing. The Gain knob and amount strip reuse the common gain profile; shared markers, range calculations, source metadata and click-to-open behavior accept per-note and shared Gain sources. No UI estimate replaces processed telemetry.

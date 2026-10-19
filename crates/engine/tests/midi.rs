@@ -2380,6 +2380,79 @@ fn pitch_plan(rate: u32, shared: bool) -> (RenderPlan, [daw_engine::ModulationTa
 }
 
 #[test]
+fn oscillator_gain_targets_preserve_render_parity_extrema_and_history_without_allocation() {
+    for rate in SAMPLE_RATES {
+        for shared in [false, true] {
+            let (mut p, targets) = pitch_plan(rate, shared);
+            let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+            for route in &mut layer.oscillator_modulations {
+                route.parameter = ModulationParameter::OscillatorGain;
+            }
+            p.project.validate().unwrap();
+            let count = (rate as f32 * 0.4) as usize;
+            let mut expected = vec![[0.0; 2]; count];
+            Renderer::new(p.clone()).render_offline(&mut expected);
+            let mut live = Renderer::new(p.clone());
+            live.play();
+            ALLOCATIONS.with(|v| v.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            for (i, sample) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if i >= (rate / 200) as usize {
+                    assert_eq!(actual, *sample);
+                }
+            }
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            let a = live.modulation_values(targets[0]).unwrap();
+            let b = live.modulation_values(targets[1]).unwrap();
+            assert!(a[0].abs() < 1e-4 && (b[0] + 12.0).abs() < 1e-4);
+            if shared {
+                assert!((a[2] - a[3]).abs() < 1e-4);
+                assert!(((a[2] + 12.0) + 2.0 * (b[2] + 12.0)).abs() < 1e-3);
+                assert!((a[2] + 12.0).abs() > 0.5);
+            } else {
+                assert!(a[3] - a[2] > 7.0, "{a:?}");
+                assert!(((a[2] + 12.0) + 2.0 * (b[3] + 12.0)).abs() < 1e-3);
+            }
+            let mut sought = [[0.0; 2]; 128];
+            p.render(count as u64 - 1000, &mut sought);
+            assert_eq!(&sought[..], &expected[count - 1000..count - 872]);
+            let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+            layer.oscillators.reverse();
+            layer.oscillator_modulations.reverse();
+            let mut reference = Renderer::new(live.plan.clone());
+            reference.play();
+            for _ in 0..count {
+                reference.next_sample();
+            }
+            let mut next = Renderer::new(p.clone());
+            ALLOCATIONS.with(|v| v.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            next.inherit(&mut live);
+            for _ in 0..1000 {
+                assert_eq!(next.next_sample(), reference.next_sample());
+            }
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            // Stable targets survive reordering. Disabling routes returns to the saved gains.
+            let layer = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+            for route in &mut layer.oscillator_modulations {
+                route.enabled = false;
+            }
+            let mut off = Renderer::new(p);
+            off.inherit(&mut next);
+            for _ in 0..rate / 20 {
+                off.next_sample();
+            }
+            for target in targets {
+                assert!((off.modulation_values(target).unwrap()[2] + 12.0).abs() < 1e-3);
+            }
+        }
+    }
+}
+
+#[test]
 fn oscillator_pitch_targets_share_local_envelopes_and_main_lfos_with_live_export_and_seek_parity() {
     for rate in SAMPLE_RATES {
         for shared in [false, true] {

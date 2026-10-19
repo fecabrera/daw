@@ -3528,7 +3528,8 @@ fn instrument_main_bus_and_shared_source_connections_survive_save_as_and_duplica
 }
 
 #[test]
-fn oscillator_pitch_ids_routes_and_open_controls_survive_save_as_duplicate_and_rate_changes() {
+fn oscillator_pitch_and_gain_ids_routes_and_open_controls_survive_save_as_duplicate_and_rate_changes()
+ {
     use daw_core::{
         LfoInstance, Modulation, ModulationParameter, ModulationSourceId, OscillatorSettings,
     };
@@ -3550,6 +3551,9 @@ fn oscillator_pitch_ids_routes_and_open_controls_survive_save_as_duplicate_and_r
         r.target = Some(s.id);
         r.amount = amount;
         l.oscillators.push(s);
+        l.oscillator_modulations.push(r);
+        r.id = daw_core::Id::new_v4();
+        r.parameter = ModulationParameter::OscillatorGain;
         l.oscillator_modulations.push(r);
     }
     session.save(&f.0.join("pitch")).unwrap();

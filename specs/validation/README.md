@@ -2926,3 +2926,19 @@ Executed checks:
 - Changed documentation links resolve; working and cached diff checks pass.
 
 Native UI, display-scale, device, Windows, and Linux checks were not performed.
+
+## Oscillator Gain modulation — 2026-10-19
+
+Each stable oscillator target now accepts Gain as well as Pitch through the shared modulation destination contract. Gain uses signed ±24 dB amounts, cached per-note/shared source values, existing route ramps, the common additive smoother, and portable gain conversion. It retains host gain/mute ramps, exact base silence, and the +12 dB processed-gain ceiling. The UI reuses targeted strips, Gain-derived amount controls, markers, possible-range arcs, and processed active-voice extrema. Existing projects keep their settings and default to no Gain connections.
+
+Portable checks cover all six processing rates, local/shared input, neutral audio, target isolation, signed cancellation, exact silence, ceiling bounds, and reset. Engine checks cover live/export/random-access parity, polyphonic extrema, stable-ID reordering, route disabling, retained history, and zero callback allocations. Storage checks retain Pitch/Gain connections and open controls through save/reopen, Save As, track duplication, and rate changes. Headless UI checks cover target selection and marker opening in both themes.
+
+Executed checks:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
+- `cargo test --workspace` passes: 912 tests, no failures, and two existing expanded time-stretch matrices ignored. All 473 UI tests pass.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` pass.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`; the running app was not restarted.
+- Changed documentation links resolve; working and cached diff checks pass.
+
+Native UI, display-scale, audio-device, Windows, and Linux checks were not performed. Existing note/seek reconstruction limits remain unchanged.

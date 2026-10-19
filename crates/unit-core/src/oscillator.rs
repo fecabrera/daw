@@ -153,6 +153,15 @@ mod tests {
         l.oscillator_modulations[0].amount = f32::NAN;
         assert!(!l.valid_modulations());
         l.oscillator_modulations[0].amount = 1.0;
+        l.oscillator_modulations[0].parameter = ModulationParameter::OscillatorGain;
+        l.oscillator_modulations[0].amount = 24.0;
+        assert!(l.valid_modulations());
+        let saved = serde_json::to_string(&l).unwrap();
+        let loaded: crate::InstrumentLayerSettings = serde_json::from_str(&saved).unwrap();
+        assert_eq!(&loaded, l);
+        l.oscillator_modulations[0].amount = 24.01;
+        assert!(!l.valid_modulations());
+        l.oscillator_modulations[0].amount = 1.0;
         l.oscillator_modulations[0].parameter = ModulationParameter::Frequency;
         assert!(!l.valid_modulations());
         l.oscillator_modulations.clear();

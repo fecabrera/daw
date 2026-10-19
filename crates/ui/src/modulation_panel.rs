@@ -369,7 +369,9 @@ pub(super) fn marker(
             "source off"
         } else if !matches!(
             parameter,
-            ModulationParameter::Amplitude | ModulationParameter::Pitch
+            ModulationParameter::Amplitude
+                | ModulationParameter::Pitch
+                | ModulationParameter::OscillatorGain
         ) && source.unwrap().scope == ModulationScope::PerNote
         {
             "requires shared source"
@@ -511,7 +513,8 @@ pub(super) fn marker(
         ModulationParameter::Resonance
         | ModulationParameter::EqLowQ
         | ModulationParameter::EqHighQ => offsets.map(|o| (base + o).clamp(0.1, 10.0)),
-        ModulationParameter::SamplerGain
+        ModulationParameter::OscillatorGain
+        | ModulationParameter::SamplerGain
         | ModulationParameter::Level
         | ModulationParameter::Volume => {
             if base <= daw_core::SILENT_GAIN_DB {
@@ -554,8 +557,11 @@ pub(super) fn marker(
             "Moving dots: lowest and highest active voice transpose, excluding MIDI note pitch."
                 .into(),
         );
-    } else if parameter == ModulationParameter::SamplerGain {
-        lines.push("Moving dots: lowest and highest active Sampler gain, including power/base smoothing; velocity, boundary fades, and Amplitude excluded.".into());
+    } else if matches!(
+        parameter,
+        ModulationParameter::SamplerGain | ModulationParameter::OscillatorGain
+    ) {
+        lines.push("Moving dots: lowest and highest active source gain, including power/base smoothing; velocity, boundary fades, and Amplitude excluded.".into());
     } else if parameter == ModulationParameter::Frequency {
         lines.push("Moving dot: processed value; Frequency shows both stereo channels.".into());
     } else {
@@ -633,6 +639,7 @@ pub(super) fn marker(
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => format!("{value:.1} dB"),
         ModulationParameter::Amplitude
+        | ModulationParameter::OscillatorGain
         | ModulationParameter::SamplerGain
         | ModulationParameter::Level
         | ModulationParameter::Volume => {

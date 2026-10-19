@@ -193,13 +193,13 @@ impl ModulationRoute {
 /// Amplitude uses the note gate with no routes. Resolve once for each destination sample.
 #[derive(Clone, Copy, Debug)]
 pub struct ModulationInputs {
-    offsets: [f32; 65],
+    offsets: [f32; 66],
     amplitude: f32,
 }
 impl ModulationInputs {
     pub fn neutral(note_gate: f32) -> Self {
         Self {
-            offsets: [0.0; 65],
+            offsets: [0.0; 66],
             amplitude: note_gate,
         }
     }
@@ -320,6 +320,7 @@ impl ModulationParameter {
             Self::OttHighRelease => Some(46),
 
             Self::SamplerGain => Some(25),
+            Self::OscillatorGain => Some(65),
             Self::DirectionMixerDirection => Some(47),
             Self::DirectionMixerSpread => Some(48),
             Self::BitcrusherDrive => Some(53),

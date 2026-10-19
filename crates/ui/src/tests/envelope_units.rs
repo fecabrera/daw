@@ -626,8 +626,13 @@ fn drive_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() 
 }
 
 #[test]
-fn oscillator_pitch_uses_shared_modulation_controls_markers_and_saved_expansion() {
-    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+fn oscillator_pitch_and_gain_uses_shared_modulation_controls_markers_and_saved_expansion() {
+    for (theme, parameter) in [settings::ColorTheme::Dark, settings::ColorTheme::Light]
+        .into_iter()
+        .flat_map(|theme| {
+            daw_core::ModulationParameter::OSCILLATOR.map(|parameter| (theme, parameter))
+        })
+    {
         let (mut app, ctx, layer) = fixture(theme);
         add_component(&mut app, &ctx, layer, 0);
         add_component(&mut app, &ctx, layer, 0);
@@ -689,7 +694,7 @@ fn oscillator_pitch_uses_shared_modulation_controls_markers_and_saved_expansion(
             false,
         );
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let second = label(&shapes, "Osc 2 · Pitch");
+        let second = label(&shapes, &format!("Osc 2 · {}", parameter.label()));
         click(&mut app, &ctx, second, false);
         let l = &mut app.session.project.tracks[0]
             .instrument
@@ -700,6 +705,7 @@ fn oscillator_pitch_uses_shared_modulation_controls_markers_and_saved_expansion(
             l.oscillator_modulations[0].target,
             Some(l.oscillators[1].id)
         );
+        assert_eq!(l.oscillator_modulations[0].parameter, parameter);
         l.oscillator_modulations[0].source = Some(daw_core::ModulationSourceId {
             layer: l.id,
             unit: l.envelopes[0].id,
@@ -719,7 +725,7 @@ fn oscillator_pitch_uses_shared_modulation_controls_markers_and_saved_expansion(
                 }
                 _ => None,
             })
-            .expect("Pitch assignment marker");
+            .expect("Oscillator assignment marker");
         click(&mut app, &ctx, marker, false);
         let l = &app.session.project.tracks[0]
             .instrument

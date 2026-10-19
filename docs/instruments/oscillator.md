@@ -14,4 +14,4 @@ Use Plus inside the unit to add another oscillator. Each source has independent 
 
 Drag knobs to adjust them, hold Shift for finer movement, or use arrow keys. Double-click restores a default. Waveform diagrams show the available shapes.
 
-Use [pitch modulation](../modulation/oscillator-pitch.md) for vibrato or note-dependent pitch contours. Use Amplitude with an [Envelope](envelope.md) for level shaping. Turning the Oscillator header off silences all its sources while retaining individual settings.
+Use [pitch and gain modulation](../modulation/oscillator-pitch.md) for vibrato, pitch contours, or independent oscillator level movement. Use Amplitude with an [Envelope](envelope.md) for level shaping. Turning the Oscillator header off silences all its sources while retaining individual settings.
