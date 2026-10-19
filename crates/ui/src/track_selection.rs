@@ -48,7 +48,7 @@ impl DawUi {
 
     pub(super) fn master_selection_input(&mut self, ui: &egui::Ui, rect: Rect) {
         if ui.is_enabled()
-            && self.file_action_enabled(FileAction::Import)
+            && self.editing_enabled()
             && ui.rect_contains_pointer(rect)
             && ui.input(|input| input.focused && input.pointer.primary_pressed())
             && !self.master_selected

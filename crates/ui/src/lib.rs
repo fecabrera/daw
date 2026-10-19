@@ -4,6 +4,7 @@ mod looping;
 mod midi_editor;
 mod placement;
 mod range_selection;
+mod regular_save;
 mod resize;
 mod sampler_panel;
 mod stretch;
@@ -720,6 +721,8 @@ pub struct DawUi {
     #[cfg(test)]
     selection_bounds: [Rect; 4],
     dirty: bool,
+    change_revision: u64,
+    regular_save: Option<regular_save::PendingSave>,
     sync_needed: bool,
     repaint_until: Option<std::time::Instant>,
     job: Option<mpsc::Receiver<Result<Job, String>>>,
@@ -810,6 +813,8 @@ impl Default for DawUi {
             #[cfg(test)]
             selection_bounds: [Rect::NOTHING; 4],
             dirty: false,
+            change_revision: 0,
+            regular_save: None,
             sync_needed: false,
             repaint_until: None,
             job: None,
@@ -886,7 +891,7 @@ impl DawUi {
         {
             self.session.project.name = name.to_owned();
             // Naming is project metadata; it does not change the audio render plan.
-            self.dirty = true;
+            self.mark_dirty();
         }
     }
 
@@ -934,7 +939,7 @@ impl DawUi {
     }
     fn changed(&mut self) {
         self.repaint_until = Some(std::time::Instant::now() + Duration::from_millis(250));
-        self.dirty = true;
+        self.mark_dirty();
         self.sync_needed = true;
     }
     fn run_job(&mut self, label: &str, job: impl FnOnce() -> Result<Job, String> + Send + 'static) {
@@ -1019,6 +1024,10 @@ impl DawUi {
             return;
         }
         let folder = self.session.folder.clone().unwrap();
+        if self.pending.is_none() && !self.unsaved_prompt {
+            self.save_snapshot(folder);
+            return;
+        }
         let mut session = self.session.clone();
         self.run_job("Saving project", move || {
             session
@@ -1162,6 +1171,7 @@ impl DawUi {
         }
     }
     fn poll(&mut self) {
+        self.poll_regular_save();
         let message = self.job.as_ref().and_then(|rx| match rx.try_recv() {
             Ok(m) => Some(m),
             Err(mpsc::TryRecvError::Disconnected) => {
@@ -1191,7 +1201,7 @@ impl DawUi {
                     }
                     self.notices = session.warnings.clone();
                     self.session = session;
-                    self.dirty = true;
+                    self.mark_dirty();
                     self.sync_needed = false;
                 }
                 Ok(Job::SamplerEdit(session, placement)) => {
@@ -1247,7 +1257,11 @@ impl DawUi {
                             .or_else(|| self.session.project.tracks.first().map(|t| t.id))
                     };
                     self.prune_track_selection();
-                    self.dirty = dirty;
+                    if dirty {
+                        self.mark_dirty();
+                    } else {
+                        self.dirty = false;
+                    }
                     self.sync_needed = true;
                 }
                 Ok(Job::Saved(session)) => {
@@ -1277,7 +1291,7 @@ impl DawUi {
     }
     fn seek(&mut self, frame: u64) {
         self.session.project.transport.playhead_frame = frame;
-        self.dirty = true;
+        self.mark_dirty();
         if let Some(output) = &mut self.output
             && let Err(e) = output.seek(frame)
         {
@@ -1551,7 +1565,7 @@ impl DawUi {
         }
     }
     fn clip_actions_available(&self, ctx: &egui::Context) -> bool {
-        self.file_action_enabled(FileAction::Import)
+        self.editing_enabled()
             && !ctx.egui_wants_keyboard_input()
             && !self.instrument_ui.editing_name()
             && ctx.input(|input| input.focused)
@@ -1688,7 +1702,7 @@ impl DawUi {
         }
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            if self.job.is_none() {
+            if self.job.is_none() && self.regular_save.is_none() {
                 self.project_name_dialog = None;
                 self.settings_open = false;
                 self.project_settings = None;
@@ -1743,6 +1757,9 @@ impl DawUi {
                             self.job = None;
                             self.busy.clear();
                         }
+                    } else if self.regular_save.is_some() {
+                        ui.spinner();
+                        ui.label("Saving project");
                     } else {
                         ui.label(if self.dirty {
                             "Unsaved changes"
@@ -1919,6 +1936,7 @@ impl DawUi {
         if self.is_playing()
             || self.output.as_ref().is_some_and(|o| o.preparing())
             || self.job.is_some()
+            || self.regular_save.is_some()
             || self.sync_needed
             || self.file_hover.as_ref().is_some_and(|h| h.audio.is_none())
         {
@@ -1989,6 +2007,12 @@ impl DawUi {
     }
 
     pub fn file_action_enabled(&self, action: FileAction) -> bool {
+        self.regular_save.is_none()
+            && self.editing_enabled()
+            && (action != FileAction::Export || self.session.project.end() > 0)
+    }
+
+    fn editing_enabled(&self) -> bool {
         !self.strip_dragging
             && self.effects_drag.is_none()
             && self.component_drag.is_none()
@@ -1996,7 +2020,6 @@ impl DawUi {
             && !self.midi_editor.dragging()
             && !self.instrument_ui.dragging()
             && self.edit_environment_available()
-            && (action != FileAction::Export || self.session.project.end() > 0)
     }
 
     // Active gestures must check the environment without rejecting their own drag.
@@ -2742,7 +2765,7 @@ impl DawUi {
         clips_viewport: Rect,
     ) {
         if !ui.is_enabled()
-            || !self.file_action_enabled(FileAction::Import)
+            || !self.editing_enabled()
             || !ui.input(|input| input.focused)
             || ui.input(|input| input.key_pressed(egui::Key::Escape))
         {
@@ -2842,7 +2865,7 @@ impl DawUi {
     }
     fn timeline_pinch(&mut self, ui: &egui::Ui, viewport: Rect) {
         if !ui.is_enabled()
-            || !self.file_action_enabled(FileAction::Import)
+            || !self.editing_enabled()
             || !ui.input(|input| input.focused)
             || !ui.rect_contains_pointer(viewport)
             || self.drag.is_some()
@@ -3283,7 +3306,7 @@ impl DawUi {
     }
     fn start_track_drag(&mut self, ui: &egui::Ui, response: &egui::Response, track: Id) {
         if response.drag_started_by(egui::PointerButton::Primary)
-            && self.file_action_enabled(FileAction::Import)
+            && self.editing_enabled()
             && ui.input(|input| input.focused)
             && self.drag.is_none()
             && self.marquee.is_none()
@@ -3302,7 +3325,7 @@ impl DawUi {
             return;
         };
         if !ui.is_enabled()
-            || !self.file_action_enabled(FileAction::Import)
+            || !self.editing_enabled()
             || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape))
         {
             self.track_drag = None;
@@ -3377,7 +3400,7 @@ impl DawUi {
     fn scroll_track_drag(&self, ui: &egui::Ui) {
         if self.track_drag.is_none()
             || !ui.is_enabled()
-            || !self.file_action_enabled(FileAction::Import)
+            || !self.editing_enabled()
             || ui.input(|input| {
                 !input.focused
                     || !input.pointer.button_down(egui::PointerButton::Primary)
@@ -3553,7 +3576,7 @@ impl DawUi {
                     );
                     // Include child controls without taking their pointer interaction.
                     if ui.is_enabled()
-                        && self.file_action_enabled(FileAction::Import)
+                        && self.editing_enabled()
                         && ui.rect_contains_pointer(inner.response.rect)
                         && ui.input(|input| {
                             input.focused
@@ -3575,7 +3598,7 @@ impl DawUi {
                     }
                     outlines.push((track.id, inner.response.rect));
                     let context_click = ui.is_enabled()
-                        && self.file_action_enabled(FileAction::Import)
+                        && self.editing_enabled()
                         && ui.rect_contains_pointer(inner.response.rect)
                         && ui.input(|input| {
                             input.focused
@@ -4665,6 +4688,7 @@ mod tests {
     mod project_settings;
     mod resize_neighbors;
     mod sampler;
+    mod saving;
     mod track_header;
     mod track_shortcuts;
     mod transport;
@@ -8625,7 +8649,7 @@ mod tests {
         let started = std::time::Instant::now();
         while started.elapsed() < Duration::from_secs(30) {
             app.poll();
-            if app.job.is_none() {
+            if app.job.is_none() && app.regular_save.is_none() {
                 return;
             }
             std::thread::sleep(Duration::from_millis(5));
@@ -8689,7 +8713,7 @@ mod tests {
         app.dirty = true;
         app.save(false);
         assert!(app.project_name_dialog.is_none());
-        assert!(app.job.is_some());
+        assert!(app.regular_save.is_some());
         wait_for_save(&mut app);
         assert!(app.error.is_none());
         assert!(!second.join("Second mix").exists());

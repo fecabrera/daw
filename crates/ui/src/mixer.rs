@@ -294,7 +294,7 @@ impl DawUi {
                             self.mixer_bounds.insert(track.id, rect);
                             // Select the whole panel without taking input from its controls.
                             if ui.is_enabled()
-                                && self.file_action_enabled(FileAction::Import)
+                                && self.editing_enabled()
                                 && ui.rect_contains_pointer(rect)
                                 && ui.input(|input| input.focused && input.pointer.any_pressed())
                             {
@@ -309,7 +309,7 @@ impl DawUi {
                                 }
                             }
                             let context_click = ui.is_enabled()
-                                && self.file_action_enabled(FileAction::Import)
+                                && self.editing_enabled()
                                 && ui.rect_contains_pointer(rect)
                                 && ui.input(|i| i.focused && i.pointer.secondary_clicked());
                             if let Some(selected) = egui::Popup::context_menu(&response)

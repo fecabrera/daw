@@ -181,6 +181,8 @@ The audio callback must remain nonblocking and must not allocate or perform file
 
 ## Persistence and export
 
+- Regular Save uses the independent snapshot worker in `regular_save.rs`; it must not disable or replace the live workspace. Route every committed UI project change through `changed` or `mark_dirty`, including worker publication and explicit seeks, so save completion cannot clear newer edits. Keep file-action/window-close guards and blocking Save As/save-before-continuation behavior.
+
 - Projects are folders with `project.json` and an `assets` directory. Source WAV files remain external references; saving a project does not bundle those recordings.
 - Preserve source identity and correct relative/absolute path resolution during Save As. New-project Save and Save As use the shared name-then-parent-folder flow. Do not replace an existing project folder through that flow.
 - Keep saves and exports transactional. Write temporary outputs and publish only after success. Protect source files and manifests from export replacement, and retain explicit overwrite confirmation.

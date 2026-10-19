@@ -2859,3 +2859,18 @@ Completed checks with the workspace Cargo cache:
 - Repository-relative documentation targets exist, and `git diff --check` passes.
 
 Native keyboard/trackpad, display-scale, device, Windows, and Linux checks were not performed. The headless regression establishes the reproduced focus fix, not native shortcut delivery. CLI smoke checks were not repeated for this UI-only correction.
+
+## Regular Save without workspace dimming — 2026-10-18
+
+Regular Save previously used the blocking job receiver, disabling and dimming the workspace for the write and publishing the saved session over live state afterward. It now writes a snapshot through an independent receiver and keeps the workspace enabled. Completion clears dirty state only when project identity and change revision match. Later edits, seeks, and worker-published changes stay unsaved; current transport, prepared audio, and UI state are not replaced. File operations and window close remain guarded; named Save, Save As, and save-before-continuation retain blocking behavior.
+
+The three new save checks pass. Exact workspace shape/clip comparisons are unchanged before/during a held save in Timeline, Instrument, Editor, and Mixer in both themes. Effect/clip selections remain intact, file actions stay disabled, and close requests are cancelled until completion. A real temporary-folder save writes its captured snapshot while later edits/transport remain current and dirty; the next save persists them and clears dirty state. Worker-prepared modified sessions also advance the revision. Failure, worker disconnection, and stale project results retain current project data. Existing named-save and save-before-close success/cancellation/failure checks remain passing. The full UI suite passes 466 tests.
+
+Completed checks with the workspace Cargo cache:
+
+- `cargo fmt --all --check` and strict workspace Clippy pass.
+- `cargo test --workspace` passes: 884 tests pass, including all 466 UI tests; 2 existing expanded time-stretch acceptance matrices remain ignored.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`. The running app was not restarted.
+- Repository-relative documentation targets exist, and `git diff --check` passes.
+
+Native save/display, keyboard/trackpad, device, Windows, and Linux checks were not performed. Exact headless workspace paint checks establish the removed disabled-state transition; they do not establish native compositor behavior. CLI smoke checks were not repeated because the shared persistence/render/export APIs are unchanged.
