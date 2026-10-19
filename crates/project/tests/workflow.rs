@@ -3797,7 +3797,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
         EffectInstance, EffectSettings, LfoInstance, Modulation, ModulationParameter,
         ModulationSourceId,
     };
-    for kind in 0..7 {
+    for kind in 0..8 {
         let fixture = Fixture::new();
         let mut session = Session::default();
         let track = session.project.add_midi_track().unwrap();
@@ -3816,6 +3816,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             EffectInstance::direction_mixer,
             EffectInstance::stereo_spread,
             EffectInstance::bitcrusher,
+            EffectInstance::saturator,
         ][kind]();
         let (open, collapsed, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => {
@@ -3825,6 +3826,9 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
             EffectSettings::Limiter(s) => {
+                (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
+            }
+            EffectSettings::Saturator(s) => {
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
             EffectSettings::Bitcrusher(s) => {
@@ -3864,6 +3868,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             &ModulationParameter::DIRECTION_MIXER[..],
             &ModulationParameter::STEREO_SPREAD[..],
             &ModulationParameter::BITCRUSHER[..],
+            &ModulationParameter::SATURATOR[..],
         ][kind]
             .iter()
             .copied()

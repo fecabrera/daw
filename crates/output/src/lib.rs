@@ -206,6 +206,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::Limiter(_)
                     | daw_core::EffectSettings::DirectionMixer(_)
                     | daw_core::EffectSettings::StereoSpread(_)
+                    | daw_core::EffectSettings::Saturator(_)
                     | daw_core::EffectSettings::Bitcrusher(_)
                     | daw_core::EffectSettings::Ott(_)
             )

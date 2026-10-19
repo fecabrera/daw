@@ -86,7 +86,7 @@ Accepted on 2026-10-11. Q01–Q10 are resolved for the MVP through D10 and D19�
 | Q04 | Mono/stereo audio, modulation signals, and sample-timed note/control events at the project rate. Reject graph cycles. Delay feedback is internal to the delay unit. | Graph-level feedback and additional port layouts. |
 | Q05 | Source/clip output → serial effects → gain/pan → track mix. Beat lanes pass through lane effects and lane gain/pan, then sum into parent effects and parent gain/pan. Serial Master effects precede Master gain and output meters. | Sends and advanced audio routing. |
 | Q06 | Stop and seek reset voices and effects. Pause preserves state. Loop boundaries end active notes while effects continue. Mute suppresses output while processing continues. Smooth bypass changes and publish prepared graph replacements atomically. | More advanced transport-state restoration. |
-| Q07 | Built-in Limiter latency is reported, aligned across tracks/Master, and primed for playback/export. Other current units add no latency. Musical delay/reverb remain allowed; reported tails are capped at 10 seconds with a notice on truncation. | Arbitrary third-party/plugin latency. |
+| Q07 | Built-in Limiter and Saturator latency is reported, aligned across tracks/layers/Main/Master, and primed for playback/export. Other current units add no latency. Musical delay/reverb remain allowed; reported tails are capped at 10 seconds with a notice on truncation. | Arbitrary third-party/plugin latency. |
 | Q08 | Versioned unit IDs, parameters, connections, and presets. Pattern sources hold immutable note/step data; tracks and lanes own instrument/effect setups. Preserve and report missing-unit data. Missing instruments render silence; missing effects pass audio through. | Nested presets. |
 | Q09 | Reusable Rust crates and standalone tools share DSP implementations; UI/device adapters stay separate. | Standalone interface and packaging details. |
 | Q10 | FunDSP behind our API. Initial units: oscillators, noise, sample playback, envelope, LFO, filter, gain, delay, and simple reverb. | SoundFont instruments, spectral effects, and convolution. |
@@ -314,7 +314,7 @@ The Q01–Q10 scope choices were accepted on 2026-10-11. Preserve these IDs as d
 | Q04 | Resolved for MVP. | Initial ports, timing, rate, and cycle rules: D22. |
 | Q05 | Resolved for MVP. | Lane, track, and Master routing: D23. |
 | Q06 | Resolved for MVP. | Transport, mute, bypass, and graph publication: D24. |
-| Q07 | Resolved for MVP. | Fixed Limiter latency with host compensation; earlier units add no latency; capped export tails: D25. |
+| Q07 | Resolved for MVP. | Fixed Limiter and Saturator latency with host compensation; earlier units add no latency; capped export tails: D25. |
 | Q08 | Resolved for MVP. | Versioned state, ownership, and missing-unit behavior: D26. |
 | Q09 | Resolved. | Rust crates and standalone tools: D10. |
 | Q10 | Resolved for MVP. | FunDSP, initial unit set, and performance target: D27. |
@@ -512,7 +512,7 @@ Group registered components under Sources (Oscillator, Sampler), Modulators (Env
 
 ## Effects catalog categories — 2026-10-17
 
-Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), Distortion (Drive, Bitcrusher), and Imaging (Direction Mixer, Stereo Spread). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
+Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), Distortion (Drive, Bitcrusher, Saturator), and Imaging (Direction Mixer, Stereo Spread). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
 
 ## Effect meter lifecycle
 
@@ -548,3 +548,7 @@ Regular instrument layers now own serial stereo effect chains after the per-voic
 Regular layers and Main now own inline serial effect chains. The processing order and shared transfer, modulation, latency, and history rules are specified in [layer effects](../instruments/layer-effects.md). Track effects remain a separate post-Main chain. Installed effect groups can move or copy between any of these buses in one instrument.
 
 Envelope now consumes modulation as well as publishing a Contour source. Its [typed inputs](../instruments/envelope.md) reuse the shared provider graph, route resolver, smoother, connection UI, and prepared snapshots. Per-note and shared scopes retain their existing boundary; native seek history replay stays on the preparation worker.
+
+## Saturator — 2026-10-19
+
+[Saturator](../effects/saturator.md) adds a portable stereo effect through the existing EffectUnit, shared modulation, panel, catalog registration, and transfer contracts. Its fixed 4× oversampling adds 32 project frames of latency in every state, including dry and bypass. The existing alignment/priming path includes that delay for track, layer, Main, and Master chains. Drive/Level/DryWet are shared destinations; the requested Shape/Clip Mode selectors remain dropdowns. See the effect specification for signal flow, anti-aliasing limits, persisted state, and validation.

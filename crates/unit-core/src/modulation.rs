@@ -122,6 +122,7 @@ pub enum ModulationParameter {
     EqHighQ,
     DirectionMixerDirection,
     DirectionMixerSpread,
+    SaturatorDrive,
     BitcrusherDrive,
     BitcrusherResolution,
     BitcrusherDownsampling,
@@ -142,6 +143,7 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    pub const SATURATOR: [Self; 3] = [Self::SaturatorDrive, Self::Level, Self::DryWet];
     pub const OSCILLATOR: [Self; 2] = [Self::Pitch, Self::OscillatorGain];
     pub const ENVELOPE: [Self; 9] = [
         Self::EnvelopeAttack,
@@ -257,7 +259,7 @@ impl ModulationParameter {
             Self::OttHighRelease => "High · Release",
             Self::DirectionMixerDirection => "Direction",
             Self::DirectionMixerSpread => "Spread",
-            Self::BitcrusherDrive => "Drive",
+            Self::SaturatorDrive | Self::BitcrusherDrive => "Drive",
             Self::BitcrusherResolution => "Resolution",
             Self::BitcrusherDownsampling => "Downsampling",
             Self::StereoSpreadLowerIntensity => "Lower · Intensity",
@@ -319,6 +321,7 @@ impl ModulationParameter {
             Self::LimiterInput | Self::LimiterCeiling => 24.0,
             Self::LimiterRelease => 6.0,
             Self::LimiterLookahead => 10.0,
+            Self::SaturatorDrive => 36.0,
             Self::BitcrusherDrive => 24.0,
             Self::BitcrusherResolution => 23.0,
             Self::BitcrusherDownsampling => 39.0,
@@ -364,7 +367,7 @@ impl ModulationParameter {
             Self::LimiterInput | Self::LimiterCeiling => "dB",
             Self::LimiterRelease => "oct",
             Self::LimiterLookahead => "ms",
-            Self::BitcrusherDrive => "dB",
+            Self::SaturatorDrive | Self::BitcrusherDrive => "dB",
             Self::BitcrusherResolution => "bits",
             Self::BitcrusherDownsampling => "×",
             Self::DirectionMixerDirection => "°",

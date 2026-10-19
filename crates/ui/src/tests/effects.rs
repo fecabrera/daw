@@ -355,42 +355,62 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1], entries[8]],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[6],
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
                 ],
             ),
             (
                 egui::Key::ArrowDown,
                 true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[6],
-                    entries[7],
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
                 ],
             ),
             (
                 egui::Key::ArrowDown,
                 true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[6],
-                    entries[7],
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                    entries[6],
+                ],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                    entries[6], entries[7],
+                ],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                    entries[6], entries[7],
                 ],
             ),
             (
                 egui::Key::ArrowUp,
                 true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[6],
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                    entries[6],
                 ],
             ),
             (
                 egui::Key::ArrowUp,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1], entries[8]],
+                vec![
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                ],
+            ),
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![
+                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                ],
             ),
             (
                 egui::Key::ArrowUp,
@@ -457,6 +477,10 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         (0.99, 0.99),
     ] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        let folder = app.effects_bounds.folders[3].center();
+        click(&mut app, &ctx, folder);
+        frame(&mut app, &ctx, vec![]);
+        assert!(!app.effects_bounds.stereo_spread_entry.is_positive());
         let point = app.effects_bounds.entry.center();
         click(&mut app, &ctx, point);
         library_key(&mut app, &ctx, egui::Key::ArrowDown, true);
@@ -467,7 +491,7 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         let blank = Rect::from_min_max(
             Pos2::new(
                 app.effects_bounds.library.left(),
-                app.effects_bounds.stereo_spread_entry.bottom(),
+                app.effects_bounds.folders[3].bottom(),
             ),
             app.effects_bounds.library.max,
         );
@@ -499,6 +523,10 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
 fn effects_library_empty_click_respects_input_guards_and_other_catalog_controls() {
     for guard in ["header", "secondary", "modal", "focus", "drag"] {
         let (mut app, _, ctx, _) = chain_fixture(false, false);
+        let folder = app.effects_bounds.folders[3].center();
+        click(&mut app, &ctx, folder);
+        frame(&mut app, &ctx, vec![]);
+        assert!(!app.effects_bounds.stereo_spread_entry.is_positive());
         let entry = app.effects_bounds.entry.center();
         click(&mut app, &ctx, entry);
         let selected = app.effects_catalog.selection.clone();
@@ -4890,7 +4918,10 @@ fn effect_select_all_uses_only_the_focused_chain_including_scrolled_units_withou
 
 #[test]
 fn layer_effects_share_the_component_lane_and_existing_effect_controls_and_drag_copy() {
-    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+    for (theme, saturator) in [settings::ColorTheme::Dark, settings::ColorTheme::Light]
+        .into_iter()
+        .flat_map(|theme| [false, true].map(|saturator| (theme, saturator)))
+    {
         let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
         let track = app.session.project.tracks[0].id;
         let layer = app.session.project.tracks[0]
@@ -4906,7 +4937,11 @@ fn layer_effects_share_the_component_lane_and_existing_effect_controls_and_drag_
             Some(effects_panel::EffectTarget::Layer { track, layer })
         );
         assert!(!app.dirty);
-        let drive = app.effects_bounds.drive_entry.center();
+        let drive = if saturator {
+            app.effects_bounds.saturator_entry.center()
+        } else {
+            app.effects_bounds.drive_entry.center()
+        };
         click(&mut app, &ctx, drive);
         library_key(&mut app, &ctx, egui::Key::Enter, false);
         frame(&mut app, &ctx, vec![]);
@@ -4923,21 +4958,31 @@ fn layer_effects_share_the_component_lane_and_existing_effect_controls_and_drag_
         assert_eq!(rect.top(), row.top());
         assert_eq!(rect.height(), row.height());
         assert!((rect.left() - app.midi_editor.layer_bounds[&layer].label.right()).abs() <= 1.0);
-        let power = app.effects_bounds.drive_units[0].power.center();
+        let power = if saturator {
+            app.effects_bounds.saturator_units[0].power.center()
+        } else {
+            app.effects_bounds.drive_units[0].power.center()
+        };
         click(&mut app, &ctx, power);
-        let daw_core::EffectSettings::Drive(s) = &app.session.project.tracks[0]
+        let unit = &app.session.project.tracks[0]
             .instrument
             .as_ref()
             .unwrap()
             .layers[0]
             .effects[0]
-            .unit
-        else {
-            unreachable!()
+            .unit;
+        let enabled = match unit {
+            daw_core::EffectSettings::Drive(s) => s.enabled,
+            daw_core::EffectSettings::Saturator(s) => s.enabled,
+            _ => unreachable!(),
         };
-        assert!(!s.enabled);
+        assert!(!enabled);
         end_click_sequence(&mut app, &ctx);
-        let start = app.effects_bounds.drive_units[0].header.center();
+        let start = if saturator {
+            app.effects_bounds.saturator_units[0].header.center()
+        } else {
+            app.effects_bounds.drive_units[0].header.center()
+        };
         let end = Pos2::new(rect.right() + 20.0, start.y);
         let modifiers = egui::Modifiers {
             alt: true,
@@ -4970,7 +5015,11 @@ fn layer_effects_share_the_component_lane_and_existing_effect_controls_and_drag_
             vec![egui::Event::ModifiersChanged(Default::default())],
         );
         end_click_sequence(&mut app, &ctx);
-        let selected = app.effects_bounds.drive_units[0].header.center();
+        let selected = if saturator {
+            app.effects_bounds.saturator_units[0].header.center()
+        } else {
+            app.effects_bounds.drive_units[0].header.center()
+        };
         click(&mut app, &ctx, selected);
         library_key(&mut app, &ctx, egui::Key::Delete, false);
         assert_eq!(
@@ -5088,7 +5137,7 @@ fn selected_effect_groups_move_and_duplicate_across_layer_lanes() {
                 let src = owners[source];
                 let dst = owners[destination];
                 i.layers[source].effects = vec![
-                    daw_core::EffectInstance::drive(),
+                    daw_core::EffectInstance::saturator(),
                     daw_core::EffectInstance::auto_filter(),
                 ];
                 if main && source == 1 {
@@ -5459,6 +5508,78 @@ fn inline_effects_keep_the_component_boundary_on_regular_layers_and_main() {
                     assert!(!app.dirty);
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn saturator_reuses_catalog_selectors_knobs_modulation_and_unit_actions() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for target in ["track", "master", "instrument"] {
+            let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+            let point = app.effects_bounds.saturator_entry.center();
+            assert!(app.effects_bounds.saturator_entry.is_positive());
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::Enter, false);
+            frame(&mut app, &ctx, vec![]);
+            let owner = app.effects_target().unwrap();
+            let daw_core::EffectSettings::Saturator(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert_eq!(*s, daw_core::SaturatorSettings::default());
+            let b = &app.effects_bounds.saturator_units[0];
+            assert!(b.controls.iter().all(|r| r.is_positive()));
+            for section in b.sections {
+                assert_eq!(section.width(), 90.0);
+            }
+            assert_eq!(b.sections[0].right(), b.sections[1].left());
+            let shape = b.controls[0].center();
+            click(&mut app, &ctx, shape);
+            let output = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let bass = super::envelope_units::label(&output, "Bass Shaper");
+            click(&mut app, &ctx, bass);
+            let daw_core::EffectSettings::Saturator(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert_eq!(s.shape, daw_core::SaturatorShape::BassShaper);
+            end_click_sequence(&mut app, &ctx);
+            let clip = app.effects_bounds.saturator_units[0].controls[1].center();
+            click(&mut app, &ctx, clip);
+            let output = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let hard = super::envelope_units::label(&output, "Hard Clip");
+            click(&mut app, &ctx, hard);
+            end_click_sequence(&mut app, &ctx);
+            let drive = app.effects_bounds.saturator_units[0].controls[2].center();
+            click(&mut app, &ctx, drive);
+            library_key(&mut app, &ctx, egui::Key::ArrowRight, false);
+            let daw_core::EffectSettings::Saturator(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert_eq!(s.clip_mode, daw_core::SaturatorClipMode::HardClip);
+            assert!(s.drive_db > 0.0);
+            let header = app.effects_bounds.saturator_units[0].header;
+            click(
+                &mut app,
+                &ctx,
+                Pos2::new(header.right() - 13.0, header.center().y),
+            );
+            let daw_core::EffectSettings::Saturator(s) =
+                &app.effect_chain(owner).unwrap().0[0].unit
+            else {
+                unreachable!()
+            };
+            assert!(s.modulation_open);
+            end_click_sequence(&mut app, &ctx);
+            let point = app.effects_bounds.saturator_units[0].header.center();
+            click(&mut app, &ctx, point);
+            library_key(&mut app, &ctx, egui::Key::Delete, false);
+            assert!(app.effect_chain(owner).unwrap().0.is_empty());
         }
     }
 }

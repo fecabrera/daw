@@ -1137,6 +1137,7 @@ dependencies = [
  "daw-oscillator",
  "daw-ott",
  "daw-sampler",
+ "daw-saturator",
  "daw-stereo-spread",
  "daw-unit-core",
  "serde_json",
@@ -1235,6 +1236,13 @@ dependencies = [
 
 [[package]]
 name = "daw-sampler"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
+]
+
+[[package]]
+name = "daw-saturator"
 version = "0.1.0"
 dependencies = [
  "daw-unit-core",

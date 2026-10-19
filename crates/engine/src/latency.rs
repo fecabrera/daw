@@ -40,8 +40,11 @@ pub(super) fn track_frames(track: &daw_core::Track, rate: u32) -> u64 {
 pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
     effects
         .iter()
-        .filter(|e| matches!(e.unit, EffectSettings::Limiter(_)))
-        .map(|_| u64::from(daw_limiter::Limiter::latency_for_rate(rate)))
+        .map(|e| match e.unit {
+            EffectSettings::Limiter(_) => u64::from(daw_limiter::Limiter::latency_for_rate(rate)),
+            EffectSettings::Saturator(_) => u64::from(daw_saturator::Saturator::LATENCY_FRAMES),
+            _ => 0,
+        })
         .sum()
 }
 pub(super) struct Alignment {

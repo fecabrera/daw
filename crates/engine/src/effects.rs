@@ -7,6 +7,7 @@ use daw_drive::Drive;
 use daw_equalizer::Equalizer;
 use daw_limiter::Limiter;
 use daw_ott::Ott;
+use daw_saturator::Saturator;
 use daw_stereo_spread::StereoSpread;
 use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_modulation};
 use std::sync::{Arc, atomic::AtomicU32};
@@ -20,6 +21,7 @@ enum RuntimeEffect {
     Limiter(Box<Limiter>, Vec<super::modulation::Route>),
     DirectionMixer(Box<DirectionMixer>, Vec<super::modulation::Route>),
     StereoSpread(Box<StereoSpread>, Vec<super::modulation::Route>),
+    Saturator(Box<Saturator>, Vec<super::modulation::Route>),
     Bitcrusher(Box<Bitcrusher>, Vec<super::modulation::Route>),
 }
 impl RuntimeEffect {
@@ -125,6 +127,19 @@ impl RuntimeEffect {
                     ..Default::default()
                 },
             ),
+            Self::Saturator(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::Bitcrusher(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -198,6 +213,12 @@ impl RuntimeEffect {
                     route.reset();
                 }
             }
+            Self::Saturator(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
             Self::Bitcrusher(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -218,6 +239,9 @@ impl RuntimeEffect {
             (Self::Ott(unit, _), EffectSettings::Ott(settings)) => unit.retarget(settings),
             (Self::Limiter(unit, _), EffectSettings::Limiter(settings)) => unit.retarget(settings),
             (Self::StereoSpread(unit, _), EffectSettings::StereoSpread(settings)) => {
+                unit.retarget(settings)
+            }
+            (Self::Saturator(unit, _), EffectSettings::Saturator(settings)) => {
                 unit.retarget(settings)
             }
             (Self::Bitcrusher(unit, _), EffectSettings::Bitcrusher(settings)) => {
@@ -330,6 +354,14 @@ impl EffectChain {
                                         .collect(),
                                 ))
                             }
+                            EffectSettings::Saturator(settings) => Some(RuntimeEffect::Saturator(
+                                Box::new(Saturator::new(context, settings)),
+                                settings
+                                    .modulations
+                                    .iter()
+                                    .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                    .collect(),
+                            )),
                             EffectSettings::Bitcrusher(settings) => {
                                 Some(RuntimeEffect::Bitcrusher(
                                     Box::new(Bitcrusher::new(context, settings)),
@@ -400,6 +432,10 @@ impl EffectChain {
                     RuntimeEffect::StereoSpread(_, new_routes),
                 )
                 | (
+                    RuntimeEffect::Saturator(_, old_routes),
+                    RuntimeEffect::Saturator(_, new_routes),
+                )
+                | (
                     RuntimeEffect::Bitcrusher(_, old_routes),
                     RuntimeEffect::Bitcrusher(_, new_routes),
                 ) = (&mut *previous, &mut *next)
@@ -430,6 +466,9 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::StereoSpread(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::Saturator(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Bitcrusher(unit, _)))) => {

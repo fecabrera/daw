@@ -288,7 +288,7 @@ pub(super) fn selector_row(
     ui: &mut Ui,
     label: &str,
     selector: impl FnOnce(&mut Ui) -> egui::Response,
-) {
+) -> egui::Response {
     ui.allocate_ui_with_layout(
         Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
         egui::Layout::top_down(egui::Align::Center),
@@ -300,9 +300,10 @@ pub(super) fn selector_row(
                     .size(panels::HEADER_FONT_SIZE)
                     .color(theme::palette(ui.ctx()).secondary),
             );
-            selector(ui);
+            selector(ui)
         },
-    );
+    )
+    .inner
 }
 
 /// Apply destination-owned limits to both the possible-range arc and its tooltip.
@@ -490,6 +491,7 @@ pub(super) fn marker(
         | ModulationParameter::EqLowGain
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
+        ModulationParameter::SaturatorDrive => offsets.map(|o| (base + o).clamp(-36.0, 36.0)),
         ModulationParameter::BitcrusherDrive => offsets.map(|o| (base + o).clamp(0.0, 24.0)),
         ModulationParameter::BitcrusherResolution => {
             offsets.map(|o| (base + o).round().clamp(1.0, 24.0))
@@ -591,7 +593,9 @@ pub(super) fn marker(
         ModulationParameter::EnvelopeAttack
         | ModulationParameter::EnvelopeDecay
         | ModulationParameter::EnvelopeRelease => knobs::format_time(value),
-        ModulationParameter::BitcrusherDrive => format!("{value:.1} dB"),
+        ModulationParameter::SaturatorDrive | ModulationParameter::BitcrusherDrive => {
+            format!("{value:.1} dB")
+        }
         ModulationParameter::BitcrusherResolution => format!("{value:.0} bit"),
         ModulationParameter::BitcrusherDownsampling => format!("{value:.0}×"),
         ModulationParameter::DirectionMixerDirection => format!("{value:.0}°"),

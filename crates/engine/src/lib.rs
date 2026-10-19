@@ -363,6 +363,9 @@ impl Renderer {
                     daw_core::EffectSettings::StereoSpread(_) => {
                         daw_unit_core::STEREO_SPREAD_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::Saturator(_) => {
+                        daw_unit_core::SATURATOR_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::Bitcrusher(_) => {
                         daw_unit_core::BITCRUSHER_TYPE_ID.hash(&mut hash)
                     }

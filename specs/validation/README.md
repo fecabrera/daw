@@ -2957,3 +2957,33 @@ Executed checks:
 - Changed documentation links resolve; working and cached diff checks pass.
 
 Native UI, display-scale, Windows, and Linux checks were not performed. This presentation change does not change the audio processing path; no new device check or CLI smoke run was performed.
+
+## Saturator — 2026-10-19
+
+Implemented the accepted five-control Saturator through the existing effect, modulation, catalog, control, selection, drag/copy, and persistence paths. It supports tracks, Master, regular layers, and Main. Independent curves and a separate post-clip stage run through fixed 4× FIR oversampling; existing host alignment and priming compensate its constant 32-frame latency, including dry and bypass.
+
+Portable tests cover distinct/symmetric/continuous curves, small-signal gain, bass harmonic behavior, clip ceilings, processed-only Level, exact delayed dry/bypass, all six processing rates, stereo isolation, gain silence, finite extreme input, modulation scope/bounds, reset, and rapid selector changes without gain dips. Engine tests cover live/export/block/random-access parity, Layer-vs-Track placement, Main sources, all provider types, compatible history retention, snapshot values, and zero callback allocations. Core/project tests cover atomic rejection, unknown future payloads, route identities/scopes, Save As/reopen, duplication/rate changes, and transfers through Main/layer/track chains. Headless UI checks cover dropdowns, shared knobs, modulation expansion, selection/deletion, catalog navigation, and group moves/copies in both themes.
+
+Executed checks:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
+- `cargo test --workspace` passes: 923 tests, no failures, and two existing expanded time-stretch matrices ignored. All 475 UI tests pass.
+- `cargo test -p daw-saturator --release -- --nocapture --test-threads=1` passes all seven DSP/quality tests.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` pass.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`; the running app was not restarted.
+- Changed local documentation links resolve; working and cached diff checks pass.
+
+The representative normalized high-frequency test (input at 0.21875 × project rate, Hard Curve, +18 dB Drive, No Clip) measures the folded third harmonic at 0.34375 × project rate. Oversampling reduces it by approximately 49.4 dB against the same curve at project rate at all six rates. This measures one alias component, not universal alias suppression. A low-frequency harmonic test also verifies lower relative fifth/seventh/ninth harmonic energy for Bass Shaper than Analog Clip.
+
+Release wall-time measurements for one stereo unit on the local macOS ARM64 development host:
+
+| Project rate | Approximate fraction of one core |
+| --- | --- |
+| 44.1 kHz | 1.26% |
+| 48 kHz | 1.34% |
+| 88.2 kHz | 2.50% |
+| 96 kHz | 2.74% |
+| 176.4 kHz | 5.05% |
+| 192 kHz | 5.46% |
+
+These are isolated processor wall-time/audio-duration ratios for 0.1 seconds of input, not device deadline guarantees or a full-session benchmark. The CPU model was unavailable in the sandbox. FIR transition-band rolloff near project Nyquist is documented in the user guide. Native UI, display-scale, listening/audio-device, Windows, and Linux checks were not performed.

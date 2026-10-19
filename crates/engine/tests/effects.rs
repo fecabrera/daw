@@ -1486,3 +1486,109 @@ fn worker_prepared_transport_activation_does_not_allocate_or_prime_latency() {
         assert!(prepared.latency_frames() > 0);
     }
 }
+
+#[test]
+fn saturator_track_master_live_offline_blocks_and_compatible_updates_share_clock() {
+    for rate in SAMPLE_RATES {
+        for master in [false, true] {
+            for mono in [false, true] {
+                let mut p = plan(rate, mono);
+                let mut effect = EffectInstance::saturator();
+                let EffectSettings::Saturator(s) = &mut effect.unit else {
+                    unreachable!()
+                };
+                s.drive_db = 6.0;
+                s.shape = SaturatorShape::SoftSine;
+                s.clip_mode = SaturatorClipMode::SoftClip;
+                s.level_db = -3.0;
+                s.dry_wet = 0.6;
+                let id = effect.id;
+                if master {
+                    p.project.master.effects.push(effect);
+                } else {
+                    p.project.tracks[0].effects.push(effect);
+                }
+                let mut expected = vec![[0.0; 2]; 8192];
+                Renderer::new(p.clone()).render_offline(&mut expected);
+                let mut live = Renderer::new(p.clone());
+                live.play();
+                for (frame, sample) in expected.iter().enumerate() {
+                    let actual = live.next_sample();
+                    if frame >= rate as usize / 200 {
+                        for ch in 0..2 {
+                            assert!((actual[ch] - sample[ch]).abs() < 1e-6);
+                        }
+                    }
+                }
+                let mut output = vec![[0.0; 2]; 8192];
+                let mut blocks = Renderer::new(p.clone());
+                for buffer in output.chunks_mut(127) {
+                    blocks.render_offline(buffer);
+                }
+                assert_eq!(output, expected);
+                let mut random = [[0.0; 2]; 64];
+                p.render(1000, &mut random);
+                assert_eq!(random.as_slice(), &expected[1000..1064]);
+                // Replacing the renderer for a presentation edit retains the capture phase.
+                let chain = if master {
+                    &mut p.project.master.effects
+                } else {
+                    &mut p.project.tracks[0].effects
+                };
+                let EffectSettings::Saturator(s) = &mut chain[0].unit else {
+                    unreachable!()
+                };
+                s.modulation_open = true;
+                let mut old = Renderer::new(p.clone());
+                let mut reference = Renderer::new(p.clone());
+                old.play();
+                reference.play();
+                for _ in 0..1001 {
+                    old.next_sample();
+                    reference.next_sample();
+                }
+                let mut replacement = Renderer::new(p.clone());
+                ALLOCATIONS.with(|c| c.set(0));
+                TRACK_ALLOCATIONS.with(|c| c.set(true));
+                replacement.inherit(&mut old);
+                for _ in 0..101 {
+                    assert_eq!(replacement.next_sample(), reference.next_sample());
+                }
+                TRACK_ALLOCATIONS.with(|c| c.set(false));
+                assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+                let chain = if master {
+                    &mut p.project.master.effects
+                } else {
+                    &mut p.project.tracks[0].effects
+                };
+                let EffectSettings::Saturator(s) = &mut chain[0].unit else {
+                    unreachable!()
+                };
+                s.shape = SaturatorShape::BassShaper;
+                s.clip_mode = SaturatorClipMode::HardClip;
+                s.drive_db = 12.0;
+                let mut changed = Renderer::new(p.clone());
+                ALLOCATIONS.with(|c| c.set(0));
+                TRACK_ALLOCATIONS.with(|c| c.set(true));
+                changed.inherit(&mut replacement);
+                for _ in 0..rate / 50 {
+                    assert!(changed.next_sample().iter().all(|v| v.is_finite()));
+                }
+                let snapshot = changed
+                    .modulation_snapshot(daw_engine::ModulationTarget::Effect(id))
+                    .unwrap();
+                assert!(
+                    snapshot[..3]
+                        .iter()
+                        .zip([12.0, -3.0, 0.6])
+                        .all(|(a, b)| (*a - b).abs() < 1e-5)
+                );
+                assert!(snapshot[3..].iter().all(|v| v.is_nan()));
+                changed.seek(1000);
+                changed.stop();
+                TRACK_ALLOCATIONS.with(|c| c.set(false));
+                assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            }
+        }
+    }
+}

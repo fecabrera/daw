@@ -110,6 +110,13 @@ pub(super) fn destination(parameter: Parameter) -> KnobSpec {
             percent("Decay note duration", 0.0).endpoint_labels("0%", "100%")
         }
 
+        Parameter::SaturatorDrive => KnobSpec::new("Drive", -36.0..=36.0, 0.0, 0.1)
+            .centered(0.0)
+            .bipolar()
+            .reference_step(6.0)
+            .value_label(|v| format!("{v:.1} dB"))
+            .format(|v| format!("{v:.1} dB"))
+            .endpoint_labels("−36", "+36"),
         Parameter::BitcrusherDrive => KnobSpec::new("Drive", 0.0..=24.0, 0.0, 0.1)
             .reference_step(6.0)
             .value_label(|v| format!("{v:.1} dB"))
@@ -302,6 +309,14 @@ fn signed_pitch(value: f32) -> String {
 pub(super) fn amount(parameter: Parameter) -> KnobSpec {
     let (mapping, format, endpoints): (AmountMapping, fn(f32) -> String, [&str; 2]) =
         match parameter {
+            Parameter::SaturatorDrive => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_db,
+                ["−36", "+36"],
+            ),
             Parameter::BitcrusherDrive => (
                 AmountMapping::Offset {
                     origin: 0.0,

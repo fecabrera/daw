@@ -126,49 +126,51 @@ mod tests {
     use super::*;
     #[test]
     fn main_uses_the_same_effect_transactions_and_preserves_identity() {
-        let mut p = Project::default();
-        let track = p.add_midi_track().unwrap();
-        let i = p.tracks[0].instrument.as_mut().unwrap();
-        let regular = EffectChainTarget::Layer {
-            track,
-            layer: i.layers[0].id,
-        };
-        let main = EffectChainTarget::Layer {
-            track,
-            layer: i.main.id,
-        };
-        i.main.effects.push(EffectInstance::drive());
-        let id = i.main.effects[0].id;
-        let transfer = p.transfer_effects(main, regular, &[id], 0, true).unwrap();
-        p.edit(transfer.edit).unwrap();
-        let copied = p.effect_chain(regular).unwrap().0[0].id;
-        assert_ne!(copied, id);
-        let transfer = p
-            .transfer_effects(regular, main, &[copied], 1, false)
-            .unwrap();
-        p.edit(transfer.edit).unwrap();
-        assert!(p.effect_chain(regular).unwrap().0.is_empty());
-        assert_eq!(p.all_effects().count(), 2);
-        assert_eq!(p.effect_chain(main).unwrap().0[1].id, copied);
-        let track_target = EffectChainTarget::Track(track);
-        let transfer = p
-            .transfer_effects(main, track_target, &[copied], 0, false)
-            .unwrap();
-        p.edit(transfer.edit).unwrap();
-        let transfer = p
-            .transfer_effects(track_target, main, &[copied], 1, true)
-            .unwrap();
-        p.edit(transfer.edit).unwrap();
-        assert_eq!(p.all_effects().count(), 3);
-        let before = p.clone();
-        assert!(
-            p.edit(main.edit(vec![p.effect_chain(main).unwrap().0[0].clone(); 2], false))
-                .is_err()
-        );
-        assert_eq!(
-            serde_json::to_value(p).unwrap(),
-            serde_json::to_value(before).unwrap()
-        );
+        for constructor in [EffectInstance::drive, EffectInstance::saturator] {
+            let mut p = Project::default();
+            let track = p.add_midi_track().unwrap();
+            let i = p.tracks[0].instrument.as_mut().unwrap();
+            let regular = EffectChainTarget::Layer {
+                track,
+                layer: i.layers[0].id,
+            };
+            let main = EffectChainTarget::Layer {
+                track,
+                layer: i.main.id,
+            };
+            i.main.effects.push(constructor());
+            let id = i.main.effects[0].id;
+            let transfer = p.transfer_effects(main, regular, &[id], 0, true).unwrap();
+            p.edit(transfer.edit).unwrap();
+            let copied = p.effect_chain(regular).unwrap().0[0].id;
+            assert_ne!(copied, id);
+            let transfer = p
+                .transfer_effects(regular, main, &[copied], 1, false)
+                .unwrap();
+            p.edit(transfer.edit).unwrap();
+            assert!(p.effect_chain(regular).unwrap().0.is_empty());
+            assert_eq!(p.all_effects().count(), 2);
+            assert_eq!(p.effect_chain(main).unwrap().0[1].id, copied);
+            let track_target = EffectChainTarget::Track(track);
+            let transfer = p
+                .transfer_effects(main, track_target, &[copied], 0, false)
+                .unwrap();
+            p.edit(transfer.edit).unwrap();
+            let transfer = p
+                .transfer_effects(track_target, main, &[copied], 1, true)
+                .unwrap();
+            p.edit(transfer.edit).unwrap();
+            assert_eq!(p.all_effects().count(), 3);
+            let before = p.clone();
+            assert!(
+                p.edit(main.edit(vec![p.effect_chain(main).unwrap().0[0].clone(); 2], false))
+                    .is_err()
+            );
+            assert_eq!(
+                serde_json::to_value(p).unwrap(),
+                serde_json::to_value(before).unwrap()
+            );
+        }
     }
     #[test]
     fn groups_move_and_copy_between_layers_in_chain_order_as_one_transaction() {

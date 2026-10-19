@@ -619,6 +619,7 @@ mod effect_modulation_tests {
             EffectInstance::direction_mixer,
             EffectInstance::stereo_spread,
             EffectInstance::bitcrusher,
+            EffectInstance::saturator,
         ][kind]();
         let (open, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => (&mut s.modulation_open, &mut s.modulations),
@@ -628,6 +629,7 @@ mod effect_modulation_tests {
             EffectSettings::DirectionMixer(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::StereoSpread(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Bitcrusher(s) => (&mut s.modulation_open, &mut s.modulations),
+            EffectSettings::Saturator(s) => (&mut s.modulation_open, &mut s.modulations),
             _ => unreachable!(),
         };
         *open = true;
@@ -639,6 +641,7 @@ mod effect_modulation_tests {
             &ModulationParameter::DIRECTION_MIXER[..],
             &ModulationParameter::STEREO_SPREAD[..],
             &ModulationParameter::BITCRUSHER[..],
+            &ModulationParameter::SATURATOR[..],
         ][kind]
             .iter()
             .copied()
@@ -666,7 +669,7 @@ mod effect_modulation_tests {
     }
     #[test]
     fn effect_modulation_defaults_roundtrip_and_invalid_edits_are_atomic() {
-        for kind in 0..7 {
+        for kind in 0..8 {
             let (mut p, track, effect) = fixture(kind);
             p.edit(Edit::SetEffects {
                 track_id: track,
@@ -685,7 +688,7 @@ mod effect_modulation_tests {
                     0 => routes[0].amount = f32::NAN,
                     1 => routes[1].amount = routes[1].parameter.limit() + 0.01,
                     2 => routes[2].amount = -routes[2].parameter.limit() - 0.01,
-                    3 => routes[3].parameter = ModulationParameter::Amplitude,
+                    3 => routes[0].parameter = ModulationParameter::Amplitude,
                     4 => routes[0].source.as_mut().unwrap().unit = Id::new_v4(),
                     5 => routes[0].target = Some(Id::new_v4()),
                     6 => routes[0].id = Id::nil(),
@@ -710,6 +713,7 @@ mod effect_modulation_tests {
                 EffectInstance::direction_mixer,
                 EffectInstance::stereo_spread,
                 EffectInstance::bitcrusher,
+                EffectInstance::saturator,
             ][kind]()
             .unit;
             let mut legacy = serde_json::to_value(&expected).unwrap();
@@ -735,7 +739,7 @@ mod effect_modulation_tests {
 
     #[test]
     fn effect_modulation_uses_same_instrument_shared_sources_and_follows_provider_moves() {
-        for kind in 0..7 {
+        for kind in 0..8 {
             let (mut p, track, effect) = fixture(kind);
             let source = effect.unit.modulations()[0].source.unwrap();
             let mut instrument = p.tracks[0].instrument.clone().unwrap();

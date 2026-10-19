@@ -1,3 +1,4 @@
+pub use daw_unit_core::{SATURATOR_TYPE_ID, SaturatorClipMode, SaturatorSettings, SaturatorShape};
 mod sampler;
 pub use daw_unit_core::{BITCRUSHER_TYPE_ID, BitcrusherSettings};
 pub use daw_unit_core::{

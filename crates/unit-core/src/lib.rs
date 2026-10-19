@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 mod auto_filter;
 mod modulation;
 pub use modulation::*;
+mod saturator;
+pub use saturator::*;
 mod bitcrusher;
 mod compressor;
 pub use bitcrusher::{BITCRUSHER_STATE_VERSION, BITCRUSHER_TYPE_ID, BitcrusherSettings};

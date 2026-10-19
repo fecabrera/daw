@@ -7,7 +7,7 @@ DAW provides audio and MIDI arrangement, layered instruments, effects, mixing, a
 - Arrange audio and MIDI clips in Timeline. Move, copy, trim, loop, and stretch clips with grid snapping.
 - Create MIDI patterns and edit notes in Editor's piano roll.
 - Build MIDI instruments from Oscillator, Sampler, Envelope, LFO, Amplitude, and Macro components.
-- Process tracks and Master with 3-band EQ, Drive, Bitcrusher, Auto-filter, Compressor, OTT, Limiter, Direction Mixer, and Stereo Spread.
+- Process tracks and Master with 3-band EQ, Drive, Bitcrusher, Saturator, Auto-filter, Compressor, OTT, Limiter, Direction Mixer, and Stereo Spread.
 - Mix tracks with gain, pan, mute, and solo. Use Main to balance the layers of an instrument.
 - Save projects and export stereo WAV or MP3. Validate or render projects from the command line.
 

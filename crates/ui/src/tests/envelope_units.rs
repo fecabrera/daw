@@ -26,7 +26,7 @@ fn fixture(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id) {
     }
     (app, ctx, layer)
 }
-fn label(shapes: &[egui::epaint::ClippedShape], text: &str) -> Pos2 {
+pub(super) fn label(shapes: &[egui::epaint::ClippedShape], text: &str) -> Pos2 {
     shapes
         .iter()
         .find_map(|s| match &s.shape {

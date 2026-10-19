@@ -363,3 +363,9 @@ impl ModulationDestinationSettings for EnvelopeInstance {
         &self.modulations
     }
 }
+
+destination_settings!(
+    crate::SaturatorSettings,
+    &ModulationParameter::SATURATOR,
+    Shared
+);
