@@ -11,6 +11,7 @@ use fundsp::{
 
 const MAX_BANDS: usize = 12;
 type Bandpass = FixedSvf<f64, BandpassMode<f64>>;
+#[derive(Clone)]
 struct Bank {
     bands: [Bandpass; MAX_BANDS],
     highpass: [FixedSvf<f64, HighpassMode<f64>>; 2],
@@ -92,6 +93,7 @@ impl Bank {
     }
 }
 
+#[derive(Clone)]
 pub struct StereoSpread {
     parameters: [ModulationRamp; 5],
     external: ModulationSmoother<4>,

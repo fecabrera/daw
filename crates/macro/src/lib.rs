@@ -1,6 +1,7 @@
 //! Portable shared Macro control. Hosts own routing, identity and source publication.
 use daw_unit_core::*;
 
+#[derive(Clone)]
 pub struct Macro {
     settings: MacroSettings,
     target: Option<ModulationTargetId>,

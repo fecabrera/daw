@@ -21,6 +21,7 @@ fn quantize(input: f64, bits: u8) -> f64 {
     magnitude.copysign(input)
 }
 
+#[derive(Clone)]
 pub struct Bitcrusher {
     // Drive dB, Resolution bits, Downsampling ratio, Level amplitude, Dry/Wet, power.
     parameters: [ModulationRamp; 6],

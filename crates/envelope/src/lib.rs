@@ -12,6 +12,7 @@ pub enum Stage {
     Release,
 }
 
+#[derive(Clone)]
 pub struct Envelope {
     settings: EnvelopeSettings,
     input_scope: daw_unit_core::ModulationScope,

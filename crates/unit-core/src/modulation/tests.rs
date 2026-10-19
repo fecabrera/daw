@@ -521,3 +521,82 @@ fn envelope_inputs_migrate_and_share_scope_cycle_and_route_validation() {
     i.layers[0].envelopes[1].modulations.push(route);
     assert!(!i.valid(), "duplicate route IDs are rejected");
 }
+
+#[test]
+fn empty_routes_keep_note_gate_semantics_and_destination_smoothing_after_removal() {
+    struct SmoothedDestination(ModulationSmoother<1>);
+    impl ModulationDestination for SmoothedDestination {
+        type Audio = [f32; 2];
+        const MODULATION_PARAMETERS: &'static [ModulationParameter] =
+            &[ModulationParameter::Frequency];
+        const MODULATION_SCOPE: ModulationScope = ModulationScope::PerNote;
+        fn process_with_modulation(
+            &mut self,
+            _: Self::Audio,
+            inputs: &ModulationInputs,
+            _: ModulationContext,
+        ) -> Self::Audio {
+            [
+                self.0
+                    .process([inputs.offset(ModulationParameter::Frequency)])[0]
+                    as f32,
+                inputs.amplitude(),
+            ]
+        }
+    }
+    let mut unit = SmoothedDestination(ModulationSmoother::new(context()));
+    unit.0.process([1.0]);
+    for _ in 0..10 {
+        unit.0.process([1.0]);
+    }
+    let output = process_modulation(
+        &mut unit,
+        &mut [],
+        [0.0; 2],
+        &[],
+        &[],
+        ModulationContext::default(),
+    );
+    assert!(
+        output[0] > 0.0 && output[0] < 1.0,
+        "Removing routes must retain the destination's fade to neutral"
+    );
+    for gate in [-1.0, -0.0, 0.0, 0.25, 1.0, 17.0, f32::NAN] {
+        let context = ModulationContext {
+            note_gate: gate,
+            ..Default::default()
+        };
+        let expected = ModulationInputs::resolve(
+            &mut [],
+            SmoothedDestination::MODULATION_PARAMETERS,
+            &[],
+            &[],
+            context,
+        )
+        .amplitude();
+        let actual = process_modulation(&mut unit, &mut [], [0.0; 2], &[], &[], context)[1];
+        assert!(actual.to_bits() == expected.to_bits() || (actual.is_nan() && expected.is_nan()));
+    }
+    for _ in 0..10 {
+        process_modulation(
+            &mut unit,
+            &mut [],
+            [0.0; 2],
+            &[],
+            &[],
+            ModulationContext::default(),
+        );
+    }
+    assert!(
+        process_modulation(
+            &mut unit,
+            &mut [],
+            [0.0; 2],
+            &[],
+            &[],
+            ModulationContext::default()
+        )[0]
+        .abs()
+            < 1e-6
+    );
+}

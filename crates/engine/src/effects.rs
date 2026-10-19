@@ -12,6 +12,7 @@ use daw_stereo_spread::StereoSpread;
 use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_modulation};
 use std::sync::{Arc, atomic::AtomicU32};
 
+#[derive(Clone)]
 enum RuntimeEffect {
     Eq3(Box<Equalizer>, Vec<super::modulation::Route>),
     Drive(Box<Drive>, Vec<super::modulation::Route>),
@@ -263,6 +264,7 @@ impl RuntimeEffect {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct EffectChain {
     index: std::collections::HashMap<Id, usize>,
     mono: bool,

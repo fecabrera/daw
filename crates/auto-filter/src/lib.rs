@@ -38,7 +38,7 @@ impl Ramp {
         self.remaining = 0;
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Filter {
     ic1: f64,
     ic2: f64,
@@ -73,6 +73,7 @@ fn weights<const N: usize>(index: usize) -> [Ramp; N] {
 }
 use daw_lfo::waveform as wave;
 
+#[derive(Clone)]
 pub struct AutoFilter {
     sample_rate: f64,
     fade: u32,

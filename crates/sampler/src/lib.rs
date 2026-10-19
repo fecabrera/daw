@@ -7,6 +7,7 @@ mod modulation;
 /// Keep the complete bank alive outside the callback; note changes only an index.
 pub type SampleBank = [Option<Arc<Vec<[f32; 2]>>>; 128];
 
+#[derive(Clone)]
 pub struct Sampler {
     bank: Arc<SampleBank>,
     note: u8,

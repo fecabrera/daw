@@ -14,6 +14,7 @@ mod modulation_tests;
 
 const RMS: Meter = Meter::Rms(0.01);
 
+#[derive(Clone)]
 struct Ramp {
     value: f32,
     target: f32,
@@ -61,6 +62,7 @@ fn reduction(level_db: f32, threshold_db: f32, slope: f32, knee: f32) -> f32 {
     }
 }
 
+#[derive(Clone)]
 pub struct Compressor {
     rms: [MeterState; 2],
     // Threshold, slope, knee, log attack/release time, RMS weight, level, wet, enabled.

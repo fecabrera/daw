@@ -3,6 +3,7 @@ use super::{RenderPlan, sample_fade};
 use daw_core::Track;
 use daw_media::AudioData;
 
+#[derive(Clone)]
 pub(super) struct Ranges {
     sorted: Vec<(u64, u64, usize)>,
     window: (u64, u64, Option<usize>),
@@ -34,6 +35,7 @@ impl Ranges {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct AudioTrack {
     ranges: Ranges,
     audio: Vec<Option<AudioData>>,

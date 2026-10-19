@@ -36,6 +36,13 @@ pub struct UnitMeter<T: MeterStorage> {
     handle: Option<Arc<T>>,
 }
 
+// DSP snapshots retain meter enable state but never share publication handles.
+impl<T: MeterStorage> Clone for UnitMeter<T> {
+    fn clone(&self) -> Self {
+        Self::new(self.enabled)
+    }
+}
+
 impl<T: MeterStorage> UnitMeter<T> {
     pub fn new(enabled: bool) -> Self {
         Self {
@@ -75,6 +82,25 @@ impl<T: MeterStorage> UnitMeter<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn processor_snapshots_detach_meter_handles() {
+        let original = Arc::new(AtomicU32::new(0));
+        let mut meter = UnitMeter::new(true);
+        meter.attach(original.clone(), 1.0);
+        let mut snapshot = meter.clone();
+        assert!(!snapshot.is_connected());
+        snapshot.publish(2.0);
+        assert_eq!(f32::from_bits(original.load(Ordering::Relaxed)), 1.0);
+        let separate = Arc::new(AtomicU32::new(0));
+        snapshot.attach(separate.clone(), 3.0);
+        assert_eq!(f32::from_bits(separate.load(Ordering::Relaxed)), 3.0);
+        assert_eq!(Arc::strong_count(&original), 2);
+        meter.set_enabled(false);
+        let mut disabled = meter.clone();
+        disabled.attach(separate.clone(), 4.0);
+        assert_eq!(separate.load(Ordering::Relaxed), 0);
+    }
 
     fn check<T: MeterStorage>(handle: Arc<T>, reading: T::Reading, cells: &[&AtomicU32]) {
         let owners = Arc::strong_count(&handle);

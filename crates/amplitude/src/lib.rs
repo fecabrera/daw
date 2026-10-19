@@ -32,6 +32,7 @@ impl Ramp {
         self.left = 0;
     }
 }
+#[derive(Clone)]
 pub struct Amplitude {
     level: Ramp,
     mix: Ramp,

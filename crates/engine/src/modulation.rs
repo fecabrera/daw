@@ -3,6 +3,7 @@ use daw_core::{EnvelopeInstance, EnvelopeMode, ModulationSourceId, ModulationVal
 use daw_envelope::Envelope;
 pub(crate) use daw_unit_core::ModulationRoute as Route;
 use daw_unit_core::{ModulationOutput, ModulationSourceContext, ProcessingContext};
+#[derive(Clone)]
 pub(crate) struct Control {
     pub source: ModulationSourceId,
     pub mode: EnvelopeMode,
@@ -118,6 +119,7 @@ impl NoteState {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct SharedControls {
     pub controls: Vec<Control>,
     pub values: Vec<ModulationValue>,

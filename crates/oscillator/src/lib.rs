@@ -7,6 +7,7 @@ use daw_unit_core::{
 };
 use fundsp::prelude32::*;
 
+#[derive(Clone)]
 pub struct Oscillator {
     node: Box<dyn AudioUnit>,
     frequency: f32,

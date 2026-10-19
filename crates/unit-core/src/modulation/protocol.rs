@@ -171,6 +171,7 @@ impl ModulationSourceInfo<'_> {
 
 /// Common source enable ramp, normalization and published sample construction.
 /// Identity and scope belong to the host, so the same generator can serve voices or a shared bus.
+#[derive(Clone)]
 pub struct ModulationOutput {
     id: ModulationSourceId,
     weight: ModulationRamp,

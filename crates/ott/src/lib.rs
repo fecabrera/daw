@@ -15,6 +15,7 @@ use std::sync::atomic::Ordering;
 
 const RMS: Meter = Meter::Rms(0.01);
 
+#[derive(Clone)]
 struct Ramp {
     value: f32,
     target: f32,
@@ -56,6 +57,7 @@ fn finite(value: f64) -> f32 {
 }
 
 /// Two cascaded Butterworth sections on each branch: fourth-order Linkwitz–Riley.
+#[derive(Clone)]
 struct Split {
     low: [[FixedSvf<f64, LowpassMode<f64>>; 2]; 2],
     high: [[FixedSvf<f64, HighpassMode<f64>>; 2]; 2],
@@ -133,6 +135,7 @@ fn soft_over(over: f32) -> f32 {
 fn gain_curve(level_db: f32) -> f32 {
     (0.75 * soft_over(-36.0 - level_db)).min(24.0) - (0.9 * soft_over(level_db + 18.0)).min(60.0)
 }
+#[derive(Clone)]
 struct Band {
     // Depth, input/output dB, log attack/release milliseconds, enabled.
     parameters: [Ramp; 6],
@@ -234,6 +237,7 @@ impl Band {
     }
 }
 
+#[derive(Clone)]
 pub struct Ott {
     // Low log frequency, High log frequency, output amplitude, wet, RMS weight, enabled.
     parameters: [Ramp; 6],

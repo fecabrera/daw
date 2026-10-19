@@ -5,6 +5,7 @@ use daw_unit_core::{
 };
 use fundsp::{audionode::AudioNode, svf::*};
 
+#[derive(Clone)]
 struct Ramp {
     value: f32,
     target: f32,
@@ -43,6 +44,7 @@ type Bell = FixedSvf<f64, BellMode<f64>>;
 type Bass = FixedSvf<f64, LowshelfMode<f64>>;
 type Tone = FixedSvf<f64, HighshelfMode<f64>>;
 
+#[derive(Clone)]
 pub struct Drive {
     // Each color branch and channel has independent history, including inactive branches.
     bells: [[Bell; 2]; 3],

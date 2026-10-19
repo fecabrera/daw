@@ -1592,3 +1592,40 @@ fn saturator_track_master_live_offline_blocks_and_compatible_updates_share_clock
         }
     }
 }
+
+#[test]
+fn worker_snapshots_preserve_every_effect_history_and_own_independent_state() {
+    for effect in [
+        EffectInstance::equalizer(),
+        EffectInstance::drive(),
+        EffectInstance::auto_filter(),
+        EffectInstance::compressor(),
+        EffectInstance::ott(),
+        EffectInstance::limiter(),
+        EffectInstance::direction_mixer(),
+        EffectInstance::stereo_spread(),
+        EffectInstance::saturator(),
+        EffectInstance::bitcrusher(),
+    ] {
+        let mut p = plan(48_000, false);
+        p.project.tracks[0].effects.push(effect);
+        let mut renderer = Renderer::new(p);
+        renderer.play();
+        for _ in 0..4096 {
+            renderer.next_sample();
+        }
+        let mut snapshot = renderer.clone();
+        let mut independent = snapshot.clone();
+        for _ in 0..2048 {
+            assert_eq!(renderer.next_sample(), snapshot.next_sample());
+        }
+        // Mutating the original cannot change a checkpoint's processor buffers.
+        renderer.prepare_transport(Default::default());
+        for _ in 0..2048 {
+            independent.next_sample();
+        }
+        for _ in 0..512 {
+            assert_eq!(independent.next_sample(), snapshot.next_sample());
+        }
+    }
+}

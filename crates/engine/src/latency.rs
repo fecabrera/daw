@@ -2,6 +2,7 @@
 use daw_core::{EffectInstance, EffectSettings, Id, Project};
 
 pub(super) type Sample = ([f32; 2], bool);
+#[derive(Clone)]
 pub(super) struct Delay {
     id: Id,
     samples: Vec<Sample>,
@@ -47,6 +48,7 @@ pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
         })
         .sum()
 }
+#[derive(Clone)]
 pub(super) struct Alignment {
     pub tracks: Vec<Delay>,
     index: std::collections::HashMap<Id, usize>,

@@ -7,6 +7,7 @@ use daw_oscillator::Oscillator;
 use daw_unit_core::{ModulationContext, process_modulation};
 use daw_unit_core::{ProcessingContext, SourceUnit};
 
+#[derive(Clone)]
 struct NoteEvent {
     frame: u64,
     note: Id,
@@ -14,12 +15,14 @@ struct NoteEvent {
     on: Option<(u8, u8)>,
     duration_frames: u64,
 }
+#[derive(Clone)]
 struct PatternClip {
     clip: Clip,
     events: Vec<NoteEvent>,
     note_states: Vec<super::modulation::NoteState>,
     slot_starts: Vec<Vec<usize>>,
 }
+#[derive(Clone)]
 struct LayerVoice {
     previous: [f32; 2],
     transition_from: [f32; 2],
@@ -36,6 +39,7 @@ struct LayerVoice {
     gain_target: [f32; 2],
     gain_remaining: u32,
 }
+#[derive(Clone)]
 struct Voice {
     active_last_sample: bool,
     sleeping: bool,
@@ -56,6 +60,7 @@ struct Voice {
     note_duration_frames: Option<u64>,
     release_frames: u64,
 }
+#[derive(Clone)]
 struct OscillatorVoice {
     id: Id,
     routes: Vec<Route>,
@@ -364,6 +369,7 @@ fn note_frequency(pitch: u8, transpose: i8) -> f32 {
     440.0 * 2.0_f32.powf((f32::from(pitch) + f32::from(transpose) - 69.0) / 12.0)
 }
 
+#[derive(Clone)]
 pub(crate) struct MidiTrackRuntime {
     // Regular buses follow canonical layer order; Main is always the final bus.
     layer_effects: Vec<super::layer_effects::LayerEffects>,

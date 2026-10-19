@@ -3021,3 +3021,84 @@ Space now reaches Play/Pause before focused controls or catalog folders handle i
 Native keyboard and audio-device behavior has not been checked interactively. Automated shortcut tests do not open an audio device.
 
 Final workspace verification: `cargo test --workspace` passes 934 tests with two existing extended acceptance matrices ignored (`work/transport-workspace-tests.log`). The macOS debug package build passes (`work/transport-package.log`); `target/debug/DAW.app` was rebuilt without restarting the running app. UI and Clippy logs are `work/transport-ui-tests.log` and `work/transport-clippy.log`.
+
+## Release transport delay investigation — 2026-10-19
+
+A private local project with three tracks, modulated envelopes, and 17 effects reproduces a release-build transport preparation delay. At 48 kHz/512 frames, reconstruction at frame 156,160 takes about 366 ms; rendering 100 ms takes about 12.5 ms. Plan cloning takes about 15 microseconds and renderer construction about 1.5 ms. Envelope destination history forces replay from frame zero through the full processing graph. Incompatible live note edits also pause for this worker reconstruction. This is preparation latency, not proof of a steady callback overrun.
+
+The initial development-build comparison was not representative of the reported release issue. Its profile change was removed. A sampled Saturator buffer-access change did not materially improve the project benchmark and was also removed. No build profiles, DSP coefficients, or project data were changed.
+
+Pending Pause now sends a bounded, revision-checked callback command as well as preparing the final paused state. It stops active audio without waiting for reconstruction or falsely acknowledging the pending plan. A regression test covers pending pause, stable playhead during the pause fade, later prepared-state activation, and rejection of stale pause commands after resume.
+
+The shared modulation entry point skips route resolution for empty connection lists while retaining destination processing and smoothing. Parameter lookup helpers can inline across crate boundaries. Tests compare note-gate behavior, including signed zero and nonfinite input, and verify smoothing after route removal. A subsequent release measurement remains about 348 ms to prepare and 12.2 ms per 100 ms of audio. This small timing difference does not establish a substantial speedup or resolve seek/note-edit preparation latency.
+
+A headless release UI probe loaded the same project and painted 100 idle frames in each view: Timeline 79 ms, Instrument 33 ms, Editor 6 ms, Mixer 10 ms. It observed no automatic project edits. This probe excludes live device output, GPU presentation, and native input handling; it does not establish that the reported native interface delay is fixed.
+
+A second release probe used Core Audio with a silent, in-memory copy of the same project. Opening the device took 91 ms. During playback, seek took 15 microseconds, a note edit took 176 microseconds, and the slowest subsequent UI frame took 0.66 ms. The 467 audio callbacks recorded no budget overruns; the slowest callback took 4.49 ms. This probe exercises the real output and UI update paths but excludes native window input and GPU presentation. It does not reproduce or resolve the reported visible freeze.
+
+Private data was read only. Temporary probes and logs remain under ignored `work/808-performance/`, `work/808-release-*.log`, `work/808-release-sample.txt`, `work/808-ui-release.log`, and `work/808-playback-release*.log`. Exact arbitrary-position DSP checkpoints remain outside the implemented rendering architecture.
+
+The extended all-view probe included tessellation but received zero audio callbacks despite successful device initialization. It is not evidence of live playback or loop-boundary behavior. It recorded a 112 ms maximum frame; no trace was captured to attribute that delay. The profiler request timed out during automatic permission review after the test process had finished.
+
+Final checks:
+
+- `cargo fmt --all --check` and `git diff --check`: pass.
+- `cargo clippy --workspace --all-targets -- -D warnings`: pass (`work/808-final-clippy.log`).
+- `cargo test --workspace`: 936 passed, two existing extended acceptance matrices ignored (`work/808-final-workspace-tests.log`).
+- `cargo test --release -p daw-output -p daw-unit-core`: 50 passed (`work/808-final-release-tests.log`).
+- CLI build and `python3 tools/check_cli.py`: pass (`work/808-final-cli-build.log`, `work/808-final-cli-check.log`).
+- macOS release and debug packages: pass; both bundles rebuilt with the original profile settings (`work/808-final-release-package.log`, `work/808-final-debug-package.log`).
+
+The private-project probes are temporary investigation code, removed from the repository test sources. Windows/Linux device behavior, native window responsiveness, and the remaining seek/note-edit delay are not resolved by these changes.
+
+### Native playback interaction follow-up
+
+The report affects every view. A separate project copy was opened in the native macOS release app, with Master gain set to silence. The original project was not modified. Playback ran through the loop while the ruler was clicked repeatedly; four new notes were then added in the MIDI editor using Command-click. The test session was closed without saving its edits.
+
+Temporary native frame timing separates menu dispatch, UI update, and menu refresh. During this run, Timeline UI updates remained below 5 ms and Editor UI updates remained below 3.2 ms, including seeks and note additions. Median steady Timeline updates were about 2.9 ms; Editor updates were about 0.57 ms. The first Play update took 94 ms, consistent with the earlier device-open measurement. These are application update times, not end-to-end input-to-display measurements. Native menu refresh was small; no audio-status spin was found in the captured stacks.
+
+The visible playhead pause on a note edit is reproduced. The output callback suspends the old transport when the replacement MIDI runtime cannot inherit modulated envelope history, then waits for worker replay. A seek displays its requested position while that preparation runs. This explains a visible pause across views without requiring a long UI update. It does not rule out other intermittent native presentation stalls.
+
+A native Timeline stack sample also found repeated waveform extrema scans as the largest UI CPU contributor. An Instrument sample instead shows widget construction, accessibility updates, and tessellation. Neither result alone establishes the cause of a long interaction stall. No speculative waveform or menu changes were retained.
+
+Native traces and timing batches are in ignored `work/808-native-playing-sample.txt`, `work/808-native-instrument-sample.txt`, and `work/808-native-frames-17148-*.csv`. Temporary desktop instrumentation was removed, formatting and diff checks passed, and the release bundle was rebuilt from the normal sources. The existing pending-Pause fix remains; seek/note-edit history reconstruction and synchronous device opening remain unresolved.
+
+### Continuous playback during preparation
+
+This change supersedes the suspension behavior described above. Incompatible note and latency edits now keep the old renderer playing. Worker preparation reconstructs history and advances the shared live renderer to a future project-sample clock. Activation swaps at that exact clock. Late results retry without pausing or rewinding. A pending playing seek displays the active audio position until the prepared seek activates.
+
+Focused output regressions pass. They cover forward/backward seeks, uninterrupted note-edit preparation, exact output after the activation fade for an LFO-modulated envelope across loop boundaries, latency changes with 44.1/48/96 kHz device conversion, full retirement queues, missed activation deadlines, stale revisions, and Pause/Resume. A thread-local allocator check confirms no allocation or deallocation during tested callback operations. The shared renderer retains modulation resolution, smoothing, and note scheduling; no DSP approximation was added.
+
+The rebuilt macOS release app opened a silent disposable copy of the reported project at 48 kHz/512 frames. Ruler seeks were exercised in Timeline and Editor. Five notes were added during looped playback. The notes appeared, playback remained active, and Pause/Resume worked after a pending edit. The session was closed without saving. This native check does not measure end-to-end input latency or audible hardware dropouts. The original project was not modified.
+
+History reconstruction still delays when some edits become audible; playback continues during that delay. Initial audio-device opening remains synchronous. Windows/Linux devices and sustained overload behavior remain unverified.
+
+Validation commands and results:
+
+- `cargo fmt --all --check`, `git diff --check`, and changed guide/spec link checks: pass.
+- `cargo clippy --workspace --all-targets -- -D warnings`: pass (`work/808-continuous-clippy.log`).
+- `cargo test --workspace`: 940 passed; two existing extended acceptance matrices ignored (`work/808-continuous-workspace-tests.log`).
+- `cargo test --release -p daw-output -p daw-unit-core`: 54 passed (`work/808-continuous-release-tests.log`).
+- `sh tools/package_macos.sh release`: pass; `target/release/DAW.app` rebuilt and used for the native check (`work/808-continuous-package.log`).
+- CLI build and `python3 tools/check_cli.py`: pass (`work/808-continuous-cli-build.log`, `work/808-continuous-cli-check.log`).
+
+### Seek preparation cache follow-up
+
+The continuous-playback fix still waited for full history reconstruction before a ruler seek activated. `TransportCache` now reuses exact, worker-owned DSP snapshots, with bounded checkpoint count and cancellable prefetch. Shared audio buffers retain their original ownership. New project plans invalidate checkpoints, and cloned processors detach meter publication handles.
+
+The private-project release probe compared five positions between checkpoints. Cached preparation took about 7–29 ms; full reconstruction at the same positions took about 191–1,128 ms. At each position, the next 1,024 stereo output samples matched exactly. Positions close to checkpoint boundaries took about 2 ms. These are preparation timings, not native end-to-end input latency. Cold preparation and initial prefetch still take time. Probe logs are `work/808-seek-cache-probe.log` and `work/808-seek-cache-offset-probe.log`.
+
+A process-level memory comparison recorded about 87 MB maximum resident size with warmed checkpoints and 75 MB without checkpoints for this project. This includes decoded audio, manifests, and probe renderers; it is not a general cache-size limit. Logs are `work/808-seek-cache-memory.log` and `work/808-seek-cache-memory-baseline.log`. The temporary probe source was moved to ignored `work/808-performance/seek_cache_probe.rs`.
+
+The final macOS release build was checked with the same silent disposable project copy. Three Timeline ruler seeks and two Editor ruler seeks retained active playback. Three MIDI notes were added during playback; Pause during an edit and Resume both worked. The session was closed without saving. These observations confirm native interaction and transport state, not end-to-end latency or audible hardware dropout measurements.
+
+Final cache validation:
+
+- `cargo fmt --all --check`, `git diff --check`, and changed documentation links: pass.
+- `cargo clippy --workspace --all-targets -- -D warnings`: pass (`work/808-cached-clippy.log`).
+- `cargo test --workspace`: 945 passed; two existing extended acceptance matrices ignored (`work/808-cached-workspace-tests.log`).
+- `cargo test --release -p daw-output -p daw-unit-core`: 57 passed (`work/808-cached-release-tests.log`).
+- `sh tools/package_macos.sh release`: pass; the rebuilt release bundle was used for the native check (`work/808-cached-package.log`).
+- CLI build and `python3 tools/check_cli.py`: pass (`work/808-cached-cli-build.log`, `work/808-cached-cli-check.log`).
+
+New regressions cover exact cached/uncached history with modulation and latency effects, backward seeks, cancellation, transport-mode changes, project-plan invalidation, bounded checkpoint storage, detached meter handles, and independent snapshots for every effect processor. Callback allocation/deallocation checks remain enabled in the output regressions.

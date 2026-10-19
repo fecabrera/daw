@@ -23,6 +23,8 @@ pub use performance::{Performance, PerformanceSnapshot};
 pub struct Status {
     pub performance: Performance,
     transport_sequence: AtomicU64,
+    // Monotonic project samples rendered, independent of seeks and loop wraps.
+    rendered_frames: AtomicU64,
     paused: AtomicBool,
     playback_start: AtomicU64,
     requested_revision: AtomicU64,
@@ -74,7 +76,9 @@ struct PreparedRenderer {
     renderer: Renderer,
     revision: u64,
     prepared_transport: bool,
-    reprepare: Option<TransportState>,
+    reprepare: Option<preparation::Anchor>,
+    activate_at: Option<u64>,
+    preparation_lead: u64,
     ready_at: Option<std::time::Instant>,
     meters: Vec<Arc<StereoMeter>>,
     modulation: Vec<(ModulationTarget, ModulationMeter)>,
@@ -92,6 +96,8 @@ impl PreparedRenderer {
             revision: 0,
             prepared_transport: false,
             reprepare: None,
+            activate_at: None,
+            preparation_lead: 0,
             ready_at: None,
             meters: handles,
             modulation: Vec::new(),
@@ -304,6 +310,8 @@ fn modulation_meters(
 enum Command {
     Plan(Box<PreparedRenderer>),
     PauseAt(u64),
+    // Stop the active audio now without marking the pending prepared plan as applied.
+    PausePending(u64),
     ResumeAt(u64),
     #[cfg(test)]
     Play,
@@ -431,7 +439,7 @@ impl AudioOutput {
             project_rate_hz,
             buffer_size_frames,
             _stream: stream,
-            preparation: preparation::Worker::new()?,
+            preparation: preparation::Worker::new(status.clone())?,
             prepare_revision: 0,
             prepared: None,
             commands,
@@ -461,6 +469,10 @@ impl AudioOutput {
     /// Latest requested transport until activation; useful for pending Play/Pause/Seek UI.
     pub fn transport_intent(&self) -> TransportState {
         self.current_transport()
+    }
+    /// Keep the displayed playhead on the audible transport until a playing seek activates.
+    pub fn displayed_frame(&self) -> u64 {
+        displayed_frame(self.current_transport(), self.status.transport())
     }
     fn current_transport(&self) -> TransportState {
         self.desired_transport
@@ -565,8 +577,11 @@ impl AudioOutput {
         state.paused |= state.playing;
         state.playing = false;
         if self.preparing() {
+            if self.commands.is_full() {
+                return Err("Audio command queue is full; try again".into());
+            }
             self.prepare(Some(state));
-            Ok(())
+            self.send(Command::PausePending(self.prepare_revision))
         } else {
             self.immediate(state, false)
         }
@@ -611,7 +626,6 @@ impl AudioOutput {
             if old.revision == self.prepare_revision
                 && let Some(transport) = old.reprepare.take()
             {
-                self.desired_transport = Some((old.revision, transport));
                 self.preparation.reprepare(
                     preparation::Ready {
                         revision: old.revision,
@@ -651,7 +665,8 @@ struct Callback {
     commands: Consumer<Command>,
     retired: Producer<Box<PreparedRenderer>>,
     pending: Option<Box<PreparedRenderer>>,
-    suspended_transport: Option<TransportState>,
+    scheduled: Option<Box<PreparedRenderer>>,
+    rendered_frames: u64,
     status: Arc<Status>,
     converter: Option<rubato::FftFixedIn<f32>>,
     input: Vec<Vec<f32>>,
@@ -698,7 +713,8 @@ impl Callback {
             commands,
             retired,
             pending: None,
-            suspended_transport: None,
+            scheduled: None,
+            rendered_frames: 0,
             status,
             converter,
             input,
@@ -710,6 +726,7 @@ impl Callback {
     }
     fn update(&mut self) {
         let started = std::time::Instant::now();
+        self.activate_scheduled();
         for _ in 0..8 {
             let command = if let Some(pending) = self.pending.take() {
                 Command::Plan(pending)
@@ -729,39 +746,38 @@ impl Callback {
                         let _ = self.retired.push(next);
                         continue;
                     }
+                    if let Some(scheduled) = self.scheduled.take() {
+                        let _ = self.retired.push(scheduled);
+                        if self.retired.is_full() {
+                            self.pending = Some(next);
+                            break;
+                        }
+                    }
+                    if next.activate_at.is_some() {
+                        self.scheduled = Some(next);
+                        self.activate_scheduled();
+                        continue;
+                    }
                     if next.prepared_transport {
-                        self.suspended_transport = None;
                         next.activate_transport(&self.renderer);
                         self.discard_buffered_output();
-                    } else if self.suspended_transport.is_none()
-                        && next.can_inherit_without_preroll(&self.renderer)
-                    {
+                    } else if next.can_inherit_without_preroll(&self.renderer) {
                         next.inherit(&mut self.renderer);
                     } else {
-                        // Hold the exact block-boundary position while worker pre-roll runs.
-                        // Keep rendering the old 5 ms pause fade; never prime on this thread.
-                        let transport = *self
-                            .suspended_transport
-                            .get_or_insert_with(|| self.renderer.transport_state());
-                        next.reprepare = Some(transport);
-                        self.renderer.pause();
-                        self.discard_buffered_output();
+                        // Rebuild at this exact clock, then catch up on the worker.
+                        // The current renderer keeps playing throughout preparation.
+                        next.reprepare = Some(self.preparation_anchor());
                         let _ = self.retired.push(next);
                         continue;
                     }
-                    if let Some(ready_at) = next.ready_at {
-                        self.status.performance.prepared_wait(
-                            ready_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
-                        );
+                    self.install(next);
+                }
+                Command::PausePending(revision) => {
+                    if revision == self.status.requested_revision.load(Ordering::Acquire) {
+                        self.renderer.pause();
+                        self.discard_buffered_output();
+                        self.status.publish_transport(&self.renderer);
                     }
-                    let revision = next.revision;
-                    let old = std::mem::replace(&mut self.renderer, next);
-                    self.status.publish_transport(&self.renderer);
-                    self.status
-                        .applied_revision
-                        .store(revision, Ordering::Release);
-                    // A single producer owns this queue; the capacity check guarantees success.
-                    let _ = self.retired.push(old);
                 }
                 Command::PauseAt(revision) | Command::ResumeAt(revision) => {
                     if revision == self.status.requested_revision.load(Ordering::Acquire) {
@@ -803,21 +819,79 @@ impl Callback {
             .performance
             .commands(started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64);
     }
+    fn preparation_anchor(&self) -> preparation::Anchor {
+        preparation::Anchor {
+            transport: self.renderer.transport_state(),
+            clock: self.rendered_frames,
+        }
+    }
+    fn install(&mut self, next: Box<PreparedRenderer>) {
+        if let Some(ready_at) = next.ready_at {
+            self.status
+                .performance
+                .prepared_wait(ready_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64);
+        }
+        let revision = next.revision;
+        let old = std::mem::replace(&mut self.renderer, next);
+        self.status.publish_transport(&self.renderer);
+        self.status
+            .applied_revision
+            .store(revision, Ordering::Release);
+        // The single producer checks capacity before transferring either owner.
+        let _ = self.retired.push(old);
+    }
+    fn activate_scheduled(&mut self) {
+        let Some(next) = &self.scheduled else { return };
+        let stale = next.revision != self.status.requested_revision.load(Ordering::Acquire);
+        let at = next
+            .activate_at
+            .expect("scheduled renderer has a sample clock");
+        if (!stale && at > self.rendered_frames) || self.retired.is_full() {
+            return;
+        }
+        let mut next = self.scheduled.take().unwrap();
+        if stale {
+            let _ = self.retired.push(next);
+        } else if at < self.rendered_frames {
+            // UI/queue delays can miss a deadline. Retry with more delivery headroom;
+            // never rewind the active transport or replay DSP on this thread.
+            next.preparation_lead = next
+                .preparation_lead
+                .saturating_mul(2)
+                .min(u64::from(next.plan.project.sample_rate_hz));
+            next.reprepare = Some(self.preparation_anchor());
+            let _ = self.retired.push(next);
+        } else {
+            next.activate_transport(&self.renderer);
+            self.install(next);
+        }
+    }
+    fn next_project_sample(&mut self) -> [f32; 2] {
+        self.activate_scheduled();
+        let sample = self.renderer.next_sample();
+        self.rendered_frames += 1;
+        sample
+    }
     fn discard_buffered_output(&mut self) {
         // Discard cached samples from before the command. Keep filter history so
         // the renderer's transport fade remains continuous through resampling.
         self.index = self.output_count;
     }
     fn next(&mut self) -> [f32; 2] {
-        if let Some(converter) = &mut self.converter {
+        if self.converter.is_some() {
             while self.index >= self.output_count {
                 self.rendered_input = true;
-                for i in 0..converter.input_frames_next() {
-                    let s = self.renderer.next_sample();
+                let count = self.converter.as_ref().unwrap().input_frames_next();
+                for i in 0..count {
+                    let s = self.next_project_sample();
                     self.input[0][i] = s[0];
                     self.input[1][i] = s[1];
                 }
-                match converter.process_into_buffer(&self.input, &mut self.output, None) {
+                match self.converter.as_mut().unwrap().process_into_buffer(
+                    &self.input,
+                    &mut self.output,
+                    None,
+                ) {
                     Ok((_, count)) => {
                         self.output_count = count;
                         self.index = 0;
@@ -833,8 +907,15 @@ impl Callback {
             self.index += 1;
             s
         } else {
-            self.renderer.next_sample()
+            self.next_project_sample()
         }
+    }
+}
+fn displayed_frame(intent: TransportState, active: TransportState) -> u64 {
+    if intent.playing && active.playing {
+        active.frame
+    } else {
+        intent.frame
     }
 }
 fn build_stream<T>(
@@ -879,6 +960,10 @@ where
                     callback.renderer.publish_track_peaks();
                 }
                 callback.status.meter.publish_peaks(peaks);
+                callback
+                    .status
+                    .rendered_frames
+                    .store(callback.rendered_frames, Ordering::Release);
                 callback.status.publish_transport(&callback.renderer);
                 callback.status.performance.callback(
                     started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,

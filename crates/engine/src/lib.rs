@@ -6,9 +6,11 @@ mod lfo;
 mod midi;
 mod modulation;
 mod schedule;
+mod transport_cache;
 use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
 use daw_media::AudioData;
 use std::collections::HashMap;
+pub use transport_cache::TransportCache;
 
 #[derive(Clone)]
 pub struct RenderPlan {
@@ -163,6 +165,9 @@ pub enum ModulationTarget {
     },
 }
 
+/// Clone only on control/workers: mutable DSP state is independent and meter handles detach.
+/// Immutable decoded/prepared audio remains shared.
+#[derive(Clone)]
 pub struct Renderer {
     /// Immutable prepared model. Replace it through a new renderer and `inherit`.
     pub plan: RenderPlan,
@@ -197,6 +202,7 @@ pub struct TransportState {
     pub paused: bool,
     pub playback_start: Option<u64>,
 }
+#[derive(Clone)]
 struct TrackGains {
     id: Id,
     value: [f32; 4],

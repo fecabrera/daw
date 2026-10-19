@@ -53,6 +53,7 @@ fn maximum(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     std::array::from_fn(|i| a[i].max(b[i]))
 }
 
+#[derive(Clone)]
 pub struct Limiter {
     rate: u32,
     frames: Vec<Frame>,

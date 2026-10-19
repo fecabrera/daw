@@ -2,10 +2,12 @@
 use super::modulation::Route;
 use daw_unit_core::*;
 
+#[derive(Clone)]
 enum Unit {
     Lfo(Box<daw_lfo::Lfo>),
     Macro(daw_macro::Macro),
 }
+#[derive(Clone)]
 pub(crate) struct ProviderControl {
     pub source: ModulationSourceId,
     unit: Unit,

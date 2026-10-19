@@ -57,6 +57,7 @@ struct SourceBinding {
 }
 
 /// Prepared route with a shared 5 ms amount/power ramp. Retarget by stable route ID.
+#[derive(Clone)]
 pub struct ModulationRoute {
     pub settings: Modulation,
     amount: ModulationRamp,
@@ -197,12 +198,14 @@ pub struct ModulationInputs {
     amplitude: f32,
 }
 impl ModulationInputs {
+    #[inline]
     pub fn neutral(note_gate: f32) -> Self {
         Self {
             offsets: [0.0; 67],
             amplitude: note_gate,
         }
     }
+    #[inline]
     pub fn offset(&self, parameter: ModulationParameter) -> f32 {
         parameter.offset_index().map_or(0.0, |i| self.offsets[i])
     }
@@ -290,6 +293,7 @@ impl ModulationInputs {
     }
 }
 impl ModulationParameter {
+    #[inline]
     fn offset_index(self) -> Option<usize> {
         match self {
             Self::EnvelopeAttack => Some(56),
@@ -367,6 +371,7 @@ impl ModulationParameter {
 
 /// Shared 1 ms smoothing for additive parameter offsets. Nonfinite inputs become neutral.
 /// f64 state preserves the existing filter and drive response at every project rate.
+#[derive(Clone)]
 pub struct ModulationSmoother<const N: usize> {
     values: [f64; N],
     alpha: f64,
@@ -404,6 +409,12 @@ pub fn process_modulation<D: ModulationDestination>(
     shared: &[ModulationValue],
     context: ModulationContext,
 ) -> D::Audio {
+    if routes.is_empty() {
+        // Keep destination smoothing active after routes are removed. Constant neutral
+        // inputs let each unit read just its own parameters without resolving an empty graph.
+        let inputs = ModulationInputs::neutral((context.note_gate + 0.0).clamp(0.0, 16.0));
+        return destination.process_with_modulation(input, &inputs, context);
+    }
     let local = if destination
         .modulation_input_scope()
         .accepts(ModulationScope::PerNote)

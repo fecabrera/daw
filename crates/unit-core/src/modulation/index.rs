@@ -6,7 +6,7 @@ use std::{
 
 /// Index of a prepared publication buffer. Rebuild when source identities/order change;
 /// sample values, ranges and contribution weights may change without rebuilding.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModulationSourceIndex {
     pub(super) generation: u64,
     positions: HashMap<ModulationSourceId, usize>,

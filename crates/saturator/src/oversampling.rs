@@ -2,6 +2,7 @@
 const TAPS: usize = 129;
 const HISTORY: usize = TAPS.div_ceil(4);
 pub(super) const LATENCY: usize = (TAPS - 1) / 4;
+#[derive(Clone)]
 pub(super) struct Oversampling {
     kernel: [f64; TAPS],
     input: [[f64; 2]; HISTORY],

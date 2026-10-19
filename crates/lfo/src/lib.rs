@@ -30,6 +30,7 @@ pub fn rate_hz(mode: LfoRateMode, hz: f32, note_beats: f64, tempo_bpm: f32) -> f
     }
 }
 /// Transport phase with the existing 5 ms shortest-path correction on rate/tempo changes.
+#[derive(Clone)]
 pub struct LfoClock {
     sample_rate: f64,
     fade: u32,
@@ -118,6 +119,7 @@ impl Ramp {
         self.remaining = 0;
     }
 }
+#[derive(Clone)]
 pub struct Lfo {
     settings: LfoSettings,
     clock: LfoClock,

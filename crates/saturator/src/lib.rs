@@ -57,6 +57,7 @@ fn weights<const N: usize>(ramps: &mut [ModulationRamp; N]) -> [f64; N] {
     }
     values
 }
+#[derive(Clone)]
 pub struct Saturator {
     // Drive dB, output amplitude, wet proportion, enabled proportion.
     parameters: [ModulationRamp; 4],

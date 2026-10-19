@@ -53,6 +53,7 @@ impl Filter {
         with_filter!(self, node, node.reset());
     }
 }
+#[derive(Clone)]
 struct Band {
     normal: Option<[Filter; 2]>,
     cut: Option<[Filter; 2]>,
@@ -151,6 +152,7 @@ impl Band {
 
 /// Parallel low/high-pass branches reject the interval between the shelf frequencies.
 /// Q maps continuously from one to eight biquad stages; all stages keep advancing.
+#[derive(Clone)]
 struct MidCut {
     low: [[Filter; 2]; 8],
     high: [[Filter; 2]; 8],
@@ -259,6 +261,7 @@ impl MidCut {
 }
 
 /// Opposing shelves keep the outer ranges at unity and set the middle plateau's gain.
+#[derive(Clone)]
 struct MidShelf {
     low: [Filter; 2],
     high: [Filter; 2],
@@ -312,6 +315,7 @@ impl MidShelf {
     }
 }
 
+#[derive(Clone)]
 pub struct Equalizer {
     bands: [Band; 3],
     mid_cut: MidCut,

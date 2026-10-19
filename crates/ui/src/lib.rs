@@ -1729,7 +1729,7 @@ impl DawUi {
         }
         if let Some(output) = &mut self.output {
             output.drain();
-            self.session.project.transport.playhead_frame = output.transport_intent().frame;
+            self.session.project.transport.playhead_frame = output.displayed_frame();
             if output.status.failed.load(Ordering::Relaxed) {
                 self.error=Some("Audio output failed or disconnected. Playback stopped. Editing and export remain available.".into());
                 self.output = None;

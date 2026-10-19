@@ -42,6 +42,7 @@ impl Ramp {
     }
 }
 
+#[derive(Clone)]
 pub struct DirectionMixer {
     // Degrees, spread control value, M/S input blend, whole-unit wet blend.
     parameters: [Ramp; 4],

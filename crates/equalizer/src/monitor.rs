@@ -4,6 +4,7 @@ use daw_unit_core::UnitMeter;
 use fundsp::svf::SvfParams;
 use std::sync::{Arc, atomic::AtomicU32};
 
+#[derive(Clone)]
 pub(super) struct Monitor {
     // Low LP, Mid HP/LP, High HP, with independent stereo histories.
     filters: [[Filter; 2]; 4],

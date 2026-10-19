@@ -1,6 +1,7 @@
 //! One shared stereo processor chain per layer, after the voice sum and before mixing.
 use daw_core::{EffectInstance, Id};
 
+#[derive(Clone)]
 pub(super) struct LayerEffects {
     pub chain: super::effects::EffectChain,
     pub settings: Vec<EffectInstance>,

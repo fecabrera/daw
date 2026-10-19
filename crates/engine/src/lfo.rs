@@ -2,6 +2,7 @@
 use daw_core::Clip;
 use daw_unit_core::ModulationSourceContext;
 
+#[derive(Clone)]
 pub(super) struct NoteClip {
     clip: Clip,
     retrigger: Vec<u64>,
@@ -79,6 +80,7 @@ impl NoteClip {
         )
     }
 }
+#[derive(Clone)]
 pub(super) struct NoteSchedule {
     clips: Vec<NoteClip>,
 }
