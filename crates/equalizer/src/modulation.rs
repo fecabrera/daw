@@ -20,14 +20,19 @@ impl Equalizer {
         for band in &mut self.bands {
             band.advance();
         }
-        self.effective = std::array::from_fn(|i| self.bands[i].current);
-        for (band, gain, frequency, q) in [(0, 0, 1, 2), (2, 4, 5, 6)] {
-            let values = &mut self.effective[band];
-            values[2] = (values[2] + offsets[gain]).clamp(-24.0, 24.0);
-            values[0] = (values[0] * 2_f32.powf(offsets[frequency])).clamp(20.0, 20_000.0);
-            values[1] = (values[1] + offsets[q]).clamp(0.1, 10.0);
+        let base = self.bands.each_ref().map(|b| b.current);
+        if self.configuration != Some((base, offsets)) {
+            self.configuration = Some((base, offsets));
+            self.effective = base;
+            for (band, gain, frequency, q) in [(0, 0, 1, 2), (2, 4, 5, 6)] {
+                let values = &mut self.effective[band];
+                values[2] = (values[2] + offsets[gain]).clamp(-24.0, 24.0);
+                values[0] = (values[0] * 2_f32.powf(offsets[frequency])).clamp(20.0, 20_000.0);
+                values[1] = (values[1] + offsets[q]).clamp(0.1, 10.0);
+            }
+            self.effective[1][2] = (self.effective[1][2] + offsets[3]).clamp(-24.0, 24.0);
+            self.configure_effective();
         }
-        self.effective[1][2] = (self.effective[1][2] + offsets[3]).clamp(-24.0, 24.0);
         self.process_effective_sample(input)
     }
 }
@@ -43,5 +48,60 @@ impl ModulationDestination for Equalizer {
         _context: ModulationContext,
     ) -> Self::Audio {
         self.process_modulated(input, modulation.offsets(ModulationParameter::EQUALIZER))
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    use daw_unit_core::{EffectUnit, ProcessingContext};
+
+    #[test]
+    fn steady_parameter_cache_matches_recalculation_through_modulation_edits_and_reset() {
+        for rate in [44_100, 96_000, 192_000] {
+            let mut settings = EqSettings::default();
+            let mut cached = Equalizer::new(
+                ProcessingContext {
+                    sample_rate_hz: rate,
+                    max_block_frames: 512,
+                },
+                &settings,
+            );
+            let mut reference = cached.clone();
+            for frame in 0..12_000 {
+                if frame == 1000 || frame == 7000 {
+                    settings.bands[0].frequency_hz = if frame == 1000 { 1200.0 } else { 250.0 };
+                    settings.bands[1].gain_db = -9.0;
+                    settings.bands[2].enabled = frame != 1000;
+                    settings.enabled = frame != 7000;
+                    cached.retarget(&settings);
+                    reference.retarget(&settings);
+                }
+                if frame == 8000 {
+                    cached.reset();
+                    reference.reset();
+                }
+                let offsets = if (2500..5500).contains(&frame) {
+                    let x = (frame as f32 * 0.023).sin();
+                    [x * 8.0, x, x * 0.2, x * -6.0, x * 12.0, -x, x * 0.3]
+                } else {
+                    [0.0; 7]
+                };
+                let v = (frame as f32 * 0.077).sin() * 0.3;
+                reference.configuration = None;
+                assert_eq!(
+                    cached
+                        .process_modulated([v, -v * 0.7], offsets)
+                        .map(f32::to_bits),
+                    reference
+                        .process_modulated([v, -v * 0.7], offsets)
+                        .map(f32::to_bits)
+                );
+                assert_eq!(
+                    cached.effective_parameters(),
+                    reference.effective_parameters()
+                );
+            }
+        }
     }
 }

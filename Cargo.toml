@@ -3,6 +3,11 @@ resolver = "3"
 members = ["crates/saturator", "crates/bitcrusher", "crates/stereo-spread", "crates/direction-mixer", "crates/sampler", "crates/macro", "crates/lfo", "crates/amplitude", "crates/timestretch", "crates/timestretch-cli", "crates/unit-core", "crates/oscillator", "crates/envelope", "crates/equalizer", "crates/drive", "crates/auto-filter", "crates/compressor", "crates/limiter", "crates/ott", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
 default-members = ["apps/desktop", "apps/cli"]
 
+# Optimize shared DSP across crate boundaries without changing floating-point semantics.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

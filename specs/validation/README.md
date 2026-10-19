@@ -3102,3 +3102,31 @@ Final cache validation:
 - CLI build and `python3 tools/check_cli.py`: pass (`work/808-cached-cli-build.log`, `work/808-cached-cli-check.log`).
 
 New regressions cover exact cached/uncached history with modulation and latency effects, backward seeks, cancellation, transport-mode changes, project-plan invalidation, bounded checkpoint storage, detached meter handles, and independent snapshots for every effect processor. Callback allocation/deallocation checks remain enabled in the output regressions.
+
+### Cold seek optimization
+
+The follow-up scope is the first uncached seek; note-edit scheduling remains unchanged. A fresh release profile of the reported project identified Saturator FIR traversal and EQ processing among the main history-reconstruction costs (`work/808-first-seek-sample.txt`). Mirrored FIR history removes per-tap wrapping. EQ retains converted parameters and filter configuration until its base values or smoothed offsets change. ThinLTO and one code-generation unit optimize the release build across shared DSP crates. Debug profile settings remain unchanged.
+
+Focused release regressions pass for exact scalar-ring/FIR parity through wraparound, resets, and nonlinear changes, and for cached/uncached EQ parameter processing through modulation, base edits, bypass, and reset at 44.1/96/192 kHz. Tests compare sample bits and effective EQ values. All filters, ramps, and shared modulation smoothing continue to run.
+
+The cold-seek probe constructs a new transport cache for each request and compares four positions with three trials per position. Each trial checks 4,096 stereo samples against ordinary full-history reconstruction. Baseline and optimized runs also record sample fingerprints. Project data is read from a frozen disposable copy; original media remains read-only. The probe source and binaries remain in ignored `work/`, outside the delivered source tree. Measurements cover worker preparation, not native input-to-speaker latency. Cold history reconstruction remains proportional to project complexity and requested position; no approximate seek or persisted cache was introduced.
+
+The rebuilt native macOS release app opened the silent disposable playback copy at 48 kHz/512 frames. Playback, forward/backward ruler seeks, Pause, and Resume worked. The app was closed without saving. This confirms interaction and active transport state, not audible dropout measurements; Windows/Linux device checks remain unverified.
+
+- `cargo fmt --all --check`, `git diff --check`, and changed documentation links: pass.
+- `cargo clippy --workspace --all-targets -- -D warnings`: pass (`work/808-cold-clippy.log`).
+- `cargo test --release -p daw-output -p daw-unit-core -p daw-saturator -p daw-equalizer`: 77 passed (`work/808-cold-release-tests.log`).
+- `sh tools/package_macos.sh release`: pass; rebuilt with the saved ThinLTO release profile (`work/808-cold-package.log`).
+- `cargo test --workspace`: 947 passed; two existing extended acceptance matrices ignored (`work/808-cold-workspace-tests.log`).
+- CLI build and `python3 tools/check_cli.py`: pass (`work/808-cold-cli-build.log`, `work/808-cold-cli-check.log`).
+
+The final serial comparison ran after builds and tests completed. Median preparation times across three cold trials per position were:
+
+| Seek frame (48 kHz) | Previous release | Optimized release | Reduction |
+| --- | --- | --- | --- |
+| 73,923 | 179.7 ms | 153.7 ms | 14.5% |
+| 156,160 | 372.8 ms | 319.8 ms | 14.2% |
+| 310,423 | 745.1 ms | 639.3 ms | 14.2% |
+| 447,723 | 1,061.5 ms | 924.7 ms | 12.9% |
+
+All baseline/optimized output fingerprints matched. Logs are `work/808-cold-final-baseline.log` and `work/808-cold-final-optimized.log`; this final comparison supersedes the preliminary timing estimates. The initial disposable timing copy had an invalid MIDI source path and failed validation before rendering. That copy was corrected; original project data was not changed. The reported measurements use the corrected copy.

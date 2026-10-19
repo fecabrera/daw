@@ -44,6 +44,8 @@ Do not add automatic gain compensation: Drive and Level have separate, predictab
 
 Fixed 4× oversampling runs the nonlinear path through independent 129-tap Blackman-windowed sinc interpolation and decimation filters, cutoff 0.1125 cycles per high-rate sample. Normalize coefficients off the callback. Interpolation is polyphase; decimation emits phase zero. The combined group delay is 128 high-rate samples, or exactly 32 project frames, at every project rate. Dry and bypass use the same fixed 32-frame delay. Engine chain latency adds this delay through the existing track/layer/Main/Master alignment and priming path, including when disabled. Latency is constant across all controls. The transition band attenuates frequencies near project Nyquist; there is no quality switch.
 
+The fixed history arrays are mirrored so FIR taps read contiguous slices without per-tap modulo. Tap order and arithmetic remain unchanged. The extra storage is 162 stereo f64 frames per processor (2,592 bytes), including cloned checkpoints; it is allocated with the processor, never during callback processing.
+
 ## Shared implementation and placement
 
 - The portable `daw-saturator` crate runs behind the existing EffectUnit and typed modulation contracts. Keep DSP dependencies private and reuse shared settings, routes, smoothing, telemetry, and effect construction patterns.

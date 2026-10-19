@@ -44,6 +44,14 @@ The output worker reuses the cache only for the same immutable plan allocation. 
 
 The direct engine `seek`, `play`, and incompatible `inherit` APIs remain synchronous for offline/control-thread callers. Native output uses prepared transport activation and does not call those expensive paths. MIDI loop reconstruction uses the prepared note indices. Device creation still runs in the native Play path; its duration needs a device-specific check.
 
+### Cold seek cost
+
+Release builds use ThinLTO and one code-generation unit to optimize calls across the shared DSP crates. Debug builds keep their existing profile. This increases release compilation/link work; it does not enable fast math or change processing precision.
+
+Saturator uses mirrored FIR history rings to remove per-tap wrapping while keeping coefficient order, arithmetic order, oversampling, latency, and reset behavior. EQ caches parameter conversion and filter configuration while base values and smoothed modulation offsets remain unchanged. It still advances ramps and modulation smoothing and processes every filter and meter each sample. Changed values and reset invalidate the configuration cache. Neither optimization substitutes approximate history or changes note-edit scheduling.
+
+These changes reduce full reconstruction cost, including the first uncached seek. Delay still scales with the requested history and project complexity; they do not make every cold seek immediate. The transport cache and its existing cancellation and invalidation rules remain unchanged.
+
 ## UI work
 
 Waveform painting returns before peak lookup when the clipped body is empty. Timeline skips offscreen fixed-height track controls with the shared row placeholder, preserving panel/lane bounds for scrolling and drops. Visible rows retain owned editing snapshots; active drags, marquee selection, name editing, and keyboard editing keep normal row construction. This preserves captured interactions instead of virtualizing their controls away.

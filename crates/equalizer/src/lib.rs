@@ -327,6 +327,8 @@ pub struct Equalizer {
     monitor: monitor::Monitor,
     external: daw_unit_core::ModulationSmoother<7>,
     effective: [[f32; 4]; 3],
+    // Conversion/filter configuration is unchanged while base ramps and offsets are steady.
+    configuration: Option<([[f32; 4]; 3], [f32; 7])>,
 }
 impl Equalizer {
     /// Prepare on a control thread with valid settings and a supported processing rate.
@@ -345,6 +347,7 @@ impl Equalizer {
             monitor: monitor::Monitor::new(context.sample_rate_hz, settings.enabled),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: settings.bands.map(values),
+            configuration: None,
         }
     }
     /// Retarget without allocating or resetting filter history. Display-only changes are no-ops.
@@ -388,6 +391,7 @@ impl EffectUnit for Equalizer {
         self.remaining = 0;
         self.monitor.reset();
         self.external.reset();
+        self.configuration = None;
         self.effective = std::array::from_fn(|i| self.bands[i].current);
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
@@ -395,7 +399,7 @@ impl EffectUnit for Equalizer {
     }
 }
 impl Equalizer {
-    fn process_effective_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
+    fn configure_effective(&mut self) {
         for (band, effective) in self.bands.iter_mut().zip(self.effective) {
             band.configure(effective);
         }
@@ -407,6 +411,8 @@ impl Equalizer {
         );
         self.mid_shelf
             .configure(self.effective[0], self.effective[2], self.effective[1][2]);
+    }
+    fn process_effective_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
         let mut wet = self.bands[0].sample(input, None);
         let cut = self.mid_cut.sample(wet);
         let normal = self.mid_shelf.sample(wet);
