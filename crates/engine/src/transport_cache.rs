@@ -1,5 +1,8 @@
 //! Worker-owned checkpoints before latency priming. Never clone DSP on the callback.
-use super::{CacheProfile, RenderPlan, Renderer, TransportState};
+use super::parallel_tracks::{GRAIN, ParallelTracks};
+use super::{
+    CacheProfile, PreparationMode, PreparationStats, RenderPlan, Renderer, TransportState,
+};
 use std::collections::VecDeque;
 
 // Leave four renderer equivalents for base, warm cursor, active and candidate.
@@ -14,6 +17,7 @@ pub struct TransportCacheMemory {
     pub warming_bytes: u64,
     pub covered_frame: u64,
     pub replayed_frames: u64,
+    pub parallel_bytes: u64,
 }
 
 /// Exact history for one immutable processing plan. Resource profiles may change
@@ -22,6 +26,11 @@ pub struct TransportCacheMemory {
 /// Checkpoints never contain attached meter handles.
 pub struct TransportCache {
     profile: CacheProfile,
+    mode: PreparationMode,
+    parallel: Option<ParallelTracks>,
+    parallel_unavailable: bool,
+    parallel_candidate: bool,
+    stats: PreparationStats,
     base: Renderer,
     checkpoints: VecDeque<(u64, Renderer)>,
     live: bool,
@@ -38,6 +47,29 @@ impl TransportCache {
         Self::with_profile(plan, CacheProfile::default())
     }
     pub fn with_profile(plan: RenderPlan, profile: CacheProfile) -> Self {
+        Self::with_mode(plan, profile, PreparationMode::Auto)
+    }
+    pub fn with_mode(plan: RenderPlan, profile: CacheProfile, mode: PreparationMode) -> Self {
+        let complex_tracks = plan
+            .project
+            .tracks
+            .iter()
+            .filter(|t| {
+                !t.effects.is_empty()
+                    || t.instrument.as_ref().is_some_and(|i| {
+                        !i.main.effects.is_empty()
+                            || i.layers.iter().any(|l| {
+                                !l.effects.is_empty()
+                                    || !l.oscillators.is_empty()
+                                    || l.sampler.is_some()
+                            })
+                    })
+            })
+            .count();
+        let parallel_candidate = plan.project.tracks.len() >= 2
+            && (mode == PreparationMode::Parallel
+                || (complex_tracks >= 2
+                    && std::thread::available_parallelism().is_ok_and(|n| n.get() >= 2)));
         let mut base = Renderer::new(plan);
         base.reset_processing();
         let history = base
@@ -48,6 +80,11 @@ impl TransportCache {
         let renderer_memory = base.memory_usage();
         let mut cache = Self {
             profile,
+            mode,
+            parallel: None,
+            parallel_unavailable: false,
+            parallel_candidate,
+            stats: PreparationStats::default(),
             base,
             checkpoint_limit: 0,
             renderer_memory,
@@ -69,7 +106,11 @@ impl TransportCache {
         self.checkpoint_limit = policy
             .max_checkpoints
             .min((policy.checkpoint_bytes / entry) as usize)
-            .min((PREPARATION_BYTES / owned).saturating_sub(4) as usize);
+            .min(
+                (PREPARATION_BYTES.saturating_sub(self.parallel.as_ref().map_or(0, |p| p.bytes()))
+                    / owned)
+                    .saturating_sub(4) as usize,
+            );
         let minimum = (u128::from(self.base.plan.project.sample_rate_hz)
             * policy.minimum_interval.as_nanos()
             / 1_000_000_000)
@@ -88,7 +129,17 @@ impl TransportCache {
         }
         let previous_interval = self.interval;
         self.profile = profile;
+        if profile == CacheProfile::Light && self.mode == PreparationMode::Auto {
+            self.parallel = None;
+        }
         self.configure();
+        self.trim_checkpoints();
+        if self.checkpoint_limit == 0 || self.interval < previous_interval {
+            self.warming = None;
+            self.covered_frame = 0;
+        }
+    }
+    fn trim_checkpoints(&mut self) {
         let old_len = self.checkpoints.len();
         let keep = self.checkpoint_limit;
         if old_len > keep {
@@ -103,9 +154,19 @@ impl TransportCache {
             });
             self.checkpoints.shrink_to_fit();
         }
-        if self.checkpoint_limit == 0 || self.interval < previous_interval {
-            self.warming = None;
-            self.covered_frame = 0;
+    }
+    fn use_parallel(&self, frames: u64) -> bool {
+        self.mode != PreparationMode::Serial
+            && self.parallel_candidate
+            && !self.parallel_unavailable
+            && (self.mode == PreparationMode::Parallel || self.profile != CacheProfile::Light)
+            && frames >= 512
+    }
+    pub fn preparation_stats(&self) -> PreparationStats {
+        PreparationStats {
+            parallel_bytes: self.parallel.as_ref().map_or(0, |p| p.bytes()),
+            workers: if self.parallel.is_some() { 2 } else { 0 },
+            ..self.stats
         }
     }
     fn start(&self, frame: u64) -> (u64, Renderer) {
@@ -123,21 +184,67 @@ impl TransportCache {
         cancelled: &mut impl FnMut() -> bool,
     ) -> bool {
         let block = u64::from(renderer.plan.project.buffer_size_frames.max(1));
-        for frame in from..to {
-            if frame % block == 0 && cancelled() {
+        let mut frame = from;
+        while frame < to {
+            if cancelled() {
                 return false;
             }
-            renderer.offline_frame(frame, self.live);
-            let next = frame + 1;
+            let parallel = self.use_parallel(to - frame);
+            let span = if parallel {
+                block.max(GRAIN)
+            } else {
+                block - frame % block
+            };
+            let until_checkpoint = if self.checkpoint_limit > 0 {
+                self.interval - frame % self.interval
+            } else {
+                u64::MAX
+            };
+            let end = frame.saturating_add(span.min(until_checkpoint)).min(to);
+            if self.use_parallel(end - frame) && self.parallel.is_none() {
+                let available = PREPARATION_BYTES
+                    .saturating_sub(self.renderer_memory.owned_bytes().saturating_mul(4));
+                self.parallel = ParallelTracks::new(renderer, available);
+                self.parallel_unavailable = self.parallel.is_none();
+                self.configure();
+                self.trim_checkpoints();
+            }
+            if self.use_parallel(end - frame)
+                && let Some(pool) = &mut self.parallel
+            {
+                match pool.process(renderer, frame, end, self.live, cancelled) {
+                    Ok(true) => self.stats.parallel_blocks += 1,
+                    Ok(false) => return false,
+                    Err(()) => {
+                        // No partial track state can escape. Reconstruct from a complete
+                        // snapshot with the reference path if a preparation worker fails.
+                        self.parallel = None;
+                        self.parallel_unavailable = true;
+                        self.configure();
+                        let (restart, fresh) = self.start(frame);
+                        *renderer = fresh;
+                        return self.replay(renderer, restart, to, cancelled);
+                    }
+                }
+            } else {
+                self.stats.serial_blocks += 1;
+                for sample_frame in frame..end {
+                    if sample_frame.is_multiple_of(block) && cancelled() {
+                        return false;
+                    }
+                    renderer.offline_frame(sample_frame, self.live);
+                }
+            }
             if self.checkpoint_limit > 0
-                && next.is_multiple_of(self.interval)
-                && !self.checkpoints.iter().any(|(at, _)| *at == next)
+                && end.is_multiple_of(self.interval)
+                && !self.checkpoints.iter().any(|(at, _)| *at == end)
             {
                 if self.checkpoints.len() == self.checkpoint_limit {
                     self.checkpoints.pop_front();
                 }
-                self.checkpoints.push_back((next, renderer.clone()));
+                self.checkpoints.push_back((end, renderer.clone()));
             }
+            frame = end;
         }
         !cancelled()
     }
@@ -192,6 +299,7 @@ impl TransportCache {
             },
             covered_frame: self.covered_frame,
             replayed_frames: self.replayed_frames,
+            parallel_bytes: self.parallel.as_ref().map_or(0, |p| p.bytes()),
         }
     }
     pub fn can_warm(&self) -> bool {
@@ -210,10 +318,18 @@ impl TransportCache {
         let started = std::time::Instant::now();
         let block = u64::from(self.base.plan.project.buffer_size_frames.max(1));
         while frame < self.base.end_frame && started.elapsed() < budget && !cancelled() {
-            let end = frame.saturating_add(block).min(self.base.end_frame);
-            // No cancellation inside this block: retain a coherent cursor and
-            // check the newest request before starting another bounded block.
-            self.replay(&mut renderer, frame, end, &mut || false);
+            let parallel = self.use_parallel(self.base.end_frame - frame);
+            let span = if parallel { block.max(GRAIN) } else { block };
+            let end = frame.saturating_add(span).min(self.base.end_frame);
+            let complete = if parallel {
+                self.replay(&mut renderer, frame, end, &mut cancelled)
+            } else {
+                self.replay(&mut renderer, frame, end, &mut || false)
+            };
+            if !complete {
+                self.covered_frame = frame;
+                return;
+            }
             frame = end;
         }
         self.covered_frame = frame;
@@ -222,6 +338,7 @@ impl TransportCache {
         }
     }
     pub fn release_optional_memory(&mut self) {
+        self.parallel = None;
         self.checkpoints.clear();
         self.checkpoints.shrink_to_fit();
         self.warming = None;
@@ -232,6 +349,73 @@ impl TransportCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn failed_track_worker_reconstructs_from_complete_history_with_serial_fallback() {
+        use daw_core::*;
+        let mut project = Project::default();
+        for _ in 0..2 {
+            let track_id = project.add_midi_track().unwrap();
+            let track = project.tracks.last_mut().unwrap();
+            track.instrument = Some(OscillatorSettings::default().into());
+            let instrument = track.instrument.as_mut().unwrap();
+            let lfo = LfoInstance::default();
+            let mut route = Modulation::new(ModulationParameter::EnvelopeAttack);
+            route.source = Some(ModulationSourceId {
+                layer: instrument.main.id,
+                unit: lfo.id,
+            });
+            route.amount = 1.0;
+            instrument.main.lfos.push(lfo);
+            instrument.layers[0].envelopes[0].modulations.push(route);
+            let clip_id = project.add_midi_pattern(track_id, 0).unwrap();
+            project
+                .edit(Edit::ReplaceMidiPattern {
+                    clip_id,
+                    pattern: MidiPattern {
+                        length_ticks: 3840,
+                        notes: vec![MidiNote {
+                            id: Id::new_v4(),
+                            start_tick: 0,
+                            length_ticks: 1920,
+                            pitch: 60,
+                            velocity: 100,
+                        }],
+                    },
+                })
+                .unwrap();
+        }
+        let plan = RenderPlan {
+            project,
+            audio: Default::default(),
+            sampler_audio: Default::default(),
+            stretched_audio: Default::default(),
+        };
+        let mut cache = TransportCache::with_mode(
+            plan.clone(),
+            CacheProfile::Responsive,
+            PreparationMode::Parallel,
+        );
+        let state = TransportState {
+            frame: 4096,
+            playing: true,
+            ..Default::default()
+        };
+        cache.prepare(state, || false).unwrap();
+        cache.parallel.as_mut().unwrap().disconnect_worker();
+        let state = TransportState {
+            frame: 9000,
+            ..state
+        };
+        let mut recovered = cache.prepare(state, || false).unwrap();
+        let mut reference = Renderer::new(plan);
+        reference.prepare_transport(state);
+        for _ in 0..512 {
+            assert_eq!(recovered.next_sample(), reference.next_sample());
+        }
+        assert!(cache.parallel_unavailable);
+        assert_eq!(cache.preparation_stats().workers, 0);
+    }
+
     #[test]
     fn profile_changes_keep_valid_snapshots_and_trim_to_the_new_budget() {
         let plan = RenderPlan {

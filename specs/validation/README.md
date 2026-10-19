@@ -3205,3 +3205,21 @@ Completed with the pinned toolchain and local dependency cache:
 - Relative documentation file links — 169 checked, no missing targets. `git diff --check` — passed.
 
 `cargo test --workspace` — **965 passed, 0 failed, 2 ignored**. The ignored cases are the existing extended time-stretch acceptance matrices. Native Settings interaction, device-specific seek timings, battery/thermal effects, peak RSS under load, and Windows/Linux execution remain unverified. Profile values are resource policies, not measured CPU ceilings or seek-time guarantees.
+
+## Parallel seek cache preparation — 2026-10-19
+
+Balanced and Responsive now prepare eligible independent tracks with two persistent workers. Light and small or resource-limited workloads retain serial preparation. Track processing, modulation, effects and Master processing reuse the live/offline DSP stages. Project-order summation preserves exact samples. Only complete track-and-Master states become checkpoints; cancellation discards partial cursors, and worker failure reconstructs through the serial path.
+
+The [validation and benchmark report](parallel-cache-preparation-2026-10-19.md) records the design, release comparisons and limits. New regressions cover exact history across rates and buffer sizes, loops, layered/Main/Master effects, latency, mixed audio/Sampler tracks, cancellation, serial fallback, worker failure and callback allocation/deallocation guards.
+
+Completed with the pinned toolchain and local dependency cache:
+
+- `cargo test --workspace` — **971 passed, 0 failed, 2 ignored**. The two ignored tests are the existing extended time-stretch acceptance matrices.
+- `cargo test -p daw-engine --test parallel_cache --release` — four passed.
+- `cargo fmt --all --check` and strict workspace Clippy — passed.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` — passed.
+- `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app`.
+
+Native device latency/underruns, battery/thermal behavior, and Windows/Linux execution remain unverified. Headless release measurements do not establish a maximum native seek delay.
+
+Changed-document relative file links — 155 checked, no missing targets. `git diff --check` — passed.

@@ -9,7 +9,10 @@ mod layer_effects;
 mod lfo;
 mod midi;
 mod modulation;
+mod parallel_tracks;
 mod schedule;
+mod track_processing;
+pub use parallel_tracks::{PreparationMode, PreparationStats};
 mod transport_cache;
 use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
 use daw_media::AudioData;
@@ -833,45 +836,39 @@ impl Renderer {
             .zip(&mut self.effects)
             .enumerate()
         {
-            let (source, mono) = if let Some(runtime) = midi {
-                (runtime.sample_in_region(frame, loop_region), Some(true))
-            } else {
-                self.audio_tracks[index].sample(track, frame)
-            };
-            let source = effects.sample(
-                source,
-                mono,
-                latency::delayed_frame(
-                    frame,
-                    midi.as_ref().map_or(0, |r| r.effect_latency()),
-                    loop_region,
-                ),
-                self.plan.project.tempo_bpm,
-                loop_region,
-                (
-                    midi.as_ref().map_or(&[], |r| r.modulation_values()),
-                    midi.as_ref().map(|r| r.modulation_sources()),
-                ),
-            );
-            let (source, mono) = self.alignment.tracks[index].tick(source);
+            let (source, mono) = track_processing::TrackProcessor {
+                audio: &mut self.audio_tracks[index],
+                midi,
+                effects,
+                delay: &mut self.alignment.tracks[index],
+                clips: &track.clips,
+            }
+            .sample(frame, self.plan.project.tempo_bpm, loop_region, true);
             let gains = self.gains[index].target;
             let offset = if mono { 0 } else { 2 };
             for ch in 0..2 {
                 mix[ch] += source[ch] * gains[offset + ch];
             }
         }
-        let frame = latency::delayed_frame(frame, self.alignment.track_max, loop_region);
+        self.sample_master(mix, frame, loop_region)
+            .map(|value| value * self.master_target)
+    }
+    fn sample_master(
+        &mut self,
+        mix: [f32; 2],
+        frame: u64,
+        loop_region: Option<(u64, u64)>,
+    ) -> [f32; 2] {
         self.master_effects
             .sample(
                 mix,
                 Some(false),
-                frame,
+                latency::delayed_frame(frame, self.alignment.track_max, loop_region),
                 self.plan.project.tempo_bpm,
                 loop_region,
                 (&[], None),
             )
             .0
-            .map(|value| value * self.master_target)
     }
     /// Reset once per output buffer, outside the per-sample loop.
     pub fn reset_track_peaks(&mut self) {
@@ -940,34 +937,19 @@ impl Renderer {
                         }
                         g.remaining -= 1;
                     }
-                    let (source, mono) = if let Some(runtime) = midi {
-                        (
-                            if self.playing {
-                                runtime.sample_in_region(frame, loop_region)
-                            } else {
-                                runtime.held_sample()
-                            },
-                            Some(true),
-                        )
-                    } else {
-                        self.audio_tracks[index].sample(track, frame)
-                    };
-                    let (source, mono) = effects.sample(
-                        source,
-                        mono,
-                        latency::delayed_frame(
-                            frame,
-                            midi.as_ref().map_or(0, |r| r.effect_latency()),
-                            loop_region,
-                        ),
+                    let (source, mono) = track_processing::TrackProcessor {
+                        audio: &mut self.audio_tracks[index],
+                        midi,
+                        effects,
+                        delay: &mut self.alignment.tracks[index],
+                        clips: &track.clips,
+                    }
+                    .sample(
+                        frame,
                         self.plan.project.tempo_bpm,
                         loop_region,
-                        (
-                            midi.as_ref().map_or(&[], |r| r.modulation_values()),
-                            midi.as_ref().map(|r| r.modulation_sources()),
-                        ),
+                        self.playing,
                     );
-                    let (source, mono) = self.alignment.tracks[index].tick((source, mono));
                     let base = if mono { 0 } else { 2 };
                     for ch in 0..2 {
                         let sample = source[ch] * g.value[base + ch];
@@ -975,17 +957,7 @@ impl Renderer {
                         g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
                     }
                 }
-                mix = self
-                    .master_effects
-                    .sample(
-                        mix,
-                        Some(false),
-                        latency::delayed_frame(frame, self.alignment.track_max, loop_region),
-                        self.plan.project.tempo_bpm,
-                        loop_region,
-                        (&[], None),
-                    )
-                    .0;
+                mix = self.sample_master(mix, frame, loop_region);
                 self.latent_held_mix = mix;
             }
             if self.playing {

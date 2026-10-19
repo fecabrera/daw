@@ -70,10 +70,11 @@ impl DawUi {
                 mib(m[2])
             ));
             ui.label(format!(
-                "Checkpoints: {} / {:.1} MiB; warm cursor: {:.1} MiB",
+                "Checkpoints: {} / {:.1} MiB; warm cursor: {:.1} MiB; parallel preparation: {:.1} MiB",
                 m[5],
                 mib(m[3]),
-                mib(m[4])
+                mib(m[4]),
+                mib(m[8])
             ));
         }
         ui.label("Estimates exclude allocator, native-library and GPU overhead. Shared audio is counted once in its own category.");

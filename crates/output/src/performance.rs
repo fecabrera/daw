@@ -10,7 +10,7 @@ pub struct Performance {
     max_prepared_wait_ns: AtomicU64,
     device_failures: AtomicU64,
     buckets: [AtomicU64; 32],
-    cache_memory: [AtomicU64; 8],
+    cache_memory: [AtomicU64; 9],
     activation_buckets: [AtomicU64; 32],
     max_activation_ns: AtomicU64,
 }
@@ -21,7 +21,7 @@ pub struct PerformanceSnapshot {
     /// Log2 microsecond buckets for completed requests, including worker and delivery time.
     pub activation_duration_buckets: [u64; 32],
     /// Worker-owned base/model/schedule/DSP estimates and optional cache storage.
-    pub cache_memory: [u64; 8],
+    pub cache_memory: [u64; 9],
     /// All live output renderer owners, including queued and retired instances.
     pub output_renderer_bytes: u64,
     pub over_budget: u64,
@@ -68,6 +68,7 @@ impl Performance {
             memory.checkpoint_count as u64,
             memory.covered_frame,
             memory.replayed_frames,
+            memory.parallel_bytes,
         ];
         for (slot, value) in self.cache_memory.iter().zip(values) {
             slot.store(value, Relaxed);

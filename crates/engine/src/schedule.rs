@@ -68,14 +68,14 @@ impl AudioTrack {
             rate: plan.project.sample_rate_hz,
         }
     }
-    pub fn sample(&mut self, track: &Track, frame: u64) -> ([f32; 2], Option<bool>) {
+    pub fn sample(&mut self, clips: &[daw_core::Clip], frame: u64) -> ([f32; 2], Option<bool>) {
         let Some(index) = self.ranges.at(frame) else {
             return ([0.0; 2], None);
         };
         let Some(audio) = &self.audio[index] else {
             return ([0.0; 2], None);
         };
-        let clip = &track.clips[index];
+        let clip = &clips[index];
         let local = frame - clip.start_frame;
         let position = clip.source_frame(local);
         let fade = sample_fade(clip, local, position, self.rate);

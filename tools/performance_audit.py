@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run serial, synthetic, headless release benchmarks without changing application code."""
+"""Run synthetic, headless release benchmarks, including serial/parallel cache preparation."""
 import argparse
 import hashlib
 import json
@@ -27,7 +27,7 @@ def toml_value(value):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--suite', choices=['all', 'dsp', 'engine', 'model', 'ui', 'media'], default='all')
+    parser.add_argument('--suite', choices=['all', 'dsp', 'engine', 'model', 'ui', 'media', 'cache'], default='all')
     parser.add_argument('--runs', type=int, default=7)
     parser.add_argument('--output', type=Path, default=ROOT / 'work/performance-audit/results.json')
     parser.add_argument('--skip-build', action='store_true')
@@ -51,21 +51,25 @@ def main():
     lock = ROOT / 'Cargo.lock'
     (scratch / 'Cargo.lock').write_bytes(lock.read_bytes())
     env = {**os.environ, 'CARGO_BUILD_JOBS': os.environ.get('CARGO_BUILD_JOBS', '2')}
-    binary = ROOT / ('target/release/daw-performance-audit' + ('.exe' if os.name == 'nt' else ''))
+    cache_suite = args.suite == 'cache'
+    executable = 'examples/cache_preparation' if cache_suite else 'daw-performance-audit'
+    binary = ROOT / ('target/release/' + executable + ('.exe' if os.name == 'nt' else ''))
     if not args.skip_build:
         print('Building the release audit harness offline.', flush=True)
         with (scratch / 'build.log').open('w') as log:
-            subprocess.run(['cargo', 'build', '--release', '--offline', '--manifest-path', str(scratch / 'Cargo.toml'), '--target-dir', str(ROOT / 'target')], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+            command = (['cargo', 'build', '--release', '--offline', '-p', 'daw-engine', '--example', 'cache_preparation']
+                       if cache_suite else ['cargo', 'build', '--release', '--offline', '--manifest-path', str(scratch / 'Cargo.toml'), '--target-dir', str(ROOT / 'target')])
+            subprocess.run(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
     metadata = {
         'schema_version': 1,
         'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         'root_lock_sha256': hashlib.sha256(lock.read_bytes()).hexdigest(),
-        'harness_sha256': hashlib.sha256((ROOT / 'tools/performance_audit.rs').read_bytes()).hexdigest(),
+        'harness_sha256': hashlib.sha256((ROOT / ('crates/engine/examples/cache_preparation.rs' if cache_suite else 'tools/performance_audit.rs')).read_bytes()).hexdigest(),
         'runner_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         'rustc': subprocess.check_output(['rustc', '-Vv'], cwd=ROOT, text=True).strip(),
         'platform': platform.platform(), 'machine': platform.machine(), 'logical_cpus': os.cpu_count(),
         'profile': 'release', 'suite': args.suite, 'repetitions': args.runs,
-        'scope': 'synthetic serial headless CPU/allocator measurements; no native window, GPU submission, CPAL device, pacing, or xrun measurement',
+        'scope': ('synthetic exact-history serial/two-worker/auto cache timings; no worker allocation counters or native audio measurements' if cache_suite else 'synthetic serial headless CPU/allocator measurements; no native window, GPU submission, CPAL device, pacing, or xrun measurement'),
     }
     if sys.platform == 'darwin':
         hardware = subprocess.run(['/usr/sbin/system_profiler', 'SPHardwareDataType', '-json'], capture_output=True, text=True)

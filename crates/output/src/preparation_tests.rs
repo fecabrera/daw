@@ -823,3 +823,30 @@ fn optional_cache_construction_waits_for_editing_and_resumes_after_release() {
     }
     assert!(preparation.performance().cache_memory[0] > 0);
 }
+
+#[path = "../../engine/tests/support/cache_project.rs"]
+mod parallel_fixture;
+#[test]
+fn parallel_prepared_renderer_keeps_callback_processing_and_activation_allocation_free() {
+    let plan = parallel_fixture::midi_project(48_000, 4, 1);
+    let worker = preparation::Worker::new(Arc::new(Status::default())).unwrap();
+    let bindings = preparation::Bindings {
+        tracks: track_meters(&plan, &HashMap::new()),
+        ..Default::default()
+    };
+    let state = TransportState {
+        frame: 12000,
+        playing: true,
+        playback_start: Some(0),
+        ..Default::default()
+    };
+    worker.submit(Arc::new(plan.clone()), bindings, Some(state));
+    let mut prepared = ready(&worker).renderer;
+    let mut reference = Renderer::new(plan.clone());
+    reference.prepare_transport(state);
+    for _ in 0..1024 {
+        assert_eq!(realtime(|| prepared.next_sample()), reference.next_sample());
+    }
+    let previous = Renderer::new(plan);
+    realtime(|| prepared.activate_transport(&previous));
+}
