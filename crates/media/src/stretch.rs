@@ -18,6 +18,14 @@ pub struct PreparedStretch {
     pitch_revision: u32,
 }
 impl PreparedStretch {
+    pub fn visit_memory(&self, usage: &mut crate::AudioMemoryUsage) {
+        usage.samples(&self.source);
+        usage.audio(&self.audio);
+    }
+    pub fn heap_bytes(&self) -> u64 {
+        self.audio.metadata.sample_format.capacity() as u64
+    }
+
     pub fn new(source: &AudioData, ratio: ClipStretch, engine: StretchEngine) -> Result<Self> {
         Self::new_cancellable(source, ratio, engine, &|| false)
     }

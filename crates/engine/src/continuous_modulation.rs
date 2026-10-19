@@ -15,6 +15,14 @@ pub(crate) struct ProviderControl {
     pub routes: Vec<Route>,
 }
 impl ProviderControl {
+    pub fn heap_bytes(&self) -> u64 {
+        daw_unit_core::memory::vec_bytes(&self.routes)
+            + match &self.unit {
+                Unit::Lfo(l) => std::mem::size_of_val(l.as_ref()) as u64,
+                Unit::Macro(_) => 0,
+            }
+    }
+
     pub fn lfo(layer: daw_core::Id, settings: &LfoInstance, context: ProcessingContext) -> Self {
         let source = ModulationSourceId {
             layer,

@@ -1,8 +1,8 @@
 # Architecture review — 2026-10-19
 
-Status: **ready for owner review**. Recommendations are proposals, not accepted requirements or implemented changes.
+Status: **ready for owner review**. Recommendations remain proposals unless a dated follow-up records approval and implementation.
 
-Reviewed baseline: `2dbb347` (`perf: reduce cold seek preparation cost`). The working tree was clean at the start. This review adds documentation only. It covers all 27 workspace packages and the current application pipelines at the subsystem and workflow level. It is not a line-by-line proof of every DSP algorithm, a security audit, or a new native performance benchmark.
+Reviewed baseline: `2dbb347` (`perf: reduce cold seek preparation cost`). The working tree was clean at the start. The initial review added documentation only. It covers all 27 workspace packages and the current application pipelines at the subsystem and workflow level. It is not a line-by-line proof of every DSP algorithm, a security audit, or a new native performance benchmark.
 
 ## Assessment
 
@@ -27,14 +27,14 @@ The main weaknesses are in lifecycle coordination and growth: old pattern assets
 
 | Order | Proposed action | Reason | Finding |
 | --- | --- | --- | --- |
-| 1 | Correct effect-clock latency through one common latency query | Saturator delays audio by 32 frames, but the next effect's clock is not adjusted | [F01](findings.md#f01-effect-clock-latency-is-incomplete) |
+| 1 | Completed: correct effect-clock latency through one common latency query | Saturator delays audio by 32 frames, but the next effect's clock is not adjusted | [F01](findings.md#f01-effect-clock-latency-is-incomplete) |
 | 2 | Add reachability-based asset cleanup | Every changed MIDI pattern appends an asset; obsolete versions remain in the current project | [F02](findings.md#f02-unused-assets-accumulate) |
 | 3 | Measure and remove UI dependence from output publication/retirement | A stalled frame can delay a ready seek or edit and retain old renderers | [F03](findings.md#f03-audio-handoff-depends-on-ui-progress) |
-| 4 | Set memory and responsiveness targets before expanding caches | PCM admission excludes DSP snapshots, metadata, native allocations and GPU storage | [F06](findings.md#f06-memory-limits-do-not-cover-total-retention) |
-| 5 | Define transport reconstruction and export-tail semantics | Exact history, quick seeking, LFO phase continuity and final effect tails have different costs | [F05](findings.md#f05-cold-history-replay-can-still-take-a-long-time), [F15](findings.md#f15-transport-history-semantics-are-not-uniform), [F16](findings.md#f16-export-stops-at-the-arrangement-end) |
+| 4 | Implemented: byte limits and categorized memory estimates; native peak-memory validation remains | PCM admission excludes DSP snapshots, metadata, native allocations and GPU storage | [F06](findings.md#f06-memory-limits-do-not-cover-total-retention) |
+| 5 | Accepted: exact seek history with idle coverage and strict reuse; other transport/export-tail decisions remain open | Exact history, quick seeking, LFO phase continuity and final effect tails have different costs | [F05](findings.md#f05-cold-history-replay-can-still-take-a-long-time), [F15](findings.md#f15-transport-history-semantics-are-not-uniform), [F16](findings.md#f16-export-stops-at-the-arrangement-end) |
 | 6 | Strengthen file publication before treating the format as durable storage | Windows replacement and no-overwrite export have gaps under crashes or concurrent writers | [F07](findings.md#f07-save-publication-is-not-fully-crash-durable), [F08](findings.md#f08-export-no-overwrite-has-a-check-then-rename-race) |
 
-No approval is assumed for these changes. Review priorities and the product decisions first; each recommendation includes a check that would establish completion.
+The user approved F01, F05 and F06 after this review. The follow-ups preserve exact seek history, add background coverage and byte limits, and permit memory pressure to shorten undo history with a visible notice. Their implementation and remaining measurement limits are linked from the findings. Other changes remain proposals. Review priorities and the product decisions first; each recommendation includes a check that would establish completion.
 
 ## Evidence labels
 

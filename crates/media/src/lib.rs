@@ -2,6 +2,7 @@ use daw_core::{SAMPLE_RATE, SourceMetadata};
 use rubato::Resampler;
 use std::{fs::File, path::Path, sync::Arc};
 
+pub use memory::{AudioMemoryUsage, audio_memory_bytes};
 mod cache;
 mod export;
 mod memory;

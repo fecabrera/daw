@@ -4,6 +4,7 @@ use std::cell::Cell;
 use std::time::{Duration, Instant};
 thread_local! {
     static COUNT_HEAP: Cell<bool> = const { Cell::new(false) };
+    static HEAP_BYTES: Cell<usize> = const { Cell::new(0) };
     static HEAP_CALLS: Cell<usize> = const { Cell::new(0) };
 }
 struct CheckedAllocator;
@@ -18,6 +19,11 @@ fn heap_call() {
 unsafe impl GlobalAlloc for CheckedAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         heap_call();
+        COUNT_HEAP.with(|enabled| {
+            if enabled.get() {
+                HEAP_BYTES.with(|n| n.set(n.get() + layout.size()));
+            }
+        });
         unsafe { System.alloc(layout) }
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -26,6 +32,11 @@ unsafe impl GlobalAlloc for CheckedAllocator {
     }
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
         heap_call();
+        COUNT_HEAP.with(|enabled| {
+            if enabled.get() {
+                HEAP_BYTES.with(|n| n.set(n.get() + size));
+            }
+        });
         unsafe { System.realloc(ptr, layout, size) }
     }
 }
@@ -669,4 +680,75 @@ fn changed_plans_invalidate_cached_modulation_history() {
         different,
         "the edit must not restore the previous plan's envelope history"
     );
+}
+
+#[test]
+fn renderer_memory_estimate_covers_clone_allocations_for_all_effects_and_modulated_voices() {
+    let mut plan = modulated_note_plan();
+    plan.project.tracks[0].effects = vec![
+        daw_core::EffectInstance::equalizer(),
+        daw_core::EffectInstance::drive(),
+        daw_core::EffectInstance::auto_filter(),
+        daw_core::EffectInstance::compressor(),
+        daw_core::EffectInstance::ott(),
+        daw_core::EffectInstance::limiter(),
+        daw_core::EffectInstance::direction_mixer(),
+        daw_core::EffectInstance::stereo_spread(),
+        daw_core::EffectInstance::saturator(),
+        daw_core::EffectInstance::bitcrusher(),
+    ];
+    let renderer = Renderer::new(plan);
+    let memory = renderer.memory_usage();
+    HEAP_BYTES.with(|n| n.set(0));
+    COUNT_HEAP.with(|n| n.set(true));
+    let cloned = renderer.clone();
+    COUNT_HEAP.with(|n| n.set(false));
+    let actual = HEAP_BYTES.with(Cell::get) as u64;
+    assert!(
+        memory.owned_bytes() >= actual,
+        "estimated {} < allocated {actual}",
+        memory.owned_bytes()
+    );
+    assert!(memory.schedule_bytes > 0 && memory.processor_bytes > 0);
+    assert_eq!(
+        cloned.memory_usage().shared_audio_bytes,
+        memory.shared_audio_bytes
+    );
+}
+
+#[test]
+fn idle_preparation_builds_exact_checkpoints_before_first_seek_and_reuses_them_after_handoff() {
+    let mut plan = modulated_note_plan();
+    plan.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::saturator());
+    let preparation = AudioPreparation::new(plan.clone()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while preparation.performance().cache_memory[6] < plan.project.end() {
+        assert!(Instant::now() < deadline, "idle preparation did not finish");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(preparation.performance().cache_memory[5] > 0);
+    let status = preparation.status.clone();
+    let worker = preparation.worker;
+    // A new Arc with only a changed requested playhead is still the same DSP plan.
+    plan.project.transport.playhead_frame = 32_123;
+    let bindings = preparation::Bindings {
+        tracks: track_meters(&plan, &HashMap::new()),
+        ..Default::default()
+    };
+    let transport = TransportState {
+        frame: 32_123,
+        playing: true,
+        paused: false,
+        playback_start: Some(0),
+    };
+    worker.submit(Arc::new(plan.clone()), bindings, Some(transport));
+    let mut prepared = ready(&worker).renderer;
+    assert!(status.performance.snapshot().cache_memory[7] < 12_000);
+    let mut reference = Renderer::new(plan);
+    reference.prepare_transport(transport);
+    for _ in 0..1024 {
+        assert_eq!(realtime(|| prepared.next_sample()), reference.next_sample());
+    }
 }

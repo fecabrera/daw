@@ -2,6 +2,8 @@
 
 [Review index](README.md) · Baseline `2dbb347`
 
+Follow-up on 2026-10-19 supersedes the baseline cache/history limits and same-allocation-only reuse described below. See [exact idle preparation and memory policy](../performance.md#idle-coverage-and-exact-reuse) and [F05/F06 status](findings.md#f05-cold-history-replay-can-still-take-a-long-time). Other baseline observations remain review evidence.
+
 ## Render preparation
 
 | Stage | Input → output | Owner/context |
@@ -114,7 +116,7 @@ Disabled does not universally mean zero CPU. Filters, delay paths and transition
 
 `latency::chain_frames` sums Limiter and Saturator latency. Each layer delays by the difference from the longest regular layer. Main latency is added after the layer sum. Track alignment includes instrument plus track-chain latency; Master latency is added after track alignment. Worker pre-roll fills the alignment state. Loop-aware frame helpers map delayed clocks through a loop.
 
-**Known omission:** `EffectChain::sample` adjusts the clock for following effects only after Limiter. Saturator's 32-frame delay is counted in alignment but not this clock update. Main also uses saturating subtraction rather than the common loop-aware helper. See [F01](findings.md#f01-effect-clock-latency-is-incomplete). Audio delay compensation and modulation-clock compensation must be tested separately.
+**Baseline omission (fixed in the 2026-10-19 follow-up):** `EffectChain::sample` adjusts the clock for following effects only after Limiter. Saturator's 32-frame delay is counted in alignment but not this clock update. Main also uses saturating subtraction rather than the common loop-aware helper. See [F01](findings.md#f01-effect-clock-latency-is-incomplete). Audio delay compensation and modulation-clock compensation must be tested separately.
 
 ## Transport and plan activation
 

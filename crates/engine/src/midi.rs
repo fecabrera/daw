@@ -397,6 +397,60 @@ pub(crate) struct MidiTrackRuntime {
     main_remaining: u32,
 }
 impl MidiTrackRuntime {
+    pub fn memory_bytes(&self) -> (u64, u64) {
+        use daw_unit_core::memory::{map_bytes, vec_bytes};
+        let schedules = vec_bytes(&self.clips)
+            + self
+                .clips
+                .iter()
+                .map(|c| {
+                    c.clip.name.capacity() as u64
+                        + vec_bytes(&c.events)
+                        + vec_bytes(&c.note_states)
+                        + vec_bytes(&c.slot_starts)
+                        + c.slot_starts.iter().map(vec_bytes).sum::<u64>()
+                })
+                .sum::<u64>()
+            + self.clip_ranges.heap_bytes()
+            + self.lfo_notes.heap_bytes();
+        let processors = vec_bytes(&self.layer_effects)
+            + self
+                .layer_effects
+                .iter()
+                .map(|b| b.heap_bytes())
+                .sum::<u64>()
+            + vec_bytes(&self.layer_samples)
+            + map_bytes(&self.layer_index)
+            + map_bytes(&self.oscillator_index)
+            + self.shared.heap_bytes()
+            + vec_bytes(&self.voices)
+            + self
+                .voices
+                .iter()
+                .map(|v| {
+                    vec_bytes(&v.controls)
+                        + v.controls.iter().map(|c| vec_bytes(&c.routes)).sum::<u64>()
+                        + vec_bytes(&v.control_order)
+                        + vec_bytes(&v.values)
+                        + v.local_sources.heap_bytes()
+                        + vec_bytes(&v.layers)
+                        + v.layers
+                            .iter()
+                            .map(|l| {
+                                vec_bytes(&l.routes)
+                                    + vec_bytes(&l.sampler_routes)
+                                    + vec_bytes(&l.sources)
+                                    + l.sources
+                                        .iter()
+                                        .map(|o| vec_bytes(&o.routes) + o.source.heap_bytes())
+                                        .sum::<u64>()
+                            })
+                            .sum::<u64>()
+                })
+                .sum::<u64>();
+        (schedules, processors)
+    }
+
     /// Build schedules and DSP state before publication. No callback allocations.
     #[cfg(test)]
     pub fn new(project: &Project, track: &Track) -> Option<Self> {
@@ -1102,7 +1156,7 @@ impl MidiTrackRuntime {
             .sample(
                 sum,
                 Some(false),
-                frame.saturating_sub(self.parallel_latency),
+                super::latency::delayed_frame(frame, self.parallel_latency, loop_region),
                 self.tempo_bpm,
                 loop_region,
                 (&self.shared.values, Some(&self.shared.index)),

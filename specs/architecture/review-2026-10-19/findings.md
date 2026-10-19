@@ -2,18 +2,18 @@
 
 [Review index](README.md) · Baseline `2dbb347`
 
-These are review findings, not changes made by this task. “Confirmed” below means confirmed in code unless a measurement is named. It does not mean an audible/native failure was reproduced. Relative effort includes regression work, not a delivery estimate.
+These findings describe the reviewed baseline. Follow-up status is recorded separately below. “Confirmed” below means confirmed in code unless a measurement is named. It does not mean an audible/native failure was reproduced. Relative effort includes regression work, not a delivery estimate.
 
 ## Priority register
 
 | ID | Priority | Evidence class | Topic | Effort |
 | --- | --- | --- | --- | --- |
-| F01 | P1 | Code mismatch | Effect and Main clock latency | S–M |
+| F01 | P1 | Code mismatch; fixed in follow-up | Effect and Main clock latency | S–M |
 | F02 | P1 | Code; scaling risk | Unused asset retention | M |
 | F03 | P1 | Code; latency risk | UI-dependent audio handoff/retirement | M–L |
 | F04 | P2 | Code; scaling risk | Broad clones/rebuilds for small edits | M |
-| F05 | P1 | Historical measurement + code | Cold seek and catch-up cost | M–L |
-| F06 | P1 | Code; resource risk | Incomplete total-memory policy | M–L |
+| F05 | P1 | Exact-mode mitigation implemented; native timing open | Cold seek and catch-up cost | M–L |
+| F06 | P1 | Byte policies implemented; total RSS remains unbounded | Incomplete total-memory policy | M–L |
 | F07 | P1 | Code; crash-risk analysis | Save publication/durability | M |
 | F08 | P1 | Code; race analysis | Export no-overwrite race | S–M |
 | F09 | P2 | Code | Uneven job cancellation and scheduling | M |
@@ -27,6 +27,8 @@ These are review findings, not changes made by this task. “Confirmed” below 
 | F17 | P2 | Documentation mismatch | Current design mixed with old proposals | S |
 
 ## F01 Effect-clock latency is incomplete
+
+**Follow-up — fixed, 2026-10-19.** Serial chains now query each processor's shared `EffectUnit` latency, and Main uses the existing loop-aware delayed-frame helper. Both failures were reproduced by regression tests before the fix. See [validation](../../validation/README.md#effect-latency-clock-propagation--2026-10-19) for coverage and limits. The evidence below describes the original baseline. Cached external provider values are not delayed by this fix; that audit remains separate.
 
 **Evidence.** [`latency::chain_frames`](../../../crates/engine/src/latency.rs) counts both Limiter and Saturator. Saturator declares 32 frames through [`LATENCY_FRAMES`](../../../crates/saturator/src/lib.rs) and its [FIR constants](../../../crates/saturator/src/oversampling.rs). But [`EffectChain::sample`](../../../crates/engine/src/effects.rs) subtracts latency from the frame passed to later effects only for `RuntimeEffect::Limiter`. Auto-filter uses that frame for its internal LFO. Separately, [`MidiTrackRuntime::voice_sample`](../../../crates/engine/src/midi.rs) passes `frame.saturating_sub(parallel_latency)` to Main effects rather than the loop-aware delayed-frame helper used elsewhere.
 
@@ -68,6 +70,8 @@ These are review findings, not changes made by this task. “Confirmed” below 
 
 ## F05 Cold history replay can still take a long time
 
+**Follow-up — 2026-10-19.** The user selected exact history and background preparation/cache reuse. Device-independent idle preparation now builds byte-bounded coverage before first Play and transfers the same worker/cache to Output. Coverage spans the arrangement with spacing based on available slots. Reuse requires equal project processing state (excluding only playhead) and identical prepared media allocations/rates. New requests interrupt optional work at buffer boundaries. Completed request-to-activation timing and replay-frame counters are available. Tests compare warm output with full-history reconstruction and verify cancellation, handoff and invalidation. See [current policy](../performance.md#idle-coverage-and-exact-reuse) and [checks](../../validation/README.md#exact-seek-preparation-and-memory-limits--2026-10-19). Cold gaps still require exact work; no approximate fallback or maximum activation delay is promised. Native p50/p95/max under saturated CPU remains unmeasured.
+
 **Evidence.** [`TransportCache::prepare`](../../../crates/engine/src/transport_cache.rs) replays from its nearest preceding checkpoint, or zero on a cold history request. The [recorded cold-seek optimization](../../validation/README.md#cold-seek-optimization) reduced a private workload's preparation from about 1.06 s to 0.92 s at the longest measured position. Those are historical worker timings, not new end-to-end measurements. The [worker catch-up loop](../../../crates/output/src/preparation.rs) must get ahead of the active generated-sample clock before publication.
 
 **Impact.** A first or distant seek still scales with elapsed history and DSP complexity. New plans discard checkpoints. If preparation throughput cannot exceed real time under load, an incompatible edit can remain pending while old audio continues. No completion deadline guarantees progress in that case.
@@ -77,6 +81,8 @@ These are review findings, not changes made by this task. “Confirmed” below 
 **Pros:** A improves cold coverage; B reduces needless invalidation; C can bound response time. **Cons:** A spends CPU/memory before use; B needs precise invalidation; C changes audible state and must be disclosed. **Expected impact:** lower cold/uncached latency, with explicit resource or fidelity tradeoffs. **Acceptance:** dense and long projects, first/backward/distant seeks, edit bursts, loop positions and saturated worker CPU; record request-to-activation p50/p95/max and exact-output comparisons for exact mode. Decide a pending-edit timeout/fallback policy.
 
 ## F06 Memory limits do not cover total retention
+
+**Follow-up — 2026-10-19.** Added model/schedule/DSP estimates, shared-audio deduplication, checkpoint and history byte limits, output-owner admission, and status-bar diagnostics. The user approved removing oldest undo entries with a visible notice. Current/pending/saved state remains protected; essential media jobs release idle preparation and can release optional history near the PCM limit. Regression tests cover renderer clone allocation estimates, bounded checkpoint retention, shared/exclusive audio, history eviction/redo and notices. See [budgets and exclusions](../performance.md#estimated-memory-policy) and [checks](../../validation/README.md#exact-seek-preparation-and-memory-limits--2026-10-19). These policies bound estimated retained categories, not total RSS or transient construction peaks. Native/GPU/job/clipboard overhead, current-model growth, and peak-memory stress across concurrent workloads remain measurement limits.
 
 **Evidence.** [`AudioReservation`](../../../crates/media/src/memory.rs) covers PCM/peaks and known scratch at 2 GiB. It excludes model/DSP/native/GPU allocations. TransportCache keeps up to 64 Renderer clones by count. History holds up to 100 undo snapshots plus current/pending/redo/saved data. Queues, jobs and save snapshots retain further owners. All are visible in the [cache inventory](preparation-and-caches.md#cache-and-retained-state-inventory).
 

@@ -85,6 +85,18 @@ pub(super) struct NoteSchedule {
     clips: Vec<NoteClip>,
 }
 impl NoteSchedule {
+    pub fn heap_bytes(&self) -> u64 {
+        use daw_unit_core::memory::vec_bytes;
+        vec_bytes(&self.clips)
+            + self
+                .clips
+                .iter()
+                .map(|c| {
+                    c.clip.name.capacity() as u64 + vec_bytes(&c.retrigger) + vec_bytes(&c.legato)
+                })
+                .sum::<u64>()
+    }
+
     pub fn new(mut clips: Vec<NoteClip>) -> Self {
         clips.sort_by_key(|c| c.clip.start_frame);
         let mut previous = [None; 2];

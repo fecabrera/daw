@@ -15,6 +15,24 @@ pub struct PreparedSampler {
 }
 
 impl PreparedSampler {
+    pub fn visit_memory(&self, usage: &mut crate::AudioMemoryUsage) {
+        usage.samples(&self.source);
+        usage.audio(&self.selected);
+        for variant in self.variants.values() {
+            variant.visit_memory(usage);
+        }
+    }
+    pub fn heap_bytes(&self) -> u64 {
+        self.input.name.capacity() as u64
+            + self.selected.metadata.sample_format.capacity() as u64
+            + daw_unit_core::memory::tree_bytes::<i8, PreparedStretch>(self.variants.len())
+            + self
+                .variants
+                .values()
+                .map(PreparedStretch::heap_bytes)
+                .sum::<u64>()
+    }
+
     fn matches_region(&self, source: &AudioData, settings: &SamplerSettings) -> bool {
         Arc::ptr_eq(&self.source, &source.samples)
             && self.selected.sample_rate_hz == source.sample_rate_hz

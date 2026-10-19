@@ -154,6 +154,11 @@ impl Limiter {
     }
 }
 impl EffectUnit for Limiter {
+    fn heap_bytes(&self) -> u64 {
+        daw_unit_core::memory::vec_bytes(&self.frames)
+            + daw_unit_core::memory::vec_bytes(&self.peaks)
+    }
+
     fn latency_frames(&self) -> u32 {
         Limiter::latency_frames(self)
     }

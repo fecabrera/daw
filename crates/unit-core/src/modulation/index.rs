@@ -13,6 +13,10 @@ pub struct ModulationSourceIndex {
 }
 
 impl ModulationSourceIndex {
+    pub fn heap_bytes(&self) -> u64 {
+        crate::memory::map_bytes(&self.positions)
+    }
+
     pub fn new(sources: impl IntoIterator<Item = ModulationSourceId>) -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let mut positions = HashMap::new();

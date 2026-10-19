@@ -1184,6 +1184,7 @@ name = "daw-media"
 version = "0.1.0"
 dependencies = [
  "daw-core",
+ "daw-unit-core",
  "hound",
  "mp3lame-encoder",
  "rubato",

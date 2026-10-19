@@ -133,6 +133,25 @@ pub(crate) struct SharedControls {
     release_frames: u64,
 }
 impl SharedControls {
+    pub fn heap_bytes(&self) -> u64 {
+        use daw_unit_core::memory::vec_bytes;
+        vec_bytes(&self.controls)
+            + self
+                .controls
+                .iter()
+                .map(|c| vec_bytes(&c.routes))
+                .sum::<u64>()
+            + vec_bytes(&self.providers)
+            + self
+                .providers
+                .iter()
+                .map(ProviderControl::heap_bytes)
+                .sum::<u64>()
+            + vec_bytes(&self.values)
+            + vec_bytes(&self.order)
+            + self.index.heap_bytes()
+    }
+
     pub fn new(controls: Vec<Control>) -> Self {
         let values: Vec<_> = controls
             .iter()

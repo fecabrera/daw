@@ -9,6 +9,10 @@ pub(super) struct Ranges {
     window: (u64, u64, Option<usize>),
 }
 impl Ranges {
+    pub fn heap_bytes(&self) -> u64 {
+        daw_unit_core::memory::vec_bytes(&self.sorted)
+    }
+
     pub fn new(ranges: impl Iterator<Item = (u64, u64)>) -> Self {
         let mut sorted: Vec<_> = ranges.enumerate().map(|(i, (a, b))| (a, b, i)).collect();
         sorted.sort_unstable_by_key(|r| r.0);
@@ -42,6 +46,17 @@ pub(super) struct AudioTrack {
     rate: u32,
 }
 impl AudioTrack {
+    pub fn heap_bytes(&self) -> u64 {
+        self.ranges.heap_bytes()
+            + daw_unit_core::memory::vec_bytes(&self.audio)
+            + self
+                .audio
+                .iter()
+                .flatten()
+                .map(|a| a.metadata.sample_format.capacity() as u64)
+                .sum::<u64>()
+    }
+
     pub fn new(plan: &RenderPlan, track: &Track) -> Self {
         Self {
             ranges: Ranges::new(track.clips.iter().map(|c| (c.start_frame, c.end()))),

@@ -22,6 +22,8 @@ Low-pass keeps lower frequencies, High-pass keeps higher frequencies, Band-pass 
 
 Strength sets the internal LFO sweep around Frequency. One octave sweeps from half to twice the center frequency. Hz mode uses a fixed speed; Note mode follows tempo. Sync phase shifts both channels' cycle position. Stereo phase shifts the right channel relative to the left.
 
+The internal sweep follows the timing of the audio arriving at Auto-filter, including processing delay from earlier Saturator or Limiter effects. This also applies across loop boundaries and on instrument Main.
+
 The LFO footer switch stops the internal sweep while keeping the static filter active. Header power bypasses the complete unit. Dry/Wet blends the original and filtered signals; Level adjusts the blend's output.
 
 ## External modulation

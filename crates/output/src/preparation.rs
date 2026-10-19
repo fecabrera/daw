@@ -20,7 +20,12 @@ pub(super) struct Anchor {
     pub clock: u64,
 }
 enum Request {
-    Plan(Arc<RenderPlan>, Option<daw_engine::TransportState>),
+    Warm(Arc<RenderPlan>),
+    Plan(
+        Arc<RenderPlan>,
+        Option<daw_engine::TransportState>,
+        std::time::Instant,
+    ),
     Prepared(Box<PreparedRenderer>, Anchor),
 }
 #[derive(Default)]
@@ -29,6 +34,7 @@ struct State {
     request: Option<(u64, Request, Bindings)>,
     ready: Option<Ready>,
     closed: bool,
+    error: Option<(u64, String)>,
     wake_ui: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 pub(super) struct Worker(Arc<(Mutex<State>, Condvar)>);
@@ -42,21 +48,60 @@ impl Worker {
                 let mut cached_plan: Option<Arc<RenderPlan>> = None;
                 let mut cache: Option<daw_engine::TransportCache> = None;
                 loop {
-                    let (revision, plan, previous) = {
+                    let request = {
                         let (lock, wake) = &*worker;
                         let mut state = lock.lock().unwrap();
                         while state.request.is_none() && !state.closed {
+                            if cache.as_ref().is_some_and(|c| c.can_warm()) {
+                                break;
+                            }
                             state = wake.wait(state).unwrap();
                         }
                         if state.closed {
                             return;
                         }
-                        state.request.take().unwrap()
+                        state.request.take()
+                    };
+                    let Some((revision, plan, previous)) = request else {
+                        if let Some(cache) = &mut cache {
+                            cache.warm_step(std::time::Duration::from_millis(10), || {
+                                let state = worker.0.lock().unwrap();
+                                state.closed || state.request.is_some()
+                            });
+                            status.performance.cache(cache.memory_usage());
+                        }
+                        // Optional preparation yields CPU and wakes immediately for a request.
+                        let state = worker.0.lock().unwrap();
+                        if !state.closed && state.request.is_none() {
+                            drop(
+                                worker
+                                    .1
+                                    .wait_timeout(state, std::time::Duration::from_millis(20))
+                                    .unwrap(),
+                            );
+                        }
+                        continue;
                     };
                     let (mut renderer, bindings, transport, anchor) = match plan {
-                        Request::Plan(plan, transport) => {
-                            if cached_plan.as_ref().is_none_or(|p| !Arc::ptr_eq(p, &plan)) {
+                        Request::Warm(plan) => {
+                            if cached_plan
+                                .as_ref()
+                                .is_none_or(|p| !p.same_processing_plan(&plan))
+                            {
+                                cache = Some(daw_engine::TransportCache::new((*plan).clone()));
+                                cached_plan = Some(plan);
+                            }
+                            if let Some(cache) = &cache {
+                                status.performance.cache(cache.memory_usage());
+                            }
+                            continue;
+                        }
+                        Request::Plan(plan, transport, requested_at) => {
+                            if cached_plan.as_ref().is_none_or(|p| {
+                                !Arc::ptr_eq(p, &plan) && !p.same_processing_plan(&plan)
+                            }) {
                                 cache = None;
+                                status.performance.cache(Default::default());
                                 cached_plan = Some(plan.clone());
                             }
                             let bindings = Bindings {
@@ -65,18 +110,40 @@ impl Worker {
                                 bands: band_meters(&plan, &previous.bands),
                                 modulation: modulation_meters(&plan, &previous.modulation),
                             };
-                            let renderer =
-                                Box::new(PreparedRenderer::new((*plan).clone(), &bindings.tracks));
+                            let renderer = match PreparedRenderer::try_new(
+                                (*plan).clone(),
+                                &bindings.tracks,
+                            ) {
+                                Ok(renderer) => Box::new(renderer),
+                                Err(error) => {
+                                    cache = None;
+                                    status.performance.cache(Default::default());
+                                    publish_error(&worker, revision, error);
+                                    continue;
+                                }
+                            };
+                            let mut renderer = renderer;
+                            renderer.requested_at = Some(requested_at);
                             (renderer, bindings, transport, None)
                         }
                         Request::Prepared(renderer, anchor) => {
                             let lead = renderer.preparation_lead;
+                            let requested_at = renderer.requested_at;
                             // Reconstruct unbound DSP so worker pre-roll cannot write active meters.
                             let plan = renderer.plan.clone();
                             drop(renderer);
                             let mut renderer =
-                                Box::new(PreparedRenderer::new(plan, &previous.tracks));
+                                match PreparedRenderer::try_new(plan, &previous.tracks) {
+                                    Ok(renderer) => Box::new(renderer),
+                                    Err(error) => {
+                                        cache = None;
+                                        status.performance.cache(Default::default());
+                                        publish_error(&worker, revision, error);
+                                        continue;
+                                    }
+                                };
                             renderer.preparation_lead = lead;
+                            renderer.requested_at = requested_at;
                             (renderer, previous, Some(anchor.transport), Some(anchor))
                         }
                     };
@@ -91,6 +158,7 @@ impl Worker {
                         }) else {
                             continue;
                         };
+                        status.performance.cache(cache.memory_usage());
                         renderer.renderer = prepared;
                         renderer.prepared_transport = true;
                     }
@@ -162,16 +230,34 @@ impl Worker {
                     if let Some(wake_ui) = wake_ui {
                         wake_ui();
                     }
-                    if let (Some(cache), Some(transport)) = (&mut cache, transport) {
-                        cache.warm(transport.frame, || {
-                            let state = worker.0.lock().unwrap();
-                            state.closed || state.revision != revision || state.request.is_some()
-                        });
+                    if cache.is_none() {
+                        let state = worker.0.lock().unwrap();
+                        let idle = !state.closed && state.request.is_none();
+                        drop(state);
+                        if idle && let Some(plan) = &cached_plan {
+                            cache = Some(daw_engine::TransportCache::new((**plan).clone()));
+                        }
+                    }
+                    if let Some(cache) = &cache {
+                        status.performance.cache(cache.memory_usage());
                     }
                 }
             })
             .map_err(|e| format!("Cannot start audio preparation: {e}"))?;
         Ok(Self(shared))
+    }
+    pub fn prewarm(&self, plan: Arc<RenderPlan>) {
+        let previous = {
+            let mut state = self.0.0.lock().unwrap();
+            state.revision += 1;
+            state.error = None;
+            let revision = state.revision;
+            state
+                .request
+                .replace((revision, Request::Warm(plan), Bindings::default()))
+        };
+        self.0.1.notify_one();
+        drop(previous);
     }
     pub fn set_waker(&self, wake: impl Fn() + Send + Sync + 'static) {
         let mut state = self.0.0.lock().unwrap();
@@ -188,11 +274,14 @@ impl Worker {
         let (request, ready, revision) = {
             let mut state = self.0.0.lock().unwrap();
             state.revision += 1;
+            state.error = None;
             let revision = state.revision;
             (
-                state
-                    .request
-                    .replace((revision, Request::Plan(plan.into(), transport), previous)),
+                state.request.replace((
+                    revision,
+                    Request::Plan(plan.into(), transport, std::time::Instant::now()),
+                    previous,
+                )),
                 state.ready.take(),
                 revision,
             )
@@ -221,8 +310,26 @@ impl Worker {
         drop((request, ready));
         revision
     }
+    pub fn take_error(&self) -> Option<String> {
+        let mut state = self.0.0.lock().unwrap();
+        let (revision, error) = state.error.take()?;
+        (revision == state.revision).then_some(error)
+    }
     pub fn take(&self) -> Option<Ready> {
         self.0.0.lock().unwrap().ready.take()
+    }
+}
+fn publish_error(worker: &Arc<(Mutex<State>, Condvar)>, revision: u64, error: String) {
+    let wake = {
+        let mut state = worker.0.lock().unwrap();
+        if state.closed || state.revision != revision {
+            return;
+        }
+        state.error = Some((revision, error));
+        state.wake_ui.clone()
+    };
+    if let Some(wake) = wake {
+        wake();
     }
 }
 impl Drop for Worker {

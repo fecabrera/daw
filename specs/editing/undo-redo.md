@@ -8,7 +8,11 @@ Implemented scope supersedes the earlier MVP exclusion. Project editing uses a b
 
 Project model types implement structural `PartialEq`. Snapshot comparison excludes the playhead, normalizes external source paths against the snapshot's original folder, and includes all other saved project fields. Normalized absolute paths preserve source identity across Save As. Restoring a snapshot retains the live save folder and playhead time, converting that time with rounded integer arithmetic to the restored sample rate and clamping only a playhead beyond timeline bounds. Stable IDs, routes, source offsets, repeat metadata, and prepared audio are restored together.
 
-History retains at most 100 undo entries, plus current state and a pending gesture. Redo uses the same retained states. New committed edits clear Redo; structural no-ops do not. Metadata is cloned, and audio is shared. The count limit does not impose a separate byte limit; history can retain old prepared buffers within the existing audio resource budget.
+History retains at most 100 undo entries. Undo and Redo together also have an estimated 128 MiB byte budget: owned snapshot metadata plus PCM/peaks retained only by those history states. Shared audio counts once, and audio also held by current/pending snapshots is excluded from that history charge. Current/pending models and the saved checkpoint are reported separately and are not evicted. New committed edits clear Redo; structural no-ops do not.
+
+After record, group completion, Undo or Redo, enforce the byte limit by removing oldest Undo entries, then the farthest Redo entries if necessary. Retain the nearest redo sequence. Cache each snapshot's metadata estimate; refresh deduplicated audio ownership on changes rather than painting. Dropping entries releases their shared owners outside the callback. Before a blocking job, shared media usage within 256 MiB of its 2 GiB limit can release all optional Undo/Redo entries. Current, pending and saved state remain intact. This does not guarantee admission when essential owners still retain the audio.
+
+The UI reports memory-driven removals once through the existing visible notice, after any blocking job closes. Count-only expiry at 100 entries retains its ordinary behavior. See [memory accounting and limits](../architecture/performance.md#estimated-memory-policy).
 
 ## Publication and grouping
 

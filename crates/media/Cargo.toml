@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 timestretch.workspace = true
 daw-core.workspace = true
+daw-unit-core.workspace = true
 symphonia.workspace = true
 hound.workspace = true
 rubato.workspace = true

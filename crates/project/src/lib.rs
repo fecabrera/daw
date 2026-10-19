@@ -1,5 +1,5 @@
 mod history;
-pub use history::SessionHistory;
+pub use history::{HistoryMemory, SessionHistory};
 mod sampler;
 use daw_core::{Asset, Clip, ClipStretch, Id, Project, Source};
 use daw_engine::RenderPlan;

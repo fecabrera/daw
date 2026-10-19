@@ -11,6 +11,12 @@ pub(super) struct LayerEffects {
     remaining: u32,
 }
 impl LayerEffects {
+    pub fn heap_bytes(&self) -> u64 {
+        self.chain.heap_bytes()
+            + self.delay.heap_bytes()
+            + daw_unit_core::memory::effect_settings_bytes(&self.settings)
+    }
+
     pub fn new(
         id: Id,
         effects: &[EffectInstance],

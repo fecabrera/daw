@@ -78,6 +78,40 @@ impl Drop for AudioReservation {
     }
 }
 
+/// Deduplicate shared PCM/peak owners across plans, history and sampler variants.
+/// Construct and traverse on a control/worker thread only.
+#[derive(Default)]
+pub struct AudioMemoryUsage {
+    samples: std::collections::HashSet<usize>,
+    peaks: std::collections::HashSet<usize>,
+    pub bytes: u64,
+}
+impl AudioMemoryUsage {
+    pub fn samples(&mut self, samples: &std::sync::Arc<Vec<[f32; 2]>>) {
+        if self
+            .samples
+            .insert(std::sync::Arc::as_ptr(samples) as usize)
+        {
+            self.bytes = self.bytes.saturating_add(samples.capacity() as u64 * 8);
+        }
+    }
+    pub fn audio(&mut self, audio: &AudioData) {
+        self.samples(&audio.samples);
+        if self
+            .peaks
+            .insert(std::sync::Arc::as_ptr(&audio.peaks) as usize)
+        {
+            self.bytes = self
+                .bytes
+                .saturating_add(audio.peaks.capacity() as u64 * 16);
+        }
+    }
+}
+/// PCM and scratch currently admitted, including old owners. Not a process RSS reading.
+pub fn audio_memory_bytes() -> u64 {
+    state().lock().unwrap().used()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -9,6 +9,10 @@ pub(super) struct Delay {
     index: usize,
 }
 impl Delay {
+    pub fn heap_bytes(&self) -> u64 {
+        daw_unit_core::memory::vec_bytes(&self.samples)
+    }
+
     pub fn new(id: Id, frames: u64) -> Self {
         Self {
             id,
@@ -58,6 +62,12 @@ pub(super) struct Alignment {
     pub previous_feed: Option<u64>,
 }
 impl Alignment {
+    pub fn heap_bytes(&self) -> u64 {
+        daw_unit_core::memory::vec_bytes(&self.tracks)
+            + daw_unit_core::memory::map_bytes(&self.index)
+            + self.tracks.iter().map(Delay::heap_bytes).sum::<u64>()
+    }
+
     pub fn new(project: &Project) -> Self {
         let rate = project.sample_rate_hz;
         let track_max = project

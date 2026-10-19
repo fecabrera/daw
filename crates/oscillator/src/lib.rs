@@ -19,6 +19,11 @@ pub struct Oscillator {
     effective_gain: f32,
 }
 impl Oscillator {
+    /// Backend object footprint. Shared waveform tables and allocator overhead are excluded.
+    pub fn heap_bytes(&self) -> u64 {
+        self.node.footprint() as u64
+    }
+
     /// Construct and allocate on a control thread, before entering audio processing.
     pub fn new(waveform: Waveform, context: ProcessingContext) -> Self {
         let mut node: Box<dyn AudioUnit> = match waveform {

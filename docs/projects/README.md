@@ -16,9 +16,15 @@ Processing rates are 44.1, 48, 88.2, 96, 176.4, and 192 kHz; the default is 48 k
 
 Audio settings changes prepare the required audio before replacing the session. Success stops playback so you can restart it with the new settings. Failure or cancellation retains the previous project and playback.
 
-## Large audio files
+## Memory and large projects
 
 Audio preparation uses a shared 2 GiB budget for decoded samples and working buffers. Long files, high processing rates, and stretched copies need more space. If preparation exceeds the budget, shorten the source, use a lower processing rate, or close an unused project and try again. A failed import or settings change retains the current project and playback. This budget is not a limit on track count or total application memory.
+
+Hover over the processing-rate and buffer-size label in the status bar to see estimated memory use. Undo history and seek checkpoints have separate limits. When audio memory is nearly full, starting a background operation can remove older undo/redo steps; a notice reports this change. The current project stays intact.
+
+Playback preparation also limits retained processing state to an estimated 512 MiB. If it reports that this limit is exceeded, current playback continues. Reduce instrument voices or effects, or retry after pending work finishes. These estimates exclude some system, graphics and temporary memory.
+
+The app prepares exact seek history in the background before playback and between requests. A first or distant seek can still take time if that preparation is incomplete. Current playback continues until the requested position is ready; the app does not substitute approximate effect or modulation history.
 
 Repeated imports of the same unchanged file can share audio storage. They remain separate assets and clips. If a file changes while it is being prepared, retry the operation after the file has finished saving.
 

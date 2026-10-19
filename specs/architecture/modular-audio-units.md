@@ -97,6 +97,8 @@ Effect chains are serial. Instrument and modulation graphs may branch internally
 
 Processing latency means a unit's added input-to-output alignment delay. Musical delay and reverb are intentional sound behavior, so D25 does not exclude them. The tail cap applies to export after the arranged content ends.
 
+Every runtime effect forwards `EffectUnit::latency_frames` through the common `RuntimeEffect::latency_frames` accessor. After each serial processor, `EffectChain::sample` subtracts that delay with `latency::delayed_frame` before calling the next processor. Include fixed latency while bypassed. Use the same loop-aware helper at layer-to-Main, instrument-to-track, and aligned-track-to-Master boundaries: wrap delayed clocks within an active loop, including nonzero loop starts and delays longer than the loop; otherwise clamp subtraction at frame zero. Live playback, offline rendering, and prepared seeks share these paths. This clock adjustment does not time-shift cached external modulation values; provider-value alignment remains a separate design concern.
+
 The initial performance target is eight simultaneous voices with representative effects at 48 kHz and a 512-sample buffer. On a named test machine, processing should use less than half the callback time, with no callback allocations or blocking. Eight voices is a benchmark workload, not a track limit. Validate every supported project sample rate and buffer size before release; record the unit configuration, hardware, and measured results.
 
 ## View names and responsibilities
@@ -554,3 +556,7 @@ Envelope now consumes modulation as well as publishing a Contour source. Its [ty
 ## Saturator — 2026-10-19
 
 [Saturator](../effects/saturator.md) adds a portable stereo effect through the existing EffectUnit, shared modulation, panel, catalog registration, and transfer contracts. Its fixed 4× oversampling adds 32 project frames of latency in every state, including dry and bypass. The existing alignment/priming path includes that delay for track, layer, Main, and Master chains. Drive/Level/DryWet are shared destinations; the requested Shape/Clip Mode selectors remain dropdowns. See the effect specification for signal flow, anti-aliasing limits, persisted state, and validation.
+
+## Processor storage estimates
+
+Portable effect processors expose owned dynamic storage through `EffectUnit::heap_bytes`; inline-only processors use the zero default. The host includes the processor value itself. Keep this query outside the callback and count capacities rather than only populated elements. Engine combines these estimates with source, schedule, delay and model storage to size optional transport checkpoints and account for output owners. Shared PCM is counted separately. Update the owning estimate when adding dynamic state, and retain clone-allocation regression coverage. See [memory policy](performance.md#estimated-memory-policy) for budgets and exclusions.

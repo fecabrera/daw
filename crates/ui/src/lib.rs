@@ -1,3 +1,4 @@
+mod audio_preparation;
 mod clip_lane;
 mod clip_paint;
 mod history;
@@ -731,6 +732,8 @@ pub struct DawUi {
     saved_navigation_revision: u64,
     regular_save: Option<regular_save::PendingSave>,
     sync_needed: bool,
+    audio_preparation: Option<(daw_core::Id, u64, daw_output::AudioPreparation)>,
+    audio_preparation_attempt: Option<(daw_core::Id, u64)>,
     repaint_until: Option<std::time::Instant>,
     job: Option<mpsc::Receiver<Result<Job, String>>>,
     busy: String,
@@ -826,6 +829,8 @@ impl Default for DawUi {
             saved_navigation_revision: 0,
             regular_save: None,
             sync_needed: false,
+            audio_preparation: None,
+            audio_preparation_attempt: None,
             repaint_until: None,
             job: None,
             busy: String::new(),
@@ -953,6 +958,7 @@ impl DawUi {
         self.sync_needed = true;
     }
     fn run_job(&mut self, label: &str, job: impl FnOnce() -> Result<Job, String> + Send + 'static) {
+        self.release_optional_memory_for_job();
         self.ensure_history();
         if let Some(cancel) = self.settings_cancel.take() {
             cancel.store(true, Ordering::Relaxed);
@@ -1332,7 +1338,10 @@ impl DawUi {
             self.output = None;
         }
         if self.output.is_none() {
-            match AudioOutput::new(self.session.plan()) {
+            match AudioOutput::with_preparation(
+                self.session.plan(),
+                self.audio_preparation.take().map(|(_, _, p)| p),
+            ) {
                 Ok(o) => self.output = Some(o),
                 Err(e) => {
                     self.fail(e);
@@ -1729,6 +1738,9 @@ impl DawUi {
         }
         if let Some(output) = &mut self.output {
             output.drain();
+            if let Some(error) = output.take_preparation_error() {
+                self.error = Some(error);
+            }
             self.session.project.transport.playhead_frame = output.displayed_frame();
             if output.status.failed.load(Ordering::Relaxed) {
                 self.error=Some("Audio output failed or disconnected. Playback stopped. Editing and export remain available.".into());
@@ -1813,7 +1825,8 @@ impl DawUi {
                         "{} kHz · {} samples · WAV",
                         self.session.project.sample_rate_hz as f32 / 1000.0,
                         self.session.project.buffer_size_frames
-                    ));
+                    ))
+                    .on_hover_ui(|ui| self.memory_tooltip(ui));
                     if let Some(output) = &self.output {
                         ui.separator();
                         ui.label(&output.description);
@@ -1870,6 +1883,7 @@ impl DawUi {
                 self.sync_needed = false;
             }
         }
+        self.prepare_idle_audio();
         self.dialogs(&ctx);
         self.effects_catalog.clear_if_unfocused(
             &ctx,
@@ -1974,6 +1988,7 @@ impl DawUi {
         {
             history.finish_group();
         }
+        self.history_memory_notice();
         let now = std::time::Instant::now();
         if self.is_playing()
             || self.output.as_ref().is_some_and(|o| o.preparing())

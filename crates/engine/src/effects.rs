@@ -25,7 +25,80 @@ enum RuntimeEffect {
     Saturator(Box<Saturator>, Vec<super::modulation::Route>),
     Bitcrusher(Box<Bitcrusher>, Vec<super::modulation::Route>),
 }
+
 impl RuntimeEffect {
+    fn heap_bytes(&self) -> u64 {
+        match self {
+            Self::Eq3(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::Drive(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::AutoFilter(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::Compressor(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::Ott(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::Limiter(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::DirectionMixer(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::StereoSpread(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::Saturator(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::Bitcrusher(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+        }
+    }
+
+    // Forward the shared processor contract for every variant. Bypassed units
+    // retain their fixed delay, and each downstream clock must follow it.
+    fn latency_frames(&self) -> u32 {
+        match self {
+            Self::Eq3(unit, _) => unit.latency_frames(),
+            Self::Drive(unit, _) => unit.latency_frames(),
+            Self::AutoFilter(unit, _) => unit.latency_frames(),
+            Self::Compressor(unit, _) => unit.latency_frames(),
+            Self::Ott(unit, _) => unit.latency_frames(),
+            Self::Limiter(unit, _) => unit.latency_frames(),
+            Self::DirectionMixer(unit, _) => unit.latency_frames(),
+            Self::StereoSpread(unit, _) => unit.latency_frames(),
+            Self::Saturator(unit, _) => unit.latency_frames(),
+            Self::Bitcrusher(unit, _) => unit.latency_frames(),
+        }
+    }
+
     fn sample(
         &mut self,
         input: [f32; 2],
@@ -271,6 +344,17 @@ pub(super) struct EffectChain {
     units: Vec<(Id, Option<RuntimeEffect>)>,
 }
 impl EffectChain {
+    pub fn heap_bytes(&self) -> u64 {
+        daw_unit_core::memory::map_bytes(&self.index)
+            + daw_unit_core::memory::vec_bytes(&self.units)
+            + self
+                .units
+                .iter()
+                .filter_map(|(_, u)| u.as_ref())
+                .map(RuntimeEffect::heap_bytes)
+                .sum::<u64>()
+    }
+
     pub fn new(track: &Track, sample_rate_hz: u32, max_block_frames: u32) -> Self {
         Self::chain(
             Some(track.id),
@@ -525,12 +609,9 @@ impl EffectChain {
         for (_, unit) in &mut self.units {
             if let Some(unit) = unit {
                 input = unit.sample(input, frame, tempo, values);
-                if let RuntimeEffect::Limiter(unit, _) = unit {
-                    frame = super::latency::delayed_frame(
-                        frame,
-                        u64::from(unit.latency_frames()),
-                        loop_region,
-                    );
+                let delay = unit.latency_frames();
+                if delay != 0 {
+                    frame = super::latency::delayed_frame(frame, u64::from(delay), loop_region);
                 }
             }
         }
@@ -540,6 +621,94 @@ impl EffectChain {
         for (_, unit) in &mut self.units {
             if let Some(unit) = unit {
                 unit.reset();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod clock_tests {
+    use super::*;
+    use daw_unit_core::{AutoFilterSettings, LfoRateMode};
+
+    #[test]
+    fn serial_effect_clocks_follow_each_processors_delay_including_bypass_and_loops() {
+        for rate in daw_core::SAMPLE_RATES {
+            for enabled in [false, true] {
+                for region in [None, Some((1000, 1017)), Some((1000, 1700))] {
+                    let context = ProcessingContext {
+                        sample_rate_hz: rate,
+                        max_block_frames: 512,
+                    };
+                    let filter_settings = AutoFilterSettings {
+                        frequency_hz: 200.0,
+                        q: 3.0,
+                        rate_mode: LfoRateMode::Hz,
+                        rate_hz: 20.0,
+                        strength_octaves: 4.0,
+                        stereo_phase_degrees: 90.0,
+                        ..Default::default()
+                    };
+                    let mut effects = Vec::new();
+                    let mut reference: Vec<(Box<dyn EffectUnit>, AutoFilter)> = Vec::new();
+                    for mut effect in [
+                        EffectInstance::saturator(),
+                        EffectInstance::limiter(),
+                        EffectInstance::saturator(),
+                    ] {
+                        let processor: Box<dyn EffectUnit> = match &mut effect.unit {
+                            EffectSettings::Saturator(s) => {
+                                s.enabled = enabled;
+                                Box::new(Saturator::new(context, s))
+                            }
+                            EffectSettings::Limiter(s) => {
+                                s.enabled = enabled;
+                                Box::new(Limiter::new(context, s))
+                            }
+                            _ => unreachable!(),
+                        };
+                        effects.push(effect);
+                        let mut filter = EffectInstance::auto_filter();
+                        filter.unit = EffectSettings::AutoFilter(filter_settings.clone());
+                        effects.push(filter);
+                        reference.push((processor, AutoFilter::new(context, &filter_settings)));
+                    }
+                    let mut chain = EffectChain::chain(None, &effects, rate, 512);
+                    let mut peak = 0.0_f32;
+                    for tick in 0..u64::from(Limiter::latency_for_rate(rate)) + 4096 {
+                        let frame =
+                            region.map_or(tick, |(start, end)| start + tick % (end - start));
+                        let tone =
+                            (tick as f32 * 300.0 * std::f32::consts::TAU / rate as f32).sin() * 0.2;
+                        let input = [tone, -tone * 0.5];
+                        let mut expected = input;
+                        let mut delay = 0_u64;
+                        for (processor, filter) in &mut reference {
+                            expected = processor.process_sample(expected);
+                            delay += u64::from(processor.latency_frames());
+                            // Independent clock oracle: signed offset from the loop origin.
+                            let clock = region.map_or_else(
+                                || frame.saturating_sub(delay),
+                                |(start, end)| {
+                                    start
+                                        + (i128::from(frame - start) - i128::from(delay))
+                                            .rem_euclid(i128::from(end - start))
+                                            as u64
+                                },
+                            );
+                            expected = filter.process_at(expected, clock, 120.0);
+                        }
+                        let actual = chain
+                            .sample(input, Some(false), frame, 120.0, region, (&[], None))
+                            .0;
+                        assert_eq!(
+                            actual, expected,
+                            "rate={rate} enabled={enabled} loop={region:?} tick={tick}"
+                        );
+                        peak = peak.max(expected[0].abs());
+                    }
+                    assert!(peak > 1e-4, "reference must contain audible signal");
+                }
             }
         }
     }

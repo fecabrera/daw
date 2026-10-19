@@ -4138,6 +4138,91 @@ fn moving_layer_effects_retains_filter_history_without_callback_allocations() {
 }
 
 #[test]
+fn main_effect_clock_matches_track_clock_after_parallel_latency_and_nonzero_loop_seek() {
+    for rate in SAMPLE_RATES {
+        for enabled in [false, true] {
+            let mut main = plan(Waveform::Saw, rate);
+            let instrument = main.project.tracks[0].instrument.as_mut().unwrap();
+            let mut second = instrument.layers[0].clone();
+            second.id = Id::new_v4();
+            second.oscillators[0].id = Id::new_v4();
+            second.oscillators[0].transpose = 7;
+            instrument.layers.push(second);
+            // Unequal parallel delays exercise the alignment before Main.
+            let mut saturator = EffectInstance::saturator();
+            let EffectSettings::Saturator(s) = &mut saturator.unit else {
+                unreachable!()
+            };
+            s.enabled = enabled;
+            instrument.layers[0].effects.push(saturator);
+            let mut limiter = EffectInstance::limiter();
+            let EffectSettings::Limiter(s) = &mut limiter.unit else {
+                unreachable!()
+            };
+            s.enabled = enabled;
+            instrument.layers[1].effects.push(limiter);
+            let mut filter = EffectInstance::auto_filter();
+            let EffectSettings::AutoFilter(s) = &mut filter.unit else {
+                unreachable!()
+            };
+            s.frequency_hz = 200.0;
+            s.q = 3.0;
+            s.rate_mode = LfoRateMode::Hz;
+            s.rate_hz = 20.0;
+            s.strength_octaves = 4.0;
+            s.stereo_phase_degrees = 90.0;
+            instrument.main.effects.push(filter.clone());
+            let mut track = main.clone();
+            track.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .main
+                .effects
+                .clear();
+            track.project.tracks[0].effects.push(filter);
+
+            // With unity bus gains, moving this processor across Main's boundary
+            // must preserve both its input audio and its transport clock.
+            let mut expected = vec![[0.0; 2]; 4096];
+            Renderer::new(track.clone()).render_offline(&mut expected);
+            let mut actual = expected.clone();
+            Renderer::new(main.clone()).render_offline(&mut actual);
+            assert_eq!(actual, expected, "offline rate={rate} enabled={enabled}");
+            let mut sought = [[0.0; 2]; 127];
+            Renderer::new(main.clone()).render_offline_at(2048, &mut sought);
+            assert_eq!(sought.as_slice(), &expected[2048..2175]);
+            assert!(expected.iter().any(|s| s[0].abs() > 1e-4));
+
+            for p in [&mut main, &mut track] {
+                p.project.transport.r#loop = Loop {
+                    enabled: true,
+                    start_frame: 1000,
+                    end_frame: 1700,
+                };
+            }
+            let mut a = Renderer::new(main);
+            let mut b = Renderer::new(track);
+            a.play();
+            b.play();
+            for tick in 0..4096 {
+                if tick == 2000 {
+                    // Explicit seek inside the first latency window of the loop.
+                    a.seek(1001);
+                    b.seek(1001);
+                }
+                assert_eq!(
+                    a.next_sample(),
+                    b.next_sample(),
+                    "live rate={rate} enabled={enabled} tick={tick}"
+                );
+                assert_eq!(a.playhead, b.playhead);
+            }
+        }
+    }
+}
+
+#[test]
 fn main_effects_process_the_layer_sum_before_main_mix_and_share_latency_and_seek() {
     for effect in [EffectInstance::drive(), EffectInstance::limiter()] {
         let mut main = plan(Waveform::Saw, 48_000);

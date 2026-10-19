@@ -3130,3 +3130,52 @@ The final serial comparison ran after builds and tests completed. Median prepara
 | 447,723 | 1,061.5 ms | 924.7 ms | 12.9% |
 
 All baseline/optimized output fingerprints matched. Logs are `work/808-cold-final-baseline.log` and `work/808-cold-final-optimized.log`; this final comparison supersedes the preliminary timing estimates. The initial disposable timing copy had an invalid MIDI source path and failed validation before rendering. That copy was corrected; original project data was not changed. The reported measurements use the corrected copy.
+
+
+## Effect latency clock propagation — 2026-10-19
+
+This resolves the two clock omissions in [architecture review F01](../architecture/review-2026-10-19/findings.md#f01-effect-clock-latency-is-incomplete). Every runtime effect forwards its shared `EffectUnit::latency_frames` report, and serial chains use the existing loop-aware clock helper after each nonzero delay. Main uses the same helper for parallel-layer latency. Bypassed processors retain their fixed delay. Zero-latency processors leave the clock unchanged.
+
+Three new engine regression tests cover:
+
+- Saturator → Auto-filter → Limiter → Auto-filter → Saturator → Auto-filter against direct processors with an independent signed delayed-clock reference. All six project rates, enabled/bypassed latency effects, frame-zero clamping, nonzero loop origins, and loops shorter than processor latency are included.
+- Serial track placement versus the same Auto-filter on Master, with active Saturator and bypassed Limiter upstream. Check offline blocks, explicit offline reconstruction, live playback, looping, and seeks near the loop start.
+- Auto-filter on Main versus track placement after unequal parallel Saturator/Limiter layer delays. Check active/bypassed delays, offline output, reconstruction, live loop wraps, and seeks near the loop start at all six rates.
+
+The serial-chain and Main tests both failed on the original code and passed after the fix. The references contain nonzero audio; the internal Auto-filter LFO remains active. Existing shared-source modulation routing and cached provider values are unchanged. Delaying those values is a separate design concern, not established by these clock tests.
+
+Native listening, physical device behavior, and Windows/Linux execution were not checked for this change. The corrected internal LFO phase can change rendered audio in affected saved chains; no saved settings or format migration is required.
+
+Executed for F01 before the F05/F06 follow-up:
+
+- `cargo test -p daw-engine effect_clock` and `cargo test -p daw-engine delayed_effect_clock`: passed.
+- `cargo fmt --all --check` and strict workspace Clippy: passed.
+- `cargo test --workspace`: passed; the two extended time-stretch acceptance tests remain ignored.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
+- `git diff --check` and changed-document relative file-link checks: passed.
+
+## Exact seek preparation and memory limits — 2026-10-19
+
+Scope: F05/F06 follow-ups to the [architecture review](../architecture/review-2026-10-19/README.md), following F01 above. The accepted behavior preserves exact processing history and permits memory-driven removal of older undo states with a visible notice.
+
+Implemented checks cover:
+
+- Device-independent idle checkpoints survive handoff to playback and new plan allocations that differ only in requested playhead. Warm preparation replays fewer frames and matches full-history samples. Changed processing, prepared allocations and rates reject reuse.
+- Idle work stops at a buffer boundary, retains completed checkpoints, resumes to arrangement end, and releases its cursor. Checkpoint count/byte accounting and optional release remain bounded.
+- Renderer estimates cover measured clone allocations for all installed effect types and modulated voices in the fixture. Shared PCM is reported separately. Existing callback allocation/deallocation, cancellation, meter isolation, live-update, loop, seek and retirement regressions remain in the workspace suite.
+- History byte pressure removes oldest states, preserves current/pending/saved snapshots and working undo/redo, counts shared audio once, and releases exclusive PCM after eviction. The UI reports removals once without changing the project.
+- Output diagnostics record request-to-activation timing and reject an oversized memory lease. This does not establish native peak RSS or a maximum seek delay.
+
+Completed on macOS with the pinned toolchain and `CARGO_HOME="$PWD/work/cargo-home"`:
+
+- `cargo fmt --all --check` — passed.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed.
+- `cargo test -p daw-output` — 24 passed during focused development, including callback allocation/deallocation guards and idle preparation parity.
+- `cargo test -p daw-project --lib history::` — 4 passed.
+- `cargo test -p daw-ui history::memory_tests` — passed after the final notice repaint change.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` — passed; WAV/MP3 formats, deterministic output, missing sources, eight-track projects, overwrite handling and exit codes.
+- `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app` after the final UI change.
+- Relative documentation file links — 313 checked, no missing targets. `git diff --check` — passed.
+
+`cargo test --workspace` — **958 passed, 0 failed, 2 ignored**. The two ignored tests are the existing extended time-stretch acceptance matrices. Native device response time, CPU-saturated activation percentiles, concurrent-workload peak RSS, and Windows/Linux execution remain unverified. No user project or recording was changed.

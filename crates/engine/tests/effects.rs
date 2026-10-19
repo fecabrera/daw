@@ -1488,6 +1488,64 @@ fn worker_prepared_transport_activation_does_not_allocate_or_prime_latency() {
 }
 
 #[test]
+fn delayed_effect_clock_matches_track_to_master_boundary_in_live_export_and_seek() {
+    for rate in SAMPLE_RATES {
+        let mut serial = plan(rate, false);
+        serial.project.tracks[0].effects = vec![EffectInstance::saturator(), bypass_limiter()];
+        let mut filter = EffectInstance::auto_filter();
+        let EffectSettings::AutoFilter(s) = &mut filter.unit else {
+            unreachable!()
+        };
+        s.frequency_hz = 200.0;
+        s.q = 3.0;
+        s.rate_mode = LfoRateMode::Hz;
+        s.rate_hz = 20.0;
+        s.strength_octaves = 4.0;
+        s.stereo_phase_degrees = 90.0;
+        let mut split = serial.clone();
+        serial.project.tracks[0].effects.push(filter.clone());
+        split.project.master.effects.push(filter);
+        let mut expected = vec![[0.0; 2]; 4096];
+        Renderer::new(split.clone()).render_offline(&mut expected);
+        let mut actual = expected.clone();
+        let mut renderer = Renderer::new(serial.clone());
+        for block in actual.chunks_mut(127) {
+            renderer.render_offline(block);
+        }
+        assert_eq!(actual, expected, "offline rate={rate}");
+        assert!(expected.iter().any(|s| s[0].abs() > 1e-4));
+        let mut sought = [[0.0; 2]; 127];
+        Renderer::new(serial.clone()).render_offline_at(2048, &mut sought);
+        assert_eq!(sought.as_slice(), &expected[2048..2175]);
+        for looping in [false, true] {
+            for p in [&mut serial, &mut split] {
+                p.project.transport.r#loop = Loop {
+                    enabled: looping,
+                    start_frame: 1000,
+                    end_frame: 1700,
+                };
+            }
+            let mut a = Renderer::new(serial.clone());
+            let mut b = Renderer::new(split.clone());
+            a.play();
+            b.play();
+            for tick in 0..4096 {
+                if tick == 2000 {
+                    a.seek(1001);
+                    b.seek(1001);
+                }
+                assert_eq!(
+                    a.next_sample(),
+                    b.next_sample(),
+                    "rate={rate} loop={looping} tick={tick}"
+                );
+                assert_eq!(a.playhead, b.playhead);
+            }
+        }
+    }
+}
+
+#[test]
 fn saturator_track_master_live_offline_blocks_and_compatible_updates_share_clock() {
     for rate in SAMPLE_RATES {
         for master in [false, true] {

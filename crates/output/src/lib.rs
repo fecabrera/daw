@@ -73,6 +73,7 @@ impl Status {
 // Prepared on the application thread and retired there. The callback only reads
 // the existing meter handles and writes atomics; it does not allocate or lock.
 struct PreparedRenderer {
+    _memory: performance::RendererMemoryLease,
     renderer: Renderer,
     revision: u64,
     prepared_transport: bool,
@@ -80,28 +81,38 @@ struct PreparedRenderer {
     activate_at: Option<u64>,
     preparation_lead: u64,
     ready_at: Option<std::time::Instant>,
+    requested_at: Option<std::time::Instant>,
     meters: Vec<Arc<StereoMeter>>,
     modulation: Vec<(ModulationTarget, ModulationMeter)>,
 }
 impl PreparedRenderer {
+    #[cfg(test)]
     fn new(plan: RenderPlan, meters: &HashMap<Id, Arc<StereoMeter>>) -> Self {
+        Self::try_new(plan, meters).expect("test renderer fits output budget")
+    }
+    fn try_new(plan: RenderPlan, meters: &HashMap<Id, Arc<StereoMeter>>) -> Result<Self, String> {
         let handles = plan
             .project
             .tracks
             .iter()
             .map(|t| meters[&t.id].clone())
             .collect();
-        Self {
-            renderer: Renderer::new(plan),
+        let renderer = Renderer::new(plan);
+        let memory =
+            performance::RendererMemoryLease::try_new(renderer.memory_usage().owned_bytes())?;
+        Ok(Self {
+            _memory: memory,
+            renderer,
             revision: 0,
             prepared_transport: false,
             reprepare: None,
             activate_at: None,
             preparation_lead: 0,
             ready_at: None,
+            requested_at: None,
             meters: handles,
             modulation: Vec::new(),
-        }
+        })
     }
     fn bind_modulation(&mut self, meters: &HashMap<ModulationTarget, ModulationMeter>) {
         self.modulation = meters
@@ -345,8 +356,34 @@ pub struct AudioOutput {
     band_meters: HashMap<Id, Arc<[AtomicU32; 3]>>,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
 }
+/// Device-independent, worker-owned seek preparation. It can start after project
+/// load and transfer to device output without discarding completed checkpoints.
+pub struct AudioPreparation {
+    worker: preparation::Worker,
+    status: Arc<Status>,
+}
+impl AudioPreparation {
+    pub fn new(plan: RenderPlan) -> Result<Self, String> {
+        let status = Arc::new(Status::default());
+        let worker = preparation::Worker::new(status.clone())?;
+        worker.prewarm(Arc::new(plan));
+        Ok(Self { worker, status })
+    }
+    pub fn performance(&self) -> PerformanceSnapshot {
+        self.status.performance.snapshot()
+    }
+    pub fn update_plan(&self, plan: RenderPlan) {
+        self.worker.prewarm(Arc::new(plan));
+    }
+}
 impl AudioOutput {
     pub fn new(plan: RenderPlan) -> Result<Self, String> {
+        Self::with_preparation(plan, None)
+    }
+    pub fn with_preparation(
+        plan: RenderPlan,
+        preparation: Option<AudioPreparation>,
+    ) -> Result<Self, String> {
         let project_rate_hz = plan.project.sample_rate_hz;
         let buffer_size_frames = plan.project.buffer_size_frames;
         let host = cpal::default_host();
@@ -372,7 +409,11 @@ impl AudioOutput {
             cpal::SupportedBufferSize::Range { min, max } => buffer_size_frames.clamp(*min, *max),
             cpal::SupportedBufferSize::Unknown => buffer_size_frames,
         });
-        let status = Arc::new(Status::default());
+        let preparation = match preparation {
+            Some(p) => p,
+            None => AudioPreparation::new(plan.clone())?,
+        };
+        let status = preparation.status.clone();
         let meters = track_meters(&plan, &HashMap::new());
         let reductions = effect_meters(&plan, &HashMap::new());
         let changes = band_meters(&plan, &HashMap::new());
@@ -439,7 +480,7 @@ impl AudioOutput {
             project_rate_hz,
             buffer_size_frames,
             _stream: stream,
-            preparation: preparation::Worker::new(status.clone())?,
+            preparation: preparation.worker,
             prepare_revision: 0,
             prepared: None,
             commands,
@@ -465,6 +506,15 @@ impl AudioOutput {
             bands: self.band_meters.clone(),
             modulation: self.modulation_meters.clone(),
         }
+    }
+    pub fn take_preparation_error(&mut self) -> Option<String> {
+        let error = self.preparation.take_error()?;
+        self.desired_transport = None;
+        self.prepare_revision = self.status.applied_revision.load(Ordering::Acquire);
+        self.status
+            .requested_revision
+            .store(self.prepare_revision, Ordering::Release);
+        Some(error)
     }
     /// Latest requested transport until activation; useful for pending Play/Pause/Seek UI.
     pub fn transport_intent(&self) -> TransportState {
@@ -709,7 +759,7 @@ impl Callback {
             .map(|c| c.output_buffer_allocate(true))
             .unwrap_or_default();
         Ok(Self {
-            renderer: Box::new(PreparedRenderer::new(plan, meters)),
+            renderer: Box::new(PreparedRenderer::try_new(plan, meters)?),
             commands,
             retired,
             pending: None,
@@ -826,6 +876,11 @@ impl Callback {
         }
     }
     fn install(&mut self, next: Box<PreparedRenderer>) {
+        if let Some(requested_at) = next.requested_at {
+            self.status
+                .performance
+                .activation(requested_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64);
+        }
         if let Some(ready_at) = next.ready_at {
             self.status
                 .performance

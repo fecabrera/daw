@@ -1,3 +1,5 @@
+mod memory;
+pub use memory::{RendererMemory, prepared_model_bytes};
 mod continuous_modulation;
 mod effects;
 mod latency;
@@ -10,7 +12,7 @@ mod transport_cache;
 use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
 use daw_media::AudioData;
 use std::collections::HashMap;
-pub use transport_cache::TransportCache;
+pub use transport_cache::{TransportCache, TransportCacheMemory};
 
 #[derive(Clone)]
 pub struct RenderPlan {

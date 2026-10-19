@@ -1,4 +1,5 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+pub mod memory;
 mod meter;
 pub use meter::{MeterStorage, UnitMeter};
 mod note_name;
@@ -622,6 +623,12 @@ pub trait StereoSourceUnit: Send {
 
 /// A prepared stereo effect. All callback methods must be allocation-free and nonblocking.
 pub trait EffectUnit: Send {
+    /// Owned dynamic processor storage, excluding inline state and shared media.
+    /// Hosts query this on a worker when budgeting renderer snapshots.
+    fn heap_bytes(&self) -> u64 {
+        0
+    }
+
     /// Fixed processing delay. Hosts align parallel paths and prime this many frames.
     fn latency_frames(&self) -> u32 {
         0
