@@ -2874,3 +2874,17 @@ Completed checks with the workspace Cargo cache:
 - Repository-relative documentation targets exist, and `git diff --check` passes.
 
 Native save/display, keyboard/trackpad, device, Windows, and Linux checks were not performed. Exact headless workspace paint checks establish the removed disabled-state transition; they do not establish native compositor behavior. CLI smoke checks were not repeated because the shared persistence/render/export APIs are unchanged.
+
+
+## Amplitude strip width — 2026-10-18
+
+Amplitude now uses the shared 90-point unit strip width instead of its previous 178-point width. The Level strip retains this width when modulation opens and when the layer is compact. The existing egui interaction check now verifies closed width and Level alignment with open modulation in both themes and both layer layouts. Connection editing and footer alignment remain covered.
+
+Completed checks with the workspace Cargo cache:
+
+- The focused Amplitude interaction check passes.
+- `cargo fmt --all --check`, strict workspace Clippy, and `cargo test --workspace` pass. The two existing expanded time-stretch acceptance matrices remain ignored.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`. The running app was not restarted.
+- `git diff --check` passes.
+
+Native display-scale, keyboard/trackpad, device, Windows, and Linux checks were not performed. CLI smoke checks were not repeated for this UI-only layout change.

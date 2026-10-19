@@ -47,7 +47,7 @@ pub(super) fn unit(
                                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                                     ui.spacing_mut().item_spacing.y =
                                         f32::from(crate::theme::TOOLBAR_PADDING);
-                                    ui.set_width(158.0);
+                                    ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
                                     ui.set_min_height(crate::envelope_panel::body_height(compact));
                                     if !compact {
                                         knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {

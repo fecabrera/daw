@@ -112,6 +112,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         let bounds = &app.midi_editor.layer_bounds[&layer];
         let header = bounds.amplitude_header;
         let height = bounds.amplitude_panel.height();
+        assert_eq!(header.width(), midi_editor::UNIT_STRIP_WIDTH);
         assert_eq!(height, panels::unit_height(false));
         let point = Pos2::new(
             header.right() - 13.0,
@@ -259,6 +260,7 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let footer = label(&shapes, "Mod 1");
         let level = label(&shapes, "Level");
+        assert!((level.x - header.left() - midi_editor::UNIT_STRIP_WIDTH * 0.5).abs() < 1.0);
         assert!(
             (footer.y - level.y).abs() < 0.1,
             "Modulation and regular footers must align: mod {footer:?}, level {level:?}"
@@ -274,7 +276,8 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         );
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         label(&shapes, "Mod 1");
-        label(&shapes, "Level");
+        let level = label(&shapes, "Level");
+        assert!((level.x - header.left() - midi_editor::UNIT_STRIP_WIDTH * 0.5).abs() < 1.0);
         app.session.project.tracks[0]
             .instrument
             .as_mut()

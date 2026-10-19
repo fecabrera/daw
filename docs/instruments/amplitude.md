@@ -2,6 +2,8 @@
 
 Amplitude controls the level and note-release shaping of one MIDI instrument layer. It follows the layer's Oscillator or Sampler and precedes layer gain/pan.
 
+Level occupies one compact strip. Opening modulation adds connection strips beside it.
+
 ## Shape notes
 
 1. In the Instrument components catalog, add Amplitude from Processors and an Envelope from Modulators.
