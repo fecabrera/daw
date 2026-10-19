@@ -2,6 +2,8 @@
 
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/views/instrument.md).
 
+For a source-backed map of the current implementation and its review findings, see the [2026-10-19 architecture review](review-2026-10-19/README.md). This document retains dated design decisions; early proposals can be superseded by later entries.
+
 Status: design baseline with implemented track/Master effects and MIDI sources; graph and beat work pending. Last updated: 2026-10-17.
 
 Users build MIDI instruments in Instrument and configure track and Master effect chains in Timeline, with MIDI track effects also available in Instrument. These replace the earlier combined Units view. The planned track types are audio, MIDI, and beat. Audio tracks will accept effects; MIDI tracks will accept sources and effects. A future Editor view will provide an audio editor for audio clips, a MIDI pattern editor for MIDI clips, and a beat pattern editor for beat clips. The beat pattern editor will provide step toggles in audio or MIDI lanes, each with its own sources and effects. Every unit will use a shared core and support independent distribution. These are confirmed requirements. The Units MVP scope below is accepted. Detailed API, layout, and packaging choices remain proposals or implementation details.
