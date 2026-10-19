@@ -15,7 +15,7 @@ The Instrument components catalog has three folders. Each folder starts collapse
 | Modulators | [Macro](../instruments/macro.md) | Control several parameters from one knob. |
 | Processors | [Amplitude](../instruments/amplitude.md) | Set a layer's note level and connect level modulation. |
 
-Use Up/Down to move through visible folders and components. On a folder, Enter or Space hides or shows its contents; Left closes it and Right opens it. Left on a component closes its folder. Closing a folder deselects its hidden components. Shift-click selects components across open folders, and Shift+Up/Down changes the selection range. Enter on a component adds the selected components. Scroll the catalog when its rows do not fit.
+Use Up/Down to move through visible folders and components. On a folder, Enter hides or shows its contents; Left closes it and Right opens it. Left on a component closes its folder. Closing a folder deselects its hidden components. Shift-click selects components across open folders, and Shift+Up/Down changes the selection range. Enter on a component adds the selected components. Scroll the catalog when its rows do not fit.
 
 ## Layers
 
@@ -38,7 +38,7 @@ The Effects catalog has four folders in Timeline and Instrument:
 | Distortion | [Drive](../effects/drive.md), [Bitcrusher](../effects/bitcrusher.md) |
 | Imaging | [Direction Mixer](../effects/direction-mixer.md), [Stereo Spread](../effects/stereo-spread.md) |
 
-Folders start collapsed. Click a folder to hide or show its effects. Use Up/Down to move through visible rows. Enter or Space toggles a focused folder; Left closes it and Right opens it. Left on an effect closes its folder. Closing a folder deselects its hidden effects. Each catalog retains its own folder choices while the application is open.
+Folders start collapsed. Click a folder to hide or show its effects. Use Up/Down to move through visible rows. Enter toggles a focused folder; Left closes it and Right opens it. Left on an effect closes its folder. Closing a folder deselects its hidden effects. Each catalog retains its own folder choices while the application is open.
 
 Select the destination track or Master before adding an effect. Double-click an effect to add it. Shift-click selects effects across open folders; Enter on an effect adds the selection in folder order. Drag selected effects into the lane to choose their insertion point, then release to add them. Escape or an invalid drop cancels. Scroll when the catalog does not fit.
 

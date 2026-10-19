@@ -878,6 +878,8 @@ fn category_folders_group_entries_and_hide_selected_children_without_editing_the
             HashSet::from(["daw.envelope"])
         );
         key(&mut app, &ctx, egui::Key::Space, false, false);
+        assert!(app.instrument_catalog_bounds.entries[0].is_positive());
+        key(&mut app, &ctx, egui::Key::Enter, false, false);
         assert_eq!(app.instrument_catalog_bounds.entries[0], Rect::NOTHING);
         let toggle = app.instrument_catalog_bounds.toggle.center();
         click(&mut app, &ctx, toggle, false);

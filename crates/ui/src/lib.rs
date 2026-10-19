@@ -1748,6 +1748,12 @@ impl DawUi {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         self.update_window_title(&ctx);
+        if ui.is_enabled()
+            && self.edit_environment_available()
+            && transport_controls::take_play_pause(&ctx)
+        {
+            self.toggle_playback();
+        }
         if ui.is_enabled() {
             self.view_shortcuts(&ctx);
         }
@@ -1944,26 +1950,22 @@ impl DawUi {
                     true,
                 );
             }
-            if !ctx.egui_wants_keyboard_input() {
-                if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
-                    self.toggle_playback();
-                }
-                if ui.is_enabled()
-                    && self.view_mode != ViewMode::Edit
-                    && self.clip_actions_available(&ctx)
-                    && ctx.input(|i| {
-                        i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)
-                    })
-                {
-                    let clips = self.selected_clip_snapshots();
-                    if !clips.is_empty() {
-                        self.edit(Edit::Batch(
-                            clips
-                                .into_iter()
-                                .map(|entry| Edit::DeleteClip(entry.clip.id))
-                                .collect(),
-                        ));
-                    }
+            if !ctx.egui_wants_keyboard_input()
+                && ui.is_enabled()
+                && self.view_mode != ViewMode::Edit
+                && self.clip_actions_available(&ctx)
+                && ctx.input(|i| {
+                    i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)
+                })
+            {
+                let clips = self.selected_clip_snapshots();
+                if !clips.is_empty() {
+                    self.edit(Edit::Batch(
+                        clips
+                            .into_iter()
+                            .map(|entry| Edit::DeleteClip(entry.clip.id))
+                            .collect(),
+                    ));
                 }
             }
         }

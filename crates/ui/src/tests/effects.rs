@@ -92,6 +92,8 @@ fn effect_category_folders_share_navigation_and_retain_only_visible_selections()
             assert_eq!(app.effects_bounds.compressor_entry, Rect::NOTHING);
             library_key(&mut app, &ctx, egui::Key::ArrowRight, false);
             library_key(&mut app, &ctx, egui::Key::Space, false);
+            assert!(app.effects_bounds.compressor_entry.is_positive());
+            library_key(&mut app, &ctx, egui::Key::Enter, false);
             assert_eq!(app.effects_bounds.compressor_entry, Rect::NOTHING);
             for _ in 0..2 {
                 let toggle = app.effects_bounds.library_toggle.center();

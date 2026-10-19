@@ -3009,3 +3009,15 @@ Final verification after the worker/gesture boundary fix:
 - `cargo fmt --all --check` and workspace Clippy with warnings denied: pass.
 - `cargo build -p daw-cli` and `python3 tools/check_cli.py`: pass (`work/undo-cli-build.log`, `work/undo-cli.log`).
 - `sh tools/package_macos.sh debug`: pass; rebuilt `target/debug/DAW.app` from the final sources (`work/undo-final-package.log`). The running app was not restarted.
+
+## Transport shortcut focus — 2026-10-19
+
+Space now reaches Play/Pause before focused controls or catalog folders handle it. Focused text editors retain Space for typing. Held-key repeats do not toggle playback again; Command/Ctrl/Alt combinations, window focus, disabled UI, dialogs, and blocking jobs retain their guards. Catalog folders use Enter to toggle expansion.
+
+- `cargo test -p daw-ui`: 483 tests pass. New tests cover focused-button priority, text input, held-key repeats, modifier handling, and window focus. Updated catalog tests check that Space retains folder state and Enter toggles it.
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: pass.
+- Local links in changed documentation resolve; `git diff --check` passes.
+
+Native keyboard and audio-device behavior has not been checked interactively. Automated shortcut tests do not open an audio device.
+
+Final workspace verification: `cargo test --workspace` passes 934 tests with two existing extended acceptance matrices ignored (`work/transport-workspace-tests.log`). The macOS debug package build passes (`work/transport-package.log`); `target/debug/DAW.app` was rebuilt without restarting the running app. UI and Clippy logs are `work/transport-ui-tests.log` and `work/transport-clippy.log`.

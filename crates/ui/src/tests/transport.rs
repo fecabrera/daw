@@ -1,5 +1,84 @@
 use super::*;
 
+fn space_event(pressed: bool, modifiers: egui::Modifiers) -> egui::Event {
+    egui::Event::Key {
+        key: egui::Key::Space,
+        physical_key: None,
+        pressed,
+        repeat: false,
+        modifiers,
+    }
+}
+
+#[test]
+fn play_pause_has_priority_over_focused_controls_but_not_text_editors() {
+    for text_editor in [false, true] {
+        let ctx = context();
+        let mut text = String::new();
+        let mut requests = 0;
+        let mut clicks = 0;
+        for step in 0..5 {
+            let events = match step {
+                1 | 2 | 4 => vec![
+                    space_event(true, egui::Modifiers::NONE),
+                    egui::Event::Text(" ".into()),
+                ],
+                3 => vec![space_event(false, egui::Modifiers::NONE)],
+                _ => vec![],
+            };
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    requests += usize::from(transport_controls::take_play_pause(ui.ctx()));
+                    let response = if text_editor {
+                        ui.text_edit_singleline(&mut text)
+                    } else {
+                        let response = ui.button("Focused control");
+                        clicks += usize::from(response.clicked());
+                        response
+                    };
+                    if step == 0 {
+                        response.request_focus();
+                    }
+                },
+            );
+            output.textures_delta.clear();
+            assert!(ctx.egui_wants_keyboard_input());
+            assert_eq!(ctx.text_edit_focused(), text_editor);
+        }
+        assert_eq!(requests, if text_editor { 0 } else { 2 });
+        assert_eq!(text, if text_editor { "   " } else { "" });
+        assert_eq!(clicks, 0, "Space must not also activate the focused button");
+    }
+}
+
+#[test]
+fn play_pause_preserves_modified_space_and_requires_window_focus() {
+    for (focused, modifiers) in [
+        (false, egui::Modifiers::NONE),
+        (true, egui::Modifiers::COMMAND),
+        (true, egui::Modifiers::CTRL),
+        (true, egui::Modifiers::ALT),
+    ] {
+        let ctx = context();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                focused,
+                events: vec![space_event(true, modifiers)],
+                ..Default::default()
+            },
+            |ui| {
+                assert!(!transport_controls::take_play_pause(ui.ctx()));
+                assert!(ui.input(|input| input.key_pressed(egui::Key::Space)));
+            },
+        );
+        output.textures_delta.clear();
+    }
+}
+
 type IconColors = [Option<[u8; 3]>; 3];
 
 fn controls_frame(

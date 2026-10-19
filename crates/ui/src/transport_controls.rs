@@ -4,6 +4,43 @@ use egui::{Response, Ui, Vec2};
 pub(super) const PLAY_FILL: egui::Color32 = egui::Color32::from_rgb(51, 133, 85);
 pub(super) const STOP_FILL: egui::Color32 = egui::Color32::from_rgb(197, 78, 88);
 
+// Run before widgets so a focused button or catalog cannot also handle Space.
+// Text editors keep their input; holding Space must not cycle play/pause.
+pub(super) fn take_play_pause(ctx: &egui::Context) -> bool {
+    if ctx.text_edit_focused() || !ctx.input(|input| input.focused) {
+        return false;
+    }
+    ctx.input_mut(|input| {
+        let mut pressed = false;
+        let mut consumed = false;
+        input.events.retain(|event| {
+            if let egui::Event::Key {
+                key: egui::Key::Space,
+                pressed: down,
+                repeat,
+                modifiers,
+                ..
+            } = event
+                && !modifiers.command
+                && !modifiers.ctrl
+                && !modifiers.mac_cmd
+                && !modifiers.alt
+            {
+                pressed |= *down && !repeat;
+                consumed = true;
+                return false;
+            }
+            true
+        });
+        if consumed {
+            input
+                .events
+                .retain(|event| !matches!(event, egui::Event::Text(text) if text == " "));
+        }
+        pressed
+    })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum StopAction {
     Stop,

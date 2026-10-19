@@ -363,22 +363,7 @@ impl Catalog {
                 pressed && consumed
             });
             if let Row::Folder(index) = self.cursor {
-                let toggle = enter
-                    || ui.input_mut(|input| {
-                        let pressed = input.events.iter().any(|event| {
-                            matches!(
-                                event,
-                                egui::Event::Key {
-                                    key: Key::Space,
-                                    pressed: true,
-                                    repeat: false,
-                                    ..
-                                }
-                            )
-                        });
-                        let consumed = input.consume_key(Modifiers::NONE, Key::Space);
-                        pressed && consumed
-                    });
+                let toggle = enter;
                 let close =
                     ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::ArrowLeft));
                 let open =
