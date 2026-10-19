@@ -53,6 +53,7 @@ mod instrument_main;
 mod instrument_panel;
 mod instrument_selection;
 pub mod knobs;
+mod layer_effects;
 mod lfo_controls;
 mod lfo_panel;
 mod limiter_panel;
@@ -1851,7 +1852,7 @@ impl DawUi {
             && self.effects_lane_focus.lost(
                 &ctx,
                 self.view_mode.has_effects()
-                    && self.timeline_effects_visible
+                    && (self.timeline_effects_visible || self.view_mode == ViewMode::Instrument)
                     && ui.is_enabled()
                     && self.edit_environment_available(),
                 self.effects_drag

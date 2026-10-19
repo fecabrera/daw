@@ -21,6 +21,9 @@ struct PatternClip {
     slot_starts: Vec<Vec<usize>>,
 }
 struct LayerVoice {
+    previous: [f32; 2],
+    transition_from: [f32; 2],
+    output: [f32; 2],
     sources: Vec<OscillatorVoice>,
     sampler: Option<daw_sampler::Sampler>,
     sampler_routes: Vec<Route>,
@@ -78,6 +81,9 @@ impl Voice {
             }
         }
         self.transition_from = self.previous;
+        for layer in &mut self.layers {
+            layer.transition_from = layer.previous;
+        }
         self.transition = self.fade_frames;
         self.current = Some(id);
         self.held_frames = 0;
@@ -127,6 +133,8 @@ impl Voice {
             e.reset();
         }
         for layer in &mut self.layers {
+            layer.previous = [0.0; 2];
+            layer.output = [0.0; 2];
             layer.gate.reset();
             if let Some(s) = &mut layer.sampler {
                 s.reset();
@@ -189,6 +197,10 @@ impl Voice {
             self.sleeping = true;
             self.active_last_sample = false;
             self.previous = [0.0; 2];
+            for layer in &mut self.layers {
+                layer.output = [0.0; 2];
+                layer.previous = [0.0; 2];
+            }
             return [0.0; 2];
         }
         self.sleeping = false;
@@ -209,8 +221,17 @@ impl Voice {
                     None
                 },
             );
+            layer.output = value.map(|v| v * self.velocity);
+            if self.transition > 0 {
+                let progress = 1.0 - self.transition as f32 / self.fade_frames as f32;
+                for ch in 0..2 {
+                    layer.output[ch] =
+                        layer.transition_from[ch] * (1.0 - progress) + layer.output[ch] * progress;
+                }
+            }
+            layer.previous = layer.output;
             for ch in 0..2 {
-                sample[ch] += value[ch];
+                sample[ch] += value[ch] * layer.gain[ch];
             }
         }
         for value in &mut sample {
@@ -295,8 +316,8 @@ impl LayerVoice {
             shared,
             context,
         );
-        for (value, gain) in stereo.iter_mut().zip(self.gain) {
-            *value = (*value * shaped) * gain;
+        for value in &mut stereo {
+            *value *= shaped;
         }
         stereo
     }
@@ -332,6 +353,12 @@ fn note_frequency(pitch: u8, transpose: i8) -> f32 {
 }
 
 pub(crate) struct MidiTrackRuntime {
+    // Regular buses follow canonical layer order; Main is always the final bus.
+    layer_effects: Vec<super::layer_effects::LayerEffects>,
+    layer_samples: Vec<[f32; 2]>,
+    effect_latency: u64,
+    parallel_latency: u64,
+    has_bus_effects: bool,
     layer_index: std::collections::HashMap<Id, usize>,
     oscillator_index: std::collections::HashMap<(Id, Id), usize>,
     voices: Vec<Voice>,
@@ -551,7 +578,36 @@ impl MidiTrackRuntime {
                     .collect(),
             )
         };
+        let effect_latency = super::layer_effects::latency(instrument, project.sample_rate_hz);
+        let parallel_latency =
+            super::layer_effects::parallel_latency(instrument, project.sample_rate_hz);
         Some(Self {
+            layer_effects: layers
+                .iter()
+                .map(|l| {
+                    super::layer_effects::LayerEffects::new(
+                        l.id,
+                        &l.effects,
+                        layer_gains(l, any_solo),
+                        project.sample_rate_hz,
+                        project.buffer_size_frames,
+                        parallel_latency,
+                    )
+                })
+                .chain(std::iter::once(super::layer_effects::LayerEffects::new(
+                    instrument.main.id,
+                    &instrument.main.effects,
+                    [1.0; 2],
+                    project.sample_rate_hz,
+                    project.buffer_size_frames,
+                    super::latency::chain_frames(&instrument.main.effects, project.sample_rate_hz),
+                )))
+                .collect(),
+            layer_samples: vec![[0.0; 2]; layers.len()],
+            effect_latency,
+            parallel_latency,
+            has_bus_effects: layers.iter().any(|l| !l.effects.is_empty())
+                || !instrument.main.effects.is_empty(),
             layer_index: layers.iter().enumerate().map(|(i, l)| (l.id, i)).collect(),
             oscillator_index: layers
                 .iter()
@@ -577,6 +633,9 @@ impl MidiTrackRuntime {
                         .iter()
                         .zip(&banks)
                         .map(|(layer, bank)| LayerVoice {
+                            previous: [0.0; 2],
+                            transition_from: [0.0; 2],
+                            output: [0.0; 2],
                             sampler: layer.sampler.as_ref().map(|s| {
                                 daw_sampler::Sampler::with_bank(
                                     ProcessingContext {
@@ -813,6 +872,16 @@ impl MidiTrackRuntime {
     }
     pub fn compatible(&self, other: &Self) -> bool {
         self.fingerprint == other.fingerprint
+            && self.effect_latency == other.effect_latency
+            && self.parallel_latency == other.parallel_latency
+            && self
+                .layer_effects
+                .iter()
+                .zip(&other.layer_effects)
+                .all(|(a, b)| {
+                    super::latency::chain_frames(&a.settings, self.sample_rate_hz)
+                        == super::latency::chain_frames(&b.settings, self.sample_rate_hz)
+                })
             && self.control_modes().all(|a| {
                 other
                     .control_modes()
@@ -832,6 +901,20 @@ impl MidiTrackRuntime {
     /// All storage stays owned by the two prepared renderers; no DSP state is dropped here.
     pub fn retarget_controls(&mut self, prepared: &mut Self) {
         let fade_frames = (self.sample_rate_hz / 200).max(1);
+        for next in &mut prepared.layer_effects {
+            for old in &mut self.layer_effects {
+                next.chain.inherit_chain(&mut old.chain, &next.settings);
+            }
+        }
+        let idle = self.voices.iter().all(|v| !v.active_last_sample);
+        for (old, next) in self
+            .layer_effects
+            .iter_mut()
+            .zip(&mut prepared.layer_effects)
+        {
+            old.retarget(next, fade_frames, idle);
+        }
+        self.has_bus_effects = prepared.has_bus_effects;
         if self.main_target != prepared.main_target {
             self.main_target = prepared.main_target;
             self.main_remaining = fade_frames;
@@ -926,8 +1009,9 @@ impl MidiTrackRuntime {
             }
         }
     }
-    fn voice_sample(&mut self, frame: u64) -> [f32; 2] {
+    fn voice_sample(&mut self, frame: u64, loop_region: Option<(u64, u64)>, fade: f32) -> [f32; 2] {
         let mut sum = [0.0; 2];
+        self.layer_samples.fill([0.0; 2]);
         self.shared
             .tick(self.lfo_notes.context(frame, self.tempo_bpm));
         let shared_release = self
@@ -938,11 +1022,101 @@ impl MidiTrackRuntime {
             .and_then(|v| v.release_age);
         for voice in &mut self.voices {
             let sample = voice.sample(&self.shared.values, &self.shared.index, shared_release);
+            for (sum, layer) in self.layer_samples.iter_mut().zip(&voice.layers) {
+                for (sum, value) in sum.iter_mut().zip(layer.output) {
+                    *sum += value;
+                }
+            }
             for ch in 0..2 {
                 sum[ch] += sample[ch];
             }
         }
-        sum
+        if self.has_bus_effects {
+            sum = [0.0; 2];
+            for (bus, input) in self.layer_effects.iter_mut().zip(&self.layer_samples) {
+                let (sample, mono) = bus.chain.sample(
+                    input.map(|v| v * fade),
+                    Some(false),
+                    frame,
+                    self.tempo_bpm,
+                    loop_region,
+                    (&self.shared.values, Some(&self.shared.index)),
+                );
+                let (sample, _) = bus.delay.tick((sample, mono));
+                let sample = bus.mix(sample);
+                for ch in 0..2 {
+                    sum[ch] += sample[ch];
+                }
+            }
+        } else {
+            sum = sum.map(|v| v * fade);
+        }
+        let main = self.layer_effects.last_mut().expect("Main bus is prepared");
+        main.chain
+            .sample(
+                sum,
+                Some(false),
+                frame.saturating_sub(self.parallel_latency),
+                self.tempo_bpm,
+                loop_region,
+                (&self.shared.values, Some(&self.shared.index)),
+            )
+            .0
+    }
+    pub fn effect_latency_compatible(&self, old: &Self) -> bool {
+        self.effect_latency == old.effect_latency
+            && self.parallel_latency == old.parallel_latency
+            && (self.effect_latency == 0
+                || (self.layer_index.len() == old.layer_index.len()
+                    && self.layer_index.iter().all(|(id, &index)| {
+                        old.layer_index.get(id).is_some_and(|&other| {
+                            super::latency::chain_frames(
+                                &self.layer_effects[index].settings,
+                                self.sample_rate_hz,
+                            ) == super::latency::chain_frames(
+                                &old.layer_effects[other].settings,
+                                old.sample_rate_hz,
+                            )
+                        })
+                    })))
+    }
+    pub fn effect_latency(&self) -> u64 {
+        self.effect_latency
+    }
+    pub fn inherit_track_effects(&mut self, previous: &mut super::effects::EffectChain) {
+        for bus in &mut self.layer_effects {
+            bus.chain.inherit_chain(previous, &bus.settings);
+        }
+    }
+    pub fn inherit_into_track_effects(
+        &mut self,
+        next: &mut super::effects::EffectChain,
+        settings: &[daw_core::EffectInstance],
+    ) {
+        for bus in &mut self.layer_effects {
+            next.inherit_chain(&mut bus.chain, settings);
+        }
+    }
+    pub fn effect_snapshot(&self, id: Id) -> Option<super::ModulationSnapshot> {
+        super::layer_effects::find(&self.layer_effects, id)
+    }
+    pub fn set_effect_meter(
+        &mut self,
+        id: Id,
+        meter: &std::sync::Arc<std::sync::atomic::AtomicU32>,
+    ) {
+        for bus in &mut self.layer_effects {
+            bus.chain.set_meter(id, meter);
+        }
+    }
+    pub fn set_effect_band_meter(
+        &mut self,
+        id: Id,
+        meter: &std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>,
+    ) {
+        for bus in &mut self.layer_effects {
+            bus.chain.set_band_meter(id, meter);
+        }
     }
     pub fn provider_values(&self, id: daw_unit_core::ModulationSourceId) -> Option<[f32; 2]> {
         self.shared.provider_values(id)
@@ -958,6 +1132,9 @@ impl MidiTrackRuntime {
     }
     pub fn reset(&mut self) {
         self.shared.reset();
+        for bus in &mut self.layer_effects {
+            bus.reset();
+        }
         self.main_gain = self.main_target;
         self.main_remaining = 0;
         self.held_sample = [0.0; 2];
@@ -1042,7 +1219,11 @@ impl MidiTrackRuntime {
             .max()
             .map_or(f32::NAN, |p| p as f32)
     }
+    #[cfg(test)]
     pub fn sample(&mut self, frame: u64) -> [f32; 2] {
+        self.sample_in_region(frame, None)
+    }
+    pub fn sample_in_region(&mut self, frame: u64, loop_region: Option<(u64, u64)>) -> [f32; 2] {
         let sample = if let Some(index) = self.clip_ranges.at(frame) {
             let prepared = &self.clips[index];
             let clip = &prepared.clip;
@@ -1106,7 +1287,7 @@ impl MidiTrackRuntime {
                 position,
                 self.sample_rate_hz,
             );
-            self.voice_sample(frame).map(|sample| sample * fade)
+            self.voice_sample(frame, loop_region, fade)
         } else {
             if self.last_clip.take().is_some() {
                 self.shared.reset_notes();
@@ -1116,7 +1297,7 @@ impl MidiTrackRuntime {
                 }
             }
             self.last_source = None;
-            self.voice_sample(frame)
+            self.voice_sample(frame, loop_region, 1.0)
         };
         if self.main_remaining > 0 {
             for ch in 0..2 {

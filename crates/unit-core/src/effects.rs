@@ -312,6 +312,15 @@ pub struct EffectInstance {
     pub unit: EffectSettings,
 }
 impl EffectInstance {
+    pub fn duplicate(&self) -> Self {
+        let mut copy = self.clone();
+        copy.id = uuid::Uuid::new_v4();
+        for route in copy.unit.modulations_mut() {
+            route.id = uuid::Uuid::new_v4();
+        }
+        copy
+    }
+
     pub fn stereo_spread() -> Self {
         Self {
             id: uuid::Uuid::new_v4(),

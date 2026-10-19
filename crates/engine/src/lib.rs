@@ -1,6 +1,7 @@
 mod continuous_modulation;
 mod effects;
 mod latency;
+mod layer_effects;
 mod lfo;
 mod midi;
 mod modulation;
@@ -213,7 +214,17 @@ impl Renderer {
             .tracks
             .iter()
             .enumerate()
-            .flat_map(|(i, t)| t.effects.iter().map(move |e| (e.id, Some(i))))
+            .flat_map(|(i, t)| {
+                t.effects
+                    .iter()
+                    .chain(t.instrument.iter().flat_map(|i| {
+                        i.layers
+                            .iter()
+                            .flat_map(|l| &l.effects)
+                            .chain(&i.main.effects)
+                    }))
+                    .map(move |e| (e.id, Some(i)))
+            })
             .chain(plan.project.master.effects.iter().map(|e| (e.id, None)))
             .collect();
         let audio_tracks = plan
@@ -306,31 +317,55 @@ impl Renderer {
             }
         }
         plan.project.master.effects.len().hash(&mut hash);
-        for effect in plan.project.all_effects() {
-            effect.id.hash(&mut hash);
-            match &effect.unit {
-                daw_core::EffectSettings::Eq3(_) => daw_unit_core::EQ_TYPE_ID.hash(&mut hash),
-                daw_core::EffectSettings::Drive(_) => daw_unit_core::DRIVE_TYPE_ID.hash(&mut hash),
-                daw_core::EffectSettings::AutoFilter(_) => {
-                    daw_unit_core::AUTO_FILTER_TYPE_ID.hash(&mut hash)
+        // Layer row order is presentation only; hash each chain under its stable owner.
+        let mut effect_groups = Vec::new();
+        for track in &plan.project.tracks {
+            effect_groups.push(((Some(track.id), None), track.effects.as_slice()));
+            if let Some(instrument) = &track.instrument {
+                effect_groups.push((
+                    (Some(track.id), Some(instrument.main.id)),
+                    instrument.main.effects.as_slice(),
+                ));
+                let mut layers: Vec<_> = instrument.layers.iter().collect();
+                layers.sort_by_key(|l| l.id);
+                for layer in layers {
+                    effect_groups
+                        .push(((Some(track.id), Some(layer.id)), layer.effects.as_slice()));
                 }
-                daw_core::EffectSettings::Compressor(_) => {
-                    daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
+            }
+        }
+        effect_groups.push(((None, None), plan.project.master.effects.as_slice()));
+        for (owner, effects) in effect_groups {
+            owner.hash(&mut hash);
+            effects.len().hash(&mut hash);
+            for effect in effects {
+                effect.id.hash(&mut hash);
+                match &effect.unit {
+                    daw_core::EffectSettings::Eq3(_) => daw_unit_core::EQ_TYPE_ID.hash(&mut hash),
+                    daw_core::EffectSettings::Drive(_) => {
+                        daw_unit_core::DRIVE_TYPE_ID.hash(&mut hash)
+                    }
+                    daw_core::EffectSettings::AutoFilter(_) => {
+                        daw_unit_core::AUTO_FILTER_TYPE_ID.hash(&mut hash)
+                    }
+                    daw_core::EffectSettings::Compressor(_) => {
+                        daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
+                    }
+                    daw_core::EffectSettings::Ott(_) => daw_unit_core::OTT_TYPE_ID.hash(&mut hash),
+                    daw_core::EffectSettings::Limiter(_) => {
+                        daw_unit_core::LIMITER_TYPE_ID.hash(&mut hash)
+                    }
+                    daw_core::EffectSettings::StereoSpread(_) => {
+                        daw_unit_core::STEREO_SPREAD_TYPE_ID.hash(&mut hash)
+                    }
+                    daw_core::EffectSettings::Bitcrusher(_) => {
+                        daw_unit_core::BITCRUSHER_TYPE_ID.hash(&mut hash)
+                    }
+                    daw_core::EffectSettings::DirectionMixer(_) => {
+                        daw_unit_core::DIRECTION_MIXER_TYPE_ID.hash(&mut hash)
+                    }
+                    daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
                 }
-                daw_core::EffectSettings::Ott(_) => daw_unit_core::OTT_TYPE_ID.hash(&mut hash),
-                daw_core::EffectSettings::Limiter(_) => {
-                    daw_unit_core::LIMITER_TYPE_ID.hash(&mut hash)
-                }
-                daw_core::EffectSettings::StereoSpread(_) => {
-                    daw_unit_core::STEREO_SPREAD_TYPE_ID.hash(&mut hash)
-                }
-                daw_core::EffectSettings::Bitcrusher(_) => {
-                    daw_unit_core::BITCRUSHER_TYPE_ID.hash(&mut hash)
-                }
-                daw_core::EffectSettings::DirectionMixer(_) => {
-                    daw_unit_core::DIRECTION_MIXER_TYPE_ID.hash(&mut hash)
-                }
-                daw_core::EffectSettings::Missing { type_id, .. } => type_id.hash(&mut hash),
             }
         }
         let source_fingerprint = hash.finish();
@@ -395,7 +430,9 @@ impl Renderer {
                 ]))
             }
             ModulationTarget::Effect(id) => match self.effect_tracks.get(&id)? {
-                Some(index) => self.effects[*index].modulation_values(id),
+                Some(index) => self.effects[*index]
+                    .modulation_values(id)
+                    .or_else(|| self.midi[*index].as_ref()?.effect_snapshot(id)),
                 None => self.master_effects.modulation_values(id),
             },
             ModulationTarget::Macro { track, layer, unit } => {
@@ -465,6 +502,9 @@ impl Renderer {
         meter: std::sync::Arc<std::sync::atomic::AtomicU32>,
     ) {
         self.master_effects.set_meter(id, &meter);
+        for midi in self.midi.iter_mut().flatten() {
+            midi.set_effect_meter(id, &meter);
+        }
         for effects in &mut self.effects {
             effects.set_meter(id, &meter);
         }
@@ -483,6 +523,9 @@ impl Renderer {
         meter: std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>,
     ) {
         self.master_effects.set_band_meter(id, &meter);
+        for midi in self.midi.iter_mut().flatten() {
+            midi.set_effect_band_meter(id, &meter);
+        }
         for effects in &mut self.effects {
             effects.set_band_meter(id, &meter);
         }
@@ -493,6 +536,14 @@ impl Renderer {
         let new_loop = &self.plan.project.transport.r#loop;
         let old_loop = &old.plan.project.transport.r#loop;
         self.alignment.compatible(&old.alignment)
+            && self.midi.iter().enumerate().all(|(index, runtime)| {
+                runtime.as_ref().is_none_or(|next| {
+                    old.track_index
+                        .get(&self.plan.project.tracks[index].id)
+                        .and_then(|&i| old.midi[i].as_ref())
+                        .is_none_or(|previous| next.effect_latency_compatible(previous))
+                })
+            })
             && (self.alignment.total == 0
                 || (new_loop.enabled == old_loop.enabled
                     && new_loop.start_frame == old_loop.start_frame
@@ -547,6 +598,19 @@ impl Renderer {
         } else {
             self.transition_from = old.previous;
             self.transition = fade_frames;
+        }
+        if aligned && self.plan.project.sample_rate_hz == old.plan.project.sample_rate_hz {
+            for (index, track) in self.plan.project.tracks.iter().enumerate() {
+                if let Some(&previous) = old.track_index.get(&track.id) {
+                    if let Some(next) = &mut self.midi[index] {
+                        next.inherit_track_effects(&mut old.effects[previous]);
+                    }
+                    if let Some(previous) = &mut old.midi[previous] {
+                        previous
+                            .inherit_into_track_effects(&mut self.effects[index], &track.effects);
+                    }
+                }
+            }
         }
         for (index, runtime) in self.midi.iter_mut().enumerate() {
             let id = self.plan.project.tracks[index].id;
@@ -715,14 +779,18 @@ impl Renderer {
             .enumerate()
         {
             let (source, mono) = if let Some(runtime) = midi {
-                (runtime.sample(frame), Some(true))
+                (runtime.sample_in_region(frame, loop_region), Some(true))
             } else {
                 self.audio_tracks[index].sample(track, frame)
             };
             let source = effects.sample(
                 source,
                 mono,
-                frame,
+                latency::delayed_frame(
+                    frame,
+                    midi.as_ref().map_or(0, |r| r.effect_latency()),
+                    loop_region,
+                ),
                 self.plan.project.tempo_bpm,
                 loop_region,
                 (
@@ -820,7 +888,7 @@ impl Renderer {
                     let (source, mono) = if let Some(runtime) = midi {
                         (
                             if self.playing {
-                                runtime.sample(frame)
+                                runtime.sample_in_region(frame, loop_region)
                             } else {
                                 runtime.held_sample()
                             },
@@ -832,7 +900,11 @@ impl Renderer {
                     let (source, mono) = effects.sample(
                         source,
                         mono,
-                        frame,
+                        latency::delayed_frame(
+                            frame,
+                            midi.as_ref().map_or(0, |r| r.effect_latency()),
+                            loop_region,
+                        ),
                         self.plan.project.tempo_bpm,
                         loop_region,
                         (

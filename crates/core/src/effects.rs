@@ -834,3 +834,95 @@ mod effect_modulation_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod layer_effect_tests {
+    use crate::*;
+    #[test]
+    fn layer_effects_roundtrip_default_validate_and_duplicate_atomically() {
+        let mut p = Project::default();
+        let track = p.add_midi_track().unwrap();
+        let layer = p.tracks[0].instrument.as_ref().unwrap().layers[0].id;
+        let effect = EffectInstance::drive();
+        p.edit(Edit::SetLayerEffects {
+            track_id: track,
+            layer_id: layer,
+            effects: vec![effect.clone()],
+            compact: true,
+        })
+        .unwrap();
+        assert!(p.tracks[0].effects.is_empty());
+        assert_eq!(p.all_effects().count(), 1);
+        let json = serde_json::to_value(&p).unwrap();
+        let loaded: Project = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(serde_json::to_value(loaded).unwrap(), json);
+        let mut legacy = json;
+        let saved = legacy["tracks"][0]["instrument"]["layers"][0]
+            .as_object_mut()
+            .unwrap();
+        saved.remove("effects");
+        saved.remove("effects_compact");
+        let legacy: Project = serde_json::from_value(legacy).unwrap();
+        let l = &legacy.tracks[0].instrument.as_ref().unwrap().layers[0];
+        assert!(l.effects.is_empty() && l.collapsed);
+        let before = p.clone();
+        assert!(
+            p.edit(Edit::SetEffects {
+                track_id: track,
+                effects: vec![effect.clone()],
+                compact: false
+            })
+            .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(&p).unwrap(),
+            serde_json::to_value(&before).unwrap()
+        );
+        assert!(
+            p.edit(Edit::SetLayerEffects {
+                track_id: track,
+                layer_id: Id::new_v4(),
+                effects: vec![],
+                compact: false
+            })
+            .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(&p).unwrap(),
+            serde_json::to_value(&before).unwrap()
+        );
+        let mut invalid = effect.clone();
+        let EffectSettings::Drive(s) = &mut invalid.unit else {
+            unreachable!()
+        };
+        let mut route = Modulation::new(ModulationParameter::Volume);
+        route.source = Some(ModulationSourceId {
+            layer,
+            unit: p.tracks[0].instrument.as_ref().unwrap().layers[0].envelopes[0].id,
+        });
+        s.modulations.push(route);
+        // A stereo layer bus accepts shared providers, never individual-note contours.
+        assert!(
+            p.edit(Edit::SetLayerEffects {
+                track_id: track,
+                layer_id: layer,
+                effects: vec![invalid],
+                compact: false
+            })
+            .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(&p).unwrap(),
+            serde_json::to_value(&before).unwrap()
+        );
+        p.edit(Edit::DuplicateTrack {
+            track_id: track,
+            new_track_id: Id::new_v4(),
+        })
+        .unwrap();
+        let copy = &p.tracks[1].instrument.as_ref().unwrap().layers[0];
+        assert_ne!(copy.effects[0].id, effect.id);
+        assert_eq!(copy.effects[0].unit, effect.unit);
+        assert!(copy.collapsed);
+    }
+}

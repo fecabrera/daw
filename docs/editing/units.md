@@ -28,3 +28,7 @@ Drag unused space inside an oscillator strip to change its source order. Drag un
 Drag effect headers to reorder selected effects in chain order. Modifier dragging copies the selected effects and keeps the originals. Effect copies retain their settings and source assignments.
 
 An insertion line previews the result. Hold near a lane edge to scroll. Changes take effect on release. Escape, focus loss, or an outside drop cancels. A same-position move makes no change.
+
+In Instrument, layer effects sit after the components in the same layer lane. Click a layer before adding effects from the catalog, or drag catalog effects after its components. Effect selection, removal, reordering, and drag duplication work within that chain. Main has its own inline effect chain. Click the bottom effects lane to target track effects.
+
+Drag an installed effect header to another regular layer, Main, or the track effects lane to move it. Hold Option on macOS or Ctrl on Windows/Linux to duplicate it. If the effect is selected with other effects, the group transfers in its chain order. Release after the destination layer's components or at the insertion line in the track effects lane to place the group. Escape or an outside drop cancels.

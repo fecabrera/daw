@@ -84,9 +84,11 @@ pub use oscillator::OscillatorSettings;
 
 pub const INSTRUMENT_STATE_VERSION: u32 = 3;
 
-/// A parallel instrument layer. Settings are shared by notes; runtime state is per voice.
+/// A parallel layer with per-voice sources and a shared stereo effect bus.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct InstrumentLayerSettings {
+    /// Serial stereo bus processors after per-voice Amplitude, before layer mixing.
+    pub effects: Vec<EffectInstance>,
     pub id: uuid::Uuid,
     pub name: String,
     /// Presentation only; missing entries follow the canonical component inventory.
@@ -112,6 +114,7 @@ pub struct InstrumentLayerSettings {
 impl Default for InstrumentLayerSettings {
     fn default() -> Self {
         Self {
+            effects: Vec::new(),
             id: uuid::Uuid::new_v4(),
             name: "Layer 1".into(),
             component_order: Vec::new(),
@@ -151,6 +154,7 @@ impl InstrumentLayerSettings {
                 .as_ref()
                 .is_none_or(|s| s.valid() && self.oscillators.is_empty())
             && self.oscillators.iter().all(OscillatorSettings::valid)
+            && self.effects.iter().all(|e| e.unit.valid())
             && self.amplitude.valid()
             && self.macro_module.valid()
             && self.valid_component_order()
@@ -199,6 +203,8 @@ impl InstrumentLayerSettings {
 // Missing names in existing version-2 instruments follow their original row positions.
 #[derive(Deserialize)]
 struct SavedLayer {
+    #[serde(default)]
+    effects: Vec<EffectInstance>,
     id: uuid::Uuid,
     #[serde(default, deserialize_with = "saved_layer_name")]
     name: Option<String>,
@@ -271,6 +277,7 @@ impl SavedLayer {
     fn into_settings(self, index: usize) -> InstrumentLayerSettings {
         let legacy = self.envelopes.is_none();
         let mut layer = InstrumentLayerSettings {
+            effects: self.effects,
             id: self.id,
             name: self.name.unwrap_or_else(|| format!("Layer {}", index + 1)),
             component_order: self.component_order,

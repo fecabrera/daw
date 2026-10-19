@@ -246,7 +246,16 @@ impl Session {
             }
         }
         for track in &session.project.tracks {
-            for effect in &track.effects {
+            for effect in track
+                .effects
+                .iter()
+                .chain(track.instrument.iter().flat_map(|i| {
+                    i.layers
+                        .iter()
+                        .flat_map(|l| &l.effects)
+                        .chain(&i.main.effects)
+                }))
+            {
                 if let daw_core::EffectSettings::Missing { type_id, .. } = &effect.unit {
                     session.warnings.push(format!(
                         "Unavailable effect {type_id} on track {}; bypassed with settings retained",

@@ -9,6 +9,10 @@ const LAYER_HEADER_WIDTH: f32 = TRACK_WIDTH;
 pub(super) struct InstrumentUi {
     pub(super) track: Option<Id>,
     pub(super) selected_layer: Option<Id>,
+    pub(super) track_effects_target: bool,
+    pub(super) effects_layer: Option<Id>,
+    pub(super) pending_effect_transfer: Option<(daw_core::EffectTransfer, Id, Rect, egui::Id)>,
+    pub(super) effect_slots: Vec<(Id, Id, Rect)>,
     pub(super) selected_components: HashSet<(Id, daw_core::InstrumentComponent)>,
     pub(super) component_refocus: bool,
     pub(super) component_focus: crate::selection_focus::SelectionFocus,
@@ -33,6 +37,7 @@ struct LayerNameEdit {
 impl InstrumentUi {
     pub(super) fn cancel(&mut self) {
         self.selected_components.clear();
+        self.pending_effect_transfer = None;
         self.component_refocus = false;
         self.component_focus = Default::default();
         self.name_edit = None;
@@ -82,6 +87,7 @@ impl DawUi {
         self.instrument_ui.oscillator_slots.clear();
         self.instrument_ui.samplers.clear();
         self.instrument_ui.component_slots.clear();
+        self.instrument_ui.effect_slots.clear();
         self.instrument_ui.component_viewports.clear();
         #[cfg(test)]
         self.instrument_ui.component_bounds.clear();
@@ -111,6 +117,8 @@ impl DawUi {
         if self.instrument_ui.track != Some(track.id) {
             self.instrument_ui.cancel();
             self.instrument_ui.track = Some(track.id);
+            self.instrument_ui.effects_layer = None;
+            self.instrument_ui.track_effects_target = false;
             self.instrument_ui.selected_layer = None;
             self.instrument_catalog.clear();
         }
@@ -146,6 +154,8 @@ impl DawUi {
         let shared_sources: Vec<_> = track
             .effects
             .iter()
+            .chain(settings.layers.iter().flat_map(|l| &l.effects))
+            .chain(&settings.main.effects)
             .flat_map(|e| e.unit.modulations())
             .chain(
                 settings
@@ -185,6 +195,7 @@ impl DawUi {
                     number += 1;
                 }
                 self.instrument_ui.selected_layer = Some(layer.id);
+                self.instrument_ui.track_effects_target = false;
                 settings.layers.push(layer);
             }
             add.rect.width()
@@ -214,6 +225,7 @@ impl DawUi {
                     ui.spacing_mut().item_spacing.y = -1.0;
                     if self.instrument_ui.dragging()
                         || self.component_drag.as_ref().is_some_and(|drag| drag.active)
+                        || self.effects_drag.as_ref().is_some_and(|drag| drag.active)
                     {
                         self.scroll_layer_drag(ui);
                     }
@@ -408,11 +420,13 @@ impl DawUi {
                                             Rect::NOTHING,
                                             [Rect::NOTHING; 4],
                                         );
+                                        let mut effects_left = None;
                                         let components = egui::ScrollArea::horizontal()
                                             .id_salt("layer-units")
                                             .auto_shrink([false, true])
                                             .show(ui, |ui| {
                                                 if self.component_drag.as_ref().is_some_and(|d|d.active) { drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range())); }
+                                                self.scroll_effect_drag(ui);
                                                 crate::strip_reorder::scroll(ui);
                                                 ui.horizontal_top(|ui| {
                                                         ui.spacing_mut().item_spacing.x = -1.0;
@@ -499,9 +513,17 @@ impl DawUi {
                                                                 previous = Some(rect);
                                                             }
                                                         }
+                                                        let start = ui.cursor().min.x;
+                                                        if !layer.effects.is_empty() || self.instrument_ui.effects_layer == Some(layer.id) || self.effects_drag.is_some() {
+                                                            effects_left = Some(start);
+                                                        }
+                                                        self.inline_layer_effects(ui, track.id, crate::layer_effects::InlineEffects { id: layer.id, effects: &mut layer.effects }, height, compact, &modulation_sources);
                                                     });
                                             });
-                                        self.instrument_ui.component_viewports.push((layer.id, Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect())));
+                                        let viewport = Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect());
+                                        self.finish_inline_layer_effects(ui, track.id, crate::layer_effects::InlineEffects { id: layer.id, effects: &mut layer.effects }, viewport, effects_left);
+                                        let component_right = effects_left.unwrap_or(viewport.right()).clamp(viewport.left(), viewport.right());
+                                        self.instrument_ui.component_viewports.push((layer.id, Rect::from_min_size(components.inner_rect.min, Vec2::new((component_right - components.inner_rect.left()).max(0.0), height)).intersect(components.inner_rect).intersect(ui.clip_rect())));
                                         #[cfg(test)]
                                         {
                                             self.midi_editor.envelope_panel_bounds = envelope_rect;
@@ -577,6 +599,7 @@ impl DawUi {
                                 })
                             {
                                 self.instrument_ui.selected_layer = Some(layer.id);
+                                self.instrument_ui.track_effects_target = false;
                                 ui.ctx().request_repaint();
                             }
                             layer_rows.push((layer.id, row.response.rect));
@@ -640,6 +663,40 @@ impl DawUi {
             self.instrument_catalog_bounds.layer_viewport = scroll.inner_rect;
             self.instrument_catalog_bounds.layer_scroll = scroll.state.offset.y;
         }
+        // Row dividers paint after units; restore selected effect outlines above them.
+        let mut outlines = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("inline-effect-outlines")
+                .max_rect(scroll.inner_rect),
+        );
+        outlines.set_clip_rect(
+            Rect::from_min_max(
+                Pos2::new(
+                    scroll.inner_rect.left() + LAYER_HEADER_WIDTH - 1.0,
+                    scroll.inner_rect.top(),
+                ),
+                main_rect.max,
+            )
+            .intersect(ui.clip_rect()),
+        );
+        for (_, id, rect) in &self.instrument_ui.effect_slots {
+            crate::unit_selection::paint(&outlines, *rect, self.selected_effects.contains(id));
+        }
+        if let Some((transfer, owner, bounds, focus)) =
+            self.instrument_ui.pending_effect_transfer.take()
+        {
+            self.edit(transfer.edit);
+            if self.error.is_none() {
+                self.selected_effects = transfer.selected.into_iter().collect();
+                self.instrument_ui.effects_layer = Some(owner);
+                self.instrument_ui.selected_layer = Some(owner);
+                self.instrument_ui.track_effects_target = false;
+                self.effects_lane_focus.set(ui, bounds, true);
+                ui.ctx().memory_mut(|m| m.request_focus(focus));
+            }
+            ui.ctx().request_repaint();
+            return;
+        }
         self.component_selection(ui, track.id, &mut settings);
         if let Some((edit, selected)) = self.finish_component_drag(
             ui,
@@ -673,11 +730,46 @@ impl DawUi {
                 self.instrument_ui.selected_layer = settings.layers.first().map(|layer| layer.id);
             }
         }
-        if Some(&settings) != track.instrument.as_ref() {
-            self.edit(Edit::SetInstrument {
+        let mut edits = Vec::new();
+        for layer in &mut settings.layers {
+            if let Some(previous) = track
+                .instrument
+                .as_ref()
+                .and_then(|i| i.layers.iter().find(|l| l.id == layer.id))
+                && layer.effects != previous.effects
+            {
+                let effects = std::mem::replace(&mut layer.effects, previous.effects.clone());
+                edits.push(Edit::SetLayerEffects {
+                    track_id: track.id,
+                    layer_id: layer.id,
+                    effects,
+                    compact: layer.collapsed,
+                });
+            }
+        }
+        if let Some(previous) = track.instrument.as_ref()
+            && settings.main.effects != previous.main.effects
+        {
+            let effects =
+                std::mem::replace(&mut settings.main.effects, previous.main.effects.clone());
+            edits.push(Edit::SetLayerEffects {
                 track_id: track.id,
-                instrument: Some(settings),
+                layer_id: settings.main.id,
+                effects,
+                compact: settings.main.collapsed,
             });
+        }
+        if Some(&settings) != track.instrument.as_ref() {
+            edits.insert(
+                0,
+                Edit::SetInstrument {
+                    track_id: track.id,
+                    instrument: Some(settings),
+                },
+            );
+        }
+        if !edits.is_empty() {
+            self.edit(Edit::Batch(edits));
         }
     }
 
@@ -760,6 +852,7 @@ impl DawUi {
             && !self.instrument_ui.editing_name()
         {
             self.instrument_ui.selected_layer = Some(layer);
+            self.instrument_ui.track_effects_target = false;
             self.instrument_ui.drag = Some(layer);
         }
     }

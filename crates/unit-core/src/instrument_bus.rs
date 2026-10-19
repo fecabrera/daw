@@ -12,6 +12,8 @@ pub struct InstrumentBusSettings {
     #[serde(default)]
     pub component_order: Vec<crate::InstrumentComponent>,
     pub collapsed: bool,
+    #[serde(default)]
+    pub effects: Vec<crate::EffectInstance>,
     pub gain_db: f32,
     pub pan: f32,
     pub envelopes: Vec<EnvelopeInstance>,
@@ -25,6 +27,7 @@ impl Default for InstrumentBusSettings {
             id: Uuid::new_v4(),
             component_order: Vec::new(),
             collapsed: true,
+            effects: Vec::new(),
             gain_db: 0.0,
             pan: 0.0,
             envelopes: Vec::new(),
@@ -60,6 +63,7 @@ impl InstrumentBusSettings {
             })
             && self.lfos.iter().all(|l| ids.insert(l.id) && l.valid())
             && self.macro_module.valid()
+            && self.effects.iter().all(|e| e.unit.valid())
             && self.valid_component_order()
             && self.macro_module.controls.iter().all(|c| ids.insert(c.id))
     }
@@ -86,6 +90,15 @@ mod tests {
     fn main_defaults_are_neutral_and_missing_legacy_data_migrates_without_accepting_null() {
         let instrument = InstrumentSettings::default();
         assert!(instrument.main.collapsed);
+        assert!(instrument.main.effects.is_empty());
+        let mut legacy_bus = serde_json::to_value(&instrument.main).unwrap();
+        legacy_bus.as_object_mut().unwrap().remove("effects");
+        assert!(
+            serde_json::from_value::<InstrumentBusSettings>(legacy_bus)
+                .unwrap()
+                .effects
+                .is_empty()
+        );
         assert_eq!((instrument.main.gain_db, instrument.main.pan), (0.0, 0.0));
         assert!(instrument.main.envelopes.is_empty() && instrument.main.lfos.is_empty());
         let mut json = serde_json::to_value(&instrument).unwrap();

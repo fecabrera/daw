@@ -539,3 +539,10 @@ Each effect panel uses `meters::unit_reading` to mask queued or stale readings w
 ## Bitcrusher — 2026-10-18
 
 [Bitcrusher](../effects/bitcrusher.md) adds Drive, whole-step Resolution/Downsampling, Level, and Dry/Wet under Distortion. Its portable crate owns symmetric quantization, silence preservation, a linked stereo capture clock, bounds, shared base/offset smoothing, and callback-safe history. Reuse the common source/destination API for all five controls, existing Level/DryWet targets, shared catalog/panels/knobs/amounts/connections, snapshots, and track/Master rendering. The linked specification defines integer persistence, quantization, capture/transition rules, defaults, and acceptance.
+
+
+## Per-layer effect chains — 2026-10-18
+
+Regular instrument layers now own serial stereo effect chains after the per-voice Amplitude sum and before layer gain/pan. This supersedes the earlier pending layer-effect sections. Reuse the existing effect processors, modulation contract, meter lifecycle, effects catalog, unit controls, and effects-lane interactions. Track effects remain after Main. See [per-layer effects](../instruments/layer-effects.md) for persistence, ownership, target selection, latency, and verification.
+
+Regular layers and Main now own inline serial effect chains. The processing order and shared transfer, modulation, latency, and history rules are specified in [layer effects](../instruments/layer-effects.md). Track effects remain a separate post-Main chain. Installed effect groups can move or copy between any of these buses in one instrument.

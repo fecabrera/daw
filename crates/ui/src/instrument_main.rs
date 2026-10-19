@@ -75,6 +75,7 @@ impl DawUi {
             })
         {
             self.instrument_ui.selected_layer = Some(bus.id);
+            self.instrument_ui.track_effects_target = false;
             ui.ctx().request_repaint();
         }
         #[cfg(test)]
@@ -148,6 +149,7 @@ impl DawUi {
                     bounds.collapse = collapse.rect;
                     bounds.mix = mixing.bounds;
                 }
+                let mut effects_left = None;
                 let components = egui::ScrollArea::horizontal()
                     .id_salt("main-units")
                     .auto_shrink([false, true])
@@ -156,6 +158,9 @@ impl DawUi {
                             ui.spacing_mut().item_spacing.x = -1.0;
                             let mut previous: Option<Rect> = None;
                             if self.component_drag.as_ref().is_some_and(|d| d.active) {
+                                drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range()));
+                            }
+                            if self.effects_drag.as_ref().is_some_and(|d| d.active) {
                                 drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range()));
                             }
                             for component in bus.visible_components() {
@@ -199,9 +204,16 @@ impl DawUi {
                                     previous = Some(rect);
                                 }
                             }
+                            if !bus.effects.is_empty() || self.instrument_ui.effects_layer == Some(bus.id) || self.effects_drag.is_some() {
+                                effects_left = Some(ui.cursor().min.x);
+                            }
+                            self.inline_layer_effects(ui, track, crate::layer_effects::InlineEffects { id: bus.id, effects: &mut bus.effects }, height, compact, sources);
                         });
                     });
-                self.instrument_ui.component_viewports.push((bus.id, Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect())));
+                let viewport = Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect());
+                self.finish_inline_layer_effects(ui, track, crate::layer_effects::InlineEffects { id: bus.id, effects: &mut bus.effects }, viewport, effects_left);
+                let right = effects_left.unwrap_or(viewport.right()).clamp(viewport.left(), viewport.right());
+                self.instrument_ui.component_viewports.push((bus.id, Rect::from_min_max(viewport.min, Pos2::new(right, viewport.bottom()))));
             });
         });
         panels::ControlPanel::pinned_row_divider(ui, rect);

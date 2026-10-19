@@ -305,6 +305,9 @@ fn remap_consumers(
             remap_source(&mut sampler.modulations, old, new);
         }
         remap_source(&mut layer.amplitude.modulations, old, new);
+        for effect in &mut layer.effects {
+            remap_source(effect.unit.modulations_mut(), old, new);
+        }
         remap_source(&mut layer.macro_module.modulations, old, new);
         for lfo in &mut layer.lfos {
             remap_source(&mut lfo.modulations, old, new);
@@ -314,7 +317,7 @@ fn remap_consumers(
     for lfo in &mut instrument.main.lfos {
         remap_source(&mut lfo.modulations, old, new);
     }
-    for effect in effects {
+    for effect in effects.iter_mut().chain(&mut instrument.main.effects) {
         remap_source(effect.unit.modulations_mut(), old, new);
     }
 }

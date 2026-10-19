@@ -2888,3 +2888,23 @@ Completed checks with the workspace Cargo cache:
 - `git diff --check` passes.
 
 Native display-scale, keyboard/trackpad, device, Windows, and Linux checks were not performed. CLI smoke checks were not repeated for this UI-only layout change.
+
+## Inline layer effects and transfers — 2026-10-18
+
+Regular MIDI layers save independent effect chains after Amplitude and before layer gain/pan. Main saves an inline chain after the layer sum and before Main gain/pan. Effects appear after components in the same scrolling row and follow its compact state. The selected layer receives catalog additions; Main receives additions in its pinned row; clicking the bottom lane targets track effects. Library drops also target empty layer rows while the bottom lane is hidden. Shared effect panels, modulation controls, selection, keyboard handling, previews, and scrolling serve both layouts.
+
+Core checks cover legacy empty-chain defaults, save-state round trips, discovery, global effect IDs, invalid-owner/settings/scope rejection, track duplication, and provider-reference remapping. Group transfers preserve chain order and move IDs, create fresh effect/route IDs for copies, and reject invalid or incompatible transfers without changing the project. Transfers between regular layers, Main, and track effects publish atomically.
+
+Engine checks compare every registered processor between layer and track placement, verify pre-gain processing and parallel isolation, align limiter latency, and reproduce seeks. Live updates preserve modulation snapshots and prepared storage. Reordering layer rows preserves exact audio. Moving a filter between regular layers, Main, and track effects retains its ringing history on silent input with no callback allocation; compatible processor histories follow globally unique effect IDs. Latency placement changes require worker pre-roll.
+
+Project checks preserve chains, routes, missing-unit settings/warnings, and rendered audio through Save As/reopen, and export WAV audio. All 472 headless UI tests pass. New input checks cover inline geometry and power in both themes, drag duplication, deletion, empty-layer drops with the bottom lane hidden, and selected-group moves/copies in both directions, including fast releases, Main destinations, and transfers in both directions between the track effects lane and instrument buses. Shape checks also verify one full-height shared divider from Macro to Drive on Main, Amplitude to EQ on regular layers, and between adjacent inline effects, in both themes and compact/collapsed states. Blank-lane component Select All and existing effect-library edge scrolling remain covered.
+
+Executed checks:
+
+- `cargo fmt --all --check` and workspace Clippy with `-D warnings` pass.
+- `cargo test --workspace` passes; two existing expanded time-stretch matrices remain ignored. After the final divider-only change, all 472 UI tests pass again.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` pass.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`, including the divider fix. The running app was not restarted.
+- `git diff --check` and cached diff checks pass. Changed documentation links resolve.
+
+Native UI, display-scale, device, Windows, and Linux checks were not performed.

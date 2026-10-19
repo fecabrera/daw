@@ -27,9 +27,11 @@ pub use stretch_engine::{StretchEngine, StretchEngineId};
 mod boundary;
 mod component_group;
 mod component_transfer;
+mod effect_transfer;
 mod effects;
 pub use component_group::ComponentTransfer;
 pub use component_transfer::InstrumentComponent;
+pub use effect_transfer::{EffectChainTarget, EffectTransfer};
 mod looping;
 mod placement;
 mod resize;
@@ -349,7 +351,17 @@ impl Project {
     pub fn all_effects(&self) -> impl Iterator<Item = &EffectInstance> {
         self.tracks
             .iter()
-            .flat_map(|track| &track.effects)
+            .flat_map(|track| {
+                track
+                    .effects
+                    .iter()
+                    .chain(track.instrument.iter().flat_map(|i| {
+                        i.layers
+                            .iter()
+                            .flat_map(|l| &l.effects)
+                            .chain(&i.main.effects)
+                    }))
+            })
             .chain(&self.master.effects)
     }
     pub fn frames(&self, seconds: f64) -> u64 {
@@ -486,7 +498,17 @@ impl Project {
                     ));
                 }
             }
-            for route in t.effects.iter().flat_map(|e| e.unit.modulations()) {
+            for route in t
+                .effects
+                .iter()
+                .chain(t.instrument.iter().flat_map(|i| {
+                    i.layers
+                        .iter()
+                        .flat_map(|l| &l.effects)
+                        .chain(&i.main.effects)
+                }))
+                .flat_map(|e| e.unit.modulations())
+            {
                 if route.source.is_some_and(|source| {
                     !t.instrument.as_ref().is_some_and(|i| {
                         i.modulation_source(source).is_some_and(|s| {
@@ -599,6 +621,31 @@ impl Project {
             Edit::SetMasterEffects { effects, compact } => {
                 self.master.effects = effects;
                 self.master.effects_compact = compact;
+            }
+            Edit::SetLayerEffects {
+                track_id,
+                layer_id,
+                effects,
+                compact,
+            } => {
+                let instrument = self
+                    .tracks
+                    .iter_mut()
+                    .find(|t| t.id == track_id)
+                    .and_then(|t| t.instrument.as_mut())
+                    .ok_or_else(|| Error("Instrument not found".into()))?;
+                if layer_id == instrument.main.id {
+                    instrument.main.effects = effects;
+                    instrument.main.collapsed = compact;
+                } else {
+                    let layer = instrument
+                        .layers
+                        .iter_mut()
+                        .find(|l| l.id == layer_id)
+                        .ok_or_else(|| Error("Instrument layer not found".into()))?;
+                    layer.effects = effects;
+                    layer.collapsed = compact;
+                }
             }
             Edit::SetEffects {
                 track_id,
@@ -771,7 +818,16 @@ impl Project {
                 {
                     s.id = Id::new_v4();
                 }
-                for effect in &mut copy.effects {
+                for effect in copy
+                    .effects
+                    .iter_mut()
+                    .chain(copy.instrument.iter_mut().flat_map(|i| {
+                        i.layers
+                            .iter_mut()
+                            .flat_map(|l| &mut l.effects)
+                            .chain(&mut i.main.effects)
+                    }))
+                {
                     effect.id = Id::new_v4();
                 }
                 self.tracks.insert(index + 1, copy);
@@ -876,6 +932,12 @@ pub enum Edit {
         duplicate: bool,
     },
     SetMasterEffects {
+        effects: Vec<EffectInstance>,
+        compact: bool,
+    },
+    SetLayerEffects {
+        track_id: Id,
+        layer_id: Id,
         effects: Vec<EffectInstance>,
         compact: bool,
     },

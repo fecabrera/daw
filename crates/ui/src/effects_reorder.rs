@@ -38,12 +38,32 @@ impl DawUi {
         crate::unit_selection::select(&mut self.selected_effects, id, toggle);
     }
 
+    pub(super) fn retarget_library_effect_drag(
+        &mut self,
+        target: EffectTarget,
+        effects: &[daw_core::EffectInstance],
+    ) {
+        if let Some(drag) = &mut self.effects_drag
+            && drag.is_library()
+            && drag.target != target
+        {
+            drag.target = target;
+            drag.order = effects.iter().map(|e| e.id).collect();
+        }
+    }
     pub(super) fn cancel_unavailable_effect_drag(&mut self, ui: &egui::Ui) {
         if self.effects_drag.as_ref().is_some_and(|drag| {
             !self.view_mode.has_effects()
-                || !self.timeline_effects_visible
+                || (!self.timeline_effects_visible
+                    && !matches!(drag.target, EffectTarget::Layer { .. })
+                    && !(self.view_mode == ViewMode::Instrument && drag.is_library()))
                 || self.view_mode != drag.view
-                || self.effects_target() != Some(drag.target)
+                || match drag.target {
+                    EffectTarget::Layer { track, .. } => {
+                        self.view_mode != ViewMode::Instrument || self.selected_track != Some(track)
+                    }
+                    _ => self.effects_target() != Some(drag.target),
+                }
                 || !ui.is_enabled()
                 || !self.edit_environment_available()
                 || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape))
@@ -126,20 +146,9 @@ impl DawUi {
         }
     }
 
-    pub(super) fn finish_effect_drag(
-        &mut self,
-        ui: &egui::Ui,
-        effects: &mut Vec<daw_core::EffectInstance>,
-        slots: &[(Id, Rect)],
-        viewport: Rect,
-        allowed: bool,
-    ) {
-        if !allowed || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape)) {
-            self.effects_drag = None;
-            return;
-        }
+    fn activate_effect_drag(&mut self, ui: &egui::Ui) -> bool {
         let Some(drag) = &mut self.effects_drag else {
-            return;
+            return false;
         };
         if !drag.active {
             if drag::crossed_threshold(ui, drag.origin) {
@@ -159,8 +168,90 @@ impl DawUi {
                 if !ui.input(|input| input.pointer.primary_down()) {
                     self.effects_drag = None;
                 }
-                return;
+                return false;
             }
+        }
+        true
+    }
+
+    pub(super) fn finish_cross_effect_drag(
+        &mut self,
+        ui: &egui::Ui,
+        destination: EffectTarget,
+        slots: &[(Id, Rect)],
+        viewport: Rect,
+        allowed: bool,
+    ) -> Option<daw_core::EffectTransfer> {
+        if !allowed {
+            return None;
+        }
+        let drag = self.effects_drag.as_ref()?;
+        let owner = |target| match target {
+            EffectTarget::Track(track) | EffectTarget::Layer { track, .. } => Some(track),
+            EffectTarget::Master => None,
+        };
+        if !matches!(drag.source, DragSource::Chain { .. })
+            || drag.target == destination
+            || owner(drag.target).is_none()
+            || owner(drag.target) != owner(destination)
+            || self.view_mode != ViewMode::Instrument
+        {
+            return None;
+        }
+        if !self.activate_effect_drag(ui) {
+            return None;
+        }
+        let drag = self.effects_drag.as_ref()?;
+        let DragSource::Chain { units, .. } = &drag.source else {
+            return None;
+        };
+        let pointer = ui
+            .input(|i| i.pointer.latest_pos())
+            .filter(|p| viewport.contains(*p))?;
+        let slot = drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r));
+        drag::insertion_line(
+            ui,
+            &slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
+            slot,
+            viewport,
+        );
+        let duplicate = ui.input(|i| clip_copy_modifier(i.modifiers));
+        ui.ctx().set_cursor_icon(if duplicate {
+            egui::CursorIcon::Copy
+        } else {
+            egui::CursorIcon::Grabbing
+        });
+        if !ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+            return None;
+        }
+        let result =
+            self.session
+                .project
+                .transfer_effects(drag.target, destination, units, slot, duplicate);
+        self.effects_drag = None;
+        match result {
+            Ok(edit) => Some(edit),
+            Err(error) => {
+                self.fail(error);
+                None
+            }
+        }
+    }
+
+    pub(super) fn finish_effect_drag(
+        &mut self,
+        ui: &egui::Ui,
+        effects: &mut Vec<daw_core::EffectInstance>,
+        slots: &[(Id, Rect)],
+        viewport: Rect,
+        allowed: bool,
+    ) {
+        if !allowed || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape)) {
+            self.effects_drag = None;
+            return;
+        }
+        if !self.activate_effect_drag(ui) {
+            return;
         }
         let drag = self.effects_drag.as_ref().unwrap();
         if matches!(&drag.source, DragSource::Chain { unit, .. } if !effects.iter().any(|effect| effect.id == *unit))
@@ -216,14 +307,7 @@ impl DawUi {
                         let copies: Vec<_> = effects
                             .iter()
                             .filter(|e| selected.contains(&e.id))
-                            .map(|e| {
-                                let mut copy = e.clone();
-                                copy.id = Id::new_v4();
-                                for route in copy.unit.modulations_mut() {
-                                    route.id = Id::new_v4();
-                                }
-                                copy
-                            })
+                            .map(daw_core::EffectInstance::duplicate)
                             .collect();
                         self.selected_effects = copies.iter().map(|e| e.id).collect();
                         effects.splice(index..index, copies);

@@ -6,7 +6,7 @@ Main is the fixed output bus of one MIDI instrument. It receives the stereo sum 
 
 Processing order:
 
-`Layer sources → layer Amplitude and gain/pan → stereo layer sum → Main gain/pan → track effects → track gain/pan → project mix`
+`Layer sources → layer Amplitude → layer effects → layer gain/pan → stereo layer sum → Main effects → Main gain/pan → track effects → track gain/pan → project mix`
 
 Main also hosts shared Envelope, LFO, and Macro components. These are modulation sources; adding them does not change audio or create connections. Use the existing destination strips on layer Amplitude, Auto-filter, or Drive to connect them.
 
@@ -32,8 +32,10 @@ The existing [shared modulation contract](../modulation/contract.md) discovers s
 
 ## Saved data and compatibility
 
-Instrument version 3 stores `main` separately from `layers`. Main contains its owner ID, gain, pan, compact state, component order, and Envelope/LFO/Macro settings. Missing component order uses the legacy layout. Missing `main` in older projects creates a neutral, compact bus with no components; original layer settings and sound remain unchanged. Saving records its new identity. Explicit null or malformed data fails instead of selecting legacy defaults. Validation rejects duplicate owner/source IDs, per-note Main envelopes, invalid gain/pan, and invalid component settings. Existing core validation checks all references and applies instrument edits atomically.
+Instrument version 3 stores `main` separately from `layers`. Main contains its owner ID, gain, pan, compact state, component order, effects, and Envelope/LFO/Macro settings. Missing effects default to an empty chain. Missing component order uses the legacy layout. Missing `main` in older projects creates a neutral, compact bus with no components; original layer settings and sound remain unchanged. Saving records its new identity. Explicit null or malformed data fails instead of selecting legacy defaults. Validation rejects duplicate owner/source IDs, per-note Main envelopes, invalid gain/pan, and invalid component settings. Existing core validation checks all references and applies instrument edits atomically.
 
 Save/reopen, Save As, track duplication, view/track switches, sample-rate changes, and normal layer reordering retain Main settings and source references. Main does not own notes or audio clips and does not change arranged/export duration. Live playback and export use the same post-layer bus processing. Storage and DSP preparation occur before publication; sampling and compatible retargeting remain allocation-free.
 
 See [validation records](../validation/README.md) for completed automated checks and remaining native UI, device, and platform checks.
+
+Main also accepts an inline effect chain after its shared components. It processes the combined layer output before Main gain/pan. Catalog additions target Main when its row is selected; click the bottom effects lane to target track effects. Effects can move or copy between Main and regular layers with the shared group drag, preview, and modifier controls. Save/open retains all chains and routes. See [layer effects](../instruments/layer-effects.md).

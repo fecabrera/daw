@@ -16,6 +16,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [LFO](instruments/lfo.md).
 - [Macro](instruments/macro.md).
 - [Instrument Main](instruments/main.md).
+- [Per-layer effects](instruments/layer-effects.md): saved stereo bus chains, shared controls, modulation, and latency alignment.
 - [Component editing and registration](editing/components.md).
 - [Beat editor design](views/beat-editor.md), pending implementation.
 

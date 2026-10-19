@@ -1,9 +1,13 @@
 use super::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(super) enum EffectTarget {
-    Track(Id),
-    Master,
+pub(super) use daw_core::EffectChainTarget as EffectTarget;
+
+pub(super) struct UnitLane<'a> {
+    pub compact: bool,
+    pub height: f32,
+    pub target: Option<EffectTarget>,
+    pub allowed: bool,
+    pub sources: &'a [crate::modulation_panel::Source],
 }
 
 #[cfg(test)]
@@ -107,19 +111,7 @@ impl DawUi {
         &self,
         target: EffectTarget,
     ) -> Option<(&[daw_core::EffectInstance], bool)> {
-        match target {
-            EffectTarget::Master => Some((
-                &self.session.project.master.effects,
-                self.session.project.master.effects_compact,
-            )),
-            EffectTarget::Track(id) => self
-                .session
-                .project
-                .tracks
-                .iter()
-                .find(|t| t.id == id)
-                .map(|t| (t.effects.as_slice(), t.effects_compact)),
-        }
+        self.session.project.effect_chain(target)
     }
 
     fn effects_state(&self, target: Option<EffectTarget>) -> (bool, Vec<daw_core::EffectInstance>) {
@@ -255,17 +247,30 @@ impl DawUi {
                                 },
                             );
                             if output.add_selected {
-                                effects.extend(effects_catalog::instantiate(
-                                    &self.effects_catalog.selected_types(),
-                                ));
+                                self.add_catalog_effects(
+                                    &mut effects,
+                                    effects_catalog::instantiate(
+                                        &self.effects_catalog.selected_types(),
+                                    ),
+                                );
                             }
                             if let Some(index) = output.double_clicked {
-                                effects.push((effects_catalog::ENTRIES[index].make)());
+                                self.add_catalog_effects(
+                                    &mut effects,
+                                    vec![(effects_catalog::ENTRIES[index].make)()],
+                                );
                             }
                             for &(index, ref response) in &output.rows {
-                                if allowed && lane_visible {
+                                if allowed
+                                    && (lane_visible || self.view_mode == ViewMode::Instrument)
+                                {
+                                    let target = self.effect_catalog_target();
+                                    let chain = target
+                                        .and_then(|t| self.effect_chain(t))
+                                        .map(|(e, _)| e.to_vec())
+                                        .unwrap_or_default();
                                     self.start_library_effect_drag(
-                                        ui, response, selected, index, &effects,
+                                        ui, response, target, index, &chain,
                                     );
                                 }
                                 #[cfg(test)]
@@ -329,16 +334,19 @@ impl DawUi {
                             .layout(egui::Layout::top_down(egui::Align::Min)),
                     );
                     content_ui.set_clip_rect(content_bounds.intersect(ui.clip_rect()));
-                    content_ui.add_enabled_ui(self.effects_drag.is_none(), |ui| {
-                        if self.view_mode == ViewMode::Instrument {
-                            self.timeline_bounds = Rect::NOTHING;
-                            self.lane_bounds.clear();
-                            self.file_drop_target = None;
-                            self.instrument_view(ui);
-                        } else {
-                            self.timeline_workspace(ui);
-                        }
-                    });
+                    content_ui.add_enabled_ui(
+                        self.effects_drag.is_none() || self.view_mode == ViewMode::Instrument,
+                        |ui| {
+                            if self.view_mode == ViewMode::Instrument {
+                                self.timeline_bounds = Rect::NOTHING;
+                                self.lane_bounds.clear();
+                                self.file_drop_target = None;
+                                self.instrument_view(ui);
+                            } else {
+                                self.timeline_workspace(ui);
+                            }
+                        },
+                    );
                     #[cfg(test)]
                     {
                         self.effects_bounds.scrollbar = if self.view_mode == ViewMode::Instrument {
@@ -363,6 +371,17 @@ impl DawUi {
             self.effects_catalog.clear();
             self.effects_drag = None;
         }
+        // An inline transfer can remove track effects while the instrument is drawn.
+        // Refresh that source snapshot before painting or committing the bottom chain.
+        if let Some(target) = selected
+            && let Some((saved, saved_compact)) = self.effect_chain(target)
+            && (saved != original_effects || saved_compact != original_compact)
+        {
+            effects = saved.to_vec();
+            compact = saved_compact;
+            original_effects = effects.clone();
+            original_compact = compact;
+        }
         if lane_visible {
             ui.painter()
                 .rect_filled(strip, 0.0, theme::palette(ui.ctx()).background);
@@ -384,7 +403,27 @@ impl DawUi {
             }
             #[cfg(not(test))]
             let _ = response;
-            self.effects_lane(ui, strip, selected, &mut effects, compact, allowed);
+            if let Some(transfer) =
+                self.effects_lane(ui, strip, selected, &mut effects, compact, allowed)
+            {
+                self.edit(transfer.edit);
+                if self.error.is_none() {
+                    self.selected_effects = transfer.selected.into_iter().collect();
+                    self.instrument_ui.effects_layer = None;
+                    self.instrument_ui.track_effects_target = true;
+                    (compact, effects) = self.effects_state(selected);
+                    original_compact = compact;
+                    original_effects = effects.clone();
+                }
+            }
+        }
+        if self
+            .effects_drag
+            .as_ref()
+            .is_some_and(|d| matches!(d.target, crate::effects_panel::EffectTarget::Layer { .. }))
+            && ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
+        {
+            self.effects_drag = None;
         }
         if let Some(target) = selected
             && (effects != original_effects || compact != original_compact)
@@ -392,6 +431,12 @@ impl DawUi {
             self.edit(match target {
                 EffectTarget::Track(track_id) => Edit::SetEffects {
                     track_id,
+                    effects,
+                    compact,
+                },
+                EffectTarget::Layer { track, layer } => Edit::SetLayerEffects {
+                    track_id: track,
+                    layer_id: layer,
                     effects,
                     compact,
                 },
@@ -420,10 +465,10 @@ impl DawUi {
         effects: &mut Vec<daw_core::EffectInstance>,
         compact: bool,
         allowed: bool,
-    ) {
+    ) -> Option<daw_core::EffectTransfer> {
         let modulation_sources = crate::modulation_panel::sources(target.and_then(|target| {
             match target {
-                EffectTarget::Track(id) => self
+                EffectTarget::Track(id) | EffectTarget::Layer { track: id, .. } => self
                     .session
                     .project
                     .tracks
@@ -438,7 +483,6 @@ impl DawUi {
         .collect::<Vec<_>>();
         let mut remove = None;
         let mut slots = Vec::with_capacity(effects.len());
-        let order: Vec<_> = effects.iter().map(|effect| effect.id).collect();
         let content = Rect::from_min_max(strip.min, effects_toolbar::bounds(strip).left_bottom());
         let mut lane = ui.new_child(
             egui::UiBuilder::new()
@@ -449,7 +493,16 @@ impl DawUi {
         lane.set_clip_rect(content.intersect(ui.clip_rect()));
         let keyboard_id = lane.id().with("effect-lane-keyboard-focus");
         let keyboard_focus = crate::unit_selection::keyboard_focus(&mut lane, strip, keyboard_id);
-        self.effects_lane_focus.set(&lane, strip, true);
+        if crate::unit_selection::clicked(&lane, strip, allowed) {
+            self.instrument_ui.effects_layer = None;
+            self.instrument_ui.track_effects_target = true;
+        }
+        let focused = self.view_mode != ViewMode::Instrument
+            || self.instrument_ui.effects_layer.is_none()
+            || crate::unit_selection::clicked(&lane, strip, allowed);
+        if focused {
+            self.effects_lane_focus.set(&lane, strip, true);
+        }
         let scrolled = lane
             .add_enabled_ui(allowed, |ui| {
                 egui::ScrollArea::horizontal()
@@ -462,200 +515,19 @@ impl DawUi {
                     .show(ui, |ui| {
                         self.scroll_effect_drag(ui);
                         crate::strip_reorder::scroll(ui);
-                        ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = -1.0;
-                            for effect in effects.iter_mut() {
-                                let mut unit_scope = egui::UiBuilder::new().id_salt(effect.id);
-                                if slots.is_empty() {
-                                    unit_scope = unit_scope.ui_stack_info(
-                                        egui::UiStackInfo::default()
-                                            .with_tag(panels::SHARED_LEFT_BORDER_TAG),
-                                    );
-                                }
-                                let unit = ui.scope_builder(unit_scope, |ui| {
-                                    let interactive =
-                                        self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
-                                    let (header, power) = ui
-                                        .add_enabled_ui(interactive, |ui| match &mut effect.unit {
-                                            daw_core::EffectSettings::Eq3(settings) => {
-                                                let (_bounds, header) =
-                                                    crate::equalizer_panel::show(
-                                                        ui,
-                                                        settings,
-                                                        compact,
-                                                        strip.height(),
-                                                        self.output.as_ref().map_or([0.0; 3], |output| output.eq_band_levels(effect.id)),
-                                                        &modulation_sources,
-                                                        self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))),
-                                                    );
-                                                let power = _bounds.power;
-                                                #[cfg(test)]
-                                                self.effects_bounds.units.push(_bounds);
-                                                (header, power)
-                                            }
-                                            daw_core::EffectSettings::Drive(settings) => {
-                                                let (_bounds, header) = crate::drive_panel::show(
-                                                    ui,
-                                                    settings,
-                                                    compact,
-                                                    strip.height(),
-                                                    &modulation_sources,
-                                                    self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Effect(effect.id))),
-                                                );
-                                                let power = _bounds.power;
-                                                #[cfg(test)]
-                                                self.effects_bounds.drive_units.push(_bounds);
-                                                (header, power)
-                                            }
-                                            daw_core::EffectSettings::AutoFilter(settings) => {
-                                                let (_bounds, header) =
-                                                    crate::auto_filter_panel::show(
-                                                        ui,
-                                                        settings,
-                                                        compact,
-                                                        strip.height(),
-                                                        &modulation_sources,
-                                                        self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::Effect(effect.id))),
-                                                        self.session.project.sample_rate_hz,
-                                                    );
-                                                let power = _bounds.power;
-                                                #[cfg(test)]
-                                                self.effects_bounds.auto_filter_units.push(_bounds);
-                                                (header, power)
-                                            }
-                                            daw_core::EffectSettings::Ott(settings) => {
-                                                let gains = self
-                                                    .output
-                                                    .as_ref()
-                                                    .map_or([0.0; 3], |output| {
-                                                        output.ott_gain_change_db(effect.id)
-                                                    });
-                                                let (_bounds, header) = crate::ott_panel::show(
-                                                    ui,
-                                                    settings,
-                                                    compact,
-                                                    strip.height(),
-                                                    gains,
-                                                    &modulation_sources,
-                                                    self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))),
-                                                );
-                                                let power = _bounds.power;
-                                                #[cfg(test)]
-                                                self.effects_bounds.ott_units.push(_bounds);
-                                                (header, power)
-                                            }
-                                            daw_core::EffectSettings::Limiter(settings) => {
-                                                let reduction =
-                                                    self.output.as_ref().map_or(0.0, |output| {
-                                                        output.gain_reduction_db(effect.id)
-                                                    });
-                                                let (_bounds, header) = crate::limiter_panel::show(
-                                                    ui,
-                                                    settings,
-                                                    compact,
-                                                    strip.height(),
-                                                    reduction,
-                                                    &modulation_sources,
-                                                    self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))),
-                                                );
-                                                let power = _bounds.power;
-                                                #[cfg(test)]
-                                                self.effects_bounds.limiter_units.push(_bounds);
-                                                (header, power)
-                                            }
-                                            daw_core::EffectSettings::StereoSpread(settings) => {
-                                                let (bounds, header) = crate::stereo_spread_panel::show(ui, settings, compact, strip.height(), &modulation_sources,
-                                                    self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))));
-                                                let power = bounds.power;
-                                                #[cfg(test)]
-                                                self.effects_bounds.stereo_spread_units.push(bounds);
-                                                (header, power)
-                                            }
-                                            daw_core::EffectSettings::Bitcrusher(settings) => {
-                                                let (bounds, header) = crate::bitcrusher_panel::show(ui, settings, compact, strip.height(), &modulation_sources,
-                                                    self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))));
-                                                let power = bounds.power;
-                                                #[cfg(test)]
-                                                self.effects_bounds.bitcrusher_units.push(bounds);
-                                                (header, power)
-                                            }
-                                            daw_core::EffectSettings::DirectionMixer(settings) => {
-                                                let (bounds, header) = crate::direction_mixer_panel::show(ui, settings, compact, strip.height(), &modulation_sources,
-                                                    self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))));
-                                                let power = bounds.power;
-                                                #[cfg(test)]
-                                                self.effects_bounds.direction_mixer_units.push(bounds);
-                                                (header, power)
-                                            }
-                                            daw_core::EffectSettings::Missing {
-                                                type_id, ..
-                                            } => {
-                                                let response = ui.add(
-                                                    egui::Label::new(format!(
-                                                        "Missing effect: {type_id} (bypassed)"
-                                                    ))
-                                                    .sense(Sense::click_and_drag()),
-                                                );
-                                                (response, Rect::NOTHING)
-                                            }
-                                            daw_core::EffectSettings::Compressor(settings) => {
-                                                let reduction =
-                                                    self.output.as_ref().map_or(0.0, |output| {
-                                                        output.gain_reduction_db(effect.id)
-                                                    });
-                                                let (_bounds, header) =
-                                                    crate::compressor_panel::show(
-                                                        ui,
-                                                        settings,
-                                                        compact,
-                                                        strip.height(),
-                                                        reduction,
-                                                        &modulation_sources,
-                                                        self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Effect(effect.id))),
-                                                    );
-                                                let power = _bounds.power;
-                                                #[cfg(test)]
-                                                self.effects_bounds.compressor_units.push(_bounds);
-                                                (header, power)
-                                            }
-                                        })
-                                        .inner;
-                                    if allowed && interactive {
-                                        self.start_effect_drag(
-                                            ui, &header, power, target, effect.id, &order,
-                                        );
-                                        header
-                                            .on_hover_cursor(egui::CursorIcon::Grab)
-                                            .context_menu(|ui| {
-                                                if ui
-                                                    .add_enabled(
-                                                        self.effects_drag.is_none(),
-                                                        egui::Button::new("Remove effect"),
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    remove = Some(effect.id);
-                                                    ui.close();
-                                                }
-                                            });
-                                    }
-                                });
-                                let rect = unit.response.rect;
-                                if crate::unit_selection::clicked(ui, rect, allowed && self.effects_drag.as_ref().is_none_or(|drag| !drag.active))
-                                {
-                                    self.select_effect(
-                                        effect.id,
-                                        ui.input(|input| input.modifiers.shift),
-                                    );
-                                    crate::unit_selection::retain_focus(ui, &unit.response, &self.effects_lane_focus);
-                                }
-                                slots.push((effect.id, rect));
-                            }
-                        });
-                        // Paint last so adjacent units cannot cover a selected outline.
-                        for (id, rect) in &slots {
-                            crate::unit_selection::paint(ui, *rect, self.selected_effects.contains(id));
-                        }
+                        let (painted, removed) = self.effect_units(
+                            ui,
+                            effects,
+                            UnitLane {
+                                compact,
+                                height: strip.height(),
+                                target,
+                                allowed,
+                                sources: &modulation_sources,
+                            },
+                        );
+                        slots = painted;
+                        remove = removed;
                     })
             })
             .inner;
@@ -678,21 +550,317 @@ impl DawUi {
             self.selected_effects.clear();
             keyboard_focus.request_focus();
         }
-        self.effect_selection_shortcuts(&lane, effects, allowed, &keyboard_focus);
-        self.finish_effect_drag(
-            &lane,
-            effects,
-            &slots,
-            scrolled.inner_rect.intersect(strip),
-            allowed,
-        );
+        if focused {
+            self.effect_selection_shortcuts(&lane, effects, allowed, &keyboard_focus);
+        }
+        if let Some(target) = target
+            && lane.input(|i| i.pointer.latest_pos().is_some_and(|p| strip.contains(p)))
+        {
+            self.retarget_library_effect_drag(target, effects);
+        }
+        if let Some(target) = target
+            && let Some(transfer) = self.finish_cross_effect_drag(
+                &lane,
+                target,
+                &slots,
+                scrolled.inner_rect.intersect(strip),
+                allowed,
+            )
+        {
+            self.effects_lane_focus.set(&lane, strip, true);
+            keyboard_focus.request_focus();
+            return Some(transfer);
+        }
+        if self
+            .effects_drag
+            .as_ref()
+            .is_none_or(|d| !matches!(d.target, EffectTarget::Layer { .. }))
+        {
+            self.finish_effect_drag(
+                &lane,
+                effects,
+                &slots,
+                scrolled.inner_rect.intersect(strip),
+                allowed,
+            );
+        }
 
         if let Some(id) = remove {
             effects.retain(|effect| effect.id != id);
         }
+        None
     }
 
-    fn effect_selection_shortcuts(
+    pub(super) fn effect_units(
+        &mut self,
+        ui: &mut egui::Ui,
+        effects: &mut [daw_core::EffectInstance],
+        controls: UnitLane<'_>,
+    ) -> (Vec<(Id, Rect)>, Option<Id>) {
+        let UnitLane {
+            compact,
+            height,
+            target,
+            allowed,
+            sources: modulation_sources,
+        } = controls;
+        let mut slots = Vec::with_capacity(effects.len());
+        let mut remove = None;
+        let order: Vec<_> = effects.iter().map(|e| e.id).collect();
+        ui.horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing.x = -1.0;
+            for effect in effects.iter_mut() {
+                let mut unit_scope = egui::UiBuilder::new().id_salt(effect.id);
+                if slots.is_empty() {
+                    unit_scope = unit_scope.ui_stack_info(
+                        egui::UiStackInfo::default().with_tag(panels::SHARED_LEFT_BORDER_TAG),
+                    );
+                }
+                let unit = ui.scope_builder(unit_scope, |ui| {
+                    let interactive = self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
+                    let (header, power) = ui
+                        .add_enabled_ui(interactive, |ui| match &mut effect.unit {
+                            daw_core::EffectSettings::Eq3(settings) => {
+                                let (_bounds, header) = crate::equalizer_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    self.output.as_ref().map_or([0.0; 3], |output| {
+                                        output.eq_band_levels(effect.id)
+                                    }),
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                );
+                                let power = _bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.units.push(_bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::Drive(settings) => {
+                                let (_bounds, header) = crate::drive_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_values(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                );
+                                let power = _bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.drive_units.push(_bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::AutoFilter(settings) => {
+                                let (_bounds, header) = crate::auto_filter_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_values(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                    self.session.project.sample_rate_hz,
+                                );
+                                let power = _bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.auto_filter_units.push(_bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::Ott(settings) => {
+                                let gains = self.output.as_ref().map_or([0.0; 3], |output| {
+                                    output.ott_gain_change_db(effect.id)
+                                });
+                                let (_bounds, header) = crate::ott_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    gains,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                );
+                                let power = _bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.ott_units.push(_bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::Limiter(settings) => {
+                                let reduction = self
+                                    .output
+                                    .as_ref()
+                                    .map_or(0.0, |output| output.gain_reduction_db(effect.id));
+                                let (_bounds, header) = crate::limiter_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    reduction,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                );
+                                let power = _bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.limiter_units.push(_bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::StereoSpread(settings) => {
+                                let (bounds, header) = crate::stereo_spread_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                );
+                                let power = bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.stereo_spread_units.push(bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::Bitcrusher(settings) => {
+                                let (bounds, header) = crate::bitcrusher_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                );
+                                let power = bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.bitcrusher_units.push(bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::DirectionMixer(settings) => {
+                                let (bounds, header) = crate::direction_mixer_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                );
+                                let power = bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.direction_mixer_units.push(bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::Missing { type_id, .. } => {
+                                let response = ui.add(
+                                    egui::Label::new(format!(
+                                        "Missing effect: {type_id} (bypassed)"
+                                    ))
+                                    .sense(Sense::click_and_drag()),
+                                );
+                                (response, Rect::NOTHING)
+                            }
+                            daw_core::EffectSettings::Compressor(settings) => {
+                                let reduction = self
+                                    .output
+                                    .as_ref()
+                                    .map_or(0.0, |output| output.gain_reduction_db(effect.id));
+                                let (_bounds, header) = crate::compressor_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    reduction,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                );
+                                let power = _bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.compressor_units.push(_bounds);
+                                (header, power)
+                            }
+                        })
+                        .inner;
+                    if allowed && interactive {
+                        self.start_effect_drag(ui, &header, power, target, effect.id, &order);
+                        header
+                            .on_hover_cursor(egui::CursorIcon::Grab)
+                            .context_menu(|ui| {
+                                if ui
+                                    .add_enabled(
+                                        self.effects_drag.is_none(),
+                                        egui::Button::new("Remove effect"),
+                                    )
+                                    .clicked()
+                                {
+                                    remove = Some(effect.id);
+                                    ui.close();
+                                }
+                            });
+                    }
+                });
+                let rect = unit.response.rect;
+                if crate::unit_selection::clicked(
+                    ui,
+                    rect,
+                    allowed && self.effects_drag.as_ref().is_none_or(|drag| !drag.active),
+                ) {
+                    let layer = match target {
+                        Some(EffectTarget::Layer { layer, .. }) => Some(layer),
+                        _ => None,
+                    };
+                    if self.instrument_ui.effects_layer != layer {
+                        self.selected_effects.clear();
+                    }
+                    self.instrument_ui.effects_layer = layer;
+                    self.select_effect(effect.id, ui.input(|input| input.modifiers.shift));
+                    crate::unit_selection::retain_focus(
+                        ui,
+                        &unit.response,
+                        &self.effects_lane_focus,
+                    );
+                }
+                slots.push((effect.id, rect));
+            }
+        });
+        // Paint last so adjacent units cannot cover a selected outline.
+        for (id, rect) in &slots {
+            crate::unit_selection::paint(ui, *rect, self.selected_effects.contains(id));
+        }
+        (slots, remove)
+    }
+
+    pub(super) fn effect_selection_shortcuts(
         &mut self,
         ui: &egui::Ui,
         effects: &mut Vec<daw_core::EffectInstance>,

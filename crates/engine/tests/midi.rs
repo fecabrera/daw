@@ -3748,3 +3748,335 @@ fn sampler_gain_route_updates_preserve_positions_smoother_and_route_history_with
         same = next;
     }
 }
+
+#[test]
+fn layer_effects_process_voice_sum_before_mix_and_isolate_other_layers() {
+    let mut a = plan(Waveform::Saw, 48_000);
+    let i = a.project.tracks[0].instrument.as_mut().unwrap();
+    i.layers[0].amplitude.present = false;
+    i.layers[0].gain_db = -9.0;
+    let mut drive = EffectInstance::drive();
+    let EffectSettings::Drive(s) = &mut drive.unit else {
+        unreachable!()
+    };
+    s.gain = 0.8;
+    i.layers[0].effects.push(drive.clone());
+    let mut b = a.clone();
+    let i = b.project.tracks[0].instrument.as_mut().unwrap();
+    i.layers[0].effects.clear();
+    i.layers[0].gain_db = 0.0;
+    b.project.tracks[0].effects.push(drive);
+    b.project.tracks[0].gain_db = -9.0;
+    let mut ra = Renderer::new(a.clone());
+    let mut rb = Renderer::new(b);
+    let mut processed = vec![[0.0; 2]; 6000];
+    let mut reference = processed.clone();
+    ra.render_offline(&mut processed);
+    rb.render_offline(&mut reference);
+    assert!(
+        processed
+            .iter()
+            .zip(&reference)
+            .all(|(a, b)| (a[0] - b[0]).abs() < 1e-5)
+    );
+    // Add a dry parallel layer. Its result must equal the independent dry render.
+    let mut parallel = a.clone();
+    let mut dry = parallel.project.tracks[0]
+        .instrument
+        .as_ref()
+        .unwrap()
+        .layers[0]
+        .clone();
+    dry.id = Id::new_v4();
+    dry.effects.clear();
+    dry.pan = 1.0;
+    parallel.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers
+        .push(dry.clone());
+    a.project.tracks[0].instrument.as_mut().unwrap().layers = vec![dry];
+    let mut rd = Renderer::new(a);
+    let mut rp = Renderer::new(parallel);
+    rd.render_offline(&mut reference);
+    let mut combined = processed.clone();
+    rp.render_offline(&mut combined);
+    assert!(
+        combined
+            .iter()
+            .zip(processed.iter().zip(reference))
+            .all(|(sum, (wet, dry))| (0..2).all(|ch| (sum[ch] - wet[ch] - dry[ch]).abs() < 1e-5))
+    );
+}
+
+#[test]
+fn layer_effects_share_modulation_meters_latency_and_allocation_free_live_updates() {
+    let mut p = plan(Waveform::Sine, 48_000);
+    let i = p.project.tracks[0].instrument.as_mut().unwrap();
+    let l = &mut i.layers[0];
+    l.effects = vec![EffectInstance::drive(), EffectInstance::limiter()];
+    let id = l.effects[0].id;
+    let mut macro_module = MacroModuleSettings {
+        present: true,
+        ..Default::default()
+    };
+    macro_module.controls.push(MacroInstance::default());
+    macro_module.controls[0].settings.value = 0.5;
+    let source = ModulationSourceId {
+        layer: i.main.id,
+        unit: macro_module.controls[0].id,
+    };
+    i.main.macro_module = macro_module;
+    let mut route = Modulation::new(ModulationParameter::Volume);
+    route.source = Some(source);
+    route.amount = -6.0;
+    let EffectSettings::Drive(s) = &mut i.layers[0].effects[0].unit else {
+        unreachable!()
+    };
+    s.modulations.push(route);
+    p.project.validate().unwrap();
+    let mut offline = Renderer::new(p.clone());
+    assert!(offline.latency_frames() > 0);
+    let mut expected = vec![[0.0; 2]; 2000];
+    offline.render_offline(&mut expected);
+    let target = daw_engine::ModulationTarget::Effect(id);
+    assert!((offline.modulation_values(target).unwrap()[0] + 6.0 * 0.5).abs() < 0.01);
+    let mut live = Renderer::new(p.clone());
+    live.play();
+    let meter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let limiter = p.project.tracks[0].instrument.as_ref().unwrap().layers[0].effects[1].id;
+    live.set_effect_meter(limiter, meter.clone());
+    let mut samples = vec![[0.0; 2]; 2000];
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    for sample in &mut samples {
+        *sample = live.next_sample();
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(samples.iter().flatten().all(|v| v.is_finite()));
+    let l = &mut p.project.tracks[0].instrument.as_mut().unwrap().layers[0];
+    l.gain_db = -3.0;
+    let EffectSettings::Drive(s) = &mut l.effects[0].unit else {
+        unreachable!()
+    };
+    s.gain = 0.5;
+    let mut next = Renderer::new(p);
+    ALLOCATIONS.with(|v| v.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    next.inherit(&mut live);
+    for sample in &mut samples {
+        *sample = next.next_sample();
+    }
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(samples.iter().flatten().all(|v| v.is_finite()));
+}
+
+#[test]
+fn layer_effects_reuse_every_processor_and_align_parallel_limiter_latency() {
+    for effect in [
+        EffectInstance::equalizer(),
+        EffectInstance::drive(),
+        EffectInstance::auto_filter(),
+        EffectInstance::compressor(),
+        EffectInstance::ott(),
+        EffectInstance::limiter(),
+        EffectInstance::direction_mixer(),
+        EffectInstance::stereo_spread(),
+        EffectInstance::bitcrusher(),
+    ] {
+        let mut layer = plan(Waveform::Saw, 48_000);
+        layer.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+            .effects
+            .push(effect.clone());
+        let mut track = layer.clone();
+        track.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+            .effects
+            .clear();
+        track.project.tracks[0].effects.push(effect);
+        let mut a = Renderer::new(layer.clone());
+        let mut b = Renderer::new(track);
+        let mut output = vec![[0.0; 2]; 4096];
+        let mut reference = output.clone();
+        a.render_offline(&mut output);
+        b.render_offline(&mut reference);
+        assert_eq!(a.latency_frames(), b.latency_frames());
+        assert!(
+            output
+                .iter()
+                .zip(reference)
+                .all(|(a, b)| (0..2).all(|ch| (a[ch] - b[ch]).abs() < 1e-5))
+        );
+        let mut seek = Renderer::new(layer);
+        let mut sought = [[0.0; 2]; 64];
+        seek.render_offline_at(2048, &mut sought);
+        assert_eq!(sought.as_slice(), &output[2048..2112]);
+    }
+    let mut delayed = plan(Waveform::Sine, 48_000);
+    let i = delayed.project.tracks[0].instrument.as_mut().unwrap();
+    let mut dry = i.layers[0].clone();
+    dry.id = Id::new_v4();
+    dry.oscillators[0].transpose = 7;
+    i.layers.push(dry);
+    let mut limiter = EffectInstance::limiter();
+    let EffectSettings::Limiter(s) = &mut limiter.unit else {
+        unreachable!()
+    };
+    s.enabled = false;
+    i.layers[0].effects.push(limiter);
+    let mut direct = delayed.clone();
+    direct.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+        .effects
+        .clear();
+    let mut a = Renderer::new(delayed.clone());
+    let mut b = Renderer::new(direct);
+    let mut output = vec![[0.0; 2]; 4096];
+    let mut reference = output.clone();
+    a.render_offline(&mut output);
+    b.render_offline(&mut reference);
+    assert!(
+        output
+            .iter()
+            .zip(reference)
+            .all(|(a, b)| (0..2).all(|ch| (a[ch] - b[ch]).abs() < 1e-5))
+    );
+    // Moving the latency between parallel buses requires control-thread pre-roll.
+    let i = delayed.project.tracks[0].instrument.as_mut().unwrap();
+    let limiter = i.layers[0].effects.remove(0);
+    i.layers[1].effects.push(limiter);
+    let next = Renderer::new(delayed);
+    assert!(!next.can_inherit_without_preroll(&a));
+}
+
+#[test]
+fn layer_effects_keep_live_audio_and_history_when_layer_rows_reorder() {
+    let mut p = plan(Waveform::Saw, 48_000);
+    let i = p.project.tracks[0].instrument.as_mut().unwrap();
+    i.layers[0].effects.push(EffectInstance::drive());
+    let mut second = i.layers[0].clone();
+    second.id = Id::new_v4();
+    second.effects = vec![EffectInstance::auto_filter()];
+    second.oscillators[0].transpose = 12;
+    i.layers.push(second);
+    let mut live = Renderer::new(p.clone());
+    let mut reference = Renderer::new(p.clone());
+    live.play();
+    reference.play();
+    for _ in 0..1000 {
+        assert_eq!(live.next_sample(), reference.next_sample());
+    }
+    p.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers
+        .reverse();
+    let mut next = Renderer::new(p);
+    next.inherit(&mut live);
+    for _ in 0..512 {
+        assert_eq!(next.next_sample(), reference.next_sample());
+    }
+}
+
+#[test]
+fn moving_layer_effects_retains_filter_history_without_callback_allocations() {
+    for (from, to) in [(0, 1), (0, 2), (2, 1), (3, 1), (0, 3), (3, 2), (2, 3)] {
+        let mut p = plan(Waveform::Saw, 48_000);
+        let track = p.project.tracks[0].id;
+        let i = p.project.tracks[0].instrument.as_mut().unwrap();
+        i.layers.push(InstrumentLayerSettings::default());
+        let mut effect = EffectInstance::auto_filter();
+        let EffectSettings::AutoFilter(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.frequency_hz = 100.0;
+        s.q = 5.0;
+        let id = effect.id;
+        let targets = [
+            EffectChainTarget::Layer {
+                track,
+                layer: i.layers[0].id,
+            },
+            EffectChainTarget::Layer {
+                track,
+                layer: i.layers[1].id,
+            },
+            EffectChainTarget::Layer {
+                track,
+                layer: i.main.id,
+            },
+            EffectChainTarget::Track(track),
+        ];
+        let source = targets[from];
+        let destination = targets[to];
+        p.project.edit(source.edit(vec![effect], true)).unwrap();
+        let mut live = Renderer::new(p.clone());
+        live.play();
+        for _ in 0..1000 {
+            live.next_sample();
+        }
+        let transfer = p
+            .project
+            .transfer_effects(source, destination, &[id], 0, false)
+            .unwrap();
+        p.project.edit(transfer.edit).unwrap();
+        p.project.tracks[0].instrument.as_mut().unwrap().layers[0].oscillator_enabled = false;
+        let mut next = Renderer::new(p);
+        assert!(next.can_inherit_without_preroll(&live));
+        ALLOCATIONS.with(|v| v.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        next.inherit(&mut live);
+        let mut energy = 0.0;
+        for frame in 0..700 {
+            let s = next.next_sample();
+            if frame > 300 {
+                energy += s[0] * s[0];
+            }
+        }
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert!(
+            energy > 1e-7,
+            "Moved filter history must ring on the silent destination: {energy}"
+        );
+    }
+}
+
+#[test]
+fn main_effects_process_the_layer_sum_before_main_mix_and_share_latency_and_seek() {
+    for effect in [EffectInstance::drive(), EffectInstance::limiter()] {
+        let mut main = plan(Waveform::Saw, 48_000);
+        let i = main.project.tracks[0].instrument.as_mut().unwrap();
+        let mut second = i.layers[0].clone();
+        second.id = Id::new_v4();
+        second.oscillators[0].transpose = 7;
+        i.layers.push(second);
+        i.main.gain_db = -9.0;
+        i.main.effects.push(effect.clone());
+        let mut track = main.clone();
+        let i = track.project.tracks[0].instrument.as_mut().unwrap();
+        i.main.effects.clear();
+        i.main.gain_db = 0.0;
+        track.project.tracks[0].effects.push(effect);
+        track.project.tracks[0].gain_db = -9.0;
+        let mut a = Renderer::new(main.clone());
+        let mut b = Renderer::new(track);
+        let mut output = vec![[0.0; 2]; 4096];
+        let mut reference = output.clone();
+        a.render_offline(&mut output);
+        b.render_offline(&mut reference);
+        assert_eq!(a.latency_frames(), b.latency_frames());
+        assert!(
+            output
+                .iter()
+                .zip(reference)
+                .all(|(a, b)| (0..2).all(|ch| (a[ch] - b[ch]).abs() < 1e-5))
+        );
+        let mut seek = Renderer::new(main);
+        let mut sought = [[0.0; 2]; 64];
+        seek.render_offline_at(2048, &mut sought);
+        assert_eq!(sought.as_slice(), &output[2048..2112]);
+    }
+}

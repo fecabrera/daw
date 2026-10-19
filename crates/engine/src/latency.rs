@@ -8,6 +8,18 @@ pub(super) struct Delay {
     index: usize,
 }
 impl Delay {
+    pub fn new(id: Id, frames: u64) -> Self {
+        Self {
+            id,
+            samples: vec![([0.0; 2], false); frames as usize],
+            index: 0,
+        }
+    }
+    pub fn reset(&mut self) {
+        self.samples.fill(([0.0; 2], false));
+        self.index = 0;
+    }
+
     pub fn tick(&mut self, sample: Sample) -> Sample {
         if self.samples.is_empty() {
             return sample;
@@ -17,6 +29,13 @@ impl Delay {
         self.index = (self.index + 1) % self.samples.len();
         output
     }
+}
+pub(super) fn track_frames(track: &daw_core::Track, rate: u32) -> u64 {
+    chain_frames(&track.effects, rate)
+        + track
+            .instrument
+            .as_ref()
+            .map_or(0, |i| super::layer_effects::latency(i, rate))
 }
 pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
     effects
@@ -39,7 +58,7 @@ impl Alignment {
         let track_max = project
             .tracks
             .iter()
-            .map(|t| chain_frames(&t.effects, rate))
+            .map(|t| track_frames(t, rate))
             .max()
             .unwrap_or(0);
         let total = track_max + chain_frames(&project.master.effects, rate);
@@ -48,10 +67,7 @@ impl Alignment {
             .iter()
             .map(|t| Delay {
                 id: t.id,
-                samples: vec![
-                    ([0.0; 2], false);
-                    (track_max - chain_frames(&t.effects, rate)) as usize
-                ],
+                samples: vec![([0.0; 2], false); (track_max - track_frames(t, rate)) as usize],
                 index: 0,
             })
             .collect();

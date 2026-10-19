@@ -178,6 +178,11 @@ fn provider_move_updates_every_consumer_and_resolves_legacy_identity_collisions(
     let (mut p, t, a, b) = fixture();
     let before = p.tracks[0].instrument.as_ref().unwrap().layers[0].envelopes[0].clone();
     let id = before.id;
+    let mut effect = p.tracks[0].effects[0].clone();
+    effect.id = Id::new_v4();
+    p.tracks[0].instrument.as_mut().unwrap().layers[1]
+        .effects
+        .push(effect);
     transfer(&mut p, t, a, b, Envelope(id), false);
     let i = p.tracks[0].instrument.as_ref().unwrap();
     assert!(!i.layers[0].envelopes.iter().any(|e| e.id == id));
@@ -193,6 +198,7 @@ fn provider_move_updates_every_consumer_and_resolves_legacy_identity_collisions(
     assert_eq!(i.layers[0].amplitude.modulations[0].source, new);
     assert_eq!(i.layers[0].oscillator_modulations[0].source, new);
     assert_eq!(p.tracks[0].effects[0].unit.modulations()[0].source, new);
+    assert_eq!(i.layers[1].effects[0].unit.modulations()[0].source, new);
     let saved = serde_json::to_string(&p).unwrap();
     let loaded: Project = serde_json::from_str(&saved).unwrap();
     loaded.validate().unwrap();

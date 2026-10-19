@@ -4111,3 +4111,85 @@ fn decoded_sources_share_storage_without_sharing_asset_identity_and_refresh_on_r
         serde_json::to_value(&before).unwrap()
     );
 }
+
+#[test]
+fn layer_effects_keep_audio_routes_and_missing_units_through_save_as() {
+    use daw_core::*;
+    let f = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let clip = session.project.add_midi_pattern(track, 0).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: MidiPattern {
+                length_ticks: 960,
+                notes: vec![MidiNote {
+                    id: Id::new_v4(),
+                    start_tick: 0,
+                    length_ticks: 960,
+                    pitch: 69,
+                    velocity: 100,
+                }],
+            },
+        })
+        .unwrap();
+    let i = session.project.tracks[0].instrument.as_mut().unwrap();
+    let layer = i.layers[0].id;
+    i.layers[0].oscillators.push(OscillatorSettings::default());
+    i.main.macro_module.add();
+    i.main.macro_module.controls[0].settings.value = 0.5;
+    let source = ModulationSourceId {
+        layer: i.main.id,
+        unit: i.main.macro_module.controls[0].id,
+    };
+    let mut effect = EffectInstance::drive();
+    let EffectSettings::Drive(s) = &mut effect.unit else {
+        unreachable!()
+    };
+    s.modulation_open = true;
+    let mut route = Modulation::new(ModulationParameter::Volume);
+    route.source = Some(source);
+    route.amount = -12.0;
+    s.modulations.push(route);
+    i.main.effects.push(effect.duplicate());
+    let missing = EffectInstance {
+        id: Id::new_v4(),
+        unit: EffectSettings::Missing {
+            type_id: "test.future-effect".into(),
+            state: serde_json::json!({"version":1,"setting":7}),
+        },
+    };
+    session
+        .project
+        .edit(Edit::SetLayerEffects {
+            track_id: track,
+            layer_id: layer,
+            effects: vec![effect, missing],
+            compact: true,
+        })
+        .unwrap();
+    let mut expected = vec![[0.0; 2]; 4096];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut expected);
+    session.save(&f.0.join("layers")).unwrap();
+    let mut opened = Session::open(&f.0.join("layers")).unwrap();
+    assert!(
+        opened
+            .warnings
+            .iter()
+            .any(|w| w.contains("test.future-effect"))
+    );
+    opened.save(&f.0.join("copy")).unwrap();
+    let copy = Session::open(&f.0.join("copy")).unwrap();
+    assert_eq!(
+        session.project.tracks[0].instrument,
+        copy.project.tracks[0].instrument
+    );
+    let mut restored = expected.clone();
+    daw_engine::Renderer::new(copy.plan()).render_offline(&mut restored);
+    assert_eq!(expected, restored);
+    let output = f.0.join("layer-effects.wav");
+    copy.export(&output, false).unwrap();
+    assert!(output.is_file());
+}

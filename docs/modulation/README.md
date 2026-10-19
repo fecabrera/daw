@@ -14,9 +14,9 @@ New connections are enabled but have no source and zero Amount. They do not affe
 
 ## Choose sources and amounts
 
-Sources stay within one MIDI instrument. Main sources can reach compatible layer and track-effect parameters. Audio tracks and the project Master do not have instrument modulation sources.
+Sources stay within one MIDI instrument. Main sources can reach compatible layer, layer-effect, and track-effect parameters. Audio tracks and the project Master do not have instrument modulation sources.
 
-Per note Envelopes control individual voices. Shared Retrigger/Legato Envelopes, LFOs, and Macros can feed shared destinations such as track effects. Incompatible sources are unavailable in the picker. Self-connections and feedback loops are not allowed.
+Per note Envelopes control individual voices. Shared Retrigger/Legato Envelopes, LFOs, and Macros can feed shared destinations such as layer and track effects. Incompatible sources are unavailable in the picker. Self-connections and feedback loops are not allowed.
 
 Positive Amount moves with the source; negative Amount reverses its direction. A unipolar source runs from zero to positive values. A bipolar LFO moves above and below zero. Several connections can affect one parameter, within its available range. At Amplitude, continuous sources such as LFO and Macro change level without controlling note release.
 
