@@ -863,6 +863,7 @@ impl DawUi {
     pub fn set_settings(&mut self, ctx: &egui::Context, settings: settings::AppSettings) {
         self.settings = settings;
         theme::apply(ctx, settings);
+        self.configure_audio_cache(false);
     }
 
     pub fn settings_shortcut() -> egui::KeyboardShortcut {
@@ -1349,6 +1350,7 @@ impl DawUi {
                 }
             }
         }
+        self.configure_audio_cache(false);
         if let Some(output) = &mut self.output
             && let Err(e) = output.play()
         {
@@ -1989,6 +1991,7 @@ impl DawUi {
             history.finish_group();
         }
         self.history_memory_notice();
+        self.configure_audio_cache(ctx.input(|i| i.pointer.any_down()) || self.job.is_some());
         let now = std::time::Instant::now();
         if self.is_playing()
             || self.output.as_ref().is_some_and(|o| o.preparing())

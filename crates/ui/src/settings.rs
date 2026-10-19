@@ -1,3 +1,4 @@
+pub use daw_engine::CacheProfile;
 use egui::{Color32, Context, Pos2, Rect, Stroke, StrokeKind, Vec2};
 use serde::{Deserialize, Serialize};
 
@@ -144,6 +145,7 @@ pub struct AppSettings {
     pub accent: AccentColor,
     pub theme: ColorTheme,
     pub titlebar: TitlebarStyle,
+    pub seek_cache: CacheProfile,
 }
 
 impl AppSettings {
@@ -222,6 +224,27 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
                                 }
                             }
                         });
+                },
+            );
+            crate::rows::field(
+                ui, label_width,
+                |ui| { ui.label("Seek cache"); },
+                |ui| {
+                    egui::ComboBox::from_id_salt("seek_cache")
+                        .selected_text(settings.seek_cache.name())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for profile in CacheProfile::ALL {
+                                let hint = match profile {
+                                    CacheProfile::Light => "32 MiB of checkpoints. Lower background load; builds while stopped or paused.",
+                                    CacheProfile::Balanced => "128 MiB of checkpoints. Moderate background work, including during playback.",
+                                    CacheProfile::Responsive => "256 MiB of checkpoints. More background work for faster cache coverage.",
+                                };
+                                ui.selectable_value(&mut settings.seek_cache, profile, profile.name())
+                                    .on_hover_text(hint);
+                            }
+                        })
+                        .response.on_hover_text("Prepares exact seek history. Profiles change CPU and memory use; sound stays the same.");
                 },
             );
             let swatch_color = settings.accent.color();
@@ -339,6 +362,7 @@ mod tests {
                         accent,
                         theme,
                         titlebar,
+                        ..Default::default()
                     };
                     assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
                 }
@@ -364,6 +388,39 @@ mod tests {
         assert_eq!(legacy.titlebar, TitlebarStyle::default());
     }
 
+    #[test]
+    fn cache_profile_dropdown_round_trips_and_legacy_settings_default_to_balanced() {
+        let ctx = Context::default();
+        crate::theme::configure(&ctx);
+        let mut settings = AppSettings {
+            accent: AccentColor::Teal,
+            theme: ColorTheme::Light,
+            ..Default::default()
+        };
+        frame(&ctx, &mut settings, vec![]);
+        assert_eq!(settings.seek_cache, CacheProfile::Balanced);
+        for profile in [
+            CacheProfile::Light,
+            CacheProfile::Responsive,
+            CacheProfile::Balanced,
+        ] {
+            let current = settings.seek_cache.name();
+            click(&ctx, &mut settings, current);
+            click(&ctx, &mut settings, profile.name());
+            assert_eq!(settings.seek_cache, profile);
+            assert_eq!(settings.accent, AccentColor::Teal);
+            assert_eq!(settings.theme, ColorTheme::Light);
+            assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
+        }
+        let legacy = AppSettings::from_json(Some(r#"{"theme":"light","accent":"teal"}"#));
+        assert_eq!(legacy.seek_cache, CacheProfile::Balanced);
+        let future = AppSettings::from_json(Some(
+            r#"{"theme":"light","accent":"teal","seek_cache":"future_profile"}"#,
+        ));
+        assert_eq!(future.seek_cache, CacheProfile::Balanced);
+        assert_eq!(future.theme, ColorTheme::Light);
+    }
+
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn titlebar_dropdown_switches_without_changing_theme_or_accent() {
@@ -373,6 +430,7 @@ mod tests {
             accent: AccentColor::Teal,
             theme: ColorTheme::Light,
             titlebar: TitlebarStyle::Custom,
+            ..Default::default()
         };
         crate::theme::apply(&ctx, settings);
         frame(&ctx, &mut settings, vec![]);

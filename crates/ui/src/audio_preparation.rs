@@ -1,9 +1,23 @@
 //! Idle audio preparation, resource diagnostics and optional-state pressure handling.
 use super::*;
 impl DawUi {
+    pub(super) fn configure_audio_cache(&self, editing: bool) {
+        let profile = self.settings.seek_cache;
+        if let Some(output) = &self.output {
+            output.configure_cache(profile, editing);
+        }
+        if let Some((_, _, preparation)) = &self.audio_preparation {
+            preparation.configure_cache(profile, editing);
+        }
+    }
     pub(super) fn memory_tooltip(&self, ui: &mut egui::Ui) {
         let mib = |bytes: u64| bytes as f64 / (1024.0 * 1024.0);
         ui.label("Estimated memory");
+        ui.label(format!(
+            "Seek cache: {} (up to {} MiB of checkpoints)",
+            self.settings.seek_cache.name(),
+            self.settings.seek_cache.policy().checkpoint_bytes / (1024 * 1024)
+        ));
         ui.label(format!(
             "Live session model: {:.1} MiB",
             mib(daw_engine::prepared_model_bytes(
@@ -98,9 +112,12 @@ impl DawUi {
             } else if self.audio_preparation_attempt != Some((id, revision)) {
                 self.audio_preparation_attempt = Some((id, revision));
                 // Worker failure is nonfatal: playback can prepare on demand.
-                self.audio_preparation = daw_output::AudioPreparation::new(self.session.plan())
-                    .ok()
-                    .map(|p| (id, revision, p));
+                self.audio_preparation = daw_output::AudioPreparation::with_profile(
+                    self.session.plan(),
+                    self.settings.seek_cache,
+                )
+                .ok()
+                .map(|p| (id, revision, p));
             }
         }
     }

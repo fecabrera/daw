@@ -752,3 +752,74 @@ fn idle_preparation_builds_exact_checkpoints_before_first_seek_and_reuses_them_a
         assert_eq!(realtime(|| prepared.next_sample()), reference.next_sample());
     }
 }
+
+#[test]
+fn every_cache_profile_preserves_exact_history_and_required_requests_bypass_optional_gates() {
+    use daw_engine::CacheProfile;
+    let mut plan = modulated_note_plan();
+    plan.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::saturator());
+    for profile in CacheProfile::ALL {
+        let preparation = AudioPreparation::with_profile(plan.clone(), profile).unwrap();
+        // Neither an active gesture nor Light's playback gate may delay a seek.
+        preparation.configure_cache(profile, true);
+        preparation.status.playing.store(true, Ordering::Relaxed);
+        let worker = preparation.worker;
+        let transport = TransportState {
+            frame: 32_123,
+            playing: true,
+            paused: false,
+            playback_start: Some(0),
+        };
+        let bindings = preparation::Bindings {
+            tracks: track_meters(&plan, &HashMap::new()),
+            ..Default::default()
+        };
+        let revision = worker.submit(Arc::new(plan.clone()), bindings, Some(transport));
+        // A profile change must not cancel or replace the required request.
+        worker.configure_cache(CacheProfile::Responsive, true);
+        let next = ready(&worker);
+        assert_eq!(next.revision, revision);
+        let mut prepared = next.renderer;
+        let mut reference = Renderer::new(plan.clone());
+        reference.prepare_transport(transport);
+        for _ in 0..1024 {
+            assert_eq!(
+                realtime(|| prepared.next_sample()),
+                reference.next_sample(),
+                "{profile:?}"
+            );
+        }
+        let mut cache = daw_engine::TransportCache::with_profile(plan.clone(), profile);
+        cache.warm_step(Duration::from_millis(10), || false);
+        let mut cached = cache.prepare(transport, || false).unwrap();
+        let mut full = Renderer::new(plan.clone());
+        full.prepare_transport(transport);
+        for _ in 0..1024 {
+            assert_eq!(realtime(|| cached.next_sample()), full.next_sample());
+        }
+    }
+}
+
+#[test]
+fn optional_cache_construction_waits_for_editing_and_resumes_after_release() {
+    let plan = modulated_note_plan();
+    let preparation =
+        AudioPreparation::with_profile(plan, daw_engine::CacheProfile::Responsive).unwrap();
+    preparation.configure_cache(daw_engine::CacheProfile::Responsive, true);
+    // This exceeds Responsive's quiet interval; holding the gesture still blocks
+    // construction. The scheduler tests cover exact boundaries without sleeping.
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(preparation.performance().cache_memory[0], 0);
+    preparation.configure_cache(daw_engine::CacheProfile::Responsive, false);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while preparation.performance().cache_memory[6] == 0 {
+        assert!(
+            Instant::now() < deadline,
+            "optional preparation did not resume"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(preparation.performance().cache_memory[0] > 0);
+}

@@ -1,9 +1,7 @@
 //! Worker-owned checkpoints before latency priming. Never clone DSP on the callback.
-use super::{RenderPlan, Renderer, TransportState};
+use super::{CacheProfile, RenderPlan, Renderer, TransportState};
 use std::collections::VecDeque;
 
-const MAX_CHECKPOINTS: usize = 64;
-const CHECKPOINT_BYTES: u64 = 128 * 1024 * 1024;
 // Leave four renderer equivalents for base, warm cursor, active and candidate.
 const PREPARATION_BYTES: u64 = 512 * 1024 * 1024;
 
@@ -18,10 +16,12 @@ pub struct TransportCacheMemory {
     pub replayed_frames: u64,
 }
 
-/// Exact history for one immutable plan. A new plan requires a new cache.
+/// Exact history for one immutable processing plan. Resource profiles may change
+/// without invalidating DSP snapshots.
 /// PCM remains shared; processor, note, modulation, and delay state are independent.
 /// Checkpoints never contain attached meter handles.
 pub struct TransportCache {
+    profile: CacheProfile,
     base: Renderer,
     checkpoints: VecDeque<(u64, Renderer)>,
     live: bool,
@@ -35,7 +35,9 @@ pub struct TransportCache {
 }
 impl TransportCache {
     pub fn new(plan: RenderPlan) -> Self {
-        let minimum_interval = (u64::from(plan.project.sample_rate_hz) / 4).max(1);
+        Self::with_profile(plan, CacheProfile::default())
+    }
+    pub fn with_profile(plan: RenderPlan, profile: CacheProfile) -> Self {
         let mut base = Renderer::new(plan);
         base.reset_processing();
         let history = base
@@ -44,16 +46,10 @@ impl TransportCache {
             .flatten()
             .any(|m| m.needs_envelope_history());
         let renderer_memory = base.memory_usage();
-        let owned = renderer_memory.owned_bytes().max(1);
-        let entry = owned + 2 * std::mem::size_of::<(u64, Renderer)>() as u64;
-        let checkpoint_limit = MAX_CHECKPOINTS
-            .min((CHECKPOINT_BYTES / entry) as usize)
-            .min((PREPARATION_BYTES / owned).saturating_sub(4) as usize);
-        let interval =
-            minimum_interval.max(base.end_frame.div_ceil(checkpoint_limit.max(1) as u64));
-        Self {
+        let mut cache = Self {
+            profile,
             base,
-            checkpoint_limit,
+            checkpoint_limit: 0,
             renderer_memory,
             warming: None,
             covered_frame: 0,
@@ -61,7 +57,55 @@ impl TransportCache {
             checkpoints: VecDeque::new(),
             live: true,
             history,
-            interval,
+            interval: 1,
+        };
+        cache.configure();
+        cache
+    }
+    fn configure(&mut self) {
+        let policy = self.profile.policy();
+        let owned = self.renderer_memory.owned_bytes().max(1);
+        let entry = owned.saturating_add(2 * std::mem::size_of::<(u64, Renderer)>() as u64);
+        self.checkpoint_limit = policy
+            .max_checkpoints
+            .min((policy.checkpoint_bytes / entry) as usize)
+            .min((PREPARATION_BYTES / owned).saturating_sub(4) as usize);
+        let minimum = (u128::from(self.base.plan.project.sample_rate_hz)
+            * policy.minimum_interval.as_nanos()
+            / 1_000_000_000)
+            .max(1) as u64;
+        self.interval = minimum.max(
+            self.base
+                .end_frame
+                .div_ceil(self.checkpoint_limit.max(1) as u64),
+        );
+    }
+    /// Retain exact snapshots across policy changes. Shrinking samples existing
+    /// coverage evenly; increasing density rebuilds optional coverage on the worker.
+    pub fn set_profile(&mut self, profile: CacheProfile) {
+        if self.profile == profile {
+            return;
+        }
+        let previous_interval = self.interval;
+        self.profile = profile;
+        self.configure();
+        let old_len = self.checkpoints.len();
+        let keep = self.checkpoint_limit;
+        if old_len > keep {
+            self.checkpoints
+                .make_contiguous()
+                .sort_unstable_by_key(|(frame, _)| *frame);
+            let mut index = 0;
+            self.checkpoints.retain(|_| {
+                let selected = index * keep / old_len != (index + 1) * keep / old_len;
+                index += 1;
+                selected
+            });
+            self.checkpoints.shrink_to_fit();
+        }
+        if self.checkpoint_limit == 0 || self.interval < previous_interval {
+            self.warming = None;
+            self.covered_frame = 0;
         }
     }
     fn start(&self, frame: u64) -> (u64, Renderer) {
@@ -189,6 +233,65 @@ impl TransportCache {
 mod tests {
     use super::*;
     #[test]
+    fn profile_changes_keep_valid_snapshots_and_trim_to_the_new_budget() {
+        let plan = RenderPlan {
+            project: Default::default(),
+            audio: Default::default(),
+            sampler_audio: Default::default(),
+            stretched_audio: Default::default(),
+        };
+        let mut cache = TransportCache::with_profile(plan, CacheProfile::Responsive);
+        cache.interval = 32;
+        let mut renderer = cache.base.clone();
+        assert!(cache.replay(&mut renderer, 0, 4096, &mut || false));
+        assert_eq!(cache.checkpoints.len(), 128);
+        let frames: Vec<_> = cache.checkpoints.iter().map(|(at, _)| *at).collect();
+        cache.set_profile(CacheProfile::Light);
+        assert_eq!(cache.checkpoints.len(), 32);
+        assert!(
+            cache.memory_usage().checkpoint_bytes <= CacheProfile::Light.policy().checkpoint_bytes
+        );
+        assert!(cache.checkpoints.iter().all(|(at, _)| frames.contains(at)));
+        assert_eq!(cache.start(4096).0, 4096);
+        let retained: Vec<_> = cache.checkpoints.iter().map(|(at, _)| *at).collect();
+        cache.covered_frame = 4096;
+        cache.set_profile(CacheProfile::Responsive);
+        assert_eq!(cache.covered_frame, 0);
+        assert_eq!(
+            cache
+                .checkpoints
+                .iter()
+                .map(|(at, _)| *at)
+                .collect::<Vec<_>>(),
+            retained
+        );
+    }
+
+    #[test]
+    fn profiles_reduce_slots_for_large_renderers_instead_of_exceeding_byte_limits() {
+        for profile in CacheProfile::ALL {
+            let project = daw_core::Project {
+                name: "x".repeat(4 * 1024 * 1024),
+                ..Default::default()
+            };
+            let cache = TransportCache::with_profile(
+                RenderPlan {
+                    project,
+                    audio: Default::default(),
+                    sampler_audio: Default::default(),
+                    stretched_audio: Default::default(),
+                },
+                profile,
+            );
+            assert!(cache.checkpoint_limit < profile.policy().max_checkpoints);
+            assert!(
+                cache.renderer_memory.owned_bytes() * cache.checkpoint_limit as u64
+                    <= profile.policy().checkpoint_bytes
+            );
+        }
+    }
+
+    #[test]
     fn checkpoint_byte_policy_reserves_working_renderers_and_releases_optional_owners() {
         let mut project = daw_core::Project::default();
         let track = project.add_midi_track().unwrap();
@@ -205,7 +308,10 @@ mod tests {
         let mut renderer = cache.base.clone();
         assert!(cache.replay(&mut renderer, 0, 10, &mut || false));
         assert_eq!(cache.memory_usage().checkpoint_count, 2);
-        assert!(cache.memory_usage().checkpoint_bytes <= CHECKPOINT_BYTES);
+        assert!(
+            cache.memory_usage().checkpoint_bytes
+                <= CacheProfile::Balanced.policy().checkpoint_bytes
+        );
         cache.release_optional_memory();
         assert_eq!(cache.memory_usage().checkpoint_bytes, 0);
         assert_eq!(cache.memory_usage().warming_bytes, 0);
@@ -251,7 +357,10 @@ mod tests {
         cache.interval = 1;
         let mut renderer = cache.base.clone();
         assert!(cache.replay(&mut renderer, 0, 100, &mut || false));
-        assert_eq!(cache.checkpoints.len(), MAX_CHECKPOINTS);
+        assert_eq!(
+            cache.checkpoints.len(),
+            CacheProfile::Balanced.policy().max_checkpoints
+        );
         assert_eq!(cache.start(80).0, 80);
         assert_eq!(cache.start(10).0, 0);
         let before = cache.checkpoints.len();

@@ -682,6 +682,7 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                             theme: color_theme,
                             accent,
                             titlebar,
+                            ..Default::default()
                         },
                     );
                     app.view_mode = mode;

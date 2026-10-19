@@ -3179,3 +3179,29 @@ Completed on macOS with the pinned toolchain and `CARGO_HOME="$PWD/work/cargo-ho
 - Relative documentation file links — 313 checked, no missing targets. `git diff --check` — passed.
 
 `cargo test --workspace` — **958 passed, 0 failed, 2 ignored**. The two ignored tests are the existing extended time-stretch acceptance matrices. Native device response time, CPU-saturated activation percentiles, concurrent-workload peak RSS, and Windows/Linux execution remain unverified. No user project or recording was changed.
+
+## Seek cache profiles — 2026-10-19
+
+Implemented Light, Balanced (default), and Responsive in application Settings through the shared engine cache policy and output preparation worker. Profiles control checkpoint bytes/count/spacing, edit quiet time, work/wait slices, and playback gating. Required requests keep priority and exact processing history. Pointer gestures and blocking jobs suppress optional construction and generation; callback budget overruns add a one-second optional-work backoff. Profile updates preserve valid snapshots and cannot change the required-request revision.
+
+Automated regression coverage:
+
+- Settings dropdown selects all profiles; application serialization round-trips them. Missing profile fields and unknown profile names default to Balanced while preserving known preferences.
+- Cache downsizing keeps valid snapshots within count/byte policy; denser profiles retain snapshots and restart optional coverage. Large renderer estimates reduce available slots.
+- Deterministic scheduling tests cover edit/release quiet periods, Light playback gating, and overrun backoff/extension.
+- All profiles match full-history modulated Saturator output, with callback allocation/deallocation guards. Required requests complete despite optional editing/playback gates and a profile change.
+- Optional renderer construction waits for gesture release, then checkpoint preparation resumes. Existing first-seek handoff, cancellation, live edits, loops, meter isolation, and exact cache reuse remain covered.
+
+Completed with the pinned toolchain and local dependency cache:
+
+- `cargo test -p daw-output` — 28 passed.
+- `cargo test -p daw-engine --lib transport_cache::` — 5 passed.
+- `cargo test -p daw-ui -p daw-engine -p daw-output cache_profile` — Settings and exact-history profile regressions passed during development.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed.
+- `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app`.
+
+- `cargo fmt --all --check` — passed.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` — passed.
+- Relative documentation file links — 169 checked, no missing targets. `git diff --check` — passed.
+
+`cargo test --workspace` — **965 passed, 0 failed, 2 ignored**. The ignored cases are the existing extended time-stretch acceptance matrices. Native Settings interaction, device-specific seek timings, battery/thermal effects, peak RSS under load, and Windows/Linux execution remain unverified. Profile values are resource policies, not measured CPU ceilings or seek-time guarantees.

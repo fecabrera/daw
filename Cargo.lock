@@ -1140,6 +1140,7 @@ dependencies = [
  "daw-saturator",
  "daw-stereo-spread",
  "daw-unit-core",
+ "serde",
  "serde_json",
 ]
 

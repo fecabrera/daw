@@ -49,6 +49,9 @@ impl Drop for RendererMemoryLease {
     }
 }
 impl Performance {
+    pub(super) fn overruns(&self) -> u64 {
+        self.over_budget.load(Relaxed)
+    }
     pub(super) fn activation(&self, ns: u64) {
         self.max_activation_ns.fetch_max(ns, Relaxed);
         self.activation_buckets[ns.div_ceil(1000).max(1).ilog2().min(31) as usize]

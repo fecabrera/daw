@@ -1,4 +1,5 @@
 //! Latest-request preparation on a control worker. The audio callback never accesses this state.
+use super::cache_schedule::{CacheControls, WarmSchedule};
 use super::*;
 use std::sync::{Condvar, Mutex};
 
@@ -31,6 +32,7 @@ enum Request {
 #[derive(Default)]
 struct State {
     revision: u64,
+    cache_controls: CacheControls,
     request: Option<(u64, Request, Bindings)>,
     ready: Option<Ready>,
     closed: bool,
@@ -47,38 +49,90 @@ impl Worker {
             .spawn(move || {
                 let mut cached_plan: Option<Arc<RenderPlan>> = None;
                 let mut cache: Option<daw_engine::TransportCache> = None;
+                let mut needs_cache = false;
+                let mut applied_controls = 0;
+                let mut schedule = WarmSchedule::default();
                 loop {
-                    let request = {
+                    let (request, controls) = {
                         let (lock, wake) = &*worker;
                         let mut state = lock.lock().unwrap();
                         while state.request.is_none() && !state.closed {
-                            if cache.as_ref().is_some_and(|c| c.can_warm()) {
+                            let can_warm =
+                                needs_cache || cache.as_ref().is_some_and(|c| c.can_warm());
+                            let delay = schedule.delay(
+                                state.cache_controls,
+                                status.playing.load(Ordering::Relaxed),
+                                status.performance.overruns(),
+                                std::time::Instant::now(),
+                            );
+                            if state.cache_controls.revision != applied_controls
+                                || (can_warm && delay.is_zero())
+                            {
                                 break;
                             }
-                            state = wake.wait(state).unwrap();
+                            state = if can_warm {
+                                wake.wait_timeout(
+                                    state,
+                                    delay.min(std::time::Duration::from_millis(100)),
+                                )
+                                .unwrap()
+                                .0
+                            } else {
+                                wake.wait(state).unwrap()
+                            };
                         }
                         if state.closed {
                             return;
                         }
-                        state.request.take()
+                        (state.request.take(), state.cache_controls)
                     };
-                    let Some((revision, plan, previous)) = request else {
+                    if applied_controls != controls.revision {
                         if let Some(cache) = &mut cache {
-                            cache.warm_step(std::time::Duration::from_millis(10), || {
-                                let state = worker.0.lock().unwrap();
-                                state.closed || state.request.is_some()
-                            });
+                            cache.set_profile(controls.profile);
                             status.performance.cache(cache.memory_usage());
+                        }
+                        applied_controls = controls.revision;
+                    }
+                    let policy = controls.profile.policy();
+                    let Some((revision, plan, previous)) = request else {
+                        if schedule
+                            .delay(
+                                controls,
+                                status.playing.load(Ordering::Relaxed),
+                                status.performance.overruns(),
+                                std::time::Instant::now(),
+                            )
+                            .is_zero()
+                        {
+                            if needs_cache {
+                                if let Some(plan) = &cached_plan {
+                                    cache = Some(daw_engine::TransportCache::with_profile(
+                                        (**plan).clone(),
+                                        controls.profile,
+                                    ));
+                                }
+                                needs_cache = false;
+                            }
+                            if let Some(cache) = &mut cache {
+                                cache.warm_step(policy.work_slice, || {
+                                    let state = worker.0.lock().unwrap();
+                                    state.closed
+                                        || state.request.is_some()
+                                        || state.cache_controls.revision != controls.revision
+                                        || (status.playing.load(Ordering::Relaxed)
+                                            && !policy.warm_while_playing)
+                                        || status.performance.overruns() != schedule.overrun_count()
+                                });
+                                status.performance.cache(cache.memory_usage());
+                            }
                         }
                         // Optional preparation yields CPU and wakes immediately for a request.
                         let state = worker.0.lock().unwrap();
-                        if !state.closed && state.request.is_none() {
-                            drop(
-                                worker
-                                    .1
-                                    .wait_timeout(state, std::time::Duration::from_millis(20))
-                                    .unwrap(),
-                            );
+                        if !state.closed
+                            && state.request.is_none()
+                            && state.cache_controls.revision == controls.revision
+                        {
+                            drop(worker.1.wait_timeout(state, policy.idle_wait).unwrap());
                         }
                         continue;
                     };
@@ -88,9 +142,11 @@ impl Worker {
                                 .as_ref()
                                 .is_none_or(|p| !p.same_processing_plan(&plan))
                             {
-                                cache = Some(daw_engine::TransportCache::new((*plan).clone()));
+                                cache = None;
+                                status.performance.cache(Default::default());
                                 cached_plan = Some(plan);
                             }
+                            needs_cache = cache.is_none();
                             if let Some(cache) = &cache {
                                 status.performance.cache(cache.memory_usage());
                             }
@@ -117,6 +173,7 @@ impl Worker {
                                 Ok(renderer) => Box::new(renderer),
                                 Err(error) => {
                                     cache = None;
+                                    needs_cache = false;
                                     status.performance.cache(Default::default());
                                     publish_error(&worker, revision, error);
                                     continue;
@@ -137,6 +194,7 @@ impl Worker {
                                     Ok(renderer) => Box::new(renderer),
                                     Err(error) => {
                                         cache = None;
+                                        needs_cache = false;
                                         status.performance.cache(Default::default());
                                         publish_error(&worker, revision, error);
                                         continue;
@@ -149,8 +207,12 @@ impl Worker {
                     };
                     renderer.revision = revision;
                     if let Some(transport) = transport {
+                        needs_cache = false;
                         let cache = cache.get_or_insert_with(|| {
-                            daw_engine::TransportCache::new(renderer.plan.clone())
+                            daw_engine::TransportCache::with_profile(
+                                renderer.plan.clone(),
+                                controls.profile,
+                            )
                         });
                         let Some(prepared) = cache.prepare(transport, || {
                             let state = worker.0.lock().unwrap();
@@ -231,12 +293,7 @@ impl Worker {
                         wake_ui();
                     }
                     if cache.is_none() {
-                        let state = worker.0.lock().unwrap();
-                        let idle = !state.closed && state.request.is_none();
-                        drop(state);
-                        if idle && let Some(plan) = &cached_plan {
-                            cache = Some(daw_engine::TransportCache::new((**plan).clone()));
-                        }
+                        needs_cache = cached_plan.is_some();
                     }
                     if let Some(cache) = &cache {
                         status.performance.cache(cache.memory_usage());
@@ -246,11 +303,22 @@ impl Worker {
             .map_err(|e| format!("Cannot start audio preparation: {e}"))?;
         Ok(Self(shared))
     }
+    pub fn configure_cache(&self, profile: daw_engine::CacheProfile, editing: bool) {
+        let mut state = self.0.0.lock().unwrap();
+        if state.cache_controls.profile != profile || state.cache_controls.editing != editing {
+            state.cache_controls.profile = profile;
+            state.cache_controls.editing = editing;
+            state.cache_controls.last_activity = Some(std::time::Instant::now());
+            state.cache_controls.revision += 1;
+            self.0.1.notify_one();
+        }
+    }
     pub fn prewarm(&self, plan: Arc<RenderPlan>) {
         let previous = {
             let mut state = self.0.0.lock().unwrap();
             state.revision += 1;
             state.error = None;
+            state.cache_controls.last_activity = Some(std::time::Instant::now());
             let revision = state.revision;
             state
                 .request
@@ -275,6 +343,7 @@ impl Worker {
             let mut state = self.0.0.lock().unwrap();
             state.revision += 1;
             state.error = None;
+            state.cache_controls.last_activity = Some(std::time::Instant::now());
             let revision = state.revision;
             (
                 state.request.replace((

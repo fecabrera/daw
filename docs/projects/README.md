@@ -16,6 +16,20 @@ Processing rates are 44.1, 48, 88.2, 96, 176.4, and 192 kHz; the default is 48 k
 
 Audio settings changes prepare the required audio before replacing the session. Success stops playback so you can restart it with the new settings. Failure or cancellation retains the previous project and playback.
 
+## Seek cache profiles
+
+Open application **Settings** and choose **Seek cache**. The choice applies on this computer and is retained across restarts. **Balanced** is the default. It is separate from Project Settings and is not saved in the project.
+
+| Profile | Checkpoint memory limit | Background behavior and tradeoff |
+| --- | --- | --- |
+| Light | 32 MiB | Builds while stopped or paused, with a longer wait after editing. Lower background load; seeks during playback can need more preparation. |
+| Balanced | 128 MiB | Builds in small slices, including during playback. Moderate background load and seek coverage. |
+| Responsive | 256 MiB | Starts sooner after editing and spends more time building coverage. Higher CPU and memory use; more checkpoints can remain available. |
+
+All profiles preserve exact processing history. Playback changes and explicit seeks take priority over optional caching. Cache building waits while a pointer gesture is active and yields briefly when callback timing shows playback pressure. Complex projects can use fewer checkpoints to stay within processing-state limits. Working renderer state uses additional memory beyond the checkpoint limit.
+
+Changing profile keeps valid checkpoints where possible and does not stop playback or add an undo step. A smaller profile can discard checkpoints; a larger profile may need more preparation to build denser coverage. A first or distant seek can still take time, especially just after an edit. Use Light to reduce background load, or Responsive when frequent seeks matter and the computer has spare capacity.
+
 ## Memory and large projects
 
 Audio preparation uses a shared 2 GiB budget for decoded samples and working buffers. Long files, high processing rates, and stretched copies need more space. If preparation exceeds the budget, shorten the source, use a lower processing rate, or close an unused project and try again. A failed import or settings change retains the current project and playback. This budget is not a limit on track count or total application memory.

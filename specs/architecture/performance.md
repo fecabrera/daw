@@ -44,9 +44,27 @@ Worker pre-roll and catch-up run before effect meters are bound, so preparation 
 
 The UI starts one device-independent `output::AudioPreparation` worker for a nonempty project. It updates that worker after committed project changes and transfers it to Output on first Play. This retains coverage built before opening an audio device. Once Output exists, its preparation worker continues optional work between requests. Blocking media jobs release idle preparation; it restarts after the job. A failed worker start is retried only after the project revision changes or preparation lifecycle resets; Play can still prepare on demand.
 
-The worker advances an exact cursor through the arrangement in nominal 10 ms work slices, separated by up to 20 ms waits. It checks new requests/shutdown at project-buffer boundaries. A costly block or checkpoint clone can exceed the slice; this is not a real-time deadline. Completed checkpoints survive cancellation. The new request takes priority over optional work. Background coverage is useful only for plans whose note/modulation processing requires prefix history; ordinary plans retain the shared direct preparation path.
+### Seek cache profiles
 
-Checkpoints have both count and estimated-byte limits: at most 64 entries and 128 MiB. Their spacing is the greater of 250 ms and arrangement duration divided by the available slots. This covers long arrangements with coarser intervals rather than retaining only the latest short window. Slot selection also reserves four renderer equivalents within a 512 MiB preparation allowance for base, warm cursor, active state and candidate. A large renderer can leave zero optional slots. Exact preparation still works without checkpoints. The allowance sizes optional storage; it is not a combined process memory reservation.
+`engine::CacheProfile` maps to one `CachePolicy`. Engine owns checkpoint sizing/spacing; Output owns the optional-work schedule. All profiles use the same `TransportCache`, renderer, route state, cancellation and priming paths. Profiles are not DSP quality modes.
+
+| Profile | Checkpoint bytes | Maximum entries | Minimum spacing | Quiet time after activity | Work slice / wait | Warm during playback |
+| --- | --- | --- | --- | --- | --- | --- |
+| Light | 32 MiB | 32 | 1 s | 750 ms | 2 ms / 40 ms | No |
+| Balanced (default) | 128 MiB | 64 | 250 ms | 250 ms | 5 ms / 20 ms | Yes |
+| Responsive | 256 MiB | 128 | 125 ms | 100 ms | 10 ms / 10 ms | Yes |
+
+`ui::settings::AppSettings.seek_cache` persists the shared enum through existing application storage. Missing profile fields or unknown profile names use Balanced; existing theme/accent/titlebar values survive an unknown profile. This setting does not change project data, history, PCM admission, output-owner limits, device settings or export. Settings changes update the existing idle/output worker without replacing the device or transport. Profile changes use a separate control revision and cannot supersede a required preparation request.
+
+Optional cache construction and checkpoint generation wait until the profile's quiet interval has passed. New plan submissions reset that interval. UI pointer-down state and blocking jobs suppress optional work; release starts a fresh quiet interval. This avoids rebuilding an idle cache for every knob-drag update. Required plan/transport work remains immediate, including while editing, under Light playback gating, or during pressure backoff.
+
+The worker advances an exact cursor through the arrangement in nominal work slices separated by waits from the policy. New requests or control changes interrupt optional work at project-buffer boundaries. Light resumes optional work after playback stops or pauses. The optional scheduler polls playback state at most 100 ms apart when gated. A costly block, renderer construction or checkpoint clone can exceed the work slice; these values are not hard CPU limits or real-time deadlines.
+
+A newly observed callback budget overrun pauses optional work for one second; further overruns extend the pause. This uses existing atomic timing diagnostics and does not interpret the count as a device xrun measurement. It never delays required preparation. No locks, cache construction, DSP cloning or policy traversal are added to the callback.
+
+Completed checkpoints survive cancellation and profile switches. A smaller profile retains an evenly sampled subset in frame order and releases excess owners on the worker. A profile that reduces checkpoint spacing restarts optional coverage to fill gaps, while existing exact snapshots remain usable. Background coverage is useful only for plans whose note/modulation processing requires prefix history; ordinary plans retain the shared direct preparation path.
+
+Checkpoint spacing is the greater of the profile minimum and arrangement duration divided by available slots. Slot selection also reserves four renderer equivalents within the existing 512 MiB preparation allowance for base, warm cursor, active state and candidate. A large renderer can leave zero optional slots. Exact preparation still works without checkpoints. The allowance sizes optional storage; it is not a combined process memory reservation. Profile changes do not discard required DSP history or substitute approximate processing. No cache data is saved to the project.
 
 The output worker reuses a cache for the same plan allocation or a structurally equal plan with the same prepared sample allocations and rates. Only the requested playhead is excluded from project comparison. Note, source, effect, route, tempo, loop and other project edits invalidate the cache conservatively. Equal sample values in a new allocation do not establish compatibility. Live/paused and stopped reconstruction use different loop rules and invalidate each other's checkpoints. No cache data is saved to the project.
 
@@ -95,7 +113,7 @@ Accounting stays on the control/worker threads. `unit-core::memory` supplies cap
 | Owner | Policy | Release/failure behavior |
 | --- | --- | --- |
 | Shared PCM, peaks and known media scratch | Existing 2 GiB `AudioReservation` admission | Shared allocations count once; cancellation/final owner release returns reservations |
-| Transport checkpoints | 64 entries, estimated 128 MiB; working-state allowance described above | Old entries evict first; zero slots disables optional coverage; worker shutdown releases base/cursor/checkpoints |
+| Transport checkpoints | Profile limits: 32–128 entries and estimated 32–256 MiB; working-state allowance described above | Old entries evict first; zero slots disables optional coverage; worker shutdown releases base/cursor/checkpoints |
 | Output renderers | Estimated 512 MiB across active, candidate, queued and retired `PreparedRenderer` owners | Atomic leases follow owners until retirement. Failed admission releases the candidate/cache and reports an error; current playback continues |
 | Undo/redo | 100 undo entries and estimated 128 MiB of retained models plus audio exclusive to history | Remove oldest undo entries, then farthest redo states if required; show a visible notice. Current/pending/saved states remain intact |
 

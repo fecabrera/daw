@@ -1,3 +1,5 @@
+mod cache_policy;
+pub use cache_policy::{CachePolicy, CacheProfile};
 mod memory;
 pub use memory::{RendererMemory, prepared_model_bytes};
 mod continuous_modulation;

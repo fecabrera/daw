@@ -1,3 +1,4 @@
+mod cache_schedule;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use daw_core::Id;
 use daw_engine::{ModulationTarget, RenderPlan, Renderer, TransportState};
@@ -364,10 +365,20 @@ pub struct AudioPreparation {
 }
 impl AudioPreparation {
     pub fn new(plan: RenderPlan) -> Result<Self, String> {
+        Self::with_profile(plan, daw_engine::CacheProfile::default())
+    }
+    pub fn with_profile(
+        plan: RenderPlan,
+        profile: daw_engine::CacheProfile,
+    ) -> Result<Self, String> {
         let status = Arc::new(Status::default());
         let worker = preparation::Worker::new(status.clone())?;
+        worker.configure_cache(profile, false);
         worker.prewarm(Arc::new(plan));
         Ok(Self { worker, status })
+    }
+    pub fn configure_cache(&self, profile: daw_engine::CacheProfile, editing: bool) {
+        self.worker.configure_cache(profile, editing);
     }
     pub fn performance(&self) -> PerformanceSnapshot {
         self.status.performance.snapshot()
@@ -506,6 +517,9 @@ impl AudioOutput {
             bands: self.band_meters.clone(),
             modulation: self.modulation_meters.clone(),
         }
+    }
+    pub fn configure_cache(&self, profile: daw_engine::CacheProfile, editing: bool) {
+        self.preparation.configure_cache(profile, editing);
     }
     pub fn take_preparation_error(&mut self) -> Option<String> {
         let error = self.preparation.take_error()?;

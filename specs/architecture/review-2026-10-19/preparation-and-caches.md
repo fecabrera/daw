@@ -2,7 +2,7 @@
 
 [Review index](README.md) · Baseline `2dbb347`
 
-Follow-up on 2026-10-19 supersedes the baseline cache/history limits and same-allocation-only reuse described below. See [exact idle preparation and memory policy](../performance.md#idle-coverage-and-exact-reuse) and [F05/F06 status](findings.md#f05-cold-history-replay-can-still-take-a-long-time). Other baseline observations remain review evidence.
+Follow-up on 2026-10-19 supersedes the baseline cache/history limits and same-allocation-only reuse described below. See [exact idle preparation and memory policy](../performance.md#idle-coverage-and-exact-reuse) and [F05/F06 status](findings.md#f05-cold-history-replay-can-still-take-a-long-time). Settings now provides [seek cache profiles](../performance.md#seek-cache-profiles) over the same exact-history cache. Other baseline observations remain review evidence.
 
 ## Media pipeline
 
