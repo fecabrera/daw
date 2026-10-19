@@ -438,6 +438,17 @@ pub(super) fn marker(
         return None;
     }
     let range = match parameter {
+        ModulationParameter::EnvelopeAttack
+        | ModulationParameter::EnvelopeDecay
+        | ModulationParameter::EnvelopeRelease => {
+            offsets.map(|o| (base * 2_f32.powf(o)).clamp(0.0, daw_core::MAX_ENVELOPE_TIME_MS))
+        }
+        ModulationParameter::EnvelopeSustain
+        | ModulationParameter::EnvelopeAttackCurve
+        | ModulationParameter::EnvelopeDecayCurve
+        | ModulationParameter::EnvelopeReleaseCurve
+        | ModulationParameter::EnvelopeAttackNote
+        | ModulationParameter::EnvelopeDecayNote => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::DirectionMixerDirection => {
             offsets.map(|o| (base + o).clamp(-180.0, 180.0))
         }
@@ -566,6 +577,15 @@ pub(super) fn marker(
         lines.push("Frequencies retain a 1 Hz gap; Lower is limited below Upper when modulated boundaries meet.".into());
     }
     let format_value = |value: f32| match parameter {
+        ModulationParameter::EnvelopeSustain
+        | ModulationParameter::EnvelopeAttackCurve
+        | ModulationParameter::EnvelopeDecayCurve
+        | ModulationParameter::EnvelopeReleaseCurve
+        | ModulationParameter::EnvelopeAttackNote
+        | ModulationParameter::EnvelopeDecayNote => format!("{:.0}%", value * 100.0),
+        ModulationParameter::EnvelopeAttack
+        | ModulationParameter::EnvelopeDecay
+        | ModulationParameter::EnvelopeRelease => knobs::format_time(value),
         ModulationParameter::BitcrusherDrive => format!("{value:.1} dB"),
         ModulationParameter::BitcrusherResolution => format!("{value:.0} bit"),
         ModulationParameter::BitcrusherDownsampling => format!("{value:.0}×"),

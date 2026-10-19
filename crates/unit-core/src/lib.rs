@@ -167,7 +167,7 @@ impl InstrumentLayerSettings {
                 let mut ids = std::collections::HashSet::new();
                 self.envelopes
                     .iter()
-                    .all(|e| !e.id.is_nil() && ids.insert(e.id) && e.settings.valid())
+                    .all(|e| !e.id.is_nil() && ids.insert(e.id) && e.valid())
                     && self.lfos.iter().all(|l| ids.insert(l.id) && l.valid())
                     && self.macro_module.controls.iter().all(|c| ids.insert(c.id))
             }
@@ -408,19 +408,49 @@ impl InstrumentSettings {
             .map(|l| (l.id, &l.macro_module))
             .chain(std::iter::once((self.main.id, &self.main.macro_module)))
     }
+    pub fn envelope_destinations(
+        &self,
+    ) -> impl Iterator<Item = (ModulationSourceId, &EnvelopeInstance)> {
+        self.layers
+            .iter()
+            .flat_map(|l| {
+                l.envelopes.iter().map(move |e| {
+                    (
+                        ModulationSourceId {
+                            layer: l.id,
+                            unit: e.id,
+                        },
+                        e,
+                    )
+                })
+            })
+            .chain(self.main.envelopes.iter().map(|e| {
+                (
+                    ModulationSourceId {
+                        layer: self.main.id,
+                        unit: e.id,
+                    },
+                    e,
+                )
+            }))
+    }
     pub fn provider_destinations(
         &self,
     ) -> impl Iterator<Item = (ModulationSourceId, &[Modulation])> {
-        self.lfo_destinations()
-            .map(|(id, l)| (id, l.modulations.as_slice()))
-            .chain(self.macro_modules().flat_map(|(layer, module)| {
-                module.controls.iter().map(move |c| {
-                    (
-                        ModulationSourceId { layer, unit: c.id },
-                        module.modulations.as_slice(),
-                    )
-                })
-            }))
+        self.envelope_destinations()
+            .map(|(id, e)| (id, e.modulations.as_slice()))
+            .chain(
+                self.lfo_destinations()
+                    .map(|(id, l)| (id, l.modulations.as_slice()))
+                    .chain(self.macro_modules().flat_map(|(layer, module)| {
+                        module.controls.iter().map(move |c| {
+                            (
+                                ModulationSourceId { layer, unit: c.id },
+                                module.modulations.as_slice(),
+                            )
+                        })
+                    })),
+            )
     }
     pub fn valid(&self) -> bool {
         let mut ids = std::collections::HashSet::new();
@@ -433,8 +463,10 @@ impl InstrumentSettings {
                     .filter(|r| r.target.is_none_or(|target| target == destination.unit))
                     .all(|r| {
                         r.source.is_none_or(|id| {
-                            self.modulation_source(id)
-                                .is_some_and(|s| ModulationScope::Shared.accepts(s.scope))
+                            self.modulation_source(id).is_some_and(|s| {
+                                self.modulation_source(*destination)
+                                    .is_some_and(|d| d.scope.accepts(s.scope))
+                            })
                         })
                     })
             })

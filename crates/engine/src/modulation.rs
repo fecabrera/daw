@@ -8,6 +8,7 @@ pub(crate) struct Control {
     pub mode: EnvelopeMode,
     pub envelope: Envelope,
     output: ModulationOutput,
+    pub routes: Vec<Route>,
 }
 impl Control {
     pub fn new(
@@ -18,23 +19,77 @@ impl Control {
         Self {
             source,
             mode: settings.mode,
-            envelope: Envelope::new(settings.settings, context),
+            routes: settings
+                .modulations
+                .iter()
+                .map(|r| Route::new(*r, context.sample_rate_hz))
+                .collect(),
+            envelope: Envelope::new(settings.settings, context)
+                .with_modulation_scope(settings.mode.into()),
             output: ModulationOutput::new(source, settings.present && settings.enabled, context),
         }
     }
-    pub fn retarget(&mut self, next: &Self) {
+    pub fn retarget(&mut self, next: &mut Self) {
         self.envelope.set_settings(next.envelope.settings());
         self.output.retarget(&next.output);
+        daw_unit_core::retarget_modulation_routes(&mut self.routes, &mut next.routes);
     }
     pub fn reset(&mut self) {
         self.envelope.reset();
         self.output.reset();
+        for r in &mut self.routes {
+            r.reset();
+        }
     }
-    pub fn tick(&mut self) -> ModulationValue {
-        self.output.sample(&mut self.envelope, Default::default())
+    pub fn note_on(&mut self, duration: Option<u64>) {
+        for route in &mut self.routes {
+            route.reset();
+        }
+        if self.routes.is_empty() {
+            self.envelope.note_on_with_duration(duration);
+        } else {
+            self.envelope.note_on_modulated(duration);
+        }
+    }
+    pub fn tick(
+        &mut self,
+        local: &[ModulationValue],
+        shared: &[ModulationValue],
+        context: daw_unit_core::ModulationContext,
+    ) -> ModulationValue {
+        if self.routes.is_empty() && !self.envelope.has_modulation_offsets() {
+            return self.output.sample(&mut self.envelope, Default::default());
+        }
+        super::continuous_modulation::sample_provider(
+            &mut self.envelope,
+            &mut self.output,
+            &mut self.routes,
+            (local, shared),
+            context,
+            ModulationSourceContext {
+                frame: context.frame,
+                tempo_bpm: context.tempo_bpm,
+                ..Default::default()
+            },
+        )
     }
 }
 
+/// Prepare the common provider dependency graph once, outside sample processing.
+pub(crate) fn provider_order<'a>(
+    nodes: impl Iterator<Item = (ModulationSourceId, &'a [Route])>,
+) -> Vec<usize> {
+    let nodes: Vec<_> = nodes
+        .map(|(id, routes)| (id, routes.iter().map(|r| r.settings).collect::<Vec<_>>()))
+        .collect();
+    daw_unit_core::modulation_dependency_order(
+        &nodes
+            .iter()
+            .map(|(id, routes)| (*id, routes.as_slice()))
+            .collect::<Vec<_>>(),
+    )
+    .expect("validated modulation graph")
+}
 /// Event-prefix metadata. Envelope note-on resets its contour, so exact reconstruction
 /// needs only the latest retrigger, the current/last legato group, and its final release.
 #[derive(Clone, Copy, Default)]
@@ -68,6 +123,7 @@ pub(crate) struct SharedControls {
     pub values: Vec<ModulationValue>,
     pub index: daw_unit_core::ModulationSourceIndex,
     providers: Vec<ProviderControl>,
+    order: Vec<usize>,
     held: usize,
     note_durations: [Option<u64>; 2],
     note_ages: [u64; 2],
@@ -87,8 +143,10 @@ impl SharedControls {
                 release_age: None,
             })
             .collect();
+        let order = provider_order(controls.iter().map(|e| (e.source, e.routes.as_slice())));
         Self {
             controls,
+            order,
             index: daw_unit_core::ModulationSourceIndex::from_values(&values),
             values,
             providers: Vec::new(),
@@ -101,22 +159,12 @@ impl SharedControls {
     }
     pub fn with_providers(mut self, mut providers: Vec<ProviderControl>) -> Self {
         providers.sort_by_key(|l| (l.source.layer, l.source.unit));
-        let settings: Vec<Vec<_>> = providers
-            .iter()
-            .map(|l| l.routes.iter().map(|r| r.settings).collect())
-            .collect();
-        let dependencies: Vec<_> = providers
-            .iter()
-            .zip(&settings)
-            .map(|(l, routes)| (l.source, routes.as_slice()))
-            .collect();
-        let order = daw_unit_core::modulation_dependency_order(&dependencies)
-            .expect("validated modulation graph");
-        let mut slots: Vec<_> = providers.into_iter().map(Some).collect();
-        let providers: Vec<_> = order
-            .into_iter()
-            .map(|i| slots[i].take().unwrap())
-            .collect();
+        self.order = provider_order(
+            self.controls
+                .iter()
+                .map(|e| (e.source, e.routes.as_slice()))
+                .chain(providers.iter().map(|p| (p.source, p.routes.as_slice()))),
+        );
         self.values
             .extend(providers.iter().map(|l| ModulationValue {
                 source: l.source,
@@ -171,10 +219,11 @@ impl SharedControls {
         for control in &mut self.controls {
             let index = usize::from(control.mode == EnvelopeMode::Legato);
             if let Some(start) = state.starts[index] {
-                control
-                    .envelope
-                    .note_on_with_duration(state.durations[index]);
-                control.envelope.advance(end.saturating_sub(start));
+                control.note_on(state.durations[index]);
+                let frames = end.saturating_sub(start);
+                if frames > 0 {
+                    control.envelope.advance(frames);
+                }
                 if state.held == 0 {
                     control.envelope.note_off();
                     control.envelope.advance(frame.saturating_sub(end));
@@ -216,7 +265,7 @@ impl SharedControls {
             }
             for e in &mut self.controls {
                 if self.held == 0 || e.mode == EnvelopeMode::Retrigger {
-                    e.envelope.note_on_with_duration(duration_frames);
+                    e.note_on(duration_frames);
                 }
             }
             self.held += 1;
@@ -239,16 +288,32 @@ impl SharedControls {
         if self.held == 0 {
             self.release_frames = self.release_frames.saturating_add(1);
         }
-        for (e, v) in self.controls.iter_mut().zip(&mut self.values) {
-            *v = e.tick();
-            if self.held == 0 {
-                v.release_age = Some(self.release_frames);
-            }
+        for &slot in &self.order {
+            self.values[slot] = if slot < self.controls.len() {
+                let mut value = self.controls[slot].tick(
+                    &[],
+                    &self.values,
+                    daw_unit_core::ModulationContext {
+                        shared_sources: Some(&self.index),
+                        frame: context.frame,
+                        tempo_bpm: context.tempo_bpm,
+                        ..Default::default()
+                    },
+                );
+                if self.held == 0 {
+                    value.release_age = Some(self.release_frames);
+                }
+                value
+            } else {
+                self.providers[slot - self.controls.len()].tick(&self.values, &self.index, context)
+            };
         }
-        for (index, provider) in self.providers.iter_mut().enumerate() {
-            self.values[self.controls.len() + index] =
-                provider.tick(&self.values, &self.index, context);
-        }
+    }
+    pub fn envelope_values(&self, id: ModulationSourceId) -> Option<[f32; 9]> {
+        self.controls
+            .iter()
+            .find(|e| e.source == id)
+            .map(|e| e.envelope.modulation_values())
     }
     pub fn provider_values(&self, id: ModulationSourceId) -> Option<[f32; 2]> {
         self.providers
@@ -282,6 +347,7 @@ impl SharedControls {
         std::mem::swap(&mut self.controls, &mut next.controls);
         std::mem::swap(&mut self.values, &mut next.values);
         std::mem::swap(&mut self.index, &mut next.index);
+        std::mem::swap(&mut self.order, &mut next.order);
     }
 }
 #[cfg(test)]

@@ -244,6 +244,9 @@ pub trait ModulationDestination: Send {
     }
     const MODULATION_PARAMETERS: &'static [ModulationParameter];
     const MODULATION_SCOPE: ModulationScope;
+    fn modulation_input_scope(&self) -> ModulationScope {
+        Self::MODULATION_SCOPE
+    }
     fn process_with_modulation(
         &mut self,
         input: Self::Audio,
@@ -256,6 +259,9 @@ pub trait ModulationDestination: Send {
 pub trait ModulationDestinationSettings {
     const MODULATION_PARAMETERS: &'static [ModulationParameter];
     const MODULATION_SCOPE: ModulationScope;
+    fn modulation_input_scope(&self) -> ModulationScope {
+        Self::MODULATION_SCOPE
+    }
     fn modulations(&self) -> &[Modulation];
     fn valid_modulations(&self) -> bool {
         valid_modulations(self.modulations(), Self::MODULATION_PARAMETERS)
@@ -346,3 +352,14 @@ destination_settings!(
     &ModulationParameter::BITCRUSHER,
     Shared
 );
+
+impl ModulationDestinationSettings for EnvelopeInstance {
+    const MODULATION_PARAMETERS: &'static [ModulationParameter] = &ModulationParameter::ENVELOPE;
+    const MODULATION_SCOPE: ModulationScope = ModulationScope::PerNote;
+    fn modulation_input_scope(&self) -> ModulationScope {
+        self.mode.into()
+    }
+    fn modulations(&self) -> &[Modulation] {
+        &self.modulations
+    }
+}

@@ -33,6 +33,7 @@ Assigned knobs have a status dot. Filled means active; hollow means inactive. Ho
 | Oscillator | Pitch for each source |
 | Sampler | Gain |
 | Amplitude | Gain shaping |
+| Envelope | Attack/Decay/Release time, Attack/Decay note fraction, Sustain, and curve strengths |
 | LFO | Depth, Rate |
 | Macro | Value for each strip |
 | 3-band EQ | Low/Mid/High Gain; Low/High Frequency and Q |

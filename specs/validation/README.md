@@ -2908,3 +2908,21 @@ Executed checks:
 - `git diff --check` and cached diff checks pass. Changed documentation links resolve.
 
 Native UI, display-scale, device, Windows, and Linux checks were not performed.
+
+## Envelope modulation inputs — 2026-10-18
+
+Envelope accepts Time Attack/Decay/Release, Sustain, three curve strengths, and Note Attack/Decay fractions through the shared destination contract. It retains its Contour output. Shared and local providers use one prepared dependency graph and common input/publication helper, with no callback source lookup or graph traversal. The common destination entry point honors prepared instance scope. Existing settings migrate to empty/closed connections.
+
+Portable checks cover exact neutral samples, signed cancellation, effective bounds, Note Attack modulation from zero, actual curve changes, stage continuity at all six rates, release completion, and runtime rejection of local inputs by shared Envelopes. Model/core checks cover save-state migration, mixed provider cycles, scope validation, copied route IDs, and provider-reference remapping. Engine checks cover all three modes, Envelope/LFO/Macro ordering, block parity, native worker seek history, cancellation, live route retargeting, snapshots, and zero callback allocations. Project checks retain routes and rendered audio through Save As/reopen. Headless input checks exercise the shared strips, source filtering, saved open state, and marker opening in both themes.
+
+Native worker seeks replay active Envelope input history with cancellation at buffer boundaries. Direct low-level seeks, hidden trimmed-note history, and loop jumps retain existing reconstruction limits; they do not synthesize earlier input modulation history. Documentation records these limits.
+
+Executed checks:
+
+- `cargo fmt --all --check` and workspace Clippy with `-D warnings` pass.
+- `cargo test --workspace` passes: 910 tests, no failures, and two existing expanded time-stretch matrices ignored. This includes all 473 UI tests.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` pass.
+- `sh tools/package_macos.sh debug` rebuilds `target/debug/DAW.app`. The running app was not restarted.
+- Changed documentation links resolve; working and cached diff checks pass.
+
+Native UI, display-scale, device, Windows, and Linux checks were not performed.

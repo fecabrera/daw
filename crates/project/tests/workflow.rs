@@ -4193,3 +4193,75 @@ fn layer_effects_keep_audio_routes_and_missing_units_through_save_as() {
     copy.export(&output, false).unwrap();
     assert!(output.is_file());
 }
+
+#[test]
+fn envelope_input_routes_and_audio_survive_save_as_and_reopen() {
+    use daw_core::*;
+    let f = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let clip = session.project.add_midi_pattern(track, 0).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: MidiPattern {
+                length_ticks: 960,
+                notes: vec![MidiNote {
+                    id: Id::new_v4(),
+                    start_tick: 0,
+                    length_ticks: 960,
+                    pitch: 69,
+                    velocity: 100,
+                }],
+            },
+        })
+        .unwrap();
+    let i = session.project.tracks[0].instrument.as_mut().unwrap();
+    i.layers[0].oscillators.push(OscillatorSettings::default());
+    i.main.macro_module.add();
+    i.main.macro_module.controls[0].settings.value = 0.7;
+    let source = ModulationSourceId {
+        layer: i.main.id,
+        unit: i.main.macro_module.controls[0].id,
+    };
+    let mut e = EnvelopeInstance {
+        modulation_open: true,
+        ..Default::default()
+    };
+    e.settings.timing = EnvelopeTiming::Note;
+    e.settings.attack_note = 0.25;
+    for parameter in [
+        ModulationParameter::EnvelopeAttackNote,
+        ModulationParameter::EnvelopeSustain,
+        ModulationParameter::EnvelopeReleaseCurve,
+    ] {
+        let mut r = Modulation::new(parameter);
+        r.source = Some(source);
+        r.amount = 0.2;
+        e.modulations.push(r);
+    }
+    let mut output = Modulation::new(ModulationParameter::Amplitude);
+    output.source = Some(ModulationSourceId {
+        layer: i.layers[0].id,
+        unit: e.id,
+    });
+    output.amount = 1.0;
+    i.layers[0].amplitude.present = true;
+    i.layers[0].amplitude.modulations.push(output);
+    i.layers[0].envelopes.push(e);
+    session.project.validate().unwrap();
+    let mut expected = vec![[0.0; 2]; 4096];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut expected);
+    session.save(&f.0.join("envelope-inputs")).unwrap();
+    let mut reopened = Session::open(&f.0.join("envelope-inputs")).unwrap();
+    reopened.save(&f.0.join("copy")).unwrap();
+    let copy = Session::open(&f.0.join("copy")).unwrap();
+    assert_eq!(
+        session.project.tracks[0].instrument,
+        copy.project.tracks[0].instrument
+    );
+    let mut restored = expected.clone();
+    daw_engine::Renderer::new(copy.plan()).render_offline(&mut restored);
+    assert_eq!(restored, expected);
+}

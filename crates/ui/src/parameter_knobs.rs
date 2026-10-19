@@ -94,6 +94,22 @@ fn ott_frequency(low: bool) -> KnobSpec {
 }
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::EnvelopeAttack => knobs::envelope_time_spec("Attack time", 5.0),
+        Parameter::EnvelopeDecay => knobs::envelope_time_spec("Decay time", 100.0),
+        Parameter::EnvelopeRelease => knobs::envelope_time_spec("Release time", 200.0),
+        Parameter::EnvelopeSustain => percent("Sustain level", 0.8).endpoint_labels("0%", "100%"),
+        Parameter::EnvelopeAttackCurve
+        | Parameter::EnvelopeDecayCurve
+        | Parameter::EnvelopeReleaseCurve => {
+            percent("Curve amount", 0.5).endpoint_labels("0%", "100%")
+        }
+        Parameter::EnvelopeAttackNote => {
+            percent("Attack note duration", 1.0).endpoint_labels("0%", "100%")
+        }
+        Parameter::EnvelopeDecayNote => {
+            percent("Decay note duration", 0.0).endpoint_labels("0%", "100%")
+        }
+
         Parameter::BitcrusherDrive => KnobSpec::new("Drive", 0.0..=24.0, 0.0, 0.1)
             .reference_step(6.0)
             .value_label(|v| format!("{v:.1} dB"))
@@ -381,7 +397,10 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_db,
                 ["−24", "+24"],
             ),
-            Parameter::StereoSpreadLowerFrequency
+            Parameter::EnvelopeAttack
+            | Parameter::EnvelopeDecay
+            | Parameter::EnvelopeRelease
+            | Parameter::StereoSpreadLowerFrequency
             | Parameter::StereoSpreadUpperFrequency
             | Parameter::OttLowFrequency
             | Parameter::OttHighFrequency
@@ -407,7 +426,13 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 signed_q,
                 ["−10", "+10"],
             ),
-            Parameter::StereoSpreadLowerIntensity
+            Parameter::EnvelopeSustain
+            | Parameter::EnvelopeAttackCurve
+            | Parameter::EnvelopeDecayCurve
+            | Parameter::EnvelopeReleaseCurve
+            | Parameter::EnvelopeAttackNote
+            | Parameter::EnvelopeDecayNote
+            | Parameter::StereoSpreadLowerIntensity
             | Parameter::StereoSpreadUpperIntensity
             | Parameter::OttLowDepth
             | Parameter::OttMidDepth

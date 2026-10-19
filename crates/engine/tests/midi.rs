@@ -1807,7 +1807,11 @@ fn portable_modulation_protocol_preserves_all_destination_apis_without_callback_
         let mut envelope = Envelope::new(EnvelopeSettings::default(), context);
         let mut output = ModulationOutput::new(source, true, context);
         assert!(envelope.descriptor().provides_modulation());
-        assert!(!envelope.descriptor().consumes_modulation());
+        assert!(envelope.descriptor().consumes_modulation());
+        assert_eq!(
+            <Envelope as ModulationDestination>::MODULATION_PARAMETERS,
+            &ModulationParameter::ENVELOPE
+        );
         assert_eq!(
             Envelope::MODULATION_OUTPUT,
             daw_unit_core::ENVELOPE_MODULATION_OUTPUT
@@ -4078,5 +4082,121 @@ fn main_effects_process_the_layer_sum_before_main_mix_and_share_latency_and_seek
         let mut sought = [[0.0; 2]; 64];
         seek.render_offline_at(2048, &mut sought);
         assert_eq!(sought.as_slice(), &output[2048..2112]);
+    }
+}
+
+#[test]
+fn envelope_destinations_share_graph_rendering_history_and_live_route_updates() {
+    use daw_unit_core::{LfoInstance, ModulationSourceSettings};
+    for mode in EnvelopeMode::ALL {
+        let mut p = plan(Waveform::Sine, 48000);
+        let track = p.project.tracks[0].id;
+        let i = p.project.tracks[0].instrument.as_mut().unwrap();
+        i.main.macro_module.add();
+        i.main.macro_module.controls[0].settings.value = 0.6;
+        let macro_id = ModulationSourceId {
+            layer: i.main.id,
+            unit: i.main.macro_module.controls[0].id,
+        };
+        let mut shared = EnvelopeInstance {
+            mode: EnvelopeMode::Retrigger,
+            ..Default::default()
+        };
+        shared.settings.attack.time_ms = 1.0;
+        shared.settings.decay.time_ms = 0.0;
+        shared.settings.sustain = 0.0;
+        let mut r = Modulation::new(ModulationParameter::EnvelopeSustain);
+        r.source = Some(macro_id);
+        r.amount = 0.8;
+        shared.modulations.push(r);
+        let shared_id = ModulationSourceId {
+            layer: i.main.id,
+            unit: shared.id,
+        };
+        i.main.envelopes.push(shared);
+        let mut lfo = LfoInstance::default();
+        lfo.settings.depth = 0.0;
+        let mut r = Modulation::new(ModulationParameter::LfoDepth);
+        r.source = Some(shared_id);
+        r.amount = 1.0;
+        lfo.modulations.push(r);
+        let lfo_id = ModulationSourceId {
+            layer: i.main.id,
+            unit: lfo.id,
+        };
+        i.main.lfos.push(lfo);
+        let layer = &mut i.layers[0];
+        let owner = layer.id;
+        let e = &mut layer.envelopes[0];
+        e.present = true;
+        e.mode = mode;
+        e.settings = EnvelopeSettings::default();
+        e.settings.attack.time_ms = 100.0;
+        e.modulation_open = true;
+        let mut r = Modulation::new(ModulationParameter::EnvelopeAttack);
+        r.source = Some(lfo_id);
+        r.amount = 1.0;
+        e.modulations.push(r);
+        let mut r = Modulation::new(ModulationParameter::EnvelopeAttackCurve);
+        r.source = Some(macro_id);
+        r.amount = 0.25;
+        e.modulations.push(r);
+        let id = e.id;
+        assert!(
+            e.modulation_scope()
+                .accepts(daw_unit_core::ModulationScope::Shared)
+        );
+        p.project.validate().unwrap();
+        let mut a = Renderer::new(p.clone());
+        let mut b = Renderer::new(p.clone());
+        let mut output = vec![[0.0; 2]; 8000];
+        let mut blocks = output.clone();
+        a.render_offline(&mut output);
+        for block in blocks.chunks_mut(37) {
+            b.render_offline(block);
+        }
+        assert_eq!(output, blocks);
+        let key = daw_engine::ModulationTarget::Envelope {
+            track,
+            layer: owner,
+            unit: id,
+        };
+        let reading = a.modulation_snapshot(key).unwrap();
+        assert!(reading[0] > 100.0 && reading[1] <= 200.0);
+        assert!(reading[8] > 0.5 && reading[9] <= 0.75);
+        let mut sought = Renderer::new(p.clone());
+        let state = daw_engine::TransportState {
+            frame: 6000,
+            playing: false,
+            paused: false,
+            playback_start: None,
+        };
+        assert!(sought.prepare_transport_cancellable(state, || false));
+        let mut restored = [[0.0; 2]; 128];
+        sought.render_offline(&mut restored);
+        assert_eq!(restored.as_slice(), &output[6000..6128]);
+        let mut calls = 0;
+        assert!(!sought.prepare_transport_cancellable(state, || {
+            calls += 1;
+            calls > 2
+        }));
+        assert_eq!(calls, 3);
+        let mut live = Renderer::new(p.clone());
+        live.play();
+        for _ in 0..3000 {
+            live.next_sample();
+        }
+        p.project.tracks[0].instrument.as_mut().unwrap().layers[0].envelopes[0].modulations[0]
+            .amount = -1.0;
+        let mut next = Renderer::new(p);
+        ALLOCATIONS.with(|v| v.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        next.inherit(&mut live);
+        for _ in 0..1024 {
+            let s = next.next_sample();
+            assert!(s.iter().all(|v| v.is_finite()));
+        }
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     }
 }

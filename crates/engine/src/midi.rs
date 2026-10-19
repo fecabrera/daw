@@ -41,6 +41,7 @@ struct Voice {
     sleeping: bool,
     layers: Vec<LayerVoice>,
     controls: Vec<Control>,
+    control_order: Vec<usize>,
     values: Vec<ModulationValue>,
     local_sources: daw_unit_core::ModulationSourceIndex,
     current: Option<Id>,
@@ -90,7 +91,7 @@ impl Voice {
         self.note_duration_frames = Some(duration_frames.max(1));
         self.release_frames = 0;
         for e in &mut self.controls {
-            e.envelope.note_on_with_duration(self.note_duration_frames);
+            e.note_on(self.note_duration_frames);
         }
         for layer in &mut self.layers {
             layer.one_shot = layer.one_shot_target;
@@ -161,6 +162,9 @@ impl Voice {
         }
     }
     fn advance_envelopes(&mut self, frames: u64) {
+        if frames == 0 {
+            return;
+        }
         if self.current.is_some() {
             self.held_frames = self.held_frames.saturating_add(frames);
         } else {
@@ -205,8 +209,16 @@ impl Voice {
         }
         self.sleeping = false;
         self.active_last_sample = true;
-        for (e, v) in self.controls.iter_mut().zip(&mut self.values) {
-            *v = e.tick();
+        for &slot in &self.control_order {
+            self.values[slot] = self.controls[slot].tick(
+                &self.values,
+                shared,
+                ModulationContext {
+                    local_sources: Some(&self.local_sources),
+                    shared_sources: Some(shared_sources),
+                    ..Default::default()
+                },
+            );
         }
         let mut sample = [0.0; 2];
         for layer in &mut self.layers {
@@ -357,6 +369,7 @@ pub(crate) struct MidiTrackRuntime {
     layer_effects: Vec<super::layer_effects::LayerEffects>,
     layer_samples: Vec<[f32; 2]>,
     effect_latency: u64,
+    envelope_history: bool,
     parallel_latency: u64,
     has_bus_effects: bool,
     layer_index: std::collections::HashMap<Id, usize>,
@@ -578,6 +591,25 @@ impl MidiTrackRuntime {
                     .collect(),
             )
         };
+        let local_nodes: Vec<_> = layers
+            .iter()
+            .flat_map(|l| {
+                l.envelopes
+                    .iter()
+                    .filter(|e| e.mode == EnvelopeMode::PerNote)
+                    .map(move |e| {
+                        (
+                            ModulationSourceId {
+                                layer: l.id,
+                                unit: e.id,
+                            },
+                            e.modulations.as_slice(),
+                        )
+                    })
+            })
+            .collect();
+        let local_order = daw_unit_core::modulation_dependency_order(&local_nodes)
+            .expect("validated local envelope graph");
         let effect_latency = super::layer_effects::latency(instrument, project.sample_rate_hz);
         let parallel_latency =
             super::layer_effects::parallel_latency(instrument, project.sample_rate_hz);
@@ -605,6 +637,11 @@ impl MidiTrackRuntime {
                 .collect(),
             layer_samples: vec![[0.0; 2]; layers.len()],
             effect_latency,
+            envelope_history: instrument.envelope_destinations().any(|(_, e)| {
+                e.modulations
+                    .iter()
+                    .any(|r| r.source.is_some() && r.enabled && r.amount != 0.0)
+            }),
             parallel_latency,
             has_bus_effects: layers.iter().any(|l| !l.effects.is_empty())
                 || !instrument.main.effects.is_empty(),
@@ -720,6 +757,7 @@ impl MidiTrackRuntime {
                                 .collect(),
                         })
                         .collect(),
+                    control_order: local_order.clone(),
                     controls: layers
                         .iter()
                         .flat_map(|l| {
@@ -915,6 +953,7 @@ impl MidiTrackRuntime {
             old.retarget(next, fade_frames, idle);
         }
         self.has_bus_effects = prepared.has_bus_effects;
+        self.envelope_history = prepared.envelope_history;
         if self.main_target != prepared.main_target {
             self.main_target = prepared.main_target;
             self.main_remaining = fade_frames;
@@ -943,6 +982,7 @@ impl MidiTrackRuntime {
             std::mem::swap(&mut voice.controls, &mut next.controls);
             std::mem::swap(&mut voice.values, &mut next.values);
             std::mem::swap(&mut voice.local_sources, &mut next.local_sources);
+            std::mem::swap(&mut voice.control_order, &mut next.control_order);
             let idle = voice.transition == 0
                 && voice.layers.iter().all(LayerVoice::is_idle)
                 && voice.controls.iter().all(|e| e.envelope.is_idle())
@@ -1063,6 +1103,9 @@ impl MidiTrackRuntime {
             )
             .0
     }
+    pub fn needs_envelope_history(&self) -> bool {
+        self.envelope_history
+    }
     pub fn effect_latency_compatible(&self, old: &Self) -> bool {
         self.effect_latency == old.effect_latency
             && self.parallel_latency == old.parallel_latency
@@ -1096,6 +1139,37 @@ impl MidiTrackRuntime {
         for bus in &mut self.layer_effects {
             next.inherit_chain(&mut bus.chain, settings);
         }
+    }
+    pub fn envelope_snapshot(&self, id: ModulationSourceId) -> Option<super::ModulationSnapshot> {
+        let mut range = [f32::NAN; super::MODULATION_SNAPSHOT_SIZE];
+        let mut found = false;
+        let readings = self.shared.envelope_values(id).into_iter().chain(
+            self.voices
+                .iter()
+                .filter(|v| v.active_last_sample)
+                .filter_map(|v| {
+                    v.controls
+                        .iter()
+                        .find(|e| e.source == id)
+                        .map(|e| e.envelope.modulation_values())
+                }),
+        );
+        for values in readings {
+            found = true;
+            for (index, value) in values.into_iter().enumerate() {
+                for edge in 0..2 {
+                    let slot = index * 2 + edge;
+                    if !range[slot].is_finite() {
+                        range[slot] = value;
+                    } else if edge == 0 {
+                        range[slot] = range[slot].min(value);
+                    } else {
+                        range[slot] = range[slot].max(value);
+                    }
+                }
+            }
+        }
+        found.then_some(range)
     }
     pub fn effect_snapshot(&self, id: Id) -> Option<super::ModulationSnapshot> {
         super::layer_effects::find(&self.layer_effects, id)

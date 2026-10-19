@@ -56,10 +56,7 @@ impl InstrumentBusSettings {
             && 10.0_f32.powf(self.gain_db / 20.0).is_finite()
             && (-1.0..=1.0).contains(&self.pan)
             && self.envelopes.iter().all(|e| {
-                !e.id.is_nil()
-                    && ids.insert(e.id)
-                    && e.mode != EnvelopeMode::PerNote
-                    && e.settings.valid()
+                !e.id.is_nil() && ids.insert(e.id) && e.mode != EnvelopeMode::PerNote && e.valid()
             })
             && self.lfos.iter().all(|l| ids.insert(l.id) && l.valid())
             && self.macro_module.valid()

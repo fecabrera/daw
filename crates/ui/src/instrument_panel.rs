@@ -160,6 +160,11 @@ impl DawUi {
             .chain(
                 settings
                     .provider_destinations()
+                    .filter(|(id, _)| {
+                        settings
+                            .modulation_source(*id)
+                            .is_some_and(|s| s.scope == daw_unit_core::ModulationScope::Shared)
+                    })
                     .flat_map(|(_, routes)| routes),
             )
             .filter_map(|r| r.source)
@@ -453,7 +458,7 @@ impl DawUi {
                                                                     let index = layer.envelopes.iter().position(|e| e.id == id).unwrap();
                                                                     let instance = &mut layer.envelopes[index];
                                                                     let shared_only = shared_sources.contains(&daw_core::ModulationSourceId { layer: layer.id, unit: id });
-                                                                    envelope_panel::unit(ui, instance, index + 1, shared_only, height, compact).map(|unit| {
+                                                                    envelope_panel::unit(ui, instance, index + 1, shared_only, height, compact, envelope_panel::Controls { sources: provider_sources.iter().find(|(id, _)| id.layer == layer.id && id.unit == instance.id).map_or(&[], |(_, sources)| sources.as_slice()), live: self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Envelope { track: track.id, layer: layer.id, unit: instance.id })) }).map(|unit| {
                                                                         self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track.id, layer.id, component);
                                                                         let rect = unit.response.rect;
                                                                         if index == 0 {

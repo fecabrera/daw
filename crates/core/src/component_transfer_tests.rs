@@ -722,3 +722,57 @@ fn component_group_source_copies_merge_first_and_keep_routes_on_their_targets() 
     assert_eq!(i.layers[1].oscillators, original.oscillators);
     assert_eq!(i.layers[1].visible_components()[0], Oscillators);
 }
+
+#[test]
+fn envelope_input_routes_follow_copies_and_provider_moves() {
+    let mut p = Project::default();
+    let track = p.add_midi_track().unwrap();
+    let i = p.tracks[0].instrument.as_mut().unwrap();
+    i.layers[0].macro_module.add();
+    let owner = i.layers[0].id;
+    let main = i.main.id;
+    let macro_id = i.layers[0].macro_module.controls[0].id;
+    let mut envelope = EnvelopeInstance {
+        mode: EnvelopeMode::Legato,
+        modulation_open: true,
+        ..Default::default()
+    };
+    let mut route = Modulation::new(ModulationParameter::EnvelopeSustain);
+    route.source = Some(ModulationSourceId {
+        layer: owner,
+        unit: macro_id,
+    });
+    route.amount = 0.5;
+    envelope.modulations.push(route);
+    let id = envelope.id;
+    i.layers[0].envelopes.push(envelope);
+    p.edit(Edit::TransferInstrumentComponent {
+        track_id: track,
+        source: owner,
+        destination: main,
+        component: Envelope(id),
+        destination_index: None,
+        duplicate: true,
+    })
+    .unwrap();
+    let copied = &p.tracks[0].instrument.as_ref().unwrap().main.envelopes[0];
+    assert_ne!(copied.id, id);
+    assert_ne!(copied.modulations[0].id, route.id);
+    assert_eq!(copied.modulations[0].source, route.source);
+    assert!(copied.modulation_open);
+    p.edit(Edit::TransferInstrumentComponent {
+        track_id: track,
+        source: owner,
+        destination: main,
+        component: Macros,
+        destination_index: None,
+        duplicate: false,
+    })
+    .unwrap();
+    let i = p.tracks[0].instrument.as_ref().unwrap();
+    for e in i.layers[0].envelopes.iter().chain(&i.main.envelopes) {
+        for r in &e.modulations {
+            assert_eq!(r.source.unwrap().layer, main);
+        }
+    }
+}

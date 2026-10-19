@@ -13,6 +13,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 - [MIDI patterns, Oscillator, Envelope, and rendering](instruments/midi-patterns.md).
 - [Sampler](instruments/sampler.md).
+- [Envelope inputs](instruments/envelope.md).
 - [LFO](instruments/lfo.md).
 - [Macro](instruments/macro.md).
 - [Instrument Main](instruments/main.md).

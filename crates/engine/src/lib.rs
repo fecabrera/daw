@@ -131,6 +131,11 @@ fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
 /// Stable identity for UI parameter telemetry. Layer IDs are scoped to their track.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModulationTarget {
+    Envelope {
+        track: Id,
+        layer: Id,
+        unit: Id,
+    },
     Effect(Id),
     /// Playback position in prepared sample frames; shares the atomic telemetry transport.
     Sampler {
@@ -410,6 +415,13 @@ impl Renderer {
     /// Full readings. EQ/Compressor use their parameter-list order; added unused slots contain NaN.
     pub fn modulation_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {
         match target {
+            ModulationTarget::Envelope { track, layer, unit } => {
+                let index = *self.track_index.get(&track)?;
+                self.midi[index]
+                    .as_ref()?
+                    .envelope_snapshot(daw_core::ModulationSourceId { layer, unit })
+            }
+
             ModulationTarget::Sampler { track, layer } => {
                 let index = *self.track_index.get(&track)?;
                 let midi = self.midi[index].as_ref()?;
@@ -541,7 +553,10 @@ impl Renderer {
                     old.track_index
                         .get(&self.plan.project.tracks[index].id)
                         .and_then(|&i| old.midi[i].as_ref())
-                        .is_none_or(|previous| next.effect_latency_compatible(previous))
+                        .is_none_or(|previous| {
+                            next.effect_latency_compatible(previous)
+                                && (!next.needs_envelope_history() || next.compatible(previous))
+                        })
                 })
             })
             && (self.alignment.total == 0
@@ -559,12 +574,38 @@ impl Renderer {
     }
     /// Control/worker thread only: reconstruct sources and alignment at the requested clock.
     pub fn prepare_transport(&mut self, state: TransportState) {
+        self.prepare_transport_cancellable(state, || false);
+    }
+    /// Worker-only history replay. Cancellation is checked once per prepared block.
+    pub fn prepare_transport_cancellable(
+        &mut self,
+        state: TransportState,
+        mut cancelled: impl FnMut() -> bool,
+    ) -> bool {
         self.playhead = state.frame;
         self.playing = state.playing && self.end_frame > 0;
         self.paused = state.paused;
         self.playback_start = state.playback_start;
         self.reset_processing();
+        let history = self
+            .midi
+            .iter()
+            .flatten()
+            .any(|m| m.needs_envelope_history());
+        if history {
+            let block = u64::from(self.plan.project.buffer_size_frames.max(1));
+            for frame in 0..state.frame {
+                if frame % block == 0 && cancelled() {
+                    return false;
+                }
+                self.offline_frame(frame, self.playing || self.paused);
+            }
+        }
+        if cancelled() {
+            return false;
+        }
         self.prime_latency(self.playing || self.paused);
+        true
     }
     /// Bounded activation of a worker-prepared transport, retaining the output fade.
     pub fn activate_transport(&mut self, old: &Self) {

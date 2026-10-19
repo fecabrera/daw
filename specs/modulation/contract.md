@@ -2,7 +2,7 @@
 
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/modulation/README.md).
 
-Implemented on 2026-10-15. The portable contract and runtime code live in `crates/unit-core/src/modulation`. They have no DAW, UI, device, or backend dependencies. Envelope, LFO, and Macro provide control outputs. Oscillator, Sampler, Amplitude, Auto-filter, Drive, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, LFO, and Macro consume parameter inputs through this contract.
+Implemented on 2026-10-15. The portable contract and runtime code live in `crates/unit-core/src/modulation`. They have no DAW, UI, device, or backend dependencies. Envelope, LFO, and Macro provide control outputs. Oscillator, Sampler, Amplitude, Auto-filter, Drive, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, Envelope, LFO, and Macro consume parameter inputs through this contract.
 
 A modulation output carries a normalized control value. A modulation input is a destination parameter that receives that value through a signed amount. Audio ports remain separate. A unit can declare both kinds of modulation port.
 
@@ -20,10 +20,10 @@ A modulation output carries a normalized control value. A modulation input is a 
 | `ModulationRoute` | Resolves a cached source and smooths route amount/power changes. |
 | `ModulationTargetId` | Identifies a repeated destination instance independently of its display position. |
 | `ModulationInputs` | Filters the optional instance identity and sums supported routes by parameter identity and resolves the amplitude gate/release rules. Declaration order does not determine a parameter's meaning. |
-| `ModulationSmoother` | Applies the same 1 ms smoothing to Oscillator, Sampler, Auto-filter, Drive, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, LFO, and Macro offsets, with common nonfinite-input handling. |
+| `ModulationSmoother` | Applies the same 1 ms smoothing to Oscillator, Sampler, Auto-filter, Drive, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, Envelope, LFO, and Macro offsets, with common nonfinite-input handling. |
 | `process_modulation` | Standard destination entry point: checks source scope, resolves routes, then invokes the unit. Playback and export use it for all destinations. |
 
-`UnitDescriptor::provides_modulation()` and `consumes_modulation()` inspect the declared modulation ports. These capabilities are independent of `is_source`, which identifies audio generators. Envelope, LFO, and Macro declare modulation outputs. Oscillator, Sampler, Amplitude, Auto-filter, Drive, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, LFO, and Macro declare modulation inputs. LFO and Macro declare both input and output ports.
+`UnitDescriptor::provides_modulation()` and `consumes_modulation()` inspect the declared modulation ports. These capabilities are independent of `is_source`, which identifies audio generators. Envelope, LFO, and Macro declare modulation outputs. Oscillator, Sampler, Amplitude, Auto-filter, Drive, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, Envelope, LFO, and Macro declare modulation inputs. Envelope, LFO, and Macro declare both input and output ports.
 
 `InstrumentSettings::modulation_sources()` enumerates providers through their settings contract. The source selector, labels, range indicators, and core reference validation use this metadata instead of assuming that every provider is an Envelope. Retained removed providers remain available to reference validation; the picker lists only present providers. Disabled providers remain listed and produce a neutral contribution after their enable ramp.
 
@@ -115,7 +115,7 @@ All destination-owned modulation strips also use the same reorder gesture. Reord
 
 LFO uses both shared interfaces. The host first calls `process_modulation` with its prepared route vector, then publishes the resulting source sample through `ModulationOutput`. The input step consumes no audio (`Audio = ()`); it prepares smoothed control offsets for the next source sample. Destinations keep reading cached values and never advance a provider.
 
-`modulation_dependency_order` prepares a provider-first order on the control thread. `modulation_would_cycle` applies the same edge definition to source pickers. All assigned edges count, including disabled, zero-amount, and retained connections; edits cannot enable a hidden cycle. Project validation also checks that every input refers to a shared source in the same instrument. Envelopes publish before the ordered LFOs, then audio destinations consume the completed cache. Ordering, route vectors, telemetry, and cache storage are prepared before publication. There is no callback graph traversal, allocation, lock, or recursive source sampling.
+`modulation_dependency_order` prepares a provider-first order on the control thread. `modulation_would_cycle` applies the same edge definition to source pickers. All assigned edges count, including disabled, zero-amount, and retained connections; edits cannot enable a hidden cycle. Project validation checks sources in the same instrument: Per note Envelope destinations accept local/shared sources; shared providers accept shared sources only. Prepared provider-first indices interleave shared Envelopes, LFOs, and Macros; local Envelopes follow their own prepared dependency order after shared publication. Audio destinations then consume the completed cache. Ordering, route vectors, telemetry, and cache storage are prepared before publication. There is no callback graph traversal, allocation, lock, or recursive source sampling.
 
 LFO Depth uses a normalized ±1 offset; Rate uses ±6 octaves per connection in both Hz and Note modes. The source's output behavior remains `Continuous`. UI parameter definitions, amount adapters, source selectors, strip reordering, indicators, enable ramps, and compatible route retargeting remain shared. LFO routes travel with component moves/copies, copied route IDs are fresh, and provider moves update LFO consumers as well as audio destinations. See [LFO timing and rate-history limits](../instruments/lfo.md#depth-and-rate-modulation).
 
@@ -172,3 +172,7 @@ The UI reuses the same connection body, header dot, Gain-derived signed amount k
 ## Prepared lookup and history matching
 
 Hosts publish values with matching `ModulationSourceIndex` generations. Shared routes cache validated local/shared slots and missing-source results. Local precedence, dynamic range/behavior, contour release ownership, scope checks, and smoothers stay in the common resolver. Legacy slice-only calls retain checked cached hits. Compatible history retargeting uses preallocated route scratch links for hashed identity matching, with a bounded direct path for small lists; incoming summation order stays unchanged. See [performance requirements](../architecture/performance.md#modulation-and-inheritance).
+
+## Envelope destinations
+
+[Envelope inputs](../instruments/envelope.md) add nine stable typed slots (56–64) for Time ADSR durations, Sustain, curve strengths, and Note Attack/Decay fractions. Envelope uses both shared interfaces and the common provider input/publication helper, route resolver, offset smoother, graph ordering, scope/cycle checks, controls, amount adapters, history retargeting, and prepared telemetry. Note scheduling remains in the host; parameter bounds and fractional stage progress remain in the portable unit. Native history replay runs on the existing cancellable preparation worker.

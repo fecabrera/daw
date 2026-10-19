@@ -167,7 +167,10 @@ impl DawUi {
                                 let rect = ui.push_id(component, |ui| match component {
                                     daw_core::InstrumentComponent::Envelope(id) => {
                                         let index = bus.envelopes.iter().position(|e| e.id == id).unwrap();
-                                        crate::envelope_panel::unit(ui, &mut bus.envelopes[index], index + 1, true, height, compact).map(|unit| {
+                                        {
+                                        let id = bus.envelopes[index].id;
+                                        crate::envelope_panel::unit(ui, &mut bus.envelopes[index], index + 1, true, height, compact, crate::envelope_panel::Controls { sources: provider_sources.iter().find(|(source, _)| source.layer == bus.id && source.unit == id).map_or(&[], |(_, sources)| sources.as_slice()), live: self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Envelope { track, layer: bus.id, unit: id })) })
+                                        }.map(|unit| {
                                             self.start_installed_component_drag(ui, &unit.header, &[unit.power.rect], track, bus.id, component);
                                             #[cfg(test)] bounds.envelopes.push(unit.header.rect);
                                             unit.response.rect

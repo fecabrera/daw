@@ -193,13 +193,13 @@ impl ModulationRoute {
 /// Amplitude uses the note gate with no routes. Resolve once for each destination sample.
 #[derive(Clone, Copy, Debug)]
 pub struct ModulationInputs {
-    offsets: [f32; 56],
+    offsets: [f32; 65],
     amplitude: f32,
 }
 impl ModulationInputs {
     pub fn neutral(note_gate: f32) -> Self {
         Self {
-            offsets: [0.0; 56],
+            offsets: [0.0; 65],
             amplitude: note_gate,
         }
     }
@@ -292,6 +292,15 @@ impl ModulationInputs {
 impl ModulationParameter {
     fn offset_index(self) -> Option<usize> {
         match self {
+            Self::EnvelopeAttack => Some(56),
+            Self::EnvelopeDecay => Some(57),
+            Self::EnvelopeSustain => Some(58),
+            Self::EnvelopeRelease => Some(59),
+            Self::EnvelopeAttackCurve => Some(60),
+            Self::EnvelopeDecayCurve => Some(61),
+            Self::EnvelopeReleaseCurve => Some(62),
+            Self::EnvelopeAttackNote => Some(63),
+            Self::EnvelopeDecayNote => Some(64),
             Self::OttLowFrequency => Some(30),
             Self::OttHighFrequency => Some(31),
             Self::OttLowDepth => Some(32),
@@ -393,7 +402,10 @@ pub fn process_modulation<D: ModulationDestination>(
     shared: &[ModulationValue],
     context: ModulationContext,
 ) -> D::Audio {
-    let local = if D::MODULATION_SCOPE.accepts(ModulationScope::PerNote) {
+    let local = if destination
+        .modulation_input_scope()
+        .accepts(ModulationScope::PerNote)
+    {
         local
     } else {
         &[]

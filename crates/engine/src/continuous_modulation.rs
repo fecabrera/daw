@@ -66,44 +66,31 @@ impl ProviderControl {
         index: &ModulationSourceIndex,
         context: ModulationSourceContext,
     ) -> ModulationValue {
-        fn sample<D: ModulationSource + ModulationDestination<Audio = ()>>(
-            unit: &mut D,
-            output: &mut ModulationOutput,
-            routes: &mut [Route],
-            values: &[ModulationValue],
-            index: &ModulationSourceIndex,
-            context: ModulationSourceContext,
-        ) -> ModulationValue {
-            process_modulation(
-                unit,
-                routes,
-                (),
-                &[],
-                values,
+        match &mut self.unit {
+            Unit::Lfo(u) => sample_provider(
+                u.as_mut(),
+                &mut self.output,
+                &mut self.routes,
+                (&[], values),
                 ModulationContext {
                     shared_sources: Some(index),
                     frame: context.frame,
                     tempo_bpm: context.tempo_bpm,
                     ..Default::default()
                 },
-            );
-            output.sample(unit, context)
-        }
-        match &mut self.unit {
-            Unit::Lfo(u) => sample(
-                u.as_mut(),
-                &mut self.output,
-                &mut self.routes,
-                values,
-                index,
                 context,
             ),
-            Unit::Macro(u) => sample(
+            Unit::Macro(u) => sample_provider(
                 u,
                 &mut self.output,
                 &mut self.routes,
-                values,
-                index,
+                (&[], values),
+                ModulationContext {
+                    shared_sources: Some(index),
+                    frame: context.frame,
+                    tempo_bpm: context.tempo_bpm,
+                    ..Default::default()
+                },
                 context,
             ),
         }
@@ -124,4 +111,16 @@ impl ProviderControl {
         retarget_modulation_routes(&mut self.routes, &mut next.routes);
         std::mem::swap(self, next);
     }
+}
+
+pub(crate) fn sample_provider<D: ModulationSource + ModulationDestination<Audio = ()>>(
+    unit: &mut D,
+    output: &mut ModulationOutput,
+    routes: &mut [Route],
+    values: (&[ModulationValue], &[ModulationValue]),
+    inputs: ModulationContext,
+    context: ModulationSourceContext,
+) -> ModulationValue {
+    process_modulation(unit, routes, (), values.0, values.1, inputs);
+    output.sample(unit, context)
 }

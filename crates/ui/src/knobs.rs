@@ -465,40 +465,33 @@ pub fn format_time(value: f32) -> String {
         format!("{:.2} s", value / 1000.0)
     }
 }
-fn format_percent(value: f32) -> String {
-    format!("{:.0}%", value * 100.0)
-}
 
 pub fn envelope_time(ui: &mut Ui, value: &mut f32, name: &'static str, reset: f32) -> Response {
-    ui.add(Knob::new(
-        value,
-        KnobSpec::new(name, 0.0..=daw_core::MAX_ENVELOPE_TIME_MS, reset, 1.0)
-            .scale(time_position, time_at_position, |value, delta| {
-                value + delta
-            })
-            .value_label(format_time)
-            .endpoint_labels("0 ms", "10 s")
-            .format(format_time),
-    ))
+    ui.add(Knob::new(value, envelope_time_spec(name, reset)))
 }
+pub(super) fn envelope_time_spec(name: &'static str, reset: f32) -> KnobSpec {
+    KnobSpec::new(name, 0.0..=daw_core::MAX_ENVELOPE_TIME_MS, reset, 1.0)
+        .scale(time_position, time_at_position, |value, delta| {
+            value + delta
+        })
+        .value_label(format_time)
+        .endpoint_labels("0 ms", "10 s")
+        .format(format_time)
+}
+
 pub fn sustain(ui: &mut Ui, value: &mut f32) -> Response {
     ui.add(Knob::new(
         value,
-        KnobSpec::new("Sustain level", 0.0..=1.0, 0.8, 0.01)
-            .value_label(format_percent)
-            .endpoint_labels("0%", "100%")
-            .format(format_percent),
+        crate::parameter_knobs::destination(daw_core::ModulationParameter::EnvelopeSustain),
     ))
 }
 pub fn curve_amount(ui: &mut Ui, value: &mut f32) -> Response {
     ui.add(Knob::new(
         value,
-        KnobSpec::new("Curve amount", 0.0..=1.0, 0.5, 0.01)
-            .value_label(format_percent)
-            .endpoint_labels("0%", "100%")
-            .format(format_percent),
+        crate::parameter_knobs::destination(daw_core::ModulationParameter::EnvelopeAttackCurve),
     ))
 }
+
 pub fn curve_shape(
     ui: &mut Ui,
     value: &mut daw_core::CurveShape,

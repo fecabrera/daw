@@ -19,3 +19,20 @@ Time timing sets Attack and Decay in milliseconds. Note timing sets them as perc
 Main offers Retrigger and Legato. Shared track effects cannot use Per note Envelopes. Note-relative Legato keeps the first held note's duration through overlapping notes.
 
 Turning an Envelope off removes its contribution while retaining its settings. Removing it retains settings and connections for restoration from the catalog. Use the receiving connection's Amount and power controls to adjust or disable its effect on a particular parameter.
+
+## Modulate an Envelope
+
+Use the secondary dot in the Envelope header to open its modulation controls. Add a connection, select an LFO, Macro, or another Envelope as Source, choose a Destination, and adjust Amount. Parameter dots open these same controls. Connections use the shared power, removal, and reorder gestures.
+
+| Destination | Amount | Effect |
+| --- | --- | --- |
+| Attack time, Decay time, Release time | −6 to +6 octaves | +1 doubles the time; −1 halves it. Times stay within 0–10 seconds. A base time of zero stays zero. |
+| Attack · Note, Decay · Note | −100% to +100% of the note | Add percentage points to the saved note fraction and clamp to 0–100%. |
+| Sustain | −100% to +100% | Add percentage points and clamp the held level to 0–100%. |
+| Attack curve, Decay curve, Release curve | −100% to +100% | Change curve strength within 0–100%. Linear shapes ignore strength. |
+
+Time and note-relative destinations remain separate, so switching Timing keeps both sets of connections. Attack/Decay use the active Timing setting. Release always uses milliseconds. Timing, Mode, and curve shapes remain discrete controls.
+
+Per note Envelopes can receive per-note and shared sources. Retrigger/Legato Envelopes, including Main, receive shared sources only. The picker excludes self-connections and feedback loops. Change or remove per-note inputs before selecting a shared Mode.
+
+Modulation keeps the base settings and current stage progress. It does not restart a note or make an idle Envelope start again. Native seeks prepare input history on a worker; long histories can take more time and a new request cancels the old preparation. Hidden history before a trimmed clip and direct loop jumps follow the existing note-state reconstruction rules. Continuous playback and offline export use the same processing.

@@ -1481,3 +1481,107 @@ fn bitcrusher_modulation_markers_share_sources_controls_and_connection_opening()
         }
     }
 }
+
+#[test]
+fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for main in [false, true] {
+            let (mut app, ctx, layer) = fixture(theme);
+            app.timeline_effects_visible = false;
+            let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+            i.main.macro_module.add();
+            let macro_source = daw_core::ModulationSourceId {
+                layer: i.main.id,
+                unit: i.main.macro_module.controls[0].id,
+            };
+            let owner = if main { i.main.id } else { layer };
+            let mut e = daw_core::EnvelopeInstance {
+                mode: if main {
+                    daw_core::EnvelopeMode::Legato
+                } else {
+                    daw_core::EnvelopeMode::PerNote
+                },
+                ..Default::default()
+            };
+            e.modulations.push(daw_core::Modulation::new(
+                daw_core::ModulationParameter::EnvelopeAttack,
+            ));
+            let id = e.id;
+            if main {
+                i.main.collapsed = false;
+                i.main.envelopes.push(e);
+            } else {
+                i.layers[0].envelopes.push(e);
+            }
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let rect = app
+                .instrument_ui
+                .component_slots
+                .iter()
+                .find(|(o, c, _)| *o == owner && *c == daw_core::InstrumentComponent::Envelope(id))
+                .unwrap()
+                .2;
+            let toggle = Pos2::new(
+                rect.right() - 13.0,
+                rect.top() + panels::HEADER_HEIGHT * 0.5,
+            );
+            click(&mut app, &ctx, toggle, false);
+            frame(&mut app, &ctx, vec![]);
+            let get = |app: &DawUi| {
+                app.session.project.tracks[0]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .envelope_destinations()
+                    .find(|(source, _)| source.unit == id)
+                    .unwrap()
+                    .1
+                    .clone()
+            };
+            assert!(get(&app).modulation_open);
+            assert!(app.dirty);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            label(&shapes, "Source");
+            label(&shapes, "Destination");
+            let none = label(&shapes, "None");
+            click(&mut app, &ctx, none, false);
+            let popup = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let source = label(&popup, "Main · Macro 1");
+            assert!(!popup.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text()==format!("{} · Envelope 1",if main {"Main"}else{"Layer 1"}))));
+            click(&mut app, &ctx, source, false);
+            assert_eq!(get(&app).modulations[0].source, Some(macro_source));
+            let saved = serde_json::to_vec(&app.session.project).unwrap();
+            let reopened: daw_core::Project = serde_json::from_slice(&saved).unwrap();
+            assert_eq!(
+                reopened.tracks[0].instrument,
+                app.session.project.tracks[0].instrument
+            );
+            // A connected parameter uses the same marker interaction as other destinations.
+            let rect = app
+                .instrument_ui
+                .component_slots
+                .iter()
+                .find(|(o, c, _)| *o == owner && *c == daw_core::InstrumentComponent::Envelope(id))
+                .unwrap()
+                .2;
+            let toggle = Pos2::new(
+                rect.right() - 13.0,
+                rect.top() + panels::HEADER_HEIGHT * 0.5,
+            );
+            click(&mut app, &ctx, toggle, false);
+            assert!(!get(&app).modulation_open);
+            let attack = Pos2::new(
+                rect.left() + 135.0,
+                rect.top() + panels::HEADER_HEIGHT + 10.0 + knobs::CHOICE_SIZE * 0.5,
+            );
+            let marker = knobs::modulation_marker_rect(Rect::from_center_size(
+                attack,
+                Vec2::splat(knobs::CHOICE_SIZE),
+            ))
+            .center();
+            click(&mut app, &ctx, marker, false);
+            assert!(get(&app).modulation_open);
+        }
+    }
+}

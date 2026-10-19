@@ -38,6 +38,10 @@ pub struct EnvelopeInstance {
     #[serde(default)]
     pub mode: EnvelopeMode,
     pub settings: EnvelopeSettings,
+    #[serde(default)]
+    pub modulation_open: bool,
+    #[serde(default)]
+    pub modulations: Vec<Modulation>,
 }
 impl Default for EnvelopeInstance {
     fn default() -> Self {
@@ -48,7 +52,14 @@ impl Default for EnvelopeInstance {
             collapsed: false,
             mode: EnvelopeMode::PerNote,
             settings: EnvelopeSettings::default(),
+            modulation_open: false,
+            modulations: Vec::new(),
         }
+    }
+}
+impl EnvelopeInstance {
+    pub fn valid(&self) -> bool {
+        self.settings.valid() && crate::ModulationDestinationSettings::valid_modulations(self)
     }
 }
 /// Stable provider identity; the historical JSON key is retained for existing projects.
@@ -61,6 +72,15 @@ pub struct ModulationSourceId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModulationParameter {
+    EnvelopeAttack,
+    EnvelopeDecay,
+    EnvelopeSustain,
+    EnvelopeRelease,
+    EnvelopeAttackCurve,
+    EnvelopeDecayCurve,
+    EnvelopeReleaseCurve,
+    EnvelopeAttackNote,
+    EnvelopeDecayNote,
     OttLowFrequency,
     OttHighFrequency,
     OttLowDepth,
@@ -121,6 +141,17 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    pub const ENVELOPE: [Self; 9] = [
+        Self::EnvelopeAttack,
+        Self::EnvelopeDecay,
+        Self::EnvelopeSustain,
+        Self::EnvelopeRelease,
+        Self::EnvelopeAttackCurve,
+        Self::EnvelopeDecayCurve,
+        Self::EnvelopeReleaseCurve,
+        Self::EnvelopeAttackNote,
+        Self::EnvelopeDecayNote,
+    ];
     pub const BITCRUSHER: [Self; 5] = [
         Self::BitcrusherDrive,
         Self::BitcrusherResolution,
@@ -196,6 +227,15 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::EnvelopeAttack => "Attack time",
+            Self::EnvelopeDecay => "Decay time",
+            Self::EnvelopeSustain => "Sustain",
+            Self::EnvelopeRelease => "Release time",
+            Self::EnvelopeAttackCurve => "Attack curve",
+            Self::EnvelopeDecayCurve => "Decay curve",
+            Self::EnvelopeReleaseCurve => "Release curve",
+            Self::EnvelopeAttackNote => "Attack · Note",
+            Self::EnvelopeDecayNote => "Decay · Note",
             Self::OttLowFrequency => "Low · Frequency",
             Self::OttHighFrequency => "High · Frequency",
             Self::OttLowDepth => "Low · Depth",
@@ -257,6 +297,7 @@ impl ModulationParameter {
     }
     pub fn limit(self) -> f32 {
         match self {
+            Self::EnvelopeAttack | Self::EnvelopeDecay | Self::EnvelopeRelease => 6.0,
             Self::OttLowFrequency
             | Self::OttHighFrequency
             | Self::OttLowAttack
@@ -301,6 +342,7 @@ impl ModulationParameter {
     }
     pub fn unit(self) -> &'static str {
         match self {
+            Self::EnvelopeAttack | Self::EnvelopeDecay | Self::EnvelopeRelease => "oct",
             Self::OttLowFrequency
             | Self::OttHighFrequency
             | Self::OttLowAttack

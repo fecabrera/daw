@@ -154,3 +154,5 @@ Each oscillator has a stable ID and an individual [Pitch modulation target](../m
 ## Sampler layer sources — 2026-10-17
 
 A regular instrument layer can use [Sampler](sampler.md) instead of Oscillator. MIDI notes trigger independent stereo sample voices relative to the root note across the full MIDI 0–127 range. MIDI velocity and the existing Amplitude stage shape their output. One-shot continues the source after note-off; Gate follows the note gate/release. Clip boundaries and transport retain their existing behavior. Root note is the saved unshifted MIDI pitch, with the same C−1–G9 names as the piano roll. Existing oscillator layers retain their sound and source lists.
+
+Envelope also supports [typed modulation inputs](envelope.md) for time, note fractions, Sustain, and curve strengths through the shared source/destination contract.

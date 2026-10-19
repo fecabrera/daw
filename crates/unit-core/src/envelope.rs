@@ -132,6 +132,21 @@ impl Default for EnvelopeSettings {
     }
 }
 impl EnvelopeSettings {
+    /// Native control values in the shared ENVELOPE parameter order.
+    pub fn parameter_values(&self) -> [f32; 9] {
+        [
+            self.attack.time_ms,
+            self.decay.time_ms,
+            self.sustain,
+            self.release.time_ms,
+            self.attack.amount,
+            self.decay.amount,
+            self.release.amount,
+            self.attack_note,
+            self.decay_note,
+        ]
+    }
+
     /// Preserve the fixed 5 ms gate used before envelopes were saved.
     pub fn legacy() -> Self {
         let stage = EnvelopeStageSettings {

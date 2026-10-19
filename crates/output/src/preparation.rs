@@ -68,7 +68,12 @@ impl Worker {
                     };
                     renderer.revision = revision;
                     if let Some(transport) = transport {
-                        renderer.prepare_transport(transport);
+                        if !renderer.prepare_transport_cancellable(transport, || {
+                            let state = worker.0.lock().unwrap();
+                            state.closed || state.revision != revision
+                        }) {
+                            continue;
+                        }
                         renderer.prepared_transport = true;
                     }
                     bind_effect_meters(&mut renderer, &bindings.effects);

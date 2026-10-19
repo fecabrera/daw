@@ -458,3 +458,66 @@ fn lfo_destinations_validate_shared_references_cycles_and_legacy_defaults() {
         .push(Modulation::new(ModulationParameter::Pitch));
     assert!(!wrong_target.valid());
 }
+
+#[test]
+fn envelope_inputs_migrate_and_share_scope_cycle_and_route_validation() {
+    let e = EnvelopeInstance::default();
+    let mut old = serde_json::to_value(&e).unwrap();
+    old.as_object_mut().unwrap().remove("modulations");
+    old.as_object_mut().unwrap().remove("modulation_open");
+    assert_eq!(serde_json::from_value::<EnvelopeInstance>(old).unwrap(), e);
+    let mut i = InstrumentSettings::default();
+    let a = EnvelopeInstance::default();
+    let mut b = EnvelopeInstance::default();
+    let source = ModulationSourceId {
+        layer: i.layers[0].id,
+        unit: a.id,
+    };
+    let mut route = Modulation::new(ModulationParameter::EnvelopeSustain);
+    route.source = Some(source);
+    route.amount = 0.5;
+    b.modulations.push(route);
+    b.modulation_open = true;
+    i.layers[0].envelopes = vec![a, b];
+    assert!(i.valid());
+    assert_eq!(
+        serde_json::from_value::<InstrumentSettings>(serde_json::to_value(&i).unwrap()).unwrap(),
+        i
+    );
+    i.layers[0].envelopes[1].mode = EnvelopeMode::Legato;
+    assert!(
+        !i.valid(),
+        "a shared Envelope cannot consume a voice-local source"
+    );
+    i.layers[0].envelopes[0].mode = EnvelopeMode::Retrigger;
+    assert!(i.valid());
+    let destination = ModulationSourceId {
+        layer: source.layer,
+        unit: i.layers[0].envelopes[1].id,
+    };
+    let mut feedback = Modulation::new(ModulationParameter::EnvelopeAttack);
+    feedback.source = Some(destination);
+    feedback.amount = 0.0;
+    feedback.enabled = false;
+    i.layers[0].envelopes[0].modulations.push(feedback);
+    assert!(
+        !i.valid(),
+        "retained, disabled and zero-amount cycles still count"
+    );
+    i.layers[0].envelopes[0].modulations.clear();
+    let mut lfo = crate::LfoInstance::default();
+    let mut input = Modulation::new(ModulationParameter::LfoDepth);
+    input.source = Some(destination);
+    lfo.modulations.push(input);
+    let lfo_source = ModulationSourceId {
+        layer: source.layer,
+        unit: lfo.id,
+    };
+    i.layers[0].lfos.push(lfo);
+    i.layers[0].envelopes[1].modulations[0].source = Some(lfo_source);
+    assert!(!i.valid(), "mixed Envelope/LFO cycles use the same graph");
+    i.layers[0].envelopes[1].modulations[0].source = Some(source);
+    assert!(i.valid());
+    i.layers[0].envelopes[1].modulations.push(route);
+    assert!(!i.valid(), "duplicate route IDs are rejected");
+}

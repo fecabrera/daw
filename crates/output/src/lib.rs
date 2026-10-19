@@ -247,6 +247,17 @@ fn modulation_meters(
             })
         })
     });
+    let envelopes = plan.project.tracks.iter().flat_map(|track| {
+        track.instrument.iter().flat_map(move |i| {
+            i.envelope_destinations()
+                .filter(|(_, e)| e.present)
+                .map(move |(id, _)| ModulationTarget::Envelope {
+                    track: track.id,
+                    layer: id.layer,
+                    unit: id.unit,
+                })
+        })
+    });
     let lfos = plan.project.tracks.iter().flat_map(|track| {
         track.instrument.iter().flat_map(move |i| {
             i.lfo_destinations()
@@ -277,6 +288,7 @@ fn modulation_meters(
     effects
         .chain(macros)
         .chain(lfos)
+        .chain(envelopes)
         .chain(amplitudes)
         .chain(samplers)
         .chain(oscillators)

@@ -149,6 +149,9 @@ impl Project {
                             from.remove(index)
                         };
                         unit.id = new_id;
+                        if duplicate {
+                            fresh_routes(&mut unit.modulations);
+                        }
                         envelopes_mut(instrument, destination).push(unit);
                     }
                     InstrumentComponent::Lfo(_) => {
@@ -309,11 +312,17 @@ fn remap_consumers(
             remap_source(effect.unit.modulations_mut(), old, new);
         }
         remap_source(&mut layer.macro_module.modulations, old, new);
+        for envelope in &mut layer.envelopes {
+            remap_source(&mut envelope.modulations, old, new);
+        }
         for lfo in &mut layer.lfos {
             remap_source(&mut lfo.modulations, old, new);
         }
     }
     remap_source(&mut instrument.main.macro_module.modulations, old, new);
+    for envelope in &mut instrument.main.envelopes {
+        remap_source(&mut envelope.modulations, old, new);
+    }
     for lfo in &mut instrument.main.lfos {
         remap_source(&mut lfo.modulations, old, new);
     }
