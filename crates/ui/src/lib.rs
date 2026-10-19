@@ -358,14 +358,16 @@ impl FileAction {
 pub enum ClipAction {
     Copy,
     Paste,
+    Split,
 }
 impl ClipAction {
-    pub const ALL: [Self; 2] = [Self::Copy, Self::Paste];
+    pub const ALL: [Self; 3] = [Self::Copy, Self::Paste, Self::Split];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Copy => "Copy",
             Self::Paste => "Paste",
+            Self::Split => "Split at playhead",
         }
     }
 
@@ -375,6 +377,7 @@ impl ClipAction {
             match self {
                 Self::Copy => egui::Key::C,
                 Self::Paste => egui::Key::V,
+                Self::Split => egui::Key::T,
             },
         )
     }
@@ -1618,6 +1621,12 @@ impl DawUi {
                     .tracks
                     .iter()
                     .any(|track| track.clips.iter().any(|clip| self.clip_selected(clip.id))),
+                ClipAction::Split => {
+                    self.view_mode.has_clip_lanes()
+                        && !self
+                            .clips_crossed_by_playhead(&self.selected_clip_ids())
+                            .is_empty()
+                }
                 ClipAction::Paste => self.clip_clipboard.as_ref().is_some_and(|clipboard| {
                     clipboard.project == self.session.project.project_id
                         && !self.session.project.tracks.is_empty()
@@ -1638,7 +1647,91 @@ impl DawUi {
         match action {
             ClipAction::Copy => self.copy_clip(ctx),
             ClipAction::Paste => self.paste_clip(),
+            ClipAction::Split => {
+                let ids = self.selected_clip_ids();
+                self.split_at(&ids);
+            }
         }
+    }
+
+    fn selected_clip_ids(&self) -> Vec<Id> {
+        self.session
+            .project
+            .tracks
+            .iter()
+            .flat_map(|track| &track.clips)
+            .filter(|clip| self.clip_selected(clip.id))
+            .map(|clip| clip.id)
+            .collect()
+    }
+
+    fn clips_crossed_by_playhead(&self, ids: &[Id]) -> Vec<Id> {
+        let at = self.session.project.transport.playhead_frame;
+        ids.iter()
+            .copied()
+            .filter(|id| {
+                self.session.project.tracks.iter().any(|track| {
+                    track
+                        .clips
+                        .iter()
+                        .any(|clip| clip.id == *id && clip.start_frame < at && at < clip.end())
+                })
+            })
+            .collect()
+    }
+
+    fn split_at(&mut self, ids: &[Id]) {
+        if !self.editing_enabled() {
+            return;
+        }
+        let at = self.session.project.transport.playhead_frame;
+        let (project, new_ids) =
+            match self
+                .session
+                .project
+                .split_clips(ids, at, self.settings.midi_note_split)
+            {
+                Ok(split) => split,
+                Err(error) => {
+                    self.fail(error);
+                    return;
+                }
+            };
+        if new_ids.is_empty() {
+            return;
+        }
+        let mut selection = Vec::new();
+        if let Some(primary) = self.selected_clip {
+            selection.push(primary);
+        }
+        for id in self
+            .selected_clips
+            .iter()
+            .copied()
+            .chain(ids.iter().copied())
+            .chain(new_ids.iter().copied())
+        {
+            if !selection.contains(&id) {
+                selection.push(id);
+            }
+        }
+        let track = self.selected_track.or_else(|| {
+            project.tracks.iter().find_map(|track| {
+                track
+                    .clips
+                    .iter()
+                    .any(|clip| clip.id == new_ids[0])
+                    .then_some(track.id)
+            })
+        });
+        if self.prepare_sampler_edit(&project, track.map(|track| (track, selection.clone()))) {
+            return;
+        }
+        self.session.project = project;
+        self.selected_clip = selection.first().copied();
+        self.selected_clips = selection.into_iter().collect();
+        self.prune_clip_selection();
+        self.changed();
     }
 
     fn clip_shortcuts(&mut self, ctx: &egui::Context) {
@@ -1649,7 +1742,8 @@ impl DawUi {
             .clip_clipboard
             .as_ref()
             .map(|clipboard| clipboard.token.as_str());
-        let (copy, paste) = ctx.input_mut(|input| {
+        let native_menu = self.native_menu;
+        let (copy, paste, split) = ctx.input_mut(|input| {
             let copy = input
                 .events
                 .iter()
@@ -1668,6 +1762,7 @@ impl DawUi {
             (
                 input.consume_shortcut(&ClipAction::Copy.shortcut()) || copy,
                 (input.consume_shortcut(&ClipAction::Paste.shortcut()) && !native_paste) || paste,
+                !native_menu && input.consume_shortcut(&ClipAction::Split.shortcut()),
             )
         });
         if copy {
@@ -1675,6 +1770,9 @@ impl DawUi {
         }
         if paste {
             self.paste_clip();
+        }
+        if split {
+            self.perform_clip_action(ClipAction::Split, ctx);
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
@@ -4733,6 +4831,7 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     mod clip_duplication;
+    mod clip_split;
     mod component_transfer;
     mod effects;
     mod envelope_units;

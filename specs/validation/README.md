@@ -3223,3 +3223,21 @@ Completed with the pinned toolchain and local dependency cache:
 Native device latency/underruns, battery/thermal behavior, and Windows/Linux execution remain unverified. Headless release measurements do not establish a maximum native seek delay.
 
 Changed-document relative file links — 155 checked, no missing targets. `git diff --check` — passed.
+
+## Split clips at the playhead — 2026-10-19
+
+`Project::split_clips` splits every requested clip that strictly contains the playhead and returns the new clip IDs. The original clip keeps its ID and ends at the playhead. A missing clip or an invalid result leaves the project unchanged. Clips that do not contain the frame stay unchanged.
+
+Audio uses `Edit::Split` and keeps the source recording, name, color, loop phase, and stretch. MIDI notes follow the application setting `MidiNoteSplit`. Split into two divides a crossing note and keeps the original note ID on the first clip. Preserve first keeps that note on the first clip and does not continue it. Non-looping MIDI writes a new pattern only for a piece whose notes changed, so other clips that share the original pattern stay unchanged. A looping MIDI clip with a crossing occurrence becomes two unlooped patterns. The Edit command, Command+T on macOS or Ctrl+T on Windows/Linux, and the clip context menu share that operation. The command is available in Timeline and Editor and is disabled when no selected clip contains the playhead. Settings stores the MIDI choice on this computer; a missing or unknown value means Split into two.
+
+Completed with the pinned toolchain:
+
+- `cargo test -p daw-core --lib split::` — 4 passed.
+- `cargo test -p daw-ui --lib -- clip_split midi_note_split menu_shortcuts midi_clip_context_menus` — 5 passed. These cover command enablement, a group split, the Edit menu with Preserve first, the Settings dropdown, shortcut labels, and the Timeline/Editor context menu.
+- `cargo fmt --all --check` — passed.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed.
+- `cargo test --workspace` — **978 passed, 0 failed, 2 ignored**. The two ignored tests are the existing extended time-stretch acceptance matrices.
+
+Relative links in the edited documents — 212 checked, no missing targets. `git diff --check` — passed.
+
+Native macOS menu Command+T, Windows/Linux Ctrl+T, device playback of a split, and the Settings dropdown in a running app remain unverified. Automated egui tests do not establish native menu or pointer behavior.

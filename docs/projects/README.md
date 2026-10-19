@@ -30,6 +30,10 @@ All profiles preserve exact processing history. Balanced and Responsive can prep
 
 Changing profile keeps valid checkpoints where possible and does not stop playback or add an undo step. A smaller profile can discard checkpoints; a larger profile may need more preparation to build denser coverage. A first or distant seek can still take time, especially just after an edit. Use Light to reduce background load, or Responsive when frequent seeks matter and the computer has spare capacity. Parallel preparation helps most when several tracks have substantial processing. One expensive track or a heavy Master chain can limit the benefit.
 
+## Split MIDI notes
+
+Open application Settings and choose Split MIDI notes. Split into two is the default. A MIDI note that crosses the playhead becomes two notes. Preserve first keeps that note on the clip before the playhead and does not continue it on the new clip. The choice applies on this computer and is kept across restarts. It is not saved in the project. Audio clips are unaffected.
+
 ## Memory and large projects
 
 Audio preparation uses a shared 2 GiB budget for decoded samples and working buffers. Long files, high processing rates, and stretched copies need more space. If preparation exceeds the budget, shorten the source, use a lower processing rate, or close an unused project and try again. A failed import or settings change retains the current project and playback. This budget is not a limit on track count or total application memory.

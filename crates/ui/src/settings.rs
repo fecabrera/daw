@@ -146,6 +146,8 @@ pub struct AppSettings {
     pub theme: ColorTheme,
     pub titlebar: TitlebarStyle,
     pub seek_cache: CacheProfile,
+    /// How MIDI notes that cross the playhead are divided. Audio clips are unaffected.
+    pub midi_note_split: daw_core::MidiNoteSplit,
 }
 
 impl AppSettings {
@@ -175,17 +177,19 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
     let popup_was_open = egui::Popup::is_any_open(ctx);
     let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
         .show_with_content(ctx, |ui| {
-            let label_width = ui
-                .painter()
-                .layout_no_wrap(
-                    "Accent color".into(),
-                    egui::TextStyle::Body.resolve(ui.style()),
-                    crate::theme::palette(ctx).text,
-                )
-                .size()
-                .x
-                + ui.spacing().item_spacing.x
-                + 14.0;
+            let label_text = |label: &str| {
+                ui.painter()
+                    .layout_no_wrap(
+                        label.into(),
+                        egui::TextStyle::Body.resolve(ui.style()),
+                        crate::theme::palette(ctx).text,
+                    )
+                    .size()
+                    .x
+            };
+            let label_width = label_text("Split MIDI notes").max(
+                label_text("Accent color") + ui.spacing().item_spacing.x + 14.0,
+            );
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             crate::rows::field(
                 ui,
@@ -245,6 +249,30 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
                             }
                         })
                         .response.on_hover_text("Prepares exact seek history. Profiles change CPU and memory use; sound stays the same.");
+                },
+            );
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Split MIDI notes");
+                },
+                |ui| {
+                    egui::ComboBox::from_id_salt("midi_note_split")
+                        .selected_text(settings.midi_note_split.name())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for mode in daw_core::MidiNoteSplit::ALL {
+                                let hint = match mode {
+                                    daw_core::MidiNoteSplit::Split => "A note that crosses the playhead becomes two notes.",
+                                    daw_core::MidiNoteSplit::PreserveFirst => "A note that crosses the playhead stays on the first clip.",
+                                };
+                                ui.selectable_value(&mut settings.midi_note_split, mode, mode.name())
+                                    .on_hover_text(hint);
+                            }
+                        })
+                        .response
+                        .on_hover_text("Applies when you split MIDI clips. Audio clips are unchanged. This choice stays on this computer.");
                 },
             );
             let swatch_color = settings.accent.color();
@@ -419,6 +447,38 @@ mod tests {
         ));
         assert_eq!(future.seek_cache, CacheProfile::Balanced);
         assert_eq!(future.theme, ColorTheme::Light);
+        assert_eq!(future.midi_note_split, daw_core::MidiNoteSplit::Split);
+        let legacy_split = AppSettings::from_json(Some(
+            r#"{"theme":"light","accent":"teal","midi_note_split":"future_mode"}"#,
+        ));
+        assert_eq!(legacy_split.midi_note_split, daw_core::MidiNoteSplit::Split);
+        assert_eq!(legacy_split.theme, ColorTheme::Light);
+    }
+
+    #[test]
+    fn midi_note_split_dropdown_round_trips_without_changing_other_preferences() {
+        let ctx = Context::default();
+        crate::theme::configure(&ctx);
+        let mut settings = AppSettings {
+            accent: AccentColor::Teal,
+            theme: ColorTheme::Light,
+            ..Default::default()
+        };
+        frame(&ctx, &mut settings, vec![]);
+        assert_eq!(settings.midi_note_split, daw_core::MidiNoteSplit::Split);
+        click(&ctx, &mut settings, "Split into two");
+        click(&ctx, &mut settings, "Preserve first");
+        assert_eq!(
+            settings.midi_note_split,
+            daw_core::MidiNoteSplit::PreserveFirst
+        );
+        assert_eq!(settings.accent, AccentColor::Teal);
+        assert_eq!(settings.theme, ColorTheme::Light);
+        assert_eq!(settings.seek_cache, CacheProfile::Balanced);
+        assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
+        click(&ctx, &mut settings, "Preserve first");
+        click(&ctx, &mut settings, "Split into two");
+        assert_eq!(settings.midi_note_split, daw_core::MidiNoteSplit::Split);
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]

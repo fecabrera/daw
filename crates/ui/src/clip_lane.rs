@@ -28,11 +28,23 @@ impl DawUi {
                 self.open_clip_editor(clip.id, track_id, ui.ctx());
                 ui.close();
             }
-            if ui.button("Split at playhead").clicked() {
-                self.edit(Edit::Split {
-                    clip_id: clip.id,
-                    at: self.session.project.transport.playhead_frame,
-                });
+            let targets = if selected {
+                self.selected_clip_ids()
+            } else {
+                vec![clip.id]
+            };
+            let split_enabled = self.clip_actions_available(ui.ctx())
+                && !self.clips_crossed_by_playhead(&targets).is_empty();
+            if ui
+                .add_enabled(
+                    split_enabled,
+                    egui::Button::new("Split at playhead").shortcut_text(
+                        toolbars::menu_shortcut_text(ui.ctx(), &ClipAction::Split.shortcut()),
+                    ),
+                )
+                .clicked()
+            {
+                self.split_at(&targets);
                 ui.close();
             }
             let group = self.selected_clip_snapshots();

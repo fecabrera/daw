@@ -4,7 +4,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 
 ## Views
 
-- [Timeline](views/timeline.md): import, arrange, select, trim, loop, and copy clips.
+- [Timeline](views/timeline.md): import, arrange, select, trim, loop, split, and copy clips.
 - [Instrument](views/instrument.md): build layered sounds and add effects.
 - [Editor](views/editor.md): create MIDI patterns and edit notes.
 - [Mixer](views/mixer.md): balance tracks and Master.
@@ -41,4 +41,5 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 - [Time stretching and offline pitch changes](audio/time-stretch.md).
 - [Projects, settings, and export](projects/README.md).
 - [Seek cache profiles](projects/README.md#seek-cache-profiles): choose background CPU and memory use.
+- [Split MIDI notes](projects/README.md#split-midi-notes): choose how a note that crosses the playhead is divided.
 - [Features and roadmap](roadmap.md).

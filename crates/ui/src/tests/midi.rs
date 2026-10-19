@@ -5795,9 +5795,17 @@ fn midi_clip_context_menus_split_and_delete_in_both_views() {
         frame(&mut app, &ctx, vec![]);
         app.session.project.transport.playhead_frame = 48_000;
         let asset = app.session.project.tracks[0].clips[0].asset_id;
-        for label in ["Split at playhead", "Delete clip"] {
-            frame(&mut app, &ctx, vec![]);
-            let current = app.session.project.tracks[0].clips.last().unwrap().clone();
+        let click_menu = |app: &mut DawUi, clip_id: Id, label: &str| {
+            frame(app, &ctx, vec![]);
+            let current = app
+                .session
+                .project
+                .tracks
+                .iter()
+                .flat_map(|track| &track.clips)
+                .find(|clip| clip.id == clip_id)
+                .unwrap()
+                .clone();
             let lane = app.lane_bounds[&track];
             let block = if view == ViewMode::Edit {
                 app.midi_editor.clip_bounds[&current.id]
@@ -5807,7 +5815,7 @@ fn midi_clip_context_menus_split_and_delete_in_both_views() {
             let point = block.center();
             for pressed in [true, false] {
                 frame(
-                    &mut app,
+                    app,
                     &ctx,
                     vec![
                         egui::Event::PointerMoved(point),
@@ -5820,7 +5828,7 @@ fn midi_clip_context_menus_split_and_delete_in_both_views() {
                     ],
                 );
             }
-            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let shapes = frame_shapes(app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let item = shapes
                 .iter()
                 .find_map(|s| match &s.shape {
@@ -5829,10 +5837,20 @@ fn midi_clip_context_menus_split_and_delete_in_both_views() {
                     }
                     _ => None,
                 })
-                .expect("shared clip context action");
-            click_note_or_lane(&mut app, &ctx, item);
+                .unwrap_or_else(|| panic!("shared clip context action {label}"));
+            click_note_or_lane(app, &ctx, item);
             assert!(app.error.is_none(), "{:?}", app.error);
-        }
+        };
+        click_menu(&mut app, clip, "Split at playhead");
+        assert_eq!(app.session.project.tracks[0].clips.len(), 2);
+        let right = app.session.project.tracks[0]
+            .clips
+            .iter()
+            .find(|candidate| candidate.id != clip)
+            .unwrap()
+            .id;
+        app.select_clip(right, track, false);
+        click_menu(&mut app, right, "Delete clip");
         let clips = &app.session.project.tracks[0].clips;
         assert_eq!(clips.len(), 1);
         assert_eq!(

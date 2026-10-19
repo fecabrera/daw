@@ -431,7 +431,7 @@ impl Project {
         *self = next;
         Ok(id)
     }
-    fn midi_asset(&self, name: String, pattern: MidiPattern) -> Result<Asset> {
+    pub(crate) fn midi_asset(&self, name: String, pattern: MidiPattern) -> Result<Asset> {
         pattern.validate()?;
         let frames = self.midi_frame(pattern.length_ticks);
         if frames == 0 || frames == u64::MAX {

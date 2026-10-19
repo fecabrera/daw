@@ -63,8 +63,19 @@ Timeline MIDI lanes and the Editor track strip are views of the same project cli
 | Clip header edge drag | Loop the visible base range without changing source notes. |
 | Modifier edge drag | Stretch the selected group through the shared stretch transaction. |
 | Copy / Paste | Share one project clipboard. Copies receive new clip IDs and initially retain the source asset. Subsequent source edits isolate the edited clip. |
-| Clip context menu | Share Edit clip, Split at playhead, and Delete clip/selected clips. Selected MIDI notes also offer velocity and deletion actions. |
+| Split at playhead | Use `Project::split_clips` from the Edit menu, Command+T on macOS or Ctrl+T on Windows/Linux, and the clip context menu. Disable the menu command unless Timeline or Editor is active and the playhead is strictly inside a selected clip. |
+| Clip context menu | Share Edit clip, Split at playhead, and Delete clip/selected clips. Selected MIDI notes also offer velocity and deletion actions. When the clicked clip is selected, split the selected clips that contain the playhead; otherwise split that clip. |
 | Track actions | Share guarded MIDI creation, mute/solo, rename, duplicate, and delete. Track duplication copies settings into new, empty tracks; it does not duplicate clips. |
+
+### Split at the playhead
+
+`Project::split_clips` divides every requested clip that strictly contains the playhead frame and returns the new clip IDs. Clips that do not contain the frame stay unchanged. The original clip keeps its ID and ends at the playhead. The new clip starts there. The edit is one transaction: a missing clip or an invalid pattern leaves the project unchanged.
+
+Audio uses `Edit::Split`. It keeps the source recording, name, and color. A loop keeps its source offset and shifts its phase by the left length. A clip without a loop moves the right piece’s source offset forward by that length. Stretch stays on both pieces.
+
+MIDI notes follow `MidiNoteSplit` from application settings. Split into two is the default. A note whose source frames strictly contain the split becomes two notes: the original ID stays on the first clip, and the new note starts at the split. Preserve first keeps only the first part. Notes that do not cross stay whole on the side that contains them. Non-looping MIDI keeps its stretch and source window. It writes a separate pattern for a piece only when a note crosses, so other clips that share the original pattern are unchanged. A looping clip writes two new unlooped patterns from the notes heard on each side, so repetitions that do not cross the playhead stay intact. Application settings store the choice as `midi_note_split` (`split` or `preserve_first`). A missing or unknown value means Split into two.
+
+The Edit command is disabled without a selected clip, when no selected clip contains the playhead, and outside Timeline and Editor. The context item is disabled when none of its target clips contain the playhead. Both resulting clips are selected. Undo restores the split in one step.
 
 All clip gestures share project-grid snapping, Shift bypass, selection snapshots, overlap resolution, staged previews, and release handling. Escape, focus loss, or disabled editing cancels a gesture without publishing source/range changes. No-op releases retain asset identity and the modified state. File actions and view switches are disabled during active gestures. MIDI source resizing retains at least one tick and clamps to project zero and supported tick/frame bounds. Audio trims retain their source limits and shared-boundary behavior.
 
@@ -80,7 +91,7 @@ Copies receive new clip IDs and retain their asset, name, source range, loop, st
 - [clip_paint.rs](../../crates/ui/src/clip_paint.rs) owns common clip painting for Timeline, the Editor track strip, and drag previews. Both layout adapters call `paint_clip`; Editor supplies provisional note patterns through `PreparedClipSource::Midi` so uncommitted edits stay visible. Do not add separate clip shells or note-preview renderers per view. The piano roll retains its own note-editing layout.
 - [midi_editor.rs](../../crates/ui/src/midi_editor.rs) owns the common empty-lane creation adapter and separate piano-roll note gestures. Clipboard and placement actions remain in [lib.rs](../../crates/ui/src/lib.rs); track actions remain in [track_selection.rs](../../crates/ui/src/track_selection.rs).
 - [resize.rs](../../crates/ui/src/resize.rs) and [trim.rs](../../crates/ui/src/trim.rs) share resize preview/release calculations. [musical_time.rs](../../crates/ui/src/musical_time.rs) supplies the project grid using the active view transform.
-- Core [midi.rs](../../crates/core/src/midi.rs) owns `Project::midi_pattern_bounds` and `Project::trimmed_clips`, including immutable source resizing. Core [resize.rs](../../crates/core/src/resize.rs) resolves group overlaps. Do not add separate Editor or Timeline source-resize algorithms.
+- Core [midi.rs](../../crates/core/src/midi.rs) owns `Project::midi_pattern_bounds` and `Project::trimmed_clips`, including immutable source resizing. Core [resize.rs](../../crates/core/src/resize.rs) resolves group overlaps. Core [split.rs](../../crates/core/src/split.rs) owns `Project::split_clips` and `MidiNoteSplit`. Do not add separate Editor or Timeline split algorithms.
 - Update the paired view tests in [UI MIDI tests](../../crates/ui/src/tests/midi.rs) when changing shared actions. They compare Timeline/Editor clip appearance in both themes (including color overrides, group selection, repeats, and viewport clipping), creation, move, drag duplication, body trims, header loops, stretching, cancellation, cross-view clipboard use, and track duplication. [Core MIDI tests](../../crates/core/tests/midi.rs) protect source isolation and timing across supported rates, fractional tempos, and stretch ratios. Run the workspace tests, formatting, and Clippy checks before completion.
 
 ## Model and ownership
