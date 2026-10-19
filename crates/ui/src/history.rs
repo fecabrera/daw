@@ -74,6 +74,7 @@ impl DawUi {
             && self.track_drag.is_none()
             && self.loop_drag.is_none()
             && self.marquee.is_none()
+            && self.portion_drag.is_none()
             && self.track_name_edit.is_none()
             && self.tempo_edit.is_none()
             && self.time_drag.is_none()
@@ -120,6 +121,8 @@ impl DawUi {
         self.midi_editor.cancel();
         self.instrument_ui.cancel();
         self.selected_effects.clear();
+        self.portion = None;
+        self.portion_drag = None;
         self.prune_clip_selection();
         self.prune_track_selection();
         self.notices = self.session.warnings.clone();

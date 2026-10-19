@@ -109,6 +109,30 @@ impl DawUi {
         self.lane_bounds.insert(track.id, lane);
         self.timeline_bounds = lane;
         self.create_midi_pattern_in_empty_lane(ui, track, lane);
+        let lane_input = ui.interact(
+            lane,
+            egui::Id::new(("editor-portion", track.id)),
+            egui::Sense::click_and_drag(),
+        );
+        if lane_input.drag_started()
+            && let Some(origin) = ui.input(|input| input.pointer.press_origin())
+        {
+            self.begin_portion_drag(
+                origin,
+                self.ruler_frame(lane, origin),
+                track.id,
+                ui.input(|input| input.modifiers),
+            );
+        }
+        if lane_input.clicked()
+            && let Some(pointer) = lane_input.interact_pointer_pos()
+            && !self
+                .portion
+                .as_ref()
+                .is_some_and(|portion| portion.contains(track.id, self.ruler_frame(lane, pointer)))
+        {
+            self.portion = None;
+        }
         let palette = theme::palette(ui.ctx());
         ui.painter().rect_filled(band, 0.0, palette.background);
         ui.painter()

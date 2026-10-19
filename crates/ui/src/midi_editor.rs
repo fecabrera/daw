@@ -308,11 +308,13 @@ impl DawUi {
         };
         self.track_overview_strip(ui, &track, &assets);
         self.finish_clip_drag(ui);
+        self.update_portion(ui);
         if track.kind != TrackKind::Midi {
             ui.label("The audio editor is not available yet.");
             return;
         }
-        if !self.midi_editor.dragging()
+        if self.portion.is_none()
+            && !self.midi_editor.dragging()
             && !ui.ctx().egui_wants_keyboard_input()
             && ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
         {

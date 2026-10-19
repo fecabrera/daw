@@ -108,6 +108,7 @@ impl DawUi {
     pub fn view_switch_enabled(&self) -> bool {
         self.settings_enabled()
             && !self.midi_editor.dragging()
+            && self.portion_drag.is_none()
             && self.time_drag.is_none()
             && self.musical_drag.is_none()
             && self.selection_drag.iter().all(Option::is_none)

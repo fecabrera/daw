@@ -15,6 +15,8 @@ Moves and copies take priority over destination clips. Covered neighbors are tri
 
 Click a clip to select it. Shift-click toggles group membership. Drag a rectangle in empty space to select intersecting clips; Shift-drag toggles them against the starting selection.
 
+Hold Command on macOS, or Ctrl on Windows and Linux, and drag across a track to select a time range. The pointer uses the same crosshair as creating a loop range. The range can cover part of a clip, several clips, and the silence between them. Drag the range to move its contents. Hold Option on macOS, or Ctrl on Windows and Linux, and drag the range to duplicate it. On Windows and Linux, start that drag inside the range; Ctrl-drag outside the range selects a new range. Copy with Command+C or Ctrl+C, and paste at the playhead. The copy keeps the gaps and any silence before the first clip. Delete or Backspace removes the selected time and leaves the rest of each clip. The same range is available in Editor. Shift bypasses grid snapping. Escape or a click outside the range clears it.
+
 Drag a waveform edge to trim. Drag a header edge to repeat the current range. Hold the copy/stretch modifier while dragging an edge to [stretch duration](../audio/time-stretch.md). Group edits preserve relative timing and apply together. Drag the dividing line between touching waveforms to move their shared boundary while keeping their outer endpoints fixed.
 
 Copy with Command+C on macOS or Ctrl+C on Windows/Linux. Paste with Command+V or Ctrl+V at the playhead on the selected track. Copies keep their source content, trim, repeats, stretch, and color override.

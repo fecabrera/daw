@@ -114,13 +114,24 @@ impl DawUi {
                 }
                 ClipDragMode::Move => {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                    response
-                            .clone()
-                            .on_hover_text(if cfg!(target_os = "macos") {
-                                "Drag to move clip. Hold Option to duplicate. Hold Shift to bypass snapping."
+                    let frame = self.ruler_frame(lane, pos);
+                    response.clone().on_hover_text(
+                        if self
+                            .portion
+                            .as_ref()
+                            .is_some_and(|portion| portion.contains(track_id, frame))
+                        {
+                            if cfg!(target_os = "macos") {
+                                "Drag to move the selection. Hold Option to duplicate. Hold Shift to bypass snapping."
                             } else {
-                                "Drag to move clip. Hold Ctrl to duplicate. Hold Shift to bypass snapping."
-                            });
+                                "Drag to move the selection. Hold Ctrl to duplicate. Hold Shift to bypass snapping."
+                            }
+                        } else if cfg!(target_os = "macos") {
+                            "Drag to move clip. Hold Option to duplicate. Hold Shift to bypass snapping."
+                        } else {
+                            "Drag to move clip. Hold Ctrl to duplicate. Hold Shift to bypass snapping."
+                        },
+                    );
                 }
                 ClipDragMode::Body => {}
             }
@@ -138,6 +149,25 @@ impl DawUi {
             // Capture edges on press, before egui's movement threshold. Both views
             // need the same source snapshot for their first resize preview.
             let origin = ui.input(|i| i.pointer.press_origin()).unwrap_or(pos);
+            let modifiers = ui.input(|input| input.modifiers);
+            let on_edge = ClipDragMode::at(block, origin).resize_edge().is_some();
+            // Edge drags keep trim, loop, and stretch. Command-drag, and a drag
+            // that starts inside a time range, belongs to that range instead.
+            let range_drag = !on_edge || (modifiers.command && !clip_copy_modifier(modifiers));
+            if range_drag
+                && self.begin_portion_drag(
+                    origin,
+                    self.ruler_frame(lane, origin),
+                    track_id,
+                    modifiers,
+                )
+            {
+                return;
+            }
+            // The Editor lane can claim the range before this clip widget.
+            if self.portion_drag.is_some() {
+                return;
+            }
             let mode = ClipDragMode::at(block, origin)
                 .with_stretch_modifier(ui.input(|input| clip_copy_modifier(input.modifiers)));
             if !self.clip_selected(clip.id) {

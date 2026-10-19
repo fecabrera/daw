@@ -3241,3 +3241,21 @@ Completed with the pinned toolchain:
 Relative links in the edited documents — 212 checked, no missing targets. `git diff --check` — passed.
 
 Native macOS menu Command+T, Windows/Linux Ctrl+T, device playback of a split, and the Settings dropdown in a running app remain unverified. Automated egui tests do not establish native menu or pointer behavior.
+
+## Time-range selection — 2026-10-19
+
+Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects one time span across the lanes it touches. The span can include partial clips, several clips, and silence. The pointer uses the same crosshair as creating a loop range while that gesture is available and while the span is being drawn. Dragging the span moves its contents. Option-drag on macOS, or Ctrl-drag that starts inside the span on Windows and Linux, duplicates it. Copy keeps the span start as the paste anchor, so leading silence and gaps stay. Delete removes only that time. A span that contains only silence clears the highlight. Failure leaves the project unchanged.
+
+Audio and MIDI pieces use `Clip::retained_range`. MIDI crops the source window and leaves the shared pattern unchanged. Timeline and Editor share the gesture.
+
+Completed with the pinned toolchain and `CARGO_HOME="$PWD/work/cargo-home"`:
+
+- `cargo test -p daw-core --lib portion` — 3 passed.
+- `cargo test -p daw-ui --lib clip_portion` — 2 passed. These cover a range across two clips and silence, copy, move, delete, Option/Ctrl duplication, the Editor gesture, and the crosshair during the drag.
+- `cargo fmt --all --check` — passed.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed.
+- `cargo test --workspace` — **983 passed, 0 failed, 2 ignored**. The two ignored tests are the existing extended time-stretch acceptance matrices.
+
+Relative links in the edited documents were checked, with no missing targets. `git diff --check` — passed.
+
+Native pointer cursors, Windows/Linux Ctrl disambiguation, and device playback of a moved range remain unverified. Automated egui tests do not establish native pointer behavior.

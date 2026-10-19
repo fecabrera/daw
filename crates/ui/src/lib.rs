@@ -5,6 +5,7 @@ mod history;
 mod looping;
 mod midi_editor;
 mod placement;
+mod portion;
 mod range_selection;
 mod regular_save;
 pub use history::HistoryAction;
@@ -649,6 +650,8 @@ struct ClipClipboard {
     project: Id,
     clips: Vec<SelectedClip>,
     token: String,
+    /// When set, paste aligns this frame to the playhead so leading silence is kept.
+    anchor_frame: Option<u64>,
 }
 #[derive(Clone, Copy)]
 enum LoopDragMode {
@@ -712,6 +715,8 @@ pub struct DawUi {
     drag: Option<Drag>,
     track_drag: Option<Id>,
     marquee: Option<Marquee>,
+    portion: Option<portion::ClipPortion>,
+    portion_drag: Option<portion::PortionDrag>,
     file_hover: Option<file_drop::FileHover>,
     file_drop_target: Option<FileDropTarget>,
     loop_drag: Option<LoopDrag>,
@@ -809,6 +814,8 @@ impl Default for DawUi {
             drag: None,
             track_drag: None,
             marquee: None,
+            portion: None,
+            portion_drag: None,
             file_hover: None,
             file_drop_target: None,
             loop_drag: None,
@@ -1016,6 +1023,8 @@ impl DawUi {
                 self.selected_clip = None;
                 self.selected_clips.clear();
                 self.marquee = None;
+                self.portion = None;
+                self.portion_drag = None;
                 self.clip_clipboard = None;
                 self.notices.clear();
                 self.scroll = 0.0;
@@ -1222,6 +1231,8 @@ impl DawUi {
                     self.output = None;
                     if old_rate != session.project.sample_rate_hz {
                         self.clip_clipboard = None;
+                        self.portion = None;
+                        self.portion_drag = None;
                     }
                     self.notices = session.warnings.clone();
                     self.session = session;
@@ -1254,6 +1265,8 @@ impl DawUi {
                         self.selected_clip = None;
                         self.selected_clips.clear();
                         self.marquee = None;
+                        self.portion = None;
+                        self.portion_drag = None;
                         self.clip_clipboard = None;
                         self.output = None;
                         self.inputs.clear();
@@ -1452,6 +1465,7 @@ impl DawUi {
         clips
     }
     fn select_clip(&mut self, id: Id, track: Id, toggle: bool) {
+        self.portion = None;
         if toggle {
             if let Some(primary) = self.selected_clip {
                 self.selected_clips.insert(primary);
@@ -1499,6 +1513,9 @@ impl DawUi {
             .or_else(|| self.selected_clips.iter().copied().next());
     }
     fn copy_clip(&mut self, ctx: &egui::Context) {
+        if self.copy_portion(ctx) {
+            return;
+        }
         let clips = self.selected_clip_snapshots();
         if clips.is_empty() {
             return;
@@ -1510,6 +1527,7 @@ impl DawUi {
             project: self.session.project.project_id,
             clips,
             token,
+            anchor_frame: None,
         });
     }
     fn paste_clip(&mut self) {
@@ -1534,11 +1552,13 @@ impl DawUi {
             self.fail("Select a track before pasting clips");
             return;
         };
-        let start = clips
-            .iter()
-            .map(|entry| entry.clip.start_frame)
-            .min()
-            .unwrap();
+        let start = clipboard.anchor_frame.unwrap_or_else(|| {
+            clips
+                .iter()
+                .map(|entry| entry.clip.start_frame)
+                .min()
+                .unwrap()
+        });
         let first_track = clips[0].track_index;
         let mut next = project.clone();
         if let Err(error) = self.prepare_placement_tracks(
@@ -1556,14 +1576,15 @@ impl DawUi {
         for mut entry in clips {
             entry.track_index = target_index + entry.track_index - first_track;
             entry.track = next.tracks[entry.track_index].id;
-            let Some(position) = project
-                .transport
-                .playhead_frame
-                .checked_add(entry.clip.start_frame - start)
+            let delta = i128::from(entry.clip.start_frame) - i128::from(start);
+            let Some(position) = i128::from(project.transport.playhead_frame)
+                .checked_add(delta)
+                .filter(|position| (0..=i128::from(u64::MAX)).contains(position))
             else {
                 self.fail("Clip placement exceeds the timeline");
                 return;
             };
+            let position = position as u64;
             entry.clip.start_frame = position;
             placements.push(entry);
         }
@@ -1610,17 +1631,21 @@ impl DawUi {
             && self.track_drag.is_none()
             && self.loop_drag.is_none()
             && self.marquee.is_none()
+            && self.portion_drag.is_none()
     }
 
     pub fn clip_action_enabled(&self, action: ClipAction, ctx: &egui::Context) -> bool {
         self.clip_actions_available(ctx)
             && match action {
-                ClipAction::Copy => self
-                    .session
-                    .project
-                    .tracks
-                    .iter()
-                    .any(|track| track.clips.iter().any(|clip| self.clip_selected(clip.id))),
+                ClipAction::Copy => {
+                    self.portion_has_content()
+                        || self
+                            .session
+                            .project
+                            .tracks
+                            .iter()
+                            .any(|track| track.clips.iter().any(|clip| self.clip_selected(clip.id)))
+                }
                 ClipAction::Split => {
                     self.view_mode.has_clip_lanes()
                         && !self
@@ -2066,20 +2091,23 @@ impl DawUi {
             }
             if !ctx.egui_wants_keyboard_input()
                 && ui.is_enabled()
-                && self.view_mode != ViewMode::Edit
                 && self.clip_actions_available(&ctx)
                 && ctx.input(|i| {
                     i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)
                 })
             {
-                let clips = self.selected_clip_snapshots();
-                if !clips.is_empty() {
-                    self.edit(Edit::Batch(
-                        clips
-                            .into_iter()
-                            .map(|entry| Edit::DeleteClip(entry.clip.id))
-                            .collect(),
-                    ));
+                if self.portion.is_some() {
+                    self.delete_portion();
+                } else if self.view_mode != ViewMode::Edit {
+                    let clips = self.selected_clip_snapshots();
+                    if !clips.is_empty() {
+                        self.edit(Edit::Batch(
+                            clips
+                                .into_iter()
+                                .map(|entry| Edit::DeleteClip(entry.clip.id))
+                                .collect(),
+                        ));
+                    }
                 }
             }
         }
@@ -2790,6 +2818,7 @@ impl DawUi {
             );
         }
         self.finish_clip_drag(ui);
+        self.update_portion(ui);
         self.paint_drag_preview(ui, tracks.inner_rect.intersect(timeline_rect));
         self.paint_file_hover(ui, tracks.inner_rect.intersect(timeline_rect));
         // One shared border separates the entire header from the track workspace.
@@ -2938,16 +2967,30 @@ impl DawUi {
             && let Some(origin) = ui.input(|input| input.pointer.press_origin())
             && viewport.contains(origin)
         {
-            let mut previous = self.selected_clips.clone();
-            if let Some(primary) = self.selected_clip {
-                previous.insert(primary);
-            }
-            self.marquee = Some(Marquee {
+            if let Some(track) = self.session.project.tracks.iter().find_map(|track| {
+                self.lane_bounds
+                    .get(&track.id)
+                    .is_some_and(|lane| lane.contains(origin))
+                    .then_some(track.id)
+            }) && self.begin_portion_drag(
                 origin,
-                previous,
-                primary: self.selected_clip,
-                toggle: ui.input(|input| input.modifiers.shift || input.modifiers.command),
-            });
+                self.ruler_frame(viewport, origin),
+                track,
+                ui.input(|input| input.modifiers),
+            ) {
+                // Command-drag selects a time range instead of whole clips.
+            } else if self.portion_drag.is_none() {
+                let mut previous = self.selected_clips.clone();
+                if let Some(primary) = self.selected_clip {
+                    previous.insert(primary);
+                }
+                self.marquee = Some(Marquee {
+                    origin,
+                    previous,
+                    primary: self.selected_clip,
+                    toggle: ui.input(|input| input.modifiers.shift || input.modifiers.command),
+                });
+            }
         }
         if let Some(marquee) = &self.marquee
             && let Some(pointer) = ui.input(|input| input.pointer.latest_pos())
@@ -2999,6 +3042,7 @@ impl DawUi {
             if !ui.input(|input| input.modifiers.shift || input.modifiers.command) {
                 self.selected_clip = None;
                 self.selected_clips.clear();
+                self.portion = None;
                 if let Some(track) = self
                     .session
                     .project
@@ -3031,6 +3075,7 @@ impl DawUi {
             || self.track_drag.is_some()
             || self.loop_drag.is_some()
             || self.marquee.is_some()
+            || self.portion_drag.is_some()
         {
             return;
         }
@@ -4831,6 +4876,7 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     mod clip_duplication;
+    mod clip_portion;
     mod clip_split;
     mod component_transfer;
     mod effects;

@@ -36,6 +36,7 @@ pub use component_transfer::InstrumentComponent;
 pub use effect_transfer::{EffectChainTarget, EffectTransfer};
 mod looping;
 mod placement;
+mod portion;
 mod split;
 pub use split::MidiNoteSplit;
 mod resize;

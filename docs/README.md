@@ -4,7 +4,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 
 ## Views
 
-- [Timeline](views/timeline.md): import, arrange, select, trim, loop, split, and copy clips.
+- [Timeline](views/timeline.md): import, arrange, select, trim, loop, split, and copy clips or a time range.
 - [Instrument](views/instrument.md): build layered sounds and add effects.
 - [Editor](views/editor.md): create MIDI patterns and edit notes.
 - [Mixer](views/mixer.md): balance tracks and Master.
