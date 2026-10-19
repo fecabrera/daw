@@ -11,6 +11,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Effects:** [3-band EQ](docs/effects/equalizer.md), [Drive](docs/effects/drive.md), [Bitcrusher](docs/effects/bitcrusher.md), [Saturator](docs/effects/saturator.md), [Auto-filter](docs/effects/auto-filter.md), [Compressor](docs/effects/compressor.md), [OTT](docs/effects/ott.md), [Limiter](docs/effects/limiter.md), [Direction Mixer](docs/effects/direction-mixer.md), and [Stereo Spread](docs/effects/stereo-spread.md).
 - **Mixer:** track gain, pan, mute, and solo controls, plus master gain.
 - **Playback:** tempo controls, loop playback, and stereo level meters.
+- **Editing history:** [undo and redo](docs/editing/undo-redo.md) for project edits.
 - **Projects:** save and open projects, with configurable audio processing settings.
 - **Appearance:** dark and light themes, accent colors, and colored clips.
 - **Export and CLI:** export stereo WAV or MP3 files; validate projects and render audio from the command line.
@@ -20,7 +21,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 Audio and MIDI workflows are available in four views: **Timeline**, **Instrument**, **Editor**, and **Mixer**.
 
-The project format is experimental, and undo/redo is outside the current MVP. Saved projects reference external audio files; they do not bundle recordings. Missing audio files remain visible and play as silence.
+The project format is experimental. Saved projects reference external audio files; they do not bundle recordings. Missing audio files remain visible and play as silence.
 
 Planned work includes audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
 

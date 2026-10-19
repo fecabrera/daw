@@ -145,7 +145,7 @@ fn deserialize_tracks<'de, D: serde::Deserializer<'de>>(
 pub struct Error(pub String);
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     #[serde(default)]
     pub stretch_engine: StretchEngine,
@@ -163,7 +163,7 @@ pub struct Project {
     pub transport: Transport,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Master {
     pub gain_db: f32,
     #[serde(default)]
@@ -171,7 +171,7 @@ pub struct Master {
     #[serde(default)]
     pub effects_compact: bool,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub midi_pattern: Option<MidiPattern>,
@@ -181,20 +181,20 @@ pub struct Asset {
     pub source_metadata: SourceMetadata,
     pub decoded_frame_count: u64,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     pub kind: String,
     pub path: String,
     pub path_kind: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SourceMetadata {
     pub sample_rate_hz: u32,
     pub channels: u16,
     pub sample_format: String,
     pub bits_per_sample: u16,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Track {
     #[serde(default)]
     pub effects: Vec<EffectInstance>,
@@ -215,7 +215,7 @@ pub struct Track {
     pub soloed: bool,
     pub clips: Vec<Clip>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
     pub id: Id,
     pub asset_id: Id,
@@ -236,12 +236,12 @@ pub struct Clip {
 
 pub use daw_unit_core::{ClipLoop, ClipStretch};
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Transport {
     pub playhead_frame: u64,
     pub r#loop: Loop,
 }
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Loop {
     pub enabled: bool,
     pub start_frame: u64,

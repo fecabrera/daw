@@ -1,10 +1,12 @@
 mod clip_lane;
 mod clip_paint;
+mod history;
 mod looping;
 mod midi_editor;
 mod placement;
 mod range_selection;
 mod regular_save;
+pub use history::HistoryAction;
 mod resize;
 mod sampler_panel;
 mod stretch;
@@ -687,6 +689,7 @@ pub struct DawUi {
     settings_open: bool,
     project_settings: Option<project_settings::ProjectSettings>,
     pub session: Session,
+    history: Option<daw_project::SessionHistory>,
     output: Option<AudioOutput>,
     selected_track: Option<Id>,
     selected_tracks: HashSet<Id>,
@@ -724,6 +727,8 @@ pub struct DawUi {
     selection_bounds: [Rect; 4],
     dirty: bool,
     change_revision: u64,
+    navigation_revision: u64,
+    saved_navigation_revision: u64,
     regular_save: Option<regular_save::PendingSave>,
     sync_needed: bool,
     repaint_until: Option<std::time::Instant>,
@@ -779,6 +784,7 @@ impl Default for DawUi {
             settings_open: false,
             project_settings: None,
             session: Session::default(),
+            history: None,
             output: None,
             selected_track: None,
             selected_tracks: HashSet::new(),
@@ -816,6 +822,8 @@ impl Default for DawUi {
             selection_bounds: [Rect::NOTHING; 4],
             dirty: false,
             change_revision: 0,
+            navigation_revision: 0,
+            saved_navigation_revision: 0,
             regular_save: None,
             sync_needed: false,
             repaint_until: None,
@@ -945,6 +953,7 @@ impl DawUi {
         self.sync_needed = true;
     }
     fn run_job(&mut self, label: &str, job: impl FnOnce() -> Result<Job, String> + Send + 'static) {
+        self.ensure_history();
         if let Some(cancel) = self.settings_cancel.take() {
             cancel.store(true, Ordering::Relaxed);
         }
@@ -975,6 +984,8 @@ impl DawUi {
             Some(Action::New | Action::CloseProject) => {
                 self.output = None;
                 self.session = Session::default();
+                self.history = None;
+                self.saved_navigation_revision = self.navigation_revision;
                 self.midi_editor.cancel();
                 self.instrument_ui = Default::default();
                 self.instrument_catalog.clear();
@@ -1010,6 +1021,7 @@ impl DawUi {
                 self.project_settings = None;
                 self.overwrite = None;
                 self.sync_needed = false;
+                self.ensure_history();
             }
             Some(Action::Open(p)) => self.open(p),
             Some(Action::CloseWindow) => self.allow_close = true,
@@ -1222,6 +1234,8 @@ impl DawUi {
                     self.loop_drag = None;
                     self.track_drag = None;
                     if !dirty {
+                        self.history = None;
+                        self.saved_navigation_revision = self.navigation_revision;
                         self.master_selected = false;
                         self.selected_track = None;
                         self.selected_tracks.clear();
@@ -1264,11 +1278,15 @@ impl DawUi {
                     } else {
                         self.dirty = false;
                     }
+                    self.ensure_history();
                     self.sync_needed = true;
                 }
                 Ok(Job::Saved(session)) => {
                     self.project_name_dialog = None;
                     self.session = session;
+                    self.record_history();
+                    self.saved_navigation_revision = self.navigation_revision;
+                    self.history_saved(&self.session.clone());
                     self.dirty = false;
                     self.unsaved_prompt = false;
                     self.perform_pending();
@@ -1293,7 +1311,9 @@ impl DawUi {
     }
     fn seek(&mut self, frame: u64) {
         self.session.project.transport.playhead_frame = frame;
-        self.mark_dirty();
+        self.navigation_revision = self.navigation_revision.wrapping_add(1);
+        self.change_revision = self.change_revision.wrapping_add(1);
+        self.dirty = true;
         if let Some(output) = &mut self.output
             && let Err(e) = output.seek(frame)
         {
@@ -1368,6 +1388,7 @@ impl DawUi {
         }
     }
     fn edit(&mut self, command: Edit) {
+        self.ensure_history();
         match self.session.project.edited(command) {
             Ok(project) => {
                 if self.prepare_sampler_edit(&project, None) {
@@ -1646,6 +1667,7 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.ensure_history();
         strip_reorder::begin_frame(
             ui,
             egui::Id::new((
@@ -1672,6 +1694,14 @@ impl DawUi {
             output.set_waker(move || wake.request_repaint());
         }
         self.poll();
+        // Publish completed jobs before a new pointer gesture starts its own undo step.
+        if ui.is_enabled()
+            && self.edit_environment_available()
+            && ui.input(|i| i.pointer.any_pressed())
+            && let Some(history) = &mut self.history
+        {
+            history.begin_group();
+        }
         if self.instrument_ui.track != self.selected_track {
             self.instrument_ui.cancel();
             self.instrument_ui.track = self.selected_track;
@@ -1681,6 +1711,9 @@ impl DawUi {
         if let Some(drag) = &mut self.drag {
             drag.duplicate = drag.mode == ClipDragMode::Move
                 && ctx.input(|input| clip_copy_modifier(input.modifiers));
+        }
+        if ui.is_enabled() {
+            self.history_shortcuts(&ctx);
         }
         self.update_file_hover(&ctx);
         if !self.native_menu
@@ -1934,6 +1967,11 @@ impl DawUi {
                 }
             }
         }
+        if ctx.input(|i| !i.pointer.any_down() || !i.focused)
+            && let Some(history) = &mut self.history
+        {
+            history.finish_group();
+        }
         let now = std::time::Instant::now();
         if self.is_playing()
             || self.output.as_ref().is_some_and(|o| o.preparing())
@@ -1995,6 +2033,7 @@ impl DawUi {
 
     fn edit_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);
+        self.history_menu(ui);
         for action in ClipAction::ALL {
             let button = egui::Button::new(action.label())
                 .shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &action.shortcut()));
@@ -4679,6 +4718,7 @@ mod tests {
     mod envelope_units;
     mod group_looping;
     mod group_stretch;
+    mod history;
     mod instrument_catalog;
     mod instrument_main;
     mod lfo;

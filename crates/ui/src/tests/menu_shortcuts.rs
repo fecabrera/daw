@@ -82,7 +82,7 @@ fn all_menus_show_command_symbol_on_mac_and_ctrl_on_windows_and_linux() {
                                 "⌘W",
                                 "⌘,",
                             ],
-                            "Edit" => &["⌘C", "⌘V"],
+                            "Edit" => &["⌘Z", "Shift+⌘Z", "⌘C", "⌘V"],
                             "View" => &["⌘1", "⌘2", "⌘3", "⌘4"],
                             _ => &["⌘R"],
                         };
@@ -93,7 +93,7 @@ fn all_menus_show_command_symbol_on_mac_and_ctrl_on_windows_and_linux() {
                     } else {
                         let expected: &[&str] = match menu {
                             "File" => &["Ctrl+N", "Ctrl+Shift+S"],
-                            "Edit" => &["Ctrl+C", "Ctrl+V"],
+                            "Edit" => &["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+C", "Ctrl+V"],
                             "View" => &["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4"],
                             _ => &["Ctrl+R"],
                         };

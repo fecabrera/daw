@@ -6,6 +6,8 @@ fn hold_save(app: &mut DawUi) -> mpsc::Sender<Result<(), String>> {
         receiver,
         project: app.session.project.project_id,
         revision: app.change_revision,
+        snapshot: app.session.clone(),
+        navigation_revision: app.navigation_revision,
     });
     sender
 }

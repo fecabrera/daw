@@ -2987,3 +2987,25 @@ Release wall-time measurements for one stereo unit on the local macOS ARM64 deve
 | 192 kHz | 5.46% |
 
 These are isolated processor wall-time/audio-duration ratios for 0.1 seconds of input, not device deadline guarantees or a full-session benchmark. The CPU model was unavailable in the sandbox. FIR transition-band rolloff near project Nyquist is documented in the user guide. Native UI, display-scale, listening/audio-device, Windows, and Linux checks were not performed.
+
+## Project undo and redo — 2026-10-19
+
+Implemented [session history](../editing/undo-redo.md), superseding the original MVP exclusion. History restores project metadata and shared prepared audio together, groups pointer edits, retains stable IDs, preserves source references through Save As, and limits undo to 100 entries. Undo/redo uses shared Edit actions and keyboard shortcuts, including native macOS menu items. Text editing retains its own keys; a focused knob does not block project undo.
+
+Completed targeted checks:
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: pass.
+- `cargo test -p daw-project -p daw-ui`: pass. Covers history grouping/no-ops/branching, history bounds, save checkpoints, import/stretch/rate restoration with removed source files, source identity after Save As, and 480 UI tests.
+- `cargo test -p daw-ui history`: five interaction tests pass after the final live-transport refresh change. Covers Command/Ctrl shortcuts, exact Shift handling, repeat suppression, native-action ownership, text focus, an actual focused-knob drag, menu clicks, save/undo races, job guards, and reset on New.
+- Documentation links resolve; working-tree whitespace checks pass.
+
+Logs: `work/undo-final-clippy.log`, `work/undo-final-affected-tests.log`, and `work/undo-final-shortcut-tests.log`. Prepared audio and history remain outside the audio callback. Native menu clicks, device playback during undo, and Windows/Linux desktop behavior have not been checked interactively.
+
+Workspace verification: `cargo test --workspace` passes 930 tests with two existing extended acceptance matrices ignored (`work/undo-workspace-tests.log`). The subsequent affected-crate run includes all 480 UI tests, including the additional focused-knob history regression. The final shortcut tests and Clippy pass after the last live-transport change.
+
+Final verification after the worker/gesture boundary fix:
+
+- `cargo test -p daw-ui`: all 481 tests pass, including a completed worker publication followed by a new pointer gesture in the same frame (`work/undo-final-ui-tests.log`). These remain separate undo steps.
+- `cargo fmt --all --check` and workspace Clippy with warnings denied: pass.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: pass (`work/undo-cli-build.log`, `work/undo-cli.log`).
+- `sh tools/package_macos.sh debug`: pass; rebuilt `target/debug/DAW.app` from the final sources (`work/undo-final-package.log`). The running app was not restarted.

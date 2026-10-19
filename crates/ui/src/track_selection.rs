@@ -124,6 +124,7 @@ impl DawUi {
         if !self.track_action_enabled(action, ctx) {
             return;
         }
+        self.ensure_history();
         if action == TrackAction::Rename {
             if let Some(track) = self
                 .session

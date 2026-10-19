@@ -43,7 +43,7 @@ Provide a headless command-line mode from the start, using the same project mode
 | MVP-12 | Clip boundaries | Apply short fades at clip boundaries to prevent clicks. |
 | MVP-13 | Headless mode | Load and validate an existing project and export its arrangement as WAV or MP3 from the command line, without a graphical session or audio output device. |
 
-Undo/redo is outside the MVP. Requirement ID MVP-09 is retired; the remaining IDs are unchanged.
+The original MVP excluded undo/redo and retired MVP-09. [Session history](../editing/undo-redo.md) supersedes that exclusion; the remaining IDs are unchanged.
 
 ## MVP technology stack
 
@@ -441,7 +441,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 #### Editing
 
 - Configurable snapping controls and targets.
-- Introduce undo/redo progressively, starting with basic track and clip edits.
+- Project undo/redo is implemented through [session history](../editing/undo-redo.md).
 
 ### Mid-term
 
@@ -452,7 +452,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 - Instruments and effects follow the [accepted Units MVP scope](modular-audio-units.md#accepted-units-mvp-scope): FunDSP behind a shared API; oscillators, noise, sample playback, envelope, LFO, filter, gain, delay, and simple reverb. Use polyphonic MIDI tracks and one active voice per beat lane. Include serial track/lane/Master effects, instrument/modulation graphs, agreed transport and persistence rules, and export tails capped at 10 seconds. Limiter now adds Peak/True Peak and L/R/M/S processing with fixed host-compensated latency; see [Limiter](../effects/limiter.md). Polyphonic MIDI beat lanes, nested graph editing/presets, arbitrary plugin latency, SoundFont instruments, spectral effects, and convolution follow later.
 - The Editor view hosts audio, MIDI pattern, and beat pattern editors, chosen by clip type. Audio-editor tools remain to be specified; the initial MIDI piano roll is implemented. Beat tracks and the beat pattern editor follow the [accepted beat pattern editor MVP scope](../views/beat-editor.md#accepted-beat-mvp-scope): audio/MIDI lanes; on/off and per-step velocity; one pitch per MIDI lane; a shared 1–16-bar grid at 1/4, 1/8, 1/16, or 1/32 resolution, defaulting to one bar at 1/16. Audio hits play to their end; MIDI notes send note-off after one step, and retriggers replace the lane's voice. Simple lane-stop connections fade the stopped voice; the stopping lane wins when connected lanes trigger together. Units provides lane gain/pan/mute/solo and serial lane/track effects. Open beat clips from Timeline in Editor using the beat pattern editor, and retain clip/lane context in Units. Lane type is fixed at creation. Pattern edits create a new source while clip trims/loops preserve it. MIDI polyphony, custom duration modes, advanced step controls, lane conversion, parallel audio paths, shared-effect sends, and audio sidechains follow later.
 - Automation.
-- Extend undo/redo coverage to mixing controls and the new editing features introduced after the MVP.
+- New editing features must participate in shared project history.
 
 ### Long-term
 
@@ -463,7 +463,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 These details are not yet fixed:
 
 - Delivery horizon and detailed behavior for the source manager and source inclusion.
-- Post-MVP undo/redo rollout: exact coverage per stage, action grouping, and history limits.
+- Undo/redo coverage, grouping, and limits are defined in [session history](../editing/undo-redo.md).
 
 ### Drive effect — 2026-10-13
 

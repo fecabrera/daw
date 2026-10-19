@@ -4274,3 +4274,62 @@ fn envelope_input_routes_and_audio_survive_save_as_and_reopen() {
     daw_engine::Renderer::new(copy.plan()).render_offline(&mut restored);
     assert_eq!(restored, expected);
 }
+
+#[test]
+fn undo_history_restores_prepared_audio_across_import_stretch_rate_and_save_as() {
+    use daw_project::SessionHistory;
+    use std::sync::Arc;
+    let f = Fixture::new();
+    let source = f.wav("undo.wav", 48000, 2, 16, false);
+    let original_bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    let mut history = SessionHistory::new(&session, true).unwrap();
+    session.import(&source, None, 0).unwrap();
+    history.record(&session).unwrap();
+    let imported = session.clone();
+    let clip = imported.project.tracks[0].clips[0].clone();
+    session.project.tracks[0].clips[0].stretch = daw_core::ClipStretch::new(1, 2);
+    session.prepare_stretches().unwrap();
+    history.record(&session).unwrap();
+    let stretched = session.clone();
+    session = session.with_audio_settings(96000, 128).unwrap();
+    history.record(&session).unwrap();
+    let changed_rate = session.clone();
+    session.save(&f.0.join("new-location")).unwrap();
+    history.mark_saved(&session).unwrap();
+    let folder = session.folder.clone();
+    assert_eq!(fs::read(&source).unwrap(), original_bytes);
+    fs::remove_file(&source).unwrap();
+    // No source access or re-preparation is needed to restore any retained state.
+    session.project.transport.playhead_frame = 9600;
+    session = history.undo(&session).unwrap();
+    assert_eq!(session.folder, folder);
+    assert_eq!(session.project.sample_rate_hz, 48000);
+    assert_eq!(session.project.transport.playhead_frame, 4800);
+    assert!(Arc::ptr_eq(
+        &session.audio[&clip.asset_id].samples,
+        &imported.audio[&clip.asset_id].samples
+    ));
+    let mut actual = vec![[0.0; 2]; 4800];
+    let mut expected = actual.clone();
+    session.plan().render(0, &mut actual);
+    stretched.plan().render(0, &mut expected);
+    assert_eq!(actual, expected);
+    session = history.undo(&session).unwrap();
+    assert_eq!(session.project.tracks, imported.project.tracks);
+    session = history.undo(&session).unwrap();
+    assert!(session.project.assets.is_empty() && session.project.tracks.is_empty());
+    for _ in 0..3 {
+        session = history.redo(&session).unwrap();
+    }
+    assert_eq!(session.project.tracks, changed_rate.project.tracks);
+    assert_eq!(session.project.sample_rate_hz, 96000);
+    assert_eq!(
+        session.source_path(&session.project.assets[0]).unwrap(),
+        source
+    );
+    assert!(history.is_saved());
+    session.save(&folder.unwrap()).unwrap();
+    let reopened = Session::open(session.folder.as_ref().unwrap()).unwrap();
+    assert_eq!(reopened.project.tracks, session.project.tracks);
+}

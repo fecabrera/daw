@@ -14,7 +14,7 @@ These instructions apply to the whole repository. Read any additional `AGENTS.md
 
 ## Project context and reference documents
 
-This is a Rust desktop digital audio workstation (DAW) for macOS, Windows, and Linux, with a headless command-line interface (CLI). Both applications use the same project model and rendering logic. The project format is experimental. There is no fixed track-count limit. Undo/redo and mobile delivery are outside the current MVP.
+This is a Rust desktop digital audio workstation (DAW) for macOS, Windows, and Linux, with a headless command-line interface (CLI). Both applications use the same project model and rendering logic. The project format is experimental. There is no fixed track-count limit. Undo/redo follows [session history](specs/editing/undo-redo.md). Mobile delivery is outside the current MVP.
 
 Read the documents relevant to the task:
 

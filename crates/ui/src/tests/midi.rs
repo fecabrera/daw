@@ -2481,7 +2481,9 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
             assets
         );
         assert_eq!(app.selected_track, Some(track));
-        assert!(app.dirty);
+        // Both toggles remain undoable, but their final state matches the baseline.
+        assert!(!app.dirty);
+        assert!(app.history_action_enabled(HistoryAction::Undo, &ctx));
     }
 }
 #[test]

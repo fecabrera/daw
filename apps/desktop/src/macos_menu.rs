@@ -1,4 +1,4 @@
-use daw_ui::{ClipAction, DawUi, FileAction, TrackAction, ViewMode};
+use daw_ui::{ClipAction, DawUi, FileAction, HistoryAction, TrackAction, ViewMode};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, rc::Retained, sel};
 use objc2_app_kit::{
     NSApplication, NSControlStateValueOff, NSControlStateValueOn, NSEventModifierFlags,
@@ -18,6 +18,7 @@ enum MenuAction {
     ProjectSettings,
     File(FileAction),
     Clip(ClipAction),
+    History(HistoryAction),
     Track(TrackAction),
     View(ViewMode),
 }
@@ -81,6 +82,24 @@ define_class!(
                 && let Some(action) = ClipAction::ALL.get(index)
             {
                 let _ = self.ivars().sender.send(MenuAction::Clip(*action));
+                self.ivars().context.request_repaint();
+            }
+        }
+
+        // SAFETY: The selector takes an NSMenuItem sender and returns void.
+        #[unsafe(method(performHistoryAction:))]
+        fn perform_history_action(&self, item: &NSMenuItem) {
+            let mtm = MainThreadMarker::from(self);
+            if NSApplication::sharedApplication(mtm).currentEvent().is_some_and(|event| {
+                event.r#type() == NSEventType::KeyDown
+                    && (event.isARepeat() || self.ivars().context.input(|input| !input.focused || input.pointer.any_down()))
+            }) {
+                return;
+            }
+            if let Ok(index) = usize::try_from(item.tag())
+                && let Some(action) = HistoryAction::ALL.get(index)
+            {
+                let _ = self.ivars().sender.send(MenuAction::History(*action));
                 self.ivars().context.request_repaint();
             }
         }
@@ -199,6 +218,28 @@ impl NativeMenu {
         menubar.addItem(&file_item);
         let edit_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Edit"));
         edit_menu.setAutoenablesItems(false);
+        for (index, action) in HistoryAction::ALL.into_iter().enumerate() {
+            // SAFETY: The selector is defined above with an NSMenuItem argument.
+            let item = unsafe {
+                NSMenuItem::initWithTitle_action_keyEquivalent(
+                    NSMenuItem::alloc(mtm),
+                    &NSString::from_str(action.label()),
+                    Some(sel!(performHistoryAction:)),
+                    ns_string!("z"),
+                )
+            };
+            let mut modifiers = NSEventModifierFlags::Command;
+            if action.shortcut().modifiers.shift {
+                modifiers |= NSEventModifierFlags::Shift;
+            }
+            item.setKeyEquivalentModifierMask(modifiers);
+            item.setTag(index as isize);
+            // SAFETY: NativeMenu retains the target and detaches it before dropping.
+            unsafe { item.setTarget(Some(&target)) };
+            edit_menu.addItem(&item);
+            items.push((MenuAction::History(action), item));
+        }
+        edit_menu.addItem(&NSMenuItem::separatorItem(mtm));
         for (index, action) in ClipAction::ALL.into_iter().enumerate() {
             let key = action.shortcut().logical_key.name().to_lowercase();
             // SAFETY: The selector is defined above, with an NSMenuItem argument.
@@ -300,6 +341,15 @@ impl NativeMenu {
                 MenuAction::ProjectSettings => ui.open_project_settings(),
                 MenuAction::File(action) => ui.perform_file_action(action),
                 MenuAction::Clip(action) => ui.perform_clip_action(action, ctx),
+                MenuAction::History(action) => {
+                    ui.perform_history_action(action, ctx);
+                    let shortcut = action.shortcut();
+                    // AppKit owns this press; winit can also forward it to egui.
+                    ctx.input_mut(|input| input.events.retain(|event| {
+                        !matches!(event, egui::Event::Key { key, pressed: true, modifiers, .. }
+                            if *key == shortcut.logical_key && modifiers.matches_exact(shortcut.modifiers))
+                    }));
+                }
                 MenuAction::View(mode) => {
                     ui.set_view_mode(mode, ctx);
                     let shortcut = mode.shortcut();
@@ -350,6 +400,7 @@ impl NativeMenu {
                 MenuAction::ProjectSettings => ui.project_settings_enabled(),
                 MenuAction::File(action) => ui.file_action_enabled(*action),
                 MenuAction::Clip(action) => ui.clip_action_enabled(*action, ctx),
+                MenuAction::History(action) => ui.history_action_enabled(*action, ctx),
                 MenuAction::Track(action) => ui.track_action_enabled(*action, ctx),
                 MenuAction::View(_) => ui.view_switch_enabled(),
             });
