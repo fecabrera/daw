@@ -1240,11 +1240,7 @@ impl MidiTrackRuntime {
     pub fn effect_snapshot(&self, id: Id) -> Option<super::ModulationSnapshot> {
         super::layer_effects::find(&self.layer_effects, id)
     }
-    pub fn set_effect_meter(
-        &mut self,
-        id: Id,
-        meter: &std::sync::Arc<std::sync::atomic::AtomicU32>,
-    ) {
+    pub fn set_effect_meter(&mut self, id: Id, meter: &std::sync::Arc<daw_unit_core::PeakMeter>) {
         for bus in &mut self.layer_effects {
             bus.chain.set_meter(id, meter);
         }

@@ -159,8 +159,8 @@ fn track_meters(
 }
 fn effect_meters(
     plan: &RenderPlan,
-    previous: &HashMap<Id, Arc<AtomicU32>>,
-) -> HashMap<Id, Arc<AtomicU32>> {
+    previous: &HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
+) -> HashMap<Id, Arc<daw_unit_core::PeakMeter>> {
     plan.project
         .all_effects()
         .filter(|effect| {
@@ -177,9 +177,12 @@ fn effect_meters(
         })
         .collect()
 }
-fn bind_effect_meters(renderer: &mut Renderer, meters: &HashMap<Id, Arc<AtomicU32>>) {
+fn bind_effect_meters(
+    renderer: &mut Renderer,
+    meters: &HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
+) {
     for (id, meter) in meters {
-        renderer.set_effect_meter(*id, meter.clone());
+        renderer.set_effect_peak_meter(*id, meter.clone());
     }
 }
 fn band_meters(
@@ -353,7 +356,7 @@ pub struct AudioOutput {
     pub status: Arc<Status>,
     pub description: String,
     track_meters: HashMap<Id, Arc<StereoMeter>>,
-    effect_meters: HashMap<Id, Arc<AtomicU32>>,
+    effect_meters: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
     band_meters: HashMap<Id, Arc<[AtomicU32; 3]>>,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
 }
@@ -599,7 +602,11 @@ impl AudioOutput {
         }
         self.effect_meters
             .get(&id)
-            .map_or(0.0, |meter| f32::from_bits(meter.load(Ordering::Relaxed)))
+            .map_or(0.0, |meter| meter.reading())
+    }
+    /// Held readings remain available while paused/stopped and while panels are hidden.
+    pub fn gain_reduction_meter(&self, id: Id) -> Option<&daw_unit_core::PeakMeter> {
+        self.effect_meters.get(&id).map(AsRef::as_ref)
     }
     pub fn ott_gain_change_db(&self, id: Id) -> [f32; 3] {
         self.band_monitor_values(id)
@@ -1433,6 +1440,65 @@ mod compressor_meter_tests {
     use super::*;
 
     #[test]
+    fn layer_and_main_compressors_capture_peaks_through_shared_bindings() {
+        let mut plan = crate::tests::transport_plan();
+        let track = plan.project.add_midi_track().unwrap();
+        let clip = plan.project.add_midi_pattern(track, 0).unwrap();
+        plan.project
+            .edit(daw_core::Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: daw_core::MidiPattern {
+                    length_ticks: 3840,
+                    notes: vec![daw_core::MidiNote {
+                        id: Id::new_v4(),
+                        start_tick: 0,
+                        length_ticks: 1920,
+                        pitch: 60,
+                        velocity: 100,
+                    }],
+                },
+            })
+            .unwrap();
+        let track = plan
+            .project
+            .tracks
+            .iter_mut()
+            .find(|entry| entry.id == track)
+            .unwrap();
+        track.instrument = Some(daw_core::OscillatorSettings::default().into());
+        let instrument = track.instrument.as_mut().unwrap();
+        let mut compressor = daw_core::EffectInstance::compressor();
+        if let daw_core::EffectSettings::Compressor(settings) = &mut compressor.unit {
+            settings.threshold_db = -48.0;
+            settings.attack_ms = 0.1;
+        }
+        let layer = compressor.id;
+        instrument.layers[0].effects.push(compressor.clone());
+        compressor.id = Id::new_v4();
+        let main = compressor.id;
+        instrument.main.effects.push(compressor);
+        let meters = effect_meters(&plan, &HashMap::new());
+        let mut renderer = Renderer::new(plan.clone());
+        bind_effect_meters(&mut renderer, &meters);
+        renderer.play();
+        crate::preparation_tests::realtime(|| {
+            for _ in 0..4000 {
+                renderer.next_sample();
+            }
+        });
+        for id in [layer, main] {
+            assert!(meters[&id].peak() > 0.0);
+        }
+        meters[&layer].reset_peak();
+        assert_eq!(meters[&layer].peak(), 0.0);
+        assert!(meters[&main].peak() > 0.0);
+        assert!(Arc::ptr_eq(
+            &effect_meters(&plan, &meters)[&main],
+            &meters[&main]
+        ));
+    }
+
+    #[test]
     fn effect_meter_handles_follow_ids_and_report_callback_compression() {
         for master in [false, true] {
             let mut plan = crate::tests::transport_plan();
@@ -1457,10 +1523,21 @@ mod compressor_meter_tests {
                 .push(Command::Play)
                 .unwrap_or_else(|_| panic!("queue"));
             callback.update();
-            for _ in 0..2000 {
+            crate::preparation_tests::realtime(|| {
+                for _ in 0..2000 {
+                    callback.next();
+                }
+            });
+            assert!(meters[&id].reading() > 10.0);
+            assert!(meters[&id].peak() >= meters[&id].reading());
+            let current = meters[&id].reading();
+            meters[&id].reset_peak();
+            assert_eq!(meters[&id].peak(), 0.0);
+            assert_eq!(meters[&id].reading(), current);
+            crate::preparation_tests::realtime(|| {
                 callback.next();
-            }
-            assert!(f32::from_bits(meters[&id].load(Ordering::Relaxed)) > 10.0);
+            });
+            assert!(meters[&id].peak() > 0.0);
             let mut other = effect;
             other.id = Id::new_v4();
             let second = other.id;
@@ -1476,7 +1553,8 @@ mod compressor_meter_tests {
                 .push(Command::Stop)
                 .unwrap_or_else(|_| panic!("queue"));
             callback.update();
-            assert_eq!(meters[&id].load(Ordering::Relaxed), 0);
+            assert_eq!(meters[&id].reading(), 0.0);
+            assert!(meters[&id].peak() > 0.0);
         }
     }
 }
@@ -1509,7 +1587,7 @@ mod band_meter_tests {
                 let bands = band_meters(&plan, &HashMap::new());
                 let cells: Vec<_> = scalar
                     .values()
-                    .map(AsRef::as_ref)
+                    .map(|meter| meter.current().as_ref())
                     .chain(bands.values().flat_map(|m| m.iter()))
                     .collect();
                 let tracks = track_meters(&plan, &HashMap::new());
@@ -1536,6 +1614,7 @@ mod band_meter_tests {
                     renderer = next;
                     if !enabled {
                         assert!(cells.iter().all(|cell| cell.load(Ordering::Relaxed) == 0));
+                        assert!(scalar.values().all(|meter| meter.peak() == 0.0));
                         // No writes while bypassed, even as audio and detector history advance.
                         for cell in &cells {
                             cell.store(123, Ordering::Relaxed);
@@ -1548,6 +1627,7 @@ mod band_meter_tests {
                         assert!(cells.iter().any(|cell| cell.load(Ordering::Relaxed) != 0));
                     } else {
                         assert!(cells.iter().all(|cell| cell.load(Ordering::Relaxed) == 123));
+                        assert!(scalar.values().all(|meter| meter.peak() == 0.0));
                         // Restore a valid zero reading before preparing the next renderer.
                         for cell in &cells {
                             cell.store(0, Ordering::Relaxed);

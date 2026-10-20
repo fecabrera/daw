@@ -9,6 +9,68 @@ pub trait MeterStorage {
     type Reading: Copy;
     const ZERO: Self::Reading;
     fn store(&self, reading: Self::Reading);
+    fn initialize(&self, reading: Self::Reading) {
+        self.store(reading);
+    }
+    fn clear(&self) {
+        self.store(Self::ZERO);
+    }
+}
+
+/// Nonnegative scalar monitoring with a click-resettable maximum. The current
+/// cell can also serve legacy scalar consumers. Allocate handles on a control thread.
+#[derive(Default)]
+pub struct PeakMeter {
+    current: Arc<AtomicU32>,
+    peak: AtomicU32,
+}
+
+impl PeakMeter {
+    pub fn new(current: Arc<AtomicU32>) -> Self {
+        Self {
+            current,
+            peak: AtomicU32::new(0),
+        }
+    }
+    pub fn current(&self) -> &Arc<AtomicU32> {
+        &self.current
+    }
+    pub fn reading(&self) -> f32 {
+        f32::from_bits(self.current.load(Ordering::Relaxed))
+    }
+    pub fn peak(&self) -> f32 {
+        f32::from_bits(self.peak.load(Ordering::Relaxed))
+    }
+    pub fn reset_peak(&self) {
+        self.peak.store(0, Ordering::Relaxed);
+    }
+    fn store_current(&self, reading: f32) -> f32 {
+        let value = if reading.is_finite() && reading > 0.0 {
+            reading
+        } else {
+            0.0
+        };
+        self.current.store(value.to_bits(), Ordering::Relaxed);
+        value
+    }
+}
+
+impl MeterStorage for PeakMeter {
+    type Reading = f32;
+    const ZERO: f32 = 0.0;
+    fn store(&self, reading: f32) {
+        let value = self.store_current(reading);
+        // Nonnegative finite float bits have the same order as their values.
+        self.peak.fetch_max(value.to_bits(), Ordering::Relaxed);
+    }
+    fn initialize(&self, reading: f32) {
+        // Binding a prepared/seek-reconstructed processor is not live metering.
+        self.store_current(reading);
+    }
+    fn clear(&self) {
+        self.current.store(0, Ordering::Relaxed);
+        self.reset_peak();
+    }
 }
 
 impl MeterStorage for AtomicU32 {
@@ -52,7 +114,11 @@ impl<T: MeterStorage> UnitMeter<T> {
     }
 
     pub fn attach(&mut self, handle: Arc<T>, reading: T::Reading) {
-        handle.store(if self.enabled { reading } else { T::ZERO });
+        if self.enabled {
+            handle.initialize(reading);
+        } else {
+            handle.clear();
+        }
         self.handle = Some(handle);
     }
 
@@ -60,7 +126,7 @@ impl<T: MeterStorage> UnitMeter<T> {
         if self.enabled != enabled {
             self.enabled = enabled;
             if !enabled && let Some(handle) = &self.handle {
-                handle.store(T::ZERO);
+                handle.clear();
             }
         }
     }
@@ -82,6 +148,43 @@ impl<T: MeterStorage> UnitMeter<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn held_peak_retains_short_readings_resets_independently_and_follows_bypass() {
+        let handle = Arc::new(PeakMeter::default());
+        let mut meter = UnitMeter::new(true);
+        meter.attach(handle.clone(), 2.0);
+        assert_eq!(handle.peak(), 0.0);
+        meter.publish(18.0);
+        meter.publish(3.0);
+        assert_eq!(handle.reading(), 3.0);
+        assert_eq!(handle.peak(), 18.0);
+        handle.reset_peak();
+        assert_eq!(handle.reading(), 3.0);
+        assert_eq!(handle.peak(), 0.0);
+        meter.publish(4.0);
+        meter.publish(0.0);
+        assert_eq!(handle.peak(), 4.0);
+        let snapshot = meter.clone();
+        snapshot.publish(50.0);
+        assert_eq!(handle.peak(), 4.0);
+        meter.attach(handle.clone(), 30.0);
+        assert_eq!(handle.peak(), 4.0);
+        meter.set_enabled(false);
+        assert_eq!(handle.reading(), 0.0);
+        assert_eq!(handle.peak(), 0.0);
+        meter.publish(50.0);
+        assert_eq!(handle.peak(), 0.0);
+        meter.set_enabled(true);
+        meter.publish(6.0);
+        for value in [f32::NAN, f32::INFINITY, -5.0, -0.0] {
+            meter.publish(value);
+            assert_eq!(handle.reading(), 0.0);
+            assert_eq!(handle.peak(), 6.0);
+        }
+        meter.publish(7.0);
+        assert_eq!(handle.peak(), 7.0);
+    }
 
     #[test]
     fn processor_snapshots_detach_meter_handles() {

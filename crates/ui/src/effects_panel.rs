@@ -846,6 +846,12 @@ impl DawUi {
                                     .output
                                     .as_ref()
                                     .map_or(0.0, |output| output.gain_reduction_db(effect.id));
+                                let reduction = meters::GainReduction::new(
+                                    reduction,
+                                    self.output
+                                        .as_ref()
+                                        .and_then(|output| output.gain_reduction_meter(effect.id)),
+                                );
                                 let (_bounds, header) = crate::compressor_panel::show(
                                     ui,
                                     settings,

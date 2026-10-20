@@ -58,15 +58,56 @@ pub fn gain_change(ui: &mut Ui, rail: Rect, name: &str, gain_db: f32, enabled: b
     response.on_hover_text(format!("{name} compression gain: {db:+.1} dB. Left: reduction; right: boost. Display ±24 dB; before Dry/Wet."));
 }
 
-/// Read-only compression monitor. The rail covers 0–24 dB; the number retains larger readings.
-pub fn gain_reduction(ui: &mut Ui, reduction_db: f32) -> Response {
-    let db = if reduction_db.is_finite() {
-        reduction_db.max(0.0)
+#[derive(Clone, Copy)]
+pub struct GainReduction<'a> {
+    current_db: f32,
+    peak: Option<&'a daw_unit_core::PeakMeter>,
+    enabled: bool,
+}
+impl<'a> GainReduction<'a> {
+    pub fn new(current_db: f32, peak: Option<&'a daw_unit_core::PeakMeter>) -> Self {
+        Self {
+            current_db,
+            peak,
+            enabled: true,
+        }
+    }
+    pub fn for_unit(mut self, enabled: bool) -> Self {
+        self.current_db = unit_reading(enabled, self.current_db);
+        self.enabled = enabled;
+        if !enabled && let Some(peak) = self.peak {
+            peak.reset_peak();
+        }
+        self
+    }
+}
+impl From<f32> for GainReduction<'_> {
+    fn from(current_db: f32) -> Self {
+        Self::new(current_db, None)
+    }
+}
+
+/// Compression before Dry/Wet. Click resets only the held maximum.
+pub fn gain_reduction(ui: &mut Ui, reading: GainReduction<'_>) -> Response {
+    let db = if reading.current_db.is_finite() {
+        reading.current_db.max(0.0)
     } else {
         0.0
     };
     let (rect, response) =
-        ui.allocate_exact_size(Vec2::splat(crate::knobs::CHOICE_SIZE), Sense::hover());
+        ui.allocate_exact_size(Vec2::splat(crate::knobs::CHOICE_SIZE), Sense::click());
+    if response.clicked_by(egui::PointerButton::Primary)
+        && ui.is_enabled()
+        && ui.input(|input| input.focused)
+        && reading.enabled
+        && let Some(peak) = reading.peak
+    {
+        peak.reset_peak();
+    }
+    let held = unit_reading(
+        reading.enabled,
+        reading.peak.map_or(0.0, |peak| peak.peak()),
+    );
     let palette = theme::palette(ui.ctx());
     let painter = ui.painter();
     let rail = Rect::from_center_size(rect.center(), Vec2::new(rect.width() - 8.0, 8.0));
@@ -77,6 +118,11 @@ pub fn gain_reduction(ui: &mut Ui, reduction_db: f32) -> Response {
     );
     if fill.width() > 0.0 {
         painter.rect_filled(fill, 1.0, theme::accent(ui.ctx()));
+    }
+    if held > 0.0 {
+        let x = (rail.left() + rail.width() * (held / 24.0).min(1.0))
+            .clamp(rail.left() + 0.5, rail.right() - 0.5);
+        painter.vline(x, rail.y_range(), Stroke::new(1.0, palette.secondary));
     }
     painter.text(
         rect.center_top(),
@@ -104,15 +150,15 @@ pub fn gain_reduction(ui: &mut Ui, reduction_db: f32) -> Response {
     }
     response.widget_info(|| {
         let mut info = egui::WidgetInfo::labeled(
-            egui::WidgetType::ProgressIndicator,
+            egui::WidgetType::Button,
             ui.is_enabled(),
-            "Gain reduction",
+            "Gain reduction. Click to reset peak",
         );
         info.value = Some(f64::from(db));
         info
     });
     response.on_hover_text(format!(
-        "Gain reduction: {db:.1} dB before Dry/Wet. Read-only; 0–24 dB display scale."
+        "Gain reduction: {db:.1} dB before Dry/Wet. Peak: {held:.1} dB. Click to reset peak; 0–24 dB display scale."
     ))
 }
 
@@ -430,6 +476,129 @@ pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reduction_db: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compressor_peak_line_uses_secondary_color_and_click_resets_only_the_peak() {
+        use daw_unit_core::MeterStorage;
+        for color_theme in [
+            crate::settings::ColorTheme::Dark,
+            crate::settings::ColorTheme::Light,
+        ] {
+            let ctx = egui::Context::default();
+            theme::configure(&ctx);
+            crate::fonts::configure(&ctx);
+            theme::apply(
+                &ctx,
+                crate::settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            let meter = daw_unit_core::PeakMeter::default();
+            meter.store(18.0);
+            meter.store(2.0);
+            let paint = |events: Vec<egui::Event>,
+                         unit_enabled: bool,
+                         ui_enabled: bool,
+                         focused: bool| {
+                let mut rect = Rect::NOTHING;
+                let mut changed = false;
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(200.0, 200.0))),
+                        focused,
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        egui::CentralPanel::default().show(ui, |ui| {
+                            ui.add_enabled_ui(ui_enabled, |ui| {
+                                let response = gain_reduction(
+                                    ui,
+                                    GainReduction::new(2.0, Some(&meter)).for_unit(unit_enabled),
+                                );
+                                rect = response.rect;
+                                changed = response.changed();
+                            });
+                        });
+                    },
+                );
+                output.textures_delta.clear();
+                assert!(
+                    !changed,
+                    "peak reset is monitor state, not a parameter edit"
+                );
+                (rect, output.shapes)
+            };
+            let lines = |shapes: &[egui::epaint::ClippedShape]| -> Vec<(Pos2, Stroke)> {
+                shapes
+                    .iter()
+                    .filter_map(|shape| match &shape.shape {
+                        egui::Shape::LineSegment { points, stroke }
+                            if points[0].x == points[1].x
+                                && (points[1].y - points[0].y - 8.0).abs() < 0.01 =>
+                        {
+                            Some((points[0], *stroke))
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            };
+            let (rect, shapes) = paint(vec![], true, true, true);
+            let peak = lines(&shapes);
+            assert_eq!(peak.len(), 1);
+            let rail = Rect::from_center_size(rect.center(), Vec2::new(rect.width() - 8.0, 8.0));
+            assert!((peak[0].0.x - (rail.left() + rail.width() * 0.75)).abs() < 0.01);
+            assert_eq!(peak[0].1, Stroke::new(1.0, theme::palette(&ctx).secondary));
+            let point = rect.center();
+            let button = |button, pressed| egui::Event::PointerButton {
+                pos: point,
+                button,
+                pressed,
+                modifiers: Default::default(),
+            };
+            for (button_kind, enabled, focused) in [
+                (egui::PointerButton::Primary, false, true),
+                (egui::PointerButton::Secondary, true, true),
+                (egui::PointerButton::Primary, true, false),
+            ] {
+                paint(
+                    vec![egui::Event::PointerMoved(point), button(button_kind, true)],
+                    true,
+                    enabled,
+                    focused,
+                );
+                paint(vec![button(button_kind, false)], true, enabled, focused);
+                assert_eq!(meter.peak(), 18.0);
+            }
+            paint(
+                vec![
+                    egui::Event::PointerMoved(point),
+                    button(egui::PointerButton::Primary, true),
+                ],
+                true,
+                true,
+                true,
+            );
+            let (_, shapes) = paint(
+                vec![button(egui::PointerButton::Primary, false)],
+                true,
+                true,
+                true,
+            );
+            assert_eq!(meter.peak(), 0.0);
+            assert_eq!(meter.reading(), 2.0);
+            assert!(lines(&shapes).is_empty());
+            meter.store(48.0);
+            meter.store(2.0);
+            let (_, shapes) = paint(vec![], true, true, true);
+            assert!((lines(&shapes)[0].0.x - (rail.right() - 0.5)).abs() < 0.01);
+            assert_eq!(meter.peak(), 48.0);
+            let (_, shapes) = paint(vec![], false, true, true);
+            assert_eq!(meter.peak(), 0.0);
+            assert!(lines(&shapes).is_empty());
+        }
+    }
 
     #[test]
     fn effect_panels_clear_stale_readings_when_the_unit_is_disabled() {

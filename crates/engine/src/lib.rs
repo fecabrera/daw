@@ -525,6 +525,17 @@ impl Renderer {
         id: Id,
         meter: std::sync::Arc<std::sync::atomic::AtomicU32>,
     ) {
+        self.set_effect_peak_meter(
+            id,
+            std::sync::Arc::new(daw_unit_core::PeakMeter::new(meter)),
+        );
+    }
+    /// Attach current and held readings using the same effect and layer traversal.
+    pub fn set_effect_peak_meter(
+        &mut self,
+        id: Id,
+        meter: std::sync::Arc<daw_unit_core::PeakMeter>,
+    ) {
         self.master_effects.set_meter(id, &meter);
         for midi in self.midi.iter_mut().flatten() {
             midi.set_effect_meter(id, &meter);

@@ -1,6 +1,6 @@
 //! Linked stereo feed-forward compressor. FunDSP detector types remain private.
 use daw_unit_core::{
-    COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings, EffectUnit, PortKind,
+    COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings, EffectUnit, PeakMeter, PortKind,
     ProcessingContext, UnitDescriptor, UnitMeter,
 };
 use fundsp::dynamics::{Meter, MeterState};
@@ -72,7 +72,7 @@ pub struct Compressor {
     configured_times: [f32; 2],
     coefficients: [f64; 2],
     reduction_db: f64,
-    meter: UnitMeter<AtomicU32>,
+    meter: UnitMeter<PeakMeter>,
     external: daw_unit_core::ModulationSmoother<7>,
     effective: [f32; 9],
 }
@@ -122,6 +122,10 @@ impl Compressor {
     }
     /// Optional lock-free monitoring handle. Attach on a control thread.
     pub fn set_gain_reduction_meter(&mut self, meter: Arc<AtomicU32>) {
+        self.set_gain_reduction_peak_meter(Arc::new(PeakMeter::new(meter)));
+    }
+    /// Shared instantaneous/held monitoring, attached before callback publication.
+    pub fn set_gain_reduction_peak_meter(&mut self, meter: Arc<PeakMeter>) {
         self.meter.attach(meter, self.gain_reduction_db());
     }
     /// Compression before the dry/wet blend, zero when bypassed.

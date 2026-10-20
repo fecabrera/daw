@@ -569,13 +569,13 @@ impl EffectChain {
             _ => None,
         }
     }
-    pub fn set_meter(&mut self, id: Id, meter: &Arc<AtomicU32>) {
+    pub fn set_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::PeakMeter>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
             Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
-                unit.set_gain_reduction_meter(meter.clone())
+                unit.set_gain_reduction_peak_meter(meter.clone())
             }
             Some((_, Some(RuntimeEffect::Limiter(unit, _)))) => {
-                unit.set_gain_reduction_meter(meter.clone())
+                unit.set_gain_reduction_meter(meter.current().clone())
             }
             _ => {}
         }

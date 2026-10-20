@@ -1219,6 +1219,7 @@ dependencies = [
  "daw-core",
  "daw-engine",
  "daw-media",
+ "daw-unit-core",
  "rtrb",
  "rubato",
 ]

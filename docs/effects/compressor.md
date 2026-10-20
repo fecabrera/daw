@@ -23,7 +23,11 @@ Dry/Wet blends original and compressed audio. Level adjusts the complete blend. 
 
 ## Gain-reduction meter
 
-The read-only meter shows reduction before Dry/Wet and Level. Its rail covers 0–24 dB; the numeric reading can report larger reductions. Turning the unit off clears the rail and numeric reading and stops meter updates. Turning it on resumes monitoring. It also reads zero when playback is stopped or paused, or no output device is available.
+The meter shows current reduction before Dry/Wet and Level. A thin line in the secondary text color marks the highest reduction since the peak was reset. Click the meter to reset this line. The current reading and compression settings stay the same. If compression continues, new readings can immediately set another peak.
+
+The rail covers 0–24 dB. The numeric reading and peak tooltip can report larger reductions; the peak line stops at the end of the rail. Peak capture continues while the unit is hidden or collapsed. The held peak remains during pause, stop, and seeking until you reset it or turn the unit off.
+
+Turning the unit off clears the fill, peak line, and numeric reading and stops meter updates. Turning it on resumes monitoring. The current reading also shows zero when playback is stopped or paused, or no output device is available. Peak readings are temporary monitor state and are not saved with the project.
 
 ## Modulation and limits
 

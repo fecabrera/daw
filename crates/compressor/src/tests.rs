@@ -19,6 +19,52 @@ fn settle(unit: &mut Compressor, rate: u32, input: [f32; 2]) -> [f32; 2] {
 }
 
 #[test]
+fn held_reduction_captures_every_sample_without_changing_audio_and_resets_on_bypass() {
+    for rate in RATES {
+        let mut settings = CompressorSettings {
+            threshold_db: -36.0,
+            attack_ms: 0.1,
+            release_ms: 10.0,
+            ..Default::default()
+        };
+        let mut monitored = unit(rate, &settings);
+        let mut reference = unit(rate, &settings);
+        let meter = Arc::new(PeakMeter::default());
+        monitored.set_gain_reduction_peak_meter(meter.clone());
+        let mut peak = 0.0_f32;
+        for frame in 0..12_000 {
+            let input = if frame < 2000 { [1.0, -0.25] } else { [0.0; 2] };
+            assert_eq!(
+                monitored.process_sample(input),
+                reference.process_sample(input)
+            );
+            peak = peak.max(monitored.gain_reduction_db());
+        }
+        assert_eq!(meter.peak(), peak);
+        assert!(peak > 20.0);
+        assert!(meter.reading() < peak * 0.1);
+        meter.reset_peak();
+        let current = monitored.gain_reduction_db();
+        assert_eq!(meter.reading(), current);
+        monitored.process_sample([1.0, -0.25]);
+        assert_eq!(meter.peak(), monitored.gain_reduction_db());
+        settings.enabled = false;
+        monitored.retarget(&settings);
+        assert_eq!(meter.peak(), 0.0);
+        for _ in 0..1000 {
+            monitored.process_sample([1.0; 2]);
+        }
+        assert_eq!(meter.peak(), 0.0);
+        settings.enabled = true;
+        monitored.retarget(&settings);
+        for _ in 0..1000 {
+            monitored.process_sample([1.0; 2]);
+        }
+        assert!(meter.peak() > 0.0);
+    }
+}
+
+#[test]
 fn hard_and_soft_knees_join_continuously_and_follow_the_ratio() {
     let slope = 0.75;
     assert_eq!(reduction(-30.0, -18.0, slope, 0.0), 0.0);

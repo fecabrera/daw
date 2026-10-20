@@ -8,6 +8,7 @@ rust-version.workspace = true
 daw-core.workspace = true
 daw-media.workspace = true
 daw-engine.workspace = true
+daw-unit-core.workspace = true
 cpal.workspace = true
 rubato.workspace = true
 rtrb.workspace = true

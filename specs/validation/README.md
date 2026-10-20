@@ -3374,3 +3374,22 @@ Final `cargo test -p daw-ui` — **505 passed**, including all 15 Clip settings 
 Group drags now show only the signed applied change, such as `+1.00 dB` or `−2 semitones`, through the same `DragChange` formatter and shared numeric field controls. This replaces the prefixed readout above. It applies to matching and differing starting values; release restores the shared value or “Multiple values”. Single-clip fields retain their normal numeric display.
 
 `cargo test -p daw-ui` — **505 passed**, including all 15 Clip settings tests. Existing painted-label regressions now require the signed-only text; the group readout test also covers matching gain/transpose values and their idle restoration. Formatting, strict workspace Clippy, the macOS release rebuild, and `git diff --check` — passed. This display refinement did not repeat the full workspace run. Native/device/platform limits remain as stated above.
+
+## Compressor peak reduction marker — 2026-10-20
+
+Compressor now holds the maximum sample-level gain reduction in shared `unit-core::PeakMeter` storage through `UnitMeter`. The existing output binding path retains handles by effect ID across track, Master, regular-layer and Main chains. A 1-point secondary-color line marks the held value on the existing 0–24 dB rail. Primary click resets only the hold; current readings, compression and project settings stay unchanged. Active processing can immediately capture another peak. Bypass clears both readings and suspends publication. Holds survive pause, stop, seek and compatible renderer replacement, but are not saved.
+
+Binding a prepared or seek-reconstructed processor initializes only the current cell. It cannot raise the hold from unplayed processing history. Snapshot clones detach handles. Peak storage normalizes invalid readings and negative zero before its atomic maximum update. Legacy scalar attachment APIs retain control-thread adapters. Audio processing and the project format are unchanged.
+
+Completed checks:
+
+- `cargo test --workspace` — **1009 passed, 0 failed, 2 ignored**. The ignored cases are the existing extended time-stretch acceptance matrices. This run started before the final prepared-attachment and negative-zero safeguards; the final affected-crate run below covers those changes.
+- Final `cargo test -p daw-unit-core -p daw-compressor -p daw-output -p daw-ui` — **584 passed, 0 failed**. Coverage includes short peaks between refreshes, independent reset, detached snapshots, prepared attachment, invalid readings, bypass clearing/resume, stable-ID retention and independent track/Master/layer/Main holds. Compressor audio matches an unmonitored reference at all six project rates. Existing callback allocation/deallocation guards cover track, Master and layer processing with peak monitoring attached.
+- The UI regression checks both themes, exact secondary-color marker geometry, display saturation above 24 dB, primary-click reset, disabled/focus/secondary-click guards, bypass clearing and no parameter-change response.
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` — passed on the final source.
+- CLI build and `python3 tools/check_cli.py` — passed, including WAV/MP3 codecs/bitrates, repeatability, missing sources, eight-track projects, overwrite handling and exit codes.
+- `sh tools/package_macos.sh release` — passed on the final source; rebuilt `target/release/DAW.app` without relaunching the app.
+
+Relative file links in the changed guide, Compressor specification and architecture document — 75 checked, no missing targets. `git diff --check` — passed.
+
+Native pointer behavior, physical-device playback/listening and Windows/Linux execution remain unverified. Automated painting and headless callback tests do not establish native-device or platform acceptance.

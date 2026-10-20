@@ -6,7 +6,7 @@ use std::sync::{Condvar, Mutex};
 #[derive(Clone, Default)]
 pub(super) struct Bindings {
     pub tracks: HashMap<Id, Arc<StereoMeter>>,
-    pub effects: HashMap<Id, Arc<AtomicU32>>,
+    pub effects: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
     pub bands: HashMap<Id, Arc<[AtomicU32; 3]>>,
     pub modulation: HashMap<ModulationTarget, ModulationMeter>,
 }

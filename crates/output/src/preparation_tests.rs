@@ -42,7 +42,7 @@ unsafe impl GlobalAlloc for CheckedAllocator {
 }
 #[global_allocator]
 static ALLOCATOR: CheckedAllocator = CheckedAllocator;
-fn realtime<T>(operation: impl FnOnce() -> T) -> T {
+pub(super) fn realtime<T>(operation: impl FnOnce() -> T) -> T {
     HEAP_CALLS.with(|n| n.set(0));
     COUNT_HEAP.with(|v| v.set(true));
     let result = operation();
