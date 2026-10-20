@@ -198,6 +198,7 @@ fn clip_settings_text_baselines_and_row_spacing_match_the_catalog_in_both_themes
         }
 
         app.selected_clip = None;
+        app.selected_clips.clear();
         let empty = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let prompt = text_pos(&empty, "Select a clip").unwrap();
         let header = text_pos(&empty, "Clip settings").unwrap();
@@ -564,4 +565,306 @@ fn audio_clip_transpose_cancelled_gestures_workers_and_failed_preparation_keep_t
     assert_eq!(app.session.project.tracks[0].clips[0].transpose, 0);
     assert!(app.session.stretched_audio.is_empty());
     assert!(!app.dirty);
+}
+
+fn group_settings_fixture() -> (DawUi, egui::Context, [Id; 3]) {
+    let (mut app, tracks, clips) = multi_clip_fixture();
+    app.session.project.tracks[1].clips[0].gain_db = -6.0;
+    app.session.project.tracks[1].clips[0].transpose = 12;
+    app.select_clip(clips[2], tracks[1], false);
+    app.select_clip(clips[0], tracks[0], true);
+    app.clip_settings_visible = true;
+    app.timeline_catalog_visible = false;
+    app.dirty = false;
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    (app, ctx, clips)
+}
+
+#[test]
+fn clip_settings_group_fields_set_shared_values_and_undo_as_one_edit() {
+    let (mut app, ctx, clips) = group_settings_fixture();
+    let original = app.session.project.clone();
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert_eq!(
+        painted_text(&shapes)
+            .iter()
+            .filter(|text| *text == "Multiple values")
+            .count(),
+        2
+    );
+    assert_eq!(
+        painted_text(&shapes)
+            .iter()
+            .filter(|text| *text == "Multiple clips selected")
+            .count(),
+        2
+    );
+    // Name and Source stay disabled even if both clips refer to the same asset.
+    for point in [
+        app.effects_bounds.clip_name.center(),
+        app.effects_bounds.clip_source.center(),
+    ] {
+        click(&mut app, &ctx, point);
+        click(&mut app, &ctx, point);
+        assert!(app.clip_settings_draft.is_none());
+    }
+    assert_eq!(app.session.project, original);
+    assert!(!app.dirty);
+    let gain = app.effects_bounds.clip_gain;
+    // The primary already has this value; the other selected clip must still change.
+    replace_field(&mut app, &ctx, gain, "0", egui::Key::Enter);
+    assert_eq!(app.session.project.tracks[1].clips[0].gain_db, 0.0);
+    assert_eq!(
+        app.session.project.tracks[0].clips[1],
+        original.tracks[0].clips[1]
+    );
+    assert_eq!(app.selected_clips, HashSet::from([clips[0], clips[2]]));
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project, original);
+    assert!(!app.history.as_ref().unwrap().can_undo());
+    app.perform_history_action(HistoryAction::Redo, &ctx);
+
+    let transpose = app.effects_bounds.clip_transpose;
+    replace_field(&mut app, &ctx, transpose, "0", egui::Key::Enter);
+    assert_eq!(app.session.project.tracks[1].clips[0].transpose, 0);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let texts = painted_text(&shapes);
+    assert_eq!(
+        texts
+            .iter()
+            .filter(|text| *text == "Multiple clips selected")
+            .count(),
+        2
+    );
+    assert!(!texts.iter().any(|text| text == "Multiple values"));
+    assert!(texts.iter().any(|text| text == "0.0 dB"));
+    assert!(texts.iter().any(|text| text == "0 semitones"));
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project.tracks[1].clips[0].transpose, 12);
+
+    let before = app.session.project.clone();
+    app.dirty = false;
+    let transpose = app.effects_bounds.clip_transpose;
+    replace_field(&mut app, &ctx, transpose, "49", egui::Key::Enter);
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+    assert!(app.error.is_some());
+    dismiss_error(&mut app, &ctx);
+    // A common value submitted unchanged creates no project edit.
+    let gain = app.effects_bounds.clip_gain;
+    replace_field(&mut app, &ctx, gain, "0", egui::Key::Enter);
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn clip_settings_group_gain_drag_reuses_steps_bounds_and_one_undo_gesture() {
+    let (mut app, ctx, _) = group_settings_fixture();
+    let original = app.session.project.clone();
+    let point = app.effects_bounds.clip_gain.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point + Vec2::new(20.0, 0.0), false);
+    assert_eq!(app.session.project, original);
+    pointer_move(&mut app, &ctx, point + Vec2::new(20.0, -10.0), false);
+    pointer_move(&mut app, &ctx, point + Vec2::new(20.0, -20.0), true);
+    pointer(&mut app, &ctx, point + Vec2::new(20.0, -20.0), false, false);
+    for clip in app.selected_clip_snapshots() {
+        assert_eq!(clip.clip.gain_db, 1.1);
+    }
+    assert_eq!(
+        app.session.project.tracks[0].clips[1],
+        original.tracks[0].clips[1]
+    );
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project, original);
+    assert!(!app.history.as_ref().unwrap().can_undo());
+    let gain = app.effects_bounds.clip_gain;
+    replace_field(&mut app, &ctx, gain, "99", egui::Key::Enter);
+    for clip in app.selected_clip_snapshots() {
+        assert_eq!(clip.clip.gain_db, 12.0);
+    }
+}
+
+fn mixed_prepared_group(engine: daw_core::StretchEngine) -> (DawUi, egui::Context, [Id; 3]) {
+    let (mut app, ctx, first) = prepared_audio_fixture(engine);
+    let track = app.session.project.tracks[0].id;
+    let other_track = app.session.project.add_track().unwrap();
+    let mut other = app.session.project.tracks[0].clips[0].clone();
+    other.id = Id::new_v4();
+    other.transpose = -12;
+    let second = other.id;
+    app.session.project.tracks[1].clips.push(other);
+    let midi_track = app.session.project.add_midi_track().unwrap();
+    let midi = app.session.project.add_midi_pattern(midi_track, 0).unwrap();
+    app.session.project.tracks[2].clips[0].transpose = 3;
+    app.session.prepare_stretches().unwrap();
+    app.select_clip(second, other_track, false);
+    app.select_clip(midi, midi_track, true);
+    app.select_clip(first, track, true);
+    app.history = None;
+    app.dirty = false;
+    frame(&mut app, &ctx, vec![]);
+    (app, ctx, [first, second, midi])
+}
+
+#[test]
+fn clip_settings_group_transpose_prepares_audio_and_midi_atomically_with_shared_cache() {
+    for engine in [
+        daw_core::StretchEngine::INTEGRATED,
+        daw_core::StretchEngine::RUBBER_BAND,
+    ] {
+        let (mut app, ctx, ids) = mixed_prepared_group(engine);
+        let original = app.session.project.clone();
+        let point = app.effects_bounds.clip_transpose.center();
+        pointer(&mut app, &ctx, point, true, false);
+        pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false);
+        assert_eq!(app.session.project, original);
+        assert!(app.job.is_none());
+        pointer(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false, false);
+        assert!(app.job.is_some());
+        assert_eq!(app.session.project, original);
+        wait_for_save(&mut app);
+        assert!(app.error.is_none(), "{:?}", app.error);
+        for clip in app.selected_clip_snapshots() {
+            assert_eq!(clip.clip.transpose, 12);
+            let before = original
+                .tracks
+                .iter()
+                .flat_map(|track| &track.clips)
+                .find(|before| before.id == clip.clip.id)
+                .unwrap();
+            assert_eq!(clip.clip.length_frames, before.length_frames);
+        }
+        assert_eq!(app.selected_clips, HashSet::from(ids));
+        assert_eq!(app.session.stretched_audio.len(), 1);
+        let first = &app.session.project.tracks[0].clips[0];
+        let second = &app.session.project.tracks[1].clips[0];
+        let prepared = app.session.audio_for_clip(first).unwrap().samples.clone();
+        assert!(std::sync::Arc::ptr_eq(
+            &prepared,
+            &app.session.audio_for_clip(second).unwrap().samples
+        ));
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert_eq!(app.session.project, original);
+        assert!(!app.history.as_ref().unwrap().can_undo());
+        app.perform_history_action(HistoryAction::Redo, &ctx);
+        assert!(std::sync::Arc::ptr_eq(
+            &prepared,
+            &app.session
+                .audio_for_clip(&app.session.project.tracks[0].clips[0])
+                .unwrap()
+                .samples
+        ));
+    }
+}
+
+#[test]
+fn clip_settings_midi_group_transpose_drag_keeps_live_steps_and_one_undo() {
+    let mut app = DawUi::default();
+    let track = app.session.project.add_midi_track().unwrap();
+    let first = app.session.project.add_midi_pattern(track, 0).unwrap();
+    let second = app.session.project.add_midi_pattern(track, 96_000).unwrap();
+    app.session.project.tracks[0].clips[1].transpose = -12;
+    app.select_clip(second, track, false);
+    app.select_clip(first, track, true);
+    app.clip_settings_visible = true;
+    app.timeline_catalog_visible = false;
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    let original = app.session.project.clone();
+    let point = app.effects_bounds.clip_transpose.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point + Vec2::new(20.0, 0.0), false);
+    assert_eq!(app.session.project, original);
+    pointer_move(&mut app, &ctx, point + Vec2::new(20.0, -2.0), false);
+    assert!(
+        app.session.project.tracks[0]
+            .clips
+            .iter()
+            .all(|clip| clip.transpose == 2)
+    );
+    assert!(app.job.is_none());
+    pointer_move(&mut app, &ctx, point + Vec2::new(20.0, -12.0), true);
+    assert!(
+        app.session.project.tracks[0]
+            .clips
+            .iter()
+            .all(|clip| clip.transpose == 3)
+    );
+    pointer(&mut app, &ctx, point + Vec2::new(20.0, -12.0), false, false);
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project, original);
+    assert!(!app.history.as_ref().unwrap().can_undo());
+}
+
+#[test]
+fn clip_settings_group_selection_changes_cancel_drafts_and_transpose_previews() {
+    let (mut app, ctx, ids) = mixed_prepared_group(daw_core::StretchEngine::INTEGRATED);
+    let original = app.session.project.clone();
+    let gain = app.effects_bounds.clip_gain;
+    open_field(&mut app, &ctx, gain);
+    frame(&mut app, &ctx, vec![egui::Event::Text("-9".into())]);
+    // Change membership while keeping the same primary clip.
+    app.selected_clips.remove(&ids[1]);
+    key_press(&mut app, &ctx, egui::Key::Enter, Default::default());
+    assert!(app.clip_settings_draft.is_none());
+    assert_eq!(app.session.project, original);
+    let point = app.effects_bounds.clip_transpose.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false);
+    assert!(app.clip_transpose_drag.is_some());
+    app.selected_clips.insert(ids[1]);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.clip_transpose_drag.is_none());
+    pointer(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false, false);
+    assert!(app.job.is_none());
+    assert_eq!(app.session.project, original);
+    assert!(!app.dirty);
+
+    // Replacing an audio selection with MIDI must not resume the old pointer drag.
+    let point = app.effects_bounds.clip_transpose.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false);
+    app.selected_clip = Some(ids[2]);
+    app.selected_clips = HashSet::from([ids[2]]);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 24.0), false);
+    pointer(&mut app, &ctx, point - Vec2::new(0.0, 24.0), false, false);
+    assert!(app.job.is_none());
+    assert_eq!(app.session.project, original);
+    assert!(!app.dirty);
+    app.selected_clip = Some(ids[0]);
+    app.selected_clips = HashSet::from(ids);
+    frame(&mut app, &ctx, vec![]);
+
+    // A sideways-only audio drag must not replace differing values with the primary value.
+    let point = app.effects_bounds.clip_transpose.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point + Vec2::new(20.0, 0.0), false);
+    pointer(&mut app, &ctx, point + Vec2::new(20.0, 0.0), false, false);
+    assert!(app.job.is_none());
+    assert_eq!(app.session.project, original);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn clip_settings_group_transpose_failure_retains_every_selected_clip() {
+    let (mut app, ctx, _) = mixed_prepared_group(daw_core::StretchEngine::INTEGRATED);
+    let source = app.session.project.assets[0].id;
+    let mut broken_asset = app.session.project.assets[0].clone();
+    broken_asset.id = Id::new_v4();
+    let mut broken_audio = app.session.audio[&source].clone();
+    broken_audio.samples = std::sync::Arc::new(vec![[f32::NAN; 2]; 24000]);
+    app.session.audio.insert(broken_asset.id, broken_audio);
+    app.session.project.tracks[1].clips[0].asset_id = broken_asset.id;
+    app.session.project.assets.push(broken_asset);
+    let original = app.session.project.clone();
+    let transpose = app.effects_bounds.clip_transpose;
+    replace_field(&mut app, &ctx, transpose, "7", egui::Key::Enter);
+    assert!(app.job.is_some());
+    wait_for_save(&mut app);
+    assert!(app.error.is_some());
+    assert_eq!(app.session.project, original);
+    assert!(!app.dirty);
+    assert!(!app.history.as_ref().unwrap().can_undo());
 }

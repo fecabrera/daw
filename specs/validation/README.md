@@ -3319,3 +3319,28 @@ Focused automated checks completed:
 Relative file links in the changed user guides and specifications — 124 checked, no missing targets. `git diff --check` — passed.
 
 Native listening, physical-device behavior, native pointer gestures and Windows/Linux execution remain unverified. Synthetic signal and headless callback tests do not establish broad sound-quality or device-latency acceptance.
+
+## Group Clip settings — 2026-10-20
+
+Clip settings now reads the full clip selection through the shared snapshot helper. Name and Source are disabled and show “multiple values” whenever more than one clip is selected, including matching names/sources. Gain and Transpose show a common value or “multiple values” and set one absolute value across the selection. Dragging starts from the primary value and reuses the existing steps, Shift sensitivity, parsers and bounds.
+
+The existing typed clip edits are collected into one `Edit::Batch`, excluding unchanged clips, and submitted through the shared UI edit path. Group gain and MIDI-only transpose keep live updates and one gesture undo step. Any selection containing audio previews transpose until release; its complete audio/MIDI batch uses the existing atomic preparation worker and shared cache. Failed preparation retains every clip and the previous audio. Field drafts, audio previews and pointer identity include selection membership so an old interaction cannot affect a replacement group. This supersedes the original primary-only Clip settings scope.
+
+Completed checks:
+
+- `cargo test -p daw-ui clip_settings` — **11 passed**, including six new group regressions. Coverage includes mixed/common values, disabled name/source editing, cross-track gain and transpose, unchanged-primary commits, unselected-clip retention, drag steps and clamping, single-step undo/redo, MIDI-only live transpose, both audio engines, shared prepared buffers, mixed audio/MIDI publication, failed preparation and selection-change cancellation.
+- `cargo test -p daw-ui` — **501 passed** after the final pointer-identity guard, including all Clip settings regressions.
+- `cargo test --workspace` — **1002 passed, 0 failed, 2 ignored**. The ignored cases are the existing extended time-stretch acceptance matrices.
+- `cargo fmt --all --check` — passed.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed.
+- `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app` without relaunching the app.
+
+Relative file links in the affected guide and specification — four checked, no missing targets. `git diff --check` — passed.
+
+Native pointer behavior, physical-device playback and Windows/Linux execution remain unverified. Automated egui interaction tests do not establish native input or display behavior.
+
+### Selection message correction
+
+Name and Source now show the exact text “Multiple clips selected” for group selections. This supersedes their “multiple values” text above. Gain and Transpose show the exact text “Multiple values” when their numeric values differ. This supersedes the lowercase label above. The existing painted-text regression verifies both messages and the common-value case.
+
+For this text-only correction, `cargo test -p daw-ui clip_settings` — 11 passed; `cargo fmt --all --check` and strict workspace Clippy — passed. `sh tools/package_macos.sh release` — passed; rebuilt the app without relaunching it. `git diff --check` — passed. The full workspace result above is from the group-edit implementation before this wording correction.

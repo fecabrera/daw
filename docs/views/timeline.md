@@ -51,7 +51,9 @@ Double-click the name, gain, or transpose to type a value, as with the tempo lab
 
 Gain changes the clip's level before the track level. Transpose shifts MIDI notes while they play and leaves the written pattern unchanged. A note that would fall below MIDI note 0 or above 127 plays at that nearest note. Audio transpose changes playback pitch while keeping the clip duration and original recording unchanged. It uses the project's selected [stretch engine](../audio/time-stretch.md#choose-an-engine). For audio, dragging previews the value and releasing starts preparation; Escape cancels the drag. Playback continues with the previous audio until preparation succeeds. Cancel or failure keeps the previous value and audio.
 
-When several clips are selected, the panel edits the primary selected clip.
+When several clips are selected, Name and Source are disabled and show “Multiple clips selected”, even when they match. Gain and Transpose stay editable. Each shows the shared value, or “Multiple values” if the selected clips differ. A typed value or vertical drag sets the same value on every selected clip, across tracks. A drag starts from the primary clip's value and keeps the same steps and limits. Undo restores the whole group in one step.
+
+If any selected clip contains audio, transpose previews for the whole group until release. All selected clips, including MIDI clips, change together after preparation succeeds. Failure or cancellation keeps the previous settings and audio for the whole group. Changing the selection cancels an unconfirmed text edit or transpose preview.
 
 ## Add effects
 

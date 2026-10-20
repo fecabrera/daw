@@ -1,9 +1,10 @@
-//! Clip name, source, gain, and transpose for the selected clip.
+//! Shared clip settings for the current clip selection.
 use crate::{faders, fonts, panels, theme};
 use daw_core::{Asset, Clip, Edit, Id};
 use egui::{Rect, Response, Sense, Ui, Vec2};
 
 const TRANSPOSE_LIMIT: i8 = 48;
+const MULTIPLE_VALUES: &str = "Multiple values";
 /// Lowest finite level on the shared fader scale. Dragging up from silence starts here.
 const AUDIBLE_GAIN_FLOOR_DB: f32 = -60.0;
 
@@ -24,6 +25,7 @@ struct Value<'a> {
 
 pub(super) struct FieldEdit {
     clip: Id,
+    clips: Vec<Id>,
     field: Field,
     text: String,
     focus: bool,
@@ -32,7 +34,9 @@ pub(super) struct FieldEdit {
 
 pub(super) struct TransposeDrag {
     clip: Id,
+    clips: Vec<Id>,
     value: i8,
+    changed: bool,
 }
 
 impl super::DawUi {
@@ -45,7 +49,16 @@ impl super::DawUi {
     ) {
         let header = panel.header(ui, "Clip settings", |_| {});
         panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
-        let Some(clip) = self.selected_clip_record() else {
+        let clips: Vec<_> = self
+            .selected_clip_snapshots()
+            .into_iter()
+            .map(|entry| entry.clip)
+            .collect();
+        let Some(clip) = clips
+            .iter()
+            .find(|clip| Some(clip.id) == self.selected_clip)
+            .or_else(|| clips.first())
+        else {
             self.clip_settings_draft = None;
             self.clip_transpose_drag = None;
             panel.padded_body(ui, |ui| {
@@ -63,6 +76,10 @@ impl super::DawUi {
             }
             return;
         };
+        let ids: Vec<_> = clips.iter().map(|clip| clip.id).collect();
+        let multiple = clips.len() > 1;
+        let mixed_gain = clips.iter().any(|other| other.gain_db != clip.gain_db);
+        let mixed_transpose = clips.iter().any(|other| other.transpose != clip.transpose);
         let drag_enabled = enabled
             && ui.input(|input| input.focused)
             && !ui.input(|input| input.key_pressed(egui::Key::Escape));
@@ -70,20 +87,17 @@ impl super::DawUi {
             || self
                 .clip_transpose_drag
                 .as_ref()
-                .is_some_and(|drag| drag.clip != clip.id)
+                .is_some_and(|drag| drag.clip != clip.id || drag.clips != ids)
         {
             self.clip_transpose_drag = None;
         }
-        let audio_clip = self
-            .session
-            .project
-            .assets
-            .iter()
-            .any(|asset| asset.id == clip.asset_id && asset.midi_pattern.is_none());
+        let contains_audio = self.session.project.assets.iter().any(|asset| {
+            asset.midi_pattern.is_none() && clips.iter().any(|clip| clip.asset_id == asset.id)
+        });
         if self
             .clip_settings_draft
             .as_ref()
-            .is_some_and(|edit| edit.clip != clip.id)
+            .is_some_and(|edit| edit.clip != clip.id || edit.clips != ids)
         {
             self.clip_settings_draft = None;
         }
@@ -114,12 +128,16 @@ impl super::DawUi {
                         ui,
                         label_width,
                         |ui| {
-                            field_label(ui, "Name");
+                            ui.add_enabled_ui(!multiple, |ui| field_label(ui, "Name"));
                         },
                         |ui| {
+                            if multiple {
+                                return multiple_clips_value(ui);
+                            }
                             self.setting_value(
                                 ui,
-                                &clip,
+                                clip,
+                                &ids,
                                 &mut edit,
                                 Field::Name,
                                 Value {
@@ -137,9 +155,12 @@ impl super::DawUi {
                         ui,
                         label_width,
                         |ui| {
-                            field_label(ui, "Source");
+                            ui.add_enabled_ui(!multiple, |ui| field_label(ui, "Source"));
                         },
                         |ui| {
+                            if multiple {
+                                return multiple_clips_value(ui);
+                            }
                             let (text, tip) = source.clone().unwrap_or_else(|| {
                                 ("Missing source".into(), "Missing source".into())
                             });
@@ -154,26 +175,28 @@ impl super::DawUi {
                             field_label(ui, "Gain");
                         },
                         |ui| {
-                            let gain_text = format_gain_value(clip.gain_db);
+                            let gain_text = if mixed_gain {
+                                MULTIPLE_VALUES.into()
+                            } else {
+                                format_gain_value(clip.gain_db)
+                            };
                             let gain_edit = faders::format_gain(clip.gain_db);
                             let response = self.setting_value(
                                 ui,
-                                &clip,
+                                clip,
+                                &ids,
                                 &mut edit,
                                 Field::Gain,
                                 Value {
                                     display: &gain_text,
                                     editable: &gain_edit,
                                     tooltip: "Clip gain (dB): drag up or down in 0.1 dB steps; hold Shift for finer adjustment. Double-click to edit.",
-                                    numeric: true,
+                                    numeric: !mixed_gain,
                                     sense: Sense::click_and_drag(),
                                 },
                             );
                             if let Some(value) = drag_gain(ui, &response, clip.gain_db) {
-                                commands.push(Edit::SetClipGain {
-                                    clip_id: clip.id,
-                                    gain_db: value,
-                                });
+                                commands.extend(gain_edits(&clips, value));
                             }
                             response
                         },
@@ -186,40 +209,50 @@ impl super::DawUi {
                             field_label(ui, "Transpose");
                         },
                         |ui| {
-                            let current = self.clip_transpose_drag.as_ref().map_or(clip.transpose, |drag| drag.value);
-                            let transpose_text = format_transpose_value(current);
+                            let current = self.clip_transpose_drag.as_ref()
+                                .map_or(clip.transpose, |drag| drag.value);
+                            let transpose_text = if mixed_transpose && self.clip_transpose_drag.is_none() {
+                                MULTIPLE_VALUES.into()
+                            } else {
+                                format_transpose_value(current)
+                            };
                             let transpose_edit = format_transpose(clip.transpose);
                             let response = self.setting_value(
                                 ui,
-                                &clip,
+                                clip,
+                                &ids,
                                 &mut edit,
                                 Field::Transpose,
                                 Value {
                                     display: &transpose_text,
                                     editable: &transpose_edit,
                                     tooltip: "Transpose (semitones): drag up or down in 1 semitone steps; hold Shift for finer adjustment. Double-click to edit.",
-                                    numeric: true,
+                                    numeric: !mixed_transpose || self.clip_transpose_drag.is_some(),
                                     sense: Sense::click_and_drag(),
                                 },
                             );
-                            if audio_clip && drag_enabled && response.drag_started() {
-                                self.clip_transpose_drag = Some(TransposeDrag { clip: clip.id, value: clip.transpose });
+                            if contains_audio && drag_enabled && response.drag_started() {
+                                self.clip_transpose_drag = Some(TransposeDrag {
+                                    clip: clip.id,
+                                    clips: ids.clone(),
+                                    value: clip.transpose,
+                                    changed: false,
+                                });
                             }
                             if let Some(value) = drag_transpose(ui, &response, current) {
-                                if audio_clip {
-                                    if let Some(drag) = &mut self.clip_transpose_drag { drag.value = value; }
+                                if contains_audio {
+                                    if let Some(drag) = &mut self.clip_transpose_drag {
+                                        drag.value = value;
+                                        drag.changed = true;
+                                    }
                                 } else {
-                                commands.push(Edit::SetClipTranspose {
-                                    clip_id: clip.id,
-                                    transpose: value,
-                                });
+                                    commands.extend(transpose_edits(&clips, value));
                                 }
                             }
-                            if audio_clip && response.drag_stopped()
-                                && let Some(drag) = self.clip_transpose_drag.take()
-                                && drag.value != clip.transpose
+                            if contains_audio && response.drag_stopped()
+                                && let Some(drag) = self.clip_transpose_drag.take().filter(|drag| drag.changed)
                             {
-                                commands.push(Edit::SetClipTranspose { clip_id: clip.id, transpose: drag.value });
+                                commands.extend(transpose_edits(&clips, drag.value));
                             }
                             response
                         },
@@ -254,23 +287,14 @@ impl super::DawUi {
                             Field::Gain => match faders::parse_gain(&current.text) {
                                 Some(value) => {
                                     let value = faders::clamp_gain(value);
-                                    if value != clip.gain_db {
-                                        commands.push(Edit::SetClipGain {
-                                            clip_id: clip.id,
-                                            gain_db: value,
-                                        });
-                                    }
+                                    commands.extend(gain_edits(&clips, value));
                                 }
                                 None => error = Some("Gain must be a finite number or −∞"),
                             },
                             Field::Transpose => match parse_transpose(&current.text) {
-                                Some(value) if value != clip.transpose => {
-                                    commands.push(Edit::SetClipTranspose {
-                                        clip_id: clip.id,
-                                        transpose: value,
-                                    });
+                                Some(value) => {
+                                    commands.extend(transpose_edits(&clips, value));
                                 }
-                                Some(_) => {}
                                 None => {
                                     error = Some(
                                         "Transpose must be a whole number from −48 to +48",
@@ -288,8 +312,8 @@ impl super::DawUi {
         if let Some(message) = error {
             self.fail(message);
         }
-        for command in commands {
-            self.edit(command);
+        if !commands.is_empty() {
+            self.edit(Edit::Batch(commands));
         }
         #[cfg(test)]
         {
@@ -309,6 +333,7 @@ impl super::DawUi {
         &mut self,
         ui: &mut Ui,
         clip: &Clip,
+        clips: &[Id],
         edit: &mut Option<FieldEdit>,
         field: Field,
         value: Value<'_>,
@@ -317,7 +342,7 @@ impl super::DawUi {
             let edit = edit.as_mut().unwrap();
             let mut output = egui::TextEdit::singleline(&mut edit.text)
                 .id(ui.make_persistent_id(("clip-setting", clip.id, field_salt(field))))
-                .font(value_font(ui, value.numeric))
+                .font(value_font(ui, field != Field::Name))
                 .text_color(theme::palette(ui.ctx()).text)
                 .horizontal_align(egui::Align::LEFT)
                 .desired_width(edit.width)
@@ -345,17 +370,24 @@ impl super::DawUi {
             }
             output.response.response
         } else {
-            let response = value_label(
-                ui,
-                value.display,
-                value.tooltip,
-                value.numeric,
-                false,
-                value.sense,
-            );
+            // Scope pointer/click state to the full group so an active gesture
+            // cannot apply to a replacement selection, even with the same primary.
+            let response = ui
+                .push_id(("clip-setting", clip.id, clips, field_salt(field)), |ui| {
+                    value_label(
+                        ui,
+                        value.display,
+                        value.tooltip,
+                        value.numeric,
+                        false,
+                        value.sense,
+                    )
+                })
+                .inner;
             if opened_by_double_click(ui, &response) {
                 *edit = Some(FieldEdit {
                     clip: clip.id,
+                    clips: clips.to_vec(),
                     field,
                     text: value.editable.to_owned(),
                     focus: true,
@@ -365,17 +397,26 @@ impl super::DawUi {
             response
         }
     }
+}
 
-    fn selected_clip_record(&self) -> Option<Clip> {
-        let id = self.selected_clip?;
-        self.session
-            .project
-            .tracks
-            .iter()
-            .flat_map(|track| &track.clips)
-            .find(|clip| clip.id == id)
-            .cloned()
-    }
+fn gain_edits(clips: &[Clip], gain_db: f32) -> impl Iterator<Item = Edit> + '_ {
+    clips
+        .iter()
+        .filter(move |clip| clip.gain_db != gain_db)
+        .map(move |clip| Edit::SetClipGain {
+            clip_id: clip.id,
+            gain_db,
+        })
+}
+
+fn transpose_edits(clips: &[Clip], transpose: i8) -> impl Iterator<Item = Edit> + '_ {
+    clips
+        .iter()
+        .filter(move |clip| clip.transpose != transpose)
+        .map(move |clip| Edit::SetClipTranspose {
+            clip_id: clip.id,
+            transpose,
+        })
 }
 
 fn opened_by_double_click(ui: &Ui, response: &Response) -> bool {
@@ -406,6 +447,20 @@ fn opened_by_double_click(ui: &Ui, response: &Response) -> bool {
 
 fn field_label(ui: &mut Ui, text: &str) {
     ui.label(egui::RichText::new(text).text_style(egui::TextStyle::Small));
+}
+
+fn multiple_clips_value(ui: &mut Ui) -> Response {
+    ui.add_enabled_ui(false, |ui| {
+        value_label(
+            ui,
+            "Multiple clips selected",
+            "Multiple clips selected",
+            false,
+            true,
+            Sense::hover(),
+        )
+    })
+    .inner
 }
 
 fn value_label(
