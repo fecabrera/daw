@@ -109,6 +109,7 @@ These checks apply to the DAW adapter, not to other consumers of the engine/tool
 | TI-08 | Source-length lookup, waveform peaks, playback, and float32 export resolve identical prepared audio. The same snapshot renders sample-identically across output block sizes after identical fades/effects. |
 | TI-09 | Existing callback allocation/nonblocking tests pass; no preparation runs in the callback or painting. Project rendering/export remains headless and device-free. |
 | TI-10 | Seek, Stop, pause/resume, transport looping, reopen, and export retain engine identity. Offline project export ignores transport looping as before. |
+| TI-11 | Constant audio clip transpose uses the selected engine and shared pitch preparation. Preserve clip/prepared duration, trim/repeat mapping and source files. Distinct pitches get distinct cache identities; matching requests share buffers. Stage audio pitch drags until release and publish complete worker results atomically. Cover cancellation/failure, source/rate/engine invalidation, save/reopen, history, waveform/playback/export parity and callback heap guards. |
 
 Native Settings navigation, job progress/cancellation, successful-switch stop behavior, and playback continuity after failed Apply need manual checks on macOS, Windows, and Linux. Automated UI/render tests do not establish those native results.
 

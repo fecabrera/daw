@@ -430,29 +430,6 @@ impl DawUi {
             .find(|b| Some(b.track) == self.selected_track && b.panel.contains(pointer))
             .map(|b| (b.track, b.layer))
     }
-    /// Stage note/root/content edits before publishing either project data or selection.
-    pub(super) fn prepare_sampler_edit(
-        &mut self,
-        project: &daw_core::Project,
-        placement: Option<(Id, Vec<Id>)>,
-    ) -> bool {
-        if !self.session.sampler_preparation_needed(project) {
-            return false;
-        }
-        let mut session = self.session.clone();
-        session.project = project.clone();
-        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let flag = cancel.clone();
-        self.run_job("Preparing sampler", move || {
-            session
-                .prepare_stretches_cancellable(&|| flag.load(std::sync::atomic::Ordering::Relaxed))
-                .map_err(|e| e.to_string())?;
-            Ok(Job::SamplerEdit(session, placement))
-        });
-        self.settings_cancel = Some(cancel);
-        true
-    }
-
     pub(super) fn run_sampler_job(
         &mut self,
         label: &str,

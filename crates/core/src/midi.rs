@@ -422,6 +422,8 @@ impl Project {
             length_frames: asset.decoded_frame_count,
             repeat: None,
             stretch: None,
+            gain_db: 0.0,
+            transpose: 0,
         };
         next.assets.push(asset);
         next.edit(Edit::OverwriteClips(vec![crate::ClipPlacement {

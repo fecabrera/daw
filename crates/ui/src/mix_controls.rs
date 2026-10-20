@@ -85,13 +85,13 @@ pub(super) fn gain_pan(
     GainPanResponse { bounds, error }
 }
 
-fn cancel_input(ui: &Ui, response: &Response) -> bool {
+pub(super) fn cancel_input(ui: &Ui, response: &Response) -> bool {
     !ui.is_enabled()
         || !ui.input(|input| input.focused)
         || ((response.has_focus() || response.lost_focus())
             && ui.input(|input| input.key_pressed(egui::Key::Escape)))
 }
-fn commit_input(ui: &Ui, response: &Response) -> bool {
+pub(super) fn commit_input(ui: &Ui, response: &Response) -> bool {
     response.lost_focus()
         || (response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)))
 }

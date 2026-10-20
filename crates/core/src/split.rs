@@ -200,6 +200,8 @@ fn linear_piece(clip: &Clip, asset_id: Id, start: u64, end: u64, id: Id) -> Clip
         length_frames: end - start,
         repeat: None,
         stretch: None,
+        gain_db: 0.0,
+        transpose: 0,
     }
 }
 
@@ -464,6 +466,8 @@ mod tests {
                 phase_frame: 100,
             }),
             stretch: None,
+            gain_db: 0.0,
+            transpose: 0,
         });
         (project, clip)
     }

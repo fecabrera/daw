@@ -141,6 +141,8 @@ mod tests {
             length_frames,
             repeat: None,
             stretch: None,
+            gain_db: 0.0,
+            transpose: 0,
         }
     }
     fn notes() -> impl Iterator<Item = (u64, bool)> {

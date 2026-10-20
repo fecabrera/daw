@@ -236,6 +236,32 @@ pub struct Clip {
     /// Ratio applied to the original asset. Offsets and loop ranges use stretched frames.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stretch: Option<ClipStretch>,
+    /// Clip level in dB, applied before track gain. Zero is unity.
+    #[serde(default, skip_serializing_if = "is_unity_gain")]
+    pub gain_db: f32,
+    /// Playback transpose in semitones. MIDI patterns keep their written pitches.
+    #[serde(default, skip_serializing_if = "is_zero_transpose")]
+    pub transpose: i8,
+}
+
+fn is_unity_gain(gain_db: &f32) -> bool {
+    *gain_db == 0.0
+}
+
+fn is_zero_transpose(transpose: &i8) -> bool {
+    *transpose == 0
+}
+
+const CLIP_MAX_GAIN_DB: f32 = 12.0;
+const CLIP_TRANSPOSE_LIMIT: i8 = 48;
+
+fn clip_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().any(char::is_control) {
+        Err(Error("Clip name must contain visible text".into()))
+    } else {
+        Ok(name)
+    }
 }
 
 pub use daw_unit_core::{ClipLoop, ClipStretch};
@@ -587,7 +613,23 @@ impl Project {
         {
             return Err(invalid("Clip range exceeds saved asset bounds"));
         }
+        if clip_name(&c.name).is_err() {
+            return Err(invalid("Clip name must contain visible text"));
+        }
+        if !c.gain_db.is_finite() || !(SILENT_GAIN_DB..=CLIP_MAX_GAIN_DB).contains(&c.gain_db) {
+            return Err(invalid("Clip gain must be from silence to +12 dB"));
+        }
+        if !(-CLIP_TRANSPOSE_LIMIT..=CLIP_TRANSPOSE_LIMIT).contains(&c.transpose) {
+            return Err(invalid("Clip transpose must be from -48 to +48 semitones"));
+        }
         Ok(())
+    }
+    fn clip_mut(&mut self, id: Id) -> Result<&mut Clip> {
+        self.tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.clips)
+            .find(|clip| clip.id == id)
+            .ok_or_else(|| Error("Clip not found".into()))
     }
     pub fn add_track(&mut self) -> Result<Id> {
         let id = Id::new_v4();
@@ -795,12 +837,16 @@ impl Project {
                     .color = color;
             }
             Edit::SetClipColor { clip_id, color } => {
-                self.tracks
-                    .iter_mut()
-                    .flat_map(|t| &mut t.clips)
-                    .find(|c| c.id == clip_id)
-                    .ok_or_else(|| Error("Clip not found".into()))?
-                    .color = color;
+                self.clip_mut(clip_id)?.color = color;
+            }
+            Edit::SetClipName { clip_id, name } => {
+                self.clip_mut(clip_id)?.name = clip_name(&name)?.to_owned();
+            }
+            Edit::SetClipGain { clip_id, gain_db } => {
+                self.clip_mut(clip_id)?.gain_db = gain_db;
+            }
+            Edit::SetClipTranspose { clip_id, transpose } => {
+                self.clip_mut(clip_id)?.transpose = transpose;
             }
             Edit::DeleteTrack(id) => self.tracks.retain(|t| t.id != id),
             Edit::DuplicateTrack {
@@ -1008,6 +1054,18 @@ pub enum Edit {
         clip_id: Id,
         color: Option<RgbColor>,
     },
+    SetClipName {
+        clip_id: Id,
+        name: String,
+    },
+    SetClipGain {
+        clip_id: Id,
+        gain_db: f32,
+    },
+    SetClipTranspose {
+        clip_id: Id,
+        transpose: i8,
+    },
     DeleteTrack(Id),
     /// Insert an empty copy after the original, retaining all track settings.
     DuplicateTrack {
@@ -1169,6 +1227,8 @@ mod tests {
                 phase_frame: 10,
             }),
             stretch: None,
+            gain_db: 0.0,
+            transpose: 0,
         };
         let longer = clip.stretched_to(0, 200).unwrap();
         assert_eq!(longer.source_offset_frame, 400);
@@ -1226,6 +1286,8 @@ mod tests {
                     length_frames: 10,
                     phase_frame: phase,
                 }),
+                gain_db: 0.0,
+                transpose: 0,
             };
             let before = clip.clone();
             clip.restore_source_range();
@@ -1354,5 +1416,105 @@ mod tests {
         p.tracks[0].soloed = true;
         assert!(p.audible(&p.tracks[0]));
         assert!(p.tracks[1..].iter().all(|t| !p.audible(t)));
+    }
+
+    #[test]
+    fn clip_settings_persist_and_reject_invalid_values() {
+        let mut project = Project::default();
+        project.add_track().unwrap();
+        let asset_id = Id::new_v4();
+        project.assets.push(Asset {
+            midi_pattern: None,
+            id: asset_id,
+            name: "Take".into(),
+            source: Source {
+                kind: "external".into(),
+                path: "/music/take.wav".into(),
+                path_kind: "absolute".into(),
+            },
+            source_metadata: SourceMetadata {
+                sample_rate_hz: 48_000,
+                channels: 2,
+                sample_format: "ieee_float".into(),
+                bits_per_sample: 32,
+            },
+            decoded_frame_count: 1000,
+        });
+        let clip_id = Id::new_v4();
+        project.tracks[0].clips.push(Clip {
+            id: clip_id,
+            asset_id,
+            name: "Take".into(),
+            color: None,
+            start_frame: 0,
+            source_offset_frame: 0,
+            length_frames: 1000,
+            repeat: None,
+            stretch: None,
+            gain_db: 0.0,
+            transpose: 0,
+        });
+        let saved = serde_json::to_string(&project.tracks[0].clips[0]).unwrap();
+        assert!(!saved.contains("gain_db"));
+        assert!(!saved.contains("transpose"));
+        let restored: Clip = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.gain_db, 0.0);
+        assert_eq!(restored.transpose, 0);
+        project
+            .edit(Edit::SetClipName {
+                clip_id,
+                name: "  Lead  ".into(),
+            })
+            .unwrap();
+        project
+            .edit(Edit::SetClipGain {
+                clip_id,
+                gain_db: -6.0,
+            })
+            .unwrap();
+        project
+            .edit(Edit::SetClipTranspose {
+                clip_id,
+                transpose: 12,
+            })
+            .unwrap();
+        let clip = &project.tracks[0].clips[0];
+        assert_eq!(clip.name, "Lead");
+        assert_eq!(clip.gain_db, -6.0);
+        assert_eq!(clip.transpose, 12);
+        let saved = serde_json::to_string(clip).unwrap();
+        let legacy = saved
+            .replace(",\"gain_db\":-6.0", "")
+            .replace(",\"transpose\":12", "");
+        let restored: Clip = serde_json::from_str(&legacy).unwrap();
+        assert_eq!(restored.gain_db, 0.0);
+        assert_eq!(restored.transpose, 0);
+        assert!(
+            project
+                .edit(Edit::SetClipName {
+                    clip_id,
+                    name: " \n ".into(),
+                })
+                .is_err()
+        );
+        assert!(
+            project
+                .edit(Edit::SetClipGain {
+                    clip_id,
+                    gain_db: 12.5,
+                })
+                .is_err()
+        );
+        assert!(
+            project
+                .edit(Edit::SetClipTranspose {
+                    clip_id,
+                    transpose: 49,
+                })
+                .is_err()
+        );
+        assert_eq!(project.tracks[0].clips[0].name, "Lead");
+        assert_eq!(project.tracks[0].clips[0].gain_db, -6.0);
+        assert_eq!(project.tracks[0].clips[0].transpose, 12);
     }
 }

@@ -14,7 +14,7 @@ mod schedule;
 mod track_processing;
 pub use parallel_tracks::{PreparationMode, PreparationStats};
 mod transport_cache;
-use daw_core::{Clip, ClipStretch, Id, Project, linear_gain};
+use daw_core::{Clip, Id, Project, linear_gain};
 use daw_media::AudioData;
 use std::collections::HashMap;
 pub use transport_cache::{TransportCache, TransportCacheMemory};
@@ -24,22 +24,16 @@ pub struct RenderPlan {
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
     pub sampler_audio: HashMap<Id, daw_media::PreparedSampler>,
-    pub stretched_audio: HashMap<(Id, ClipStretch), daw_media::PreparedStretch>,
+    pub stretched_audio: daw_media::ClipAudioCache,
 }
 impl RenderPlan {
     pub fn audio_for_clip(&self, clip: &Clip) -> Option<&AudioData> {
-        match clip.stretch {
-            Some(stretch) => self
-                .stretched_audio
-                .get(&(clip.asset_id, stretch))
-                .filter(|prepared| {
-                    self.audio.get(&clip.asset_id).is_some_and(|source| {
-                        prepared.matches(source, stretch, self.project.stretch_engine)
-                    })
-                })
-                .map(|prepared| &prepared.audio),
-            None => self.audio.get(&clip.asset_id),
-        }
+        daw_media::clip_audio(
+            clip,
+            &self.audio,
+            &self.stretched_audio,
+            self.project.stretch_engine,
+        )
     }
     fn needs_stateful_render(&self) -> bool {
         self.project.all_effects().next().is_some()
@@ -78,8 +72,9 @@ impl RenderPlan {
                 };
                 let fade = sample_fade(c, local, source_frame, self.project.sample_rate_hz);
                 let coefficients = pan_coefficients(t.pan, audio.metadata.channels == 1);
+                let clip_gain = linear_gain(c.gain_db);
                 for ch in 0..2 {
-                    mix[ch] += source[ch] * gain * fade * coefficients[ch];
+                    mix[ch] += source[ch] * gain * fade * coefficients[ch] * clip_gain;
                 }
             }
         }
@@ -1000,6 +995,20 @@ mod tests {
         assert_eq!(clip_fade(240, 1000), 1.0);
         assert_eq!(clip_fade(50, 100), 0.98);
     }
+    #[test]
+    fn clip_gain_scales_audio_before_track_gain() {
+        let mut plan = plan();
+        let unity = plan.sample_at(1000);
+        assert!((unity[0] - 0.25).abs() < 1e-5);
+        plan.project.tracks[0].clips[0].gain_db = 6.0;
+        let louder = plan.sample_at(1000);
+        assert!((louder[0] / unity[0] - 10.0_f32.powf(6.0 / 20.0)).abs() < 1e-4);
+        let mut track = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
+        let (scheduled, _) = track.sample(&plan.project.tracks[0].clips, 1000);
+        assert!((scheduled[0] - louder[0]).abs() < 1e-5);
+        plan.project.tracks[0].clips[0].gain_db = daw_core::SILENT_GAIN_DB;
+        assert_eq!(plan.sample_at(1000), [0.0, 0.0]);
+    }
     fn plan() -> RenderPlan {
         use daw_core::{Asset, Clip, Source, SourceMetadata};
         use std::sync::Arc;
@@ -1034,6 +1043,8 @@ mod tests {
             source_offset_frame: 0,
             length_frames: 2000,
             repeat: None,
+            gain_db: 0.0,
+            transpose: 0,
         });
         RenderPlan {
             sampler_audio: Default::default(),

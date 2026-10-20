@@ -22,6 +22,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Per-layer effects](instruments/layer-effects.md): saved stereo bus chains, shared controls, modulation, and latency alignment.
 - [Project undo and redo](editing/undo-redo.md).
 - [Component editing and registration](editing/components.md).
+- [Clip settings](editing/clip-settings.md).
 - [Beat editor design](views/beat-editor.md), pending implementation.
 
 ## Effects

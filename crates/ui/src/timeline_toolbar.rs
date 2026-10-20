@@ -7,6 +7,7 @@ pub(super) const BUTTON_SIZE: f32 = icons::TOOLBAR_BUTTON_SIZE;
 pub(super) struct Buttons {
     pub library: egui::Response,
     pub components: Option<egui::Response>,
+    pub clip_settings: Option<egui::Response>,
     pub lane: egui::Response,
 }
 
@@ -15,6 +16,7 @@ pub(super) fn show(
     bounds: Rect,
     catalog_visible: bool,
     components_visible: Option<bool>,
+    clip_settings_visible: Option<bool>,
     lane_visible: bool,
     enabled: bool,
 ) -> Buttons {
@@ -32,6 +34,16 @@ pub(super) fn show(
     );
     let padding = (WIDTH - BUTTON_SIZE) * 0.5;
     let top = bounds.min + Vec2::splat(padding);
+    let step = BUTTON_SIZE + padding;
+    let clip_settings_at = top
+        + Vec2::new(
+            0.0,
+            if components_visible.is_some() {
+                2.0 * step
+            } else {
+                step
+            },
+        );
     let bottom = egui::pos2(top.x, bounds.bottom() - padding - BUTTON_SIZE);
     let mut rail = ui.new_child(
         egui::UiBuilder::new()
@@ -56,6 +68,17 @@ pub(super) fn show(
                 "instrument-components",
                 icons::Lucide::Piano,
                 "Show instrument components catalog",
+                selected,
+                enabled,
+            )
+        }),
+        clip_settings: clip_settings_visible.map(|selected| {
+            toggle_at(
+                &mut rail,
+                clip_settings_at,
+                "clip-settings",
+                icons::Lucide::FileHeadphone,
+                "Show clip settings",
                 selected,
                 enabled,
             )

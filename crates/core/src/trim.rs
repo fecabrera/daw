@@ -82,6 +82,8 @@ mod tests {
             length_frames: 40,
             repeat: None,
             stretch: None,
+            gain_db: 0.0,
+            transpose: 0,
         }
     }
 

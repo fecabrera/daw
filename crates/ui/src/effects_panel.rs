@@ -15,6 +15,12 @@ pub(crate) struct EffectsUiBounds {
     pub library: Rect,
     pub toolbar: Rect,
     pub library_toggle: Rect,
+    pub clip_settings_toggle: Rect,
+    pub clip_settings: Rect,
+    pub clip_name: Rect,
+    pub clip_source: Rect,
+    pub clip_gain: Rect,
+    pub clip_transpose: Rect,
     pub lane_toggle: Rect,
     pub header: Rect,
     pub folders: [Rect; effects_catalog::CATEGORY_COUNT],
@@ -54,6 +60,12 @@ impl Default for EffectsUiBounds {
             library: Rect::NOTHING,
             toolbar: Rect::NOTHING,
             library_toggle: Rect::NOTHING,
+            clip_settings_toggle: Rect::NOTHING,
+            clip_settings: Rect::NOTHING,
+            clip_name: Rect::NOTHING,
+            clip_source: Rect::NOTHING,
+            clip_gain: Rect::NOTHING,
+            clip_transpose: Rect::NOTHING,
             lane_toggle: Rect::NOTHING,
             header: Rect::NOTHING,
             folders: [Rect::NOTHING; effects_catalog::CATEGORY_COUNT],
@@ -193,14 +205,27 @@ impl DawUi {
             bounds.max,
         );
         let upper = Rect::from_min_max(bounds.min, Pos2::new(bounds.right(), strip.top()));
-        let components_visible =
-            self.view_mode == ViewMode::Instrument && self.instrument_catalog_visible;
-        let catalog_visible = self.timeline_catalog_visible || components_visible;
+        let clip_settings_visible =
+            self.view_mode == ViewMode::Timeline && self.clip_settings_visible;
+        let components_visible = self.view_mode == ViewMode::Instrument
+            && self.instrument_catalog_visible
+            && !clip_settings_visible;
+        let catalog_visible =
+            clip_settings_visible || self.timeline_catalog_visible || components_visible;
+        if !clip_settings_visible {
+            self.clip_settings_draft = None;
+            self.clip_transpose_drag = None;
+        }
         let library = catalog_visible.then(|| panels::ControlPanel::begin(ui, upper));
         #[cfg(test)]
         {
             self.effects_bounds.folders = [Rect::NOTHING; effects_catalog::CATEGORY_COUNT];
             self.effects_bounds.library = Rect::NOTHING;
+            self.effects_bounds.clip_settings = Rect::NOTHING;
+            self.effects_bounds.clip_name = Rect::NOTHING;
+            self.effects_bounds.clip_source = Rect::NOTHING;
+            self.effects_bounds.clip_gain = Rect::NOTHING;
+            self.effects_bounds.clip_transpose = Rect::NOTHING;
             self.effects_bounds.header = Rect::NOTHING;
             self.effects_bounds.entry = Rect::NOTHING;
             self.effects_bounds.drive_entry = Rect::NOTHING;
@@ -223,7 +248,9 @@ impl DawUi {
                         ui.set_min_height(upper.height());
                         let catalog_rect =
                             Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, upper.height()));
-                        if components_visible {
+                        if clip_settings_visible {
+                            self.clip_settings_panel(ui, library, catalog_rect, allowed);
+                        } else if components_visible {
                             self.instrument_catalog_panel(
                                 ui,
                                 library,

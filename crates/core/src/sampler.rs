@@ -12,6 +12,8 @@ impl From<&SamplerInput> for Clip {
             length_frames: input.length_frames,
             repeat: input.repeat,
             stretch: input.stretch,
+            gain_db: 0.0,
+            transpose: 0,
         }
     }
 }

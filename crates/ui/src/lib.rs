@@ -1,6 +1,8 @@
+mod audio_edits;
 mod audio_preparation;
 mod clip_lane;
 mod clip_paint;
+mod clip_settings;
 mod history;
 mod looping;
 mod midi_editor;
@@ -289,7 +291,7 @@ fn transport_monitor_control(
 
 enum Job {
     AudioSettings(Session),
-    SamplerEdit(Session, Option<(Id, Vec<Id>)>),
+    PreparedEdit(Session, Option<(Id, Vec<Id>)>),
     Loaded(Session, bool),
     Saved(Session),
     Exported(Vec<String>),
@@ -680,6 +682,9 @@ pub struct DawUi {
     instrument_catalog_bounds: instrument_catalog::Bounds,
     master_selected: bool,
     timeline_catalog_visible: bool,
+    clip_settings_visible: bool,
+    clip_settings_draft: Option<clip_settings::FieldEdit>,
+    clip_transpose_drag: Option<clip_settings::TransposeDrag>,
     timeline_effects_visible: bool,
     effects_lane_focus: selection_focus::SelectionFocus,
     effects_drag: Option<effects_reorder::EffectDrag>,
@@ -776,6 +781,9 @@ impl Default for DawUi {
             #[cfg(test)]
             instrument_catalog_bounds: Default::default(),
             timeline_catalog_visible: true,
+            clip_settings_visible: false,
+            clip_settings_draft: None,
+            clip_transpose_drag: None,
             timeline_effects_visible: true,
             master_selected: false,
             effects_lane_focus: Default::default(),
@@ -1239,7 +1247,7 @@ impl DawUi {
                     self.mark_dirty();
                     self.sync_needed = false;
                 }
-                Ok(Job::SamplerEdit(session, placement)) => {
+                Ok(Job::PreparedEdit(session, placement)) => {
                     self.notices = session.warnings.clone();
                     self.session = session;
                     if let Some((track, clips)) = placement {
@@ -1418,7 +1426,7 @@ impl DawUi {
         self.ensure_history();
         match self.session.project.edited(command) {
             Ok(project) => {
-                if self.prepare_sampler_edit(&project, None) {
+                if self.prepare_audio_edit(&project, None) {
                     return;
                 }
                 self.session.project = project;
@@ -1610,7 +1618,7 @@ impl DawUi {
             Ok(()) => {
                 let mut ids: Vec<_> = clips.iter().map(|entry| entry.clip.id).collect();
                 ids.swap(0, primary);
-                if self.prepare_sampler_edit(&project, Some((clips[primary].track, ids))) {
+                if self.prepare_audio_edit(&project, Some((clips[primary].track, ids))) {
                     return;
                 }
                 self.session.project = project;
@@ -1749,7 +1757,7 @@ impl DawUi {
                     .then_some(track.id)
             })
         });
-        if self.prepare_sampler_edit(&project, track.map(|track| (track, selection.clone()))) {
+        if self.prepare_audio_edit(&project, track.map(|track| (track, selection.clone()))) {
             return;
         }
         self.session.project = project;
@@ -2688,6 +2696,7 @@ impl DawUi {
             rail,
             self.timeline_catalog_visible,
             (self.view_mode == ViewMode::Instrument).then_some(self.instrument_catalog_visible),
+            (self.view_mode == ViewMode::Timeline).then_some(self.clip_settings_visible),
             self.timeline_effects_visible,
             enabled,
         );
@@ -2697,6 +2706,7 @@ impl DawUi {
             if self.timeline_catalog_visible {
                 self.instrument_catalog_visible = false;
                 self.instrument_catalog.clear();
+                self.clip_settings_visible = false;
             }
             ui.ctx().request_repaint();
         }
@@ -2710,6 +2720,21 @@ impl DawUi {
             if self.instrument_catalog_visible {
                 self.timeline_catalog_visible = false;
                 self.effects_catalog.clear();
+                self.clip_settings_visible = false;
+            }
+            ui.ctx().request_repaint();
+        }
+        if toggles
+            .clip_settings
+            .as_ref()
+            .is_some_and(|response| response.clicked())
+        {
+            self.clip_settings_visible = !self.clip_settings_visible;
+            if self.clip_settings_visible {
+                self.timeline_catalog_visible = false;
+                self.instrument_catalog_visible = false;
+                self.effects_catalog.clear();
+                self.instrument_catalog.clear();
             }
             ui.ctx().request_repaint();
         }
@@ -2727,6 +2752,10 @@ impl DawUi {
             }
             self.effects_bounds.toolbar = rail;
             self.effects_bounds.library_toggle = toggles.library.rect;
+            self.effects_bounds.clip_settings_toggle = toggles
+                .clip_settings
+                .as_ref()
+                .map_or(Rect::NOTHING, |response| response.rect);
             self.effects_bounds.lane_toggle = toggles.lane.rect;
         }
         let content = Rect::from_min_max(rail.right_top(), bounds.max);
@@ -4426,6 +4455,8 @@ impl DawUi {
                 |audio| audio.samples.len() as u64,
             ),
             repeat: None,
+            gain_db: 0.0,
+            transpose: 0,
         };
         let mut neighbors = Vec::new();
         let valid = match &hover.audio {
@@ -4877,6 +4908,7 @@ impl DawUi {
 mod tests {
     mod clip_duplication;
     mod clip_portion;
+    mod clip_settings;
     mod clip_split;
     mod component_transfer;
     mod effects;
@@ -4939,6 +4971,8 @@ mod tests {
             source_offset_frame: 0,
             length_frames: 480000,
             repeat: None,
+            gain_db: 0.0,
+            transpose: 0,
         });
         (app, track)
     }

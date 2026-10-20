@@ -100,6 +100,8 @@ mod tests {
                 phase_frame: 13,
             }),
             stretch: ClipStretch::new(1, 2),
+            gain_db: 0.0,
+            transpose: 0,
         };
         let moving = Clip {
             id: Id::new_v4(),

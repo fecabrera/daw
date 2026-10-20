@@ -361,7 +361,7 @@ fn group_stretch_composes_existing_ratios_and_reuses_original_sources() {
     assert_eq!(previews[0].clip.stretch.unwrap().ratio(), 0.5);
     assert_eq!(previews[1].clip.stretch.unwrap().ratio(), 2.0);
     assert_eq!(previews[2].clip.stretch, None);
-    let old_two = original_cache[&(previews[1].clip.asset_id, previews[1].clip.stretch.unwrap())]
+    let old_two = original_cache[&daw_media::ClipAudioKey::for_clip(&previews[1].clip).unwrap()]
         .samples
         .clone();
     frame(&mut app, &ctx, vec![pointer_button(end, false, true)]);

@@ -311,6 +311,8 @@ impl DawUi {
                         length_frames: 1,
                         repeat: None,
                         stretch: None,
+                        gain_db: 0.0,
+                        transpose: 0,
                     },
                     track: drag.anchor_track,
                     mode: ClipDragMode::Move,
@@ -434,7 +436,7 @@ impl DawUi {
     }
 
     fn publish_portion_project(&mut self, project: daw_core::Project) {
-        if self.prepare_sampler_edit(&project, None) {
+        if self.prepare_audio_edit(&project, None) {
             return;
         }
         self.session.project = project;

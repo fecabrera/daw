@@ -113,6 +113,8 @@ mod tests {
             length_frames: length,
             repeat: None,
             stretch: None,
+            gain_db: 0.0,
+            transpose: 0,
         });
         project.validate().unwrap();
         (project, track, clip)

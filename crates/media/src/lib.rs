@@ -4,6 +4,8 @@ use std::{fs::File, path::Path, sync::Arc};
 
 pub use memory::{AudioMemoryUsage, audio_memory_bytes};
 mod cache;
+mod clip_audio;
+pub use clip_audio::{ClipAudioCache, ClipAudioKey, clip_audio};
 mod export;
 mod memory;
 pub use cache::decode_wav_cached;

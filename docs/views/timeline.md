@@ -39,6 +39,20 @@ Recently prepared positions use cached sound state for faster seeks. The first s
 
 Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a MIDI clip to open it in [Editor](editor.md).
 
+## Clip settings
+
+Clip settings is available only in Timeline. Open it from the left rail with the headphone-file button. It uses the same column as the Effects catalog; opening either panel closes the other. You can close both. Leaving Timeline closes Clip settings and discards any unconfirmed text.
+
+Select a clip to edit its name, gain, and transpose. The source row shows the audio file name, or MIDI pattern for a MIDI clip. These rows use the smaller catalog text, and the values are aligned to the left. The source is dimmed because it cannot be edited. A long name is shortened with an ellipsis; hover the source to see the full path. Gain is shown in dB, from silence (−∞ dB) to +12 dB, for example 0.0 dB. Transpose is shown in semitones, from −48 to +48, for example 0 semitones.
+
+Drag gain up or down in steps of 0.1 dB. Drag transpose up or down in steps of 1 semitone. Hold Shift while dragging for a finer adjustment: 0.01 dB, or 0.1 semitone. A sideways drag does not change the value. Dragging up from silence starts at −60 dB.
+
+Double-click the name, gain, or transpose to type a value, as with the tempo label. Enter saves it. Escape, or clicking away, restores the previous value. With no clip selected, the fields stay unavailable.
+
+Gain changes the clip's level before the track level. Transpose shifts MIDI notes while they play and leaves the written pattern unchanged. A note that would fall below MIDI note 0 or above 127 plays at that nearest note. Audio transpose changes playback pitch while keeping the clip duration and original recording unchanged. It uses the project's selected [stretch engine](../audio/time-stretch.md#choose-an-engine). For audio, dragging previews the value and releasing starts preparation; Escape cancels the drag. Playback continues with the previous audio until preparation succeeds. Cancel or failure keeps the previous value and audio.
+
+When several clips are selected, the panel edits the primary selected clip.
+
 ## Add effects
 
 Select a track or Master, then use the [Effects catalog](instrument.md#effects). Browse EQ & Filters, Dynamics, Distortion, and Imaging. Double-click an effect, select effects and press Enter, or drag them into the effects lane. Click a folder to hide or show its entries.

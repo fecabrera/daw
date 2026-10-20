@@ -303,6 +303,8 @@ fn audio_plan(rate: u32, tracks: usize, clips: usize) -> RenderPlan {
                     phase_frame: 0,
                 }),
                 stretch: None,
+                gain_db: 0.0,
+                transpose: 0,
             });
         }
     }

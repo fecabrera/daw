@@ -85,7 +85,7 @@ impl AudioTrack {
                 .get(position as usize)
                 .copied()
                 .unwrap_or_default()
-                .map(|v| v * fade),
+                .map(|v| v * fade * daw_core::linear_gain(clip.gain_db)),
             Some(audio.metadata.channels == 1),
         )
     }

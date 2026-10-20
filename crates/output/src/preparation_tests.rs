@@ -850,3 +850,77 @@ fn parallel_prepared_renderer_keeps_callback_processing_and_activation_allocatio
     let previous = Renderer::new(plan);
     realtime(|| prepared.activate_transport(&previous));
 }
+
+#[test]
+fn prepared_audio_clip_transpose_activates_and_runs_without_callback_heap_work() {
+    for engine in [
+        daw_core::StretchEngine::RUBBER_BAND,
+        daw_core::StretchEngine::INTEGRATED,
+    ] {
+        let mut plan = tests::transport_plan();
+        plan.project.stretch_engine = engine;
+        let asset = plan.project.tracks[0].clips[0].asset_id;
+        plan.audio.get_mut(&asset).unwrap().samples = Arc::new(
+            (0..48000)
+                .map(|frame| {
+                    let tone = (frame as f32 * 440.0 * std::f32::consts::TAU / 48000.0).sin() * 0.2;
+                    [tone, -tone]
+                })
+                .collect(),
+        );
+        let tracks = track_meters(&plan, &HashMap::new());
+        let status = Arc::new(Status::default());
+        let (mut producer, consumer) = RingBuffer::new(4);
+        let (retire, mut retired) = RingBuffer::new(8);
+        let mut callback = Callback::new(
+            plan.clone(),
+            &tracks,
+            consumer,
+            retire,
+            status.clone(),
+            48000,
+        )
+        .unwrap();
+        callback.renderer.play();
+        for _ in 0..512 {
+            realtime(|| callback.next());
+        }
+        plan.project.tracks[0].clips[0].transpose = 12;
+        let key = daw_media::ClipAudioKey::for_clip(&plan.project.tracks[0].clips[0]).unwrap();
+        plan.stretched_audio.insert(
+            key,
+            key.prepare(&plan.audio[&asset], engine, &|| false).unwrap(),
+        );
+        let state = TransportState {
+            frame: 8000,
+            playing: true,
+            playback_start: Some(4800),
+            ..Default::default()
+        };
+        let mut reference = Renderer::new(plan.clone());
+        reference.prepare_transport(state);
+        let worker = preparation::Worker::new(status.clone()).unwrap();
+        let revision = worker.submit(
+            plan,
+            preparation::Bindings {
+                tracks,
+                ..Default::default()
+            },
+            Some(state),
+        );
+        let prepared = ready(&worker);
+        status.requested_revision.store(revision, Ordering::Release);
+        producer.push(Command::Plan(prepared.renderer)).unwrap();
+        realtime(|| callback.update());
+        assert!(callback.renderer.playing);
+        assert_eq!(callback.renderer.playhead, state.frame);
+        for index in 0..1024 {
+            let actual = realtime(|| callback.next());
+            let expected = reference.next_sample();
+            if index > 300 {
+                assert_eq!(actual, expected);
+            }
+        }
+        assert!(retired.pop().is_ok());
+    }
+}

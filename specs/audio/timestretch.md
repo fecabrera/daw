@@ -30,7 +30,7 @@ The processor changes duration while preserving pitch by default. An optional co
 | Timing | Exact integer output length; internal delay compensated |
 | Evaluation | Standalone file tool comparing Timestretch, Rubber Band R2, and Rubber Band R3; optional DAW engine selector |
 
-Live stretching, ratio/pitch automation, formant preservation, tempo detection, warp markers, more than two channels, plugin/device management, and GPU processing are outside this version. The portable API has no track, clip, MIDI, project, transport, or device concepts. Within the DAW, MIDI stretching continues to retime MIDI data through its existing model; there are no per-clip pitch, engine, or quality choices in this version.
+Live stretching, ratio/pitch automation, formant preservation, tempo detection, warp markers, more than two channels, plugin/device management, and GPU processing are outside this version. The portable API has no track, clip, MIDI, project, transport, or device concepts. Within the DAW, MIDI stretching continues to retime MIDI data through its existing model; audio clips have a constant transpose control, but no per-clip engine or quality choice.
 
 ## Portable crate
 
@@ -86,7 +86,7 @@ The filter removes frequencies that would cross output Nyquist during upward shi
 
 Before allocation, account for the larger of the intermediate stretch working set and `4*channels*(K+M) + filter_table_bytes`. `PitchRequest::working_memory_bytes(input_frames)` exposes the same checked estimate for host admission, including validation of rate, channel count and output length. The stretch estimate includes f64 overlap, intermediate f32 output, transient storage, and the existing conservative FFT allowance. Drop spectral scratch before allocating the filter table and final output. Immutable input, FFT planner internals, and allocator overhead retain their existing accounting limits. Checked arithmetic and fallible major-buffer allocation return `ResourceLimit`. Progress maps validation to 0–0.05, stretching to 0.05–0.8, table setup to 0.8–0.85, and output conversion to 0.85–1. Check cancellation during table setup and at most every 256 output frames, in addition to existing analysis/synthesis checkpoints. No partial output escapes.
 
-The original stretch algorithm and its `REVISION = 2` remain unchanged. The new optional path has `PITCH_REVISION = 2`. Reports or consumer caches for nonzero pitch must include both revisions, the exact pitch offset, processing rate, channels, duration ratio, and source identity. This addition does not migrate or reinterpret saved DAW engine revisions. Timeline consumers retain the zero-pitch request; Sampler uses constant note offsets through the new API.
+The original stretch algorithm and its `REVISION = 2` remain unchanged. The new optional path has `PITCH_REVISION = 2`. Reports or consumer caches for nonzero pitch must include both revisions, the exact pitch offset, processing rate, channels, duration ratio, and source identity. This addition does not migrate or reinterpret saved DAW engine revisions. Timeline audio clips use their saved constant transpose; Sampler uses constant note offsets through the same API.
 
 ### Full-range pitch composition
 
@@ -186,7 +186,7 @@ Exit 0 means every requested engine completed successfully with matching prepare
 
 ## Optional DAW integration: existing behavior to preserve
 
-The [current adapter](../../crates/media/src/stretch.rs) uses Rubber Band R3/Finer, offline processing, linked stereo, pitch factor 1 for Timeline and the requested note factor for Sampler, and no internal threading. [Session preparation](../../crates/project/src/lib.rs) caches complete stretched sources by asset and reduced ratio. Clip source offsets, repeat lengths, and repeat phases refer to prepared-source coordinates.
+The [current adapter](../../crates/media/src/stretch.rs) uses Rubber Band R3/Finer, offline processing, linked stereo, the requested clip transpose or Sampler note pitch factor, and no internal threading. [Session preparation](../../crates/project/src/lib.rs) caches complete transformed sources by asset, reduced ratio and signed clip transpose. Clip source offsets, repeat lengths, and repeat phases refer to prepared-source coordinates.
 
 - Process the original decoded source, never a previous stretched result. Repeated edits compose the saved ratio and prepare from the original.
 - Stretch the whole source before taking a clip's source range. Copies, splits, trims, and loops sharing a source must resolve consistent audio coordinates.
@@ -220,11 +220,11 @@ Applying a choice follows the current project audio-settings transaction:
 4. Error or cancellation retains the old engine, all fields, dirty state, playback, and caches. Discard partial output and identify the failing source/cause through existing dialogs.
 5. Disable conflicting editing during preparation and reject stale results after session/source replacement. Mark modified only on a successful change.
 
-The choice applies to all audio clips, with no automatic/per-clip engine mixing. Switching back is another explicit transaction. Real-time dual-engine A/B and loudness matching are not part of the selector. Choosing an engine in a MIDI-only or unstretched project saves it for future audio stretches without changing those signals.
+The choice applies to all audio clips, with no automatic/per-clip engine mixing. Switching back is another explicit transaction. Real-time dual-engine A/B and loudness matching are not part of the selector. Choosing an engine in a MIDI-only project, or an audio project with neither stretch nor transpose, saves it for future transforms without changing those signals.
 
 ### Cache and rendering identity
 
-Prepared audio identity includes source identity/content generation, processing rate, reduced ratio, engine ID, and processing revision. The current `(asset ID, ratio)` key alone is insufficient. Use an explicit key or equivalently explicit session-scoped identity. Never serve one backend's audio under another's identity. Bound retained caches during repeated auditions.
+Prepared audio identity includes source identity/content generation, processing rate, reduced ratio, constant pitch, engine ID/revision and pitch revision. `ClipAudioKey` stores asset ID, ratio and transpose within one selected-engine Session; `PreparedStretch::matches_pitch` checks the remaining processing identity. Never serve one backend's audio under another's identity. Bound retained caches during repeated auditions.
 
 Rate changes convert originals first and rebuild the selected backend. Engine changes retain rate. Source-length mapping, waveform lookup, playback plans, and offline export resolve the same prepared buffer. A missing/mismatched cache must not silently use original or other-engine audio. Missing-source placeholders retain current silence/warning behavior. Save/Open and Save As retain the engine; project CLI rendering uses that saved choice.
 

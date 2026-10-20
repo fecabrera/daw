@@ -108,7 +108,7 @@ impl Renderer {
 pub fn prepared_model_bytes(
     project: &Project,
     audio: &HashMap<Id, AudioData>,
-    stretched_audio: &HashMap<(Id, ClipStretch), daw_media::PreparedStretch>,
+    stretched_audio: &daw_media::ClipAudioCache,
     sampler_audio: &HashMap<Id, daw_media::PreparedSampler>,
 ) -> u64 {
     project.memory_bytes()

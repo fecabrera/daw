@@ -54,6 +54,8 @@ mod tests {
             length_frames: 30,
             repeat: None,
             stretch: ClipStretch::new(1, 2),
+            gain_db: 0.0,
+            transpose: 0,
         };
         for edge in [ClipEdge::Left, ClipEdge::Right] {
             let delta = if edge == ClipEdge::Left { -40 } else { 40 };

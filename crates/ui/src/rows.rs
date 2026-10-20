@@ -56,9 +56,26 @@ pub fn field<R>(
     label: impl FnOnce(&mut Ui),
     control: impl FnOnce(&mut Ui) -> R,
 ) -> InnerResponse<R> {
-    centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
+    field_with_height(
+        ui,
+        label_width,
+        crate::toolbars::CONTROL_HEIGHT,
+        label,
+        control,
+    )
+}
+
+/// Reuse field alignment in panels whose rows also own vertical padding.
+pub(super) fn field_with_height<R>(
+    ui: &mut Ui,
+    label_width: f32,
+    height: f32,
+    label: impl FnOnce(&mut Ui),
+    control: impl FnOnce(&mut Ui) -> R,
+) -> InnerResponse<R> {
+    centered(ui, height, |ui| {
         ui.allocate_ui_with_layout(
-            Vec2::new(label_width, crate::toolbars::CONTROL_HEIGHT),
+            Vec2::new(label_width, height),
             Layout::left_to_right(Align::Center),
             |ui| {
                 ui.set_min_width(label_width);

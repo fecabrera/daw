@@ -76,7 +76,7 @@ fn processing_rate_and_buffer_survive_save_reopen_import_stretch_and_render() {
             .samples
     );
     assert_eq!(
-        changed.stretched_audio[&(clip.asset_id, clip.stretch.unwrap())]
+        changed.stretched_audio[&daw_media::ClipAudioKey::for_clip(&clip).unwrap()]
             .samples
             .len(),
         14_400
@@ -100,7 +100,7 @@ fn processing_rate_and_buffer_survive_save_reopen_import_stretch_and_render() {
     assert_eq!(loaded.project.buffer_size_frames, 128);
     assert_eq!(loaded.audio[&clip.asset_id].sample_rate_hz, 96_000);
     assert_eq!(
-        loaded.stretched_audio[&(clip.asset_id, clip.stretch.unwrap())].sample_rate_hz,
+        loaded.stretched_audio[&daw_media::ClipAudioKey::for_clip(&clip).unwrap()].sample_rate_hz,
         96_000
     );
     let output = f.0.join("high-rate-mix.wav");
@@ -3149,7 +3149,7 @@ fn stretch_engine_switch_is_atomic_saved_and_cache_scoped() {
     clip.stretch = daw_core::ClipStretch::new(2, 3);
     session.prepare_stretches().unwrap();
     let clip = session.project.tracks[0].clips[0].clone();
-    let key = (clip.asset_id, clip.stretch.unwrap());
+    let key = daw_media::ClipAudioKey::for_clip(&clip).unwrap();
     let mut integrated = session
         .with_processing_settings(48000, 512, StretchEngine::INTEGRATED)
         .unwrap();
@@ -3228,7 +3228,7 @@ fn cancelled_engine_preparation_retains_all_original_buffers() {
     session.project.tracks[0].clips[0].stretch = daw_core::ClipStretch::new(2, 3);
     session.prepare_stretches().unwrap();
     let clip = session.project.tracks[0].clips[0].clone();
-    let key = (clip.asset_id, clip.stretch.unwrap());
+    let key = daw_media::ClipAudioKey::for_clip(&clip).unwrap();
     let buffer = session.stretched_audio[&key].samples.clone();
     let calls = Cell::new(0);
     let result = session.with_processing_settings_cancellable(

@@ -3259,3 +3259,63 @@ Completed with the pinned toolchain and `CARGO_HOME="$PWD/work/cargo-home"`:
 Relative links in the edited documents were checked, with no missing targets. `git diff --check` — passed.
 
 Native pointer cursors, Windows/Linux Ctrl disambiguation, and device playback of a moved range remain unverified. Automated egui tests do not establish native pointer behavior.
+
+## Clip settings — 2026-10-20
+
+Timeline and Instrument share a Clip settings column with the Effects catalog and the Instrument components catalog. Opening one closes the others. All three can be closed. The panel edits the primary selected clip through `Edit::SetClipName`, `Edit::SetClipGain`, and `Edit::SetClipTranspose`.
+
+Labels and values use the 11-point catalog text and are left aligned. Source is read-only and uses the secondary text color. Gain shows a dB suffix, for example `0.0 dB`. Transpose shows a semitones suffix, for example `0 semitones`. Gain and transpose drag vertically; Shift makes the step ten times finer. Double-click opens a text field. Enter commits. Escape or focus loss restores the previous value. Audio and MIDI playback apply clip gain before track or Main gain. MIDI transpose shifts note-on pitch and clamps to 0–127. Audio transpose is saved and validated. Playback does not pitch-shift the recording.
+
+Completed with the pinned toolchain and `CARGO_HOME="$PWD/work/cargo-home"`:
+
+- `cargo test -p daw-ui --lib clip_settings` — 1 passed. It covers catalog exclusivity, the suffixed labels, 11-point text, the dimmed source, drag steps, typed edits, and rejection of invalid text.
+- `cargo fmt --all --check` — passed.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed.
+- `cargo test --workspace` — **987 passed, 0 failed, 2 ignored**. The two ignored tests are the existing extended time-stretch acceptance matrices. This run includes clip-setting persistence, audio gain, and MIDI transpose/gain playback.
+
+Relative links in the edited documents — 415 checked, no missing targets. `git diff --check` — passed.
+
+Native pointer drags, device playback of clip gain and MIDI transpose, and Windows/Linux execution remain unverified. Automated egui tests do not establish native pointer behavior.
+
+## Clip settings spacing — 2026-10-20
+
+Clip settings uses `ControlPanel::padded_body` for its content inset and available width. Form rows and catalog rows share one height calculation. Vertical padding belongs to each row, removing the extra gap between the header and the first form label. The empty-selection prompt uses the same geometry. Existing field alignment and editing behavior remain shared.
+
+The painted-layout regression compares the four form label positions with the four collapsed Effects catalog folder rows, relative to their headers. It also checks the left inset and empty-selection prompt. Timeline passes in Light and Dark; comparisons allow half a logical point for text rounding. A separate regression verifies that Instrument has no toggle or panel, leaving Timeline closes the panel and discards a draft for Instrument/Editor/Mixer, and returning retains clip selection without a project edit. This supersedes the shared Timeline/Instrument visibility described in the original Clip settings entry above.
+
+The initial workspace run caught a catalog scroll-bounds regression from raw fractional font metrics. The shared helper now uses the catalog's pixel-rounded galley measurement; the existing scrolling regression passes without changes to its assertions.
+
+Completed checks:
+
+- `cargo test -p daw-ui clip_settings` — two passed for the spacing change before the Timeline-only follow-up. Final availability checks are recorded below.
+- `cargo test -p daw-ui` — **493 passed** after the Timeline-only follow-up and row-rounding correction, including all three Clip settings regressions.
+- Final `cargo test --workspace` — **989 passed, 0 failed, 2 ignored**. The ignored cases are the existing extended time-stretch acceptance matrices.
+- `cargo fmt --all --check` — passed.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed.
+- `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app` without relaunching the app.
+
+Native display-scale inspection and Windows/Linux execution remain unverified. Automated painted-layout checks do not establish native rendering behavior.
+
+Relative file links in the affected guides, specifications and repository instructions — 279 checked, no missing targets. `git diff --check` — passed.
+
+## Audio clip transpose — 2026-10-20
+
+Audio clips now apply their saved constant transpose through the selected Rubber Band R3 or Integrated engine. This supersedes the earlier inactive audio-transpose limitation. The media `ClipAudioKey` and common lookup serve Session and RenderPlan; preparation delegates to the existing `PreparedStretch::with_pitch_cancellable` used by Sampler. No portable DSP algorithm or processing revision changed, and no Rubber Band implementation source was inspected or reused.
+
+The clip cache distinguishes asset, reduced duration ratio and semitone offset. Prepared entries additionally validate source allocation, processing rate, selected engine/revision and pitch revision. Matching requests share PCM/peaks; stale or absent transformed entries cannot use the unshifted original. Processing starts from the original decoded source, retaining clip duration, source coordinates, repeats, gain and IDs. Unstretched zero pitch restores the original allocation. Existing saved nonzero values now affect playback; missing values remain zero.
+
+The existing Sampler edit worker transaction is generalized to `audio_edits::prepare_audio_edit` and `Job::PreparedEdit`. Clip pitch and Sampler requests use the same atomic publication path. Audio pitch drags preview until release; MIDI drag behavior remains unchanged. Failure, cancellation and discarded receivers cannot publish partial project/audio state. Callback playback only reads prepared buffers.
+
+Focused automated checks completed:
+
+- `cargo test -p daw-project --test audio_transpose` — four passed. Both engines, mono/linked stereo, ±12-semitone tone checks, fixed and combined stretch duration, live seek/offline/direct rendering, same/different-pitch cache reuse, source/engine/rate invalidation, source-file safety, save/reopen, Float32 export, undo/redo, trim/repeat coordinates, cancellation/failure and finite ±48-semitone endpoints are covered. Final workspace execution also checks repeated pitch edits against the original source.
+- `cargo test -p daw-ui audio_clip_transpose` — two passed. These cover release-only preparation, atomic worker publication, retained playhead/selection, undo/redo buffer reuse, Escape cancellation, rejected late worker results and failed preparation without a project edit.
+- `cargo test -p daw-output prepared_audio_clip_transpose` — passed for both engines. Prepared plan activation and sample processing pass the allocation/deallocation guard and match the reference after the existing transition ramp.
+- `cargo test --workspace` — **996 passed, 0 failed, 2 ignored**. The ignored cases are the existing extended time-stretch acceptance matrices.
+- `cargo fmt --all --check` and strict workspace Clippy — passed.
+- CLI build and `python3 tools/check_cli.py` — passed, including WAV/MP3 codecs/bitrates, repeatability, missing sources, eight-track projects, overwrite handling and exit codes.
+- `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app` without relaunching the app.
+
+Relative file links in the changed user guides and specifications — 124 checked, no missing targets. `git diff --check` — passed.
+
+Native listening, physical-device behavior, native pointer gestures and Windows/Linux execution remain unverified. Synthetic signal and headless callback tests do not establish broad sound-quality or device-latency acceptance.

@@ -1088,6 +1088,8 @@ mod tests {
             source_offset_frame: 0,
             length_frames: 48_000,
             repeat: None,
+            gain_db: 0.0,
+            transpose: 0,
         });
         RenderPlan {
             sampler_audio: Default::default(),

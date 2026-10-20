@@ -155,7 +155,7 @@ impl DawUi {
                     })
             });
         if changed {
-            if self.prepare_sampler_edit(&next, None) {
+            if self.prepare_audio_edit(&next, None) {
                 return;
             }
             self.session.project = next;

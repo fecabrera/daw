@@ -1,6 +1,6 @@
 //! Worker-side sample preparation. The original asset and its clip mapping stay immutable.
 use super::*;
-use daw_core::{Edit, SamplerInput, SamplerSettings};
+use daw_core::{SamplerInput, SamplerSettings};
 
 impl Session {
     pub fn sampler_preparation_needed(&self, project: &Project) -> bool {
@@ -23,12 +23,6 @@ impl Session {
                 prepared.matches(source, s, length, project.stretch_engine, notes)
             })
         })
-    }
-    pub fn with_edit(&self, edit: Edit) -> Result<Self> {
-        let mut next = self.clone();
-        next.project.edit(edit).map_err(error)?;
-        next.prepare_stretches()?;
-        Ok(next)
     }
     /// Assign the visible source range of a clip. No track effects or mixing are captured.
     pub fn with_sampler_clip(&self, track: Id, layer: Id, clip: &Clip) -> Result<Self> {

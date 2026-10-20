@@ -243,7 +243,7 @@ impl DawUi {
                 if let Some(primary) = ids.iter().position(|id| *id == drag.clip.id) {
                     ids.swap(0, primary);
                 }
-                if self.prepare_sampler_edit(&next, Some((track, ids))) {
+                if self.prepare_audio_edit(&next, Some((track, ids))) {
                     return;
                 }
                 self.selected_clip = Some(drag.clip.id);

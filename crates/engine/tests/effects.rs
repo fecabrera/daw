@@ -66,6 +66,8 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         length_frames: 8192,
         repeat: None,
         stretch: None,
+        gain_db: 0.0,
+        transpose: 0,
     });
     let samples = (0..8192)
         .map(|frame| {

@@ -116,6 +116,8 @@ pub fn add_audio(plan: &mut RenderPlan, count: usize, fx: usize, mono: bool) -> 
                 phase_frame: 155,
             }),
             stretch: None,
+            gain_db: 0.0,
+            transpose: 0,
         });
         for _ in 0..fx {
             track.effects.push(EffectInstance::saturator());

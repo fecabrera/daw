@@ -1,7 +1,8 @@
 mod history;
 pub use history::{HistoryMemory, SessionHistory};
+mod clip_audio;
 mod sampler;
-use daw_core::{Asset, Clip, ClipStretch, Id, Project, Source};
+use daw_core::{Asset, Clip, Id, Project, Source};
 use daw_engine::RenderPlan;
 use daw_media::{AudioData, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec};
 use std::{
@@ -60,7 +61,7 @@ pub struct Session {
     pub project: Project,
     pub audio: HashMap<Id, AudioData>,
     pub sampler_audio: HashMap<Id, daw_media::PreparedSampler>,
-    pub stretched_audio: HashMap<(Id, ClipStretch), daw_media::PreparedStretch>,
+    pub stretched_audio: daw_media::ClipAudioCache,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
 }
@@ -151,81 +152,6 @@ impl Session {
             sampler_audio: self.sampler_audio.clone(),
             stretched_audio: self.stretched_audio.clone(),
         }
-    }
-    pub fn audio_for_clip(&self, clip: &Clip) -> Option<&AudioData> {
-        match clip.stretch {
-            Some(stretch) => self
-                .stretched_audio
-                .get(&(clip.asset_id, stretch))
-                .filter(|prepared| {
-                    self.audio.get(&clip.asset_id).is_some_and(|source| {
-                        prepared.matches(source, stretch, self.project.stretch_engine)
-                    })
-                })
-                .map(|prepared| &prepared.audio),
-            None => self.audio.get(&clip.asset_id),
-        }
-    }
-
-    /// Build missing stretch buffers on a worker. Original audio remains untouched.
-    pub fn prepare_stretches(&mut self) -> Result<()> {
-        self.prepare_stretches_cancellable(&|| false)
-    }
-    pub fn prepare_stretches_cancellable(&mut self, cancelled: &impl Fn() -> bool) -> Result<()> {
-        self.project.validate().map_err(error)?;
-        let mut prepared = HashMap::new();
-        let sampler_clips: Vec<_> = self
-            .project
-            .samplers()
-            .filter_map(|s| s.input.as_ref())
-            .map(Clip::from)
-            .collect();
-        for clip in self
-            .project
-            .tracks
-            .iter()
-            .flat_map(|track| &track.clips)
-            .chain(&sampler_clips)
-        {
-            if cancelled() {
-                return Err(error("Audio preparation cancelled"));
-            }
-            let Some(stretch) = clip.stretch else {
-                continue;
-            };
-            let key = (clip.asset_id, stretch);
-            if prepared.contains_key(&key) {
-                continue;
-            }
-            if let Some(audio) = self.stretched_audio.get(&key).filter(|prepared| {
-                self.audio.get(&clip.asset_id).is_some_and(|source| {
-                    prepared.matches(source, stretch, self.project.stretch_engine)
-                })
-            }) {
-                prepared.insert(key, audio.clone());
-            } else if let Some(audio) = self.audio.get(&clip.asset_id) {
-                prepared.insert(
-                    key,
-                    daw_media::PreparedStretch::new_cancellable(
-                        audio,
-                        stretch,
-                        self.project.stretch_engine,
-                        cancelled,
-                    )
-                    .map_err(error)?,
-                );
-            }
-        }
-        if cancelled() {
-            return Err(error("Audio preparation cancelled"));
-        }
-        let mut next = self.clone();
-        next.stretched_audio = prepared;
-        next.prepare_sampler_audio(cancelled)?;
-        self.sampler_audio = next.sampler_audio;
-        self.stretched_audio = next.stretched_audio;
-        self.audio = next.audio;
-        Ok(())
     }
     pub fn open(folder: &Path) -> Result<Self> {
         let folder = absolute(folder)?;
@@ -395,6 +321,8 @@ impl Session {
             source_offset_frame: 0,
             length_frames: data.samples.len() as u64,
             repeat: None,
+            gain_db: 0.0,
+            transpose: 0,
         };
         next.assets.push(Asset {
             midi_pattern: None,

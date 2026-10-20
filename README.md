@@ -4,7 +4,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 
 ## Current features
 
-- **Timeline:** arrange, trim, loop, stretch, split, move, copy, and duplicate audio and MIDI clips or a selected time range, with grid snapping and edit previews.
+- **Timeline:** arrange, trim, loop, stretch, transpose, split, move, copy, and duplicate audio and MIDI clips or a selected time range, with grid snapping, edit previews, and clip settings.
 - **MIDI editor:** create patterns and edit notes in a piano roll.
 - **Instruments:** build layered synthesizers and samplers, with modulation and a shared Main bus.
 - **Instrument components:** [Oscillator](docs/instruments/oscillator.md), [Sampler](docs/instruments/sampler.md), [Envelope](docs/instruments/envelope.md), [LFO](docs/instruments/lfo.md), [Amplitude](docs/instruments/amplitude.md), and [Macro](docs/instruments/macro.md).

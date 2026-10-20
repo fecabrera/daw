@@ -369,6 +369,12 @@ fn note_frequency(pitch: u8, transpose: i8) -> f32 {
     440.0 * 2.0_f32.powf((f32::from(pitch) + f32::from(transpose) - 69.0) / 12.0)
 }
 
+fn clip_pitch(pitch: u8, transpose: i8) -> u8 {
+    i16::from(pitch)
+        .saturating_add(i16::from(transpose))
+        .clamp(0, 127) as u8
+}
+
 #[derive(Clone)]
 pub(crate) struct MidiTrackRuntime {
     // Regular buses follow canonical layer order; Main is always the final bus.
@@ -1371,9 +1377,11 @@ impl MidiTrackRuntime {
         self.sample_in_region(frame, None)
     }
     pub fn sample_in_region(&mut self, frame: u64, loop_region: Option<(u64, u64)>) -> [f32; 2] {
+        let mut clip_gain = 1.0;
         let sample = if let Some(index) = self.clip_ranges.at(frame) {
             let prepared = &self.clips[index];
             let clip = &prepared.clip;
+            clip_gain = linear_gain(clip.gain_db);
             let position = clip.source_frame(frame - clip.start_frame);
             let source = clip
                 .stretch
@@ -1395,6 +1403,7 @@ impl MidiTrackRuntime {
                     });
                     if let Some(event) = event {
                         let (pitch, velocity) = event.on.unwrap();
+                        let pitch = clip_pitch(pitch, clip.transpose);
                         let start = output_frame(clip, event.frame);
                         let end = start.saturating_add(event.duration_frames);
                         voice.note_on(event.note, pitch, velocity, event.duration_frames);
@@ -1419,7 +1428,12 @@ impl MidiTrackRuntime {
                         .event(event.on.is_some(), event.on.map(|_| event.duration_frames));
                     let voice = &mut self.voices[event.slot];
                     if let Some((pitch, velocity)) = event.on {
-                        voice.note_on(event.note, pitch, velocity, event.duration_frames);
+                        voice.note_on(
+                            event.note,
+                            clip_pitch(pitch, clip.transpose),
+                            velocity,
+                            event.duration_frames,
+                        );
                     } else if voice.current == Some(event.note) {
                         voice.end_note();
                     }
@@ -1453,7 +1467,7 @@ impl MidiTrackRuntime {
             }
             self.main_remaining -= 1;
         }
-        let sample = std::array::from_fn(|ch| sample[ch] * self.main_gain[ch]);
+        let sample = std::array::from_fn(|ch| sample[ch] * self.main_gain[ch] * clip_gain);
         self.held_sample = sample;
         sample
     }
@@ -1515,6 +1529,102 @@ mod tests {
             runtime.sample(frame);
         }
         assert_eq!(runtime.held_sample(), [0.0; 2]);
+    }
+
+    #[test]
+    fn clip_transpose_shifts_playback_pitch_and_gain_scales_output() {
+        let mut project = Project::default();
+        let track = project.add_midi_track().unwrap();
+        project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
+        let clip = project.add_midi_pattern(track, 0).unwrap();
+        let note = Id::new_v4();
+        project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: MidiPattern {
+                    length_ticks: 3840,
+                    notes: vec![MidiNote {
+                        id: note,
+                        start_tick: 0,
+                        length_ticks: 1920,
+                        pitch: 60,
+                        velocity: 100,
+                    }],
+                },
+            })
+            .unwrap();
+        project.tracks[0].clips[0].length_frames = 96_000;
+        project.tracks[0].clips[0].transpose = 12;
+        let mut runtime = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        runtime.sample(2_000);
+        assert_eq!(runtime.voices[0].pitch, 72);
+        let asset = project.tracks[0].clips[0].asset_id;
+        assert_eq!(
+            project
+                .assets
+                .iter()
+                .find(|item| item.id == asset)
+                .unwrap()
+                .midi_pattern
+                .as_ref()
+                .unwrap()
+                .notes[0]
+                .pitch,
+            60
+        );
+        project.tracks[0].clips[0].transpose = 0;
+        let mut unity = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        let mut unity_sample = [0.0; 2];
+        for frame in 0..=2_000 {
+            unity_sample = unity.sample(frame);
+        }
+        project.tracks[0].clips[0].gain_db = 6.0;
+        let mut louder = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        let mut louder_sample = [0.0; 2];
+        for frame in 0..=2_000 {
+            louder_sample = louder.sample(frame);
+        }
+        let ratio = 10.0_f32.powf(6.0 / 20.0);
+        assert!(unity_sample.iter().any(|sample| sample.abs() > 1e-4));
+        for ch in 0..2 {
+            if unity_sample[ch].abs() > 1e-4 {
+                assert!((louder_sample[ch] / unity_sample[ch] - ratio).abs() < 1e-3);
+            }
+        }
+        project.tracks[0].clips[0].gain_db = daw_core::SILENT_GAIN_DB;
+        let mut silent = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        for frame in 0..=2_000 {
+            assert_eq!(silent.sample(frame), [0.0, 0.0]);
+        }
+        project.tracks[0].clips[0].gain_db = 0.0;
+        project.tracks[0].clips[0].transpose = 48;
+        project
+            .assets
+            .iter_mut()
+            .find(|item| item.id == asset)
+            .unwrap()
+            .midi_pattern
+            .as_mut()
+            .unwrap()
+            .notes[0]
+            .pitch = 100;
+        let mut high = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        high.sample(2_000);
+        assert_eq!(high.voices[0].pitch, 127);
+        project.tracks[0].clips[0].transpose = -48;
+        project
+            .assets
+            .iter_mut()
+            .find(|item| item.id == asset)
+            .unwrap()
+            .midi_pattern
+            .as_mut()
+            .unwrap()
+            .notes[0]
+            .pitch = 10;
+        let mut low = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        low.sample(2_000);
+        assert_eq!(low.voices[0].pitch, 0);
     }
 
     #[test]
@@ -1715,7 +1825,12 @@ mod restart_index_tests {
                     let voice = &mut reference.voices[event.slot];
                     voice.advance_envelopes(at.saturating_sub(voice.reconstructed_at));
                     if let Some((pitch, velocity)) = event.on {
-                        voice.note_on(event.note, pitch, velocity, event.duration_frames);
+                        voice.note_on(
+                            event.note,
+                            clip_pitch(pitch, clip.transpose),
+                            velocity,
+                            event.duration_frames,
+                        );
                     } else if voice.current == Some(event.note) {
                         voice.end_note();
                     }

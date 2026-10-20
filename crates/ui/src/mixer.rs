@@ -119,6 +119,11 @@ impl DawUi {
             return;
         }
         self.view_mode = mode;
+        if mode != ViewMode::Timeline {
+            self.clip_settings_visible = false;
+            self.clip_settings_draft = None;
+            self.clip_transpose_drag = None;
+        }
         self.effects_catalog.clear();
         self.instrument_catalog.clear();
         self.selected_effects.clear();

@@ -172,6 +172,8 @@ mod tests {
             source_offset_frame: offset,
             length_frames: length,
             repeat,
+            gain_db: 0.0,
+            transpose: 0,
         }
     }
 

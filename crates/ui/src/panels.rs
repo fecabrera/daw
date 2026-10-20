@@ -93,6 +93,59 @@ impl ControlPanel {
             ))
     }
 
+    /// Inset form contents from the panel edges. Rows own the vertical padding,
+    /// just as catalog rows do, so the first label shares the catalog baseline.
+    pub(super) fn padded_body<R>(
+        &self,
+        ui: &mut Ui,
+        content: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<R> {
+        ui.scope(|ui| {
+            let padding = crate::theme::TOOLBAR_PADDING;
+            ui.set_width((self.rect.width() - 1.0).max(0.0));
+            ui.spacing_mut().item_spacing = Vec2::ZERO;
+            Frame::new()
+                .inner_margin(egui::Margin::symmetric(padding, 0))
+                .show(ui, |ui| {
+                    ui.set_width((self.rect.width() - 1.0 - 2.0 * f32::from(padding)).max(0.0));
+                    ui.spacing_mut().item_spacing.x = f32::from(padding);
+                    content(ui)
+                })
+                .inner
+        })
+    }
+
+    pub(super) fn content_row_height(ui: &Ui) -> f32 {
+        // Use the catalog's pixel-rounded galley height, rather than raw font
+        // metrics, so fractional display scales retain existing scroll bounds.
+        ui.painter()
+            .layout_no_wrap(
+                "Ag".into(),
+                egui::TextStyle::Small.resolve(ui.style()),
+                crate::theme::palette(ui.ctx()).text,
+            )
+            .size()
+            .y
+            + 2.0 * f32::from(crate::theme::TOOLBAR_PADDING)
+    }
+
+    /// Form controls share the catalogs' row height and centered text baseline.
+    pub(super) fn field_row<R>(
+        &self,
+        ui: &mut Ui,
+        label_width: f32,
+        label: impl FnOnce(&mut Ui),
+        control: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<R> {
+        crate::rows::field_with_height(
+            ui,
+            label_width,
+            Self::content_row_height(ui),
+            label,
+            control,
+        )
+    }
+
     fn catalog_row(
         &self,
         ui: &mut Ui,
@@ -109,7 +162,7 @@ impl ControlPanel {
             palette.text,
         );
         let (rect, response) = ui.allocate_exact_size(
-            Vec2::new(self.rect.width() - 1.0, galley.size().y + 2.0 * padding),
+            Vec2::new(self.rect.width() - 1.0, Self::content_row_height(ui)),
             if folder.is_some() {
                 egui::Sense::click()
             } else {
