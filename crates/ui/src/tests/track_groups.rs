@@ -237,7 +237,7 @@ fn group_and_master_titles_align_left_and_group_disclosures_have_no_frame() {
                     app.master_bounds.bottom(),
                 );
                 assert!(
-                    (master.left() - (app.master_bounds.left() + inset)).abs() < 1.0,
+                    (master.left() - (app.master_bounds.left() + inset + 34.0)).abs() < 1.0,
                     "{mode:?}: {master:?}"
                 );
                 if mode == ViewMode::Timeline {
@@ -267,6 +267,229 @@ fn group_and_master_titles_align_left_and_group_disclosures_have_no_frame() {
                 frame(&mut app, &ctx, vec![button(arrow, false)]);
                 assert_eq!(app.session.project.tracks[0].group_collapsed, !collapsed);
                 assert!(app.track_drag.is_none());
+            }
+        }
+    }
+}
+
+#[test]
+fn track_and_master_icons_share_group_header_geometry_in_both_views() {
+    for mode in [ViewMode::Timeline, ViewMode::Mixer] {
+        for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+            for scale in [1.0, 1.5] {
+                let (mut app, ctx, group, ids) = grouped_fixture();
+                let midi = app.session.project.add_midi_track().unwrap();
+                app.edit(Edit::MoveTrack {
+                    track_id: midi,
+                    group_id: Some(group),
+                    index: 3,
+                });
+                app.view_mode = mode;
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                ctx.set_pixels_per_point(scale);
+                frame_sized(&mut app, &ctx, vec![], Vec2::new(1600.0, 1400.0));
+                let original = app.session.project.clone();
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1600.0, 1400.0));
+                for (id, icon) in [
+                    (Some(group), icons::Lucide::ChevronDown),
+                    (Some(ids[0]), icons::Lucide::AudioLines),
+                    (Some(midi), icons::Lucide::KeyboardMusic),
+                    (None, icons::Lucide::BoomBox),
+                ] {
+                    let name_text = id
+                        .and_then(|id| {
+                            app.session
+                                .project
+                                .tracks
+                                .iter()
+                                .find(|track| track.id == id)
+                        })
+                        .map_or("Master", |track| track.name.as_str());
+                    let (left, top, bottom, inset, y) = match (mode, id) {
+                        (ViewMode::Timeline, Some(id)) => {
+                            let lane = app.lane_bounds[&id];
+                            (
+                                lane.left() - TRACK_WIDTH
+                                    + crate::track_groups::panel_indent(
+                                        app.session.project.track_depth(id),
+                                    ),
+                                lane.top(),
+                                lane.bottom(),
+                                7.0,
+                                lane.top() + 18.0,
+                            )
+                        }
+                        (ViewMode::Timeline, None) => {
+                            let panel = app.master_bounds;
+                            (
+                                panel.left(),
+                                panel.top(),
+                                panel.bottom(),
+                                7.0,
+                                panel.top() + 18.0,
+                            )
+                        }
+                        (_, id) => {
+                            let strip = id.map_or(app.master_bounds, |id| app.mixer_bounds[&id]);
+                            (
+                                strip.left(),
+                                strip.top(),
+                                strip.bottom(),
+                                4.0,
+                                strip.top() + 12.0,
+                            )
+                        }
+                    };
+                    let name = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text)
+                                if text.galley.text() == name_text
+                                    && text.pos.y >= top
+                                    && text.pos.y < bottom =>
+                            {
+                                Some(text.galley.rect.translate(text.pos.to_vec2()))
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| {
+                            panic!("missing track name {name_text} in {mode:?} at {scale}×")
+                        });
+                    assert!(
+                        (name.left() - left - inset - 34.0).abs() < 1.0,
+                        "{mode:?} {name_text}: {name:?}"
+                    );
+                    let uri = icon.size(16.0).color(theme::palette(&ctx).secondary).uri();
+                    let egui::load::TexturePoll::Ready { texture } = ctx
+                        .try_load_texture(
+                            &uri,
+                            egui::TextureOptions::LINEAR,
+                            egui::load::SizeHint::Size {
+                                width: (16.0 * scale) as u32,
+                                height: (16.0 * scale) as u32,
+                                maintain_aspect_ratio: false,
+                            },
+                        )
+                        .unwrap()
+                    else {
+                        panic!("track icon must be ready")
+                    };
+                    let expected_center = Pos2::new(left + inset + 14.0, y);
+                    let icon_rect =
+                        shapes
+                            .iter()
+                            .find_map(|shape| match &shape.shape {
+                                egui::Shape::Rect(rect)
+                                    if rect.brush.as_ref().is_some_and(|brush| {
+                                        brush.fill_texture_id == texture.id
+                                    }) && rect.rect.center().distance(expected_center) < 1.0 =>
+                                {
+                                    Some(rect.rect)
+                                }
+                                _ => None,
+                            })
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "missing {} on {name_text} in {mode:?} at {scale}×",
+                                    icon.name()
+                                )
+                            });
+                    assert!((icon_rect.size() - Vec2::splat(16.0)).length() < 0.1);
+                    assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Rect(rect) if rect.rect.contains(expected_center) && rect.rect.width() <= 30.0 && rect.rect.height() <= 26.0 && rect.stroke.width > 0.0
+                    )));
+                    if mode == ViewMode::Timeline {
+                        let rails: Vec<_> = shapes
+                            .iter()
+                            .filter_map(|shape| match &shape.shape {
+                                egui::Shape::Rect(rect)
+                                    if rect.fill == theme::palette(&ctx).input
+                                        && (rect.rect.width() - 8.0).abs() < 0.1
+                                        && rect.rect.height() > 30.0
+                                        && rect.rect.left() >= left
+                                        && rect.rect.top() >= top
+                                        && rect.rect.bottom() <= bottom =>
+                                {
+                                    Some(rect.rect)
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        assert_eq!(rails.len(), 2, "{name_text}");
+                        assert!(
+                            (rails[1].right() - (app.timeline_bounds.left() - 7.0)).abs() < 1.0,
+                            "{name_text} meter must align with the control column's right inset: {:?}",
+                            rails[1]
+                        );
+                    }
+                }
+                assert_eq!(app.session.project, original);
+            }
+        }
+    }
+}
+
+#[test]
+fn track_type_icons_reuse_release_only_dragging_and_cancellation() {
+    for midi in [false, true] {
+        for cancel in [false, true] {
+            let mut app = DawUi::default();
+            let track = if midi {
+                app.session.project.add_midi_track().unwrap()
+            } else {
+                app.session.project.add_track().unwrap()
+            };
+            let next = app.session.project.add_track().unwrap();
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let original = app.session.project.clone();
+            let start = Pos2::new(
+                app.timeline_bounds.left() - TRACK_WIDTH + 21.0,
+                app.lane_bounds[&track].top() + 18.0,
+            );
+            let end = Pos2::new(start.x, app.lane_bounds[&next].bottom() - 2.0);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_eq!(app.track_drag, Some(track));
+            assert_eq!(app.session.project, original);
+            if cancel {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+            }
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            assert!(app.track_drag.is_none());
+            assert!(app.track_name_edit.is_none());
+            if cancel {
+                assert_eq!(app.session.project, original);
+            } else {
+                assert_eq!(
+                    app.session
+                        .project
+                        .tracks
+                        .iter()
+                        .map(|track| track.id)
+                        .collect::<Vec<_>>(),
+                    [next, track]
+                );
             }
         }
     }

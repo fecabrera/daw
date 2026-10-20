@@ -3494,3 +3494,17 @@ Group and Master labels now align left in Timeline and Mixer through the shared 
 - `sh tools/package_macos.sh release`: rebuilt `target/release/DAW.app` successfully with the final header alignment and fixed row heights.
 
 Native pointer and platform/device checks were not performed. Audio processing and saved project data are unchanged.
+
+## Audio, MIDI, and Master header icons — 2026-10-20
+
+Audio, MIDI, and Master headers now show Lucide Audio Lines, Keyboard Music, and Boom Box in Timeline and Mixer. They reuse the group disclosure's 28×22-point slot, 16-point artwork painter, secondary idle color, hover/focus color, and 6-point name gap. All track names and rename fields align left after that slot. Master reuses the same icon and label row in both views, while its panel and gain controls retain their positions. Timeline audio/MIDI icons use the shared guarded track drag handler, including release-only commit and cancellation; group chevrons retain their separate collapse action. Mixer icons identify track type without adding a new reorder gesture. The shared stereo-panel layout now reserves its full content width, keeping Master's meters at the same right inset as track and group meters even when its header is short.
+
+Icon regressions inspect the actual rendered textures and bounds in both themes and both views, at 1× and 1.5× scale, including nested audio/MIDI tracks and pinned Master headers. Input regressions cover both type icons, uncommitted previews, moves, and Escape cancellation. Meter-right-edge assertions failed for Master before the shared width fix and now pass for all four header kinds in both themes and at both scales. Existing header tests now target the shifted name text and blank name area; Mute/Solo positions and clip selection remain covered. No project data, audio processing, or dependencies changed.
+
+- `cargo test -p daw-ui --lib track_and_master_icons`: passed on the final geometry, including Boom Box on Master.
+- `cargo test -p daw-ui --lib`: all 521 tests pass with the Master icon, track-icon drag/cancellation, renaming, mix controls, selection, and catalog regressions.
+- `cargo test --workspace`: 1041 tests pass, no failures, and 2 pre-existing extended timestretch acceptance cases remain ignored. This final rerun includes the shared meter-width fix and all icon/alignment regressions.
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `git diff --check`: pass. Relative documentation links: 99 checked, no missing targets.
+- `sh tools/package_macos.sh release`: rebuilt `target/release/DAW.app` successfully with all three icons and the shared meter-width fix.
+
+Native pointer and Windows/Linux checks were not performed. Automated egui checks do not establish native gesture behavior.

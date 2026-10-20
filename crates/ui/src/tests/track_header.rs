@@ -26,7 +26,7 @@ fn double_click(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
 fn header_point(app: &DawUi, track: Id) -> Pos2 {
     if app.view_mode == ViewMode::Mixer {
         let strip = app.mixer_bounds[&track];
-        Pos2::new(strip.left() + 10.0, strip.top() + 12.0)
+        Pos2::new(strip.right() - 10.0, strip.top() + 12.0)
     } else {
         Pos2::new(
             app.timeline_bounds.left() - TRACK_WIDTH + 110.0,
@@ -85,7 +85,7 @@ fn header_spacing_selects_clips_but_names_and_controls_keep_their_actions() {
     double_click(&mut app, &ctx, Pos2::new(left + 178.0, y)); // Mute button.
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
     assert!(!app.session.project.tracks[0].muted);
-    double_click(&mut app, &ctx, Pos2::new(left + 15.0, y)); // Visible name text.
+    double_click(&mut app, &ctx, Pos2::new(left + 50.0, y)); // Visible name text.
     assert_eq!(app.track_name_edit.as_ref().unwrap().track, tracks[0]);
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
 }

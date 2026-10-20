@@ -12,7 +12,7 @@ In Timeline, child track panels sit inside their group with a left margin. The g
 
 The new group starts at 0 dB, with pan centered and Mute and Solo off. It starts without effects. Children keep their clips, instruments, effects, levels, and identities. Grouping tracks that are apart brings them together in their existing order.
 
-In Timeline, drag a track's name or blank header area into the middle of a group row to add it to that group. This also works when the group is collapsed. Drag a group to move its complete subtree. Drop near a row edge to reorder. Use the left side of the track header when dropping at an edge to move to an outer group, or drop after the last row to return to Master. The insertion line shows the destination. Release to apply; Escape, focus loss, or dropping outside the track area cancels. A group cannot be moved into itself or one of its children.
+In Timeline, drag an audio or MIDI track's icon, name, or blank header area into the middle of a group row to add it to that group. This also works when the group is collapsed. Drag a group to move its complete subtree. Drop near a row edge to reorder. Use the left side of the track header when dropping at an edge to move to an outer group, or drop after the last row to return to Master. The insertion line shows the destination. Release to apply; Escape, focus loss, or dropping outside the track area cancels. A group cannot be moved into itself or one of its children.
 
 ## Mix and process
 

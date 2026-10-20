@@ -1,5 +1,5 @@
 use super::*;
-use crate::panels::{HEADER_FONT_SIZE, HEADER_HEIGHT};
+use crate::panels::HEADER_HEIGHT;
 
 const STRIP_WIDTH: f32 = 120.0;
 const STRIP_PADDING: Vec2 = Vec2::new(4.0, 7.0);
@@ -413,12 +413,7 @@ impl DawUi {
         if let Some(track) = track {
             self.track_name(&mut content, track);
         } else {
-            rows::left_aligned(&mut content, toolbars::CONTROL_HEIGHT, |ui| {
-                ui.add(
-                    egui::Label::new(egui::RichText::new("Master").size(HEADER_FONT_SIZE))
-                        .halign(egui::Align::Min),
-                );
-            });
+            self.master_name(&mut content);
         }
         // Align all faders, meters, and bottom controls, including Master.
         let fader_height = (inner.height() - 154.0).clamp(24.0, 220.0);

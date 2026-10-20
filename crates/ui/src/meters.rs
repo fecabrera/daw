@@ -412,7 +412,11 @@ pub fn stereo_panel(
         ui.allocate_ui_with_layout(
             Vec2::new(content_width, height),
             egui::Layout::top_down(egui::Align::Min),
-            content,
+            |ui| {
+                // Short headers must not pull the meters away from the panel's right edge.
+                ui.set_min_width(content_width);
+                content(ui);
+            },
         );
         stereo_with_scale(ui, height, levels, false).map(|response| response.clicked())
     })

@@ -153,7 +153,7 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                     })
                     .unwrap();
                 let point = name.pos + name.galley.rect.center().to_vec2();
-                assert!((point.x - strip.center().x).abs() < 1.0);
+                assert!((name.pos.x + name.galley.rect.left() - (strip.left() + 38.0)).abs() < 1.0);
                 assert!((point.y - (strip.top() + 12.0)).abs() < 1.0);
                 assert!(
                     name.galley

@@ -4,6 +4,8 @@ Mixer controls track levels and the final project output. It uses the same track
 
 ## Track controls
 
+Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Track names align left after the icon, matching group headers.
+
 Gain changes level. Pan positions mono audio and balances stereo audio. Use numeric fields for a precise value or drag the knobs. Shift gives finer adjustment. Double-click a knob to restore its default.
 
 Mute silences a track. Solo plays the selected soloed tracks and excludes the others. Solo takes priority over mute: a track with both enabled plays. Select several tracks to apply Mute or Solo together from the Track menu or with M and S.

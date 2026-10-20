@@ -2942,14 +2942,7 @@ impl DawUi {
                 .as_ref()
                 .map_or([(0.0, false); 2], |output| output.status.meter.levels());
             let cleared = meters::stereo_panel(ui, MASTER_HEIGHT - 14.0, levels, |ui| {
-                rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new("Master").font(egui::FontId::proportional(13.0)),
-                        )
-                        .halign(egui::Align::Min),
-                    );
-                });
+                self.master_name(ui);
                 rows::centered(ui, knobs::SIZE, |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     let previous = self.session.project.master.gain_db;
@@ -3444,28 +3437,71 @@ impl DawUi {
         }
         rect
     }
-    fn track_name(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
-        if track.kind != daw_core::TrackKind::Group {
-            self.track_name_label(ui, track);
-            return;
-        }
+    fn master_name(&self, ui: &mut egui::Ui) {
+        let font_size = if self.view_mode == mixer::ViewMode::Mixer {
+            panels::HEADER_FONT_SIZE
+        } else {
+            rows::NAME_FONT_SIZE
+        };
         rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
-            if icons::disclosure_button(
-                ui,
-                !track.group_collapsed,
-                if track.group_collapsed {
-                    "Expand group"
-                } else {
-                    "Collapse group"
-                },
-                self.editing_enabled(),
-            )
-            .clicked()
-            {
-                self.edit(Edit::SetGroupCollapsed {
-                    track_id: track.id,
-                    collapsed: !track.group_collapsed,
+            let response = icons::header_icon(ui, icons::Lucide::BoomBox, Sense::hover());
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Master output")
+            });
+            response.on_hover_text("Master output");
+            ui.add(
+                egui::Label::new(egui::RichText::new("Master").size(font_size))
+                    .halign(egui::Align::Min),
+            );
+        });
+    }
+    fn track_name(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
+        rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
+            if track.kind == daw_core::TrackKind::Group {
+                if icons::disclosure_button(
+                    ui,
+                    !track.group_collapsed,
+                    if track.group_collapsed {
+                        "Expand group"
+                    } else {
+                        "Collapse group"
+                    },
+                    self.editing_enabled(),
+                )
+                .clicked()
+                {
+                    self.edit(Edit::SetGroupCollapsed {
+                        track_id: track.id,
+                        collapsed: !track.group_collapsed,
+                    });
+                }
+            } else {
+                let (icon, label) = match track.kind {
+                    daw_core::TrackKind::Audio => (icons::Lucide::AudioLines, "Audio track"),
+                    daw_core::TrackKind::Midi => (icons::Lucide::KeyboardMusic, "MIDI track"),
+                    daw_core::TrackKind::Group => unreachable!(),
+                };
+                let timeline = self.view_mode == mixer::ViewMode::Timeline;
+                let response = icons::header_icon(
+                    ui,
+                    icon,
+                    if timeline {
+                        Sense::click_and_drag()
+                    } else {
+                        Sense::hover()
+                    },
+                );
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), label)
                 });
+                if timeline {
+                    self.start_track_drag(ui, &response, track.id);
+                    response
+                        .on_hover_text(format!("{label}\nDrag to reorder."))
+                        .on_hover_cursor(egui::CursorIcon::Grab);
+                } else {
+                    response.on_hover_text(label);
+                }
             }
             self.track_name_label(ui, track);
         });
@@ -3477,13 +3513,6 @@ impl DawUi {
         } else {
             rows::NAME_FONT_SIZE
         };
-        let name_align = if self.view_mode == mixer::ViewMode::Mixer
-            && track.kind != daw_core::TrackKind::Group
-        {
-            egui::Align::Center
-        } else {
-            egui::Align::Min
-        };
         if self
             .track_name_edit
             .as_ref()
@@ -3494,7 +3523,7 @@ impl DawUi {
                 .id(ui.make_persistent_id(("track_name", track.id)))
                 .font(egui::FontId::proportional(font_size))
                 .text_color(theme::palette(ui.ctx()).text)
-                .horizontal_align(name_align)
+                .horizontal_align(egui::Align::Min)
                 .desired_width(width)
                 .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
                 .show(ui);
@@ -3546,24 +3575,12 @@ impl DawUi {
             .frame(false)
             .truncate();
             if let Some(colors) = mixer_colors {
-                button = button.fill(colors.header).stroke(Stroke::NONE);
-                if track.kind == daw_core::TrackKind::Group {
-                    // The strip already paints its header; keep the name at the row inset.
-                    button = button.frame(false);
-                }
+                // The strip already paints its header; keep the name at the row inset.
+                button = button.fill(colors.header).stroke(Stroke::NONE).frame(false);
             }
-            let output = if name_align == egui::Align::Min {
-                button
-                    .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
-                    .atom_ui(ui)
-            } else {
-                ui.allocate_ui_with_layout(
-                    Vec2::new(width, toolbars::CONTROL_HEIGHT),
-                    egui::Layout::centered_and_justified(ui.layout().main_dir()),
-                    |ui| button.atom_ui(ui),
-                )
-                .inner
-            };
+            let output = button
+                .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
+                .atom_ui(ui);
             let text_rect = output.rect(text_id);
             let response = output
                 .response
@@ -7487,9 +7504,9 @@ mod tests {
                 .unwrap();
             let lane = app.lane_bounds[&tracks[0]];
             let name = name_bounds.center();
-            // Removing the grip leaves the name at the shared panel inset.
+            // Track names follow the same icon slot and gap as group names.
             assert!(
-                (name_bounds.left() - (lane.left() - TRACK_WIDTH + 7.0)).abs() < 1.0,
+                (name_bounds.left() - (lane.left() - TRACK_WIDTH + 41.0)).abs() < 1.0,
                 "name {name_bounds:?}, lane {lane:?}"
             );
             let button_center = |label: &str| {
@@ -8002,7 +8019,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let name = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 20.0,
+            app.timeline_bounds.left() - TRACK_WIDTH + 50.0,
             app.lane_bounds[&track].top() + 18.0,
         );
         let key = |key| egui::Event::Key {
