@@ -4126,7 +4126,8 @@ impl DawUi {
             .iter()
             .map(|entry| {
                 let track_index = (entry.track_index as i128 + track_delta) as usize;
-                let track = tracks.get(track_index).map_or(Id::nil(), |track| track.id);
+                let destination = tracks.get(track_index);
+                let track = destination.map_or(Id::nil(), |track| track.id);
                 ClipPreview {
                     track,
                     track_index,
@@ -4134,7 +4135,7 @@ impl DawUi {
                         start_frame: (i128::from(entry.clip.start_frame) + delta) as u64,
                         ..entry.clip.clone()
                     },
-                    valid: true,
+                    valid: destination.is_none_or(|track| track.kind != daw_core::TrackKind::Group),
                     removed: false,
                 }
             })
@@ -4660,13 +4661,19 @@ impl DawUi {
             self.mask_neighbor_previews(ui, viewport, &previews[incoming_count..]);
         }
         self.paint_preview_clips_from_project(ui, viewport, &previews, preview_project.as_ref());
-        ui.ctx().set_cursor_icon(if drag.duplicate {
-            egui::CursorIcon::Copy
-        } else if drag.mode == ClipDragMode::Move {
-            egui::CursorIcon::Grabbing
-        } else {
-            egui::CursorIcon::ResizeHorizontal
-        });
+        ui.ctx().set_cursor_icon(
+            if drag.mode == ClipDragMode::Move
+                && (previews.is_empty() || previews.iter().any(|preview| !preview.valid))
+            {
+                egui::CursorIcon::NotAllowed
+            } else if drag.duplicate {
+                egui::CursorIcon::Copy
+            } else if drag.mode == ClipDragMode::Move {
+                egui::CursorIcon::Grabbing
+            } else {
+                egui::CursorIcon::ResizeHorizontal
+            },
+        );
     }
     fn paint_preview_clips(&self, ui: &egui::Ui, viewport: Rect, previews: &[ClipPreview]) {
         self.paint_preview_clips_from_project(ui, viewport, previews, None);

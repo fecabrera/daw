@@ -755,3 +755,203 @@ fn scrolled_group_outlines_retain_offscreen_headers_and_virtual_child_bounds() {
             .all(|lane| lane.left() == app.timeline_bounds.left())
     );
 }
+
+// Exercise the actual drag/release path, including modifier precedence over Copy.
+fn clip_drag_frame(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    pointer: Pos2,
+    pressed: Option<bool>,
+    duplicate: bool,
+) -> egui::CursorIcon {
+    let modifiers = egui::Modifiers {
+        alt: duplicate && cfg!(target_os = "macos"),
+        ctrl: duplicate && !cfg!(target_os = "macos"),
+        ..Default::default()
+    };
+    let mut events = vec![
+        egui::Event::ModifiersChanged(modifiers),
+        egui::Event::PointerMoved(pointer),
+    ];
+    if let Some(pressed) = pressed {
+        events.push(egui::Event::PointerButton {
+            pos: pointer,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        });
+    }
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+            events,
+            ..Default::default()
+        },
+        |ui| app.show(ui),
+    );
+    output.textures_delta.clear();
+    output.platform_output.cursor_icon
+}
+
+#[test]
+fn clip_drops_on_group_buses_show_invalid_cursor_and_reject_without_an_edit() {
+    for midi in [false, true] {
+        for collapsed in [false, true] {
+            for duplicate in [false, true] {
+                let (mut app, _) = fixture();
+                let child = if midi {
+                    app.session.project.add_midi_track().unwrap()
+                } else {
+                    app.session.project.add_track().unwrap()
+                };
+                let source = if midi {
+                    app.session.project.add_midi_track().unwrap()
+                } else {
+                    app.session.project.add_track().unwrap()
+                };
+                let clip = if midi {
+                    let id = app.session.project.add_midi_pattern(source, 0).unwrap();
+                    app.session.project.tracks[2]
+                        .clips
+                        .iter()
+                        .find(|clip| clip.id == id)
+                        .unwrap()
+                        .clone()
+                } else {
+                    let clip = Clip {
+                        id: Id::new_v4(),
+                        ..app.session.project.tracks[0].clips[0].clone()
+                    };
+                    app.session.project.tracks[2].clips.push(clip.clone());
+                    clip
+                };
+                let group = Id::new_v4();
+                app.session
+                    .project
+                    .edit(Edit::GroupTracks {
+                        track_ids: vec![child],
+                        group_id: group,
+                        name: "Group".into(),
+                    })
+                    .unwrap();
+                app.session
+                    .project
+                    .edit(Edit::SetGroupCollapsed {
+                        track_id: group,
+                        collapsed,
+                    })
+                    .unwrap();
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                let block = app.clip_block(app.lane_bounds[&source], &clip, clip.start_frame);
+                let start = block.min + Vec2::new(20.0, 12.0);
+                let end = Pos2::new(start.x + 40.0, app.lane_bounds[&group].top() + 12.0);
+                let before = app.session.project.clone();
+                clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
+                let cursor = clip_drag_frame(&mut app, &ctx, end, None, duplicate);
+                assert_eq!(cursor, egui::CursorIcon::NotAllowed);
+                let previews = app.clip_drag_previews(app.drag.as_ref().unwrap(), end, false);
+                assert_eq!(previews.len(), 1);
+                assert_eq!(previews[0].track, group);
+                assert!(!previews[0].valid);
+                assert_eq!(app.session.project, before);
+                clip_drag_frame(&mut app, &ctx, end, Some(false), duplicate);
+                assert_eq!(app.session.project, before);
+                assert_eq!(app.selected_clips, HashSet::from([clip.id]));
+                assert_eq!(app.selected_track, Some(source));
+                assert!(app.drag.is_none());
+                assert!(app.job.is_none());
+                assert!(app.error.is_none());
+                assert!(!app.dirty);
+                assert!(!app.history.as_ref().unwrap().can_undo());
+            }
+        }
+    }
+}
+
+#[test]
+fn clip_group_drop_rejects_all_members_when_only_a_secondary_clip_targets_a_bus() {
+    for duplicate in [false, true] {
+        let (mut app, ctx, group, tracks) = grouped_fixture();
+        let first = app.session.project.tracks[1].clips[0].clone();
+        let primary = app.session.project.tracks[2].clips[0].clone();
+        select_group(&mut app, &ctx, [first.id, primary.id]);
+        let before = app.session.project.clone();
+        app.history = Some(daw_project::SessionHistory::new(&app.session, true).unwrap());
+        app.dirty = false;
+        let block = app.clip_block(app.lane_bounds[&tracks[1]], &primary, primary.start_frame);
+        let start = block.min + Vec2::new(20.0, 12.0);
+        let end = Pos2::new(start.x + 40.0, app.lane_bounds[&group].top() + 12.0);
+        clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
+        let cursor = clip_drag_frame(&mut app, &ctx, end, None, duplicate);
+        let drag = app.drag.as_ref().unwrap();
+        let raw = app.move_group_preview(drag, end, false).unwrap();
+        assert!(
+            raw.iter()
+                .any(|p| p.clip.id == primary.id && p.track == tracks[0] && p.valid)
+        );
+        assert!(
+            raw.iter()
+                .any(|p| p.clip.id == first.id && p.track == group && !p.valid)
+        );
+        assert!(
+            app.clip_drag_previews(drag, end, false)
+                .iter()
+                .all(|p| !p.valid)
+        );
+        assert_eq!(cursor, egui::CursorIcon::NotAllowed);
+        clip_drag_frame(&mut app, &ctx, end, Some(false), duplicate);
+        assert_eq!(app.session.project, before);
+        assert_eq!(app.selected_clips, HashSet::from([first.id, primary.id]));
+        assert!(app.error.is_none());
+        assert!(app.job.is_none());
+        assert!(!app.dirty);
+        assert!(!app.history.as_ref().unwrap().can_undo());
+    }
+}
+
+#[test]
+fn clip_drag_can_return_from_an_invalid_bus_to_a_valid_child_track() {
+    for duplicate in [false, true] {
+        let (mut app, ctx, group, tracks) = grouped_fixture();
+        let clip = app.session.project.tracks[1].clips[0].clone();
+        let block = app.clip_block(app.lane_bounds[&tracks[0]], &clip, clip.start_frame);
+        let start = block.min + Vec2::new(20.0, 12.0);
+        let invalid = Pos2::new(start.x + 200.0, app.lane_bounds[&group].top() + 12.0);
+        clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
+        let cursor = clip_drag_frame(&mut app, &ctx, invalid, None, duplicate);
+        assert_eq!(cursor, egui::CursorIcon::NotAllowed);
+        let valid = Pos2::new(invalid.x, app.lane_bounds[&tracks[1]].top() + 12.0);
+        let cursor = clip_drag_frame(&mut app, &ctx, valid, None, duplicate);
+        assert_eq!(
+            cursor,
+            if duplicate {
+                egui::CursorIcon::Copy
+            } else {
+                egui::CursorIcon::Grabbing
+            }
+        );
+        let previews = app
+            .move_group_preview(app.drag.as_ref().unwrap(), valid, false)
+            .unwrap();
+        let placed = previews[0].clip.clone();
+        clip_drag_frame(&mut app, &ctx, valid, Some(false), duplicate);
+        assert!(app.error.is_none());
+        assert!(app.job.is_none());
+        let target = &app.session.project.tracks[2];
+        assert!(
+            target
+                .clips
+                .iter()
+                .any(|c| c.start_frame == placed.start_frame && c.name == clip.name)
+        );
+        assert_eq!(
+            app.session.project.tracks[1]
+                .clips
+                .iter()
+                .any(|c| c.id == clip.id),
+            duplicate
+        );
+        app.session.project.validate().unwrap();
+    }
+}

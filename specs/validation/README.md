@@ -3508,3 +3508,16 @@ Icon regressions inspect the actual rendered textures and bounds in both themes 
 - `sh tools/package_macos.sh release`: rebuilt `target/release/DAW.app` successfully with all three icons and the shared meter-width fix.
 
 Native pointer and Windows/Linux checks were not performed. Automated egui checks do not establish native gesture behavior.
+
+
+## Reject clip drops onto track-group buses — 2026-10-20
+
+Clip move previews mark group-bus destinations invalid before release. The shared preview painter shows the forbidden cursor before Move/Copy feedback. The shared release path rejects the complete incoming set if any destination is invalid, without a project edit, preparation job, selection change, undo entry, or error dialog. Audio and MIDI clips use the same path. Valid child-track drops and error reporting for unrelated preparation/model failures retain their behavior.
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test -p daw-ui --lib track_groups`: all 16 tests pass. Added pointer regressions cover audio/MIDI moves and copies onto expanded/collapsed buses, multi-track selections where a secondary clip targets a bus, forbidden-cursor precedence over Copy, and recovery to a valid child track within the same drag.
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `git diff --check`: pass with the configured local Cargo cache.
+- `cargo test --workspace`: all 1044 tests pass, including 524 UI tests. Two pre-existing extended timestretch acceptance cases remain ignored. The existing failed-placement regression still reports unrelated model/preparation errors and retains the original tracks.
+- `sh tools/package_macos.sh release`: rebuilt `target/release/DAW.app` successfully.
+- Relative links in the four changed documentation files: 69 checked, no missing targets.
+
+Native pointer behavior and Windows/Linux checks were not performed. Automated egui input checks verify cursor output and edit behavior; they do not establish native cursor rendering. Audio processing and saved project data are unchanged.

@@ -192,7 +192,7 @@ impl DawUi {
     }
 
     pub(super) fn finish_clip_move(&mut self, drag: &Drag, mut previews: Vec<ClipPreview>) {
-        if previews.is_empty() {
+        if previews.is_empty() || previews.iter().any(|preview| !preview.valid) {
             return;
         }
         let primary = previews

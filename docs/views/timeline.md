@@ -13,6 +13,8 @@ Audio track headers show a waveform icon; MIDI track headers show a keyboard ico
 
 Moves and copies take priority over destination clips. Covered neighbors are trimmed, split, or removed. The preview shows those changes before release. Shift bypasses grid snapping.
 
+Group buses cannot hold clips: dragging onto a bus shows an invalid-action cursor, and releasing there keeps all dragged clips unchanged. Drop onto a child track instead.
+
 ## Select and edit clips
 
 Click a clip to select it. Shift-click toggles group membership. Drag a rectangle in empty space to select intersecting clips; Shift-drag toggles them against the starting selection.

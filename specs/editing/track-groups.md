@@ -34,11 +34,13 @@ Timeline insets each complete child control panel, including the name, mix contr
 
 The group effects target is the existing `EffectChainTarget::Track(group_id)`. No new processor, panel, catalog registration, or effect transfer implementation is needed. Existing scope validation rejects a child's instrument source on a group effect. Groups do not publish modulation providers and do not host an Instrument view. Audio imports and clip placement reject buses. Custom sends, feedback, sidechains, and pre-fader routing are outside this change.
 
+Shared move previews mark each bus destination invalid, including secondary members of a multi-track clip selection. The resolved preview marks the entire group invalid and takes cursor precedence over Move/Copy feedback. Release rejects any invalid incoming preview before editing, duplication, or worker preparation; keep selection, project data, and undo history unchanged, without an error dialog. This applies to audio/MIDI clips and expanded/collapsed buses. Returning to a valid child track restores the existing move/copy gesture. Core placement validation remains authoritative for other failures, which retain normal error reporting.
+
 ## Regression coverage
 
 - Core: legacy defaults, hierarchy validation, nested/nonadjacent grouping, cross-parent extraction, invalid/cyclic drops and atomic rollback, ungroup/delete/duplicate identities, collapsed visibility, solo path rules.
 - Engine: unity parity, nested gain/pan, shared nonlinear processing, nested latency alignment, serial/two-worker exact history under loops, collapse cache compatibility, routing invalidation, callback allocation guard and group meter output.
 - Project: save/reopen and render parity, undo/redo, unchanged source recording.
-- UI: Group/Ungroup, group effects targets and transfers, collapsed rows in both views, subtree selection, drag destination and cycle checks, existing modal/focus guards.
+- UI: Group/Ungroup, group effects targets and transfers, collapsed rows in both views, subtree selection, drag destination and cycle checks, existing modal/focus guards; invalid clip bus targets for moves/copies, collapsed groups, atomic multi-clip rejection, and recovery to valid child tracks.
 
 See [validation history](../validation/README.md) for executed checks and platform limits.
