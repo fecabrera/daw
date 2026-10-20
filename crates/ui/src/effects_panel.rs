@@ -215,6 +215,7 @@ impl DawUi {
         if !clip_settings_visible {
             self.clip_settings_draft = None;
             self.clip_transpose_drag = None;
+            self.clip_settings_change = None;
         }
         let library = catalog_visible.then(|| panels::ControlPanel::begin(ui, upper));
         #[cfg(test)]

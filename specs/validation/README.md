@@ -3344,3 +3344,33 @@ Native pointer behavior, physical-device playback and Windows/Linux execution re
 Name and Source now show the exact text “Multiple clips selected” for group selections. This supersedes their “multiple values” text above. Gain and Transpose show the exact text “Multiple values” when their numeric values differ. This supersedes the lowercase label above. The existing painted-text regression verifies both messages and the common-value case.
 
 For this text-only correction, `cargo test -p daw-ui clip_settings` — 11 passed; `cargo fmt --all --check` and strict workspace Clippy — passed. `sh tools/package_macos.sh release` — passed; rebuilt the app without relaunching it. `git diff --check` — passed. The full workspace result above is from the group-edit implementation before this wording correction.
+
+## Relative Clip settings drags — 2026-10-20
+
+Gain and Transpose drags now apply a common offset to selected clips, preserving differences in dB and semitones. This supersedes the earlier absolute group-drag behavior; typed commits retain their absolute behavior. Both paths use the shared gain/transpose edit builders, one `Edit::Batch`, and the existing UI edit and audio preparation paths. A common bound stops group movement before individual clipping can change the differences; reversing direction resumes at the applied value. Silent clips retain their gain when selected with audible clips. All-silent selections retain the existing upward-drag behavior.
+
+Audio transpose previews the bounded group offset until release, retaining “Multiple values” for differing clips. Release prepares every resulting pitch together; a return to zero offset creates no job or edit. Gain and MIDI-only transpose keep live updates and one gesture undo step. No project schema, processor or cache identity changed.
+
+Completed checks:
+
+- `cargo test -p daw-ui clip_settings` — **14 passed**. Updated regressions verify relative gain and MIDI/audio transpose, Shift steps, unselected-clip retention, one-step undo/redo and distinct prepared buffers for distinct resulting pitches across both engines. Three new regressions cover common gain/transpose bounds, reversal without overshoot, mixed/all-silent gain, mixed-value preview labels and zero-offset audio release. Existing absolute text commits, selection guards and failed/cancelled preparation also pass.
+- `cargo test --workspace` — **1005 passed, 0 failed, 2 ignored** before the live-feedback follow-up below. The ignored cases are the existing extended time-stretch acceptance matrices.
+- `cargo fmt --all --check` — passed.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed.
+- `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app` without relaunching it.
+
+Relative file links in the affected guide and specification — four checked, no missing targets. `git diff --check` — passed.
+
+Native pointer behavior, physical-device playback and Windows/Linux execution remain unverified. Automated egui tests do not establish native input or display behavior.
+
+### Live drag feedback
+
+Mixed fields now show the signed cumulative applied change beside “Multiple values” during a drag. Gain displays two decimal places for fine steps; Transpose displays whole semitones. The shared `DragChange` state follows the field and selection, records bounded changes only, and clears on release or cancellation. It also covers staged audio previews without publishing the project early.
+
+Final `cargo test -p daw-ui` — **505 passed**, including all 15 Clip settings regressions. Painted-label checks verify positive/negative fine gain, live MIDI transpose, both audio engines, bounded changes without overshoot, release cleanup and the full readout fitting the control width. Final formatting, strict workspace Clippy and the macOS release rebuild — passed. This UI follow-up did not repeat the full workspace run recorded above. Native/device/platform limits remain as stated above.
+
+### Signed-only group drag readout
+
+Group drags now show only the signed applied change, such as `+1.00 dB` or `−2 semitones`, through the same `DragChange` formatter and shared numeric field controls. This replaces the prefixed readout above. It applies to matching and differing starting values; release restores the shared value or “Multiple values”. Single-clip fields retain their normal numeric display.
+
+`cargo test -p daw-ui` — **505 passed**, including all 15 Clip settings tests. Existing painted-label regressions now require the signed-only text; the group readout test also covers matching gain/transpose values and their idle restoration. Formatting, strict workspace Clippy, the macOS release rebuild, and `git diff --check` — passed. This display refinement did not repeat the full workspace run. Native/device/platform limits remain as stated above.

@@ -581,6 +581,82 @@ fn group_settings_fixture() -> (DawUi, egui::Context, [Id; 3]) {
     (app, ctx, clips)
 }
 
+fn assert_drag_label(app: &mut DawUi, ctx: &egui::Context, expected: &str, gain: bool) {
+    let shapes = frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(
+        painted_text(&shapes).iter().any(|text| text == expected),
+        "missing {expected}"
+    );
+    let width = ctx
+        .debug_painter()
+        .layout_no_wrap(
+            expected.into(),
+            egui::TextStyle::Small.resolve(&ctx.style_of(ctx.theme())),
+            theme::palette(ctx).text,
+        )
+        .size()
+        .x;
+    let bounds = if gain {
+        app.effects_bounds.clip_gain
+    } else {
+        app.effects_bounds.clip_transpose
+    };
+    assert!(
+        width <= bounds.width() + 0.5,
+        "change readout was truncated: {width} > {}",
+        bounds.width()
+    );
+}
+
+#[test]
+fn clip_settings_group_drag_shows_only_signed_changes_and_restores_idle_values() {
+    let (mut app, ctx, _) = group_settings_fixture();
+    let point = app.effects_bounds.clip_gain.center();
+    pointer(&mut app, &ctx, point, true, true);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 10.0), true);
+    assert_drag_label(&mut app, &ctx, "+0.10 dB", true);
+    pointer_move(&mut app, &ctx, point + Vec2::new(0.0, 10.0), true);
+    assert_drag_label(&mut app, &ctx, "−0.10 dB", true);
+    pointer(&mut app, &ctx, point + Vec2::new(0.0, 10.0), false, false);
+    assert!(app.clip_settings_change.is_none());
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(
+        painted_text(&shapes)
+            .iter()
+            .any(|text| text == "Multiple values")
+    );
+
+    // Equal starting values also show the group change, rather than the resulting gain.
+    app.session.project.tracks[0].clips[0].gain_db = -6.0;
+    app.session.project.tracks[1].clips[0].gain_db = -6.0;
+    app.history = None;
+    frame(&mut app, &ctx, vec![]);
+    let point = app.effects_bounds.clip_gain.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 10.0), false);
+    assert_drag_label(&mut app, &ctx, "+1.00 dB", true);
+    pointer(&mut app, &ctx, point - Vec2::new(0.0, 10.0), false, false);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(painted_text(&shapes).iter().any(|text| text == "-5.0 dB"));
+
+    app.session.project.tracks[0].clips[0].transpose = 5;
+    app.session.project.tracks[1].clips[0].transpose = 5;
+    app.history = None;
+    frame(&mut app, &ctx, vec![]);
+    let point = app.effects_bounds.clip_transpose.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point + Vec2::new(20.0, 0.0), false);
+    pointer_move(&mut app, &ctx, point + Vec2::new(20.0, -2.0), false);
+    assert_drag_label(&mut app, &ctx, "+2 semitones", false);
+    pointer(&mut app, &ctx, point + Vec2::new(20.0, -2.0), false, false);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    assert!(
+        painted_text(&shapes)
+            .iter()
+            .any(|text| text == "+7 semitones")
+    );
+}
+
 #[test]
 fn clip_settings_group_fields_set_shared_values_and_undo_as_one_edit() {
     let (mut app, ctx, clips) = group_settings_fixture();
@@ -670,7 +746,13 @@ fn clip_settings_group_gain_drag_reuses_steps_bounds_and_one_undo_gesture() {
     pointer_move(&mut app, &ctx, point + Vec2::new(20.0, -20.0), true);
     pointer(&mut app, &ctx, point + Vec2::new(20.0, -20.0), false, false);
     for clip in app.selected_clip_snapshots() {
-        assert_eq!(clip.clip.gain_db, 1.1);
+        let before = original
+            .tracks
+            .iter()
+            .flat_map(|track| &track.clips)
+            .find(|before| before.id == clip.clip.id)
+            .unwrap();
+        assert!((clip.clip.gain_db - before.gain_db - 1.1).abs() < 1e-5);
     }
     assert_eq!(
         app.session.project.tracks[0].clips[1],
@@ -683,6 +765,61 @@ fn clip_settings_group_gain_drag_reuses_steps_bounds_and_one_undo_gesture() {
     replace_field(&mut app, &ctx, gain, "99", egui::Key::Enter);
     for clip in app.selected_clip_snapshots() {
         assert_eq!(clip.clip.gain_db, 12.0);
+    }
+}
+
+#[test]
+fn clip_settings_group_gain_limit_preserves_offsets_and_reverses_without_lost_motion() {
+    let (mut app, ctx, _) = group_settings_fixture();
+    app.session.project.tracks[1].clips[0].gain_db = 11.0;
+    app.history = None;
+    frame(&mut app, &ctx, vec![]);
+    let original = app.session.project.clone();
+    let point = app.effects_bounds.clip_gain.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 40.0), false);
+    assert_eq!(app.session.project.tracks[0].clips[0].gain_db, 1.0);
+    assert_eq!(app.session.project.tracks[1].clips[0].gain_db, 12.0);
+    assert_drag_label(&mut app, &ctx, "+1.00 dB", true);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 60.0), false);
+    assert_eq!(app.session.project.tracks[0].clips[0].gain_db, 1.0);
+    assert_drag_label(&mut app, &ctx, "+1.00 dB", true);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 50.0), false);
+    assert_eq!(app.session.project.tracks[0].clips[0].gain_db, 0.0);
+    assert_eq!(app.session.project.tracks[1].clips[0].gain_db, 11.0);
+    pointer(&mut app, &ctx, point - Vec2::new(0.0, 50.0), false, false);
+    assert_eq!(app.session.project, original);
+}
+
+#[test]
+fn clip_settings_group_gain_keeps_silent_members_silent_and_all_silent_can_rise() {
+    for all_silent in [false, true] {
+        let (mut app, ctx, _) = group_settings_fixture();
+        app.session.project.tracks[0].clips[0].gain_db = daw_core::SILENT_GAIN_DB;
+        app.session.project.tracks[1].clips[0].gain_db = if all_silent {
+            daw_core::SILENT_GAIN_DB
+        } else {
+            -6.0
+        };
+        app.history = None;
+        frame(&mut app, &ctx, vec![]);
+        let original = app.session.project.clone();
+        let point = app.effects_bounds.clip_gain.center();
+        pointer(&mut app, &ctx, point, true, false);
+        pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 10.0), false);
+        pointer(&mut app, &ctx, point - Vec2::new(0.0, 10.0), false, false);
+        if all_silent {
+            assert_eq!(app.session.project.tracks[0].clips[0].gain_db, -59.0);
+            assert_eq!(app.session.project.tracks[1].clips[0].gain_db, -59.0);
+        } else {
+            assert_eq!(
+                app.session.project.tracks[0].clips[0].gain_db,
+                daw_core::SILENT_GAIN_DB
+            );
+            assert_eq!(app.session.project.tracks[1].clips[0].gain_db, -5.0);
+        }
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert_eq!(app.session.project, original);
     }
 }
 
@@ -709,7 +846,7 @@ fn mixed_prepared_group(engine: daw_core::StretchEngine) -> (DawUi, egui::Contex
 }
 
 #[test]
-fn clip_settings_group_transpose_prepares_audio_and_midi_atomically_with_shared_cache() {
+fn clip_settings_group_transpose_preserves_offsets_and_prepares_audio_and_midi_atomically() {
     for engine in [
         daw_core::StretchEngine::INTEGRATED,
         daw_core::StretchEngine::RUBBER_BAND,
@@ -721,19 +858,20 @@ fn clip_settings_group_transpose_prepares_audio_and_midi_atomically_with_shared_
         pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false);
         assert_eq!(app.session.project, original);
         assert!(app.job.is_none());
+        assert_drag_label(&mut app, &ctx, "+12 semitones", false);
         pointer(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false, false);
         assert!(app.job.is_some());
         assert_eq!(app.session.project, original);
         wait_for_save(&mut app);
         assert!(app.error.is_none(), "{:?}", app.error);
         for clip in app.selected_clip_snapshots() {
-            assert_eq!(clip.clip.transpose, 12);
             let before = original
                 .tracks
                 .iter()
                 .flat_map(|track| &track.clips)
                 .find(|before| before.id == clip.clip.id)
                 .unwrap();
+            assert_eq!(clip.clip.transpose, before.transpose + 12);
             assert_eq!(clip.clip.length_frames, before.length_frames);
         }
         assert_eq!(app.selected_clips, HashSet::from(ids));
@@ -741,9 +879,13 @@ fn clip_settings_group_transpose_prepares_audio_and_midi_atomically_with_shared_
         let first = &app.session.project.tracks[0].clips[0];
         let second = &app.session.project.tracks[1].clips[0];
         let prepared = app.session.audio_for_clip(first).unwrap().samples.clone();
-        assert!(std::sync::Arc::ptr_eq(
+        assert!(!std::sync::Arc::ptr_eq(
             &prepared,
             &app.session.audio_for_clip(second).unwrap().samples
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &app.session.audio[&second.asset_id].samples,
+            &app.session.audio_for_clip(second).unwrap().samples,
         ));
         app.perform_history_action(HistoryAction::Undo, &ctx);
         assert_eq!(app.session.project, original);
@@ -778,24 +920,77 @@ fn clip_settings_midi_group_transpose_drag_keeps_live_steps_and_one_undo() {
     pointer_move(&mut app, &ctx, point + Vec2::new(20.0, 0.0), false);
     assert_eq!(app.session.project, original);
     pointer_move(&mut app, &ctx, point + Vec2::new(20.0, -2.0), false);
-    assert!(
-        app.session.project.tracks[0]
-            .clips
-            .iter()
-            .all(|clip| clip.transpose == 2)
-    );
+    assert_eq!(app.session.project.tracks[0].clips[0].transpose, 2);
+    assert_eq!(app.session.project.tracks[0].clips[1].transpose, -10);
     assert!(app.job.is_none());
     pointer_move(&mut app, &ctx, point + Vec2::new(20.0, -12.0), true);
-    assert!(
-        app.session.project.tracks[0]
-            .clips
-            .iter()
-            .all(|clip| clip.transpose == 3)
-    );
+    assert_eq!(app.session.project.tracks[0].clips[0].transpose, 3);
+    assert_eq!(app.session.project.tracks[0].clips[1].transpose, -9);
+    assert_drag_label(&mut app, &ctx, "+3 semitones", false);
     pointer(&mut app, &ctx, point + Vec2::new(20.0, -12.0), false, false);
     app.perform_history_action(HistoryAction::Undo, &ctx);
     assert_eq!(app.session.project, original);
     assert!(!app.history.as_ref().unwrap().can_undo());
+}
+
+#[test]
+fn clip_settings_group_transpose_limits_keep_intervals_and_allow_immediate_reversal() {
+    for direction in [-1, 1] {
+        let mut app = DawUi::default();
+        let track = app.session.project.add_midi_track().unwrap();
+        let first = app.session.project.add_midi_pattern(track, 0).unwrap();
+        let second = app.session.project.add_midi_pattern(track, 96_000).unwrap();
+        app.session.project.tracks[0].clips[1].transpose = 47 * direction;
+        app.select_clip(second, track, false);
+        app.select_clip(first, track, true);
+        app.clip_settings_visible = true;
+        app.timeline_catalog_visible = false;
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let original = app.session.project.clone();
+        let point = app.effects_bounds.clip_transpose.center();
+        let sign = f32::from(direction);
+        pointer(&mut app, &ctx, point, true, false);
+        pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 12.0 * sign), false);
+        assert_eq!(app.session.project.tracks[0].clips[0].transpose, direction);
+        assert_eq!(
+            app.session.project.tracks[0].clips[1].transpose,
+            48 * direction
+        );
+        pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 24.0 * sign), false);
+        assert_eq!(app.session.project.tracks[0].clips[0].transpose, direction);
+        pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 23.0 * sign), false);
+        assert_eq!(app.session.project.tracks[0].clips[0].transpose, 0);
+        assert_eq!(
+            app.session.project.tracks[0].clips[1].transpose,
+            47 * direction
+        );
+        pointer(
+            &mut app,
+            &ctx,
+            point - Vec2::new(0.0, 23.0 * sign),
+            false,
+            false,
+        );
+        assert_eq!(app.session.project, original);
+    }
+
+    // Audio preview uses the same group limit, and returning to zero is a clean release.
+    let (mut app, ctx, _) = mixed_prepared_group(daw_core::StretchEngine::INTEGRATED);
+    app.session.project.tracks[2].clips[0].transpose = 47;
+    app.history = None;
+    let original = app.session.project.clone();
+    let point = app.effects_bounds.clip_transpose.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false);
+    assert!(app.clip_transpose_drag.is_some());
+    assert_eq!(app.session.project, original);
+    assert_drag_label(&mut app, &ctx, "+1 semitone", false);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 11.0), false);
+    pointer(&mut app, &ctx, point - Vec2::new(0.0, 11.0), false, false);
+    assert_eq!(app.session.project, original);
+    assert!(app.job.is_none());
+    assert!(!app.dirty);
 }
 
 #[test]
