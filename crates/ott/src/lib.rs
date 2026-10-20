@@ -303,7 +303,7 @@ impl Ott {
     pub fn set_gain_change_meter(&mut self, meter: Arc<[AtomicU32; 3]>) {
         self.set_gain_change_peak_meter(Arc::new(BandMeter::new(meter)));
     }
-    /// Attach signed readings and independent reduction holds on a control thread.
+    /// Attach signed readings and independent reduction/boost holds on a control thread.
     pub fn set_gain_change_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
         self.meter.attach(meter, self.gain_change_db());
     }

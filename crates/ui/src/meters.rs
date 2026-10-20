@@ -54,15 +54,24 @@ pub fn gain_change(
         Stroke::new(1.0, palette.secondary),
     );
     reading.paint_peak(ui, rail, rail.center().x, -rail.width() * 0.5);
+    paint_peak_hold(
+        ui,
+        rail,
+        rail.center().x,
+        rail.width() * 0.5,
+        reading.held_boost(),
+    );
     let held = reading.held();
+    let boost = reading.held_boost();
     reading.describe(ui, response, &format!("{name} gain change"), db,
-        format!("{name} compression gain: {db:+.1} dB. Peak reduction: {held:.1} dB. Click to reset peak. Left: reduction; right: boost. Display ±24 dB; before Dry/Wet."))
+        format!("{name} compression gain: {db:+.1} dB. Peak reduction: {held:.1} dB. Peak boost: {boost:.1} dB. Click to reset both peaks. Left: reduction; right: boost. Display ±24 dB; before Dry/Wet."))
 }
 
 #[derive(Clone, Copy)]
 pub struct GainReduction<'a> {
     current_db: f32,
     peak: Option<&'a daw_unit_core::PeakHold>,
+    boost: Option<&'a daw_unit_core::PeakHold>,
     enabled: bool,
 }
 impl<'a> GainReduction<'a> {
@@ -70,14 +79,17 @@ impl<'a> GainReduction<'a> {
         Self {
             current_db,
             peak: peak.map(daw_unit_core::PeakMeter::hold),
+            boost: None,
             enabled: true,
         }
     }
     pub fn for_unit(mut self, enabled: bool) -> Self {
         self.current_db = unit_reading(enabled, self.current_db);
         self.enabled = enabled;
-        if !enabled && let Some(peak) = self.peak {
-            peak.reset_peak();
+        if !enabled {
+            for peak in [self.peak, self.boost].into_iter().flatten() {
+                peak.reset_peak();
+            }
         }
         self
     }
@@ -94,6 +106,9 @@ impl<'a> GainReduction<'a> {
     fn held(self) -> f32 {
         unit_reading(self.enabled, self.peak.map_or(0.0, |peak| peak.peak()))
     }
+    fn held_boost(self) -> f32 {
+        unit_reading(self.enabled, self.boost.map_or(0.0, |peak| peak.peak()))
+    }
     fn interact(self, ui: &Ui, response: Response, description: &str) -> Response {
         self.reset_on_click(ui, &response);
         let db = self.current();
@@ -107,9 +122,10 @@ impl<'a> GainReduction<'a> {
             && ui.is_enabled()
             && ui.input(|input| input.focused)
             && self.enabled
-            && let Some(peak) = self.peak
         {
-            peak.reset_peak();
+            for peak in [self.peak, self.boost].into_iter().flatten() {
+                peak.reset_peak();
+            }
         }
     }
     fn describe(
@@ -124,7 +140,14 @@ impl<'a> GainReduction<'a> {
             let mut info = egui::WidgetInfo::labeled(
                 egui::WidgetType::Button,
                 ui.is_enabled(),
-                format!("{description}. Click to reset peak"),
+                format!(
+                    "{description}. Click to reset {}",
+                    if self.boost.is_some() {
+                        "both peaks"
+                    } else {
+                        "peak"
+                    }
+                ),
             );
             info.value = Some(f64::from(db));
             info
@@ -132,16 +155,18 @@ impl<'a> GainReduction<'a> {
         response.on_hover_text(tooltip)
     }
     fn paint_peak(self, ui: &Ui, rail: Rect, origin: f32, span: f32) {
-        let held = self.held();
-        if held > 0.0 {
-            let x = (origin + span * (held / 24.0).min(1.0))
-                .clamp(rail.left() + 0.5, rail.right() - 0.5);
-            ui.painter().vline(
-                x,
-                rail.y_range(),
-                Stroke::new(1.0, theme::palette(ui.ctx()).secondary),
-            );
-        }
+        paint_peak_hold(ui, rail, origin, span, self.held());
+    }
+}
+fn paint_peak_hold(ui: &Ui, rail: Rect, origin: f32, span: f32, held: f32) {
+    if held > 0.0 {
+        let x =
+            (origin + span * (held / 24.0).min(1.0)).clamp(rail.left() + 0.5, rail.right() - 0.5);
+        ui.painter().vline(
+            x,
+            rail.y_range(),
+            Stroke::new(1.0, theme::palette(ui.ctx()).secondary),
+        );
     }
 }
 #[derive(Clone, Copy)]
@@ -151,6 +176,7 @@ impl<'a> BandGainChange<'a> {
         Self(std::array::from_fn(|i| GainReduction {
             current_db: current[i],
             peak: meter.map(|m| &m.reduction_peaks()[i]),
+            boost: meter.map(|m| &m.boost_peaks()[i]),
             enabled: true,
         }))
     }

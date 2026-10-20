@@ -3430,3 +3430,23 @@ Focused checks completed:
 Relative file links in the changed guide, OTT specification and architecture documents — 134 checked, no missing targets. `git diff --check` — passed.
 
 Native pointer behavior, physical-device playback/listening and Windows/Linux execution remain unverified. Automated painting and headless callback tests do not establish native-device or platform acceptance.
+
+## OTT band peak boost markers — 2026-10-20
+
+Each OTT band now holds peak boost as well as peak reduction. This extends the reduction-only markers above: a rail click now resets both holds for that band and retains every other band's holds. Both lines use the shared 1-point secondary-color painter, with reduction left of center and boost right of center. Each display side saturates at 24 dB; tooltips retain actual held values. Current readings, signed fills, band colors, layout and settings stay unchanged. Holds retain the existing hidden/compact/collapsed, band bypass and transport behavior. Whole-unit off clears all six holds and suspends capture.
+
+`BandMeter` composes the existing `PeakHold` for both polarities behind `UnitMeter`. Publication records each sign into only its corresponding hold. Preparation initializes current cells without raising either hold, and DSP snapshots stay detached. UI reset and off-state masking use the same helpers for both holds. Existing output discovery, binding, stable IDs, legacy adapters and callback retirement stay unchanged. No audio arithmetic, latency, saved settings or project format changes.
+
+Focused checks completed:
+
+- `cargo test -p daw-unit-core meter::tests` — **4 passed**. Extended signed-band tests cover both maxima, polarity isolation, independent reset, invalid/zero readings, detached snapshots, prepared attachment, bypass suspension and resume.
+- `cargo test -p daw-ott band_peak_holds` — passed. Loud, silent and quiet signals at all six rates in Peak/RMS produce identical monitored/unmonitored samples. Both held values match maxima over processed readings. Paired band reset, retarget/reset retention and bypass clearing are covered.
+- `cargo test -p daw-ui band_peak_lines` — passed. Each band in both themes checks both lines, secondary color, position and endpoint saturation, paired reset with other-band isolation, unchanged current/settings, disabled-band operation and compact/collapsed off-state clearing. Disabled UI, window focus loss and secondary clicks cannot reset holds; a valid reset removes both lines.
+- `cargo test -p daw-output meter` — **8 passed**. Extended callback tests capture boost, retain other bands/current/reduction when resetting a boost hold, retain holds through Stop and preserve stable bindings. Shared callback heap guards and bypass clearing/suspension cover both hold arrays, alongside EQ, Compressor and Limiter regressions.
+- `cargo test --workspace` — **1015 passed, 0 failed, 2 ignored** on the final source, including all 508 UI tests. The ignored cases are the existing extended time-stretch acceptance matrices.
+
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` — passed. CLI build and `python3 tools/check_cli.py` — passed, including codecs/bitrates, repeatability, missing sources, eight-track projects, overwrite handling and exit codes. `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app` without relaunching it.
+
+Relative file links in the changed guide, OTT specification and architecture documents — 134 checked, no missing targets. `git diff --check` — passed.
+
+Native pointer behavior, physical-device playback/listening and Windows/Linux execution remain unverified. Automated painting and headless callback tests do not establish native-device or platform acceptance.

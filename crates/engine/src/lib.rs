@@ -562,7 +562,7 @@ impl Renderer {
             std::sync::Arc::new(daw_unit_core::BandMeter::new(meter)),
         );
     }
-    /// Attach signed band readings and reduction holds through the shared traversal.
+    /// Attach signed band readings and reduction/boost holds through the shared traversal.
     pub fn set_band_peak_meter(
         &mut self,
         id: Id,

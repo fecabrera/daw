@@ -1673,7 +1673,10 @@ mod band_meter_tests {
                         assert!(
                             bands
                                 .values()
-                                .flat_map(|meter| meter.reduction_peaks())
+                                .flat_map(|meter| meter
+                                    .reduction_peaks()
+                                    .iter()
+                                    .chain(meter.boost_peaks()))
                                 .all(|p| p.peak() == 0.0)
                         );
                         // No writes while bypassed, even as audio and detector history advance.
@@ -1692,7 +1695,10 @@ mod band_meter_tests {
                         assert!(
                             bands
                                 .values()
-                                .flat_map(|meter| meter.reduction_peaks())
+                                .flat_map(|meter| meter
+                                    .reduction_peaks()
+                                    .iter()
+                                    .chain(meter.boost_peaks()))
                                 .all(|p| p.peak() == 0.0)
                         );
                         // Restore a valid zero reading before preparing the next renderer.
@@ -1759,6 +1765,26 @@ mod band_meter_tests {
                     callback.next();
                 });
                 assert!(peak.peak() > 0.0);
+                let boosts = meters[&id].boost_peaks();
+                let held = boosts.each_ref().map(|p| p.peak());
+                let band = held
+                    .iter()
+                    .position(|value| *value > 0.0)
+                    .expect("callback captures boost");
+                let reductions = meters[&id].reduction_peaks().each_ref().map(|p| p.peak());
+                let current = meters[&id].readings();
+                boosts[band].reset_peak();
+                assert_eq!(boosts[band].peak(), 0.0);
+                assert_eq!(meters[&id].readings(), current);
+                assert_eq!(
+                    meters[&id].reduction_peaks().each_ref().map(|p| p.peak()),
+                    reductions
+                );
+                for (i, expected) in held.into_iter().enumerate() {
+                    if i != band {
+                        assert_eq!(boosts[i].peak(), expected);
+                    }
+                }
             }
             let mut other = effect;
             other.id = Id::new_v4();
@@ -1771,6 +1797,7 @@ mod band_meter_tests {
             let removed = band_meters(&plan, &updated);
             assert!(!removed.contains_key(&id));
             assert!(Arc::ptr_eq(&removed[&second], &updated[&second]));
+            let held_boosts = meters[&id].boost_peaks().each_ref().map(|p| p.peak());
             producer
                 .push(Command::Stop)
                 .unwrap_or_else(|_| panic!("queue"));
@@ -1784,6 +1811,10 @@ mod band_meter_tests {
             if !eq {
                 assert!(meters[&id].reduction_peaks()[0].peak() > 0.0);
             }
+            assert_eq!(
+                meters[&id].boost_peaks().each_ref().map(|p| p.peak()),
+                held_boosts
+            );
         }
     }
 }

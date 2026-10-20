@@ -93,11 +93,11 @@ impl MeterStorage for PeakMeter {
     }
 }
 
-/// Signed band readings with independent reduction-only holds. Positive readings
-/// remain available as boost and never raise a reduction peak.
+/// Signed band readings with independent reduction and boost holds.
 pub struct BandMeter<const N: usize> {
     current: Arc<[AtomicU32; N]>,
     reductions: [PeakHold; N],
+    boosts: [PeakHold; N],
 }
 impl<const N: usize> Default for BandMeter<N> {
     fn default() -> Self {
@@ -109,6 +109,7 @@ impl<const N: usize> BandMeter<N> {
         Self {
             current,
             reductions: std::array::from_fn(|_| PeakHold::default()),
+            boosts: std::array::from_fn(|_| PeakHold::default()),
         }
     }
     pub fn current(&self) -> &Arc<[AtomicU32; N]> {
@@ -120,14 +121,18 @@ impl<const N: usize> BandMeter<N> {
     pub fn reduction_peaks(&self) -> &[PeakHold; N] {
         &self.reductions
     }
+    pub fn boost_peaks(&self) -> &[PeakHold; N] {
+        &self.boosts
+    }
 }
 impl<const N: usize> MeterStorage for BandMeter<N> {
     type Reading = [f32; N];
     const ZERO: Self::Reading = [0.0; N];
     fn store(&self, reading: Self::Reading) {
         self.initialize(reading);
-        for (peak, value) in self.reductions.iter().zip(reading) {
-            peak.record(-value);
+        for (i, value) in reading.into_iter().enumerate() {
+            self.reductions[i].record(-value);
+            self.boosts[i].record(value);
         }
     }
     fn initialize(&self, reading: Self::Reading) {
@@ -138,7 +143,7 @@ impl<const N: usize> MeterStorage for BandMeter<N> {
     }
     fn clear(&self) {
         self.initialize(Self::ZERO);
-        for peak in &self.reductions {
+        for peak in self.reductions.iter().chain(&self.boosts) {
             peak.reset_peak();
         }
     }
@@ -221,35 +226,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn signed_bands_hold_only_reduction_and_reset_independently_through_shared_lifecycle() {
+    fn signed_bands_hold_both_directions_and_reset_independently_through_shared_lifecycle() {
         let handle = Arc::new(BandMeter::<3>::default());
         let mut meter = UnitMeter::new(true);
         meter.attach(handle.clone(), [-30.0, 2.0, -40.0]);
         let peaks = || handle.reduction_peaks().each_ref().map(|p| p.peak());
+        let boosts = || handle.boost_peaks().each_ref().map(|p| p.peak());
         assert_eq!(peaks(), [0.0; 3]);
+        assert_eq!(boosts(), [0.0; 3]);
         meter.publish([-12.0, 24.0, -48.0]);
         meter.publish([6.0, -3.0, -2.0]);
         assert_eq!(handle.readings(), [6.0, -3.0, -2.0]);
         assert_eq!(peaks(), [12.0, 3.0, 48.0]);
+        assert_eq!(boosts(), [6.0, 24.0, 0.0]);
         handle.reduction_peaks()[1].reset_peak();
         assert_eq!(peaks(), [12.0, 0.0, 48.0]);
+        assert_eq!(boosts(), [6.0, 24.0, 0.0]);
+        handle.boost_peaks()[1].reset_peak();
+        assert_eq!(boosts(), [6.0, 0.0, 0.0]);
         assert_eq!(handle.readings(), [6.0, -3.0, -2.0]);
         meter.clone().publish([-60.0; 3]);
+        meter.clone().publish([60.0; 3]);
         meter.attach(handle.clone(), [-60.0; 3]);
+        meter.attach(handle.clone(), [60.0; 3]);
         assert_eq!(peaks(), [12.0, 0.0, 48.0]);
+        assert_eq!(boosts(), [6.0, 0.0, 0.0]);
         meter.publish([f32::NAN, f32::INFINITY, -0.0]);
         assert_eq!(handle.readings(), [0.0; 3]);
         assert_eq!(peaks(), [12.0, 0.0, 48.0]);
+        assert_eq!(boosts(), [6.0, 0.0, 0.0]);
         meter.set_enabled(false);
         assert_eq!(peaks(), [0.0; 3]);
+        assert_eq!(boosts(), [0.0; 3]);
         meter.publish([-50.0; 3]);
+        meter.publish([50.0; 3]);
         assert_eq!(handle.readings(), [0.0; 3]);
         assert_eq!(peaks(), [0.0; 3]);
+        assert_eq!(boosts(), [0.0; 3]);
         meter.set_enabled(true);
         meter.publish([-2.0, 10.0, -4.0]);
         assert_eq!(peaks(), [2.0, 0.0, 4.0]);
+        assert_eq!(boosts(), [0.0, 10.0, 0.0]);
         meter.publish([0.0; 3]);
         assert_eq!(peaks(), [2.0, 0.0, 4.0]);
+        assert_eq!(boosts(), [0.0, 10.0, 0.0]);
     }
 
     #[test]

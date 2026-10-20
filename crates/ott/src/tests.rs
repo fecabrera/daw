@@ -17,7 +17,7 @@ fn neutral() -> OttSettings {
     s
 }
 #[test]
-fn band_reduction_holds_capture_samples_without_changing_audio_and_follow_bypass() {
+fn band_peak_holds_capture_both_directions_without_changing_audio_and_follow_bypass() {
     for rate in RATES {
         for detection in [CompressorDetection::Peak, CompressorDetection::Rms] {
             let mut settings = OttSettings {
@@ -33,6 +33,7 @@ fn band_reduction_holds_capture_samples_without_changing_audio_and_follow_bypass
             let meter = Arc::new(BandMeter::<3>::default());
             monitored.set_gain_change_peak_meter(meter.clone());
             let peaks = || meter.reduction_peaks().each_ref().map(|p| p.peak());
+            let boosts = || meter.boost_peaks().each_ref().map(|p| p.peak());
             let input = |frame: u32| {
                 let value = [60.0, 800.0, 8000.0]
                     .into_iter()
@@ -42,8 +43,15 @@ fn band_reduction_holds_capture_samples_without_changing_audio_and_follow_bypass
                 [value, -value * 0.25]
             };
             let mut expected = [0.0_f32; 3];
-            for frame in 0..8000 {
-                let sample = if frame < 4000 { input(frame) } else { [0.0; 2] };
+            let mut expected_boost = [0.0_f32; 3];
+            for frame in 0..8000 + rate / 5 {
+                let sample = if frame < 4000 {
+                    input(frame)
+                } else if frame < 8000 {
+                    [0.0; 2]
+                } else {
+                    input(frame).map(|v| v * 0.001)
+                };
                 assert_eq!(
                     monitored.process_sample(sample),
                     reference.process_sample(sample)
@@ -52,28 +60,39 @@ fn band_reduction_holds_capture_samples_without_changing_audio_and_follow_bypass
                 assert_eq!(meter.readings(), current);
                 for i in 0..3 {
                     expected[i] = expected[i].max(-current[i]);
+                    expected_boost[i] = expected_boost[i].max(current[i]);
                 }
             }
             assert_eq!(peaks(), expected);
+            assert_eq!(boosts(), expected_boost);
+            assert!(
+                expected_boost.into_iter().all(|p| p > 0.1),
+                "{rate} {detection:?}: {expected_boost:?}"
+            );
             assert!(
                 expected.into_iter().all(|p| p > 0.1),
                 "{rate} {detection:?}: {expected:?}"
             );
             let current = meter.readings();
             meter.reduction_peaks()[1].reset_peak();
+            meter.boost_peaks()[1].reset_peak();
             assert_eq!(meter.readings(), current);
             assert_eq!(peaks(), [expected[0], 0.0, expected[2]]);
+            assert_eq!(boosts(), [expected_boost[0], 0.0, expected_boost[2]]);
             monitored.retarget(&settings);
             monitored.reset();
             assert_eq!(peaks(), [expected[0], 0.0, expected[2]]);
+            assert_eq!(boosts(), [expected_boost[0], 0.0, expected_boost[2]]);
             settings.enabled = false;
             monitored.retarget(&settings);
             assert_eq!(peaks(), [0.0; 3]);
+            assert_eq!(boosts(), [0.0; 3]);
             for frame in 0..2000 {
                 monitored.process_sample(input(frame));
             }
             assert_eq!(meter.readings(), [0.0; 3]);
             assert_eq!(peaks(), [0.0; 3]);
+            assert_eq!(boosts(), [0.0; 3]);
             settings.enabled = true;
             monitored.retarget(&settings);
             for frame in 0..2000 {

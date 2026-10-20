@@ -248,12 +248,14 @@ mod tests {
                 );
                 let meter = daw_unit_core::BandMeter::<3>::default();
                 meter.store([-12.0, -18.0, -48.0]);
+                meter.store([18.0, 48.0, 12.0]);
                 meter.store([3.0, -2.0, 6.0]);
                 let peaks = || meter.reduction_peaks().each_ref().map(|p| p.peak());
+                let boosts = || meter.boost_peaks().each_ref().map(|p| p.peak());
                 let mut settings = OttSettings::default();
                 settings.bands[clicked_band].enabled = false;
                 let saved = settings.clone();
-                let paint = |events, settings: &mut OttSettings, compact| {
+                let paint = |events, settings: &mut OttSettings, compact, enabled, focused| {
                     let mut rails = [Rect::NOTHING; 3];
                     let mut output = ctx.run_ui(
                         egui::RawInput {
@@ -262,54 +264,86 @@ mod tests {
                                 Vec2::new(1000.0, 400.0),
                             )),
                             events,
+                            focused,
                             ..Default::default()
                         },
                         |ui| {
                             egui::CentralPanel::default().show(ui, |ui| {
-                                rails = show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    244.0,
-                                    meters::BandGainChange::new(meter.readings(), Some(&meter)),
-                                    &[],
-                                    None,
-                                )
-                                .0
-                                .meters;
+                                ui.add_enabled_ui(enabled, |ui| {
+                                    rails = show(
+                                        ui,
+                                        settings,
+                                        compact,
+                                        244.0,
+                                        meters::BandGainChange::new(meter.readings(), Some(&meter)),
+                                        &[],
+                                        None,
+                                    )
+                                    .0
+                                    .meters;
+                                });
                             });
                         },
                     );
                     output.textures_delta.clear();
                     (rails, output.shapes)
                 };
-                let (rails, shapes) = paint(vec![], &mut settings, false);
+                let (rails, shapes) = paint(vec![], &mut settings, false, true, true);
                 for (i, rail) in rails.into_iter().enumerate() {
-                    let lines: Vec<_> = shapes
-                        .iter()
-                        .filter_map(|shape| match &shape.shape {
-                            egui::Shape::LineSegment { points, stroke }
-                                if rail.contains(points[0])
-                                    && rail.contains(points[1])
-                                    && points[0].x < rail.center().x =>
-                            {
-                                Some((points[0].x, *stroke))
-                            }
-                            _ => None,
-                        })
-                        .collect();
-                    assert_eq!(lines.len(), 1);
-                    assert_eq!(
-                        lines[0].1,
-                        egui::Stroke::new(1.0, theme::palette(&ctx).secondary)
-                    );
-                    let x = (rail.center().x - rail.width() * 0.5 * (peaks()[i] / 24.0).min(1.0))
-                        .max(rail.left() + 0.5);
-                    assert!((lines[0].0 - x).abs() < 0.01);
+                    for (direction, held) in [(-1.0, peaks()[i]), (1.0, boosts()[i])] {
+                        let lines: Vec<_> = shapes
+                            .iter()
+                            .filter_map(|shape| match &shape.shape {
+                                egui::Shape::LineSegment { points, stroke }
+                                    if rail.contains(points[0])
+                                        && rail.contains(points[1])
+                                        && (points[0].x - rail.center().x) * direction > 0.0 =>
+                                {
+                                    Some((points[0].x, *stroke))
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        assert_eq!(lines.len(), 1);
+                        assert_eq!(
+                            lines[0].1,
+                            egui::Stroke::new(1.0, theme::palette(&ctx).secondary)
+                        );
+                        let x = (rail.center().x
+                            + direction * rail.width() * 0.5 * (held / 24.0).min(1.0))
+                        .clamp(rail.left() + 0.5, rail.right() - 0.5);
+                        assert!((lines[0].0 - x).abs() < 0.01);
+                    }
                 }
                 let point = rails[clicked_band].center();
+                for (button, enabled, focused) in [
+                    (egui::PointerButton::Primary, false, true),
+                    (egui::PointerButton::Primary, true, false),
+                    (egui::PointerButton::Secondary, true, true),
+                ] {
+                    for pressed in [true, false] {
+                        paint(
+                            vec![
+                                egui::Event::PointerMoved(point),
+                                egui::Event::PointerButton {
+                                    pos: point,
+                                    button,
+                                    pressed,
+                                    modifiers: Default::default(),
+                                },
+                            ],
+                            &mut settings,
+                            false,
+                            enabled,
+                            focused,
+                        );
+                    }
+                    assert_eq!(peaks(), [12.0, 18.0, 48.0]);
+                    assert_eq!(boosts(), [18.0, 48.0, 12.0]);
+                }
+                let mut reset_shapes = Vec::new();
                 for pressed in [true, false] {
-                    paint(
+                    reset_shapes = paint(
                         vec![
                             egui::Event::PointerMoved(point),
                             egui::Event::PointerButton {
@@ -321,20 +355,34 @@ mod tests {
                         ],
                         &mut settings,
                         false,
-                    );
+                        true,
+                        true,
+                    )
+                    .1;
                 }
                 let mut expected = [12.0, 18.0, 48.0];
                 expected[clicked_band] = 0.0;
                 assert_eq!(peaks(), expected);
+                let mut expected_boost = [18.0, 48.0, 12.0];
+                expected_boost[clicked_band] = 0.0;
+                assert_eq!(boosts(), expected_boost);
+                let rail = rails[clicked_band];
+                assert!(!reset_shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::LineSegment { points, .. }
+                        if rail.contains(points[0]) && rail.contains(points[1])
+                            && points[0].x != rail.center().x
+                )));
                 assert_eq!(meter.readings(), [3.0, -2.0, 6.0]);
                 assert_eq!(settings, saved);
                 for (compact, collapsed) in [(true, false), (false, true)] {
                     meter.store([-12.0; 3]);
+                    meter.store([12.0; 3]);
                     settings.enabled = false;
                     settings.collapsed = collapsed;
-                    let (rails, _) = paint(vec![], &mut settings, compact);
+                    let (rails, _) = paint(vec![], &mut settings, compact, true, true);
                     assert_eq!(rails, [Rect::NOTHING; 3]);
                     assert_eq!(peaks(), [0.0; 3]);
+                    assert_eq!(boosts(), [0.0; 3]);
                 }
             }
         }
