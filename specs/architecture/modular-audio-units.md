@@ -562,3 +562,7 @@ Envelope now consumes modulation as well as publishing a Contour source. Its [ty
 ## Processor storage estimates
 
 Portable effect processors expose owned dynamic storage through `EffectUnit::heap_bytes`; inline-only processors use the zero default. The host includes the processor value itself. Keep this query outside the callback and count capacities rather than only populated elements. Engine combines these estimates with source, schedule, delay and model storage to size optional transport checkpoints and account for output owners. Shared PCM is counted separately. Update the owning estimate when adding dynamic state, and retain clone-allocation regression coverage. See [memory policy](performance.md#estimated-memory-policy) for budgets and exclusions.
+
+## Track group buses — 2026-10-20
+
+Tracks can route through nested stereo group buses before Master. Groups reuse track effect chains, mix controls, meters, unit editing, worker preparation, and existing effect processors. Each child path aligns before the group sum; group clocks account for upstream latency. See [track groups](../editing/track-groups.md) for the hierarchy, transactions, routing, cache, and UI contract.

@@ -1689,3 +1689,40 @@ fn worker_snapshots_preserve_every_effect_history_and_own_independent_state() {
         }
     }
 }
+
+#[test]
+fn group_buses_meter_and_retarget_without_callback_allocation() {
+    let mut plan = plan(48_000, false);
+    let track = plan.project.tracks[0].id;
+    let bus = Id::new_v4();
+    plan.project
+        .edit(Edit::GroupTracks {
+            track_ids: vec![track],
+            group_id: bus,
+            name: "Group".into(),
+        })
+        .unwrap();
+    plan.project.tracks[0].effects = vec![EffectInstance::compressor(), EffectInstance::limiter()];
+    let mut current = Renderer::new(plan.clone());
+    current.play();
+    for _ in 0..1000 {
+        current.next_sample();
+    }
+    plan.project.tracks[0].gain_db = -6.0;
+    plan.project.tracks[0].group_collapsed = true;
+    let mut next = Renderer::new(plan);
+    assert!(next.can_inherit_without_preroll(&current));
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACK_ALLOCATIONS.with(|v| v.set(true));
+    next.inherit(&mut current);
+    next.reset_track_peaks();
+    for _ in 0..1000 {
+        next.next_sample();
+    }
+    let mut peaks = next.track_peaks();
+    let bus_peak = peaks.next().unwrap();
+    let child_peak = peaks.next().unwrap();
+    TRACK_ALLOCATIONS.with(|v| v.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(bus_peak[0] > 0.0 && bus_peak[0] < child_peak[0]);
+}

@@ -10,6 +10,10 @@ Mute silences a track. Solo plays the selected soloed tracks and excludes the ot
 
 Meters show current output. Held peak readouts help identify the highest recent level; click a peak readout to reset it. Reduce gain if the project output clips.
 
+## Track groups
+
+[Track groups](../editing/track-groups.md) have the same controls and meters as tracks. Select a group to edit its shared effects. Group and Master labels align left. Its borderless arrow hides or shows child strips; hidden children keep playing. Create or ungroup through the Track menu or context menu. Use Timeline to drag tracks between groups.
+
 ## Master
 
 Master stays at the right while tracks scroll. It controls the combined track mix. Master effects run before Master gain. Any gain after a Limiter can raise its output above the limiter ceiling.

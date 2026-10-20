@@ -88,8 +88,9 @@ impl DawUi {
     }
 
     pub fn track_action_enabled(&self, action: TrackAction, ctx: &egui::Context) -> bool {
-        (action != TrackAction::AddMidi
-            || matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit))
+        (action != TrackAction::Ungroup || self.selected_group().is_some())
+            && (action != TrackAction::AddMidi
+                || matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit))
             && (action != TrackAction::Duplicate
                 || matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit)
                 || !self.session.project.tracks.iter().any(|track| {
@@ -125,6 +126,10 @@ impl DawUi {
             return;
         }
         self.ensure_history();
+        if matches!(action, TrackAction::Group | TrackAction::Ungroup) {
+            self.perform_group_action(action);
+            return;
+        }
         if action == TrackAction::Rename {
             if let Some(track) = self
                 .session
@@ -211,10 +216,8 @@ impl DawUi {
         {
             return;
         }
-        let (mute, solo, rename) = ctx.input_mut(|input| {
-            let mut mute = false;
-            let mut solo = false;
-            let mut rename = false;
+        let pressed = ctx.input_mut(|input| {
+            let mut pressed = [false; TrackAction::ALL.len()];
             input.events.retain(|event| {
                 if let egui::Event::Key {
                     key,
@@ -224,37 +227,21 @@ impl DawUi {
                     ..
                 } = event
                 {
-                    if *key == egui::Key::R && modifiers.matches_exact(egui::Modifiers::COMMAND) {
-                        rename = true;
-                        return false;
-                    }
-                    if modifiers.command || modifiers.ctrl || modifiers.alt || modifiers.mac_cmd {
-                        return true;
-                    }
-                    match key {
-                        egui::Key::M => {
-                            mute = true;
+                    for (index, action) in TrackAction::ALL.iter().enumerate() {
+                        if action.matches_shortcut(*key, *modifiers) {
+                            pressed[index] = true;
                             return false;
                         }
-                        egui::Key::S => {
-                            solo = true;
-                            return false;
-                        }
-                        _ => {}
                     }
                 }
                 true
             });
-            (mute, solo, rename)
+            pressed
         });
-        if mute {
-            self.perform_track_action(TrackAction::Mute, ctx);
-        }
-        if solo {
-            self.perform_track_action(TrackAction::Solo, ctx);
-        }
-        if rename {
-            self.perform_track_action(TrackAction::Rename, ctx);
+        for (index, action) in TrackAction::ALL.into_iter().enumerate() {
+            if pressed[index] {
+                self.perform_track_action(action, ctx);
+            }
         }
     }
 
@@ -263,12 +250,9 @@ impl DawUi {
             return;
         }
         let edits = self
-            .session
-            .project
-            .tracks
-            .iter()
-            .filter(|track| self.track_selected(track.id))
-            .map(|track| Edit::DeleteTrack(track.id))
+            .selected_track_roots()
+            .into_iter()
+            .map(Edit::DeleteTrack)
             .collect();
         self.edit(Edit::Batch(edits));
         self.inputs.retain(|id, _| {
@@ -282,12 +266,9 @@ impl DawUi {
 
     fn duplicate_selected_tracks(&mut self) {
         let copies: Vec<_> = self
-            .session
-            .project
-            .tracks
-            .iter()
-            .filter(|track| self.track_selected(track.id))
-            .map(|track| (track.id, Id::new_v4()))
+            .selected_track_roots()
+            .into_iter()
+            .map(|id| (id, Id::new_v4()))
             .collect();
         self.edit(Edit::Batch(
             copies
@@ -368,6 +349,8 @@ impl DawUi {
     pub(super) fn track_context_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
         for action in [
             TrackAction::Rename,
+            TrackAction::Group,
+            TrackAction::Ungroup,
             TrackAction::Duplicate,
             TrackAction::Delete,
         ] {

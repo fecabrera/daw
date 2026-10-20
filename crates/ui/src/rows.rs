@@ -15,6 +15,22 @@ pub fn centered<R>(
     )
 }
 
+/// Keep header text at the left inset while centering it vertically.
+pub fn left_aligned<R>(
+    ui: &mut Ui,
+    height: f32,
+    content: impl FnOnce(&mut Ui) -> R,
+) -> InnerResponse<R> {
+    ui.allocate_ui_with_layout(
+        Vec2::new(ui.available_width(), height),
+        Layout::left_to_right(Align::Center).with_main_align(Align::Min),
+        |ui| {
+            ui.set_min_height(height);
+            content(ui)
+        },
+    )
+}
+
 /// Keep row widget identities attached to an item when its position changes.
 pub fn centered_with_id<R>(
     ui: &mut Ui,
@@ -33,11 +49,13 @@ pub fn placeholder(
     id: impl egui::AsIdSalt,
     width: f32,
     height: f32,
+    left_inset: f32,
 ) -> (egui::Rect, egui::Rect) {
     centered_with_id(ui, id, height, |ui| {
-        let panel = ui
+        let mut panel = ui
             .allocate_exact_size(Vec2::new(width, height), egui::Sense::hover())
             .0;
+        panel.min.x += left_inset;
         let lane = ui
             .allocate_exact_size(
                 Vec2::new(ui.available_width(), height),

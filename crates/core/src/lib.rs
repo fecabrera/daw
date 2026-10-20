@@ -41,6 +41,7 @@ mod split;
 pub use split::MidiNoteSplit;
 mod resize;
 pub use placement::ClipPlacement;
+mod track_groups;
 mod trim;
 pub use trim::ClipEdge;
 
@@ -200,6 +201,11 @@ pub struct SourceMetadata {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Track {
+    /// Stable parent bus identity. None routes directly to Master.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<Id>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub group_collapsed: bool,
     #[serde(default)]
     pub effects: Vec<EffectInstance>,
     #[serde(default)]
@@ -412,13 +418,10 @@ impl Project {
             .unwrap_or(0)
     }
     pub fn audible(&self, track: &Track) -> bool {
-        mix_audible(
-            track.muted,
-            track.soloed,
-            self.tracks.iter().any(|t| t.soloed),
-        )
+        self.track_audible(track.id)
     }
     pub fn validate(&self) -> Result<()> {
+        self.validate_track_groups()?;
         self.stretch_engine.validate()?;
         let invalid = |text: &str| Error(text.into());
         if !SAMPLE_RATES.contains(&self.sample_rate_hz) {
@@ -634,6 +637,8 @@ impl Project {
     pub fn add_track(&mut self) -> Result<Id> {
         let id = Id::new_v4();
         self.tracks.push(Track {
+            group_id: None,
+            group_collapsed: false,
             effects: vec![],
             effects_compact: false,
             kind: TrackKind::Audio,
@@ -665,6 +670,28 @@ impl Project {
 
     fn apply_edit(&mut self, command: Edit) -> Result<()> {
         match command {
+            Edit::GroupTracks {
+                track_ids,
+                group_id,
+                name,
+            } => self.group_tracks(&track_ids, group_id, name)?,
+            Edit::UngroupTrack { track_id } => self.ungroup_track(track_id)?,
+            Edit::MoveTrack {
+                track_id,
+                group_id,
+                index,
+            } => self.move_track(track_id, group_id, index)?,
+            Edit::SetGroupCollapsed {
+                track_id,
+                collapsed,
+            } => {
+                let group = self
+                    .tracks
+                    .iter_mut()
+                    .find(|t| t.id == track_id && t.kind == TrackKind::Group)
+                    .ok_or_else(|| Error("Group not found".into()))?;
+                group.group_collapsed = collapsed;
+            }
             Edit::SetMasterEffects { effects, compact } => {
                 self.master.effects = effects;
                 self.master.effects_compact = compact;
@@ -848,52 +875,43 @@ impl Project {
             Edit::SetClipTranspose { clip_id, transpose } => {
                 self.clip_mut(clip_id)?.transpose = transpose;
             }
-            Edit::DeleteTrack(id) => self.tracks.retain(|t| t.id != id),
+            Edit::DeleteTrack(id) => {
+                if let Ok(range) = self.track_subtree(id) {
+                    self.tracks.drain(range);
+                }
+            }
             Edit::DuplicateTrack {
                 track_id,
                 new_track_id,
             } => {
+                if self
+                    .tracks
+                    .iter()
+                    .any(|t| t.id == track_id && t.kind == TrackKind::Group)
+                {
+                    self.duplicate_group(track_id, new_track_id)?;
+                    return Ok(());
+                }
                 let index = self
                     .tracks
                     .iter()
                     .position(|track| track.id == track_id)
                     .ok_or_else(|| Error("Track not found".into()))?;
-                let mut copy = self.tracks[index].clone();
-                copy.id = new_track_id;
-                copy.clips.clear();
-                for s in copy
-                    .instrument
-                    .iter_mut()
-                    .flat_map(|i| &mut i.layers)
-                    .filter_map(|l| l.sampler.as_mut())
-                {
-                    s.id = Id::new_v4();
-                }
-                for effect in copy
-                    .effects
-                    .iter_mut()
-                    .chain(copy.instrument.iter_mut().flat_map(|i| {
-                        i.layers
-                            .iter_mut()
-                            .flat_map(|l| &mut l.effects)
-                            .chain(&mut i.main.effects)
-                    }))
-                {
-                    effect.id = Id::new_v4();
-                }
+                let copy =
+                    track_groups::duplicate_track_settings(&self.tracks[index], new_track_id);
                 self.tracks.insert(index + 1, copy);
             }
             Edit::ReorderTrack { track_id, index } => {
                 if index >= self.tracks.len() {
                     return Err(Error("Track position is out of bounds".into()));
                 }
-                let source = self
+                let parent = self
                     .tracks
                     .iter()
-                    .position(|track| track.id == track_id)
-                    .ok_or_else(|| Error("Track not found".into()))?;
-                let track = self.tracks.remove(source);
-                self.tracks.insert(index, track);
+                    .find(|t| t.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?
+                    .group_id;
+                self.move_track(track_id, parent, index)?;
             }
             Edit::DeleteClip(id) => {
                 for t in &mut self.tracks {
@@ -972,6 +990,23 @@ impl Project {
 
 #[derive(Clone, Debug)]
 pub enum Edit {
+    GroupTracks {
+        track_ids: Vec<Id>,
+        group_id: Id,
+        name: String,
+    },
+    UngroupTrack {
+        track_id: Id,
+    },
+    MoveTrack {
+        track_id: Id,
+        group_id: Option<Id>,
+        index: usize,
+    },
+    SetGroupCollapsed {
+        track_id: Id,
+        collapsed: bool,
+    },
     /// Move or copy one installed component within an instrument, remapping references atomically.
     TransferInstrumentComponent {
         track_id: Id,

@@ -58,6 +58,21 @@ def main():
             run(2, "render", "--project", folder, "--output", first, *options)
         run(2, "render", "--project", folder, "--output", folder / "invalid.mp3", "--bitrate", "7")
         run(2, "render", "--project", folder, "--output", folder / "invalid.mp3", "--codec", "pcm16")
+        # A unity group is a real processing bus and preserves the flat mix.
+        grouped = copy.deepcopy(manifest)
+        group = copy.deepcopy(grouped["tracks"][0])
+        group.update(id=str(uuid.uuid4()), name="Group bus", kind="group",
+                     clips=[], effects=[], gain_db=0.0, pan=0.0,
+                     muted=False, soloed=False, group_collapsed=True)
+        group.pop("instrument", None)
+        for track in grouped["tracks"]:
+            track["group_id"] = group["id"]
+        grouped["tracks"].insert(0, group)
+        project.write_text(json.dumps(grouped))
+        run(0, "validate", "--project", folder)
+        group_mix = folder / "group-mix.wav"
+        run(0, "render", "--project", folder, "--output", group_mix)
+        assert group_mix.read_bytes() == first.read_bytes()
         missing = copy.deepcopy(manifest)
         missing["assets"][0]["source"]["path"] = str(folder / "missing.wav")
         project.write_text(json.dumps(missing))
@@ -77,7 +92,7 @@ def main():
         project.write_text("invalid json")
         run(1, "validate", "--project", folder)
         run(2, "render")
-    print("CLI smoke check passed: WAV/MP3 codecs and bitrates, repeatability, missing sources, eight-track projects, overwrite, and exit codes")
+    print("CLI smoke check passed: WAV/MP3 codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
 
 
 if __name__ == "__main__":

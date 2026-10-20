@@ -281,11 +281,15 @@ impl NativeMenu {
                     &NSString::from_str(&key),
                 )
             };
-            item.setKeyEquivalentModifierMask(if action == TrackAction::Rename {
-                NSEventModifierFlags::Command
-            } else {
-                NSEventModifierFlags::empty()
-            });
+            let modifiers = action.shortcut().map(|s| s.modifiers).unwrap_or_default();
+            let mut mask = NSEventModifierFlags::empty();
+            if modifiers.command {
+                mask |= NSEventModifierFlags::Command;
+            }
+            if modifiers.shift {
+                mask |= NSEventModifierFlags::Shift;
+            }
+            item.setKeyEquivalentModifierMask(mask);
             item.setTag(index as isize);
             // SAFETY: NativeMenu retains the target and detaches it before dropping.
             unsafe { item.setTarget(Some(&target)) };
@@ -362,18 +366,12 @@ impl NativeMenu {
                 MenuAction::Track(action) => {
                     ui.perform_track_action(action, ctx);
                     // The native key equivalent owns this press if winit also forwards it.
-                    if let Some(shortcut) = action.shortcut() {
+                    if action.shortcut().is_some() {
                         ctx.input_mut(|input| {
                             input.events.retain(|event| {
                                 !matches!(event,
                                     egui::Event::Key { key, pressed: true, modifiers, .. }
-                                    if *key == shortcut.logical_key
-                                        && (if action == TrackAction::Rename {
-                                            modifiers.matches_exact(shortcut.modifiers)
-                                        } else {
-                                            !modifiers.command && !modifiers.ctrl
-                                                && !modifiers.alt && !modifiers.mac_cmd
-                                        })
+                                    if action.matches_shortcut(*key,*modifiers)
                                 )
                             })
                         });

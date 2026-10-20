@@ -14,6 +14,7 @@ pub use history::HistoryAction;
 mod resize;
 mod sampler_panel;
 mod stretch;
+mod track_groups;
 mod track_selection;
 mod trim;
 use daw_core::{Clip, Edit, Id};
@@ -388,6 +389,8 @@ impl ClipAction {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrackAction {
+    Group,
+    Ungroup,
     Add,
     AddMidi,
     Mute,
@@ -397,9 +400,11 @@ pub enum TrackAction {
     Delete,
 }
 impl TrackAction {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::Add,
         Self::AddMidi,
+        Self::Group,
+        Self::Ungroup,
         Self::Mute,
         Self::Solo,
         Self::Rename,
@@ -409,6 +414,8 @@ impl TrackAction {
 
     pub fn label(self) -> &'static str {
         match self {
+            Self::Group => "Group selected tracks",
+            Self::Ungroup => "Ungroup tracks",
             Self::Add => "Add audio track",
             Self::AddMidi => "Add MIDI track",
             Self::Mute => "Mute",
@@ -422,11 +429,28 @@ impl TrackAction {
     pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
         let (modifiers, key) = match self {
             Self::Add | Self::AddMidi | Self::Duplicate | Self::Delete => return None,
+            Self::Group => (egui::Modifiers::COMMAND, egui::Key::G),
+            Self::Ungroup => (
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                egui::Key::G,
+            ),
             Self::Mute => (egui::Modifiers::NONE, egui::Key::M),
             Self::Solo => (egui::Modifiers::NONE, egui::Key::S),
             Self::Rename => (egui::Modifiers::COMMAND, egui::Key::R),
         };
         Some(egui::KeyboardShortcut::new(modifiers, key))
+    }
+    /// Native menus and egui must consume the same key press exactly once.
+    pub fn matches_shortcut(self, key: egui::Key, modifiers: egui::Modifiers) -> bool {
+        self.shortcut().is_some_and(|shortcut| {
+            shortcut.logical_key == key && {
+                if matches!(self, Self::Mute | Self::Solo) {
+                    !modifiers.command && !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd
+                } else {
+                    modifiers.matches_exact(shortcut.modifiers)
+                }
+            }
+        })
     }
 }
 
@@ -2891,8 +2915,10 @@ impl DawUi {
                 Stroke::new(1.0_f32, theme::accent(ui.ctx())),
             );
         }
+        let track_panels = self.track_panel_containers(&tracks.inner);
+        self.paint_track_group_edges(ui, &track_panels, tracks.inner_rect);
         control_panel.finish(ui);
-        for (id, rect) in tracks.inner {
+        for (id, rect) in track_panels {
             if self.track_selected(id) {
                 panels::ControlPanel::selected_row(ui, rect, tracks.inner_rect);
             }
@@ -2916,12 +2942,14 @@ impl DawUi {
                 .as_ref()
                 .map_or([(0.0, false); 2], |output| output.status.meter.levels());
             let cleared = meters::stereo_panel(ui, MASTER_HEIGHT - 14.0, levels, |ui| {
-                ui.add_sized(
-                    [ui.available_width(), 22.0],
-                    egui::Label::new(
-                        egui::RichText::new("Master").font(egui::FontId::proportional(13.0)),
-                    ),
-                );
+                rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new("Master").font(egui::FontId::proportional(13.0)),
+                        )
+                        .halign(egui::Align::Min),
+                    );
+                });
                 rows::centered(ui, knobs::SIZE, |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     let previous = self.session.project.master.gain_db;
@@ -3417,13 +3445,41 @@ impl DawUi {
         rect
     }
     fn track_name(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
+        if track.kind != daw_core::TrackKind::Group {
+            self.track_name_label(ui, track);
+            return;
+        }
+        rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
+            if icons::disclosure_button(
+                ui,
+                !track.group_collapsed,
+                if track.group_collapsed {
+                    "Expand group"
+                } else {
+                    "Collapse group"
+                },
+                self.editing_enabled(),
+            )
+            .clicked()
+            {
+                self.edit(Edit::SetGroupCollapsed {
+                    track_id: track.id,
+                    collapsed: !track.group_collapsed,
+                });
+            }
+            self.track_name_label(ui, track);
+        });
+    }
+    fn track_name_label(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
         let width = ui.available_width();
         let font_size = if self.view_mode == mixer::ViewMode::Mixer {
             panels::HEADER_FONT_SIZE
         } else {
             rows::NAME_FONT_SIZE
         };
-        let name_align = if self.view_mode == mixer::ViewMode::Mixer {
+        let name_align = if self.view_mode == mixer::ViewMode::Mixer
+            && track.kind != daw_core::TrackKind::Group
+        {
             egui::Align::Center
         } else {
             egui::Align::Min
@@ -3491,8 +3547,12 @@ impl DawUi {
             .truncate();
             if let Some(colors) = mixer_colors {
                 button = button.fill(colors.header).stroke(Stroke::NONE);
+                if track.kind == daw_core::TrackKind::Group {
+                    // The strip already paints its header; keep the name at the row inset.
+                    button = button.frame(false);
+                }
             }
-            let output = if self.view_mode == mixer::ViewMode::Timeline {
+            let output = if name_align == egui::Align::Min {
                 button
                     .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))
                     .atom_ui(ui)
@@ -3566,52 +3626,24 @@ impl DawUi {
             self.track_drag = None;
             return;
         }
-        let Some(source) = self
-            .session
-            .project
-            .tracks
-            .iter()
-            .position(|track| track.id == track_id)
-        else {
-            self.track_drag = None;
-            return;
-        };
         let pointer = ui.input(|input| input.pointer.latest_pos());
         let target = pointer
             .filter(|_| ui.rect_contains_pointer(viewport))
-            .map(|pointer| {
-                let slot = self
-                    .session
-                    .project
-                    .tracks
-                    .iter()
-                    .position(|track| {
-                        self.lane_bounds
-                            .get(&track.id)
-                            .is_some_and(|lane| pointer.y < lane.center().y)
-                    })
-                    .unwrap_or(self.session.project.tracks.len());
-                let index = slot - usize::from(slot > source);
-                (slot, index)
-            });
-        if let Some((slot, index)) = target
-            && index != source
-        {
-            let y = self
-                .session
+            .and_then(|pointer| self.track_drop_target(track_id, pointer));
+        let changed_target = target.filter(|(parent, index, _)| {
+            self.session
                 .project
-                .tracks
-                .get(slot)
-                .and_then(|track| self.lane_bounds.get(&track.id))
-                .map_or_else(
-                    || self.lane_bounds[&self.session.project.tracks.last().unwrap().id].bottom(),
-                    Rect::top,
-                )
-                .clamp(viewport.top(), viewport.bottom());
+                .track_subtree(track_id)
+                .is_ok_and(|range| {
+                    *parent != self.session.project.tracks[range.start].group_id
+                        || *index != range.start
+                })
+        });
+        if let Some((_, _, y)) = changed_target {
             ui.painter_at(viewport).line_segment(
                 [
-                    Pos2::new(viewport.left(), y),
-                    Pos2::new(viewport.right(), y),
+                    Pos2::new(viewport.left(), y.clamp(viewport.top(), viewport.bottom())),
+                    Pos2::new(viewport.right(), y.clamp(viewport.top(), viewport.bottom())),
                 ],
                 Stroke::new(2.0, theme::accent(ui.ctx())),
             );
@@ -3621,14 +3653,16 @@ impl DawUi {
         } else {
             egui::CursorIcon::NotAllowed
         });
-        if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
+        if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
             self.track_drag = None;
-            if let Some((_, index)) = target
-                && index != source
-            {
-                self.edit(Edit::ReorderTrack { track_id, index });
+            if let Some((group_id, index, _)) = changed_target {
+                self.edit(Edit::MoveTrack {
+                    track_id,
+                    group_id,
+                    index,
+                });
             }
-        } else if !ui.input(|input| input.pointer.button_down(egui::PointerButton::Primary)) {
+        } else if !ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary)) {
             self.track_drag = None;
         }
     }
@@ -3664,24 +3698,32 @@ impl DawUi {
         ui.ctx().request_repaint();
     }
     fn tracks(&mut self, ui: &mut egui::Ui) -> Vec<(Id, Rect)> {
-        let tracks: Vec<_> = self.session.project.tracks.iter().map(|t| t.id).collect();
+        let tracks: Vec<_> = self
+            .session
+            .project
+            .visible_tracks()
+            .into_iter()
+            .map(|i| (i, self.session.project.tracks[i].id))
+            .collect();
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             let count = tracks.len();
             let mut outlines = Vec::with_capacity(count);
             let mut context_action = None;
-            for (index, id) in tracks.into_iter().enumerate() {
+            for (row_index, (index, id)) in tracks.into_iter().enumerate() {
                 let row = Rect::from_min_size(
                     ui.next_widget_position(),
                     Vec2::new(ui.available_width(), ROW_HEIGHT),
                 );
+                let inset = track_groups::panel_indent(self.session.project.track_depth(id));
+                let panel_width = TRACK_WIDTH - inset;
                 let interacting = self.drag.is_some()
                     || self.track_drag.is_some()
                     || self.marquee.is_some()
                     || self.track_name_edit.is_some()
                     || ui.ctx().egui_wants_keyboard_input();
                 if !interacting && !row.intersects(ui.clip_rect().expand(ROW_HEIGHT)) {
-                    let (panel, lane) = rows::placeholder(ui, id, TRACK_WIDTH, ROW_HEIGHT);
+                    let (panel, lane) = rows::placeholder(ui, id, TRACK_WIDTH, ROW_HEIGHT, inset);
                     self.lane_bounds.insert(id, lane);
                     outlines.push((id, panel));
                     continue;
@@ -3689,18 +3731,19 @@ impl DawUi {
                 // Only visible/interactive rows need an owned editing snapshot.
                 let track = self.session.project.tracks[index].clone();
                 rows::centered_with_id(ui, track.id, ROW_HEIGHT, |ui| {
+                    ui.add_space(inset);
                     let inner = ui.allocate_ui_with_layout(
-                        Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+                        Vec2::new(panel_width, ROW_HEIGHT),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
-                            ui.set_min_width(TRACK_WIDTH);
+                            ui.set_min_width(panel_width);
                             panels::PanelStyle {
                                 margin: 6,
                                 ..Default::default()
                             }
                             .track_frame(ui.ctx())
                             .show(ui, |ui| {
-                                ui.set_min_width(TRACK_WIDTH - 14.0);
+                                ui.set_min_width(panel_width - 14.0);
                                 ui.set_min_height(ROW_HEIGHT - 14.0);
                                 ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                                 let levels = self
@@ -3717,12 +3760,9 @@ impl DawUi {
                                                 let buttons_width = 2.0 * toolbars::CONTROL_HEIGHT
                                                     + ui.spacing().item_spacing.x;
                                                 let name_width = (ui.available_width()
-                                                    - toolbars::CONTROL_HEIGHT
                                                     - buttons_width
-                                                    - 2.0 * ui.spacing().item_spacing.x)
+                                                    - ui.spacing().item_spacing.x)
                                                     .max(1.0);
-                                                let grip = icons::grip(ui);
-                                                self.start_track_drag(ui, &grip, track.id);
                                                 let name = ui.allocate_ui_with_layout(
                                                     Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
                                                     egui::Layout::left_to_right(
@@ -3742,7 +3782,6 @@ impl DawUi {
                                                         ],
                                                     );
                                                 [
-                                                    grip.rect,
                                                     name.response.rect,
                                                     mute_button.rect,
                                                     solo_button.rect,
@@ -3846,7 +3885,7 @@ impl DawUi {
                     {
                         context_action = Some(action);
                     }
-                    self.lane(ui, &track, inner.response.rect, index, count);
+                    self.lane(ui, &track, inner.response.rect, row_index, count);
                 });
             }
             if let Some(action) = context_action {
@@ -4355,11 +4394,12 @@ impl DawUi {
                         .iter()
                         .find(|track| track.id == id)
                         .is_some_and(|track| {
-                            track.clips.iter().all(|clip| {
-                                Some(clip.id) == ignore
-                                    || end <= clip.start_frame
-                                    || start >= clip.end()
-                            })
+                            track.kind != daw_core::TrackKind::Group
+                                && track.clips.iter().all(|clip| {
+                                    Some(clip.id) == ignore
+                                        || end <= clip.start_frame
+                                        || start >= clip.end()
+                                })
                         })
                 })
             })
@@ -4391,6 +4431,9 @@ impl DawUi {
                 .get(&track.id)
                 .is_some_and(|lane| pointer.y >= lane.top() && pointer.y <= lane.bottom())
         }) {
+            if track.kind != daw_core::TrackKind::Audio {
+                return None;
+            }
             return Some(FileDropTarget {
                 track: Some(track.id),
                 start,
@@ -4768,7 +4811,13 @@ impl DawUi {
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
         self.paint_grid(&painter, rect);
         // Keep row separators below clip shells and their selection outlines.
-        panels::ControlPanel::row_dividers(ui, panel.union(rect), index > 0, index + 1 == count);
+        panels::ControlPanel::row_dividers(ui, panel.union(rect), index > 0, false);
+        if index + 1 == count {
+            // The final child and all enclosing groups share one bottom edge.
+            let row =
+                Rect::from_min_max(Pos2::new(rect.left() - TRACK_WIDTH, rect.top()), rect.max);
+            panels::ControlPanel::row_dividers(ui, row, false, true);
+        }
         for clip in &track.clips {
             let block = self.clip_block(rect, clip, clip.start_frame);
             if !block.intersects(rect) {
@@ -4930,6 +4979,7 @@ mod tests {
     mod resize_neighbors;
     mod sampler;
     mod saving;
+    mod track_groups;
     mod track_header;
     mod track_shortcuts;
     mod transport;
@@ -7417,7 +7467,7 @@ mod tests {
         assert_eq!(app.tempo_bounds, fractional);
     }
     #[test]
-    fn grip_handles_reorder_tracks_and_preserve_name_alignment_and_cancellation() {
+    fn track_headers_reorder_tracks_and_preserve_name_alignment_and_cancellation() {
         for cancel in [false, true] {
             let (mut app, tracks, ids) = multi_clip_fixture();
             let ctx = context();
@@ -7437,9 +7487,9 @@ mod tests {
                 .unwrap();
             let lane = app.lane_bounds[&tracks[0]];
             let name = name_bounds.center();
-            // The name starts after the 22-point grip and the 6-point row spacing.
+            // Removing the grip leaves the name at the shared panel inset.
             assert!(
-                (name_bounds.left() - (lane.left() - TRACK_WIDTH + 35.0)).abs() < 1.0,
+                (name_bounds.left() - (lane.left() - TRACK_WIDTH + 7.0)).abs() < 1.0,
                 "name {name_bounds:?}, lane {lane:?}"
             );
             let button_center = |label: &str| {
@@ -7476,12 +7526,12 @@ mod tests {
             assert!((solo.y - name.y).abs() < 1.0);
             assert!(name.x < mute.x && mute.x < solo.x);
             assert!((solo.x - (lane.left() - TRACK_WIDTH + 206.0)).abs() < 1.0);
-            let grip = Pos2::new(lane.left() - TRACK_WIDTH + 18.0, lane.top() + 18.0);
-            let destination = Pos2::new(grip.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
+            let header = Pos2::new(lane.left() - TRACK_WIDTH + 18.0, lane.top() + 18.0);
+            let destination = Pos2::new(header.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
             frame(
                 &mut app,
                 &ctx,
-                vec![egui::Event::PointerMoved(grip), button(grip, true)],
+                vec![egui::Event::PointerMoved(header), button(header, true)],
             );
             assert_eq!(app.selected_track, Some(tracks[0]));
             frame(&mut app, &ctx, vec![egui::Event::PointerMoved(destination)]);
@@ -7522,16 +7572,16 @@ mod tests {
             let (_tx, rx) = mpsc::channel();
             app.job = Some(rx);
             frame(&mut app, &ctx, vec![]);
-            let grip = Pos2::new(18.0, app.lane_bounds[&tracks[0]].top() + 18.0);
+            let header = Pos2::new(18.0, app.lane_bounds[&tracks[0]].top() + 18.0);
             frame(
                 &mut app,
                 &ctx,
-                vec![egui::Event::PointerMoved(grip), button(grip, true)],
+                vec![egui::Event::PointerMoved(header), button(header, true)],
             );
             frame(
                 &mut app,
                 &ctx,
-                vec![egui::Event::PointerMoved(grip + Vec2::new(0.0, 70.0))],
+                vec![egui::Event::PointerMoved(header + Vec2::new(0.0, 70.0))],
             );
             assert!(app.track_drag.is_none());
         }
@@ -7952,7 +8002,7 @@ mod tests {
         let ctx = context();
         frame(&mut app, &ctx, vec![]);
         let name = Pos2::new(
-            app.timeline_bounds.left() - TRACK_WIDTH + 60.0,
+            app.timeline_bounds.left() - TRACK_WIDTH + 20.0,
             app.lane_bounds[&track].top() + 18.0,
         );
         let key = |key| egui::Event::Key {

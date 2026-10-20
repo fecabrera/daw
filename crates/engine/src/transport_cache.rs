@@ -54,6 +54,7 @@ impl TransportCache {
             .project
             .tracks
             .iter()
+            .filter(|t| t.kind != daw_core::TrackKind::Group)
             .filter(|t| {
                 !t.effects.is_empty()
                     || t.instrument.as_ref().is_some_and(|i| {
@@ -66,17 +67,19 @@ impl TransportCache {
                     })
             })
             .count();
-        let parallel_candidate = plan.project.tracks.len() >= 2
+        let parallel_candidate = plan
+            .project
+            .tracks
+            .iter()
+            .filter(|t| t.kind != daw_core::TrackKind::Group)
+            .count()
+            >= 2
             && (mode == PreparationMode::Parallel
                 || (complex_tracks >= 2
                     && std::thread::available_parallelism().is_ok_and(|n| n.get() >= 2)));
         let mut base = Renderer::new(plan);
         base.reset_processing();
-        let history = base
-            .midi
-            .iter()
-            .flatten()
-            .any(|m| m.needs_envelope_history());
+        let history = base.needs_processing_history();
         let renderer_memory = base.memory_usage();
         let mut cache = Self {
             profile,

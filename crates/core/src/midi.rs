@@ -43,6 +43,7 @@ pub enum TrackKind {
     #[default]
     Audio,
     Midi,
+    Group,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -3450,3 +3450,47 @@ Focused checks completed:
 Relative file links in the changed guide, OTT specification and architecture documents — 134 checked, no missing targets. `git diff --check` — passed.
 
 Native pointer behavior, physical-device playback/listening and Windows/Linux execution remain unverified. Automated painting and headless callback tests do not establish native-device or platform acceptance.
+
+## Track group buses — 2026-10-20
+
+Implemented [nested track group buses](../editing/track-groups.md) with stable parent IDs, atomic hierarchy edits, collapse, shared effects/mix controls/meters, and Timeline track membership drops. Group/Ungroup use Command+G / Command+Shift+G (Ctrl equivalents on Windows/Linux) through the same guarded actions as the menu. Group creation, movement, ungroup, deletion and empty-track duplication retain the existing undo and source ownership behavior.
+
+Regression coverage includes hierarchy/cycle rejection and transaction rollback, cross-parent grouping, solo ancestor paths, nested sum/gain/pan, nonlinear shared processing, child/group/Master latency alignment and clocks, exact audio bus cold seeks, serial/two-worker history parity under loops, collapse cache reuse, callback allocation-free retargeting and group peaks, save/reopen/render parity, unchanged source recordings, keyboard focus/repeats, pointer release/cancellation, and shared effects targets/transfers. The existing Track menu test viewport now includes its additional group commands. Ordinary track copies retain their existing owner-scoped modulation route identities.
+
+Completed checks:
+
+- Focused core, engine, project workflow, group UI, and track shortcut regressions pass. The project workflow run passes all 60 tests, including modulation identity preservation during ordinary duplication.
+- `cargo fmt --all --check`, `git diff --check`, and `cargo clippy --workspace --all-targets -- -D warnings` pass with the configured local Cargo cache.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` pass. CLI smoke coverage now includes validation and byte-identical unity-group export against the flat mix.
+- `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release` rebuilds `target/release/DAW.app` successfully.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --workspace` passes: 1034 tests pass, no failures, and 2 pre-existing full timestretch acceptance matrices remain ignored.
+
+These checks run on macOS. No native gesture, menu key-equivalent, audio-device continuity, Windows, or Linux check was performed for this change. Group controls and shortcuts have automated egui input coverage; that does not establish native device or platform behavior.
+
+## Nested track group panels and header dragging — 2026-10-20
+
+Timeline child panels now sit inside the group's container with a shared-padding left inset. The complete control panel moves, including the name, mix controls, and meters. Group selection outlines span visible descendants; child and group right/bottom edges coincide. The workspace supplies the root left border, so top-level groups do not paint an adjacent second stroke. Nested panels use the shared left-divider painter. Timeline lanes retain their fixed x-position.
+
+Drop scope follows the inset header position. A child reordered at its bottom edge retains its parent; group append previews use the full container bottom. Offscreen placeholders retain panel inset and subtree outline geometry without changing project data.
+
+Track and group headers omit the visible grip. The name fills the recovered space and retains the existing name/blank-header drag handler, grab cursor, selection, rename, previews, edge scrolling, release-only commit, and cancellation. Group collapse and mix controls keep their separate interactions. Instrument layer grips are unchanged.
+
+- `cargo test -p daw-ui --lib`: all 518 tests pass. Added geometry/input coverage for dark/light themes, 1×/1.25×/2× scale, nested and collapsed groups, shared bottom/right boundaries, absence of a duplicate root left stroke, offscreen headers/virtual children, and before/after drop scope. Header tests cover name alignment, track reorder/cancellation, renaming, unchanged mix-control positions, and moving complete group subtrees from the name or blank area.
+- `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all --check`, and `git diff --check` pass with the configured local Cargo cache.
+- `cargo test --workspace`: 1038 tests pass, no failures, and 2 pre-existing extended timestretch acceptance cases remain ignored.
+- `sh tools/package_macos.sh release`: rebuilt `target/release/DAW.app` successfully with the final header layout.
+- Relative documentation links: 96 checked, no missing targets.
+
+No native gesture or platform/device check was performed for this visual change. Audio processing and saved project data are unchanged.
+
+## Group and Master header alignment — 2026-10-20
+
+Group and Master labels now align left in Timeline and Mixer through the shared `rows::left_aligned` helper. Group rename fields retain left alignment. Header rows retain their full height so lower controls do not move. Group disclosures use a borderless control with the same chevron painter, icon size, and idle/hover colors as catalog folders. Their existing hit area, tooltip, expanded-state accessibility, collapse edits, and separation from header dragging remain intact. Catalog folder layout and interaction stay unchanged.
+
+- `cargo test -p daw-ui --lib track_groups`: all 11 tests pass. Added dark/light, Timeline/Mixer checks for title positions, borderless disclosure geometry, both collapse states, release behavior, and retained drag isolation. Existing group movement, nesting, and shortcut checks pass.
+- `cargo test -p daw-ui --lib`: all 519 tests pass on the final layout, including retained Master gain-control positions and existing catalog folder navigation/interaction checks.
+- Formatting, strict workspace Clippy, and diff checks pass. Relative documentation links: 72 checked, no missing targets.
+- `cargo test --workspace`: 1039 tests pass, no failures, and 2 pre-existing extended timestretch acceptance cases remain ignored.
+- `sh tools/package_macos.sh release`: rebuilt `target/release/DAW.app` successfully with the final header alignment and fixed row heights.
+
+Native pointer and platform/device checks were not performed. Audio processing and saved project data are unchanged.

@@ -1,0 +1,44 @@
+# Track groups as processing buses
+
+## Accepted behavior
+
+Groups are nested stereo buses with the existing track controls, meters, effects lane, effect processors, and unit drag behavior. Sources and clips stay on ordinary audio/MIDI tracks. Timeline supports track membership changes through the existing release-only track drag gesture. Group movement includes its complete subtree. Ungroup retains children; deletion removes the subtree. Edits are undoable.
+
+## Model and transactions
+
+`core::TrackKind::Group` identifies buses. `Track::group_id` stores the optional stable parent ID; `group_collapsed` stores presentation state. Missing fields default to no parent and expanded. The existing experimental manifest stores both fields; legacy projects remain flat.
+
+`Project::tracks` is preorder: parents precede their children and each subtree is contiguous. Validation rejects missing or non-group parents, cycles, split subtrees, group clips/instruments, and collapse on non-groups. General ID and effect validation still applies.
+
+`Edit::GroupTracks`, `UngroupTrack`, `MoveTrack`, and `SetGroupCollapsed` use `Project::edit`/`edited`. Grouping filters selected descendants, extracts complete selected subtrees in project order, and creates a bus under their nearest common ancestor. Invalid input rejects the entire edit. `MoveTrack::index` is a global insertion index after removing the moving subtree. `can_move_track` validates previews without mutation. Same-position drops do not commit. `ReorderTrack` retains its flat-track behavior and uses the same move transaction within a parent.
+
+Delete and Duplicate use subtree roots to avoid editing selected descendants twice. Duplicate follows existing empty-track-copy behavior: clips are empty, track/effect/sampler identities are fresh, internal parent IDs are remapped, and instrument-local and route identities retain their existing owner scope. Ungroup promotes direct children to the removed bus's parent and discards only the bus settings and chain.
+
+`visible_tracks` hides descendants of collapsed groups without affecting processing. `track_mix_audible` prepares local sibling gates: descendant solos open the ancestor path; each sibling set applies shared `mix_audible` precedence. Effective `Project::audible` also checks ancestors. The renderer uses local gates so each bus applies its own mix stage exactly once.
+
+## Shared rendering and clocks
+
+`engine::buses` prepares child indices, roots, reverse-preorder group indices, and stereo scratch outside the callback. Leaves reuse `TrackProcessor`: source/instrument → track effect chain → sibling alignment → gain/pan. Groups sum direct child outputs in project order, run `EffectChain`, apply their sibling alignment delay, and apply existing stereo balance/gain/audibility ramps. Master sums only roots. `sample_buses` is shared by callback playback, offline export, and cache preparation. Muted branches continue processing. Group effects use existing meter binding and bypass lifecycle traversal.
+
+The latency planner computes each subtree latency bottom-up: a group adds its serial chain latency to the longest child subtree. Each child receives the difference from that sibling maximum; roots align to the maximum root latency. A group's effect input clock subtracts the longest child latency with the shared loop-aware `delayed_frame`; serial effects subtract their own preceding latency as usual. Master subtracts the complete root-path latency. Bypass retains fixed processor latency.
+
+Routing changes invalidate compatible DSP inheritance, even at zero latency, so native output reconstructs exact history on its existing preparation worker. Compatible controls retain shared processor history and 5 ms gain/pan ramps. Collapse is excluded from processing-plan cache comparison. Routing topology, processing settings, and prepared media still determine checkpoint compatibility.
+
+Two-worker cache preparation runs independent leaf tracks in parallel. Group processors retain their ownership without advancing on leaf workers. The coordinator restores all processors, then runs dependent groups and Master per frame through the serial shared bus stage. Cancellation never publishes partial state; serial fallback uses the same processing order. Renderer memory accounting includes routing metadata, scratch, and hierarchical alignment buffers. Callback sampling and compatible retargeting allocate nothing.
+
+## UI reuse and limits
+
+Group/Ungroup use Command+G / Command+Shift+G (Ctrl equivalents off macOS) through shared `TrackAction::shortcut`/`matches_shortcut`. Text fields, modal jobs/dialogs, active drags, focus loss, and held-key repeats keep their existing guards. Native dispatch consumes the forwarded egui event once. Group/Ungroup use `TrackAction`, including native macOS menu dispatch, context menus, selection guards, and history. Timeline and Mixer use `visible_tracks`, shared names, `mix_controls`, existing faders/knobs/meters, and normal selection borders. Group and Master headings align left in Timeline and Mixer; group name editors use the same alignment. Group arrows use a borderless disclosure button with the catalog folder chevron painter, standard icon size, secondary idle color, hover/focus text color, tooltip, and expanded-state accessibility. Keep the existing 28×22-point hit area and isolate collapse clicks from name dragging. Timeline track drag reuses name/blank-header input without a visible grip, insertion-line painting, edge scrolling, cancellation, and release-only commit; core validates parent and insertion boundaries.
+
+Timeline insets each complete child control panel, including the name, mix controls, and meters, by twice the shared toolbar padding per hierarchy level (16 logical points, capped at 48 to retain usable controls). Remove the old name-only indent. Keep all timeline lanes at the fixed control-column boundary. Extend each group selection rectangle through its last visible descendant, using the shared selection painter and unclipped subtree geometry even when its header is virtualized offscreen. Nested row dividers own only their inset left edge; the workspace owns the root left edge and shared right border. The last child and all enclosing groups share the same bottom boundary. Do not add a second root-group left stroke. Group append previews use the full container bottom. Before/after drops use the hovered row's parent and the inset header position to choose ancestor scope, retaining that parent when reordering a child at its bottom edge.
+
+The group effects target is the existing `EffectChainTarget::Track(group_id)`. No new processor, panel, catalog registration, or effect transfer implementation is needed. Existing scope validation rejects a child's instrument source on a group effect. Groups do not publish modulation providers and do not host an Instrument view. Audio imports and clip placement reject buses. Custom sends, feedback, sidechains, and pre-fader routing are outside this change.
+
+## Regression coverage
+
+- Core: legacy defaults, hierarchy validation, nested/nonadjacent grouping, cross-parent extraction, invalid/cyclic drops and atomic rollback, ungroup/delete/duplicate identities, collapsed visibility, solo path rules.
+- Engine: unity parity, nested gain/pan, shared nonlinear processing, nested latency alignment, serial/two-worker exact history under loops, collapse cache compatibility, routing invalidation, callback allocation guard and group meter output.
+- Project: save/reopen and render parity, undo/redo, unchanged source recording.
+- UI: Group/Ungroup, group effects targets and transfers, collapsed rows in both views, subtree selection, drag destination and cycle checks, existing modal/focus guards.
+
+See [validation history](../validation/README.md) for executed checks and platform limits.

@@ -37,6 +37,7 @@ pub struct PreparationStats {
 }
 struct TrackWork {
     index: usize,
+    group: bool,
     audio: AudioTrack,
     midi: Option<MidiTrackRuntime>,
     effects: EffectChain,
@@ -61,6 +62,9 @@ impl Batch {
         for work in &mut self.items {
             let started = Instant::now();
             work.output.resize(self.frames, [0.0; 2]);
+            if work.group {
+                continue;
+            }
             let mut processor = TrackProcessor {
                 audio: &mut work.audio,
                 midi: &mut work.midi,
@@ -241,6 +245,7 @@ impl ParallelTracks {
                 .items
                 .push(TrackWork {
                     index,
+                    group: renderer.plan.project.tracks[index].kind == daw_core::TrackKind::Group,
                     audio,
                     midi,
                     effects,
@@ -283,6 +288,15 @@ impl ParallelTracks {
                 self.slots[index] = Some(item);
             }
         }
+        // Restore all processors before processing the dependent bus stages.
+        for slot in &mut self.slots {
+            let item = slot.take().ok_or(())?;
+            renderer.audio_tracks.push(item.audio);
+            renderer.midi.push(item.midi);
+            renderer.effects.push(item.effects);
+            renderer.alignment.tracks.push(item.delay);
+            self.buffers[item.index] = item.output;
+        }
         if complete && !failed {
             for offset in 0..frames {
                 if (from + offset as u64)
@@ -292,23 +306,12 @@ impl ParallelTracks {
                     complete = false;
                     break;
                 }
-                let mut mix = [0.0; 2];
-                // Keep project order and each floating-point addition unchanged.
-                for item in self.slots.iter().flatten() {
-                    for (ch, value) in mix.iter_mut().enumerate() {
-                        *value += item.output[offset][ch];
-                    }
+                for (index, buffer) in self.buffers.iter().enumerate() {
+                    renderer.buses.output[index] = buffer[offset];
                 }
+                let mix = renderer.sample_buses(from + offset as u64, region, false);
                 renderer.sample_master(mix, from + offset as u64, region);
             }
-        }
-        for slot in &mut self.slots {
-            let item = slot.take().ok_or(())?;
-            renderer.audio_tracks.push(item.audio);
-            renderer.midi.push(item.midi);
-            renderer.effects.push(item.effects);
-            renderer.alignment.tracks.push(item.delay);
-            self.buffers[item.index] = item.output;
         }
         if failed {
             Err(())

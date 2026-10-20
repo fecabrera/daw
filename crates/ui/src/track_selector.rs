@@ -15,6 +15,7 @@ impl DawUi {
                     .tracks
                     .iter()
                     .filter(|t| self.view_mode != ViewMode::Instrument || t.kind == TrackKind::Midi)
+                    .filter(|t| self.view_mode != ViewMode::Edit || t.kind != TrackKind::Group)
                     .map(|t| (t.id, t.name.clone()))
                     .collect();
                 // Editor follows the active clip when Instrument or Timeline has selected another track.

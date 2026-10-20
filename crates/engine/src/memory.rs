@@ -24,6 +24,12 @@ impl RenderPlan {
         let mut b = other.project.clone();
         a.transport.playhead_frame = 0;
         b.transport.playhead_frame = 0;
+        for track in &mut a.tracks {
+            track.group_collapsed = false;
+        }
+        for track in &mut b.tracks {
+            track.group_collapsed = false;
+        }
         a == b
             && self.audio.len() == other.audio.len()
             && self.audio.iter().all(|(id, a)| {
@@ -93,6 +99,7 @@ impl Renderer {
                 + self.effects.iter().map(|e| e.heap_bytes()).sum::<u64>()
                 + self.master_effects.heap_bytes()
                 + self.alignment.heap_bytes()
+                + self.buses.heap_bytes()
                 + vec_bytes(&self.midi),
             shared_audio_bytes: shared.bytes,
         };

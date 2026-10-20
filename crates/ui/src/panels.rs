@@ -201,33 +201,29 @@ impl ControlPanel {
         };
         let text_offset = folder.map_or(indent, |_| 2.0 * (icon_size + padding));
         if let Some(open) = folder {
-            let icons = [
-                if open {
-                    crate::icons::Lucide::ChevronDown
-                } else {
-                    crate::icons::Lucide::ChevronRight
-                },
-                if open {
-                    crate::icons::Lucide::FolderOpen
-                } else {
-                    crate::icons::Lucide::Folder
-                },
-            ];
-            for (index, icon) in icons.into_iter().enumerate() {
-                icon.size(icon_size).color(color).image().paint_at(
-                    ui,
-                    Rect::from_center_size(
-                        egui::pos2(
-                            rect.left()
-                                + padding
-                                + icon_size * 0.5
-                                + index as f32 * (icon_size + padding),
-                            rect.center().y,
-                        ),
-                        Vec2::splat(icon_size),
+            let icon_rect = |index: usize| {
+                Rect::from_center_size(
+                    egui::pos2(
+                        rect.left()
+                            + padding
+                            + icon_size * 0.5
+                            + index as f32 * (icon_size + padding),
+                        rect.center().y,
                     ),
-                );
-            }
+                    Vec2::splat(icon_size),
+                )
+            };
+            crate::icons::paint_disclosure(ui, icon_rect(0), open, color);
+            let folder_icon = if open {
+                crate::icons::Lucide::FolderOpen
+            } else {
+                crate::icons::Lucide::Folder
+            };
+            folder_icon
+                .size(icon_size)
+                .color(color)
+                .image()
+                .paint_at(ui, icon_rect(1));
         }
         ui.painter().galley_with_override_text_color(
             rect.min + Vec2::new(padding + text_offset, padding),
@@ -251,6 +247,18 @@ impl ControlPanel {
         if bottom {
             painter.hline(row.x_range(), row.bottom() - 0.5, stroke);
         }
+    }
+
+    /// Nested rows share their right edge with the control column. Only their
+    /// inset left edge needs a separate divider, including a group's child area.
+    pub(super) fn row_left_divider(ui: &Ui, row: Rect, clip: Rect) {
+        ui.painter()
+            .with_clip_rect(clip.intersect(ui.clip_rect()))
+            .vline(
+                row.left() + 0.5,
+                row.y_range(),
+                Stroke::new(1.0, crate::theme::palette(ui.ctx()).border),
+            );
     }
 
     /// A fixed row shares its top separator with the preceding scroll region.

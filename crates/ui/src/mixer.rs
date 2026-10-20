@@ -279,7 +279,13 @@ impl DawUi {
                 .max_rect(tracks_rect),
         );
         tracks_ui.set_clip_rect(tracks_rect.intersect(ui.clip_rect()));
-        let tracks = self.session.project.tracks.clone();
+        let tracks: Vec<_> = self
+            .session
+            .project
+            .visible_tracks()
+            .into_iter()
+            .map(|i| self.session.project.tracks[i].clone())
+            .collect();
         let mut action = None;
         let mut outlines = Vec::new();
         egui::ScrollArea::horizontal()
@@ -407,10 +413,12 @@ impl DawUi {
         if let Some(track) = track {
             self.track_name(&mut content, track);
         } else {
-            content.add_sized(
-                [inner.width(), toolbars::CONTROL_HEIGHT],
-                egui::Label::new(egui::RichText::new("Master").size(HEADER_FONT_SIZE)),
-            );
+            rows::left_aligned(&mut content, toolbars::CONTROL_HEIGHT, |ui| {
+                ui.add(
+                    egui::Label::new(egui::RichText::new("Master").size(HEADER_FONT_SIZE))
+                        .halign(egui::Align::Min),
+                );
+            });
         }
         // Align all faders, meters, and bottom controls, including Master.
         let fader_height = (inner.height() - 154.0).clamp(24.0, 220.0);

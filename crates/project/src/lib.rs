@@ -295,6 +295,15 @@ impl Session {
         start: u64,
         overwrite: bool,
     ) -> Result<Id> {
+        if let Some(id) = track
+            && !self
+                .project
+                .tracks
+                .iter()
+                .any(|t| t.id == id && t.kind == daw_core::TrackKind::Audio)
+        {
+            return Err(Error("Audio imports require an audio track".into()));
+        }
         let data = data
             .at_sample_rate(self.project.sample_rate_hz)
             .map_err(error)?;

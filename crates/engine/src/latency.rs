@@ -55,6 +55,8 @@ pub(super) fn chain_frames(effects: &[EffectInstance], rate: u32) -> u64 {
 #[derive(Clone)]
 pub(super) struct Alignment {
     pub tracks: Vec<Delay>,
+    pub input_frames: Vec<u64>,
+    parents: Vec<(Id, Option<Id>, bool)>,
     index: std::collections::HashMap<Id, usize>,
     pub track_max: u64,
     pub total: u64,
@@ -63,30 +65,56 @@ pub(super) struct Alignment {
 }
 impl Alignment {
     pub fn heap_bytes(&self) -> u64 {
-        daw_unit_core::memory::vec_bytes(&self.tracks)
+        daw_unit_core::memory::vec_bytes(&self.input_frames)
+            + daw_unit_core::memory::vec_bytes(&self.parents)
+            + daw_unit_core::memory::vec_bytes(&self.tracks)
             + daw_unit_core::memory::map_bytes(&self.index)
             + self.tracks.iter().map(Delay::heap_bytes).sum::<u64>()
     }
 
     pub fn new(project: &Project) -> Self {
         let rate = project.sample_rate_hz;
-        let track_max = project
+        let index: std::collections::HashMap<_, _> = project
+            .tracks
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.id, i))
+            .collect();
+        let mut subtree: Vec<_> = project
             .tracks
             .iter()
             .map(|t| track_frames(t, rate))
-            .max()
-            .unwrap_or(0);
+            .collect();
+        let mut input_frames = vec![0; subtree.len()];
+        let mut track_max = 0;
+        for (i, t) in project.tracks.iter().enumerate().rev() {
+            subtree[i] += input_frames[i];
+            if let Some(parent) = t.group_id.and_then(|id| index.get(&id)) {
+                input_frames[*parent] = input_frames[*parent].max(subtree[i]);
+            } else {
+                track_max = track_max.max(subtree[i]);
+            }
+        }
         let total = track_max + chain_frames(&project.master.effects, rate);
         let tracks: Vec<_> = project
             .tracks
             .iter()
-            .map(|t| Delay {
-                id: t.id,
-                samples: vec![([0.0; 2], false); (track_max - track_frames(t, rate)) as usize],
-                index: 0,
+            .enumerate()
+            .map(|(i, t)| {
+                let sibling_max = t
+                    .group_id
+                    .and_then(|id| index.get(&id))
+                    .map_or(track_max, |p| input_frames[*p]);
+                Delay::new(t.id, sibling_max - subtree[i])
             })
             .collect();
         Self {
+            input_frames,
+            parents: project
+                .tracks
+                .iter()
+                .map(|t| (t.id, t.group_id, t.kind == daw_core::TrackKind::Group))
+                .collect(),
             index: tracks.iter().enumerate().map(|(i, t)| (t.id, i)).collect(),
             tracks,
             track_max,
@@ -96,6 +124,12 @@ impl Alignment {
         }
     }
     pub fn compatible(&self, old: &Self) -> bool {
+        // A routing change needs exact group history reconstructed on a worker.
+        let grouped =
+            |parents: &[(Id, Option<Id>, bool)]| parents.iter().any(|(_, p, g)| p.is_some() || *g);
+        if (grouped(&self.parents) || grouped(&old.parents)) && self.parents != old.parents {
+            return false;
+        }
         // Adding/removing ordinary tracks must not reset existing zero-latency DSP.
         if self.total == 0 && old.total == 0 {
             return true;
@@ -104,9 +138,10 @@ impl Alignment {
             && self.track_max == old.track_max
             && self.tracks.len() == old.tracks.len()
             && self.tracks.iter().all(|a| {
-                old.index
-                    .get(&a.id)
-                    .is_some_and(|&i| a.samples.len() == old.tracks[i].samples.len())
+                old.index.get(&a.id).is_some_and(|&i| {
+                    a.samples.len() == old.tracks[i].samples.len()
+                        && self.input_frames[self.index[&a.id]] == old.input_frames[i]
+                })
             })
     }
     pub fn inherit(&mut self, old: &mut Self) {

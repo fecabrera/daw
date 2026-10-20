@@ -5,6 +5,52 @@ pub const COMPACT_BUTTON_SIZE: f32 = 18.0;
 pub const TOOLBAR_BUTTON_SIZE: f32 = 24.0;
 pub const TOOLBAR_ICON_SIZE: f32 = 16.0;
 
+/// Shared borderless disclosure artwork for catalog folders and track groups.
+pub(super) fn paint_disclosure(ui: &Ui, rect: egui::Rect, open: bool, color: Color32) {
+    let icon = if open {
+        Lucide::ChevronDown
+    } else {
+        Lucide::ChevronRight
+    };
+    icon.size(TOOLBAR_ICON_SIZE)
+        .color(color)
+        .image()
+        .paint_at(ui, rect);
+}
+
+pub(super) fn disclosure_button(ui: &mut Ui, open: bool, name: &str, enabled: bool) -> Response {
+    ui.add_enabled_ui(enabled, |ui| {
+        let (rect, response) = ui.allocate_exact_size(
+            Vec2::new(28.0, crate::toolbars::CONTROL_HEIGHT),
+            egui::Sense::click(),
+        );
+        let palette = crate::theme::palette(ui.ctx());
+        let color = if ui.is_enabled() && (response.hovered() || response.has_focus()) {
+            palette.text
+        } else {
+            palette.secondary
+        };
+        paint_disclosure(
+            ui,
+            egui::Rect::from_center_size(rect.center(), Vec2::splat(TOOLBAR_ICON_SIZE)),
+            open,
+            color,
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::CollapsingHeader,
+                ui.is_enabled(),
+                open,
+                name,
+            )
+        });
+        response
+            .on_hover_text(name)
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+    })
+    .inner
+}
+
 pub fn configure(ctx: &Context) {
     egui_extras::install_image_loaders(ctx);
 }

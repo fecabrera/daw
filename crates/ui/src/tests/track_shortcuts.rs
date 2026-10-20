@@ -297,7 +297,8 @@ fn menu_frame(
 ) -> egui::FullOutput {
     let mut output = ctx.run_ui(
         egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 200.0))),
+            // Leave room for the complete Track menu, including group actions.
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 400.0))),
             events,
             ..Default::default()
         },

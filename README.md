@@ -9,7 +9,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Instruments:** build layered synthesizers and samplers, with modulation and a shared Main bus.
 - **Instrument components:** [Oscillator](docs/instruments/oscillator.md), [Sampler](docs/instruments/sampler.md), [Envelope](docs/instruments/envelope.md), [LFO](docs/instruments/lfo.md), [Amplitude](docs/instruments/amplitude.md), and [Macro](docs/instruments/macro.md).
 - **Effects:** [3-band EQ](docs/effects/equalizer.md), [Drive](docs/effects/drive.md), [Bitcrusher](docs/effects/bitcrusher.md), [Saturator](docs/effects/saturator.md), [Auto-filter](docs/effects/auto-filter.md), [Compressor](docs/effects/compressor.md), [OTT](docs/effects/ott.md), [Limiter](docs/effects/limiter.md), [Direction Mixer](docs/effects/direction-mixer.md), and [Stereo Spread](docs/effects/stereo-spread.md).
-- **Mixer:** track gain, pan, mute, and solo controls, plus master gain.
+- **Mixer:** track gain, pan, mute, and solo controls, [track group buses](docs/editing/track-groups.md) with shared effects, and master gain.
 - **Playback:** tempo controls, loop playback, and stereo level meters.
 - **Editing history:** [undo and redo](docs/editing/undo-redo.md) for project edits.
 - **Projects:** save and open projects, with configurable audio processing settings.

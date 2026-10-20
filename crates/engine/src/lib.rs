@@ -1,3 +1,4 @@
+mod buses;
 mod cache_policy;
 pub use cache_policy::{CachePolicy, CacheProfile};
 mod memory;
@@ -41,7 +42,7 @@ impl RenderPlan {
                 .project
                 .tracks
                 .iter()
-                .any(|t| t.kind == daw_core::TrackKind::Midi)
+                .any(|t| t.kind != daw_core::TrackKind::Audio)
     }
     /// Exact isolated sample. Effects/MIDI require replay from zero: use a persistent
     /// `Renderer::render_offline_at` for sequential or forward-range consumers.
@@ -186,6 +187,7 @@ pub struct Renderer {
     effects: Vec<effects::EffectChain>,
     master_effects: effects::EffectChain,
     alignment: latency::Alignment,
+    buses: buses::Buses,
     midi: Vec<Option<midi::MidiTrackRuntime>>,
     master: f32,
     master_target: f32,
@@ -246,13 +248,14 @@ impl Renderer {
             .iter()
             .map(|t| schedule::AudioTrack::new(&plan, t))
             .collect();
-        let any_solo = plan.project.tracks.iter().any(|t| t.soloed);
+        let audible = plan.project.track_mix_audible();
         let gains = plan
             .project
             .tracks
             .iter()
-            .map(|t| {
-                let gate = if daw_core::mix_audible(t.muted, t.soloed, any_solo) {
+            .enumerate()
+            .map(|(index, t)| {
+                let gate = if audible[index] {
                     linear_gain(t.gain_db)
                 } else {
                     0.0
@@ -314,6 +317,7 @@ impl Renderer {
         plan.project.sample_rate_hz.hash(&mut hash);
         for (track, runtime) in plan.project.tracks.iter().zip(&midi) {
             track.id.hash(&mut hash);
+            track.group_id.hash(&mut hash);
             track.effects.len().hash(&mut hash);
             if let Some(runtime) = runtime {
                 Some(runtime.fingerprint()).hash(&mut hash);
@@ -386,7 +390,9 @@ impl Renderer {
         }
         let source_fingerprint = hash.finish();
         let alignment = latency::Alignment::new(&plan.project);
+        let buses = buses::Buses::new(&plan.project);
         let mut renderer = Self {
+            buses,
             alignment,
             end_frame,
             audio_tracks,
@@ -606,6 +612,21 @@ impl Renderer {
             playback_start: self.playback_start,
         }
     }
+    /// Shared preparation admission for cache workers and direct reconstruction.
+    /// A bus chain must retain the history of its complete child mix.
+    fn needs_processing_history(&self) -> bool {
+        self.midi
+            .iter()
+            .flatten()
+            .any(|m| m.needs_envelope_history())
+            || (self
+                .plan
+                .project
+                .tracks
+                .iter()
+                .any(|t| t.kind == daw_core::TrackKind::Group)
+                && self.plan.project.all_effects().next().is_some())
+    }
     /// Control/worker thread only: reconstruct sources and alignment at the requested clock.
     pub fn prepare_transport(&mut self, state: TransportState) {
         self.prepare_transport_cancellable(state, || false);
@@ -621,11 +642,7 @@ impl Renderer {
         self.paused = state.paused;
         self.playback_start = state.playback_start;
         self.reset_processing();
-        let history = self
-            .midi
-            .iter()
-            .flatten()
-            .any(|m| m.needs_envelope_history());
+        let history = self.needs_processing_history();
         if history {
             let block = u64::from(self.plan.project.buffer_size_frames.max(1));
             for frame in 0..state.frame {
@@ -842,31 +859,9 @@ impl Renderer {
         }
     }
     fn offline_frame(&mut self, frame: u64, live: bool) -> [f32; 2] {
-        let mut mix = [0.0; 2];
         let loop_region = self.loop_region(live);
-        for (index, ((track, midi), effects)) in self
-            .plan
-            .project
-            .tracks
-            .iter()
-            .zip(&mut self.midi)
-            .zip(&mut self.effects)
-            .enumerate()
-        {
-            let (source, mono) = track_processing::TrackProcessor {
-                audio: &mut self.audio_tracks[index],
-                midi,
-                effects,
-                delay: &mut self.alignment.tracks[index],
-                clips: &track.clips,
-            }
-            .sample(frame, self.plan.project.tempo_bpm, loop_region, true);
-            let gains = self.gains[index].target;
-            let offset = if mono { 0 } else { 2 };
-            for ch in 0..2 {
-                mix[ch] += source[ch] * gains[offset + ch];
-            }
-        }
+        self.sample_tracks(frame, loop_region, true, false);
+        let mix = self.sample_buses(frame, loop_region, false);
         self.sample_master(mix, frame, loop_region)
             .map(|value| value * self.master_target)
     }
@@ -938,42 +933,8 @@ impl Renderer {
                     self.playhead
                 };
                 let loop_region = self.loop_region(true);
-                for (index, (((track, g), midi), effects)) in self
-                    .plan
-                    .project
-                    .tracks
-                    .iter()
-                    .zip(&mut self.gains)
-                    .zip(&mut self.midi)
-                    .zip(&mut self.effects)
-                    .enumerate()
-                {
-                    if g.remaining > 0 {
-                        for ch in 0..4 {
-                            g.value[ch] += (g.target[ch] - g.value[ch]) / g.remaining as f32;
-                        }
-                        g.remaining -= 1;
-                    }
-                    let (source, mono) = track_processing::TrackProcessor {
-                        audio: &mut self.audio_tracks[index],
-                        midi,
-                        effects,
-                        delay: &mut self.alignment.tracks[index],
-                        clips: &track.clips,
-                    }
-                    .sample(
-                        frame,
-                        self.plan.project.tempo_bpm,
-                        loop_region,
-                        self.playing,
-                    );
-                    let base = if mono { 0 } else { 2 };
-                    for ch in 0..2 {
-                        let sample = source[ch] * g.value[base + ch];
-                        mix[ch] += sample;
-                        g.peak[ch] = g.peak[ch].max((sample * self.ramp).abs());
-                    }
-                }
+                self.sample_tracks(frame, loop_region, self.playing, true);
+                mix = self.sample_buses(frame, loop_region, true);
                 mix = self.sample_master(mix, frame, loop_region);
                 self.latent_held_mix = mix;
             }

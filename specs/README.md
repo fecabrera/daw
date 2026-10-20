@@ -20,6 +20,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Macro](instruments/macro.md).
 - [Instrument Main](instruments/main.md).
 - [Per-layer effects](instruments/layer-effects.md): saved stereo bus chains, shared controls, modulation, and latency alignment.
+- [Track groups as processing buses](editing/track-groups.md).
 - [Project undo and redo](editing/undo-redo.md).
 - [Component editing and registration](editing/components.md).
 - [Clip settings](editing/clip-settings.md).

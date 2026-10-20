@@ -59,6 +59,10 @@ Silent clips stay silent when selected with audible clips. The audible clips rec
 
 If any selected clip contains audio, transpose previews for the whole group until release. All selected clips, including MIDI clips, change together after preparation succeeds. Failure or cancellation keeps the previous settings and audio for the whole group. Changing the selection cancels an unconfirmed text edit or transpose preview.
 
+## Track groups
+
+Select track headers and choose **Track > Group selected tracks** to create a shared processing bus. Group and Master labels align left. Use the borderless group arrow to hide or show children. Drag tracks into a group, or move the complete group from its name or blank header area. See [Track groups](../editing/track-groups.md) for routing, shared effects, and Ungroup.
+
 ## Add effects
 
-Select a track or Master, then use the [Effects catalog](instrument.md#effects). Browse EQ & Filters, Dynamics, Distortion, and Imaging. Double-click an effect, select effects and press Enter, or drag them into the effects lane. Click a folder to hide or show its entries.
+Select a track, group, or Master, then use the [Effects catalog](instrument.md#effects). Browse EQ & Filters, Dynamics, Distortion, and Imaging. Double-click an effect, select effects and press Enter, or drag them into the effects lane. Click a folder to hide or show its entries.

@@ -79,13 +79,13 @@ fn header_spacing_selects_clips_but_names_and_controls_keep_their_actions() {
     frame(&mut app, &ctx, vec![]);
     let y = app.lane_bounds[&tracks[0]].top() + 18.0;
     let left = app.timeline_bounds.left() - TRACK_WIDTH;
-    double_click(&mut app, &ctx, Pos2::new(left + 32.0, y)); // Gap after the grip.
+    double_click(&mut app, &ctx, Pos2::new(left + 110.0, y)); // Blank name area.
     assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[1]]));
     app.select_clip(ids[2], tracks[1], false);
     double_click(&mut app, &ctx, Pos2::new(left + 178.0, y)); // Mute button.
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
     assert!(!app.session.project.tracks[0].muted);
-    double_click(&mut app, &ctx, Pos2::new(left + 50.0, y)); // Visible name text.
+    double_click(&mut app, &ctx, Pos2::new(left + 15.0, y)); // Visible name text.
     assert_eq!(app.track_name_edit.as_ref().unwrap().track, tracks[0]);
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
 }

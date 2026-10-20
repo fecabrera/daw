@@ -4333,3 +4333,56 @@ fn undo_history_restores_prepared_audio_across_import_stretch_rate_and_save_as()
     let reopened = Session::open(session.folder.as_ref().unwrap()).unwrap();
     assert_eq!(reopened.project.tracks, session.project.tracks);
 }
+
+#[test]
+fn group_buses_roundtrip_audio_effects_collapse_and_undo_without_changing_sources() {
+    use daw_core::{EffectInstance, Id};
+    let f = Fixture::new();
+    let source = f.wav("group-source.wav", 48_000, 2, 24, false);
+    let bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let child = session.project.tracks[0].id;
+    let mut history = daw_project::SessionHistory::new(&session, true).unwrap();
+    let group = Id::new_v4();
+    session
+        .project
+        .edit(Edit::GroupTracks {
+            track_ids: vec![child],
+            group_id: group,
+            name: "Bus".into(),
+        })
+        .unwrap();
+    session
+        .project
+        .edit(Edit::SetEffects {
+            track_id: group,
+            effects: vec![EffectInstance::drive(), EffectInstance::limiter()],
+            compact: false,
+        })
+        .unwrap();
+    session
+        .project
+        .edit(Edit::SetGroupCollapsed {
+            track_id: group,
+            collapsed: true,
+        })
+        .unwrap();
+    session.project.tracks[0].gain_db = -6.0;
+    history.record(&session).unwrap();
+    let prepared = session.plan();
+    session.save(&f.0.join("group-project")).unwrap();
+    let reopened = Session::open(&f.0.join("group-project")).unwrap();
+    assert_eq!(session.project, reopened.project);
+    let mut before = vec![[0.0; 2]; 4096];
+    let mut after = before.clone();
+    prepared.render(0, &mut before);
+    reopened.plan().render(0, &mut after);
+    assert_eq!(before, after);
+    assert_eq!(history.undo(&session).unwrap().project.tracks.len(), 1);
+    assert_eq!(
+        history.redo(&session).unwrap().project.tracks[1].group_id,
+        Some(group)
+    );
+    assert_eq!(fs::read(&source).unwrap(), bytes);
+}

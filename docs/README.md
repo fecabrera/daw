@@ -36,6 +36,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 ## Workflows and limits
 
 - [Modulation](modulation/README.md) and [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).
+- [Track groups](editing/track-groups.md): shared processing buses and nested track organization.
 - [Undo and redo](editing/undo-redo.md).
 - [Moving and copying units](editing/units.md).
 - [Time stretching and offline pitch changes](audio/time-stretch.md).
