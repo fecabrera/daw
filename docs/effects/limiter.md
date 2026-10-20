@@ -17,7 +17,15 @@ Input raises or lowers the signal before limiting. Release sets recovery time. L
 
 Peak works on sample peaks. True Peak also estimates peaks between samples. L/R uses linked stereo reduction. M/S treats the center and side content separately, then applies final stereo peak protection.
 
-The read-only rail shows gain reduction from 0–24 dB; hover for larger readings. Compact and collapsed units hide it. Header power bypasses limiting while retaining the unit's delay and settings. Turning the unit off clears the rail and stops meter updates. Turning it on resumes monitoring.
+Header power bypasses limiting while retaining the unit's delay and settings.
+
+## Gain-reduction meter
+
+The rail shows current gain reduction from 0–24 dB. A thin line in the secondary text color marks the highest reduction since the peak was reset. Click the rail to reset this line. The current reading and limiting settings stay the same. If limiting continues, new readings can immediately set another peak.
+
+Hover for current and peak readings, including reductions above 24 dB. The peak line stops at the end of the rail. Compact and collapsed units hide the meter, but peak capture continues. The held peak remains during pause, stop, and seeking until you reset it or turn the unit off.
+
+Turning the unit off clears the fill and peak line and stops meter updates. Turning it on resumes monitoring. The current reading shows zero when playback is stopped or paused, or no output device is available. Peak readings are temporary monitor state and are not saved with the project.
 
 ## Modulation
 

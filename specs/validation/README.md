@@ -3393,3 +3393,20 @@ Completed checks:
 Relative file links in the changed guide, Compressor specification and architecture document — 75 checked, no missing targets. `git diff --check` — passed.
 
 Native pointer behavior, physical-device playback/listening and Windows/Linux execution remain unverified. Automated painting and headless callback tests do not establish native-device or platform acceptance.
+
+## Limiter peak reduction marker — 2026-10-20
+
+Limiter now uses the same `PeakMeter`/`UnitMeter` storage and stable-ID output binding as Compressor. Both UI meters share peak painting, reset guards, tooltip and accessibility through `meters::GainReduction`. Limiter retains its 4-point rail and control layout. Its 1-point secondary-color line holds the maximum reduction until primary-click reset or bypass. Peak capture continues while hidden; pause, stop, seek and compatible edits retain the hold. Reset changes no settings or current reading, and active processing can immediately set another peak. Prepared attachment and detached snapshots keep background reconstruction out of the hold. No audio, latency or project-format change is introduced.
+
+Focused automated checks completed:
+
+- `cargo test -p daw-limiter held_reduction -- --nocapture` — passed. All six project rates, Peak/True Peak and L/R/M/S combinations match an unmonitored audio reference and latency. The test covers sample-level maxima, recovery, independent reset, compatible retarget/reset retention, bypass clearing/suspension and re-enable.
+- `cargo test -p daw-ui meters::tests` — **7 passed**. Shared tests cover both rail layouts and both themes, secondary-color geometry, display saturation, click reset, unchanged current readings, disabled/focus/secondary-click guards and no parameter-change response. A Limiter panel test confirms click wiring, unchanged settings, and off-state clearing in compact/collapsed views.
+- `cargo test -p daw-output gain_reduction_meter_tests` — **2 passed**, extended to both Compressor and Limiter. Track, Master, regular-layer and Main bindings retain independent holds and stable handles. Callback sample processing passes the existing allocation/deallocation guard. Stop retains held readings; Limiter's primed current cell remains separate from transport-masked display state.
+- `cargo test --workspace` — **1012 passed, 0 failed, 2 ignored**. The ignored cases are the existing extended time-stretch acceptance matrices.
+
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` — passed. CLI build and `python3 tools/check_cli.py` — passed, covering codecs/bitrates, repeatability, missing sources, eight-track projects, overwrite handling and exit codes. `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app` without relaunching it.
+
+Relative file links in the changed guide, Limiter specification and architecture documents — 135 checked, no missing targets. `git diff --check` — passed.
+
+Native pointer behavior, physical-device playback/listening and Windows/Linux execution remain unverified. Automated painting and headless callback tests do not establish native-device or platform acceptance.

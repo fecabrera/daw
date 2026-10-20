@@ -1,6 +1,6 @@
 //! Stereo limiter with fixed host-compensated latency and allocation-free processing.
 use daw_unit_core::{
-    EffectUnit, LIMITER_TYPE_ID, LimiterMode, LimiterRouting, LimiterSettings, PortKind,
+    EffectUnit, LIMITER_TYPE_ID, LimiterMode, LimiterRouting, LimiterSettings, PeakMeter, PortKind,
     ProcessingContext, UnitDescriptor, UnitMeter,
 };
 use std::sync::{Arc, atomic::AtomicU32};
@@ -70,7 +70,7 @@ pub struct Limiter {
     true_peak: bool,
     guard: true_peak::Guard,
     reduction_db: f32,
-    meter: UnitMeter<AtomicU32>,
+    meter: UnitMeter<PeakMeter>,
 }
 impl Limiter {
     /// Fixed maximum lookahead plus the reconstruction guard block, even when bypassed.
@@ -119,6 +119,10 @@ impl Limiter {
         self.true_peak = settings.mode == LimiterMode::TruePeak;
     }
     pub fn set_gain_reduction_meter(&mut self, meter: Arc<AtomicU32>) {
+        self.set_gain_reduction_peak_meter(Arc::new(PeakMeter::new(meter)));
+    }
+    /// Shared instantaneous/held monitoring, attached before callback publication.
+    pub fn set_gain_reduction_peak_meter(&mut self, meter: Arc<PeakMeter>) {
         self.meter.attach(meter, self.reduction_db);
     }
     pub fn gain_reduction_db(&self) -> f32 {

@@ -21,6 +21,67 @@ fn render(rate: u32, settings: &LimiterSettings, input: &[[f32; 2]]) -> Vec<[f32
         .collect()
 }
 #[test]
+fn held_reduction_captures_sample_peaks_without_changing_audio_or_latency() {
+    for rate in RATES {
+        for mode in [LimiterMode::Peak, LimiterMode::TruePeak] {
+            for routing in [LimiterRouting::LeftRight, LimiterRouting::MidSide] {
+                let mut settings = LimiterSettings {
+                    mode,
+                    routing,
+                    ceiling_db: -6.0,
+                    release_ms: 1.0,
+                    ..Default::default()
+                };
+                let mut monitored = unit(rate, &settings);
+                let mut reference = unit(rate, &settings);
+                let meter = Arc::new(PeakMeter::default());
+                monitored.set_gain_reduction_peak_meter(meter.clone());
+                assert_eq!(monitored.latency_frames(), reference.latency_frames());
+                let mut peak = 0.0_f32;
+                for frame in 0..6000 {
+                    let input = if frame < 500 { [4.0, -1.0] } else { [0.0; 2] };
+                    assert_eq!(
+                        monitored.process_sample(input),
+                        reference.process_sample(input)
+                    );
+                    peak = peak.max(monitored.gain_reduction_db());
+                }
+                assert_eq!(meter.peak(), peak);
+                assert!(peak > 6.0);
+                assert!(meter.reading() < peak * 0.1);
+                let current = meter.reading();
+                meter.reset_peak();
+                assert_eq!(meter.peak(), 0.0);
+                assert_eq!(meter.reading(), current);
+                for _ in 0..2000 {
+                    monitored.process_sample([4.0, -1.0]);
+                }
+                assert!(meter.peak() > 6.0);
+                let held = meter.peak();
+                monitored.retarget(&settings);
+                monitored.reset();
+                assert_eq!(meter.peak(), held);
+                assert_eq!(meter.reading(), 0.0);
+                settings.enabled = false;
+                monitored.retarget(&settings);
+                assert_eq!(meter.peak(), 0.0);
+                for _ in 0..2000 {
+                    monitored.process_sample([4.0, -1.0]);
+                }
+                assert_eq!(meter.reading(), 0.0);
+                assert_eq!(meter.peak(), 0.0);
+                settings.enabled = true;
+                monitored.retarget(&settings);
+                for _ in 0..2000 {
+                    monitored.process_sample([4.0, -1.0]);
+                }
+                assert!(meter.peak() > 6.0);
+            }
+        }
+    }
+}
+
+#[test]
 fn bypass_retains_exact_audio_and_fixed_latency_and_reset_at_all_rates() {
     for rate in RATES {
         let s = LimiterSettings {

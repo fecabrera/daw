@@ -575,7 +575,7 @@ impl EffectChain {
                 unit.set_gain_reduction_peak_meter(meter.clone())
             }
             Some((_, Some(RuntimeEffect::Limiter(unit, _)))) => {
-                unit.set_gain_reduction_meter(meter.current().clone())
+                unit.set_gain_reduction_peak_meter(meter.clone())
             }
             _ => {}
         }

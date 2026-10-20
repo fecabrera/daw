@@ -56,15 +56,16 @@ fn row(
         }
     }).rect
 }
-pub(super) fn show(
+pub(super) fn show<'a>(
     ui: &mut Ui,
     settings: &mut LimiterSettings,
     compact: bool,
     height: f32,
-    reduction_db: f32,
+    reduction_db: impl Into<meters::GainReduction<'a>>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
+    let reduction_db = reduction_db.into();
     ui.scope_builder(
         egui::UiBuilder::new()
             .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
@@ -77,11 +78,11 @@ fn show_inner(
     settings: &mut LimiterSettings,
     compact: bool,
     height: f32,
-    reduction_db: f32,
+    reduction_db: meters::GainReduction<'_>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
-    let reduction_db = meters::unit_reading(settings.enabled, reduction_db);
+    let reduction_db = reduction_db.for_unit(settings.enabled);
     let bases = [
         settings.input_db,
         settings.release_ms,

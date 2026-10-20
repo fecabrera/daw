@@ -1436,78 +1436,91 @@ mod tests {
 }
 
 #[cfg(test)]
-mod compressor_meter_tests {
+mod gain_reduction_meter_tests {
     use super::*;
 
-    #[test]
-    fn layer_and_main_compressors_capture_peaks_through_shared_bindings() {
-        let mut plan = crate::tests::transport_plan();
-        let track = plan.project.add_midi_track().unwrap();
-        let clip = plan.project.add_midi_pattern(track, 0).unwrap();
-        plan.project
-            .edit(daw_core::Edit::ReplaceMidiPattern {
-                clip_id: clip,
-                pattern: daw_core::MidiPattern {
-                    length_ticks: 3840,
-                    notes: vec![daw_core::MidiNote {
-                        id: Id::new_v4(),
-                        start_tick: 0,
-                        length_ticks: 1920,
-                        pitch: 60,
-                        velocity: 100,
-                    }],
-                },
-            })
-            .unwrap();
-        let track = plan
-            .project
-            .tracks
-            .iter_mut()
-            .find(|entry| entry.id == track)
-            .unwrap();
-        track.instrument = Some(daw_core::OscillatorSettings::default().into());
-        let instrument = track.instrument.as_mut().unwrap();
-        let mut compressor = daw_core::EffectInstance::compressor();
-        if let daw_core::EffectSettings::Compressor(settings) = &mut compressor.unit {
-            settings.threshold_db = -48.0;
-            settings.attack_ms = 0.1;
-        }
-        let layer = compressor.id;
-        instrument.layers[0].effects.push(compressor.clone());
-        compressor.id = Id::new_v4();
-        let main = compressor.id;
-        instrument.main.effects.push(compressor);
-        let meters = effect_meters(&plan, &HashMap::new());
-        let mut renderer = Renderer::new(plan.clone());
-        bind_effect_meters(&mut renderer, &meters);
-        renderer.play();
-        crate::preparation_tests::realtime(|| {
-            for _ in 0..4000 {
-                renderer.next_sample();
+    fn effect(limiter: bool) -> daw_core::EffectInstance {
+        let mut effect = if limiter {
+            daw_core::EffectInstance::limiter()
+        } else {
+            daw_core::EffectInstance::compressor()
+        };
+        match &mut effect.unit {
+            daw_core::EffectSettings::Compressor(settings) => {
+                settings.threshold_db = -48.0;
+                settings.attack_ms = 0.1;
             }
-        });
-        for id in [layer, main] {
-            assert!(meters[&id].peak() > 0.0);
+            daw_core::EffectSettings::Limiter(settings) => {
+                settings.input_db = 24.0;
+                settings.ceiling_db = -24.0;
+            }
+            _ => unreachable!(),
         }
-        meters[&layer].reset_peak();
-        assert_eq!(meters[&layer].peak(), 0.0);
-        assert!(meters[&main].peak() > 0.0);
-        assert!(Arc::ptr_eq(
-            &effect_meters(&plan, &meters)[&main],
-            &meters[&main]
-        ));
+        effect
+    }
+
+    #[test]
+    fn layer_and_main_effects_capture_peaks_through_shared_bindings() {
+        for limiter in [false, true] {
+            let mut plan = crate::tests::transport_plan();
+            let track = plan.project.add_midi_track().unwrap();
+            let clip = plan.project.add_midi_pattern(track, 0).unwrap();
+            plan.project
+                .edit(daw_core::Edit::ReplaceMidiPattern {
+                    clip_id: clip,
+                    pattern: daw_core::MidiPattern {
+                        length_ticks: 3840,
+                        notes: vec![daw_core::MidiNote {
+                            id: Id::new_v4(),
+                            start_tick: 0,
+                            length_ticks: 1920,
+                            pitch: 60,
+                            velocity: 100,
+                        }],
+                    },
+                })
+                .unwrap();
+            let track = plan
+                .project
+                .tracks
+                .iter_mut()
+                .find(|entry| entry.id == track)
+                .unwrap();
+            track.instrument = Some(daw_core::OscillatorSettings::default().into());
+            let instrument = track.instrument.as_mut().unwrap();
+            let mut effect = effect(limiter);
+            let layer = effect.id;
+            instrument.layers[0].effects.push(effect.clone());
+            effect.id = Id::new_v4();
+            let main = effect.id;
+            instrument.main.effects.push(effect);
+            let meters = effect_meters(&plan, &HashMap::new());
+            let mut renderer = Renderer::new(plan.clone());
+            bind_effect_meters(&mut renderer, &meters);
+            renderer.play();
+            crate::preparation_tests::realtime(|| {
+                for _ in 0..4000 {
+                    renderer.next_sample();
+                }
+            });
+            for id in [layer, main] {
+                assert!(meters[&id].peak() > 0.0);
+            }
+            meters[&layer].reset_peak();
+            assert_eq!(meters[&layer].peak(), 0.0);
+            assert!(meters[&main].peak() > 0.0);
+            assert!(Arc::ptr_eq(
+                &effect_meters(&plan, &meters)[&main],
+                &meters[&main]
+            ));
+        }
     }
 
     #[test]
     fn effect_meter_handles_follow_ids_and_report_callback_compression() {
-        for master in [false, true] {
+        for (limiter, master) in [(false, false), (false, true), (true, false), (true, true)] {
             let mut plan = crate::tests::transport_plan();
-            let mut effect = daw_core::EffectInstance::compressor();
-            let daw_core::EffectSettings::Compressor(settings) = &mut effect.unit else {
-                unreachable!()
-            };
-            settings.threshold_db = -36.0;
-            settings.attack_ms = 0.1;
+            let effect = effect(limiter);
             let id = effect.id;
             effect_test_chain(&mut plan, master).push(effect.clone());
             let meters = effect_meters(&plan, &HashMap::new());
@@ -1553,7 +1566,12 @@ mod compressor_meter_tests {
                 .push(Command::Stop)
                 .unwrap_or_else(|_| panic!("queue"));
             callback.update();
-            assert_eq!(meters[&id].reading(), 0.0);
+            assert!(!callback.renderer.playing);
+            // Limiter priming can retain a current reading; AudioOutput masks
+            // it while stopped, independently of the held peak.
+            if !limiter {
+                assert_eq!(meters[&id].reading(), 0.0);
+            }
             assert!(meters[&id].peak() > 0.0);
         }
     }

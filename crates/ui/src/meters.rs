@@ -80,6 +80,52 @@ impl<'a> GainReduction<'a> {
         }
         self
     }
+    fn current(self) -> f32 {
+        if self.current_db.is_finite() {
+            self.current_db.max(0.0)
+        } else {
+            0.0
+        }
+    }
+    fn held(self) -> f32 {
+        unit_reading(self.enabled, self.peak.map_or(0.0, |peak| peak.peak()))
+    }
+    fn interact(self, ui: &Ui, response: Response, description: &str) -> Response {
+        if response.clicked_by(egui::PointerButton::Primary)
+            && ui.is_enabled()
+            && ui.input(|input| input.focused)
+            && self.enabled
+            && let Some(peak) = self.peak
+        {
+            peak.reset_peak();
+        }
+        let db = self.current();
+        let held = self.held();
+        response.widget_info(|| {
+            let mut info = egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                ui.is_enabled(),
+                format!("{description}. Click to reset peak"),
+            );
+            info.value = Some(f64::from(db));
+            info
+        });
+        response.on_hover_text(format!(
+            "{description}: {db:.1} dB. Peak: {held:.1} dB. Click to reset peak; 0–24 dB display scale."
+        ))
+    }
+    fn paint_peak(self, ui: &Ui, rail: Rect) {
+        let held = self.held();
+        if held > 0.0 {
+            let x = (rail.left() + rail.width() * (held / 24.0).min(1.0))
+                .clamp(rail.left() + 0.5, rail.right() - 0.5);
+            ui.painter().vline(
+                x,
+                rail.y_range(),
+                Stroke::new(1.0, theme::palette(ui.ctx()).secondary),
+            );
+        }
+    }
 }
 impl From<f32> for GainReduction<'_> {
     fn from(current_db: f32) -> Self {
@@ -89,25 +135,10 @@ impl From<f32> for GainReduction<'_> {
 
 /// Compression before Dry/Wet. Click resets only the held maximum.
 pub fn gain_reduction(ui: &mut Ui, reading: GainReduction<'_>) -> Response {
-    let db = if reading.current_db.is_finite() {
-        reading.current_db.max(0.0)
-    } else {
-        0.0
-    };
+    let db = reading.current();
     let (rect, response) =
         ui.allocate_exact_size(Vec2::splat(crate::knobs::CHOICE_SIZE), Sense::click());
-    if response.clicked_by(egui::PointerButton::Primary)
-        && ui.is_enabled()
-        && ui.input(|input| input.focused)
-        && reading.enabled
-        && let Some(peak) = reading.peak
-    {
-        peak.reset_peak();
-    }
-    let held = unit_reading(
-        reading.enabled,
-        reading.peak.map_or(0.0, |peak| peak.peak()),
-    );
+    let response = reading.interact(ui, response, "Gain reduction before Dry/Wet");
     let palette = theme::palette(ui.ctx());
     let painter = ui.painter();
     let rail = Rect::from_center_size(rect.center(), Vec2::new(rect.width() - 8.0, 8.0));
@@ -119,11 +150,7 @@ pub fn gain_reduction(ui: &mut Ui, reading: GainReduction<'_>) -> Response {
     if fill.width() > 0.0 {
         painter.rect_filled(fill, 1.0, theme::accent(ui.ctx()));
     }
-    if held > 0.0 {
-        let x = (rail.left() + rail.width() * (held / 24.0).min(1.0))
-            .clamp(rail.left() + 0.5, rail.right() - 0.5);
-        painter.vline(x, rail.y_range(), Stroke::new(1.0, palette.secondary));
-    }
+    reading.paint_peak(ui, rail);
     painter.text(
         rect.center_top(),
         egui::Align2::CENTER_TOP,
@@ -148,18 +175,7 @@ pub fn gain_reduction(ui: &mut Ui, reading: GainReduction<'_>) -> Response {
             palette.secondary,
         );
     }
-    response.widget_info(|| {
-        let mut info = egui::WidgetInfo::labeled(
-            egui::WidgetType::Button,
-            ui.is_enabled(),
-            "Gain reduction. Click to reset peak",
-        );
-        info.value = Some(f64::from(db));
-        info
-    });
-    response.on_hover_text(format!(
-        "Gain reduction: {db:.1} dB before Dry/Wet. Peak: {held:.1} dB. Click to reset peak; 0–24 dB display scale."
-    ))
+    response
 }
 
 fn position_for_dbfs(db: f32) -> f32 {
@@ -451,26 +467,13 @@ pub fn band_level_rail(ui: &mut Ui, rail: Rect, name: &str, peak: f32, enabled: 
 }
 
 /// Thin limiter monitor fits above the standard knob rows without changing unit height.
-pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reduction_db: f32) {
-    let db = if reduction_db.is_finite() {
-        reduction_db.max(0.0)
-    } else {
-        0.0
-    };
+pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reading: GainReduction<'_>) -> Response {
+    let db = reading.current();
+    let response = ui.interact(rail, ui.id().with("limiter-reduction"), Sense::click());
+    let response = reading.interact(ui, response, "Limiter gain reduction");
     horizontal_rail(ui, rail, (db / 24.0).min(1.0), theme::accent(ui.ctx()));
-    let response = ui.interact(rail, ui.id().with("limiter-reduction"), Sense::hover());
-    response.widget_info(|| {
-        let mut info = egui::WidgetInfo::labeled(
-            egui::WidgetType::ProgressIndicator,
-            ui.is_enabled(),
-            "Limiter gain reduction",
-        );
-        info.value = Some(f64::from(db));
-        info
-    });
-    response.on_hover_text(format!(
-        "Gain reduction: {db:.1} dB (display range 0–24 dB)"
-    ));
+    reading.paint_peak(ui, rail);
+    response
 }
 
 #[cfg(test)]
@@ -478,11 +481,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compressor_peak_line_uses_secondary_color_and_click_resets_only_the_peak() {
+    fn reduction_peak_lines_use_secondary_color_and_click_resets_only_the_peak() {
         use daw_unit_core::MeterStorage;
-        for color_theme in [
-            crate::settings::ColorTheme::Dark,
-            crate::settings::ColorTheme::Light,
+        for (color_theme, thin) in [
+            (crate::settings::ColorTheme::Dark, false),
+            (crate::settings::ColorTheme::Dark, true),
+            (crate::settings::ColorTheme::Light, false),
+            (crate::settings::ColorTheme::Light, true),
         ] {
             let ctx = egui::Context::default();
             theme::configure(&ctx);
@@ -513,10 +518,20 @@ mod tests {
                     |ui| {
                         egui::CentralPanel::default().show(ui, |ui| {
                             ui.add_enabled_ui(ui_enabled, |ui| {
-                                let response = gain_reduction(
-                                    ui,
-                                    GainReduction::new(2.0, Some(&meter)).for_unit(unit_enabled),
-                                );
+                                let reading =
+                                    GainReduction::new(2.0, Some(&meter)).for_unit(unit_enabled);
+                                let response = if thin {
+                                    gain_reduction_rail(
+                                        ui,
+                                        Rect::from_min_size(
+                                            Pos2::new(20.0, 20.0),
+                                            Vec2::new(160.0, 4.0),
+                                        ),
+                                        reading,
+                                    )
+                                } else {
+                                    gain_reduction(ui, reading)
+                                };
                                 rect = response.rect;
                                 changed = response.changed();
                             });
@@ -536,7 +551,9 @@ mod tests {
                     .filter_map(|shape| match &shape.shape {
                         egui::Shape::LineSegment { points, stroke }
                             if points[0].x == points[1].x
-                                && (points[1].y - points[0].y - 8.0).abs() < 0.01 =>
+                                && (points[1].y - points[0].y - if thin { 4.0 } else { 8.0 })
+                                    .abs()
+                                    < 0.01 =>
                         {
                             Some((points[0], *stroke))
                         }
@@ -547,7 +564,11 @@ mod tests {
             let (rect, shapes) = paint(vec![], true, true, true);
             let peak = lines(&shapes);
             assert_eq!(peak.len(), 1);
-            let rail = Rect::from_center_size(rect.center(), Vec2::new(rect.width() - 8.0, 8.0));
+            let rail = if thin {
+                rect
+            } else {
+                Rect::from_center_size(rect.center(), Vec2::new(rect.width() - 8.0, 8.0))
+            };
             assert!((peak[0].0.x - (rail.left() + rail.width() * 0.75)).abs() < 0.01);
             assert_eq!(peak[0].1, Stroke::new(1.0, theme::palette(&ctx).secondary));
             let point = rect.center();
@@ -597,6 +618,80 @@ mod tests {
             let (_, shapes) = paint(vec![], false, true, true);
             assert_eq!(meter.peak(), 0.0);
             assert!(lines(&shapes).is_empty());
+        }
+    }
+
+    #[test]
+    fn limiter_panel_resets_peak_without_editing_settings_and_clears_hidden_holds_on_bypass() {
+        use daw_unit_core::MeterStorage;
+        let ctx = egui::Context::default();
+        theme::configure(&ctx);
+        crate::fonts::configure(&ctx);
+        let meter = daw_unit_core::PeakMeter::default();
+        meter.store(18.0);
+        meter.store(2.0);
+        let paint = |events, settings: &mut daw_core::LimiterSettings, compact| {
+            let mut bounds = Rect::NOTHING;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 400.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::CentralPanel::default().show(ui, |ui| {
+                        bounds = crate::limiter_panel::show(
+                            ui,
+                            settings,
+                            compact,
+                            244.0,
+                            GainReduction::new(2.0, Some(&meter)),
+                            &[],
+                            None,
+                        )
+                        .0
+                        .meter;
+                    });
+                },
+            );
+            output.textures_delta.clear();
+            (bounds, output.shapes)
+        };
+        let mut settings = daw_core::LimiterSettings::default();
+        let before = settings.clone();
+        let (rail, shapes) = paint(vec![], &mut settings, false);
+        assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::LineSegment { points, stroke }
+                if rail.contains(points[0]) && rail.contains(points[1])
+                    && stroke.color == theme::palette(&ctx).secondary
+                    && stroke.width == 1.0
+        )));
+        let point = rail.center();
+        for pressed in [true, false] {
+            paint(
+                vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: Default::default(),
+                    },
+                ],
+                &mut settings,
+                false,
+            );
+        }
+        assert_eq!(meter.peak(), 0.0);
+        assert_eq!(meter.reading(), 2.0);
+        assert_eq!(settings, before);
+        for (compact, collapsed) in [(true, false), (false, true)] {
+            meter.store(18.0);
+            settings.enabled = false;
+            settings.collapsed = collapsed;
+            let (rail, _) = paint(vec![], &mut settings, compact);
+            assert_eq!(rail, Rect::NOTHING);
+            assert_eq!(meter.peak(), 0.0);
         }
     }
 
