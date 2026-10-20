@@ -752,7 +752,7 @@ Check all four typed inputs, source scope/fan-out, neutral equivalence, signed c
 
 ## OTT modulation — 2026-10-17
 
-Expose both crossovers; Low/Mid/High Depth, Input, Output, Attack, and Release; Level; and Dry/Wet through the shared source/destination API in Shared scope. Accept same-instrument shared Envelope/LFO/Macro sources, including Main. Reject Per note/foreign providers and assigned audio/Master routes. Keep Peak/RMS and power discrete and gain-change monitoring read-only. Follow [OTT's parameter, crossover, and telemetry contract](../effects/ott.md#modulation--2026-10-17).
+Expose both crossovers; Low/Mid/High Depth, Input, Output, Attack, and Release; Level; and Dry/Wet through the shared source/destination API in Shared scope. Accept same-instrument shared Envelope/LFO/Macro sources, including Main. Reject Per note/foreign providers and assigned audio/Master routes. Keep Peak/RMS and power discrete. Gain-change rails accept no modulation; clicking one resets only its held reduction peak through the shared meter code. Follow [OTT's parameter, crossover, and telemetry contract](../effects/ott.md#modulation--2026-10-17).
 
 Reuse metadata/discovery, cached publication, typed inputs, route validation/resolution and ramps, the common additive smoother, connection strips, destination-derived Amount knobs, indicators, prepared snapshots, and stable-ID retargeting. Apply bounds in portable OTT. Preserve source/base settings, exact neutral audio and silence, linked stereo, phase matching, fixed compression curves, gain-change semantics, bypass, transport, latency, and compatible crossover/detector/envelope/ramp history. Constrain active crossover modulation after smoothing with Low bounded first and High raised to retain a 1 Hz gap.
 

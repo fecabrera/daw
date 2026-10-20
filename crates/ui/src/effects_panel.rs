@@ -719,6 +719,12 @@ impl DawUi {
                                 let gains = self.output.as_ref().map_or([0.0; 3], |output| {
                                     output.ott_gain_change_db(effect.id)
                                 });
+                                let gains = meters::BandGainChange::new(
+                                    gains,
+                                    self.output
+                                        .as_ref()
+                                        .and_then(|output| output.ott_gain_change_meter(effect.id)),
+                                );
                                 let (_bounds, header) = crate::ott_panel::show(
                                     ui,
                                     settings,

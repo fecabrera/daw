@@ -1,7 +1,7 @@
 //! Three-band upward/downward compression with private FunDSP crossovers and detectors.
 use daw_unit_core::{
-    CompressorDetection, EffectUnit, OTT_TYPE_ID, OttBandSettings, OttSettings, PortKind,
-    ProcessingContext, UnitDescriptor, UnitMeter,
+    BandMeter, CompressorDetection, EffectUnit, OTT_TYPE_ID, OttBandSettings, OttSettings,
+    PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
 };
 use fundsp::{
     audionode::AudioNode,
@@ -246,7 +246,7 @@ pub struct Ott {
     splits: [Split; 3],
     bands: [Band; 3],
     fade_frames: u32,
-    meter: UnitMeter<[AtomicU32; 3]>,
+    meter: UnitMeter<BandMeter<3>>,
 }
 impl Ott {
     pub fn new(context: ProcessingContext, settings: &OttSettings) -> Self {
@@ -301,6 +301,10 @@ impl Ott {
     }
     /// Attach on the control thread. Positive values mean boost, negative values reduction.
     pub fn set_gain_change_meter(&mut self, meter: Arc<[AtomicU32; 3]>) {
+        self.set_gain_change_peak_meter(Arc::new(BandMeter::new(meter)));
+    }
+    /// Attach signed readings and independent reduction holds on a control thread.
+    pub fn set_gain_change_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
         self.meter.attach(meter, self.gain_change_db());
     }
     fn publish(&self) {

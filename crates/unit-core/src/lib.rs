@@ -1,7 +1,7 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
 pub mod memory;
 mod meter;
-pub use meter::{MeterStorage, PeakMeter, UnitMeter};
+pub use meter::{BandMeter, MeterStorage, PeakHold, PeakMeter, UnitMeter};
 mod note_name;
 pub use note_name::{natural_note, note_name};
 mod audio_range;

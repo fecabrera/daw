@@ -10,7 +10,7 @@ use daw_ott::Ott;
 use daw_saturator::Saturator;
 use daw_stereo_spread::StereoSpread;
 use daw_unit_core::{EffectUnit, ModulationContext, ProcessingContext, process_modulation};
-use std::sync::{Arc, atomic::AtomicU32};
+use std::sync::Arc;
 
 #[derive(Clone)]
 enum RuntimeEffect {
@@ -580,13 +580,13 @@ impl EffectChain {
             _ => {}
         }
     }
-    pub fn set_band_meter(&mut self, id: Id, meter: &Arc<[AtomicU32; 3]>) {
+    pub fn set_band_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::BandMeter<3>>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
             Some((_, Some(RuntimeEffect::Ott(unit, _)))) => {
-                unit.set_gain_change_meter(meter.clone())
+                unit.set_gain_change_peak_meter(meter.clone())
             }
             Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => {
-                unit.set_band_level_meter(meter.clone())
+                unit.set_band_level_meter(meter.current().clone())
             }
             _ => {}
         }

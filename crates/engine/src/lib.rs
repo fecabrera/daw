@@ -557,6 +557,17 @@ impl Renderer {
         id: Id,
         meter: std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>,
     ) {
+        self.set_band_peak_meter(
+            id,
+            std::sync::Arc::new(daw_unit_core::BandMeter::new(meter)),
+        );
+    }
+    /// Attach signed band readings and reduction holds through the shared traversal.
+    pub fn set_band_peak_meter(
+        &mut self,
+        id: Id,
+        meter: std::sync::Arc<daw_unit_core::BandMeter<3>>,
+    ) {
         self.master_effects.set_band_meter(id, &meter);
         for midi in self.midi.iter_mut().flatten() {
             midi.set_effect_band_meter(id, &meter);

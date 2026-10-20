@@ -16,6 +16,73 @@ fn neutral() -> OttSettings {
     }
     s
 }
+#[test]
+fn band_reduction_holds_capture_samples_without_changing_audio_and_follow_bypass() {
+    for rate in RATES {
+        for detection in [CompressorDetection::Peak, CompressorDetection::Rms] {
+            let mut settings = OttSettings {
+                detection,
+                ..Default::default()
+            };
+            for band in &mut settings.bands {
+                band.attack_ms = 0.1;
+                band.release_ms = 10.0;
+            }
+            let mut monitored = unit(rate, &settings);
+            let mut reference = unit(rate, &settings);
+            let meter = Arc::new(BandMeter::<3>::default());
+            monitored.set_gain_change_peak_meter(meter.clone());
+            let peaks = || meter.reduction_peaks().each_ref().map(|p| p.peak());
+            let input = |frame: u32| {
+                let value = [60.0, 800.0, 8000.0]
+                    .into_iter()
+                    .map(|hz| (std::f32::consts::TAU * hz * frame as f32 / rate as f32).sin())
+                    .sum::<f32>()
+                    * 0.8;
+                [value, -value * 0.25]
+            };
+            let mut expected = [0.0_f32; 3];
+            for frame in 0..8000 {
+                let sample = if frame < 4000 { input(frame) } else { [0.0; 2] };
+                assert_eq!(
+                    monitored.process_sample(sample),
+                    reference.process_sample(sample)
+                );
+                let current = monitored.gain_change_db();
+                assert_eq!(meter.readings(), current);
+                for i in 0..3 {
+                    expected[i] = expected[i].max(-current[i]);
+                }
+            }
+            assert_eq!(peaks(), expected);
+            assert!(
+                expected.into_iter().all(|p| p > 0.1),
+                "{rate} {detection:?}: {expected:?}"
+            );
+            let current = meter.readings();
+            meter.reduction_peaks()[1].reset_peak();
+            assert_eq!(meter.readings(), current);
+            assert_eq!(peaks(), [expected[0], 0.0, expected[2]]);
+            monitored.retarget(&settings);
+            monitored.reset();
+            assert_eq!(peaks(), [expected[0], 0.0, expected[2]]);
+            settings.enabled = false;
+            monitored.retarget(&settings);
+            assert_eq!(peaks(), [0.0; 3]);
+            for frame in 0..2000 {
+                monitored.process_sample(input(frame));
+            }
+            assert_eq!(meter.readings(), [0.0; 3]);
+            assert_eq!(peaks(), [0.0; 3]);
+            settings.enabled = true;
+            monitored.retarget(&settings);
+            for frame in 0..2000 {
+                monitored.process_sample(input(frame));
+            }
+            assert!(peaks().into_iter().all(|p| p > 0.1));
+        }
+    }
+}
 fn sine_energy(rate: u32, hz: f32, settings: &OttSettings, input_gain: f32) -> (f64, [f32; 3]) {
     let mut ott = unit(rate, settings);
     let mut energy = 0.0;

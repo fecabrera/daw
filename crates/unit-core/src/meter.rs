@@ -22,14 +22,32 @@ pub trait MeterStorage {
 #[derive(Default)]
 pub struct PeakMeter {
     current: Arc<AtomicU32>,
-    peak: AtomicU32,
+    peak: PeakHold,
+}
+
+/// A nonnegative, resettable maximum shared by scalar and signed band monitors.
+#[derive(Default)]
+pub struct PeakHold(AtomicU32);
+impl PeakHold {
+    pub fn peak(&self) -> f32 {
+        f32::from_bits(self.0.load(Ordering::Relaxed))
+    }
+    pub fn reset_peak(&self) {
+        self.0.store(0, Ordering::Relaxed);
+    }
+    fn record(&self, value: f32) {
+        if value.is_finite() && value > 0.0 {
+            // Positive finite float bits have the same order as their values.
+            self.0.fetch_max(value.to_bits(), Ordering::Relaxed);
+        }
+    }
 }
 
 impl PeakMeter {
     pub fn new(current: Arc<AtomicU32>) -> Self {
         Self {
             current,
-            peak: AtomicU32::new(0),
+            peak: PeakHold::default(),
         }
     }
     pub fn current(&self) -> &Arc<AtomicU32> {
@@ -39,10 +57,13 @@ impl PeakMeter {
         f32::from_bits(self.current.load(Ordering::Relaxed))
     }
     pub fn peak(&self) -> f32 {
-        f32::from_bits(self.peak.load(Ordering::Relaxed))
+        self.peak.peak()
     }
     pub fn reset_peak(&self) {
-        self.peak.store(0, Ordering::Relaxed);
+        self.peak.reset_peak();
+    }
+    pub fn hold(&self) -> &PeakHold {
+        &self.peak
     }
     fn store_current(&self, reading: f32) -> f32 {
         let value = if reading.is_finite() && reading > 0.0 {
@@ -60,8 +81,7 @@ impl MeterStorage for PeakMeter {
     const ZERO: f32 = 0.0;
     fn store(&self, reading: f32) {
         let value = self.store_current(reading);
-        // Nonnegative finite float bits have the same order as their values.
-        self.peak.fetch_max(value.to_bits(), Ordering::Relaxed);
+        self.peak.record(value);
     }
     fn initialize(&self, reading: f32) {
         // Binding a prepared/seek-reconstructed processor is not live metering.
@@ -70,6 +90,57 @@ impl MeterStorage for PeakMeter {
     fn clear(&self) {
         self.current.store(0, Ordering::Relaxed);
         self.reset_peak();
+    }
+}
+
+/// Signed band readings with independent reduction-only holds. Positive readings
+/// remain available as boost and never raise a reduction peak.
+pub struct BandMeter<const N: usize> {
+    current: Arc<[AtomicU32; N]>,
+    reductions: [PeakHold; N],
+}
+impl<const N: usize> Default for BandMeter<N> {
+    fn default() -> Self {
+        Self::new(Arc::new(std::array::from_fn(|_| AtomicU32::new(0))))
+    }
+}
+impl<const N: usize> BandMeter<N> {
+    pub fn new(current: Arc<[AtomicU32; N]>) -> Self {
+        Self {
+            current,
+            reductions: std::array::from_fn(|_| PeakHold::default()),
+        }
+    }
+    pub fn current(&self) -> &Arc<[AtomicU32; N]> {
+        &self.current
+    }
+    pub fn readings(&self) -> [f32; N] {
+        std::array::from_fn(|i| f32::from_bits(self.current[i].load(Ordering::Relaxed)))
+    }
+    pub fn reduction_peaks(&self) -> &[PeakHold; N] {
+        &self.reductions
+    }
+}
+impl<const N: usize> MeterStorage for BandMeter<N> {
+    type Reading = [f32; N];
+    const ZERO: Self::Reading = [0.0; N];
+    fn store(&self, reading: Self::Reading) {
+        self.initialize(reading);
+        for (peak, value) in self.reductions.iter().zip(reading) {
+            peak.record(-value);
+        }
+    }
+    fn initialize(&self, reading: Self::Reading) {
+        for (cell, value) in self.current.iter().zip(reading) {
+            let value = if value.is_finite() { value } else { 0.0 };
+            cell.store(value.to_bits(), Ordering::Relaxed);
+        }
+    }
+    fn clear(&self) {
+        self.initialize(Self::ZERO);
+        for peak in &self.reductions {
+            peak.reset_peak();
+        }
     }
 }
 
@@ -148,6 +219,38 @@ impl<T: MeterStorage> UnitMeter<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signed_bands_hold_only_reduction_and_reset_independently_through_shared_lifecycle() {
+        let handle = Arc::new(BandMeter::<3>::default());
+        let mut meter = UnitMeter::new(true);
+        meter.attach(handle.clone(), [-30.0, 2.0, -40.0]);
+        let peaks = || handle.reduction_peaks().each_ref().map(|p| p.peak());
+        assert_eq!(peaks(), [0.0; 3]);
+        meter.publish([-12.0, 24.0, -48.0]);
+        meter.publish([6.0, -3.0, -2.0]);
+        assert_eq!(handle.readings(), [6.0, -3.0, -2.0]);
+        assert_eq!(peaks(), [12.0, 3.0, 48.0]);
+        handle.reduction_peaks()[1].reset_peak();
+        assert_eq!(peaks(), [12.0, 0.0, 48.0]);
+        assert_eq!(handle.readings(), [6.0, -3.0, -2.0]);
+        meter.clone().publish([-60.0; 3]);
+        meter.attach(handle.clone(), [-60.0; 3]);
+        assert_eq!(peaks(), [12.0, 0.0, 48.0]);
+        meter.publish([f32::NAN, f32::INFINITY, -0.0]);
+        assert_eq!(handle.readings(), [0.0; 3]);
+        assert_eq!(peaks(), [12.0, 0.0, 48.0]);
+        meter.set_enabled(false);
+        assert_eq!(peaks(), [0.0; 3]);
+        meter.publish([-50.0; 3]);
+        assert_eq!(handle.readings(), [0.0; 3]);
+        assert_eq!(peaks(), [0.0; 3]);
+        meter.set_enabled(true);
+        meter.publish([-2.0, 10.0, -4.0]);
+        assert_eq!(peaks(), [2.0, 0.0, 4.0]);
+        meter.publish([0.0; 3]);
+        assert_eq!(peaks(), [2.0, 0.0, 4.0]);
+    }
 
     #[test]
     fn held_peak_retains_short_readings_resets_independently_and_follows_bypass() {

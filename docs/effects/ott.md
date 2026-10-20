@@ -26,7 +26,13 @@ Turning a band off bypasses its compression while keeping the band audible and i
 
 ## Gain-change monitors
 
-Each band's horizontal meter is centered at 0 dB. Left indicates reduction; right indicates boost. Its visible range is ±24 dB. A disabled band uses secondary grey for its meter. Hover for the actual value beyond the rail. The reading shows compression gain, excluding Input/Output balance, Dry/Wet, and Level. Turning the unit off clears all three meters and stops their updates. Turning it on resumes monitoring. Stopped or paused playback also shows zero.
+Each band's horizontal meter is centered at 0 dB. Left indicates reduction; right indicates boost. Its visible range is ±24 dB. A disabled band uses secondary grey for its meter. The reading shows compression gain, excluding Input/Output balance, Dry/Wet, and Level.
+
+A thin line in the secondary text color marks each band's greatest reduction since its peak was reset. Boost does not raise this hold. Click a band's rail to reset only that band's line. The current readings and compression settings stay the same. If compression continues, a new reading can immediately set another peak.
+
+Hover for the actual signed gain and peak reduction, including values beyond the rail. The peak line stops at the left end at 24 dB of reduction. Peak capture continues while the unit is hidden, compact, or collapsed. The holds remain during pause, stop, seeking, and individual band bypass.
+
+Turning the whole unit off clears all three fills and peak lines and stops meter updates. Turning it on resumes monitoring. Current readings show zero while playback is stopped or paused, or no output device is available. Peak readings are temporary monitor state and are not saved with the project.
 
 ## Modulation
 

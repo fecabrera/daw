@@ -104,15 +104,16 @@ fn row(
     })
     .rect
 }
-pub(super) fn show(
+pub(super) fn show<'a>(
     ui: &mut Ui,
     settings: &mut OttSettings,
     compact: bool,
     height: f32,
-    gains: [f32; 3],
+    gains: impl Into<meters::BandGainChange<'a>>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
+    let gains = gains.into();
     ui.scope_builder(
         egui::UiBuilder::new()
             .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
@@ -125,11 +126,11 @@ fn show_inner(
     settings: &mut OttSettings,
     compact: bool,
     height: f32,
-    gains: [f32; 3],
+    gains: meters::BandGainChange<'_>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
 ) -> (Bounds, egui::Response) {
-    let gains = meters::unit_reading(settings.enabled, gains);
+    let gains = gains.for_unit(settings.enabled);
     let mut bases = [0.0; 19];
     bases[0] = settings.low_frequency_hz;
     bases[1] = settings.high_frequency_hz;
@@ -204,7 +205,7 @@ fn show_inner(
                 if !compact && section < 3 {
                     let rail = meters::unit_monitor_rail(rect, panel.margin);
                     bounds.meters[section] = rail;
-                    meters::gain_change(ui, rail, name, gains[section], settings.bands[section].enabled);
+                    meters::gain_change(ui, rail, name, gains.band(section), settings.bands[section].enabled);
                 }
             }
             if open {
@@ -227,6 +228,117 @@ fn show_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn band_peak_lines_reset_independently_without_editing_settings() {
+        use daw_unit_core::MeterStorage;
+        for color_theme in [
+            crate::settings::ColorTheme::Dark,
+            crate::settings::ColorTheme::Light,
+        ] {
+            for clicked_band in 0..3 {
+                let ctx = egui::Context::default();
+                theme::configure(&ctx);
+                crate::fonts::configure(&ctx);
+                theme::apply(
+                    &ctx,
+                    crate::settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                let meter = daw_unit_core::BandMeter::<3>::default();
+                meter.store([-12.0, -18.0, -48.0]);
+                meter.store([3.0, -2.0, 6.0]);
+                let peaks = || meter.reduction_peaks().each_ref().map(|p| p.peak());
+                let mut settings = OttSettings::default();
+                settings.bands[clicked_band].enabled = false;
+                let saved = settings.clone();
+                let paint = |events, settings: &mut OttSettings, compact| {
+                    let mut rails = [Rect::NOTHING; 3];
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                Vec2::new(1000.0, 400.0),
+                            )),
+                            events,
+                            ..Default::default()
+                        },
+                        |ui| {
+                            egui::CentralPanel::default().show(ui, |ui| {
+                                rails = show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    244.0,
+                                    meters::BandGainChange::new(meter.readings(), Some(&meter)),
+                                    &[],
+                                    None,
+                                )
+                                .0
+                                .meters;
+                            });
+                        },
+                    );
+                    output.textures_delta.clear();
+                    (rails, output.shapes)
+                };
+                let (rails, shapes) = paint(vec![], &mut settings, false);
+                for (i, rail) in rails.into_iter().enumerate() {
+                    let lines: Vec<_> = shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::LineSegment { points, stroke }
+                                if rail.contains(points[0])
+                                    && rail.contains(points[1])
+                                    && points[0].x < rail.center().x =>
+                            {
+                                Some((points[0].x, *stroke))
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(lines.len(), 1);
+                    assert_eq!(
+                        lines[0].1,
+                        egui::Stroke::new(1.0, theme::palette(&ctx).secondary)
+                    );
+                    let x = (rail.center().x - rail.width() * 0.5 * (peaks()[i] / 24.0).min(1.0))
+                        .max(rail.left() + 0.5);
+                    assert!((lines[0].0 - x).abs() < 0.01);
+                }
+                let point = rails[clicked_band].center();
+                for pressed in [true, false] {
+                    paint(
+                        vec![
+                            egui::Event::PointerMoved(point),
+                            egui::Event::PointerButton {
+                                pos: point,
+                                button: egui::PointerButton::Primary,
+                                pressed,
+                                modifiers: Default::default(),
+                            },
+                        ],
+                        &mut settings,
+                        false,
+                    );
+                }
+                let mut expected = [12.0, 18.0, 48.0];
+                expected[clicked_band] = 0.0;
+                assert_eq!(peaks(), expected);
+                assert_eq!(meter.readings(), [3.0, -2.0, 6.0]);
+                assert_eq!(settings, saved);
+                for (compact, collapsed) in [(true, false), (false, true)] {
+                    meter.store([-12.0; 3]);
+                    settings.enabled = false;
+                    settings.collapsed = collapsed;
+                    let (rails, _) = paint(vec![], &mut settings, compact);
+                    assert_eq!(rails, [Rect::NOTHING; 3]);
+                    assert_eq!(peaks(), [0.0; 3]);
+                }
+            }
+        }
+    }
 
     #[test]
     fn band_meter_colors_follow_each_band_power_without_changing_readings_or_settings() {

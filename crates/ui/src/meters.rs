@@ -17,8 +17,16 @@ const MARKS: [i32; 15] = [
 ];
 
 /// Signed band gain monitor. Center is unity; left is reduction, right is boost.
-pub fn gain_change(ui: &mut Ui, rail: Rect, name: &str, gain_db: f32, enabled: bool) {
-    let db = if gain_db.is_finite() { gain_db } else { 0.0 };
+pub fn gain_change(
+    ui: &mut Ui,
+    rail: Rect,
+    name: &str,
+    reading: GainReduction<'_>,
+    enabled: bool,
+) -> Response {
+    let db = reading.signed_current();
+    let response = ui.interact(rail, ui.id().with(("gain-change", name)), Sense::click());
+    reading.reset_on_click(ui, &response);
     let palette = theme::palette(ui.ctx());
     let painter = ui.painter();
     painter.rect_filled(rail, 1.0, palette.input);
@@ -45,30 +53,23 @@ pub fn gain_change(ui: &mut Ui, rail: Rect, name: &str, gain_db: f32, enabled: b
         rail.y_range(),
         Stroke::new(1.0, palette.secondary),
     );
-    let response = ui.interact(rail, ui.id().with(("gain-change", name)), Sense::hover());
-    response.widget_info(|| {
-        let mut info = egui::WidgetInfo::labeled(
-            egui::WidgetType::ProgressIndicator,
-            ui.is_enabled(),
-            format!("{name} gain change"),
-        );
-        info.value = Some(f64::from(db));
-        info
-    });
-    response.on_hover_text(format!("{name} compression gain: {db:+.1} dB. Left: reduction; right: boost. Display ±24 dB; before Dry/Wet."));
+    reading.paint_peak(ui, rail, rail.center().x, -rail.width() * 0.5);
+    let held = reading.held();
+    reading.describe(ui, response, &format!("{name} gain change"), db,
+        format!("{name} compression gain: {db:+.1} dB. Peak reduction: {held:.1} dB. Click to reset peak. Left: reduction; right: boost. Display ±24 dB; before Dry/Wet."))
 }
 
 #[derive(Clone, Copy)]
 pub struct GainReduction<'a> {
     current_db: f32,
-    peak: Option<&'a daw_unit_core::PeakMeter>,
+    peak: Option<&'a daw_unit_core::PeakHold>,
     enabled: bool,
 }
 impl<'a> GainReduction<'a> {
     pub fn new(current_db: f32, peak: Option<&'a daw_unit_core::PeakMeter>) -> Self {
         Self {
             current_db,
-            peak,
+            peak: peak.map(daw_unit_core::PeakMeter::hold),
             enabled: true,
         }
     }
@@ -81,8 +82,11 @@ impl<'a> GainReduction<'a> {
         self
     }
     fn current(self) -> f32 {
+        self.signed_current().max(0.0)
+    }
+    fn signed_current(self) -> f32 {
         if self.current_db.is_finite() {
-            self.current_db.max(0.0)
+            self.current_db
         } else {
             0.0
         }
@@ -91,6 +95,14 @@ impl<'a> GainReduction<'a> {
         unit_reading(self.enabled, self.peak.map_or(0.0, |peak| peak.peak()))
     }
     fn interact(self, ui: &Ui, response: Response, description: &str) -> Response {
+        self.reset_on_click(ui, &response);
+        let db = self.current();
+        let held = self.held();
+        self.describe(ui, response, description, db, format!(
+            "{description}: {db:.1} dB. Peak: {held:.1} dB. Click to reset peak; 0–24 dB display scale."
+        ))
+    }
+    fn reset_on_click(self, ui: &Ui, response: &Response) {
         if response.clicked_by(egui::PointerButton::Primary)
             && ui.is_enabled()
             && ui.input(|input| input.focused)
@@ -99,8 +111,15 @@ impl<'a> GainReduction<'a> {
         {
             peak.reset_peak();
         }
-        let db = self.current();
-        let held = self.held();
+    }
+    fn describe(
+        self,
+        ui: &Ui,
+        response: Response,
+        description: &str,
+        db: f32,
+        tooltip: String,
+    ) -> Response {
         response.widget_info(|| {
             let mut info = egui::WidgetInfo::labeled(
                 egui::WidgetType::Button,
@@ -110,14 +129,12 @@ impl<'a> GainReduction<'a> {
             info.value = Some(f64::from(db));
             info
         });
-        response.on_hover_text(format!(
-            "{description}: {db:.1} dB. Peak: {held:.1} dB. Click to reset peak; 0–24 dB display scale."
-        ))
+        response.on_hover_text(tooltip)
     }
-    fn paint_peak(self, ui: &Ui, rail: Rect) {
+    fn paint_peak(self, ui: &Ui, rail: Rect, origin: f32, span: f32) {
         let held = self.held();
         if held > 0.0 {
-            let x = (rail.left() + rail.width() * (held / 24.0).min(1.0))
+            let x = (origin + span * (held / 24.0).min(1.0))
                 .clamp(rail.left() + 0.5, rail.right() - 0.5);
             ui.painter().vline(
                 x,
@@ -125,6 +142,28 @@ impl<'a> GainReduction<'a> {
                 Stroke::new(1.0, theme::palette(ui.ctx()).secondary),
             );
         }
+    }
+}
+#[derive(Clone, Copy)]
+pub struct BandGainChange<'a>([GainReduction<'a>; 3]);
+impl<'a> BandGainChange<'a> {
+    pub fn new(current: [f32; 3], meter: Option<&'a daw_unit_core::BandMeter<3>>) -> Self {
+        Self(std::array::from_fn(|i| GainReduction {
+            current_db: current[i],
+            peak: meter.map(|m| &m.reduction_peaks()[i]),
+            enabled: true,
+        }))
+    }
+    pub fn for_unit(self, enabled: bool) -> Self {
+        Self(self.0.map(|reading| reading.for_unit(enabled)))
+    }
+    pub fn band(self, index: usize) -> GainReduction<'a> {
+        self.0[index]
+    }
+}
+impl From<[f32; 3]> for BandGainChange<'_> {
+    fn from(current: [f32; 3]) -> Self {
+        Self::new(current, None)
     }
 }
 impl From<f32> for GainReduction<'_> {
@@ -150,7 +189,7 @@ pub fn gain_reduction(ui: &mut Ui, reading: GainReduction<'_>) -> Response {
     if fill.width() > 0.0 {
         painter.rect_filled(fill, 1.0, theme::accent(ui.ctx()));
     }
-    reading.paint_peak(ui, rail);
+    reading.paint_peak(ui, rail, rail.left(), rail.width());
     painter.text(
         rect.center_top(),
         egui::Align2::CENTER_TOP,
@@ -472,7 +511,7 @@ pub fn gain_reduction_rail(ui: &mut Ui, rail: Rect, reading: GainReduction<'_>) 
     let response = ui.interact(rail, ui.id().with("limiter-reduction"), Sense::click());
     let response = reading.interact(ui, response, "Limiter gain reduction");
     horizontal_rail(ui, rail, (db / 24.0).min(1.0), theme::accent(ui.ctx()));
-    reading.paint_peak(ui, rail);
+    reading.paint_peak(ui, rail, rail.left(), rail.width());
     response
 }
 

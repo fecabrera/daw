@@ -3410,3 +3410,23 @@ Focused automated checks completed:
 Relative file links in the changed guide, Limiter specification and architecture documents — 135 checked, no missing targets. `git diff --check` — passed.
 
 Native pointer behavior, physical-device playback/listening and Windows/Linux execution remain unverified. Automated painting and headless callback tests do not establish native-device or platform acceptance.
+
+## OTT band peak reduction markers — 2026-10-20
+
+Each OTT band now holds its greatest reduction independently and shows a 1-point secondary-color line on the reduction side of its existing signed rail. Clicking a rail resets only that band's hold. Boost cannot raise a reduction hold. Current gain values, settings, signed fills, center markers, disabled-band colors and layout remain unchanged. Holds survive hidden/compact/collapsed presentation, individual band bypass, pause, stop, seek and compatible updates; whole-unit bypass clears and suspends all three. They are temporary monitoring state and are not saved.
+
+Shared `PeakHold` supplies capture/reset for scalar `PeakMeter` and signed `BandMeter`; both remain behind `UnitMeter`. Band storage retains the current atomic array for legacy attachments and EQ. Existing stable-ID discovery and track/Master/layer/Main binding, unbound preparation, detached snapshots and callback retirement remain shared. UI views reuse the same reset guards, peak painter, tooltip and accessibility helpers. No audio arithmetic, latency, settings schema or project format changes.
+
+Focused checks completed:
+
+- `cargo test -p daw-unit-core meter::tests` — **4 passed**, covering scalar and signed band hold capture, independent reset, boost exclusion, invalid/negative-zero readings, prepared attachment, detached snapshots and bypass suspension/resume.
+- `cargo test -p daw-ott band_reduction_holds` — passed. At all six project rates in Peak/RMS, monitored samples equal an unmonitored reference. Captured peaks match maxima over every processed reading. Independent reset, DSP reset/compatible retarget retention and bypass clearing/resume are covered.
+- `cargo test -p daw-ui band_peak_lines` — passed. Both themes and each band cover line color/position, display saturation, signed current retention, reset isolation, unchanged settings, disabled-band operation and whole-unit clearing in compact/collapsed presentation.
+- `cargo test -p daw-output meter` — **8 passed**. Existing callback heap guards now cover band monitoring on track, Master, layer and Main paths. Tests cover stable handle reuse, independent reset, removal/copy identity, stop retention and whole-unit clearing/suspension, alongside EQ, Compressor and Limiter regressions.
+- `cargo test --workspace` — **1015 passed, 0 failed, 2 ignored** on the final source, including all 508 UI tests. The ignored cases are the existing extended time-stretch acceptance matrices.
+
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` — passed on the final source. CLI build and `python3 tools/check_cli.py` — passed, including codecs/bitrates, repeatability, missing sources, eight-track projects, overwrite handling and exit codes. `sh tools/package_macos.sh release` — passed; rebuilt `target/release/DAW.app` without relaunching it.
+
+Relative file links in the changed guide, OTT specification and architecture documents — 134 checked, no missing targets. `git diff --check` — passed.
+
+Native pointer behavior, physical-device playback/listening and Windows/Linux execution remain unverified. Automated painting and headless callback tests do not establish native-device or platform acceptance.
