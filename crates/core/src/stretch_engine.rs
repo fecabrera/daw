@@ -30,7 +30,7 @@ impl StretchEngine {
     };
     pub const INTEGRATED: Self = Self {
         id: StretchEngineId::Integrated,
-        revision: 2,
+        revision: 4,
     };
     pub fn label(self) -> &'static str {
         match self.id {
@@ -63,7 +63,7 @@ mod tests {
             let project: crate::Project = serde_json::from_value(saved.clone()).unwrap();
             assert_eq!(project.stretch_engine, engine);
             project.validate().unwrap();
-            for revision in [0, 1, 2, 3, u32::MAX] {
+            for revision in [0, 1, 2, 3, 4, 5, u32::MAX] {
                 if revision == engine.revision {
                     continue;
                 }

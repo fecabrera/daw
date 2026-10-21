@@ -29,7 +29,7 @@ Use a new or empty comparison/benchmark directory. `process --overwrite` permits
 
 Reports contain source/prepared/output SHA-256 identities, exact ratio, channels/rate/frame counts, engine revision/options/native versions, build identity, host information, diagnostics, and separate decode/conversion/engine/encoding/measurement timings. Peak RSS is explicitly unavailable in this version; do not interpret it as zero or as engine scratch usage. Benchmark rotates engine order, discards warmups, retains runs/failures, and emits JSON/CSV median/min/max/MAD summaries. R3 is the fixed comparison baseline. File processing success is not a quality acceptance result.
 
-The additive `pitch` report object records semitones, frequency factor, and the Integrated pitch-path revision. The existing stretch revision remains 2; the pitch-path revision is 1. Reference reports retain their own revision and record their actual pitch scale. Benchmark rows and summaries include the requested semitone value. Prepared-input hashes describe the unchanged input; pitch belongs to the processing identity.
+The additive `pitch` report object records semitones, frequency factor, and the Integrated pitch-path revision. The stretch revision is 4; the pitch-path revision is 2. Reference reports retain their own revision and record their actual pitch scale. Benchmark rows and summaries include the requested semitone value. Prepared-input hashes describe the unchanged input; pitch belongs to the processing identity.
 
 `--fixture-manifest` accepts a JSON object with `schema_version: 1`, `metric_profile: "synthetic-v1"`, and `prepared_sha256` matching the hash from a process report. Include `generator` and `seed` metadata when generating fixtures. Supported measurements:
 

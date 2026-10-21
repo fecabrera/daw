@@ -93,13 +93,22 @@ TS-01–16 retain their pitch-0 meaning. The new portable pitch path adds the fo
 | TP-09 | Full MIDI-span requests use bounded passes whose offsets sum to the request, with the duration ratio applied once. Check ±127 endpoints, fractional multi-pass offsets, all six rates, linked stereo, exact duration, finite output, monotonic cancellation, and peak simultaneous memory admission. Qualifying wide-shift tones at ±36, ±96, and ±127 have at most 15 cents error and 3 dB steady-state level error. This separate wide-shift envelope does not relax the existing ≤24-semitone limits. |
 | TP-10 | Sampler maps every MIDI note 0–127 relative to every valid root without ±24 clamping. Prepare required variants with the selected project backend before publication; failure/cancellation retains the prior session. Verify note/root, duration, rate and engine changes, save/reopen, playback/export parity, and allocation-free note starts, seek and compatible renderer updates. Both native reference engines report each pass for wide CLI comparisons. |
 
+## Bass analysis regression gate
+
+| ID | Test and pass condition |
+| --- | --- |
+| TB-01 | Independently generated 51.9130872/65.40639133 Hz tones and their second/third harmonics retain each expected partial within 5 cents and 0.5 dB at all six rates, for ratio 17/20 with +6 semitones, 5/4 with −6, and 3/2 with zero. Also check changing bass chords at 48/96 kHz. Calibrate the spectral estimator against correct controls and intentional pitch/level errors. No user media fixtures. |
+| TB-02 | Stationary bass mixtures trigger only the initial attack at all rates, including gain scaling and anti-phase. Dense isolated impulses remain detected. |
+| TB-03 | Drums over sustained bass retain localized attacks at 48/96 kHz, including combined ratio 17/20 and +6 semitones. Proportional/silent/anti-phase/dual-mono, unrelated-channel swap, amplitude homogeneity, exact length, finite output, and shared cancellation/resource tests remain required. Existing kick/noise/mixed and expanded six-rate matrices must pass. |
+| TB-04 | At zero pitch and duration ratio 24/25, independently generated bass-heavy kick/hat mixtures retain onset timing within 5 ms at all six rates. At 48 kHz, pre-echo energy in the preceding 100 ms is below −30 dB relative to the next 100 ms; this calibrated case must reject the long-window revision-3 regression. Preserve silent/anti-phase stereo and the tonal bass partial checks. |
+
 ## Optional DAW integration gate
 
 These checks apply to the DAW adapter, not to other consumers of the engine/tool. Reuse transactional edits, workers, and egui tests. Run audio-edit scenarios against the two selector backends (Timestretch and R3). R2 is a standalone reference, not a required selector item. Inject failures through test seams, not user recordings.
 
 | ID | Test and pass condition |
 | --- | --- |
-| TI-01 | Each backend accepts only its current processing identity. New projects and projects with no saved engine select Rubber Band R3. Save/Open and Save As retain explicit Timestretch ID/revision. Unknown/unavailable choices error without substitution, current-session replacement, or saved-file mutation. |
+| TI-01 | Each backend accepts only its current processing identity; opening Integrated revision 2 or 3 explicitly upgrades to revision 4 with a warning and complete re-preparation, leaving the file unchanged until Save. Other unsupported revisions fail. New projects and projects with no saved engine select Rubber Band R3. Save/Open and Save As retain explicit Timestretch ID/revision. Unknown/unavailable choices error without substitution, current-session replacement, or saved-file mutation. |
 | TI-02 | Project Settings dropdown labels are exactly Rubber Band and Integrated (experimental), mapping to `rubberband-r3` and `timestretch`. Use shared styles in both themes and mouse/keyboard navigation. Drafts do not process audio. Cancel/Escape and unchanged Apply preserve project, caches, playback, and dirty state. |
 | TI-03 | Applying a choice rebuilds all required source/ratio buffers from originals, publishes settings/audio/peaks together, stops playback on success, and marks modified. An engine-only change preserves coordinates, IDs, selection, loop, playhead, ratios, rate, and buffer. |
 | TI-04 | Failure/cancellation partway through multiple sources retains old engine, complete project/caches, dirty state, and active playback. Stale workers cannot publish after replacement. Combined engine/rate/name changes remain atomic. |

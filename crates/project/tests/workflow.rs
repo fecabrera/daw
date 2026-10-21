@@ -3208,7 +3208,7 @@ fn stretch_engine_switch_is_atomic_saved_and_cache_scoped() {
                 48000,
                 512,
                 StretchEngine {
-                    revision: 3,
+                    revision: 5,
                     ..StretchEngine::INTEGRATED
                 }
             )
@@ -4385,4 +4385,55 @@ fn group_buses_roundtrip_audio_effects_collapse_and_undo_without_changing_source
         Some(group)
     );
     assert_eq!(fs::read(&source).unwrap(), bytes);
+}
+
+#[test]
+fn integrated_legacy_revisions_upgrade_and_rebuild_without_writing_on_open() {
+    use daw_core::{ClipStretch, StretchEngine};
+    let fixture = Fixture::new();
+    let source = fixture.wav("upgrade.wav", 48000, 2, 32, true);
+    let source_bytes = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    session.project.stretch_engine = StretchEngine::INTEGRATED;
+    session.project.tracks[0].clips[0].stretch = ClipStretch::new(17, 20);
+    session.project.tracks[0].clips[0].transpose = 6;
+    session.prepare_stretches().unwrap();
+    let folder = fixture.0.join("project");
+    session.save(&folder).unwrap();
+    let path = folder.join("project.json");
+    let mut saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    for revision in [2, 3] {
+        saved["stretch_engine"]["revision"] = serde_json::json!(revision);
+        let original = serde_json::to_vec_pretty(&saved).unwrap();
+        fs::write(&path, &original).unwrap();
+        let mut opened = Session::open(&folder).unwrap();
+        assert_eq!(opened.project.stretch_engine, StretchEngine::INTEGRATED);
+        assert!(
+            opened
+                .warnings
+                .iter()
+                .any(|w| w.contains(&format!("upgraded from revision {revision} to 4")))
+        );
+        assert_eq!(fs::read(&path).unwrap(), original);
+        let clip = &opened.project.tracks[0].clips[0];
+        assert_eq!(
+            opened.audio_for_clip(clip).unwrap().samples,
+            session.audio_for_clip(clip).unwrap().samples
+        );
+        opened.save(&folder).unwrap();
+        assert!(
+            !Session::open(&folder)
+                .unwrap()
+                .warnings
+                .iter()
+                .any(|w| w.contains("upgraded"))
+        );
+    }
+    for revision in [0, 1, 5] {
+        saved["stretch_engine"]["revision"] = serde_json::json!(revision);
+        fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert!(Session::open(&folder).is_err());
+    }
+    assert_eq!(fs::read(source).unwrap(), source_bytes);
 }

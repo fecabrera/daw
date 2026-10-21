@@ -156,7 +156,15 @@ impl Session {
     pub fn open(folder: &Path) -> Result<Self> {
         let folder = absolute(folder)?;
         let content = fs::read(folder.join("project.json")).map_err(error)?;
-        let project: Project = serde_json::from_slice(&content).map_err(error)?;
+        let mut project: Project = serde_json::from_slice(&content).map_err(error)?;
+        // Revisions 2 and 3 have an explicit one-way upgrade. Rebuild all preparation from
+        // originals below; never label old prepared samples with the new identity.
+        let upgraded_stretch = project.stretch_engine.id == daw_core::StretchEngineId::Integrated
+            && matches!(project.stretch_engine.revision, 2 | 3);
+        let previous_stretch_revision = project.stretch_engine.revision;
+        if upgraded_stretch {
+            project.stretch_engine = daw_core::StretchEngine::INTEGRATED;
+        }
         project.validate().map_err(error)?;
         let mut session = Self {
             project,
@@ -164,7 +172,14 @@ impl Session {
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             folder: Some(folder),
-            warnings: vec![],
+            warnings: if upgraded_stretch {
+                vec![format!(
+                    "Integrated time stretch upgraded from revision {previous_stretch_revision} to {}; prepared audio rebuilt. The sound can change. Save to retain the new revision.",
+                    daw_core::StretchEngine::INTEGRATED.revision
+                )]
+            } else {
+                vec![]
+            },
         };
         for effect in &session.project.master.effects {
             if let daw_core::EffectSettings::Missing { type_id, .. } = &effect.unit {

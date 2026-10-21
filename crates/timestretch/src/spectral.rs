@@ -186,6 +186,13 @@ fn analysis_width(
     let mut power = buffer(width / 2, 0.0)?;
     let mut weighted_flatness = 0.0;
     let mut total_energy = 0.0;
+    let mut bass_energy = 0.0;
+    // Bass energy can hide drums in the full-spectrum/occupied-band flatness.
+    // Reuse the same power bins to check for weaker broadband activity above bass.
+    let band_edges = [250, 1000, 4000, request.sample_rate as usize / 2]
+        .map(|hz| (hz * width / request.sample_rate as usize).min(power.len()));
+    let mut band_energy = [0.0; 3];
+    let mut band_flatness = [0.0; 3];
     for start in (0..frames).step_by(width / 2) {
         checkpoint(progress, 0.05 + 0.05 * start as f32 / frames as f32)?;
         power.fill(0.0);
@@ -206,6 +213,17 @@ fn analysis_width(
             }
         }
         let energy: f64 = power.iter().sum();
+        let bass_bins = (250 * width / request.sample_rate as usize).min(power.len());
+        bass_energy += power[..bass_bins].iter().sum::<f64>();
+        for (index, bounds) in band_edges.windows(2).enumerate() {
+            let band = &power[bounds[0]..bounds[1]];
+            let energy = band.iter().sum::<f64>();
+            if energy > 0.0 {
+                band_energy[index] += energy;
+                band_flatness[index] +=
+                    energy * spectral_flatness(band, energy / band.len() as f64);
+            }
+        }
         if energy > 0.0 {
             let mean = energy / power.len() as f64;
             let mut flatness = spectral_flatness(&power, mean);
@@ -236,11 +254,23 @@ fn analysis_width(
             total_energy += energy;
         }
     }
+    // A broadband band at -30 dB or more of total power is significant even
+    // when low drums dominate the file. Fall back to normal tonal resolution;
+    // selecting the 2 ms noise window for the whole mixture would lose bass.
+    let mixed_broadband = band_energy
+        .iter()
+        .zip(band_flatness)
+        .any(|(energy, flatness)| {
+            *energy >= total_energy * 0.001 && *energy > 0.0 && flatness / energy > 0.15
+        });
     Ok(
         if total_energy > 0.0 && weighted_flatness / total_energy > 0.15 {
             (request.sample_rate as usize / 500)
                 .next_power_of_two()
                 .clamp(64, 512)
+        } else if total_energy > 0.0 && bass_energy >= total_energy * 0.5 && !mixed_broadband {
+            // Resolve neighboring fundamentals in bass-dominated tonal sources.
+            ((request.sample_rate as usize * 320 / 1000).next_power_of_two()).clamp(8192, 65536)
         } else {
             width
         },

@@ -8,7 +8,7 @@ pub use pitch::{PITCH_REVISION, Pitch, PitchRequest};
 use std::{fmt, ops::ControlFlow, str::FromStr};
 
 /// Processing identity for caches and reports; requests always use this implementation.
-pub const REVISION: u32 = 2;
+pub const REVISION: u32 = 4;
 pub const SAMPLE_RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
