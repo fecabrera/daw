@@ -4491,6 +4491,8 @@ impl DawUi {
         };
         let Some(mut target) = self.file_target(pointer, viewport, musical_time::snap_bypassed(ui))
         else {
+            // The same target lookup gates both hover feedback and import on release.
+            ui.ctx().set_cursor_icon(egui::CursorIcon::NotAllowed);
             return;
         };
         let hover = self.file_hover.as_ref().unwrap();
@@ -10174,6 +10176,16 @@ mod tests {
         dropped: bool,
         shift: bool,
     ) -> Vec<egui::epaint::ClippedShape> {
+        file_frame_output(app, ctx, path, pointer, dropped, shift).shapes
+    }
+    fn file_frame_output(
+        app: &mut DawUi,
+        ctx: &egui::Context,
+        path: &std::path::Path,
+        pointer: Pos2,
+        dropped: bool,
+        shift: bool,
+    ) -> egui::FullOutput {
         let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
@@ -10202,7 +10214,7 @@ mod tests {
             |ui| app.show(ui),
         );
         output.textures_delta.clear();
-        output.shapes
+        output
     }
     fn ready_file_hover(
         app: &mut DawUi,

@@ -36,6 +36,8 @@ The group effects target is the existing `EffectChainTarget::Track(group_id)`. N
 
 Shared move previews mark each bus destination invalid, including secondary members of a multi-track clip selection. The resolved preview marks the entire group invalid and takes cursor precedence over Move/Copy feedback. Release rejects any invalid incoming preview before editing, duplication, or worker preparation; keep selection, project data, and undo history unchanged, without an error dialog. This applies to audio/MIDI clips and expanded/collapsed buses. Returning to a valid child track restores the existing move/copy gesture. Core placement validation remains authoritative for other failures, which retain normal error reporting.
 
+External audio-file drags reuse `file_target` for both hover feedback and release eligibility. A rejected target sets the forbidden cursor and leaves `file_drop_target` empty, so group-bus drops never enter the import path or change selection/history. This applies to the group header and lane, expanded or collapsed, before and after preview decoding and when a drop arrives without an earlier hover. Returning to an audio track reuses the same prepared preview audio and existing snapping/import behavior. Other unsupported file destinations use the same rejection feedback; Sampler drops retain their separate target path.
+
 ## Regression coverage
 
 - Core: legacy defaults, hierarchy validation, nested/nonadjacent grouping, cross-parent extraction, invalid/cyclic drops and atomic rollback, ungroup/delete/duplicate identities, collapsed visibility, solo path rules.

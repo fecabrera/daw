@@ -32,7 +32,7 @@ Solo selects siblings at each level. A soloed child opens the path through its p
 
 Effects with latency remain aligned across children, nested groups, other tracks, and Master. Playback and export use the same routing. Changing group membership during playback can require background preparation before the change becomes audible.
 
-A group cannot contain clips or an instrument. Add sources to its child tracks. Dragging clips onto a group bus shows an invalid-action cursor. Releasing there cancels the entire move or copy without an error dialog. You can continue dragging to a child track instead.
+A group cannot contain clips or an instrument. Add sources to its child tracks. Dragging clips onto a group bus shows an invalid-action cursor. Releasing there cancels the entire move or copy without an error dialog. Audio file drags also show the invalid-action cursor over the group row or its header. Dropping there does not import the file or show an error dialog. Continue dragging to a child track for clips, or a child audio track for audio files.
 
 Group effects cannot use a child's instrument modulators as shared sources; those assignments remain scoped to their original track.
 

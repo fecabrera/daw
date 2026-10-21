@@ -955,3 +955,118 @@ fn clip_drag_can_return_from_an_invalid_bus_to_a_valid_child_track() {
         app.session.project.validate().unwrap();
     }
 }
+
+#[test]
+fn audio_file_drops_on_group_buses_show_invalid_cursor_and_never_import() {
+    let source = TestWav::new();
+    for collapsed in [false, true] {
+        for controls in [false, true] {
+            for direct in [false, true] {
+                let (mut app, ctx, group, _) = grouped_fixture();
+                app.session
+                    .project
+                    .edit(Edit::SetGroupCollapsed {
+                        track_id: group,
+                        collapsed,
+                    })
+                    .unwrap();
+                frame(&mut app, &ctx, vec![]);
+                app.history = Some(daw_project::SessionHistory::new(&app.session, true).unwrap());
+                app.dirty = false;
+                let before = app.session.project.clone();
+                let selected_tracks = app.selected_tracks.clone();
+                let selected_clips = app.selected_clips.clone();
+                let selected = (app.selected_track, app.selected_clip, app.master_selected);
+                let lane = app.lane_bounds[&group];
+                let pointer = Pos2::new(
+                    lane.left() + if controls { -100.0 } else { 100.0 },
+                    lane.center().y,
+                );
+                if !direct {
+                    let output =
+                        file_frame_output(&mut app, &ctx, &source.0, pointer, false, false);
+                    assert_eq!(
+                        output.platform_output.cursor_icon,
+                        egui::CursorIcon::NotAllowed
+                    );
+                    ready_file_hover(&mut app, &ctx, &source.0, pointer);
+                    let output =
+                        file_frame_output(&mut app, &ctx, &source.0, pointer, false, false);
+                    assert_eq!(
+                        output.platform_output.cursor_icon,
+                        egui::CursorIcon::NotAllowed
+                    );
+                    assert!(app.file_drop_target.is_none());
+                }
+                let output = file_frame_output(&mut app, &ctx, &source.0, pointer, true, false);
+                assert_eq!(
+                    output.platform_output.cursor_icon,
+                    egui::CursorIcon::NotAllowed
+                );
+                assert!(app.file_drop_target.is_none());
+                assert!(app.job.is_none());
+                assert!(app.error.is_none());
+                assert_eq!(app.session.project, before);
+                assert_eq!(app.selected_tracks, selected_tracks);
+                assert_eq!(app.selected_clips, selected_clips);
+                assert_eq!(
+                    (app.selected_track, app.selected_clip, app.master_selected),
+                    selected
+                );
+                assert!(!app.dirty);
+                assert!(!app.history.as_ref().unwrap().can_undo());
+                frame(&mut app, &ctx, vec![]);
+                assert!(app.file_hover.is_none());
+                assert!(app.error.is_none());
+            }
+        }
+    }
+}
+
+#[test]
+fn audio_file_drag_returns_from_a_group_bus_to_an_audio_track_with_prepared_audio() {
+    let source = TestWav::new();
+    let (mut app, ctx, group, tracks) = grouped_fixture();
+    let lane = app.lane_bounds[&group];
+    let invalid = lane.min + Vec2::new(100.0, 12.0);
+    let before = app.session.project.clone();
+    ready_file_hover(&mut app, &ctx, &source.0, invalid);
+    let audio = app
+        .file_hover
+        .as_ref()
+        .unwrap()
+        .audio
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .samples
+        .clone();
+    let output = file_frame_output(&mut app, &ctx, &source.0, invalid, false, false);
+    assert_eq!(
+        output.platform_output.cursor_icon,
+        egui::CursorIcon::NotAllowed
+    );
+    assert!(app.file_drop_target.is_none());
+    let valid = app.lane_bounds[&tracks[2]].min + Vec2::new(210.0, 12.0);
+    let output = file_frame_output(&mut app, &ctx, &source.0, valid, false, false);
+    assert_ne!(
+        output.platform_output.cursor_icon,
+        egui::CursorIcon::NotAllowed
+    );
+    assert_eq!(
+        app.file_drop_target.as_ref().unwrap().track,
+        Some(tracks[2])
+    );
+    assert_eq!(app.session.project, before);
+    file_frame(&mut app, &ctx, &source.0, valid, true);
+    finish_import(&mut app, &ctx);
+    assert!(app.error.is_none());
+    let clip = &app.session.project.tracks[3].clips[0];
+    assert!(std::sync::Arc::ptr_eq(
+        &audio,
+        &app.session.audio[&clip.asset_id].samples
+    ));
+    assert!(app.session.project.tracks[0].clips.is_empty());
+    app.session.project.validate().unwrap();
+}

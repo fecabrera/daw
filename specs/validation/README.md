@@ -3521,3 +3521,17 @@ Clip move previews mark group-bus destinations invalid before release. The share
 - Relative links in the four changed documentation files: 69 checked, no missing targets.
 
 Native pointer behavior and Windows/Linux checks were not performed. Automated egui input checks verify cursor output and edit behavior; they do not establish native cursor rendering. Audio processing and saved project data are unchanged.
+
+
+## Audio-file drag rejection on group buses — 2026-10-20
+
+External file hover now uses the existing rejected `file_target` result to show the forbidden cursor. Release continues through the same target lookup: no target means no import, selection change, undo entry, or error dialog. Other unsupported file targets receive the same feedback; existing Sampler targeting stays separate.
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test -p daw-ui --lib track_groups`: all 18 tests pass. New input tests cover group headers and lanes, expanded/collapsed buses, loading/ready previews, direct drops, unchanged project/selection/history, no import job or error dialog, and returning to an audio track while retaining the prepared audio buffer.
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `git diff --check`: pass with the configured local Cargo cache.
+
+- `cargo test --workspace`: 1046 tests pass, including all 526 UI tests; no failures. Two pre-existing extended timestretch acceptance cases remain ignored. Existing file import, snapping, overwrite, failed-import, and Sampler tests pass.
+- `sh tools/package_macos.sh release`: rebuilt `target/release/DAW.app` successfully.
+- Relative documentation links: 69 checked, no missing targets.
+
+Native operating-system file-drag cursor rendering and Windows/Linux checks were not performed. Automated egui checks cover cursor output and drop behavior. Audio processing and saved project data are unchanged.
