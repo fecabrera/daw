@@ -89,6 +89,10 @@ impl InstrumentUi {
     pub(super) fn dragging(&self) -> bool {
         self.drag.as_ref().is_some_and(|drag| drag.active)
     }
+    /// Escape belongs to an armed gesture before it crosses the drag threshold.
+    pub(super) fn has_layer_gesture(&self) -> bool {
+        self.drag.is_some()
+    }
     pub(super) fn editing_name(&self) -> bool {
         self.name_edit.is_some() || self.macro_name_edit.is_some()
     }

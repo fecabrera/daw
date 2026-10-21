@@ -12,9 +12,15 @@ impl DawUi {
             && self.file_hover.is_none()
     }
 
+    pub(super) fn selection_escape_available(&self, ctx: &egui::Context) -> bool {
+        self.selection_shortcut_environment_available(ctx)
+            && !self.instrument_ui.has_layer_gesture()
+            && !strip_reorder::dragging(ctx)
+    }
+
     pub(super) fn selection_escape(&mut self, ctx: &egui::Context) {
         if !matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
-            || !self.selection_shortcut_environment_available(ctx)
+            || !self.selection_escape_available(ctx)
             || ctx.text_edit_focused()
             || egui::Popup::is_any_open(ctx)
             || (self.view_mode == ViewMode::Timeline

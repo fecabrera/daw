@@ -3788,3 +3788,17 @@ Regression cases cover clip/range/both selection with tracks or Master, held Esc
 - `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
 
 Native key/menu delivery, live device playback and Windows/Linux execution were not checked. Automated egui tests do not establish native platform behavior.
+
+## Native mix and armed-layer Escape guards — 2026-10-21
+
+Fixes F001 and F002 from the `f37981d` review. Shared track-action execution rejects M/S while a pointer button is held, including native dispatch, without disabling menu press tracking. After release, focused non-text controls and menu activation still work. Shared Escape availability includes an armed layer gesture before activation, while the existing active-only drag predicate remains unchanged for other consumers.
+
+Regression coverage holds real Timeline and Instrument knobs, calls the public native-dispatch entry for Mute and Solo, verifies no project mutation, then verifies execution after release. Fast move/release plus Escape checks adjacent and sparse selected layer groups, primary/group retention, no edit on cancellation, the subsequent layer M/S target, and normal idle Escape deselection. Existing menu release, active-drag, focus and selection tests also run.
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked -p daw-ui --release track_shortcuts --lib`: 27 passed on the final fixtures.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked --workspace --release`: 1,091 passed, 0 failed, 2 existing extended timestretch tests ignored.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed on the final sources.
+- `cargo fmt --all --check`, `git diff --check` and changed local documentation link targets: passed.
+- `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
+
+Native AppKit key/menu delivery, native pointer timing, live device playback and Windows/Linux execution were not checked. Automated egui input and public-dispatch tests do not establish native platform behavior.

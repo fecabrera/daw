@@ -124,7 +124,12 @@ impl DawUi {
     }
 
     pub fn perform_track_action(&mut self, action: TrackAction, ctx: &egui::Context) {
-        if !self.track_action_enabled(action, ctx) {
+        // Native key equivalents call this entry directly. Keep menu buttons
+        // available on press, but execute mix actions only after pointer release.
+        if !self.track_action_enabled(action, ctx)
+            || (matches!(action, TrackAction::Mute | TrackAction::Solo)
+                && ctx.input(|input| input.pointer.any_down()))
+        {
             return;
         }
         self.ensure_history();

@@ -1857,8 +1857,7 @@ impl DawUi {
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
         // Cancellation below can retire a gesture before Escape reaches selection.
-        let selection_escape_available = self.selection_shortcut_environment_available(ui.ctx())
-            && !strip_reorder::dragging(ui.ctx());
+        let selection_escape_available = self.selection_escape_available(ui.ctx());
         self.ensure_history();
         strip_reorder::begin_frame(
             ui,
