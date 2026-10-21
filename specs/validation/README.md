@@ -3696,3 +3696,37 @@ Completed focused checks:
 - `sh tools/package_macos.sh release`: rebuilt the unsigned `target/release/DAW.app`.
 
 Native mouse/trackpad gestures, device playback during these gestures, and Windows/Linux checks remain unverified. Automated egui input tests do not establish native gesture behavior.
+
+## Project-specific independent review skill — 2026-10-21
+
+Added `.agents/skills/daw-review` for committed DAW branch and PR reviews. The skill asks for reviewer count, accepts optional per-reviewer models/focus, and runs independent fresh-context reviewers followed by a separate adjudicator. Reviewers cannot exchange messages, conclusions, or scratch artifacts. The adjudicator receives their reports through the coordinator and rechecks claims and suggestions without contacting them. This is workflow isolation over shared filesystem tools, not an adversarial sandbox.
+
+The rubric covers documentation completeness/coverage/style, implementation against current specs, security, performance, shared-code reuse/migration, dependency vulnerabilities, and license/distribution obligations. DAW-specific checks include callback restrictions, exact history and cache reuse, worker publication, sample/frame and edit invariants, stable/copied modulation identities, shared UI controls/drag behavior, playback/export parity, and Integrated timestretch independence. Missing current advisory access or other required evidence remains limited coverage rather than a fabricated vulnerability or a clean PASS.
+
+The standard-library Python helper pins merge-base/head snapshots without switching branches or including uncommitted changes. It validates each reviewer, requires exactly one disposition for each raw finding, rejects missing/mislabeled reviewers and mixed revisions, and counts only accepted findings after deduplication. The final report has type, per-category/severity counts/status, verdict, grouped/ranked findings with suggestions/evidence, declared coverage/checks, and model information with an AI disclaimer. Critical/major findings or incomplete required coverage fail by default. Raw reports and adjudication decisions remain in the audit artifact. Existing final artifacts cannot be overwritten.
+
+Completed checks:
+
+- Skill-creator `quick_validate.py`: passed.
+- `python3 .agents/skills/daw-review/scripts/test_review.py`: 12 passed. Covers severity/category counts, merge/reclassification/removal, threshold/coverage gates, missing/duplicate/unaccounted findings, revisions, JSON duplicate keys, configured reviewers, output preservation, source snapshot immutability, dirty-tree exclusion, tracked-output rejection, and archive path/link safety.
+- Independent forward test on a temporary, dependency-free Rust workspace: two fresh-context reviewers each reproduced an introduced relative-gain defect. A separate fresh adjudicator independently reproduced it and verified the correction in its own scratch copy. Its decision merged both raw findings into one major code finding; the report correctly showed docs PASS, code FAIL, deps PASS, and total FAIL. Both pinned snapshots were byte-compared against Git objects after all agents finished and remained unchanged. This test did not review the actual DAW branch.
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --workspace --release`: 1,083 passed, 0 failed; the 2 existing extended timestretch matrix checks remain ignored.
+- Skill/reference/document links and `git diff --check`: passed.
+
+No production PR provider/fetch integration, live vulnerability/license audit, or Windows/Linux Python execution was exercised. Provider resolution/fetching and subagent launches belong to the coordinating skill/tool workflow; the Python helper does not supply an agent runtime. No desktop runtime changed, so no app rebuild or native/device test was needed.
+
+## Review category labels and scope gates — 2026-10-21
+
+Updated the DAW review skill to display Documentation, Code Quality, Dependencies and Total while retaining stable machine IDs in JSON. Code Quality is SKIPPED when the pinned scope has no source, script, test or behavior-affecting configuration changes. Dependencies is SKIPPED when dependency inputs are unchanged. Documentation remains active. Skipped categories have zero findings, contribute neither PASS nor FAIL, and are excluded from Total counts/verdict. Incomplete required coverage continues to fail active categories only.
+
+Preparation records both scope gates before agents start and uses a no-renames inventory to retain removed/renamed inputs. Parsed Cargo fields distinguish dependency/code behavior from package descriptions, comments and unrelated metadata. Feature/build/target inputs, native/vendor resources and licensing/packaging inputs keep relevant reviews active conservatively. Unknown scope or malformed manifests cannot justify skipping. Agent prompts explicitly omit skipped audits and source-test execution while permitting source context needed to verify Documentation claims. Validators reject findings in skipped categories and reject skipped coverage for active categories.
+
+Completed checks:
+
+- `python3 .agents/skills/daw-review/scripts/test_review.py`: 21 passed. Added docs-only and dependency-only gating, active-category failures, legacy incomplete coverage exclusion, skipped-coverage/finding validation, source/script/config inputs, manifest metadata versus feature changes, removed/renamed inputs, friendly labels and zero-count SKIPPED output. Existing counting, decision, identity, revision, snapshot safety and output-preservation checks remain covered.
+- Skill-creator `quick_validate.py`, skill/document local link checks and `git diff HEAD --check`: passed.
+- `cargo fmt --all --check`, strict workspace Clippy and `cargo test --workspace --release`: passed; 1,083 tests passed, 0 failed and the 2 existing extended timestretch matrices remain ignored. No Rust runtime changed.
+- Re-rendered the prior `main` review from the same pinned revisions and raw reviewer/adjudicator evidence under the new policy. Code Quality remains active with its one minor finding; unchanged Dependencies is SKIPPED. Documentation and Code Quality pass, and Total is PASS. Original report/audit artifacts remain unchanged. This is a policy revision, not a new agent review; the selection-loss finding remains unfixed.
+
+This supersedes only the prior review's dependency-coverage FAIL policy for unchanged dependency inputs. It does not assert that skipped dependencies or code have passed an audit. No app rebuild or native/device check was needed for these harness/documentation changes.

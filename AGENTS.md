@@ -14,6 +14,8 @@ These instructions apply to the whole repository. Read any additional `AGENTS.md
 
 ## Project context and reference documents
 
+For a requested independent multi-agent branch or PR review, use the repository's [DAW review skill](.agents/skills/daw-review/SKILL.md). Confirm the target/base and reviewer count; users can set each reviewer's model and focus. Keep reviewers independent, then use a separate findings validator. Use Documentation, Code Quality, Dependencies and Total as report labels. Skip Code Quality when no code inputs change and Dependencies when dependency inputs are unchanged; SKIPPED affects neither PASS nor FAIL. Critical/major findings or incomplete required coverage in active categories cause FAIL by default. A review does not authorize implementation changes or publishing comments.
+
 This is a Rust desktop digital audio workstation (DAW) for macOS, Windows, and Linux, with a headless command-line interface (CLI). Both applications use the same project model and rendering logic. The project format is experimental. There is no fixed track-count limit. Undo/redo follows [session history](specs/editing/undo-redo.md). Mobile delivery is outside the current MVP.
 
 Read the documents relevant to the task:

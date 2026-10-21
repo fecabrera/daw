@@ -1,0 +1,4 @@
+interface:
+  display_name: "DAW Branch and PR Review"
+  short_description: "Independent DAW reviews with verified findings"
+  default_prompt: "Use $daw-review to review a DAW branch or PR with independent reviewers and a separate findings validator."

@@ -48,6 +48,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 ## Evidence
 
+- [DAW branch and PR review skill](../.agents/skills/daw-review/SKILL.md): independent Documentation, Code Quality and Dependencies reviews, with source/dependency scope gates, separate findings validation, and a PASS/FAIL report that excludes SKIPPED categories.
+
 [Validation history](validation/README.md) records completed checks and unverified behavior. It is historical evidence, not a substitute for current requirements. Keep dates and original results when moving or correcting records.
 
 - [Performance audit — 2026-10-18](validation/performance-audit-2026-10-18.md): measured CPU/allocation baselines, scaling findings, proposed remediations, and native verification gaps.
