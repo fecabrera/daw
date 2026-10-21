@@ -126,8 +126,12 @@ impl DawUi {
             || !ui.input(|input| input.focused)
             || ui.input(|input| input.key_pressed(egui::Key::Escape));
         if cancel {
+            let was_dragging = self.portion_drag.is_some();
             self.portion_drag = None;
-            if ui.input(|input| input.key_pressed(egui::Key::Escape))
+            // Timeline's shared Escape handler owns idle range deselection.
+            // Keep the existing gesture cancellation and Editor behavior here.
+            if (self.view_mode != super::ViewMode::Timeline || was_dragging)
+                && ui.input(|input| input.key_pressed(egui::Key::Escape))
                 && self.clip_actions_available(ui.ctx())
             {
                 self.portion = None;

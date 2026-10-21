@@ -2,32 +2,6 @@
 use super::*;
 
 impl DawUi {
-    pub(super) fn instrument_layer_escape(&mut self, ctx: &egui::Context) {
-        if self.view_mode != ViewMode::Instrument
-            || !self.track_action_enabled(TrackAction::Mute, ctx)
-            || ctx.input(|input| input.pointer.any_down())
-            || self
-                .instrument_ui
-                .text_focus
-                .is_some_and(|id| ctx.memory(|memory| memory.had_focus_last_frame(id)))
-        {
-            return;
-        }
-        // Observe before widgets can consume Escape. Text editing and active gestures
-        // keep precedence; catalogs can still clear their own selection afterward.
-        if ctx.input(|input| {
-            input.events.iter().any(|event| {
-                matches!(event,
-                egui::Event::Key { key: egui::Key::Escape, pressed: true,
-                    repeat: false, modifiers, .. } if modifiers.is_none())
-            })
-        }) {
-            self.instrument_ui.selected_layer = None;
-            self.instrument_ui.selected_layers.clear();
-            ctx.request_repaint();
-        }
-    }
-
     pub(super) fn instrument_mix_action(&mut self, action: TrackAction) {
         let Some(track) = self
             .session

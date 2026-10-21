@@ -1406,3 +1406,134 @@ fn empty_tracks_context_menu_dismissal_and_guards_preserve_the_project() {
     assert!(!app.dirty);
     drop(sender);
 }
+
+#[test]
+fn timeline_escape_clears_clips_before_tracks_or_master_without_editing() {
+    for master in [false, true] {
+        for selection in ["clips", "range", "both"] {
+            let (mut app, tracks, clips) = multi_clip_fixture();
+            let ctx = context();
+            app.select_clip(clips[0], tracks[0], false);
+            app.selected_clips.insert(clips[1]);
+            app.select_track(tracks[1], true);
+            if selection != "clips" {
+                app.portion = Some(crate::portion::ClipPortion {
+                    tracks: tracks[..2].to_vec(),
+                    start_frame: 0,
+                    end_frame: 100,
+                });
+            }
+            if selection == "range" {
+                app.selected_clip = None;
+                app.selected_clips.clear();
+            }
+            if master {
+                app.select_master();
+            }
+            frame(&mut app, &ctx, vec![]);
+            let before = app.session.project.clone();
+            let primary = app.selected_track;
+            let selected = app.selected_tracks.clone();
+            frame(
+                &mut app,
+                &ctx,
+                vec![key_event(
+                    egui::Key::Escape,
+                    Default::default(),
+                    false,
+                    true,
+                )],
+            );
+            assert!(app.selected_clip.is_none() && app.selected_clips.is_empty());
+            assert!(app.portion.is_none());
+            assert_eq!(app.selected_track, primary);
+            assert_eq!(app.selected_tracks, selected);
+            assert_eq!(app.master_selected, master);
+            frame(
+                &mut app,
+                &ctx,
+                vec![key_event(egui::Key::Escape, Default::default(), true, true)],
+            );
+            assert_eq!(
+                app.selected_tracks, selected,
+                "held Escape must not advance to tracks"
+            );
+            assert_eq!(app.master_selected, master);
+            frame(
+                &mut app,
+                &ctx,
+                vec![key_event(
+                    egui::Key::Escape,
+                    Default::default(),
+                    false,
+                    false,
+                )],
+            );
+            press(&mut app, &ctx, egui::Key::Escape);
+            assert!(app.selected_track.is_none() && app.selected_tracks.is_empty());
+            assert!(!app.master_selected);
+            press(&mut app, &ctx, egui::Key::Escape);
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty && !app.sync_needed);
+        }
+    }
+}
+
+#[test]
+fn timeline_escape_respects_text_input_and_non_text_control_focus() {
+    for text_input in [false, true] {
+        let (mut app, tracks, clips) = multi_clip_fixture();
+        let ctx = context();
+        app.use_native_menu();
+        app.select_clip(clips[0], tracks[0], false);
+        app.portion = Some(crate::portion::ClipPortion {
+            tracks: vec![tracks[0]],
+            start_frame: 0,
+            end_frame: 100,
+        });
+        let before = app.session.project.clone();
+        let mut text = String::new();
+        for step in 0..2 {
+            let events = if step == 0 {
+                vec![]
+            } else {
+                vec![
+                    key_event(egui::Key::Escape, Default::default(), false, true),
+                    key_event(egui::Key::Escape, Default::default(), false, false),
+                ]
+            };
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    let response = if text_input {
+                        ui.text_edit_singleline(&mut text)
+                    } else {
+                        ui.button("Focused control")
+                    };
+                    if step == 0 {
+                        response.request_focus();
+                    }
+                    app.show(ui);
+                },
+            );
+            output.textures_delta.clear();
+        }
+        assert_eq!(app.selected_clip, text_input.then_some(clips[0]));
+        assert_eq!(app.portion.is_some(), text_input);
+        assert_eq!(app.selected_track, Some(tracks[0]));
+        // After text focus ends, the next press clears clips, then tracks.
+        if text_input {
+            press(&mut app, &ctx, egui::Key::Escape);
+        }
+        assert!(app.selected_clip.is_none() && app.portion.is_none());
+        assert_eq!(app.selected_track, Some(tracks[0]));
+        press(&mut app, &ctx, egui::Key::Escape);
+        assert!(app.selected_track.is_none());
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+}

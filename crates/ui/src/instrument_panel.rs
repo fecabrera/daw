@@ -10,7 +10,6 @@ pub(super) struct InstrumentUi {
     pub(super) track: Option<Id>,
     pub(super) selected_layer: Option<Id>,
     pub(super) selected_layers: HashSet<Id>,
-    pub(super) text_focus: Option<egui::Id>,
     pub(super) track_effects_target: bool,
     pub(super) effects_layer: Option<Id>,
     pub(super) pending_effect_transfer: Option<(daw_core::EffectTransfer, Id, Rect, egui::Id)>,

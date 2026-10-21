@@ -6,6 +6,8 @@ Audio track headers show a waveform icon; MIDI track headers show a keyboard ico
 
 Press M to toggle Mute and S to toggle Solo on each selected track. These shortcuts work from any focused pane or control in Timeline, except while you enter text. Dialogs, blocking jobs and active drags still disable them. Holding a key does not toggle repeatedly.
 
+Press Escape to clear selected clips or a selected clip time range first. Tracks and Master stay selected. If no clips or clip time range are selected, Escape clears track or Master selection. Text entry, open menus and active gestures take precedence. Holding Escape does not advance through these steps.
+
 ## Import and arrange
 
 1. Add an audio or MIDI track from the Track menu or the Tracks header.

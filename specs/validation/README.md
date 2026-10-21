@@ -3775,3 +3775,16 @@ Automated egui coverage checks single/group and Output/no-selection targets, mix
 - `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
 
 Native key/menu delivery, live audio devices and Windows/Linux execution were not checked. Automated egui tests do not establish native platform behavior.
+
+## Timeline Escape selection priority — 2026-10-21
+
+Timeline Escape clears clips and clip time ranges first while retaining tracks/Master. A later press clears tracks/Master when no clip selection remains. Project data, playhead, loop endpoints, playback and history remain unchanged. Timeline and Instrument share Escape observation, selection-environment guards and previous-text-focus retention. Existing track actions use the shared environment without changing their focus policy.
+
+Regression cases cover clip/range/both selection with tracks or Master, held Escape, non-text control focus, text editing, and staged deselection. Existing context-menu dismissal and fast effect-drag cancellation tests exposed precedence conflicts; frame-start availability capture and the popup guard keep those actions ahead of deselection. Idle Timeline range clearing now has one shared owner; Editor range handling and gesture cancellation stay on their existing path.
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked --workspace --release`: 1,089 passed, 0 failed, 2 existing extended timestretch tests ignored. Includes the two new Timeline regressions, shared Instrument selection tests and existing menu/effect-drag cancellation coverage.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo fmt --all --check`, `git diff --check` and changed local documentation link targets: passed.
+- `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
+
+Native key/menu delivery, live device playback and Windows/Linux execution were not checked. Automated egui tests do not establish native platform behavior.

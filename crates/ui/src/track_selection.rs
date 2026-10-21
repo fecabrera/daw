@@ -91,9 +91,9 @@ impl DawUi {
         let input_available = if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
             && matches!(action, TrackAction::Mute | TrackAction::Solo)
         {
-            self.edit_shortcuts_available(ctx) && !ctx.text_edit_focused()
+            !ctx.text_edit_focused()
         } else {
-            self.clip_actions_available(ctx)
+            !ctx.egui_wants_keyboard_input()
         };
         (action != TrackAction::Ungroup || self.selected_group().is_some())
             && (action != TrackAction::AddMidi
@@ -104,12 +104,7 @@ impl DawUi {
                     self.track_selected(track.id) && track.kind == daw_core::TrackKind::Midi
                 }))
             && input_available
-            && self.track_name_edit.is_none()
-            && self.tempo_edit.is_none()
-            && self.time_drag.is_none()
-            && self.musical_drag.is_none()
-            && self.selection_drag.iter().all(Option::is_none)
-            && self.file_hover.is_none()
+            && self.selection_shortcut_environment_available(ctx)
             && (action != TrackAction::Rename
                 || self
                     .session

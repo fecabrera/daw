@@ -85,6 +85,7 @@ mod project_name_dialog;
 mod project_settings;
 pub mod rows;
 mod selection_focus;
+mod selection_shortcuts;
 pub mod settings;
 pub mod theme;
 #[cfg(any(target_os = "windows", test))]
@@ -736,6 +737,7 @@ pub struct DawUi {
     selected_tracks: HashSet<Id>,
     selected_clip: Option<Id>,
     selected_clips: HashSet<Id>,
+    selection_text_focus: Option<egui::Id>,
     clip_clipboard: Option<ClipClipboard>,
     inputs: HashMap<Id, Inputs>,
     track_name_edit: Option<TrackNameEdit>,
@@ -839,6 +841,7 @@ impl Default for DawUi {
             selected_tracks: HashSet::new(),
             selected_clip: None,
             selected_clips: HashSet::new(),
+            selection_text_focus: None,
             clip_clipboard: None,
             inputs: HashMap::new(),
             track_name_edit: None,
@@ -1853,6 +1856,9 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        // Cancellation below can retire a gesture before Escape reaches selection.
+        let selection_escape_available = self.selection_shortcut_environment_available(ui.ctx())
+            && !strip_reorder::dragging(ui.ctx());
         self.ensure_history();
         strip_reorder::begin_frame(
             ui,
@@ -1953,7 +1959,9 @@ impl DawUi {
             self.toggle_playback();
         }
         if ui.is_enabled() {
-            self.instrument_layer_escape(&ctx);
+            if selection_escape_available {
+                self.selection_escape(&ctx);
+            }
             self.view_shortcuts(&ctx);
         }
         egui::Panel::top("toolbar")
@@ -2194,9 +2202,10 @@ impl DawUi {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
         // egui may release text focus at frame start when Escape is pressed.
-        self.instrument_ui.text_focus = ctx
-            .memory(|memory| memory.focused())
-            .filter(|_| self.view_mode == ViewMode::Instrument && ctx.text_edit_focused());
+        self.selection_text_focus = ctx.memory(|memory| memory.focused()).filter(|_| {
+            matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
+                && ctx.text_edit_focused()
+        });
     }
     fn file_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);
