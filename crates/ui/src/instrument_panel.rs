@@ -769,6 +769,10 @@ impl DawUi {
             }
             return;
         }
+        let previous_layer_selection = (
+            self.instrument_ui.selected_layer,
+            self.instrument_ui.selected_layers.clone(),
+        );
         self.layer_reorder(ui, &mut settings, &reorder_rows, scroll.inner_rect);
         if let Some(id) = remove_layer {
             if self
@@ -822,6 +826,14 @@ impl DawUi {
         }
         if !edits.is_empty() {
             self.edit(Edit::Batch(edits));
+            if self.job.is_some() {
+                // PreparedEdit owns the intended selection until its layers are published.
+                // Keep live IDs while waiting so failure/cancellation needs no rollback.
+                (
+                    self.instrument_ui.selected_layer,
+                    self.instrument_ui.selected_layers,
+                ) = previous_layer_selection;
+            }
         }
     }
 

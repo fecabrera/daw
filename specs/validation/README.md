@@ -3730,3 +3730,18 @@ Completed checks:
 - Re-rendered the prior `main` review from the same pinned revisions and raw reviewer/adjudicator evidence under the new policy. Code Quality remains active with its one minor finding; unchanged Dependencies is SKIPPED. Documentation and Code Quality pass, and Total is PASS. Original report/audit artifacts remain unchanged. This is a policy revision, not a new agent review; the selection-loss finding remains unfixed.
 
 This supersedes only the prior review's dependency-coverage FAIL policy for unchanged dependency inputs. It does not assert that skipped dependencies or code have passed an audit. No app rebuild or native/device check was needed for these harness/documentation changes.
+
+## Layer copy selection retention — 2026-10-21
+
+Fixes review finding F001. Instrument layer copies keep the original primary layer and selected group while Sampler audio prepares. The shared prepared-edit result selects copied IDs only when their session publishes. Failure or cancellation retains the original selection and prepared audio; synchronous copies retain release-time selection.
+
+Automated egui regression coverage exercises single-layer and two-layer copies, an intervening busy Instrument frame, successful publication and undo, an injected worker error, and cancellation. Failure/cancellation checks retain project tracks, selection, clean state and the original prepared sample allocations.
+
+- `cargo fmt --all --check`: passed.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked -p daw-ui --release layer_duplication_stages_selection --lib`: passed (six cases).
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked --workspace --release`: passed; 1,083 tests passed, 0 failed, 2 existing extended timestretch tests ignored.
+- `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
+- Changed guide/specification local link targets exist; `git diff --check` passed.
+
+Native drag gestures, live device playback, and Windows/Linux execution were not checked for this fix. Automated egui checks do not establish native behavior.
