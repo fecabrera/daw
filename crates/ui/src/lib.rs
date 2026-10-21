@@ -1953,6 +1953,7 @@ impl DawUi {
             self.toggle_playback();
         }
         if ui.is_enabled() {
+            self.instrument_layer_escape(&ctx);
             self.view_shortcuts(&ctx);
         }
         egui::Panel::top("toolbar")
@@ -2192,6 +2193,10 @@ impl DawUi {
         if self.repaint_until.is_some_and(|until| now < until) {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
+        // egui may release text focus at frame start when Escape is pressed.
+        self.instrument_ui.text_focus = ctx
+            .memory(|memory| memory.focused())
+            .filter(|_| self.view_mode == ViewMode::Instrument && ctx.text_edit_focused());
     }
     fn file_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);

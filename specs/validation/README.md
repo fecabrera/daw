@@ -3761,3 +3761,17 @@ Automated egui coverage focuses a non-text control or text field in Timeline and
 - Changed guide/specification local link targets exist.
 
 Native menu/key delivery, live device playback and Windows/Linux execution were not checked. Automated egui input tests do not establish native platform behavior.
+
+## Instrument layer mix shortcuts and Escape — 2026-10-21
+
+Instrument M/S uses the existing text-aware action guard and native/egui action dispatch. Regular layer selections toggle each member's own state through one instrument edit. Output or an empty layer selection targets only the displayed track, retaining other selected tracks. Escape clears layer UI selection without editing the project. The previous text widget ID prevents egui's frame-start Escape focus release from also clearing layers.
+
+Automated egui coverage checks single/group and Output/no-selection targets, mixed layer states, untouched tracks, undo/redo, focused non-text controls, typed M/S, Escape leaving text input before clearing layers, retained empty selection and drag cancellation precedence. The first focused regression exposed the early text-focus release; it passed after retaining the previous text widget identity.
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked -p daw-ui --release instrument_mix_shortcuts --lib`: 2 passed, covering the six target/focus cases.
+- `cargo fmt --all --check`, changed local documentation link targets and `git diff --check`: passed.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked --workspace --release`: 1,087 passed, 0 failed, 2 existing extended timestretch tests ignored. Includes the additional layer-drag Escape regression and existing catalog, selection and rename coverage.
+- `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
+
+Native key/menu delivery, live audio devices and Windows/Linux execution were not checked. Automated egui tests do not establish native platform behavior.

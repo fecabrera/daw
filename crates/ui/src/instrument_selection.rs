@@ -1,7 +1,81 @@
-//! Component selection is UI state, independent of the catalog and selected layer.
+//! Instrument layer and component selection, including contextual mix actions.
 use super::*;
 
 impl DawUi {
+    pub(super) fn instrument_layer_escape(&mut self, ctx: &egui::Context) {
+        if self.view_mode != ViewMode::Instrument
+            || !self.track_action_enabled(TrackAction::Mute, ctx)
+            || ctx.input(|input| input.pointer.any_down())
+            || self
+                .instrument_ui
+                .text_focus
+                .is_some_and(|id| ctx.memory(|memory| memory.had_focus_last_frame(id)))
+        {
+            return;
+        }
+        // Observe before widgets can consume Escape. Text editing and active gestures
+        // keep precedence; catalogs can still clear their own selection afterward.
+        if ctx.input(|input| {
+            input.events.iter().any(|event| {
+                matches!(event,
+                egui::Event::Key { key: egui::Key::Escape, pressed: true,
+                    repeat: false, modifiers, .. } if modifiers.is_none())
+            })
+        }) {
+            self.instrument_ui.selected_layer = None;
+            self.instrument_ui.selected_layers.clear();
+            ctx.request_repaint();
+        }
+    }
+
+    pub(super) fn instrument_mix_action(&mut self, action: TrackAction) {
+        let Some(track) = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|track| Some(track.id) == self.selected_track)
+        else {
+            return;
+        };
+        let track_id = track.id;
+        if let Some(mut instrument) = track.instrument.clone() {
+            let mut changed = false;
+            for layer in &mut instrument.layers {
+                if self.instrument_ui.track == Some(track_id)
+                    && (self.instrument_ui.selected_layer == Some(layer.id)
+                        || self.instrument_ui.selected_layers.contains(&layer.id))
+                {
+                    if action == TrackAction::Mute {
+                        layer.muted = !layer.muted;
+                    } else {
+                        layer.soloed = !layer.soloed;
+                    }
+                    changed = true;
+                }
+            }
+            if changed {
+                self.edit(Edit::SetInstrument {
+                    track_id,
+                    instrument: Some(instrument),
+                });
+                return;
+            }
+        }
+        // Output and an empty layer selection address only the displayed track.
+        self.edit(if action == TrackAction::Mute {
+            Edit::SetTrackMuted {
+                track_id,
+                muted: !track.muted,
+            }
+        } else {
+            Edit::SetTrackSoloed {
+                track_id,
+                soloed: !track.soloed,
+            }
+        });
+    }
+
     pub(super) fn component_selection(
         &mut self,
         ui: &mut egui::Ui,

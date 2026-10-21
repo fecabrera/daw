@@ -88,7 +88,7 @@ impl DawUi {
     }
 
     pub fn track_action_enabled(&self, action: TrackAction, ctx: &egui::Context) -> bool {
-        let input_available = if self.view_mode == ViewMode::Timeline
+        let input_available = if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
             && matches!(action, TrackAction::Mute | TrackAction::Solo)
         {
             self.edit_shortcuts_available(ctx) && !ctx.text_edit_focused()
@@ -133,6 +133,12 @@ impl DawUi {
             return;
         }
         self.ensure_history();
+        if self.view_mode == ViewMode::Instrument
+            && matches!(action, TrackAction::Mute | TrackAction::Solo)
+        {
+            self.instrument_mix_action(action);
+            return;
+        }
         if matches!(action, TrackAction::Group | TrackAction::Ungroup) {
             self.perform_group_action(action);
             return;

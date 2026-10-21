@@ -263,6 +263,155 @@ fn timeline_mute_and_solo_ignore_control_focus_but_preserve_text_input_and_other
 }
 
 #[test]
+fn instrument_mix_shortcuts_target_selected_layers_or_only_the_displayed_track() {
+    for target in ["single", "group", "output", "none"] {
+        let (mut app, ctx, layers) = super::midi::layer_header_fixture();
+        app.use_native_menu();
+        let track = app.selected_track.unwrap();
+        let other = app.session.project.add_track().unwrap();
+        app.selected_tracks.insert(other);
+        let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        instrument.layers[1].muted = true;
+        instrument.layers[1].soloed = true;
+        let output = instrument.main.id;
+        app.instrument_ui.select_layer(if target == "output" {
+            output
+        } else {
+            layers[0].id
+        });
+        if target == "group" {
+            app.instrument_ui.selected_layers.insert(layers[1].id);
+        }
+        if target == "none" {
+            press(&mut app, &ctx, egui::Key::Escape);
+            assert!(app.instrument_ui.selected_layer.is_none());
+            assert!(app.instrument_ui.selected_layers.is_empty());
+            assert!(!app.dirty);
+            // Reconciliation must not select the first layer again.
+            frame(&mut app, &ctx, vec![]);
+            assert!(app.instrument_ui.selected_layer.is_none());
+        }
+        app.history = None;
+        app.ensure_history();
+        let before = app.session.project.clone();
+        let selection = app.instrument_ui.selected_layers.clone();
+        press(&mut app, &ctx, egui::Key::M);
+        press(&mut app, &ctx, egui::Key::S);
+        let after = &app.session.project;
+        let instrument = after.tracks[0].instrument.as_ref().unwrap();
+        for (index, layer) in instrument.layers.iter().enumerate() {
+            let toggled = index == 0 && matches!(target, "single" | "group")
+                || index == 1 && target == "group";
+            assert_eq!(layer.muted, (index == 1) ^ toggled, "{target} {index}");
+            assert_eq!(layer.soloed, (index == 1) ^ toggled, "{target} {index}");
+        }
+        assert_eq!(after.tracks[0].muted, matches!(target, "output" | "none"));
+        assert_eq!(after.tracks[0].soloed, matches!(target, "output" | "none"));
+        assert_eq!(after.tracks[1], before.tracks[1]);
+        assert_eq!(app.instrument_ui.selected_layers, selection);
+        assert_eq!(app.selected_track, Some(track));
+        assert!(app.dirty);
+        let changed = after.tracks.clone();
+        for _ in 0..2 {
+            app.perform_history_action(crate::HistoryAction::Undo, &ctx);
+        }
+        assert_eq!(app.session.project.tracks, before.tracks);
+        for _ in 0..2 {
+            app.perform_history_action(crate::HistoryAction::Redo, &ctx);
+        }
+        assert_eq!(app.session.project.tracks, changed);
+    }
+}
+
+#[test]
+fn instrument_mix_shortcuts_and_escape_respect_text_input_with_control_focus() {
+    for text_input in [false, true] {
+        let (mut app, ctx, layers) = super::midi::layer_header_fixture();
+        app.use_native_menu();
+        app.instrument_ui.select_layer(layers[0].id);
+        app.instrument_ui.selected_layers.insert(layers[1].id);
+        let mut text = String::new();
+        for step in 0..4 {
+            let key = [egui::Key::M, egui::Key::M, egui::Key::S, egui::Key::Escape][step];
+            let mut events = vec![];
+            if step != 0 {
+                events.push(key_event(key, Default::default(), false, true));
+                if step < 3 {
+                    events.push(egui::Event::Text(if step == 1 { "m" } else { "s" }.into()));
+                }
+                events.push(key_event(key, Default::default(), false, false));
+            }
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    let response = if text_input {
+                        ui.text_edit_singleline(&mut text)
+                    } else {
+                        ui.button("Focused control")
+                    };
+                    if step == 0 {
+                        response.request_focus();
+                    }
+                    app.show(ui);
+                },
+            );
+            output.textures_delta.clear();
+        }
+        let track = &app.session.project.tracks[0];
+        for layer in &track.instrument.as_ref().unwrap().layers[..2] {
+            assert_eq!(layer.muted, !text_input);
+            assert_eq!(layer.soloed, !text_input);
+        }
+        assert!(!track.muted && !track.soloed);
+        assert_eq!(text, if text_input { "ms" } else { "" });
+        assert_eq!(
+            app.instrument_ui.selected_layer,
+            text_input.then_some(layers[0].id)
+        );
+        assert_eq!(
+            app.instrument_ui.selected_layers.len(),
+            if text_input { 2 } else { 0 }
+        );
+        if text_input {
+            // The first Escape dismisses text focus; a second clears layers.
+            press(&mut app, &ctx, egui::Key::Escape);
+            assert!(app.instrument_ui.selected_layer.is_none());
+            assert!(app.instrument_ui.selected_layers.is_empty());
+        }
+    }
+}
+
+#[test]
+fn instrument_escape_cancels_layer_drag_without_clearing_its_selection() {
+    let (mut app, ctx, layers) = super::midi::layer_header_fixture();
+    app.instrument_ui.select_layer(layers[0].id);
+    app.instrument_ui.selected_layers.insert(layers[1].id);
+    let selected = app.instrument_ui.selected_layers.clone();
+    let before = app.session.project.clone();
+    let start = app.midi_editor.layer_bounds[&layers[0].id].icon.center();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start + Vec2::new(8.0, 0.0))],
+    );
+    assert!(app.instrument_ui.dragging());
+    press(&mut app, &ctx, egui::Key::Escape);
+    assert!(!app.instrument_ui.dragging());
+    assert_eq!(app.instrument_ui.selected_layers, selected);
+    assert_eq!(app.session.project.tracks, before.tracks);
+    assert!(!app.dirty);
+}
+
+#[test]
 fn track_keys_do_not_change_the_project_during_text_editing_or_blocked_interactions() {
     for blocked in [
         "name",

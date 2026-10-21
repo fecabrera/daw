@@ -221,7 +221,8 @@ fn pattern(app: &DawUi) -> &MidiPattern {
         .unwrap()
 }
 
-fn layer_header_fixture() -> (DawUi, egui::Context, Vec<daw_core::InstrumentLayerSettings>) {
+pub(super) fn layer_header_fixture()
+-> (DawUi, egui::Context, Vec<daw_core::InstrumentLayerSettings>) {
     let (mut app, _, _, _) = fixture();
     // Leave room for direct gestures on multiple rows above the pinned Main bus.
     app.timeline_effects_visible = false;
