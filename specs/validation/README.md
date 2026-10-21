@@ -3680,3 +3680,19 @@ Completed checks with the workspace Cargo cache selected:
 - `cargo build -p daw-cli` and `python3 tools/check_cli.py` pass. `sh tools/package_macos.sh release` rebuilds `target/release/DAW.app`; its executable hash matches `target/release/daw-desktop`. The running app/session was not relaunched. Changed-document local link targets and staged/unstaged whitespace checks pass.
 
 Native Option/Ctrl drags, live device playback during duplication, and Windows/Linux builds remain unverified. Automated egui tests do not establish native gesture behavior.
+
+## Instrument layer group selection and dragging — 2026-10-21
+
+Shift-click toggles regular-layer membership; plain header clicks select one layer. Every selected header uses the existing row outline. Output stays exclusive and pinned. Layer drags capture selection in saved order through `unit_selection::drag_group`, use `drag::group_insertion` for moves/no-op detection, and retain shared thresholds, preview, copy modifier, scrolling, release-only publication, and cancellation. Copies share owned-identity remapping with single-layer copies and retarget links between all copied owners. External inputs/consumers and immutable Sampler inputs stay unchanged. Prepared audio publication restores the primary owner and whole selected group.
+
+Completed focused checks:
+
+- `cargo test -p daw-unit-core instrument_copy --lib`: 3 passed. Covers full retained settings, fresh IDs, oscillator/provider namespaces, cross-layer sources with equal provider UUIDs, external sources/consumers, empty groups, and serialization.
+- `cargo test -p daw-ui --lib layer_`: 23 passed. Covers both themes, selection outlines and toggles, repeated Shift-clicks on names without Rename, control exclusions, Output exclusivity, track target reset, adjacent/sparse groups, saved order rather than click order, group move/copy, unselected drag starts, fast releases, clean no-op moves, cancellation/outside/Output drops, undo/redo, existing header controls/scrolling, and complete Sampler group preparation/selection publication.
+- `cargo test -p daw-project --release --test workflow copied_layer_groups`: passed. Confirms row moves retain rendered audio, copied groups double the modulated signal, isolated copies preserve the reference audio, and save/reopen retains the copied graph.
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, changed-document links, and `git diff --check`: passed.
+- `cargo test --workspace --release`: 1,083 passed, 0 failed; the 2 existing extended timestretch matrix checks remain ignored.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py`: passed. Smoke checks cover WAV/MP3 codecs/bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes.
+- `sh tools/package_macos.sh release`: rebuilt the unsigned `target/release/DAW.app`.
+
+Native mouse/trackpad gestures, device playback during these gestures, and Windows/Linux checks remain unverified. Automated egui input tests do not establish native gesture behavior.

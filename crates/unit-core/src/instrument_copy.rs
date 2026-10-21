@@ -1,11 +1,35 @@
 //! Copy a layer's owned identities and retarget its internal modulation graph.
-use crate::{InstrumentComponent, InstrumentLayerSettings, Modulation};
+use crate::{InstrumentComponent, InstrumentLayerSettings, Modulation, ModulationSourceId};
 use std::collections::HashMap;
 use uuid::Uuid;
 
 impl InstrumentLayerSettings {
     /// Copy all retained settings. External providers and immutable sample inputs stay shared.
     pub fn duplicate(&self) -> Self {
+        let (mut copy, sources) = self.duplicate_owned();
+        retarget_sources(&mut copy, &sources);
+        copy
+    }
+
+    /// Copy a group in supplied order, retargeting links between every copied layer.
+    /// Inputs from outside the group keep their original provider identities.
+    pub fn duplicate_group(layers: &[&Self]) -> Vec<Self> {
+        let mut sources = HashMap::new();
+        let mut copies: Vec<_> = layers
+            .iter()
+            .map(|layer| {
+                let (copy, owned) = layer.duplicate_owned();
+                sources.extend(owned);
+                copy
+            })
+            .collect();
+        for copy in &mut copies {
+            retarget_sources(copy, &sources);
+        }
+        copies
+    }
+
+    fn duplicate_owned(&self) -> (Self, HashMap<ModulationSourceId, ModulationSourceId>) {
         let mut copy = self.clone();
         copy.id = Uuid::new_v4();
         let mut providers = HashMap::new();
@@ -55,22 +79,40 @@ impl InstrumentLayerSettings {
         for route in routes(&mut copy, false) {
             route.id = Uuid::new_v4();
         }
-        let owner = copy.id;
-        for route in copy.modulation_routes_mut() {
-            if let Some(source) = &mut route.source
-                && source.layer == self.id
-                && let Some(unit) = providers.get(&source.unit)
-            {
-                source.layer = owner;
-                source.unit = *unit;
-            }
-        }
-        copy
+        let sources = providers
+            .into_iter()
+            .map(|(old, new)| {
+                (
+                    ModulationSourceId {
+                        layer: self.id,
+                        unit: old,
+                    },
+                    ModulationSourceId {
+                        layer: copy.id,
+                        unit: new,
+                    },
+                )
+            })
+            .collect();
+        (copy, sources)
     }
 
     /// All layer-owned routes, including retained components and its serial effect chain.
     pub fn modulation_routes_mut(&mut self) -> impl Iterator<Item = &mut Modulation> {
         routes(self, true)
+    }
+}
+
+fn retarget_sources(
+    layer: &mut InstrumentLayerSettings,
+    sources: &HashMap<ModulationSourceId, ModulationSourceId>,
+) {
+    for route in layer.modulation_routes_mut() {
+        if let Some(source) = &mut route.source
+            && let Some(new) = sources.get(source)
+        {
+            *source = *new;
+        }
     }
 }
 
@@ -156,6 +198,76 @@ mod tests {
             }
             _ => {}
         }
+    }
+
+    #[test]
+    fn group_copies_retarget_cross_layer_sources_with_owner_scopes() {
+        let mut instrument = InstrumentSettings::default();
+        instrument.main.macro_module.add();
+        instrument.layers.push(InstrumentLayerSettings::default());
+        instrument.layers.push(InstrumentLayerSettings::default());
+        // Reused provider IDs are legal in distinct layers.
+        let shared_id = Uuid::new_v4();
+        for layer in &mut instrument.layers {
+            layer.macro_module.add();
+            layer.macro_module.controls[0].id = shared_id;
+        }
+        let source = |layer| ModulationSourceId {
+            layer,
+            unit: shared_id,
+        };
+        let a = source(instrument.layers[0].id);
+        let b = source(instrument.layers[1].id);
+        let outside = source(instrument.layers[2].id);
+        let output = ModulationSourceId {
+            layer: instrument.main.id,
+            unit: instrument.main.macro_module.controls[0].id,
+        };
+        for (index, provider) in [(0, b), (1, a), (2, a)] {
+            let mut effect = crate::EffectInstance::auto_filter();
+            let crate::EffectSettings::AutoFilter(settings) = &mut effect.unit else {
+                unreachable!()
+            };
+            settings.modulations = vec![
+                route(ModulationParameter::Level, provider, None),
+                route(ModulationParameter::Level, outside, None),
+                route(ModulationParameter::Level, output, None),
+            ];
+            instrument.layers[index].effects.push(effect);
+        }
+        assert!(instrument.valid());
+        let before = instrument.clone();
+        let copies = InstrumentLayerSettings::duplicate_group(&[
+            &instrument.layers[0],
+            &instrument.layers[1],
+        ]);
+        let copied_a = ModulationSourceId {
+            layer: copies[0].id,
+            unit: copies[0].macro_module.controls[0].id,
+        };
+        let copied_b = ModulationSourceId {
+            layer: copies[1].id,
+            unit: copies[1].macro_module.controls[0].id,
+        };
+        assert_ne!(copied_a.unit, copied_b.unit);
+        for (copy, provider) in copies.iter().zip([copied_b, copied_a]) {
+            let routes: Vec<_> = copy.effects[0]
+                .unit
+                .modulations()
+                .iter()
+                .map(|r| r.source)
+                .collect();
+            assert_eq!(routes, vec![Some(provider), Some(outside), Some(output)]);
+        }
+        assert_eq!(instrument, before);
+        instrument.layers.extend(copies);
+        assert!(instrument.valid());
+        let saved = serde_json::to_string(&instrument).unwrap();
+        assert_eq!(
+            serde_json::from_str::<InstrumentSettings>(&saved).unwrap(),
+            instrument
+        );
+        assert!(InstrumentLayerSettings::duplicate_group(&[]).is_empty());
     }
 
     #[test]

@@ -4559,3 +4559,112 @@ fn integrated_legacy_revisions_upgrade_and_rebuild_without_writing_on_open() {
     }
     assert_eq!(fs::read(source).unwrap(), source_bytes);
 }
+
+#[test]
+fn copied_layer_groups_keep_cross_layer_modulation_audio_and_round_trip() {
+    use daw_core::*;
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    let track = session.project.add_midi_track().unwrap();
+    let clip = session.project.add_midi_pattern(track, 0).unwrap();
+    session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: MidiPattern {
+                length_ticks: 960,
+                notes: vec![MidiNote {
+                    id: Id::new_v4(),
+                    start_tick: 0,
+                    length_ticks: 960,
+                    pitch: 60,
+                    velocity: 100,
+                }],
+            },
+        })
+        .unwrap();
+    let mut instrument: InstrumentSettings = OscillatorSettings::default().into();
+    instrument.layers.push(InstrumentLayerSettings::default());
+    instrument.layers[1].oscillators.push(OscillatorSettings {
+        transpose: -12,
+        ..Default::default()
+    });
+    for (index, layer) in instrument.layers.iter_mut().enumerate() {
+        layer.install_amplitude_envelope();
+        layer.macro_module.add();
+        layer.macro_module.controls[0].settings.value = 0.3 + index as f32 * 0.2;
+    }
+    for index in 0..2 {
+        let other = &instrument.layers[1 - index];
+        let source = ModulationSourceId {
+            layer: other.id,
+            unit: other.macro_module.controls[0].id,
+        };
+        let layer = &mut instrument.layers[index];
+        let mut route = Modulation::new(ModulationParameter::OscillatorGain);
+        route.source = Some(source);
+        route.target = Some(layer.oscillators[0].id);
+        route.amount = -12.0;
+        layer.oscillator_modulations.push(route);
+        let mut effect = EffectInstance::auto_filter();
+        let EffectSettings::AutoFilter(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        let mut route = Modulation::new(ModulationParameter::Level);
+        route.source = Some(source);
+        route.amount = -6.0;
+        settings.modulations.push(route);
+        layer.effects.push(effect);
+    }
+    session = session
+        .with_edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument.clone()),
+        })
+        .unwrap();
+    let mut reference = vec![[0.0; 2]; 4096];
+    daw_engine::Renderer::new(session.plan()).render_offline(&mut reference);
+    assert!(reference.iter().flatten().any(|v| v.abs() > 1e-5));
+    let mut reordered = instrument.clone();
+    reordered.layers.reverse();
+    let moved = session
+        .with_edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(reordered),
+        })
+        .unwrap();
+    let mut rendered = reference.clone();
+    daw_engine::Renderer::new(moved.plan()).render_offline(&mut rendered);
+    assert_eq!(rendered, reference);
+    let copies =
+        InstrumentLayerSettings::duplicate_group(&instrument.layers.iter().collect::<Vec<_>>());
+    let copied_ids: Vec<_> = copies.iter().map(|l| l.id).collect();
+    instrument.layers.extend(copies);
+    let doubled = session
+        .with_edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument.clone()),
+        })
+        .unwrap();
+    daw_engine::Renderer::new(doubled.plan()).render_offline(&mut rendered);
+    for (a, b) in rendered.iter().flatten().zip(reference.iter().flatten()) {
+        assert!((a - 2.0 * b).abs() < 1e-6);
+    }
+    instrument.layers.retain(|l| copied_ids.contains(&l.id));
+    let mut isolated = doubled
+        .with_edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        })
+        .unwrap();
+    daw_engine::Renderer::new(isolated.plan()).render_offline(&mut rendered);
+    for (a, b) in rendered.iter().flatten().zip(reference.iter().flatten()) {
+        assert!((a - b).abs() < 1e-6);
+    }
+    isolated.save(&fixture.0.join("copied-group")).unwrap();
+    let loaded = Session::open(&fixture.0.join("copied-group")).unwrap();
+    daw_engine::Renderer::new(loaded.plan()).render_offline(&mut rendered);
+    for (a, b) in rendered.iter().flatten().zip(reference.iter().flatten()) {
+        assert!((a - b).abs() < 1e-6);
+    }
+}

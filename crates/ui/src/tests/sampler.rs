@@ -178,70 +178,102 @@ fn sampler_note_and_root_edits_prepare_before_publication_and_paste_prepares_des
 
 #[test]
 fn layer_duplication_prepares_sampler_audio_before_publication_and_selects_the_copy() {
-    let (mut app, ctx, layer) = fixture(settings::ColorTheme::Dark);
-    let file = TestWav::new();
-    let track = app.selected_track.unwrap();
-    app.session = app
-        .session
-        .with_sampler_file(track, layer, &file.0)
-        .unwrap();
-    frame(&mut app, &ctx, vec![]);
-    app.history = None;
-    app.ensure_history();
-    app.dirty = false;
-    let original = app.session.project.clone();
-    let start = app.midi_editor.layer_bounds[&layer].icon.center();
-    let end = start + Vec2::new(8.0, 0.0);
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::PointerMoved(start), button(start, true)],
-    );
-    let modifiers = egui::Modifiers {
-        alt: cfg!(target_os = "macos"),
-        ctrl: !cfg!(target_os = "macos"),
-        ..Default::default()
-    };
-    frame(
-        &mut app,
-        &ctx,
-        vec![
-            egui::Event::PointerMoved(end),
-            egui::Event::ModifiersChanged(modifiers),
-            egui::Event::PointerButton {
-                pos: end,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers,
-            },
-        ],
-    );
-    assert!(app.job.is_some());
-    assert_eq!(app.session.project.tracks, original.tracks);
-    assert!(!app.dirty);
-    let copy = app.instrument_ui.selected_layer.unwrap();
-    assert_ne!(copy, layer);
-    // Hold one visible busy frame even if this small sample prepared immediately.
-    let prepared = app.job.take().unwrap();
-    let (sender, pending) = mpsc::channel();
-    app.job = Some(pending);
-    frame(&mut app, &ctx, vec![]);
-    app.job = Some(prepared);
-    drop(sender);
-    wait(&mut app, &ctx);
-    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-    assert_eq!(instrument.layers.len(), 2);
-    assert_eq!(instrument.layers[0].id, copy);
-    let sampler = instrument.layers[0].sampler.as_ref().unwrap();
-    assert!(app.session.sampler_audio.contains_key(&sampler.id));
-    assert_eq!(
-        sampler.input,
-        instrument.layers[1].sampler.as_ref().unwrap().input
-    );
-    assert_eq!(app.instrument_ui.selected_layer, Some(copy));
-    assert!(app.dirty);
-    app.perform_history_action(crate::HistoryAction::Undo, &ctx);
-    assert_eq!(app.session.project.tracks, original.tracks);
+    for count in [1, 2] {
+        let (mut app, ctx, layer) = fixture(settings::ColorTheme::Dark);
+        let file = TestWav::new();
+        let track = app.selected_track.unwrap();
+        app.session = app
+            .session
+            .with_sampler_file(track, layer, &file.0)
+            .unwrap();
+        if count == 2 {
+            let mut i = app.session.project.tracks[0].instrument.clone().unwrap();
+            i.layers.push(i.layers[0].duplicate());
+            for l in &mut i.layers {
+                l.collapsed = true;
+            }
+            app.session = app
+                .session
+                .with_edit(Edit::SetInstrument {
+                    track_id: track,
+                    instrument: Some(i),
+                })
+                .unwrap();
+        }
+        frame(&mut app, &ctx, vec![]);
+        if count == 2 {
+            let second = app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[1]
+                .id;
+            let p = app.midi_editor.layer_bounds[&second].icon.center();
+            click(&mut app, &ctx, p, true);
+        }
+        app.history = None;
+        app.ensure_history();
+        app.dirty = false;
+        let original = app.session.project.clone();
+        let start = app.midi_editor.layer_bounds[&layer].icon.center();
+        let end = start + Vec2::new(8.0, 0.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        let modifiers = egui::Modifiers {
+            alt: cfg!(target_os = "macos"),
+            ctrl: !cfg!(target_os = "macos"),
+            ..Default::default()
+        };
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(end),
+                egui::Event::ModifiersChanged(modifiers),
+                egui::Event::PointerButton {
+                    pos: end,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers,
+                },
+            ],
+        );
+        assert!(app.job.is_some());
+        assert_eq!(app.session.project.tracks, original.tracks);
+        assert!(!app.dirty);
+        let copy = app.instrument_ui.selected_layer.unwrap();
+        assert_ne!(copy, layer);
+        let group = app.instrument_ui.selected_layers.clone();
+        assert_eq!(group.len(), count);
+        // Hold one visible busy frame even if this small sample prepared immediately.
+        let prepared = app.job.take().unwrap();
+        let (sender, pending) = mpsc::channel();
+        app.job = Some(pending);
+        frame(&mut app, &ctx, vec![]);
+        app.job = Some(prepared);
+        drop(sender);
+        wait(&mut app, &ctx);
+        let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+        assert_eq!(instrument.layers.len(), count * 2);
+        assert_eq!(instrument.layers[0].id, copy);
+        for (copy, original) in instrument.layers[..count]
+            .iter()
+            .zip(&instrument.layers[count..])
+        {
+            let sampler = copy.sampler.as_ref().unwrap();
+            assert!(app.session.sampler_audio.contains_key(&sampler.id));
+            assert_ne!(sampler.id, original.sampler.as_ref().unwrap().id);
+            assert_eq!(sampler.input, original.sampler.as_ref().unwrap().input);
+        }
+        assert_eq!(app.instrument_ui.selected_layer, Some(copy));
+        assert_eq!(app.instrument_ui.selected_layers, group);
+        assert!(app.dirty);
+        app.perform_history_action(crate::HistoryAction::Undo, &ctx);
+        assert_eq!(app.session.project.tracks, original.tracks);
+    }
 }
 #[test]
 fn sampler_catalog_root_sharp_controls_and_compact_layout_follow_shared_ui_in_both_themes() {

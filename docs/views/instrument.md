@@ -21,9 +21,11 @@ Use Up/Down to move through visible folders and components. On a folder, Enter h
 
 A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain Oscillator or Sampler. It cannot contain both. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a layer.
 
-Layers show a waveform icon before their names. Output uses a keyboard icon. Drag a regular layer by its icon, name, or empty header space to reorder it. Output stays pinned at the bottom. Hold Option on macOS or Ctrl on Windows/Linux while dragging to duplicate a layer at the insertion line. The modifier held at release chooses move or copy. Escape or dropping outside the layer area cancels. Output cannot be duplicated.
+Layers show a waveform icon before their names. Output uses a keyboard icon. Click a regular layer header to select it. Shift-click toggles layers in the selection. Each selected layer has an outline. Output is selected separately and stays pinned at the bottom.
 
-A layer copy keeps its name, controls, components, effects, and modulation settings. Connections between its copied components point to the copies. Inputs from Output or other layers stay connected to those sources. Existing connections outside the layer keep their original sources. The copy becomes selected after release; Undo removes it.
+Drag a selected layer by its icon, name, or empty header space to move the selected layers together. They keep their existing order, even if you selected them in a different order. Dragging an unselected layer moves only that layer. Hold Option on macOS or Ctrl on Windows/Linux to duplicate the group at the insertion line. The modifier held at release chooses move or copy. Escape or dropping outside the layer area cancels. Output cannot be moved or duplicated.
+
+Copies keep their names, controls, components, effects, and modulation settings. Connections within the copied group point to the copied sources. Inputs from Output or layers outside the group keep their original sources. Existing connections outside the group also keep their original sources. The moved layers or copies remain selected after release. Undo restores the previous arrangement.
 
 Layer controls stay in the left column; installed components appear to their right. Use the Layers Plus button to add another layer. Each layer has gain, pan, mute, and solo controls. Solo applies among the layers of that instrument. [Output](../instruments/main.md) controls their combined output and can hold shared modulators.
 

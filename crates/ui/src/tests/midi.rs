@@ -1276,6 +1276,238 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
     }
 }
 
+#[test]
+fn layer_shift_selection_toggles_outlines_and_keeps_output_exclusive() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _) = layer_header_fixture();
+        let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        for l in &mut i.layers {
+            l.collapsed = true;
+        }
+        let ids: Vec<_> = i.layers.iter().map(|l| l.id).collect();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        app.dirty = false;
+        for (index, shift) in [(2, false), (0, true)] {
+            let p = app.midi_editor.layer_bounds[&ids[index]].icon.center();
+            super::instrument_catalog::click(&mut app, &ctx, p, shift);
+        }
+        assert_eq!(
+            app.instrument_ui.selected_layers,
+            HashSet::from([ids[0], ids[2]])
+        );
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        for id in [ids[0], ids[2]] {
+            let label = app.midi_editor.layer_bounds[&id].label;
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == label && rect.stroke == theme::selection_outline(&ctx))));
+        }
+        // Repeated Shift-clicks on a name toggle membership without starting Rename.
+        for count in [3, 2] {
+            let p = app.midi_editor.layer_bounds[&ids[1]].name.center();
+            super::instrument_catalog::click(&mut app, &ctx, p, true);
+            assert_eq!(app.instrument_ui.selected_layers.len(), count);
+            assert!(!app.instrument_ui.editing_name());
+        }
+        // Shift is also used by controls; it must not toggle layer selection there.
+        let p = app.midi_editor.layer_bounds[&ids[0]].mix_controls[2].center();
+        super::instrument_catalog::click(&mut app, &ctx, p, true);
+        assert_eq!(app.instrument_ui.selected_layers.len(), 2);
+        // Toggling the final member off remains empty on later frames.
+        for index in [0, 2] {
+            let p = app.midi_editor.layer_bounds[&ids[index]].icon.center();
+            super::instrument_catalog::click(&mut app, &ctx, p, true);
+        }
+        assert!(app.instrument_ui.selected_layers.is_empty());
+        assert_eq!(app.instrument_ui.selected_layer, None);
+        let output = app.instrument_ui.main_bounds.icon.center();
+        super::instrument_catalog::click(&mut app, &ctx, output, true);
+        let bus = app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .main
+            .id;
+        assert_eq!(app.instrument_ui.selected_layers, HashSet::from([bus]));
+        let p = app.midi_editor.layer_bounds[&ids[1]].icon.center();
+        super::instrument_catalog::click(&mut app, &ctx, p, true);
+        assert_eq!(app.instrument_ui.selected_layers, HashSet::from([ids[1]]));
+        assert!(!app.dirty);
+        // A different track has an independent initial target.
+        let other = app.session.project.add_midi_track().unwrap();
+        app.select_track(other, false);
+        frame(&mut app, &ctx, vec![]);
+        assert!(
+            ids.iter()
+                .all(|id| !app.instrument_ui.selected_layers.contains(id))
+        );
+    }
+}
+
+#[test]
+fn selected_layer_groups_move_copy_cancel_and_undo_in_saved_order() {
+    for group in [[0, 1], [0, 2]] {
+        for action in [
+            "move",
+            "copy",
+            "same",
+            "escape",
+            "outside",
+            "output",
+            "unselected",
+            "fast",
+        ] {
+            let (mut app, ctx, _) = layer_header_fixture();
+            let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+            for l in &mut i.layers {
+                l.collapsed = true;
+                l.macro_module.add();
+                l.effects.push(daw_core::EffectInstance::limiter());
+            }
+            let ids: Vec<_> = i.layers.iter().map(|l| l.id).collect();
+            frame(&mut app, &ctx, vec![]);
+            // Reverse click order must not determine processing or insertion order.
+            for (index, shift) in [(group[1], false), (group[0], true)] {
+                let p = app.midi_editor.layer_bounds[&ids[index]].icon.center();
+                super::instrument_catalog::click(&mut app, &ctx, p, shift);
+            }
+            app.history = None;
+            app.ensure_history();
+            app.dirty = false;
+            let original = app.session.project.clone();
+            let anchor = if action == "unselected" {
+                (0..3).find(|n| !group.contains(n)).unwrap()
+            } else {
+                group[1]
+            };
+            let start = app.midi_editor.layer_bounds[&ids[anchor]].icon.center();
+            let end = match action {
+                "same" => {
+                    if group == [0, 1] {
+                        start + Vec2::new(8.0, 0.0)
+                    } else {
+                        Pos2::new(
+                            start.x,
+                            app.midi_editor.layer_bounds[&ids[1]].row.bottom() - 8.0,
+                        )
+                    }
+                }
+                "outside" => Pos2::new(start.x, 5.0),
+                "output" => app.instrument_ui.main_bounds.label.center(),
+                "move" => Pos2::new(
+                    start.x,
+                    app.midi_editor.layer_bounds[&ids[2]].row.bottom() - 8.0,
+                ),
+                _ => Pos2::new(
+                    start.x,
+                    app.midi_editor.layer_bounds[&ids[0]].row.top() + 8.0,
+                ),
+            };
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            if action != "fast" {
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                assert_eq!(app.session.project.tracks, original.tracks);
+                assert!(!app.dirty);
+                if action == "escape" {
+                    frame(&mut app, &ctx, vec![layer_key(egui::Key::Escape)]);
+                }
+            }
+            let copy = action == "copy" || action == "fast";
+            let modifiers = if copy {
+                layer_copy_modifiers()
+            } else {
+                Default::default()
+            };
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(end),
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerButton {
+                        pos: end,
+                        pressed: false,
+                        button: egui::PointerButton::Primary,
+                        modifiers,
+                    },
+                ],
+            );
+            assert!(app.error.is_none(), "{group:?} {action}: {:?}", app.error);
+            let current = app.session.project.tracks[0].instrument.as_ref().unwrap();
+            let before = original.tracks[0].instrument.as_ref().unwrap();
+            if copy {
+                assert_eq!(current.layers.len(), 5);
+                for (copy, index) in current.layers[..2].iter().zip(group) {
+                    assert_ne!(copy.id, ids[index]);
+                    assert_eq!(copy.name, before.layers[index].name);
+                    assert_eq!(copy.effects[0].unit, before.layers[index].effects[0].unit);
+                    assert_ne!(copy.effects[0].id, before.layers[index].effects[0].id);
+                }
+                assert_eq!(current.layers[2..], before.layers);
+                assert_eq!(
+                    app.instrument_ui.selected_layers,
+                    current.layers[..2].iter().map(|l| l.id).collect()
+                );
+                assert_eq!(app.instrument_ui.selected_layer, Some(current.layers[1].id));
+            } else if action == "move" || action == "unselected" {
+                let moving = if action == "unselected" {
+                    vec![anchor]
+                } else {
+                    group.to_vec()
+                };
+                let order: Vec<_> = if action == "move" {
+                    (0..3)
+                        .filter(|n| !moving.contains(n))
+                        .chain(moving.iter().copied())
+                        .collect()
+                } else {
+                    moving
+                        .iter()
+                        .copied()
+                        .chain((0..3).filter(|n| !moving.contains(n)))
+                        .collect()
+                };
+                let expected: Vec<_> = order
+                    .into_iter()
+                    .map(|n| before.layers[n].clone())
+                    .collect();
+                assert_eq!(current.layers, expected);
+                assert_eq!(
+                    app.instrument_ui.selected_layers,
+                    moving.iter().map(|n| ids[*n]).collect()
+                );
+            } else if action == "same" && group == [0, 2] {
+                // Closing a gap between selected members is a real group reorder.
+                assert_eq!(
+                    current.layers.iter().map(|l| l.id).collect::<Vec<_>>(),
+                    vec![ids[1], ids[0], ids[2]]
+                );
+            } else {
+                assert_eq!(current, before, "{group:?} {action}");
+                assert!(!app.dirty, "{group:?} {action}");
+            }
+            app.session.project.validate().unwrap();
+            assert!(!app.instrument_ui.dragging());
+            if app.dirty {
+                let changed = app.session.project.tracks.clone();
+                app.perform_history_action(crate::HistoryAction::Undo, &ctx);
+                assert_eq!(app.session.project.tracks, original.tracks);
+                app.perform_history_action(crate::HistoryAction::Redo, &ctx);
+                assert_eq!(app.session.project.tracks, changed);
+            }
+        }
+    }
+}
+
 fn layer_copy_modifiers() -> egui::Modifiers {
     egui::Modifiers {
         alt: cfg!(target_os = "macos"),

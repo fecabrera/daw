@@ -78,7 +78,7 @@ impl DawUi {
                         .is_some_and(|p| rect.intersect(ui.clip_rect()).contains(p))
             })
         {
-            self.instrument_ui.selected_layer = Some(bus.id);
+            self.instrument_ui.select_layer(bus.id);
             self.instrument_ui.track_effects_target = false;
             ui.ctx().request_repaint();
         }

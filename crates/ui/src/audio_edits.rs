@@ -23,7 +23,8 @@ impl DawUi {
                     .find(|t| t.id == *track)
                     .and_then(|t| t.instrument.as_ref())
                     .is_some_and(|i| i.main.id == *layer || i.layers.iter().any(|l| l.id == *layer))
-            });
+            })
+            .map(|(track, layer)| (track, layer, self.instrument_ui.selected_layers.clone()));
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag = cancel.clone();
         self.run_job("Preparing audio", move || {

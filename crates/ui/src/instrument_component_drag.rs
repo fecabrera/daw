@@ -295,7 +295,7 @@ impl DawUi {
                         component,
                         components,
                     } => {
-                        self.instrument_ui.selected_layer = Some(layer);
+                        self.instrument_ui.select_layer(layer);
                         if unit_insertion
                             .as_ref()
                             .is_some_and(|(_, _, _, changed)| !changed)
@@ -334,7 +334,7 @@ impl DawUi {
                         }
                     }
                 }
-                self.instrument_ui.selected_layer = Some(layer);
+                self.instrument_ui.select_layer(layer);
                 ui.ctx().request_repaint();
             }
         } else if !ui.input(|input| input.pointer.primary_down()) {
@@ -414,7 +414,7 @@ impl DawUi {
             .collect()
         };
         response.request_focus();
-        self.instrument_ui.selected_layer = Some(owner);
+        self.instrument_ui.select_layer(owner);
         self.component_drag = Some(ComponentDrag {
             project: self.session.project.project_id,
             track,

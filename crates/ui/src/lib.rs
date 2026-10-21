@@ -295,7 +295,7 @@ enum Job {
     PreparedEdit {
         session: Session,
         placement: Option<(Id, Vec<Id>)>,
-        layer_selection: Option<(Id, Id)>,
+        layer_selection: Option<(Id, Id, HashSet<Id>)>,
     },
     Loaded(Session, bool),
     Saved(Session),
@@ -1289,11 +1289,12 @@ impl DawUi {
                         self.selected_clip = clips.first().copied();
                         self.selected_clips = clips.into_iter().collect();
                     }
-                    if let Some((track, layer)) = layer_selection
+                    if let Some((track, layer, layers)) = layer_selection
                         && self.instrument_ui.track == Some(track)
                         && self.selected_track == Some(track)
                     {
                         self.instrument_ui.selected_layer = Some(layer);
+                        self.instrument_ui.selected_layers = layers;
                     }
                     self.prune_clip_selection();
                     self.prune_track_selection();
@@ -1887,7 +1888,16 @@ impl DawUi {
         if self.instrument_ui.track != self.selected_track {
             self.instrument_ui.cancel();
             self.instrument_ui.track = self.selected_track;
-            self.instrument_ui.selected_layer = None;
+            self.instrument_ui.selected_layers.clear();
+            self.instrument_ui.selected_layer = self
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|t| Some(t.id) == self.selected_track)
+                .and_then(|t| t.instrument.as_ref())
+                .and_then(|i| i.layers.first())
+                .map(|l| l.id);
             self.instrument_catalog.clear();
         }
         if let Some(drag) = &mut self.drag {
