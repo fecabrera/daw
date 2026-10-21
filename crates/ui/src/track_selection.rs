@@ -88,6 +88,13 @@ impl DawUi {
     }
 
     pub fn track_action_enabled(&self, action: TrackAction, ctx: &egui::Context) -> bool {
+        let input_available = if self.view_mode == ViewMode::Timeline
+            && matches!(action, TrackAction::Mute | TrackAction::Solo)
+        {
+            self.edit_shortcuts_available(ctx) && !ctx.text_edit_focused()
+        } else {
+            self.clip_actions_available(ctx)
+        };
         (action != TrackAction::Ungroup || self.selected_group().is_some())
             && (action != TrackAction::AddMidi
                 || matches!(self.view_mode, ViewMode::Timeline | ViewMode::Edit))
@@ -96,7 +103,7 @@ impl DawUi {
                 || !self.session.project.tracks.iter().any(|track| {
                     self.track_selected(track.id) && track.kind == daw_core::TrackKind::Midi
                 }))
-            && self.clip_actions_available(ctx)
+            && input_available
             && self.track_name_edit.is_none()
             && self.tempo_edit.is_none()
             && self.time_drag.is_none()
@@ -211,9 +218,8 @@ impl DawUi {
     }
 
     pub(super) fn track_shortcuts(&mut self, ctx: &egui::Context) {
-        if !self.track_action_enabled(TrackAction::Mute, ctx)
-            || ctx.input(|input| input.pointer.any_down())
-        {
+        let enabled = TrackAction::ALL.map(|action| self.track_action_enabled(action, ctx));
+        if !enabled.iter().any(|enabled| *enabled) || ctx.input(|input| input.pointer.any_down()) {
             return;
         }
         let pressed = ctx.input_mut(|input| {
@@ -228,7 +234,7 @@ impl DawUi {
                 } = event
                 {
                     for (index, action) in TrackAction::ALL.iter().enumerate() {
-                        if action.matches_shortcut(*key, *modifiers) {
+                        if enabled[index] && action.matches_shortcut(*key, *modifiers) {
                             pressed[index] = true;
                             return false;
                         }

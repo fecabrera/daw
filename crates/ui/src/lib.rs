@@ -1672,8 +1672,11 @@ impl DawUi {
         }
     }
     fn clip_actions_available(&self, ctx: &egui::Context) -> bool {
+        self.edit_shortcuts_available(ctx) && !ctx.egui_wants_keyboard_input()
+    }
+
+    fn edit_shortcuts_available(&self, ctx: &egui::Context) -> bool {
         self.editing_enabled()
-            && !ctx.egui_wants_keyboard_input()
             && !self.instrument_ui.editing_name()
             && ctx.input(|input| input.focused)
             && self.drag.is_none()

@@ -195,6 +195,74 @@ fn mute_and_solo_keys_toggle_each_selected_track_and_ignore_repeat_or_command_ke
 }
 
 #[test]
+fn timeline_mute_and_solo_ignore_control_focus_but_preserve_text_input_and_other_shortcuts() {
+    for mode in [ViewMode::Timeline, ViewMode::Mixer] {
+        for text_input in [false, true] {
+            let (mut app, tracks, _) = multi_clip_fixture();
+            let ctx = context();
+            app.use_native_menu();
+            app.set_view_mode(mode, &ctx);
+            app.select_track(tracks[0], false);
+            app.select_track(tracks[1], true);
+            let mut text = String::new();
+            let mut focused = None;
+            for step in 0..3 {
+                let key = if step == 1 {
+                    egui::Key::M
+                } else {
+                    egui::Key::S
+                };
+                let events = if step == 0 {
+                    vec![]
+                } else {
+                    vec![
+                        key_event(key, Default::default(), false, true),
+                        egui::Event::Text(if step == 1 { "m" } else { "s" }.into()),
+                        key_event(key, Default::default(), false, false),
+                    ]
+                };
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1280.0, 800.0),
+                        )),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let response = if text_input {
+                            ui.text_edit_singleline(&mut text)
+                        } else {
+                            ui.button("Focused control")
+                        };
+                        if step == 0 {
+                            response.request_focus();
+                            focused = Some(response.id);
+                        }
+                        app.show(ui);
+                    },
+                );
+                output.textures_delta.clear();
+                assert_eq!(ctx.memory(|memory| memory.focused()), focused);
+                assert_eq!(ctx.text_edit_focused(), text_input);
+                assert!(ctx.egui_wants_keyboard_input());
+                assert!(!app.track_action_enabled(TrackAction::Rename, &ctx));
+            }
+            let toggled = mode == ViewMode::Timeline && !text_input;
+            for track in &app.session.project.tracks[..2] {
+                assert_eq!(track.muted, toggled);
+                assert_eq!(track.soloed, toggled);
+            }
+            assert!(!app.session.project.tracks[2].muted);
+            assert!(!app.session.project.tracks[2].soloed);
+            assert_eq!(text, if text_input { "ms" } else { "" });
+            assert_eq!(app.dirty, toggled);
+        }
+    }
+}
+
+#[test]
 fn track_keys_do_not_change_the_project_during_text_editing_or_blocked_interactions() {
     for blocked in [
         "name",

@@ -3745,3 +3745,19 @@ Automated egui regression coverage exercises single-layer and two-layer copies, 
 - Changed guide/specification local link targets exist; `git diff --check` passed.
 
 Native drag gestures, live device playback, and Windows/Linux execution were not checked for this fix. Automated egui checks do not establish native behavior.
+
+## Timeline Mute/Solo shortcut focus — 2026-10-21
+
+Timeline M/S uses text-edit focus rather than the general keyboard-focus guard. The shared edit shortcut environment still guards jobs/dialogs, active gestures, window focus and name drafts. Other views and track/clip actions retain their previous focus policy. Track shortcut dispatch checks availability per action before consuming a key.
+
+Automated egui coverage focuses a non-text control or text field in Timeline and Mixer. It checks selected-group mute/solo, retained control focus, text entry, untouched unselected tracks, dirty state, and unchanged Rename availability. Existing shortcut tests cover mixed values, held repeats, modifiers, text drafts, jobs/dialogs, disabled UI, drags and window focus.
+
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked -p daw-ui --release track_shortcuts --lib`: 20 passed.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked --workspace --release`: 1,084 passed, 0 failed, 2 existing extended timestretch tests ignored.
+- `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
+- Changed guide/specification local link targets exist.
+
+Native menu/key delivery, live device playback and Windows/Linux execution were not checked. Automated egui input tests do not establish native platform behavior.
