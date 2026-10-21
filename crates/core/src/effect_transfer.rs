@@ -32,6 +32,16 @@ impl EffectChainTarget {
         }
     }
 }
+/// Shared source-scope predicate for project validation and read-only drop checks.
+pub(crate) fn source_available(
+    instrument: Option<&InstrumentSettings>,
+    source: ModulationSourceId,
+) -> bool {
+    instrument.is_some_and(|i| {
+        i.modulation_source(source)
+            .is_some_and(|s| daw_unit_core::ModulationScope::Shared.accepts(s.scope))
+    })
+}
 impl Project {
     pub fn effect_chain(&self, target: EffectChainTarget) -> Option<(&[EffectInstance], bool)> {
         match target {
@@ -59,6 +69,39 @@ impl Project {
             }
         }
     }
+    /// Read-only transfer eligibility. Does not clone the project or create copy IDs.
+    pub fn can_transfer_effects(
+        &self,
+        source: EffectChainTarget,
+        destination: EffectChainTarget,
+        units: &[Id],
+    ) -> bool {
+        let Some((original, _)) = self.effect_chain(source) else {
+            return false;
+        };
+        if self.effect_chain(destination).is_none() || units.is_empty() {
+            return false;
+        }
+        let instrument = match destination {
+            EffectChainTarget::Track(track) | EffectChainTarget::Layer { track, .. } => self
+                .tracks
+                .iter()
+                .find(|t| t.id == track)
+                .and_then(|t| t.instrument.as_ref()),
+            EffectChainTarget::Master => None,
+        };
+        units.iter().enumerate().all(|(index, id)| {
+            !units[..index].contains(id)
+                && original.iter().find(|e| e.id == *id).is_some_and(|effect| {
+                    effect.unit.modulations().iter().all(|route| {
+                        route
+                            .source
+                            .is_none_or(|source| source_available(instrument, source))
+                    })
+                })
+        })
+    }
+
     /// Prepare a complete validated group edit. No intermediate removal is published.
     pub fn transfer_effects(
         &self,
@@ -68,6 +111,11 @@ impl Project {
         index: usize,
         duplicate: bool,
     ) -> Result<EffectTransfer> {
+        if !self.can_transfer_effects(source, destination, units) {
+            return Err(Error(
+                "Effects are not compatible with the destination chain".into(),
+            ));
+        }
         let (original, source_compact) = self
             .effect_chain(source)
             .ok_or_else(|| Error("Source effect chain not found".into()))?;
@@ -124,6 +172,61 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn track_and_master_transfers_share_order_identity_and_eligibility_rules() {
+        let mut p = Project::default();
+        let audio = p.add_track().unwrap();
+        let midi = p.add_midi_track().unwrap();
+        let child = p.add_track().unwrap();
+        let group = Id::new_v4();
+        p.edit(Edit::GroupTracks {
+            track_ids: vec![child],
+            group_id: group,
+            name: "Bus".into(),
+        })
+        .unwrap();
+        let mut filter = EffectInstance::auto_filter();
+        let EffectSettings::AutoFilter(settings) = &mut filter.unit else {
+            unreachable!()
+        };
+        // Unassigned connections remain portable and receive fresh route IDs on copy.
+        settings
+            .modulations
+            .push(Modulation::new(ModulationParameter::Frequency));
+        p.master.effects = vec![EffectInstance::drive(), filter];
+        let original = p.master.effects.clone();
+        let ids = [original[1].id, original[0].id];
+        let master = EffectChainTarget::Master;
+        for track in [audio, midi, group] {
+            let destination = EffectChainTarget::Track(track);
+            assert!(p.can_transfer_effects(master, destination, &ids));
+            let copy = p
+                .transfer_effects(master, destination, &ids, 0, true)
+                .unwrap();
+            p.edit(copy.edit).unwrap();
+            let copied = p.effect_chain(destination).unwrap().0;
+            assert_eq!(copied.len(), 2);
+            assert_eq!(copied[0].unit, original[0].unit);
+            assert_ne!(copied[0].id, original[0].id);
+            assert_ne!(
+                copied[1].unit.modulations()[0].id,
+                original[1].unit.modulations()[0].id
+            );
+            assert_eq!(copied[1].unit.modulations()[0].source, None);
+        }
+        let destination = EffectChainTarget::Track(audio);
+        let transfer = p
+            .transfer_effects(master, destination, &ids, 2, false)
+            .unwrap();
+        assert_eq!(transfer.selected, vec![original[0].id, original[1].id]);
+        p.edit(transfer.edit).unwrap();
+        assert!(p.master.effects.is_empty());
+        assert_eq!(&p.effect_chain(destination).unwrap().0[2..], &original);
+        assert!(!p.can_transfer_effects(destination, master, &[]));
+        assert!(!p.can_transfer_effects(destination, master, &[ids[0], ids[0]]));
+        assert!(!p.can_transfer_effects(destination, master, &[Id::new_v4()]));
+        assert!(!p.can_transfer_effects(destination, EffectChainTarget::Track(Id::new_v4()), &ids));
+    }
     #[test]
     fn main_uses_the_same_effect_transactions_and_preserves_identity() {
         for constructor in [EffectInstance::drive, EffectInstance::saturator] {
@@ -228,7 +331,17 @@ mod tests {
         let before = serde_json::to_value(&p).unwrap();
         assert!(p.transfer_effects(a, b, &[Id::new_v4()], 0, false).is_err());
         assert!(p.transfer_effects(a, b, &[filter_id], 99, false).is_err());
+        assert_eq!(serde_json::to_value(&p).unwrap(), before);
         // A foreign or Master destination cannot consume this instrument's provider.
+        assert!(p.can_transfer_effects(a, b, &[filter_id]));
+        let foreign = EffectChainTarget::Track(p.add_midi_track().unwrap());
+        assert!(!p.can_transfer_effects(a, foreign, &[filter_id]));
+        assert!(!p.can_transfer_effects(a, EffectChainTarget::Master, &[filter_id]));
+        let before = serde_json::to_value(&p).unwrap();
+        assert!(
+            p.transfer_effects(a, foreign, &[filter_id], 0, true)
+                .is_err()
+        );
         assert!(
             p.transfer_effects(a, EffectChainTarget::Master, &[filter_id], 0, false)
                 .is_err()

@@ -2795,7 +2795,10 @@ impl DawUi {
         self.effects_workspace(&mut workspace);
     }
 
-    fn timeline_workspace(&mut self, ui: &mut egui::Ui) {
+    fn timeline_workspace(
+        &mut self,
+        ui: &mut egui::Ui,
+    ) -> Option<(effects_panel::EffectTarget, Rect)> {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         let bounds = ui.max_rect();
         let timeline_left = bounds.left() + TRACK_WIDTH;
@@ -2859,6 +2862,19 @@ impl DawUi {
                 let rows = self.tracks(ui);
                 self.empty_tracks_context_menu(ui);
                 self.scroll_track_drag(ui);
+                if self
+                    .effects_drag
+                    .as_ref()
+                    .is_some_and(|d| d.active && !d.is_library())
+                {
+                    drag::scroll_drag(
+                        ui,
+                        drag::Axis::Vertical,
+                        360.0,
+                        self.edit_environment_available(),
+                        ui.clip_rect(),
+                    );
+                }
                 rows
             });
         self.timeline_bounds = timeline_rect;
@@ -2926,6 +2942,21 @@ impl DawUi {
         if self.master_selected {
             panels::ControlPanel::selected_row(ui, master_label, master_rect);
         }
+        let pointer = ui.input(|i| i.pointer.latest_pos())?;
+        let master = master_rect.intersect(ui.clip_rect());
+        if master.contains(pointer) {
+            return Some((effects_panel::EffectTarget::Master, master));
+        }
+        let visible = tracks.inner_rect.intersect(ui.clip_rect());
+        if !visible.contains(pointer) {
+            return None;
+        }
+        tracks.inner.iter().find_map(|(id, header)| {
+            let row = Rect::from_min_max(header.min, Pos2::new(visible.right(), header.bottom()))
+                .intersect(visible);
+            row.contains(pointer)
+                .then_some((effects_panel::EffectTarget::Track(*id), row))
+        })
     }
     fn master_track(&mut self, ui: &mut egui::Ui) -> Rect {
         let panel = panels::PanelStyle {

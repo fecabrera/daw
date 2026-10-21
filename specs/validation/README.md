@@ -3624,3 +3624,30 @@ Completed checks with the workspace Cargo cache selected:
 Read-only local renders verify exact prepared-input identity, source hashes, and output length. At zero pitch and ratio 24/25, the new drum output is sample-identical to the pre-change revision-2 raw output (460,800 frames). The earlier +6-semitone, ratio-17/20 bass example remains sample-identical to revision 3 (921,601 frames). This verifies retention of those exact behaviors, not subjective quality beyond them. Recordings, raw WAVs, and reports remain in ignored `work/drum-stretch-review/`; no private fixture is committed. Separate single-loop audition files apply the same −6 dB attenuation to fresh raw revision-2/3/4 and native R3 renders for playback headroom; raw files remain unchanged. Float headroom is preserved in the engine, with no new limiter or normalization.
 
 Native listening/device playback, Settings-warning interaction, Windows/Linux builds, and full-corpus/multi-listener acceptance remain open. Source-wide selection can trade bass resolution for attack localization in mixtures; compression/transient behavior beyond the calibrated case and general reference-quality parity remain unproven. No Rubber Band implementation source, tests, tables, comments, or pseudocode were inspected or reused.
+
+## Timeline effect transfers onto track rows — 2026-10-21
+
+Installed effects from the bottom lane now append to visible audio, MIDI, and Group track rows. The UI reuses effect activation, ordered selection capture, copy modifiers, scrolling, selection borders, and core atomic transfers. Read-only eligibility and final project validation share modulation source-scope checks. Hover preserves both chains; valid release selects and focuses the destination effects. Foreign modulation providers reject the complete group with a forbidden cursor and no error dialog. See [Timeline effect drops](../editing/components.md#timeline-effect-drops).
+
+Completed checks with the workspace Cargo cache selected:
+
+- `cargo test -p daw-core effect_transfer` passes all three transfer tests. Coverage includes Master-to-track moves/copies, empty audio/MIDI/Group chains, insertion order, stable move identities, fresh effect/route copy IDs, compatible layer providers, foreign providers, invalid groups, and atomic rejection.
+- `cargo test -p daw-ui --lib timeline_effect_drops` passes all five new interaction tests. The matrix covers both themes, expanded/collapsed units, compact/regular lanes, track headers and clip lanes, grouped child ownership, vertical edge scrolling, group order, copy modifiers, unchanged preview state, destination selection/focus, undo/redo, Master sources, fast motion/release, clean same-track no-ops, invalid modulation, and cancellation for Escape, focus loss, outside releases, dialogs, disabled UI, view changes, and changed source order.
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
+- `cargo test --workspace --release` passes: 1,070 passed, zero failed, two existing extended timestretch matrices ignored. No stretch processor changed in this task.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` pass. `sh tools/package_macos.sh release` rebuilds `target/release/DAW.app`; its executable hash matches `target/release/daw-desktop`. The running app/session was not relaunched. Changed-document local link targets and staged/unstaged whitespace checks pass.
+
+Native mouse/modifier gestures, live device playback during transfers, and Windows/Linux builds remain unverified. Automated egui input tests do not establish native gesture behavior.
+
+## Timeline effect drops onto Master — 2026-10-21
+
+The fixed Master block now accepts installed effect moves and copies through the same Timeline drop resolver, preview, and atomic transfer path as track rows. The existing Master selection helper selects the destination before the lane refresh restores transferred-unit selection and keyboard focus. Core routing and processing are unchanged. Master rejects effects with assigned instrument modulation sources through the existing eligibility check, showing a forbidden cursor without a dialog. This extends the preceding track-row validation; see [Timeline effect drops](../editing/components.md#timeline-effect-drops).
+
+Completed checks with the workspace Cargo cache selected:
+
+- `cargo test -p daw-ui --lib timeline_` passes all 40 selected interaction tests. New coverage includes ordered group moves/copies onto empty and populated Master chains, both themes, compact/regular lanes, expanded/collapsed units, unchanged preview state and source clips, stable move IDs, fresh copy IDs, release-time copy modifiers, destination selection/focus, undo/redo, same-Master reorder/copy/no-op, fast release, Escape, and rejection of instrument modulation without an error dialog.
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
+- `cargo test --workspace --release` passes: 1,072 passed, zero failed, two existing extended timestretch matrices ignored. No audio processor, project format, or CLI behavior changed.
+- `sh tools/package_macos.sh release` rebuilds `target/release/DAW.app`; its executable hash matches `target/release/daw-desktop`. The running app/session was not relaunched. Changed-document local link targets and staged/unstaged whitespace checks pass.
+
+Native mouse/modifier gestures, device playback during transfers, and Windows/Linux builds remain unverified. The automated egui tests do not establish native gesture behavior.

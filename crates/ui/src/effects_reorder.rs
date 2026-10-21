@@ -8,6 +8,7 @@ pub(super) struct EffectDrag {
     origin: Pos2,
     focus: egui::Id,
     pub active: bool,
+    timeline_hover: bool,
     // A changed chain invalidates the gesture; do not overwrite another edit on release.
     order: Vec<Id>,
 }
@@ -115,6 +116,7 @@ impl DawUi {
                 origin,
                 focus: header.id,
                 active: false,
+                timeline_hover: false,
                 order: order.to_vec(),
             });
         }
@@ -141,6 +143,7 @@ impl DawUi {
                 origin: start.origin,
                 focus: start.focus,
                 active: false,
+                timeline_hover: false,
                 order: effects.iter().map(|effect| effect.id).collect(),
             });
         }
@@ -172,6 +175,78 @@ impl DawUi {
             }
         }
         true
+    }
+
+    /// Timeline row drops append to a chain through the same transfer transaction.
+    /// The workspace resolves visible geometry while ordinary track controls stay disabled.
+    pub(super) fn finish_timeline_effect_drag(
+        &mut self,
+        ui: &egui::Ui,
+        target: Option<(EffectTarget, Rect)>,
+        allowed: bool,
+    ) -> Option<(EffectTarget, daw_core::EffectTransfer)> {
+        if let Some(drag) = &mut self.effects_drag {
+            drag.timeline_hover = false;
+        }
+        if !allowed
+            || self.view_mode != ViewMode::Timeline
+            || self.effects_drag.as_ref().is_none_or(|d| d.is_library())
+            || !self.activate_effect_drag(ui)
+        {
+            return None;
+        }
+        let (destination, row) = target?;
+        let drag = self.effects_drag.as_mut()?;
+        drag.timeline_hover = true;
+        let DragSource::Chain { units, .. } = &drag.source else {
+            return None;
+        };
+        let valid = self
+            .session
+            .project
+            .can_transfer_effects(drag.target, destination, units);
+        let duplicate = ui.input(|i| clip_copy_modifier(i.modifiers));
+        ui.ctx().set_cursor_icon(if !valid {
+            egui::CursorIcon::NotAllowed
+        } else if duplicate {
+            egui::CursorIcon::Copy
+        } else {
+            egui::CursorIcon::Grabbing
+        });
+        if valid {
+            panels::selection_border(ui, row);
+        }
+        if !ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+            return None;
+        }
+        let drag = self.effects_drag.take()?;
+        drag::restore_focus(ui.ctx(), drag.focus);
+        if !valid {
+            return None;
+        }
+        let DragSource::Chain { units, .. } = drag.source else {
+            return None;
+        };
+        let index = self.effect_chain(destination)?.0.len();
+        if drag.target == destination
+            && !duplicate
+            && !drag::group_insertion(&drag.order, &units, index).1
+        {
+            return None;
+        }
+        match self.session.project.transfer_effects(
+            drag.target,
+            destination,
+            &units,
+            index,
+            duplicate,
+        ) {
+            Ok(transfer) => Some((destination, transfer)),
+            Err(error) => {
+                self.fail(error);
+                None
+            }
+        }
     }
 
     pub(super) fn finish_cross_effect_drag(
@@ -254,6 +329,9 @@ impl DawUi {
             return;
         }
         let drag = self.effects_drag.as_ref().unwrap();
+        if drag.timeline_hover {
+            return;
+        }
         if matches!(&drag.source, DragSource::Chain { unit, .. } if !effects.iter().any(|effect| effect.id == *unit))
         {
             self.effects_drag = None;

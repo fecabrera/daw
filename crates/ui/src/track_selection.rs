@@ -30,7 +30,7 @@ impl DawUi {
         }
     }
 
-    fn select_master(&mut self) {
+    pub(super) fn select_master(&mut self) {
         self.master_selected = true;
         self.selected_track = None;
         self.selected_tracks.clear();

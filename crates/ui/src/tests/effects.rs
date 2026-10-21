@@ -5585,3 +5585,576 @@ fn saturator_reuses_catalog_selectors_knobs_modulation_and_unit_actions() {
         }
     }
 }
+
+fn effect_track_drop_cursor(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    events: Vec<egui::Event>,
+) -> egui::CursorIcon {
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+            events,
+            ..Default::default()
+        },
+        |ui| app.show(ui),
+    );
+    output.textures_delta.clear();
+    output.platform_output.cursor_icon
+}
+
+#[test]
+fn timeline_effect_drops_append_selected_groups_to_audio_midi_and_group_tracks() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for kind in [
+            daw_core::TrackKind::Audio,
+            daw_core::TrackKind::Midi,
+            daw_core::TrackKind::Group,
+        ] {
+            for duplicate in [false, true] {
+                for header in [false, true] {
+                    let (mut app, source, ctx, ids) = chain_fixture(header, header);
+                    app.set_settings(
+                        &ctx,
+                        settings::AppSettings {
+                            theme,
+                            ..Default::default()
+                        },
+                    );
+                    let destination = if kind == daw_core::TrackKind::Midi {
+                        app.session.project.add_midi_track().unwrap()
+                    } else {
+                        let id = app.session.project.add_track().unwrap();
+                        if kind == daw_core::TrackKind::Group {
+                            let group = Id::new_v4();
+                            app.session
+                                .project
+                                .edit(Edit::GroupTracks {
+                                    track_ids: vec![id],
+                                    group_id: group,
+                                    name: "Bus".into(),
+                                })
+                                .unwrap();
+                            group
+                        } else {
+                            id
+                        }
+                    };
+                    let existing = daw_core::EffectInstance::limiter();
+                    let existing_id = existing.id;
+                    app.session
+                        .project
+                        .edit(
+                            daw_core::EffectChainTarget::Track(destination)
+                                .edit(vec![existing], false),
+                        )
+                        .unwrap();
+                    frame(&mut app, &ctx, vec![]);
+                    let original = app.session.project.clone();
+                    app.history = None;
+                    app.ensure_history();
+                    app.selected_effects = HashSet::from([ids[2], ids[0]]);
+                    let start = app.effects_bounds.units[0].header.center();
+                    let lane = app.lane_bounds[&destination];
+                    let end = Pos2::new(
+                        if header {
+                            lane.left() - 90.0
+                        } else {
+                            lane.left() + 70.0
+                        },
+                        lane.center().y,
+                    );
+                    let before = serde_json::to_value(&app.session.project).unwrap();
+                    begin_effect_drag(&mut app, &ctx, start, end);
+                    assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+                    assert_eq!(app.selected_track, Some(source));
+                    assert!(!app.dirty);
+                    let modifiers = if duplicate {
+                        egui::Modifiers {
+                            alt: cfg!(target_os = "macos"),
+                            ctrl: !cfg!(target_os = "macos"),
+                            ..Default::default()
+                        }
+                    } else {
+                        Default::default()
+                    };
+                    let cursor = effect_track_drop_cursor(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::ModifiersChanged(modifiers)],
+                    );
+                    assert_eq!(
+                        cursor,
+                        if duplicate {
+                            egui::CursorIcon::Copy
+                        } else {
+                            egui::CursorIcon::Grabbing
+                        }
+                    );
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![
+                            egui::Event::ModifiersChanged(modifiers),
+                            egui::Event::PointerButton {
+                                pos: end,
+                                button: egui::PointerButton::Primary,
+                                pressed: false,
+                                modifiers,
+                            },
+                        ],
+                    );
+                    assert!(app.error.is_none(), "{:?}", app.error);
+                    assert!(app.effects_drag.is_none());
+                    let dest = &app
+                        .session
+                        .project
+                        .tracks
+                        .iter()
+                        .find(|t| t.id == destination)
+                        .unwrap()
+                        .effects;
+                    assert_eq!(dest.len(), 3, "{kind:?} {duplicate} {header}");
+                    assert_eq!(dest[0].id, existing_id);
+                    assert_eq!(dest[1].id == ids[0], !duplicate);
+                    assert_eq!(dest[2].id == ids[2], !duplicate);
+                    assert_eq!(dest[1].unit, original.tracks[0].effects[0].unit);
+                    assert_eq!(dest[2].unit, original.tracks[0].effects[2].unit);
+                    assert_eq!(
+                        app.selected_effects,
+                        HashSet::from([dest[1].id, dest[2].id])
+                    );
+                    assert_eq!(app.selected_track, Some(destination));
+                    frame(&mut app, &ctx, vec![]);
+                    assert_eq!(app.selected_effects.len(), 2);
+                    assert_eq!(
+                        app.session.project.tracks[0].effects.len(),
+                        if duplicate { 3 } else { 1 }
+                    );
+                    assert_eq!(
+                        app.session.project.tracks[0].clips,
+                        original.tracks[0].clips
+                    );
+                    assert!(app.dirty);
+                    app.perform_history_action(crate::HistoryAction::Undo, &ctx);
+                    assert_eq!(app.session.project.tracks, original.tracks);
+                    app.perform_history_action(crate::HistoryAction::Redo, &ctx);
+                    assert_eq!(
+                        app.session
+                            .project
+                            .tracks
+                            .iter()
+                            .find(|t| t.id == destination)
+                            .unwrap()
+                            .effects
+                            .len(),
+                        3
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn timeline_effect_drops_reject_foreign_modulation_without_an_error_dialog() {
+    for master in [false, true] {
+        let (mut app, ctx) = categorized_catalog_fixture(settings::ColorTheme::Dark, "track");
+        let source_track = app.session.project.tracks[0].id;
+        let destination = app.session.project.add_midi_track().unwrap();
+        let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        instrument.main.macro_module.add();
+        let source = daw_core::ModulationSourceId {
+            layer: instrument.main.id,
+            unit: instrument.main.macro_module.controls[0].id,
+        };
+        let mut filter = daw_core::EffectInstance::auto_filter();
+        let daw_core::EffectSettings::AutoFilter(settings) = &mut filter.unit else {
+            unreachable!()
+        };
+        let mut route = daw_core::Modulation::new(daw_core::ModulationParameter::Frequency);
+        route.source = Some(source);
+        settings.modulations.push(route);
+        app.session.project.tracks[0].effects = vec![filter];
+        frame(&mut app, &ctx, vec![]);
+        app.dirty = false;
+        let before = serde_json::to_value(&app.session.project).unwrap();
+        let start = app.effects_bounds.auto_filter_units[0].header.center();
+        let end = if master {
+            app.master_bounds.center()
+        } else {
+            app.lane_bounds[&destination].center()
+        };
+        begin_effect_drag(&mut app, &ctx, start, end);
+        assert_eq!(
+            effect_track_drop_cursor(&mut app, &ctx, vec![]),
+            egui::CursorIcon::NotAllowed
+        );
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert!(app.error.is_none());
+        assert!(!app.dirty);
+        assert!(app.effects_drag.is_none());
+        assert_eq!(app.selected_track, Some(source_track));
+        assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+    }
+}
+
+#[test]
+fn timeline_effect_drops_move_and_copy_groups_onto_master() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for duplicate in [false, true] {
+            for compact in [false, true] {
+                for populated in [false, true] {
+                    let (mut app, source, ctx, ids) = chain_fixture(compact, compact);
+                    app.set_settings(
+                        &ctx,
+                        settings::AppSettings {
+                            theme,
+                            ..Default::default()
+                        },
+                    );
+                    if populated {
+                        app.session
+                            .project
+                            .master
+                            .effects
+                            .push(daw_core::EffectInstance::limiter());
+                    }
+                    frame(&mut app, &ctx, vec![]);
+                    app.history = None;
+                    app.ensure_history();
+                    let original = app.session.project.clone();
+                    app.selected_effects = HashSet::from([ids[2], ids[0]]);
+                    let start = app.effects_bounds.units[0].header.center();
+                    let end = app.master_bounds.center();
+                    begin_effect_drag(&mut app, &ctx, start, end);
+                    assert_eq!(app.selected_track, Some(source));
+                    assert!(!app.master_selected);
+                    assert!(!app.dirty);
+                    assert_eq!(app.session.project.tracks, original.tracks);
+                    assert_eq!(app.session.project.master, original.master);
+                    assert_eq!(
+                        effect_track_drop_cursor(&mut app, &ctx, vec![]),
+                        egui::CursorIcon::Grabbing
+                    );
+                    let modifiers = if duplicate {
+                        egui::Modifiers {
+                            alt: cfg!(target_os = "macos"),
+                            ctrl: !cfg!(target_os = "macos"),
+                            ..Default::default()
+                        }
+                    } else {
+                        Default::default()
+                    };
+                    // Copy mode can change at release, including over Master controls.
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![
+                            egui::Event::ModifiersChanged(modifiers),
+                            egui::Event::PointerButton {
+                                pos: end,
+                                button: egui::PointerButton::Primary,
+                                pressed: false,
+                                modifiers,
+                            },
+                        ],
+                    );
+                    assert!(app.error.is_none(), "{:?}", app.error);
+                    assert!(app.effects_drag.is_none());
+                    assert!(app.master_selected);
+                    assert_eq!(app.selected_track, None);
+                    assert!(app.selected_tracks.is_empty());
+                    let dest = &app.session.project.master.effects;
+                    let base = usize::from(populated);
+                    assert_eq!(dest.len(), base + 2);
+                    assert_eq!(&dest[..base], original.master.effects.as_slice());
+                    assert_eq!(dest[base].id == ids[0], !duplicate);
+                    assert_eq!(dest[base + 1].id == ids[2], !duplicate);
+                    assert_eq!(dest[base].unit, original.tracks[0].effects[0].unit);
+                    assert_eq!(dest[base + 1].unit, original.tracks[0].effects[2].unit);
+                    let selected = HashSet::from([dest[base].id, dest[base + 1].id]);
+                    assert_eq!(app.selected_effects, selected);
+                    assert_eq!(chain_ids(&app).len(), if duplicate { 3 } else { 1 });
+                    assert_eq!(
+                        app.session.project.tracks[0].clips,
+                        original.tracks[0].clips
+                    );
+                    assert!(app.dirty);
+                    frame(&mut app, &ctx, vec![]);
+                    assert_eq!(app.selected_effects, selected);
+                    app.perform_history_action(crate::HistoryAction::Undo, &ctx);
+                    assert_eq!(app.session.project.tracks, original.tracks);
+                    assert_eq!(app.session.project.master, original.master);
+                    app.perform_history_action(crate::HistoryAction::Redo, &ctx);
+                    assert_eq!(app.session.project.master.effects.len(), base + 2);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn timeline_master_effect_drops_keep_fast_release_noop_and_cancel_behavior() {
+    for action in ["append", "copy", "noop", "escape"] {
+        let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        app.session.project.master.effects =
+            std::mem::take(&mut app.session.project.tracks[0].effects);
+        app.select_master();
+        frame(&mut app, &ctx, vec![]);
+        app.selected_effects = if action == "noop" {
+            ids.iter().copied().collect()
+        } else {
+            HashSet::from([ids[0]])
+        };
+        let start = app.effects_bounds.units[0].header.center();
+        let end = app.master_bounds.center();
+        let before = serde_json::to_value(&app.session.project).unwrap();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        let modifiers = if action == "copy" {
+            egui::Modifiers {
+                alt: cfg!(target_os = "macos"),
+                ctrl: !cfg!(target_os = "macos"),
+                ..Default::default()
+            }
+        } else {
+            Default::default()
+        };
+        let mut events = vec![
+            egui::Event::PointerMoved(end),
+            egui::Event::ModifiersChanged(modifiers),
+        ];
+        if action == "escape" {
+            events.push(egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            });
+        }
+        events.push(egui::Event::PointerButton {
+            pos: end,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers,
+        });
+        frame(&mut app, &ctx, events);
+        assert!(app.error.is_none());
+        assert!(app.effects_drag.is_none());
+        assert!(app.master_selected);
+        let result: Vec<_> = app
+            .session
+            .project
+            .master
+            .effects
+            .iter()
+            .map(|e| e.id)
+            .collect();
+        match action {
+            "append" => assert_eq!(result, [ids[1], ids[2], ids[0]]),
+            "copy" => {
+                assert_eq!(&result[..3], &ids);
+                assert!(!ids.contains(&result[3]));
+            }
+            _ => {
+                assert!(!app.dirty);
+                assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+            }
+        }
+    }
+}
+
+#[test]
+fn timeline_effect_drops_handle_master_fast_release_and_same_track_noops() {
+    for source in ["master", "same", "append"] {
+        let (mut app, track, ctx, ids) = chain_fixture(false, false);
+        if source == "master" {
+            app.session.project.master.effects =
+                std::mem::take(&mut app.session.project.tracks[0].effects);
+            let master = app.master_bounds;
+            click(
+                &mut app,
+                &ctx,
+                Pos2::new(master.left() + 90.0, master.top() + 12.0),
+            );
+            assert!(app.master_selected);
+            frame(&mut app, &ctx, vec![]);
+        }
+        app.selected_effects = if source == "same" {
+            ids.iter().copied().collect()
+        } else {
+            HashSet::from([ids[0]])
+        };
+        let before = serde_json::to_value(&app.session.project).unwrap();
+        let start = app.effects_bounds.units[0].header.center();
+        let end = app.lane_bounds[&track].center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        // Motion and release in one frame must retain the original source and group.
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(end), button(end, false)],
+        );
+        assert!(app.error.is_none());
+        assert!(app.effects_drag.is_none());
+        match source {
+            "master" => {
+                assert!(
+                    app.session
+                        .project
+                        .master
+                        .effects
+                        .iter()
+                        .all(|e| e.id != ids[0])
+                );
+                assert_eq!(chain_ids(&app), [ids[0]]);
+                assert!(!app.master_selected);
+                assert_eq!(app.selected_track, Some(track));
+            }
+            "append" => assert_eq!(chain_ids(&app), [ids[1], ids[2], ids[0]]),
+            _ => {
+                assert!(!app.dirty);
+                assert_eq!(serde_json::to_value(&app.session.project).unwrap(), before);
+            }
+        }
+    }
+}
+
+#[test]
+fn timeline_effect_drops_cancel_without_changing_either_chain() {
+    for guard in [
+        "escape", "focus", "outside", "modal", "changed", "view", "disabled",
+    ] {
+        let (mut app, _, ctx, _) = chain_fixture(false, false);
+        let destination = app.session.project.add_track().unwrap();
+        frame(&mut app, &ctx, vec![]);
+        let start = app.effects_bounds.units[0].header.center();
+        let end = app.lane_bounds[&destination].center();
+        begin_effect_drag(&mut app, &ctx, start, end);
+        assert!(app.effects_drag.as_ref().is_some_and(|d| d.active));
+        let mut focused = true;
+        let mut enabled = true;
+        let mut events = vec![];
+        match guard {
+            "escape" => events.push(egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }),
+            "focus" => focused = false,
+            "disabled" => enabled = false,
+            "outside" => events.push(egui::Event::PointerMoved(Pos2::new(5.0, 5.0))),
+            "modal" => app.unsaved_prompt = true,
+            "changed" => app.session.project.tracks[0].effects.swap(1, 2),
+            "view" => app.view_mode = ViewMode::Instrument,
+            _ => unreachable!(),
+        }
+        let before = serde_json::to_value(&app.session.project).unwrap();
+        events.push(button(
+            if guard == "outside" {
+                Pos2::new(5.0, 5.0)
+            } else {
+                end
+            },
+            false,
+        ));
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                focused,
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                events,
+                ..Default::default()
+            },
+            |ui| {
+                ui.add_enabled_ui(enabled, |ui| app.show(ui));
+            },
+        );
+        output.textures_delta.clear();
+        assert!(app.effects_drag.is_none(), "{guard}");
+        assert!(!app.dirty, "{guard}");
+        assert!(app.error.is_none(), "{guard}");
+        assert_eq!(
+            serde_json::to_value(&app.session.project).unwrap(),
+            before,
+            "{guard}"
+        );
+    }
+}
+
+#[test]
+fn timeline_effect_drops_resolve_child_rows_and_scroll_to_visible_tracks() {
+    for scroll in [false, true] {
+        let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        let child = app.session.project.add_track().unwrap();
+        let group = Id::new_v4();
+        app.session
+            .project
+            .edit(Edit::GroupTracks {
+                track_ids: vec![child],
+                group_id: group,
+                name: "Bus".into(),
+            })
+            .unwrap();
+        for _ in 0..10 {
+            app.session.project.add_track().unwrap();
+        }
+        frame(&mut app, &ctx, vec![]);
+        let initial_top = app.lane_bounds[&child].top();
+        let start = app.effects_bounds.units[0].header.center();
+        let end = if scroll {
+            Pos2::new(
+                app.timeline_bounds.left() + 50.0,
+                app.master_bounds.top() - 5.0,
+            )
+        } else {
+            app.lane_bounds[&child].center()
+        };
+        begin_effect_drag(&mut app, &ctx, start, end);
+        if scroll {
+            for _ in 0..36 {
+                frame(&mut app, &ctx, vec![]);
+            }
+            assert!(app.lane_bounds[&child].top() < initial_top - 40.0);
+        }
+        let destination = *app
+            .lane_bounds
+            .iter()
+            .find(|(_, row)| row.contains(end))
+            .unwrap()
+            .0;
+        if !scroll {
+            assert_eq!(destination, child);
+        }
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert!(app.error.is_none());
+        assert_eq!(app.selected_track, Some(destination));
+        assert_eq!(
+            app.session
+                .project
+                .effect_chain(daw_core::EffectChainTarget::Track(destination))
+                .unwrap()
+                .0[0]
+                .id,
+            ids[0]
+        );
+        assert!(
+            app.session
+                .project
+                .effect_chain(daw_core::EffectChainTarget::Track(group))
+                .unwrap()
+                .0
+                .is_empty()
+        );
+    }
+}

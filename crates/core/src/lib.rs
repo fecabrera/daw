@@ -544,11 +544,7 @@ impl Project {
                 .flat_map(|e| e.unit.modulations())
             {
                 if route.source.is_some_and(|source| {
-                    !t.instrument.as_ref().is_some_and(|i| {
-                        i.modulation_source(source).is_some_and(|s| {
-                            daw_unit_core::ModulationScope::Shared.accepts(s.scope)
-                        })
-                    })
+                    !effect_transfer::source_available(t.instrument.as_ref(), source)
                 }) {
                     return Err(invalid(
                         "Effect modulation requires a shared source in the same MIDI track",

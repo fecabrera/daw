@@ -10,6 +10,11 @@ pub(super) struct UnitLane<'a> {
     pub sources: &'a [crate::modulation_panel::Source],
 }
 
+struct LaneInteraction {
+    allowed: bool,
+    request_focus: bool,
+}
+
 #[cfg(test)]
 pub(crate) struct EffectsUiBounds {
     pub library: Rect,
@@ -168,6 +173,8 @@ impl DawUi {
         let mut selected = self.effects_target();
         let (mut compact, mut effects) = self.effects_state(selected);
         let allowed = self.effects_editing_enabled(ui) && self.component_drag.is_none();
+        let mut timeline_drop = None;
+        let mut transferred_selection = None;
         let mut original_compact = compact;
         let mut original_effects = effects.clone();
         #[cfg(test)]
@@ -380,7 +387,7 @@ impl DawUi {
                                 self.file_drop_target = None;
                                 self.instrument_view(ui);
                             } else {
-                                self.timeline_workspace(ui);
+                                timeline_drop = self.timeline_workspace(ui);
                             }
                         },
                     );
@@ -398,6 +405,20 @@ impl DawUi {
         if let Some(library) = library {
             library.finish(ui);
         }
+        if let Some((destination, transfer)) =
+            self.finish_timeline_effect_drag(ui, timeline_drop, allowed)
+        {
+            self.edit(transfer.edit);
+            if self.error.is_none() {
+                match destination {
+                    EffectTarget::Master => self.select_master(),
+                    EffectTarget::Track(track) | EffectTarget::Layer { track, .. } => {
+                        self.select_track(track, false);
+                    }
+                }
+                transferred_selection = Some(transfer.selected);
+            }
+        }
         // Workspace controls can change the processing target while content is drawn.
         if self.effects_target() != selected {
             selected = self.effects_target();
@@ -407,6 +428,10 @@ impl DawUi {
             self.selected_effects.clear();
             self.effects_catalog.clear();
             self.effects_drag = None;
+        }
+        let focus_transferred = transferred_selection.is_some();
+        if let Some(ids) = transferred_selection {
+            self.selected_effects = ids.into_iter().collect();
         }
         // An inline transfer can remove track effects while the instrument is drawn.
         // Refresh that source snapshot before painting or committing the bottom chain.
@@ -440,9 +465,17 @@ impl DawUi {
             }
             #[cfg(not(test))]
             let _ = response;
-            if let Some(transfer) =
-                self.effects_lane(ui, strip, selected, &mut effects, compact, allowed)
-            {
+            if let Some(transfer) = self.effects_lane(
+                ui,
+                strip,
+                selected,
+                &mut effects,
+                compact,
+                LaneInteraction {
+                    allowed,
+                    request_focus: focus_transferred,
+                },
+            ) {
                 self.edit(transfer.edit);
                 if self.error.is_none() {
                     self.selected_effects = transfer.selected.into_iter().collect();
@@ -501,8 +534,12 @@ impl DawUi {
         target: Option<EffectTarget>,
         effects: &mut Vec<daw_core::EffectInstance>,
         compact: bool,
-        allowed: bool,
+        interaction: LaneInteraction,
     ) -> Option<daw_core::EffectTransfer> {
+        let LaneInteraction {
+            allowed,
+            request_focus,
+        } = interaction;
         let modulation_sources = crate::modulation_panel::sources(target.and_then(|target| {
             match target {
                 EffectTarget::Track(id) | EffectTarget::Layer { track: id, .. } => self
@@ -530,6 +567,9 @@ impl DawUi {
         lane.set_clip_rect(content.intersect(ui.clip_rect()));
         let keyboard_id = lane.id().with("effect-lane-keyboard-focus");
         let keyboard_focus = crate::unit_selection::keyboard_focus(&mut lane, strip, keyboard_id);
+        if request_focus {
+            keyboard_focus.request_focus();
+        }
         if crate::unit_selection::clicked(&lane, strip, allowed) {
             self.instrument_ui.effects_layer = None;
             self.instrument_ui.track_effects_target = true;
