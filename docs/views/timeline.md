@@ -13,7 +13,7 @@ Audio track headers show a waveform icon; MIDI track headers show a keyboard ico
 
 Moves and copies take priority over destination clips. Covered neighbors are trimmed, split, or removed. The preview shows those changes before release. Shift bypasses grid snapping.
 
-Audio clips can move or copy only to audio tracks; MIDI clips can move or copy only to MIDI tracks. An incompatible destination shows the invalid-action cursor. Releasing there rejects the entire selected group without an error dialog. Continue dragging to a compatible track to complete the move or copy.
+Audio clips can move or copy only to audio tracks; MIDI clips can move or copy only to MIDI tracks. This applies over both track headers and timeline lanes. An incompatible destination shows the invalid-action cursor. Releasing there rejects the entire selected group without an error dialog. Continue dragging to a compatible track to complete the move or copy.
 
 Group buses cannot hold clips: dragging onto a bus shows an invalid-action cursor, and releasing there keeps all dragged clips unchanged. Drop clips onto child tracks.
 

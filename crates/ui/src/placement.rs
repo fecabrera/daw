@@ -1,7 +1,30 @@
 use super::*;
 use daw_core::ClipPlacement;
 
+/// Include track controls in the same drop workspace as their timeline lanes.
+pub(super) fn drop_bounds(viewport: Rect) -> Rect {
+    Rect::from_min_max(
+        Pos2::new(viewport.left() - TRACK_WIDTH, viewport.top()),
+        viewport.max,
+    )
+}
+
 impl DawUi {
+    pub(super) fn clip_drop_track(
+        &self,
+        pointer: Pos2,
+        viewport: Rect,
+    ) -> Option<&daw_core::Track> {
+        if !drop_bounds(viewport).contains(pointer) {
+            return None;
+        }
+        self.session.project.tracks.iter().find(|track| {
+            self.lane_bounds
+                .get(&track.id)
+                .is_some_and(|lane| pointer.y >= lane.top() && pointer.y <= lane.bottom())
+        })
+    }
+
     pub(super) fn add_placement_track(
         &self,
         project: &mut daw_core::Project,

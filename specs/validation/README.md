@@ -3566,3 +3566,19 @@ Raw move previews now use core `TrackKind::accepts_asset`, also used by project 
 - Relative documentation links: 68 checked, no missing targets.
 
 Native pointer behavior, operating-system cursor rendering, and Windows/Linux checks were not performed. Automated input tests do not establish native gesture behavior.
+
+
+## Clip header drop targeting — 2026-10-20
+
+Expanded the source-type rejection regression to track headers. It failed before the fix because clip drags returned the source track when the pointer left the timeline lane, producing `Grabbing` instead of `NotAllowed` over an incompatible header.
+
+Clip moves and external file drops now share `placement::drop_bounds` and `clip_drop_track`. Headers and timeline lanes identify the same destination row, so the existing core source-type policy and invalid-preview release guard reject incompatible header drops without a dialog. Valid headers use the existing placement transaction and copy identity rules. File drops keep their existing snapping, import, and unsupported-target behavior.
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test -p daw-ui --lib track_groups`: all 25 tests pass. Expanded coverage includes both audio/MIDI directions, header/lane targets, moves/copies, grouped tracks, expanded/collapsed buses, recovery from invalid headers to valid lanes, and accepted compatible audio/MIDI header drops.
+
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `git diff --check`: pass with the configured local Cargo cache.
+- `cargo test --workspace`: 1054 tests pass, including all 533 UI tests; no failures. Two pre-existing extended timestretch acceptance cases remain ignored. Existing file-drop, clip overwrite, group selection, cancellation, new-track placement, and Sampler checks pass.
+- `sh tools/package_macos.sh release`: rebuilt `target/release/DAW.app` with the shared header/lane target lookup.
+- Relative documentation links: 68 checked, no missing targets.
+
+Native pointer behavior, operating-system cursor rendering, and Windows/Linux checks were not performed. Automated egui checks verify cursor output and project edits.

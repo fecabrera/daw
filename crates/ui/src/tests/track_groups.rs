@@ -795,7 +795,7 @@ fn clip_drag_frame(
 
 #[test]
 fn clip_drops_on_group_buses_show_invalid_cursor_and_reject_without_an_edit() {
-    for midi in [false, true] {
+    for (midi, controls) in [(false, false), (false, true), (true, false), (true, true)] {
         for collapsed in [false, true] {
             for duplicate in [false, true] {
                 let (mut app, _) = fixture();
@@ -845,7 +845,14 @@ fn clip_drops_on_group_buses_show_invalid_cursor_and_reject_without_an_edit() {
                 frame(&mut app, &ctx, vec![]);
                 let block = app.clip_block(app.lane_bounds[&source], &clip, clip.start_frame);
                 let start = block.min + Vec2::new(20.0, 12.0);
-                let end = Pos2::new(start.x + 40.0, app.lane_bounds[&group].top() + 12.0);
+                let end = Pos2::new(
+                    if controls {
+                        app.timeline_bounds.left() - 100.0
+                    } else {
+                        start.x + 40.0
+                    },
+                    app.lane_bounds[&group].top() + 12.0,
+                );
                 let before = app.session.project.clone();
                 clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
                 let cursor = clip_drag_frame(&mut app, &ctx, end, None, duplicate);
@@ -1150,7 +1157,7 @@ fn audio_file_drag_returns_from_a_midi_track_to_an_audio_track_with_prepared_aud
 
 #[test]
 fn clip_moves_and_copies_between_audio_and_midi_tracks_reject_without_a_dialog() {
-    for source_midi in [false, true] {
+    for (source_midi, controls) in [(false, false), (false, true), (true, false), (true, true)] {
         for nested in [false, true] {
             for duplicate in [false, true] {
                 let (mut app, audio) = fixture();
@@ -1185,7 +1192,14 @@ fn clip_moves_and_copies_between_audio_and_midi_tracks_reject_without_a_dialog()
                 let before = app.session.project.clone();
                 let block = app.clip_block(app.lane_bounds[&source], &clip, clip.start_frame);
                 let start = block.min + Vec2::new(20.0, 12.0);
-                let end = Pos2::new(start.x + 40.0, app.lane_bounds[&target].top() + 12.0);
+                let end = Pos2::new(
+                    if controls {
+                        app.timeline_bounds.left() - 100.0
+                    } else {
+                        start.x + 40.0
+                    },
+                    app.lane_bounds[&target].top() + 12.0,
+                );
                 clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
                 let cursor = clip_drag_frame(&mut app, &ctx, end, None, duplicate);
                 assert_eq!(cursor, egui::CursorIcon::NotAllowed);
@@ -1264,7 +1278,7 @@ fn clip_group_drop_rejects_all_members_when_only_a_secondary_clip_targets_midi()
 
 #[test]
 fn clip_drag_can_return_from_an_incompatible_midi_track_to_an_audio_track() {
-    for duplicate in [false, true] {
+    for (duplicate, controls) in [(false, false), (false, true), (true, false), (true, true)] {
         let (mut app, source) = fixture();
         let midi = app.session.project.add_midi_track().unwrap();
         let target = app.session.project.add_track().unwrap();
@@ -1274,12 +1288,19 @@ fn clip_drag_can_return_from_an_incompatible_midi_track_to_an_audio_track() {
         let before = app.session.project.clone();
         let block = app.clip_block(app.lane_bounds[&source], &clip, clip.start_frame);
         let start = block.min + Vec2::new(20.0, 12.0);
-        let invalid = Pos2::new(start.x + 40.0, app.lane_bounds[&midi].top() + 12.0);
+        let invalid = Pos2::new(
+            if controls {
+                app.timeline_bounds.left() - 100.0
+            } else {
+                start.x + 40.0
+            },
+            app.lane_bounds[&midi].top() + 12.0,
+        );
         clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
         let cursor = clip_drag_frame(&mut app, &ctx, invalid, None, duplicate);
         assert_eq!(cursor, egui::CursorIcon::NotAllowed);
         assert_eq!(app.session.project, before);
-        let valid = Pos2::new(invalid.x, app.lane_bounds[&target].top() + 12.0);
+        let valid = Pos2::new(start.x + 40.0, app.lane_bounds[&target].top() + 12.0);
         let cursor = clip_drag_frame(&mut app, &ctx, valid, None, duplicate);
         assert_eq!(
             cursor,
@@ -1333,4 +1354,80 @@ fn unexpected_missing_clip_metadata_still_reports_a_transaction_error() {
     assert!(app.job.is_none());
     assert!(!app.dirty);
     assert!(!app.history.as_ref().unwrap().can_undo());
+}
+
+#[test]
+fn compatible_track_headers_accept_clip_moves_and_copies() {
+    for midi in [false, true] {
+        for duplicate in [false, true] {
+            let (mut app, audio) = fixture();
+            let (source, target, clip) = if midi {
+                let source = app.session.project.add_midi_track().unwrap();
+                let id = app.session.project.add_midi_pattern(source, 0).unwrap();
+                let clip = app.session.project.tracks[1]
+                    .clips
+                    .iter()
+                    .find(|clip| clip.id == id)
+                    .unwrap()
+                    .clone();
+                let target = app.session.project.add_midi_track().unwrap();
+                (source, target, clip)
+            } else {
+                let target = app.session.project.add_track().unwrap();
+                (
+                    audio,
+                    target,
+                    app.session.project.tracks[0].clips[0].clone(),
+                )
+            };
+            let ctx = context();
+            frame(&mut app, &ctx, vec![]);
+            let before = app.session.project.clone();
+            let block = app.clip_block(app.lane_bounds[&source], &clip, clip.start_frame);
+            let start = block.min + Vec2::new(20.0, 12.0);
+            let end = Pos2::new(
+                app.timeline_bounds.left() - 100.0,
+                app.lane_bounds[&target].top() + 12.0,
+            );
+            clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
+            let cursor = clip_drag_frame(&mut app, &ctx, end, None, duplicate);
+            assert_eq!(
+                cursor,
+                if duplicate {
+                    egui::CursorIcon::Copy
+                } else {
+                    egui::CursorIcon::Grabbing
+                }
+            );
+            assert_eq!(app.session.project, before);
+            clip_drag_frame(&mut app, &ctx, end, Some(false), duplicate);
+            finish_import(&mut app, &ctx);
+            assert!(app.error.is_none());
+            let placed = &app
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|track| track.id == target)
+                .unwrap()
+                .clips;
+            assert_eq!(placed.len(), 1);
+            assert_eq!(placed[0].asset_id, clip.asset_id);
+            assert_eq!(placed[0].start_frame, 0);
+            assert_eq!(placed[0].id == clip.id, !duplicate);
+            assert_eq!(
+                app.session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|track| track.id == source)
+                    .unwrap()
+                    .clips
+                    .iter()
+                    .any(|c| c.id == clip.id),
+                duplicate
+            );
+            app.session.project.validate().unwrap();
+        }
+    }
 }

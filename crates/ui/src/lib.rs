@@ -3977,15 +3977,7 @@ impl DawUi {
         .round() as i64
     }
     fn drag_destination(&self, drag: &Drag, pointer: Pos2) -> Id {
-        self.session
-            .project
-            .tracks
-            .iter()
-            .find(|track| {
-                self.lane_bounds
-                    .get(&track.id)
-                    .is_some_and(|lane| lane.contains(pointer))
-            })
+        self.clip_drop_track(pointer, self.timeline_bounds)
             .map_or(drag.track, |track| track.id)
     }
     fn snap_frame(
@@ -4439,11 +4431,7 @@ impl DawUi {
         viewport: Rect,
         unsnapped: bool,
     ) -> Option<FileDropTarget> {
-        let drop_viewport = Rect::from_min_max(
-            Pos2::new(viewport.left() - TRACK_WIDTH, viewport.top()),
-            viewport.max,
-        );
-        if !drop_viewport.contains(pointer) {
+        if !placement::drop_bounds(viewport).contains(pointer) {
             return None;
         }
         // Track controls always target frame zero, even when the timeline is scrolled.
@@ -4455,11 +4443,7 @@ impl DawUi {
             )
         };
         let snap_zoom = (!unsnapped && pointer.x >= viewport.left()).then_some(self.zoom);
-        if let Some(track) = self.session.project.tracks.iter().find(|track| {
-            self.lane_bounds
-                .get(&track.id)
-                .is_some_and(|lane| pointer.y >= lane.top() && pointer.y <= lane.bottom())
-        }) {
+        if let Some(track) = self.clip_drop_track(pointer, viewport) {
             if track.kind != daw_core::TrackKind::Audio {
                 return None;
             }
