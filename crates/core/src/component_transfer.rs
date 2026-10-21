@@ -303,20 +303,10 @@ fn remap_consumers(
     new: ModulationSourceId,
 ) {
     for layer in &mut instrument.layers {
-        remap_source(&mut layer.oscillator_modulations, old, new);
-        if let Some(sampler) = &mut layer.sampler {
-            remap_source(&mut sampler.modulations, old, new);
-        }
-        remap_source(&mut layer.amplitude.modulations, old, new);
-        for effect in &mut layer.effects {
-            remap_source(effect.unit.modulations_mut(), old, new);
-        }
-        remap_source(&mut layer.macro_module.modulations, old, new);
-        for envelope in &mut layer.envelopes {
-            remap_source(&mut envelope.modulations, old, new);
-        }
-        for lfo in &mut layer.lfos {
-            remap_source(&mut lfo.modulations, old, new);
+        for route in layer.modulation_routes_mut() {
+            if route.source == Some(old) {
+                route.source = Some(new);
+            }
         }
     }
     remap_source(&mut instrument.main.macro_module.modulations, old, new);

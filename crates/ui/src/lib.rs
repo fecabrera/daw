@@ -292,7 +292,11 @@ fn transport_monitor_control(
 
 enum Job {
     AudioSettings(Session),
-    PreparedEdit(Session, Option<(Id, Vec<Id>)>),
+    PreparedEdit {
+        session: Session,
+        placement: Option<(Id, Vec<Id>)>,
+        layer_selection: Option<(Id, Id)>,
+    },
     Loaded(Session, bool),
     Saved(Session),
     Exported(Vec<String>),
@@ -1273,13 +1277,23 @@ impl DawUi {
                     self.mark_dirty();
                     self.sync_needed = false;
                 }
-                Ok(Job::PreparedEdit(session, placement)) => {
+                Ok(Job::PreparedEdit {
+                    session,
+                    placement,
+                    layer_selection,
+                }) => {
                     self.notices = session.warnings.clone();
                     self.session = session;
                     if let Some((track, clips)) = placement {
                         self.select_track(track, false);
                         self.selected_clip = clips.first().copied();
                         self.selected_clips = clips.into_iter().collect();
+                    }
+                    if let Some((track, layer)) = layer_selection
+                        && self.instrument_ui.track == Some(track)
+                        && self.selected_track == Some(track)
+                    {
+                        self.instrument_ui.selected_layer = Some(layer);
                     }
                     self.prune_clip_selection();
                     self.prune_track_selection();

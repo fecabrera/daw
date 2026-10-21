@@ -1276,6 +1276,225 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
     }
 }
 
+fn layer_copy_modifiers() -> egui::Modifiers {
+    egui::Modifiers {
+        alt: cfg!(target_os = "macos"),
+        ctrl: !cfg!(target_os = "macos"),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn layer_drag_duplicates_on_release_and_preserves_the_complete_original() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            for area in ["icon", "name", "blank"] {
+                for fast in [false, true] {
+                    let (mut app, ctx, _) = layer_header_fixture();
+                    let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+                    for l in &mut i.layers {
+                        l.collapsed = true;
+                    }
+                    i.layers[0].collapsed = compact;
+                    i.layers[0].macro_module.add();
+                    i.layers[0].effects = vec![daw_core::EffectInstance::limiter()];
+                    app.set_settings(
+                        &ctx,
+                        settings::AppSettings {
+                            theme,
+                            ..Default::default()
+                        },
+                    );
+                    frame(&mut app, &ctx, vec![]);
+                    app.history = None;
+                    app.ensure_history();
+                    let original = app.session.project.clone();
+                    let i = original.tracks[0].instrument.as_ref().unwrap();
+                    let bounds = &app.midi_editor.layer_bounds[&i.layers[0].id];
+                    let start = match area {
+                        "icon" => bounds.icon.center(),
+                        "name" => bounds.name.center(),
+                        _ => Pos2::new(bounds.name.right() + 10.0, bounds.icon.center().y),
+                    };
+                    let last = app.midi_editor.layer_bounds[&i.layers[2].id].row;
+                    let end = Pos2::new(start.x, last.top() + 8.0);
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![egui::Event::PointerMoved(start), button(start, true)],
+                    );
+                    if !fast {
+                        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                        assert!(app.instrument_ui.dragging());
+                        assert_eq!(app.session.project.tracks, original.tracks);
+                        assert!(!app.dirty);
+                    }
+                    let modifiers = layer_copy_modifiers();
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![
+                            egui::Event::PointerMoved(end),
+                            egui::Event::ModifiersChanged(modifiers),
+                            egui::Event::PointerButton {
+                                pos: end,
+                                button: egui::PointerButton::Primary,
+                                pressed: false,
+                                modifiers,
+                            },
+                        ],
+                    );
+                    assert!(app.error.is_none(), "{:?}", app.error);
+                    assert!(!app.instrument_ui.dragging());
+                    let current = app.session.project.tracks[0].instrument.as_ref().unwrap();
+                    assert_eq!(current.layers.len(), 4, "{area} {compact} {fast}");
+                    assert_eq!(current.layers[0], i.layers[0]);
+                    assert_eq!(current.layers[1], i.layers[1]);
+                    assert_eq!(current.layers[3], i.layers[2]);
+                    assert_eq!(current.main, i.main);
+                    let copy = &current.layers[2];
+                    assert_ne!(copy.id, i.layers[0].id);
+                    assert_eq!(copy.name, i.layers[0].name);
+                    assert_eq!(copy.collapsed, compact);
+                    assert_eq!(copy.effects[0].unit, i.layers[0].effects[0].unit);
+                    assert_ne!(copy.effects[0].id, i.layers[0].effects[0].id);
+                    assert_ne!(copy.oscillators[0].id, i.layers[0].oscillators[0].id);
+                    assert_ne!(
+                        copy.macro_module.controls[0].id,
+                        i.layers[0].macro_module.controls[0].id
+                    );
+                    assert_eq!(app.instrument_ui.selected_layer, Some(copy.id));
+                    assert_eq!(
+                        app.session.project.tracks[0].clips,
+                        original.tracks[0].clips
+                    );
+                    assert!(app.dirty);
+                    app.session.project.validate().unwrap();
+                    app.perform_history_action(crate::HistoryAction::Undo, &ctx);
+                    assert_eq!(app.session.project.tracks, original.tracks);
+                    app.perform_history_action(crate::HistoryAction::Redo, &ctx);
+                    assert_eq!(
+                        app.session.project.tracks[0]
+                            .instrument
+                            .as_ref()
+                            .unwrap()
+                            .layers
+                            .len(),
+                        4
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn layer_copy_modifier_can_be_released_and_invalid_drops_do_not_copy() {
+    for action in [
+        "move", "escape", "outside", "output", "same", "changed", "disabled", "focus",
+    ] {
+        let (mut app, ctx, _) = layer_header_fixture();
+        for l in &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers
+        {
+            l.collapsed = true;
+        }
+        frame(&mut app, &ctx, vec![]);
+        let original = app.session.project.tracks[0].instrument.clone().unwrap();
+        let bounds = &app.midi_editor.layer_bounds[&original.layers[0].id];
+        let start = bounds.icon.center();
+        let end = match action {
+            "outside" => Pos2::new(start.x, 5.0),
+            "output" => app.instrument_ui.main_bounds.label.center(),
+            "same" => start + Vec2::new(8.0, 0.0),
+            _ => Pos2::new(
+                start.x,
+                app.midi_editor.layer_bounds[&original.layers[2].id]
+                    .row
+                    .top()
+                    + 8.0,
+            ),
+        };
+        let modifiers = layer_copy_modifiers();
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::ModifiersChanged(modifiers),
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers,
+                },
+            ],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        if action == "changed" {
+            app.session.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers
+                .swap(1, 2);
+        }
+        let mut events = vec![];
+        if action == "escape" {
+            events.push(layer_key(egui::Key::Escape));
+        }
+        let release_modifiers = if action == "move" {
+            Default::default()
+        } else {
+            modifiers
+        };
+        events.push(egui::Event::ModifiersChanged(release_modifiers));
+        events.push(egui::Event::PointerButton {
+            pos: end,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: release_modifiers,
+        });
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                focused: action != "focus",
+                events,
+                ..Default::default()
+            },
+            |ui| {
+                ui.add_enabled_ui(action != "disabled", |ui| app.show(ui));
+            },
+        );
+        output.textures_delta.clear();
+        assert!(app.error.is_none(), "{action}");
+        let layers = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers;
+        let mut expected = original.layers;
+        if action == "move" {
+            expected.swap(0, 1);
+        }
+        if action == "changed" {
+            expected.swap(1, 2);
+        }
+        if action == "same" {
+            assert_eq!(layers.len(), 4);
+            assert_ne!(layers[0].id, expected[0].id);
+            assert_eq!(&layers[1..], &expected);
+        } else {
+            assert_eq!(layers, &expected, "{action}");
+        }
+        assert_eq!(app.dirty, matches!(action, "move" | "same"), "{action}");
+        assert!(!app.instrument_ui.dragging());
+    }
+}
+
 #[test]
 fn layer_control_and_name_editor_drags_do_not_reorder_layers() {
     for control in 0..8 {

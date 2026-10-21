@@ -21,7 +21,9 @@ Use Up/Down to move through visible folders and components. On a folder, Enter h
 
 A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain Oscillator or Sampler. It cannot contain both. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a layer.
 
-Layers show a waveform icon before their names. Output uses a keyboard icon. Drag a regular layer by its icon, name, or empty header space to reorder it. Output stays pinned at the bottom.
+Layers show a waveform icon before their names. Output uses a keyboard icon. Drag a regular layer by its icon, name, or empty header space to reorder it. Output stays pinned at the bottom. Hold Option on macOS or Ctrl on Windows/Linux while dragging to duplicate a layer at the insertion line. The modifier held at release chooses move or copy. Escape or dropping outside the layer area cancels. Output cannot be duplicated.
+
+A layer copy keeps its name, controls, components, effects, and modulation settings. Connections between its copied components point to the copies. Inputs from Output or other layers stay connected to those sources. Existing connections outside the layer keep their original sources. The copy becomes selected after release; Undo removes it.
 
 Layer controls stay in the left column; installed components appear to their right. Use the Layers Plus button to add another layer. Each layer has gain, pan, mute, and solo controls. Solo applies among the layers of that instrument. [Output](../instruments/main.md) controls their combined output and can hold shared modulators.
 

@@ -11,6 +11,7 @@ pub use sampler::{SamplerInput, SamplerMode, SamplerSettings, SamplerTrigger};
 mod instrument_bus;
 pub use instrument_bus::InstrumentBusSettings;
 mod instrument_components;
+mod instrument_copy;
 pub use instrument_components::InstrumentComponent;
 mod macro_control;
 pub use macro_control::*;

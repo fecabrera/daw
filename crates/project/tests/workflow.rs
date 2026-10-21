@@ -4030,6 +4030,128 @@ fn sampler_files_regions_durations_and_root_metadata_survive_storage_and_rate_ch
 }
 
 #[test]
+fn duplicated_layers_preserve_modulated_audio_samples_and_saved_routes() {
+    use daw_core::*;
+    for sampler in [false, true] {
+        let fixture = Fixture::new();
+        let path = fixture.wav("source.wav", 48000, 2, 16, false);
+        let source_bytes = fs::read(&path).unwrap();
+        let mut session = Session::default();
+        let track = session.project.add_midi_track().unwrap();
+        if sampler {
+            let layer = &mut session.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0];
+            layer.sampler = Some(SamplerSettings::default());
+            let id = layer.id;
+            session = session.with_sampler_file(track, id, &path).unwrap();
+        } else {
+            session.project.tracks[0].instrument = Some(OscillatorSettings::default().into());
+        }
+        let clip = session.project.add_midi_pattern(track, 0).unwrap();
+        session
+            .project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: MidiPattern {
+                    length_ticks: 960,
+                    notes: vec![MidiNote {
+                        id: Id::new_v4(),
+                        start_tick: 0,
+                        length_ticks: 960,
+                        pitch: if sampler { 72 } else { 60 },
+                        velocity: 100,
+                    }],
+                },
+            })
+            .unwrap();
+        let mut instrument = session.project.tracks[0].instrument.clone().unwrap();
+        let layer = &mut instrument.layers[0];
+        layer.install_amplitude_envelope();
+        layer.macro_module.add();
+        layer.macro_module.controls[0].settings.value = 0.4;
+        let source = ModulationSourceId {
+            layer: layer.id,
+            unit: layer.macro_module.controls[0].id,
+        };
+        let mut route = Modulation::new(if sampler {
+            ModulationParameter::SamplerGain
+        } else {
+            ModulationParameter::OscillatorGain
+        });
+        route.source = Some(source);
+        route.amount = -6.0;
+        if let Some(s) = &mut layer.sampler {
+            s.modulations.push(route);
+        } else {
+            route.target = Some(layer.oscillators[0].id);
+            layer.oscillator_modulations.push(route);
+        }
+        let mut effect = EffectInstance::auto_filter();
+        let EffectSettings::AutoFilter(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        let mut route = Modulation::new(ModulationParameter::Level);
+        route.source = Some(source);
+        route.amount = -3.0;
+        s.modulations.push(route);
+        layer.effects.push(effect);
+        session = session
+            .with_edit(Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(instrument),
+            })
+            .unwrap();
+        let original = session.project.tracks[0].instrument.clone().unwrap();
+        let mut reference = vec![[0.0; 2]; 4096];
+        daw_engine::Renderer::new(session.plan()).render_offline(&mut reference);
+        assert!(reference.iter().flatten().any(|v| v.abs() > 1e-5));
+        let mut duplicate = original.clone();
+        duplicate.layers.push(original.layers[0].duplicate());
+        let copied_id = duplicate.layers[1].id;
+        let mut doubled = session
+            .with_edit(Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(duplicate),
+            })
+            .unwrap();
+        assert_eq!(doubled.project.assets, session.project.assets);
+        let mut rendered = reference.clone();
+        daw_engine::Renderer::new(doubled.plan()).render_offline(&mut rendered);
+        for (a, b) in rendered.iter().flatten().zip(reference.iter().flatten()) {
+            assert!(
+                (a - 2.0 * b).abs() < 1e-6,
+                "sampler={sampler}: {a} != 2 * {b}"
+            );
+        }
+        let mut only_copy = doubled.project.tracks[0].instrument.clone().unwrap();
+        only_copy.layers.retain(|l| l.id == copied_id);
+        let isolated = doubled
+            .with_edit(Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(only_copy),
+            })
+            .unwrap();
+        daw_engine::Renderer::new(isolated.plan()).render_offline(&mut rendered);
+        assert_eq!(rendered, reference);
+        doubled.save(&fixture.0.join("copied-layers")).unwrap();
+        let loaded = Session::open(&fixture.0.join("copied-layers")).unwrap();
+        assert_eq!(
+            loaded.project.tracks[0].instrument,
+            doubled.project.tracks[0].instrument
+        );
+        let mut restored = rendered;
+        daw_engine::Renderer::new(loaded.plan()).render_offline(&mut restored);
+        for (a, b) in restored.iter().flatten().zip(reference.iter().flatten()) {
+            assert!((a - 2.0 * b).abs() < 1e-6);
+        }
+        assert_eq!(fs::read(&path).unwrap(), source_bytes);
+    }
+}
+
+#[test]
 fn sampler_clip_assignment_reuses_trim_repeat_and_stretch_mapping_without_changing_arrangement() {
     let fixture = Fixture::new();
     let path = fixture.wav("region.wav", 48000, 2, 16, false);

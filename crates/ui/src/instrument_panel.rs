@@ -19,7 +19,7 @@ pub(super) struct InstrumentUi {
     pub(super) component_viewports: Vec<(Id, Rect)>,
     name_edit: Option<LayerNameEdit>,
     pub(super) macro_name_edit: Option<crate::macro_panel::NameEdit>,
-    drag: Option<Id>,
+    drag: Option<LayerDrag>,
     pub(super) inputs: HashMap<Id, Inputs>,
     pub(super) oscillator_slots: Vec<(Id, Id, Rect)>,
     pub(super) samplers: Vec<crate::sampler_panel::Bounds>,
@@ -34,6 +34,13 @@ struct LayerNameEdit {
     text: String,
     focus: bool,
 }
+struct LayerDrag {
+    layer: Id,
+    origin: Pos2,
+    focus: egui::Id,
+    active: bool,
+    order: Vec<Id>,
+}
 impl InstrumentUi {
     pub(super) fn cancel(&mut self) {
         self.selected_components.clear();
@@ -47,7 +54,7 @@ impl InstrumentUi {
         self.samplers.clear();
     }
     pub(super) fn dragging(&self) -> bool {
-        self.drag.is_some()
+        self.drag.as_ref().is_some_and(|drag| drag.active)
     }
     pub(super) fn editing_name(&self) -> bool {
         self.name_edit.is_some() || self.macro_name_edit.is_some()
@@ -852,15 +859,26 @@ impl DawUi {
     }
 
     fn start_layer_drag(&mut self, ui: &egui::Ui, response: &egui::Response, layer: Id) {
-        if response.drag_started_by(egui::PointerButton::Primary)
-            && ui.is_enabled()
-            && ui.input(|input| input.focused)
+        if self.instrument_ui.drag.is_none()
             && self.edit_environment_available()
             && !self.instrument_ui.editing_name()
+            && let Some(origin) = drag::press_origin(ui, response)
         {
-            self.instrument_ui.selected_layer = Some(layer);
-            self.instrument_ui.track_effects_target = false;
-            self.instrument_ui.drag = Some(layer);
+            response.request_focus();
+            self.instrument_ui.drag = Some(LayerDrag {
+                layer,
+                origin,
+                focus: response.id,
+                active: false,
+                order: self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|t| Some(t.id) == self.instrument_ui.track)
+                    .and_then(|t| t.instrument.as_ref())
+                    .map_or_else(Vec::new, |i| i.layers.iter().map(|l| l.id).collect()),
+            });
         }
     }
 
@@ -871,20 +889,39 @@ impl DawUi {
         rows: &[(Id, Rect)],
         viewport: Rect,
     ) {
-        let Some(id) = self.instrument_ui.drag else {
+        let Some(gesture) = self.instrument_ui.drag.as_ref() else {
             return;
         };
-        if !ui.is_enabled()
+        if drag::cancelled(ui)
             || !self.edit_environment_available()
-            || ui.input(|input| !input.focused || input.key_pressed(egui::Key::Escape))
+            || !settings
+                .layers
+                .iter()
+                .map(|l| l.id)
+                .eq(gesture.order.iter().copied())
         {
             self.instrument_ui.drag = None;
             return;
         }
-        let Some(source) = settings.layers.iter().position(|layer| layer.id == id) else {
+        let Some(source) = settings
+            .layers
+            .iter()
+            .position(|layer| layer.id == gesture.layer)
+        else {
             self.instrument_ui.drag = None;
             return;
         };
+        if !gesture.active && !drag::crossed_threshold(ui, gesture.origin) {
+            if !ui.input(|i| i.pointer.primary_down()) {
+                self.instrument_ui.drag = None;
+            }
+            return;
+        }
+        let gesture = self.instrument_ui.drag.as_mut().unwrap();
+        gesture.active = true;
+        self.instrument_ui.selected_layer = Some(gesture.layer);
+        self.instrument_ui.track_effects_target = false;
+        let duplicate = ui.input(|input| clip_copy_modifier(input.modifiers));
         let target = ui
             .input(|input| input.pointer.latest_pos())
             .filter(|p| viewport.contains(*p))
@@ -893,10 +930,17 @@ impl DawUi {
                     .iter()
                     .position(|(_, row)| pointer.y < row.center().y)
                     .unwrap_or(rows.len());
-                (slot, slot - usize::from(slot > source))
+                (
+                    slot,
+                    if duplicate {
+                        slot
+                    } else {
+                        slot - usize::from(slot > source)
+                    },
+                )
             });
         if let Some((slot, index)) = target
-            && index != source
+            && (duplicate || index != source)
         {
             let y = rows
                 .get(slot)
@@ -909,16 +953,26 @@ impl DawUi {
             );
         }
         ui.ctx().set_cursor_icon(if target.is_some() {
-            egui::CursorIcon::Grabbing
+            if duplicate {
+                egui::CursorIcon::Copy
+            } else {
+                egui::CursorIcon::Grabbing
+            }
         } else {
             egui::CursorIcon::NotAllowed
         });
         if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary)) {
-            self.instrument_ui.drag = None;
+            let gesture = self.instrument_ui.drag.take().unwrap();
+            drag::restore_focus(ui.ctx(), gesture.focus);
             if let Some((_, index)) = target
-                && index != source
+                && (duplicate || index != source)
             {
-                let layer = settings.layers.remove(source);
+                let layer = if duplicate {
+                    settings.layers[source].duplicate()
+                } else {
+                    settings.layers.remove(source)
+                };
+                self.instrument_ui.selected_layer = Some(layer.id);
                 settings.layers.insert(index, layer);
             }
         } else if !ui.input(|input| input.pointer.button_down(egui::PointerButton::Primary)) {
