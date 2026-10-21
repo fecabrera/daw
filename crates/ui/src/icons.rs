@@ -26,7 +26,7 @@ pub(super) fn paint_disclosure(ui: &Ui, rect: egui::Rect, open: bool, color: Col
     paint_header_icon(ui, rect, disclosure_icon(open), color);
 }
 
-/// Leading track artwork shares geometry and colors with the group disclosure.
+/// Leading track/layer artwork shares geometry and colors with the group disclosure.
 pub(super) fn header_icon(ui: &mut Ui, icon: Lucide, sense: egui::Sense) -> Response {
     let (rect, response) = ui.allocate_exact_size(
         Vec2::new(HEADER_ICON_WIDTH, crate::toolbars::CONTROL_HEIGHT),

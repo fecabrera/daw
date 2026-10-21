@@ -41,7 +41,7 @@ Very large shifts can reduce sound quality and require more preparation time. No
 
 ## Gain modulation
 
-Use the header's secondary-color dot to open connections. Gain accepts Per note Envelopes and shared Envelope, LFO, or Macro sources from the same instrument, including Main. Amount spans −24 to +24 dB per connection. The base Gain stays unchanged, and exact base silence stays silent. Pitch, duration, root note, region, and Trigger do not accept modulation.
+Use the header's secondary-color dot to open connections. Gain accepts Per note Envelopes and shared Envelope, LFO, or Macro sources from the same instrument, including Output. Amount spans −24 to +24 dB per connection. The base Gain stays unchanged, and exact base silence stays silent. Pitch, duration, root note, region, and Trigger do not accept modulation.
 
 ## Files and limits
 

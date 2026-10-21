@@ -58,7 +58,7 @@ impl InstrumentUi {
 pub(crate) struct LayerUiBounds {
     pub row: Rect,
     pub label: Rect,
-    pub grip: Rect,
+    pub icon: Rect,
     pub name: Rect,
     pub mix_controls: [Rect; 6],
     pub collapse: Rect,
@@ -279,12 +279,14 @@ impl DawUi {
                                                     + layer_action_width
                                                     + 2.0 * ui.spacing().item_spacing.x;
                                                 let name_width = (ui.available_width()
-                                                    - toolbars::CONTROL_HEIGHT
+                                                    - icons::HEADER_ICON_WIDTH
                                                     - buttons_width
                                                     - 2.0 * ui.spacing().item_spacing.x)
                                                     .max(1.0);
-                                                let grip = icons::reorder_grip(ui, "layer");
-                                                self.start_layer_drag(ui, &grip, layer.id);
+                                                let icon = icons::header_icon(ui, icons::Lucide::AudioWaveform, Sense::click_and_drag());
+                                                icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument layer"));
+                                                self.start_layer_drag(ui, &icon, layer.id);
+                                                let icon = icon.on_hover_text("Instrument layer\nDrag to reorder.").on_hover_cursor(egui::CursorIcon::Grab);
                                                 let name = ui
                                                     .allocate_ui_with_layout(
                                                         Vec2::new(
@@ -331,7 +333,7 @@ impl DawUi {
                                                     theme::palette(ui.ctx()).text,
                                                 );
                                                 (
-                                                    grip.rect,
+                                                    icon.rect,
                                                     name,
                                                     toggles.map(|response| response.rect),
                                                     collapse,
@@ -543,7 +545,7 @@ impl DawUi {
                                                 LayerUiBounds {
                                                     row: label,
                                                     label,
-                                                    grip: controls.0,
+                                                    icon: controls.0,
                                                     name: controls.1,
                                                     mix_controls: mixing_bounds,
                                                     collapse: collapse.rect,

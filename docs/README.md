@@ -18,7 +18,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 - [LFO](instruments/lfo.md)
 - [Macro](instruments/macro.md)
 - [Amplitude](instruments/amplitude.md)
-- [Instrument Main](instruments/main.md)
+- [Instrument Output](instruments/main.md)
 
 ## Effects
 

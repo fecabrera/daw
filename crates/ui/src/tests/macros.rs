@@ -62,7 +62,7 @@ fn macro_catalog_adds_multiple_named_powered_strips_to_layers_and_main() {
         assert!(
             crate::modulation_panel::sources(Some(i))
                 .iter()
-                .any(|s| s.label == "Main · Macro 1")
+                .any(|s| s.label == "Output · Macro 1")
         );
         app.session.project.validate().unwrap();
         let saved = serde_json::to_vec(&app.session.project).unwrap();
@@ -416,7 +416,7 @@ fn macro_names_commit_on_enter_and_cancel_without_changing_routes_or_power() {
                         .iter()
                         .any(|s| s.id == source
                             && s.label
-                                == format!("{} · Tone", if main { "Main" } else { "Layer 1" }))
+                                == format!("{} · Tone", if main { "Output" } else { "Layer 1" }))
                 );
                 let saved = serde_json::to_vec(&app.session.project).unwrap();
                 assert_eq!(

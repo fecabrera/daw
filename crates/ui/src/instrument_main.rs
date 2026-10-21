@@ -6,6 +6,8 @@ use daw_core::InstrumentBusSettings;
 pub(super) struct MainBounds {
     pub row: Rect,
     pub label: Rect,
+    pub icon: Rect,
+    pub name: Rect,
     pub mix: [Rect; 4],
     pub collapse: Rect,
     pub envelopes: Vec<Rect>,
@@ -17,6 +19,8 @@ impl Default for MainBounds {
         Self {
             row: Rect::NOTHING,
             label: Rect::NOTHING,
+            icon: Rect::NOTHING,
+            name: Rect::NOTHING,
             mix: [Rect::NOTHING; 4],
             collapse: Rect::NOTHING,
             envelopes: Vec::new(),
@@ -97,7 +101,11 @@ impl DawUi {
                 );
                 header.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                 let collapse = rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
-                    ui.label(egui::RichText::new("Main").size(rows::NAME_FONT_SIZE));
+                    let icon = icons::header_icon(ui, icons::Lucide::KeyboardMusic, Sense::hover()).on_hover_text("Instrument output");
+                    icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));
+                    let name = ui.label(egui::RichText::new(InstrumentBusSettings::DISPLAY_NAME).size(rows::NAME_FONT_SIZE));
+                    #[cfg(test)] { bounds.icon = icon.rect; bounds.name = name.rect; }
+                    #[cfg(not(test))] let _ = name;
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         icons::small_button(
                             ui,
@@ -107,9 +115,9 @@ impl DawUi {
                                 icons::Lucide::ArrowDownFromLine
                             },
                             if compact {
-                                "Expand Main"
+                                "Expand Output"
                             } else {
-                                "Collapse Main"
+                                "Collapse Output"
                             },
                             ui.input(|i| i.focused),
                             theme::palette(ui.ctx()).text,
@@ -140,7 +148,7 @@ impl DawUi {
                         egui::WidgetType::Button,
                         ui.is_enabled(),
                         self.instrument_ui.selected_layer == Some(bus.id),
-                        "Select Main instrument bus",
+                        "Select Output instrument bus",
                     )
                 });
                 #[cfg(test)]

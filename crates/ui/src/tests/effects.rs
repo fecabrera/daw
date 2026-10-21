@@ -6112,7 +6112,7 @@ fn timeline_effect_drops_resolve_child_rows_and_scroll_to_visible_tracks() {
         frame(&mut app, &ctx, vec![]);
         let initial_top = app.lane_bounds[&child].top();
         let start = app.effects_bounds.units[0].header.center();
-        let end = if scroll {
+        let mut end = if scroll {
             Pos2::new(
                 app.timeline_bounds.left() + 50.0,
                 app.master_bounds.top() - 5.0,
@@ -6126,6 +6126,19 @@ fn timeline_effect_drops_resolve_child_rows_and_scroll_to_visible_tracks() {
                 frame(&mut app, &ctx, vec![]);
             }
             assert!(app.lane_bounds[&child].top() < initial_top - 40.0);
+            // ScrollArea applies the previous frame's edge-scroll request on the
+            // next frame. Leave the edge and settle it before choosing a row.
+            end.y = (app.timeline_bounds.top() + app.master_bounds.top()) * 0.5;
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            frame(&mut app, &ctx, vec![]);
+            end.y = app
+                .lane_bounds
+                .values()
+                .find(|row| row.contains(end))
+                .unwrap()
+                .center()
+                .y;
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
         }
         let destination = *app
             .lane_bounds

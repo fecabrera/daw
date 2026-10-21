@@ -1556,8 +1556,8 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
             let none = label(&shapes, "None");
             click(&mut app, &ctx, none, false);
             let popup = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let source = label(&popup, "Main · Macro 1");
-            assert!(!popup.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text()==format!("{} · Envelope 1",if main {"Main"}else{"Layer 1"}))));
+            let source = label(&popup, "Output · Macro 1");
+            assert!(!popup.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text()==format!("{} · Envelope 1",if main {"Output"}else{"Layer 1"}))));
             click(&mut app, &ctx, source, false);
             assert_eq!(get(&app).modulations[0].source, Some(macro_source));
             let saved = serde_json::to_vec(&app.session.project).unwrap();

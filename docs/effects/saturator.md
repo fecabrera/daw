@@ -1,6 +1,6 @@
 # Saturator
 
-Saturator changes the shape of a signal to add harmonics and control peaks. Add it from **Distortion → Saturator** to a track, Master, instrument layer, or Main.
+Saturator changes the shape of a signal to add harmonics and control peaks. Add it from **Distortion → Saturator** to a track, Master, instrument layer, or Output.
 
 ## Controls
 
@@ -27,9 +27,9 @@ Header power bypasses saturation while retaining its settings. The two selectors
 
 ## Modulation and editing
 
-Drive, Level, and Dry/Wet accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Main. Open the secondary header dot and add a Source/Destination connection. Drive amounts span ±36 dB, Level amounts ±24 dB, and Dry/Wet amounts ±100 percentage points. Amount knobs follow their destination's steps and drag behavior. Shape and Clip Mode remain discrete controls.
+Drive, Level, and Dry/Wet accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Open the secondary header dot and add a Source/Destination connection. Drive amounts span ±36 dB, Level amounts ±24 dB, and Dry/Wet amounts ±100 percentage points. Amount knobs follow their destination's steps and drag behavior. Shape and Clip Mode remain discrete controls.
 
-Use the standard unit selection, Shift-click groups, drag moves/copies, and Delete/Backspace removal. Saturator can move between the track effects lane, regular layers, and Main using the same gestures as other effects. Connections and presentation settings are saved with the project. See [modulation](../modulation/README.md) and [component editing](../editing/units.md).
+Use the standard unit selection, Shift-click groups, drag moves/copies, and Delete/Backspace removal. Saturator can move between the track effects lane, regular layers, and Output using the same gestures as other effects. Connections and presentation settings are saved with the project. See [modulation](../modulation/README.md) and [component editing](../editing/units.md).
 
 ## Sound and limits
 

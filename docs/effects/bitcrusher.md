@@ -22,7 +22,7 @@ Double-click a knob to restore its default. Hold Shift while dragging for fine c
 
 ## Modulation
 
-All five controls accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Main. Per note and foreign-instrument sources cannot feed this track effect. Audio tracks and Master have no instrument providers; connections can remain unassigned. Use the secondary-color header dot to open [modulation connections](../modulation/README.md).
+All five controls accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Per note and foreign-instrument sources cannot feed this track effect. Audio tracks and Master have no instrument providers; connections can remain unassigned. Use the secondary-color header dot to open [modulation connections](../modulation/README.md).
 
 | Destination | Signed Amount range |
 | --- | --- |

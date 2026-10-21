@@ -29,7 +29,7 @@ Turning the unit off clears the fill and peak line and stops meter updates. Turn
 
 ## Modulation
 
-Input, Release, Lookahead, and Ceiling accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Main. Open the secondary-color header dot for [connections](../modulation/README.md). Mode and Routing remain manual choices. Release Amount uses octaves of time; +1 doubles the duration and −1 halves it.
+Input, Release, Lookahead, and Ceiling accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Open the secondary-color header dot for [connections](../modulation/README.md). Mode and Routing remain manual choices. Release Amount uses octaves of time; +1 doubles the duration and −1 halves it.
 
 ## Ceiling and timing limits
 

@@ -327,7 +327,7 @@ fn note_mode(
                     ui.add_enabled_ui((!shared_only || choice != EnvelopeMode::PerNote) && (!local_inputs || choice == EnvelopeMode::PerNote), |ui| {
                         ui.selectable_value(mode, choice, choice.label())
                     }).inner.on_disabled_hover_text(
-                        "Per note is unavailable on Main or when shared destinations use this Envelope. Shared modes cannot consume Per note inputs.",
+                        "Per note is unavailable on Output or when shared destinations use this Envelope. Shared modes cannot consume Per note inputs.",
                     );
                 }
             }).response.on_hover_text(

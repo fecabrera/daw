@@ -348,9 +348,12 @@ fn layer_headers_share_track_geometry_and_leave_the_header_workspace_dark() {
             }
             assert_eq!(bounds.label.width(), TRACK_WIDTH);
             assert_eq!(bounds.label.right(), header.right());
-            assert_eq!(bounds.grip.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
-            assert_eq!(bounds.grip.left(), bounds.label.left() + 7.0);
-            assert!((bounds.name.left() - bounds.grip.right() - 6.0).abs() < 0.1);
+            assert_eq!(
+                bounds.icon.size(),
+                Vec2::new(icons::HEADER_ICON_WIDTH, toolbars::CONTROL_HEIGHT)
+            );
+            assert_eq!(bounds.icon.left(), bounds.label.left() + 7.0);
+            assert!((bounds.name.left() - bounds.icon.right() - 6.0).abs() < 0.1);
             let text = shapes
                 .iter()
                 .find_map(|s| match &s.shape {
@@ -1184,7 +1187,7 @@ fn layer_names_commit_on_enter_and_cancel_without_changing_instrument_settings()
 }
 #[test]
 fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
-    for area in ["grip", "name", "blank", "inset", "gutter", "body"] {
+    for area in ["icon", "name", "blank", "inset", "gutter", "body"] {
         for action in ["commit", "escape", "window", "outside", "same", "disabled"] {
             let (mut app, ctx, layers) = layer_header_fixture();
             app.timeline_effects_visible = false;
@@ -1192,10 +1195,10 @@ fn layer_headers_preview_and_commit_reorders_and_cancel_invalid_drops() {
             app.dirty = false;
             let bounds = &app.midi_editor.layer_bounds[&layers[0].id];
             let start = match area {
-                "grip" => bounds.grip.center(),
+                "icon" => bounds.icon.center(),
                 "name" => bounds.name.center(),
-                "blank" => Pos2::new(bounds.name.right() + 10.0, bounds.grip.center().y),
-                "inset" => Pos2::new(bounds.label.left() + 2.0, bounds.grip.center().y),
+                "blank" => Pos2::new(bounds.name.right() + 10.0, bounds.icon.center().y),
+                "inset" => Pos2::new(bounds.label.left() + 2.0, bounds.icon.center().y),
                 "gutter" => Pos2::new(bounds.label.right() - 2.0, bounds.label.bottom() - 10.0),
                 _ => bounds.label.center(),
             };
@@ -1344,7 +1347,7 @@ fn dragging_layers_scrolls_the_rows_while_the_instrument_header_stays_fixed() {
     let header = app.midi_editor.instrument_header_bounds;
     let first_top = app.midi_editor.layer_bounds[&layers[0].id].row.top();
     let bounds = &app.midi_editor.layer_bounds[&layers[0].id];
-    let start = Pos2::new(bounds.name.right() + 10.0, bounds.grip.center().y);
+    let start = Pos2::new(bounds.name.right() + 10.0, bounds.icon.center().y);
     let end = Pos2::new(start.x, viewport.bottom() - 2.0);
     frame(
         &mut app,
@@ -6131,7 +6134,7 @@ fn compact_layer_collapse_is_guarded_and_preserves_independent_unit_states_and_o
     }
     let bounds = &app.midi_editor.layer_bounds[&first];
     // Reordering mixed heights uses actual row bounds and keeps saved states with IDs.
-    let start = bounds.grip.center();
+    let start = bounds.icon.center();
     let end = app.midi_editor.layer_bounds[&layers[2].id].row.center() + Vec2::new(0.0, 8.0);
     frame(
         &mut app,

@@ -13,6 +13,6 @@ Level occupies one compact strip. Opening modulation adds connection strips besi
 
 A Per note Envelope shapes each voice independently. Shared Envelopes can shape voices together. LFO and Macro also control level, but do not create a note-release tail themselves. Without an active contour connection, the layer uses a short note gate.
 
-Use a connection's power control to disable just that contribution. Turning Amplitude off bypasses its gain and modulation while retaining note gating. Removing it retains settings for restoration from the catalog. Only one Amplitude unit is allowed per regular layer, and Main cannot contain one.
+Use a connection's power control to disable just that contribution. Turning Amplitude off bypasses its gain and modulation while retaining note gating. Removing it retains settings for restoration from the catalog. Only one Amplitude unit is allowed per regular layer, and Output cannot contain one.
 
 See [Envelope](envelope.md) and [modulation](../modulation/README.md) for timing and connection controls.

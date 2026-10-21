@@ -18,6 +18,45 @@ fn setup(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id) {
     (app, ctx, track)
 }
 #[test]
+fn output_header_shares_layer_icon_spacing_and_keeps_its_fixed_bus_identity() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for compact in [false, true] {
+            let (mut app, ctx, _) = setup(theme);
+            let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+            instrument.main.collapsed = compact;
+            let id = instrument.main.id;
+            let before = instrument.clone();
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let bounds = &app.instrument_ui.main_bounds;
+            assert_eq!(
+                bounds.icon.size(),
+                Vec2::new(icons::HEADER_ICON_WIDTH, toolbars::CONTROL_HEIGHT)
+            );
+            assert_eq!(bounds.icon.left(), bounds.label.left() + 7.0);
+            assert!((bounds.name.left() - bounds.icon.right() - 6.0).abs() < 0.1);
+            assert!(
+                shapes.iter().any(
+                    |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Output")
+                )
+            );
+            assert!(
+                !shapes
+                    .iter()
+                    .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Main"))
+            );
+            let icon = bounds.icon.center();
+            click(&mut app, &ctx, icon, false);
+            assert_eq!(app.instrument_ui.selected_layer, Some(id));
+            assert!(!app.instrument_ui.dragging());
+            assert!(!app.dirty);
+            assert_eq!(
+                app.session.project.tracks[0].instrument.as_ref().unwrap(),
+                &before
+            );
+        }
+    }
+}
+#[test]
 fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, _) = setup(theme);
@@ -152,9 +191,9 @@ fn main_accepts_shared_modulators_from_catalog_and_rejects_audio_components() {
         daw_core::EnvelopeMode::PerNote
     );
     let sources = crate::modulation_panel::sources(Some(instrument));
-    assert!(sources.iter().any(|s| s.label == "Main · Envelope 1"));
-    assert!(sources.iter().any(|s| s.label == "Main · LFO 1"));
-    assert!(sources.iter().any(|s| s.label == "Main · Macro 1"));
+    assert!(sources.iter().any(|s| s.label == "Output · Envelope 1"));
+    assert!(sources.iter().any(|s| s.label == "Output · LFO 1"));
+    assert!(sources.iter().any(|s| s.label == "Output · Macro 1"));
     let point = app.instrument_catalog_bounds.entries[2].center();
     frame(
         &mut app,

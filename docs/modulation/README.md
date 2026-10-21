@@ -4,7 +4,7 @@ Modulation changes a parameter over time without changing its base setting. Enve
 
 ## Make a connection
 
-1. Add an Envelope, LFO, or Macro to a MIDI instrument layer or Main.
+1. Add an Envelope, LFO, or Macro to a MIDI instrument layer or Output.
 2. Open the receiving unit's modulation controls with the secondary-color dot in its header.
 3. Click Plus to add a connection.
 4. Select Source and Parameter, then turn Amount up or down.
@@ -14,7 +14,7 @@ New connections are enabled but have no source and zero Amount. They do not affe
 
 ## Choose sources and amounts
 
-Sources stay within one MIDI instrument. Main sources can reach compatible layer, layer-effect, and track-effect parameters. Audio tracks and the project Master do not have instrument modulation sources.
+Sources stay within one MIDI instrument. Output sources can reach compatible layer, layer-effect, and track-effect parameters. Audio tracks and the project Master do not have instrument modulation sources.
 
 Per note Envelopes control individual voices. Shared Retrigger/Legato Envelopes, LFOs, and Macros can feed shared destinations such as layer and track effects. Incompatible sources are unavailable in the picker. Self-connections and feedback loops are not allowed.
 

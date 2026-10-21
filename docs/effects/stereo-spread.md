@@ -26,7 +26,7 @@ Header power bypasses the effect and retains its settings. Double-click a knob t
 
 ## Modulation
 
-Open the secondary-color header dot for [modulation connections](../modulation/README.md). Lower/Upper Intensity and Lower/Upper Frequency accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Main. Per note sources cannot feed this track effect. Audio tracks and Master have no instrument providers; connections can remain unassigned.
+Open the secondary-color header dot for [modulation connections](../modulation/README.md). Lower/Upper Intensity and Lower/Upper Frequency accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Per note sources cannot feed this track effect. Audio tracks and Master have no instrument providers; connections can remain unassigned.
 
 Intensity amounts use percentage points, from −100 to +100. Frequency amounts use octaves, from −6 to +6. Contributions add to each saved setting and stay within its range. Frequency boundaries retain their 1 Hz separation when modulated. Order remains a manual stepped control.
 

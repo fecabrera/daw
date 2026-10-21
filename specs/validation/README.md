@@ -3651,3 +3651,18 @@ Completed checks with the workspace Cargo cache selected:
 - `sh tools/package_macos.sh release` rebuilds `target/release/DAW.app`; its executable hash matches `target/release/daw-desktop`. The running app/session was not relaunched. Changed-document local link targets and staged/unstaged whitespace checks pass.
 
 Native mouse/modifier gestures, device playback during transfers, and Windows/Linux builds remain unverified. The automated egui tests do not establish native gesture behavior.
+
+## Instrument layer icons and Output name — 2026-10-21
+
+Regular layers replace their visible grip with Lucide Audio Waveform through the same `icons::header_icon` used by Timeline tracks. The 28×22-point slot, 16-point artwork, colors, 7-point inset, and 6-point name gap are shared. Icon, name, and background starts keep the existing guarded layer reorder path; mix controls and name editors retain their own gestures. The pinned bus uses Keyboard Music in the same icon slot and now displays Output. Header, tooltips, accessibility, and shared Envelope/LFO/Macro source prefixes use the new name. `InstrumentBusSettings::DISPLAY_NAME` supplies the header and provider metadata; saved `main`, stable IDs, routing, and processing remain unchanged. User guides use Output consistently, with implementation alias and compatibility documented in [Output bus](../instruments/main.md).
+
+Completed checks with the workspace Cargo cache selected:
+
+- `cargo test -p daw-ui --lib layer_`: 18 passed. Existing matrices cover both themes, shared header/name/control geometry, icon/name/blank/inset/gutter/body reorder starts, release-only commits, stable layer state, scrolling, no-ops, cancellation, rename and control guards, compact layers, and unit interactions. The new Output check covers compact/expanded icon/name alignment, visible Output text, icon selection, a fixed bus, unchanged settings/identity, and clean UI-only changes.
+- `cargo test -p daw-unit-core instrument_bus`: two passed. Discovery reports Output while shared scope, identity validation, and legacy `main` loading/defaults retain their contracts. Existing UI source-picker and saved-route tests now expect the Output prefix.
+- The first workspace run exposed an existing edge-scroll test race: it chose a destination from the previous frame before the queued scroll applied. The test now leaves the edge, settles the pending scroll, and releases inside a row. Product drag behavior is unchanged. The focused release regression passes after this correction.
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass after the final changes.
+- Final `cargo test --workspace --release` passes with the Keyboard Music Output icon: 1,073 passed, zero failed, two existing extended timestretch matrices ignored. Saved-route, picker, compatibility, and audio pipeline regressions pass; no DSP behavior changed.
+- Final `sh tools/package_macos.sh release` rebuilds `target/release/DAW.app`; its executable hash matches `target/release/daw-desktop`. The running app/session was not relaunched. Changed-document local link targets and staged/unstaged whitespace checks pass.
+
+Native visual/drag checks, device playback, and Windows/Linux builds remain unverified. Automated egui input tests do not establish native gesture behavior.

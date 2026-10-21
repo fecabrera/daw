@@ -36,7 +36,7 @@ Turning the whole unit off clears all fills and peak lines and stops meter updat
 
 ## Modulation
 
-Click the secondary-color dot in the header to open connections. Use Plus to add one, select a Source and Parameter, then adjust Amount. Shared Retrigger/Legato Envelopes, LFOs, and Macros from the same MIDI instrument are available, including Main sources. Per note Envelopes cannot feed this track effect. Audio tracks and the project Master have no instrument sources.
+Click the secondary-color dot in the header to open connections. Use Plus to add one, select a Source and Parameter, then adjust Amount. Shared Retrigger/Legato Envelopes, LFOs, and Macros from the same MIDI instrument are available, including Output sources. Per note Envelopes cannot feed this track effect. Audio tracks and the project Master have no instrument sources.
 
 Both crossovers, each band's Depth, Input, Output, Attack, and Release, plus Level and Dry/Wet accept modulation.
 

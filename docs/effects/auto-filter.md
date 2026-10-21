@@ -22,13 +22,13 @@ Low-pass keeps lower frequencies, High-pass keeps higher frequencies, Band-pass 
 
 Strength sets the internal LFO sweep around Frequency. One octave sweeps from half to twice the center frequency. Hz mode uses a fixed speed; Note mode follows tempo. Sync phase shifts both channels' cycle position. Stereo phase shifts the right channel relative to the left.
 
-The internal sweep follows the timing of the audio arriving at Auto-filter, including processing delay from earlier Saturator or Limiter effects. This also applies across loop boundaries and on instrument Main.
+The internal sweep follows the timing of the audio arriving at Auto-filter, including processing delay from earlier Saturator or Limiter effects. This also applies across loop boundaries and on instrument Output.
 
 The LFO footer switch stops the internal sweep while keeping the static filter active. Header power bypasses the complete unit. Dry/Wet blends the original and filtered signals; Level adjusts the blend's output.
 
 ## External modulation
 
-Frequency, Resonance, Level, and Dry/Wet accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Main. Per note Envelopes are unavailable for this track effect. Use the secondary-color header dot to open [connections](../modulation/README.md).
+Frequency, Resonance, Level, and Dry/Wet accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Per note Envelopes are unavailable for this track effect. Use the secondary-color header dot to open [connections](../modulation/README.md).
 
 External Frequency modulation combines with the internal sweep. The range arc shows possible movement, and two live Frequency dots show the stereo values. The base pointer stays unchanged. Audio tracks and Master can use the internal LFO without an external source.
 

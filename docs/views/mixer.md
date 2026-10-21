@@ -20,4 +20,4 @@ Meters show current output. Held peak readouts help identify the highest recent 
 
 Master stays at the right while tracks scroll. It controls the combined track mix. Master effects run before Master gain. Any gain after a Limiter can raise its output above the limiter ceiling.
 
-The project Master is separate from [Instrument Main](../instruments/main.md), which controls the layers of one MIDI instrument. See [instruments and effects](instrument.md) for effect placement.
+The project Master is separate from [Instrument Output](../instruments/main.md), which controls the layers of one MIDI instrument. See [instruments and effects](instrument.md) for effect placement.

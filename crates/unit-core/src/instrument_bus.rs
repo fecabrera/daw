@@ -37,6 +37,9 @@ impl Default for InstrumentBusSettings {
     }
 }
 impl InstrumentBusSettings {
+    /// User-facing name; the saved `main` field and owner identity remain unchanged.
+    pub const DISPLAY_NAME: &'static str = "Output";
+
     /// Missing legacy state must migrate repeatably without colliding with a saved layer owner.
     pub(crate) fn legacy(layers: &[crate::InstrumentLayerSettings]) -> Self {
         let mut id = Uuid::from_u128(u128::MAX);
@@ -68,14 +71,14 @@ impl InstrumentBusSettings {
         self.envelopes
             .iter()
             .enumerate()
-            .map(|(i, e)| e.modulation_source(self.id, "Main", i))
+            .map(|(i, e)| e.modulation_source(self.id, Self::DISPLAY_NAME, i))
             .chain(
                 self.lfos
                     .iter()
                     .enumerate()
-                    .map(|(i, l)| l.modulation_source(self.id, "Main", i)),
+                    .map(|(i, l)| l.modulation_source(self.id, Self::DISPLAY_NAME, i)),
             )
-            .chain(self.macro_module.sources(self.id, "Main"))
+            .chain(self.macro_module.sources(self.id, Self::DISPLAY_NAME))
     }
 }
 
@@ -130,7 +133,7 @@ mod tests {
         assert!(
             sources
                 .iter()
-                .all(|s| s.layer_name == "Main" && s.scope == ModulationScope::Shared)
+                .all(|s| s.layer_name == "Output" && s.scope == ModulationScope::Shared)
         );
         instrument.main.envelopes[0].mode = EnvelopeMode::PerNote;
         assert!(!instrument.valid());
