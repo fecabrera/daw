@@ -1,5 +1,16 @@
-use crate::{Clip, Edit, Error, Id, Project, Result};
+use crate::{Asset, Clip, Edit, Error, Id, Project, Result, TrackKind};
 use std::collections::HashSet;
+
+impl TrackKind {
+    /// Clip placement and validation use the saved asset's source type.
+    pub fn accepts_asset(self, asset: &Asset) -> bool {
+        match self {
+            Self::Audio => asset.midi_pattern.is_none(),
+            Self::Midi => asset.midi_pattern.is_some(),
+            Self::Group => false,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct ClipPlacement {
@@ -270,5 +281,61 @@ mod tests {
                 .is_err()
         );
         assert_eq!(format!("{project:?}"), before);
+    }
+
+    #[test]
+    fn incompatible_source_placements_roll_back_the_complete_move_or_copy() {
+        for source_midi in [false, true] {
+            for duplicate in [false, true] {
+                let (mut project, _, audio_clip) = fixture();
+                let midi = project.add_midi_track().unwrap();
+                let midi_id = project.add_midi_pattern(midi, 0).unwrap();
+                let audio = project.tracks[1].id;
+                let (source, target, mut clip) = if source_midi {
+                    (
+                        midi,
+                        audio,
+                        project.tracks[2]
+                            .clips
+                            .iter()
+                            .find(|clip| clip.id == midi_id)
+                            .unwrap()
+                            .clone(),
+                    )
+                } else {
+                    (audio, midi, audio_clip)
+                };
+                if duplicate {
+                    clip.id = Id::new_v4();
+                }
+                let valid = Clip {
+                    id: Id::new_v4(),
+                    start_frame: 1000,
+                    ..clip.clone()
+                };
+                let before = project.clone();
+                let placements = vec![
+                    ClipPlacement {
+                        track_id: source,
+                        clip: valid.clone(),
+                    },
+                    ClipPlacement {
+                        track_id: target,
+                        clip: clip.clone(),
+                    },
+                ];
+                let error = project.edit(Edit::OverwriteClips(placements)).unwrap_err();
+                assert_eq!(error.0, "Clip source type does not match track type");
+                assert_eq!(project, before);
+                let compatible = project
+                    .placed_clips(&[ClipPlacement {
+                        track_id: source,
+                        clip: valid,
+                    }])
+                    .unwrap();
+                compatible.validate().unwrap();
+                assert_eq!(project, before);
+            }
+        }
     }
 }

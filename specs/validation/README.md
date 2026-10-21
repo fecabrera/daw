@@ -3535,3 +3535,34 @@ External file hover now uses the existing rejected `file_target` result to show 
 - Relative documentation links: 69 checked, no missing targets.
 
 Native operating-system file-drag cursor rendering and Windows/Linux checks were not performed. Automated egui checks cover cursor output and drop behavior. Audio processing and saved project data are unchanged.
+
+
+## Audio-file drag rejection on MIDI tracks — 2026-10-20
+
+The shared `file_target` lookup and forbidden-cursor feedback already reject MIDI headers and lanes. Added explicit regression coverage and documentation for that existing behavior. The tests reuse the group-bus rejection/recovery assertions and file-frame helper; production code is unchanged.
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test -p daw-ui --lib audio_file_`: all 4 tests pass. Cases cover root/grouped MIDI tracks with an existing pattern and selection, headers/lanes, direct drops, prepared previews, clearing an earlier valid audio target, unchanged project/selection/history, no import job or error dialog, and returning to an audio track with the same prepared buffer. Existing expanded/collapsed group-bus cases use the same assertions and pass.
+
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `git diff --check`: pass with the configured local Cargo cache.
+- `cargo test --workspace`: 1048 tests pass, including all 528 UI tests; no failures. Two pre-existing extended timestretch acceptance cases remain ignored.
+- Relative documentation links: 68 checked, no missing targets.
+
+Native operating-system cursor rendering and Windows/Linux checks were not performed. The existing release app already contains the shared behavior; this test/documentation change does not alter the runtime.
+
+
+## Existing clip drops onto incompatible track types — 2026-10-20
+
+The earlier MIDI file-drop tests cover external files. Existing clip moves/copies had a separate gap: resolved previews showed an invalid destination, but release used raw previews that rejected only group buses. A new input regression reproduced `Clip source type does not match track type` on release before the fix.
+
+Raw move previews now use core `TrackKind::accepts_asset`, also used by project validation. The existing invalid-preview guard rejects the entire move/copy before editing or preparation, without an error dialog. Other structural and preparation failures retain their reporting paths. External-file behavior stays covered by the shared file-drop tests.
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test -p daw-core placement`: all 6 matching tests pass, including atomic rejection of mixed valid/incompatible placements, moves/copies, both source types, and existing invalid MIDI placement coverage.
+
+- `cargo test -p daw-ui --lib track_groups`: all 24 tests pass. New cases cover both audio/MIDI directions, moves/copies, root/grouped tracks, a secondary incompatible group member, recovery to a valid track, and retained missing-asset diagnostics. The first test failed before the fix with the exact reported dialog.
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `git diff --check`: pass with the configured local Cargo cache.
+
+- `cargo test --workspace`: 1053 tests pass, including all 532 UI tests; no failures. Two pre-existing extended timestretch acceptance cases remain ignored. Existing file import, clip overwrite, new-track placement, cancellation, and failed-preparation checks pass.
+- `sh tools/package_macos.sh release`: rebuilt `target/release/DAW.app` with the production fix.
+- Relative documentation links: 68 checked, no missing targets.
+
+Native pointer behavior, operating-system cursor rendering, and Windows/Linux checks were not performed. Automated input tests do not establish native gesture behavior.

@@ -4128,6 +4128,12 @@ impl DawUi {
                 let track_index = (entry.track_index as i128 + track_delta) as usize;
                 let destination = tracks.get(track_index);
                 let track = destination.map_or(Id::nil(), |track| track.id);
+                let asset = self
+                    .session
+                    .project
+                    .assets
+                    .iter()
+                    .find(|asset| asset.id == entry.clip.asset_id);
                 ClipPreview {
                     track,
                     track_index,
@@ -4135,7 +4141,12 @@ impl DawUi {
                         start_frame: (i128::from(entry.clip.start_frame) + delta) as u64,
                         ..entry.clip.clone()
                     },
-                    valid: destination.is_none_or(|track| track.kind != daw_core::TrackKind::Group),
+                    valid: destination.is_none_or(|track| {
+                        // Missing metadata retains the transaction's normal diagnostics.
+                        asset.map_or(track.kind != daw_core::TrackKind::Group, |asset| {
+                            track.kind.accepts_asset(asset)
+                        })
+                    }),
                     removed: false,
                 }
             })

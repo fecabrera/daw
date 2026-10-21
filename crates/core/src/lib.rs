@@ -566,7 +566,7 @@ impl Project {
                     .get(&c.asset_id)
                     .ok_or_else(|| invalid("Clip references a missing asset record"))?;
                 self.validate_clip_asset(c, asset)?;
-                if (t.kind == TrackKind::Midi) != asset.midi_pattern.is_some() {
+                if !t.kind.accepts_asset(asset) {
                     return Err(invalid("Clip source type does not match track type"));
                 }
                 if c.start_frame < previous_end {

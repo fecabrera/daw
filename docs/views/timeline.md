@@ -7,13 +7,17 @@ Audio track headers show a waveform icon; MIDI track headers show a keyboard ico
 ## Import and arrange
 
 1. Add an audio or MIDI track from the Track menu or the Tracks header.
-2. Use File > Import for WAV audio, or drop a supported WAV file on a track. Dropping into empty Timeline space creates a new audio track.
+2. Use File > Import for WAV audio, or drop a supported WAV file on an audio track. Dropping into empty Timeline space creates a new audio track.
 3. Drag a clip header to move it. Hold Option on macOS or Ctrl on Windows/Linux to copy it.
 4. Release to apply the change. Escape or focus loss cancels an active gesture.
 
 Moves and copies take priority over destination clips. Covered neighbors are trimmed, split, or removed. The preview shows those changes before release. Shift bypasses grid snapping.
 
-Group buses cannot hold clips: dragging onto a bus shows an invalid-action cursor, and releasing there keeps all dragged clips unchanged. Audio file drags show the same cursor over group buses and are ignored there without an error dialog. Drop clips onto child tracks and audio files onto child audio tracks.
+Audio clips can move or copy only to audio tracks; MIDI clips can move or copy only to MIDI tracks. An incompatible destination shows the invalid-action cursor. Releasing there rejects the entire selected group without an error dialog. Continue dragging to a compatible track to complete the move or copy.
+
+Group buses cannot hold clips: dragging onto a bus shows an invalid-action cursor, and releasing there keeps all dragged clips unchanged. Drop clips onto child tracks.
+
+Audio file drags over MIDI tracks or group buses show the invalid-action cursor. Drops there are ignored without an error dialog. Drop audio files onto audio tracks or empty Timeline space instead.
 
 ## Select and edit clips
 

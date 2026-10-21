@@ -956,6 +956,74 @@ fn clip_drag_can_return_from_an_invalid_bus_to_a_valid_child_track() {
     }
 }
 
+fn assert_audio_file_drop_rejected(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    target: Id,
+    path: &std::path::Path,
+    controls: bool,
+    direct: bool,
+) {
+    frame(app, ctx, vec![]);
+    app.history = Some(daw_project::SessionHistory::new(&app.session, true).unwrap());
+    app.dirty = false;
+    let before = app.session.project.clone();
+    let selected_tracks = app.selected_tracks.clone();
+    let selected_clips = app.selected_clips.clone();
+    let selected = (app.selected_track, app.selected_clip, app.master_selected);
+    let lane = app.lane_bounds[&target];
+    let pointer = Pos2::new(
+        lane.left() + if controls { -100.0 } else { 100.0 },
+        lane.center().y,
+    );
+    if !direct {
+        // A rejected hover must also clear a previously valid import target.
+        let audio = app
+            .session
+            .project
+            .tracks
+            .iter()
+            .find(|track| track.kind == TrackKind::Audio && app.lane_bounds.contains_key(&track.id))
+            .unwrap()
+            .id;
+        let valid = app.lane_bounds[&audio].min + Vec2::new(210.0, 12.0);
+        file_frame(app, ctx, path, valid, false);
+        assert_eq!(app.file_drop_target.as_ref().unwrap().track, Some(audio));
+        let output = file_frame_output(app, ctx, path, pointer, false, false);
+        assert_eq!(
+            output.platform_output.cursor_icon,
+            egui::CursorIcon::NotAllowed
+        );
+        ready_file_hover(app, ctx, path, pointer);
+        let output = file_frame_output(app, ctx, path, pointer, false, false);
+        assert_eq!(
+            output.platform_output.cursor_icon,
+            egui::CursorIcon::NotAllowed
+        );
+        assert!(app.file_drop_target.is_none());
+    }
+    let output = file_frame_output(app, ctx, path, pointer, true, false);
+    assert_eq!(
+        output.platform_output.cursor_icon,
+        egui::CursorIcon::NotAllowed
+    );
+    assert!(app.file_drop_target.is_none());
+    assert!(app.job.is_none());
+    assert!(app.error.is_none());
+    assert_eq!(app.session.project, before);
+    assert_eq!(app.selected_tracks, selected_tracks);
+    assert_eq!(app.selected_clips, selected_clips);
+    assert_eq!(
+        (app.selected_track, app.selected_clip, app.master_selected),
+        selected
+    );
+    assert!(!app.dirty);
+    assert!(!app.history.as_ref().unwrap().can_undo());
+    frame(app, ctx, vec![]);
+    assert!(app.file_hover.is_none());
+    assert!(app.error.is_none());
+}
+
 #[test]
 fn audio_file_drops_on_group_buses_show_invalid_cursor_and_never_import() {
     let source = TestWav::new();
@@ -970,67 +1038,50 @@ fn audio_file_drops_on_group_buses_show_invalid_cursor_and_never_import() {
                         collapsed,
                     })
                     .unwrap();
-                frame(&mut app, &ctx, vec![]);
-                app.history = Some(daw_project::SessionHistory::new(&app.session, true).unwrap());
-                app.dirty = false;
-                let before = app.session.project.clone();
-                let selected_tracks = app.selected_tracks.clone();
-                let selected_clips = app.selected_clips.clone();
-                let selected = (app.selected_track, app.selected_clip, app.master_selected);
-                let lane = app.lane_bounds[&group];
-                let pointer = Pos2::new(
-                    lane.left() + if controls { -100.0 } else { 100.0 },
-                    lane.center().y,
-                );
-                if !direct {
-                    let output =
-                        file_frame_output(&mut app, &ctx, &source.0, pointer, false, false);
-                    assert_eq!(
-                        output.platform_output.cursor_icon,
-                        egui::CursorIcon::NotAllowed
-                    );
-                    ready_file_hover(&mut app, &ctx, &source.0, pointer);
-                    let output =
-                        file_frame_output(&mut app, &ctx, &source.0, pointer, false, false);
-                    assert_eq!(
-                        output.platform_output.cursor_icon,
-                        egui::CursorIcon::NotAllowed
-                    );
-                    assert!(app.file_drop_target.is_none());
-                }
-                let output = file_frame_output(&mut app, &ctx, &source.0, pointer, true, false);
-                assert_eq!(
-                    output.platform_output.cursor_icon,
-                    egui::CursorIcon::NotAllowed
-                );
-                assert!(app.file_drop_target.is_none());
-                assert!(app.job.is_none());
-                assert!(app.error.is_none());
-                assert_eq!(app.session.project, before);
-                assert_eq!(app.selected_tracks, selected_tracks);
-                assert_eq!(app.selected_clips, selected_clips);
-                assert_eq!(
-                    (app.selected_track, app.selected_clip, app.master_selected),
-                    selected
-                );
-                assert!(!app.dirty);
-                assert!(!app.history.as_ref().unwrap().can_undo());
-                frame(&mut app, &ctx, vec![]);
-                assert!(app.file_hover.is_none());
-                assert!(app.error.is_none());
+                assert_audio_file_drop_rejected(&mut app, &ctx, group, &source.0, controls, direct);
             }
         }
     }
 }
 
 #[test]
-fn audio_file_drag_returns_from_a_group_bus_to_an_audio_track_with_prepared_audio() {
+fn audio_file_drops_on_midi_tracks_show_invalid_cursor_and_never_import() {
     let source = TestWav::new();
-    let (mut app, ctx, group, tracks) = grouped_fixture();
-    let lane = app.lane_bounds[&group];
+    for nested in [false, true] {
+        for controls in [false, true] {
+            for direct in [false, true] {
+                let (mut app, _) = fixture();
+                let midi = app.session.project.add_midi_track().unwrap();
+                let clip = app.session.project.add_midi_pattern(midi, 0).unwrap();
+                if nested {
+                    app.session
+                        .project
+                        .edit(Edit::GroupTracks {
+                            track_ids: vec![midi],
+                            group_id: Id::new_v4(),
+                            name: "Group".into(),
+                        })
+                        .unwrap();
+                }
+                app.select_clip(clip, midi, false);
+                let ctx = context();
+                assert_audio_file_drop_rejected(&mut app, &ctx, midi, &source.0, controls, direct);
+            }
+        }
+    }
+}
+
+fn assert_audio_file_drag_recovers(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    invalid_track: Id,
+    audio_track: Id,
+    path: &std::path::Path,
+) {
+    let lane = app.lane_bounds[&invalid_track];
     let invalid = lane.min + Vec2::new(100.0, 12.0);
     let before = app.session.project.clone();
-    ready_file_hover(&mut app, &ctx, &source.0, invalid);
+    ready_file_hover(app, ctx, path, invalid);
     let audio = app
         .file_hover
         .as_ref()
@@ -1042,31 +1093,244 @@ fn audio_file_drag_returns_from_a_group_bus_to_an_audio_track_with_prepared_audi
         .unwrap()
         .samples
         .clone();
-    let output = file_frame_output(&mut app, &ctx, &source.0, invalid, false, false);
+    let output = file_frame_output(app, ctx, path, invalid, false, false);
     assert_eq!(
         output.platform_output.cursor_icon,
         egui::CursorIcon::NotAllowed
     );
     assert!(app.file_drop_target.is_none());
-    let valid = app.lane_bounds[&tracks[2]].min + Vec2::new(210.0, 12.0);
-    let output = file_frame_output(&mut app, &ctx, &source.0, valid, false, false);
+    let valid = app.lane_bounds[&audio_track].min + Vec2::new(210.0, 12.0);
+    let output = file_frame_output(app, ctx, path, valid, false, false);
     assert_ne!(
         output.platform_output.cursor_icon,
         egui::CursorIcon::NotAllowed
     );
     assert_eq!(
         app.file_drop_target.as_ref().unwrap().track,
-        Some(tracks[2])
+        Some(audio_track)
     );
     assert_eq!(app.session.project, before);
-    file_frame(&mut app, &ctx, &source.0, valid, true);
-    finish_import(&mut app, &ctx);
+    file_frame(app, ctx, path, valid, true);
+    finish_import(app, ctx);
     assert!(app.error.is_none());
-    let clip = &app.session.project.tracks[3].clips[0];
+    let clip = &app
+        .session
+        .project
+        .tracks
+        .iter()
+        .find(|track| track.id == audio_track)
+        .unwrap()
+        .clips[0];
     assert!(std::sync::Arc::ptr_eq(
         &audio,
         &app.session.audio[&clip.asset_id].samples
     ));
-    assert!(app.session.project.tracks[0].clips.is_empty());
     app.session.project.validate().unwrap();
+}
+
+#[test]
+fn audio_file_drag_returns_from_a_group_bus_to_an_audio_track_with_prepared_audio() {
+    let source = TestWav::new();
+    let (mut app, ctx, group, tracks) = grouped_fixture();
+    assert_audio_file_drag_recovers(&mut app, &ctx, group, tracks[2], &source.0);
+    assert!(app.session.project.tracks[0].clips.is_empty());
+}
+
+#[test]
+fn audio_file_drag_returns_from_a_midi_track_to_an_audio_track_with_prepared_audio() {
+    let source = TestWav::new();
+    let (mut app, _) = fixture();
+    let midi = app.session.project.add_midi_track().unwrap();
+    let audio = app.session.project.add_track().unwrap();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    assert_audio_file_drag_recovers(&mut app, &ctx, midi, audio, &source.0);
+    assert!(app.session.project.tracks[1].clips.is_empty());
+}
+
+#[test]
+fn clip_moves_and_copies_between_audio_and_midi_tracks_reject_without_a_dialog() {
+    for source_midi in [false, true] {
+        for nested in [false, true] {
+            for duplicate in [false, true] {
+                let (mut app, audio) = fixture();
+                let midi = app.session.project.add_midi_track().unwrap();
+                let midi_clip = app.session.project.add_midi_pattern(midi, 0).unwrap();
+                let (source, target, clip) = if source_midi {
+                    (
+                        midi,
+                        audio,
+                        app.session.project.tracks[1]
+                            .clips
+                            .iter()
+                            .find(|clip| clip.id == midi_clip)
+                            .unwrap()
+                            .clone(),
+                    )
+                } else {
+                    (audio, midi, app.session.project.tracks[0].clips[0].clone())
+                };
+                if nested {
+                    app.session
+                        .project
+                        .edit(Edit::GroupTracks {
+                            track_ids: vec![audio, midi],
+                            group_id: Id::new_v4(),
+                            name: "Group".into(),
+                        })
+                        .unwrap();
+                }
+                let ctx = context();
+                frame(&mut app, &ctx, vec![]);
+                let before = app.session.project.clone();
+                let block = app.clip_block(app.lane_bounds[&source], &clip, clip.start_frame);
+                let start = block.min + Vec2::new(20.0, 12.0);
+                let end = Pos2::new(start.x + 40.0, app.lane_bounds[&target].top() + 12.0);
+                clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
+                let cursor = clip_drag_frame(&mut app, &ctx, end, None, duplicate);
+                assert_eq!(cursor, egui::CursorIcon::NotAllowed);
+                assert!(
+                    app.clip_drag_previews(app.drag.as_ref().unwrap(), end, false)
+                        .iter()
+                        .all(|preview| !preview.valid)
+                );
+                clip_drag_frame(&mut app, &ctx, end, Some(false), duplicate);
+                assert!(
+                    app.error.is_none(),
+                    "unexpected drop dialog: {:?}",
+                    app.error
+                );
+                assert_eq!(app.session.project, before);
+                assert_eq!(app.selected_clips, HashSet::from([clip.id]));
+                assert_eq!(app.selected_track, Some(source));
+                assert!(app.drag.is_none());
+                assert!(app.job.is_none());
+                assert!(!app.dirty);
+                assert!(!app.history.as_ref().unwrap().can_undo());
+            }
+        }
+    }
+}
+
+#[test]
+fn clip_group_drop_rejects_all_members_when_only_a_secondary_clip_targets_midi() {
+    for duplicate in [false, true] {
+        let (mut app, source) = fixture();
+        let target = app.session.project.add_track().unwrap();
+        let midi = app.session.project.add_midi_track().unwrap();
+        let primary = app.session.project.tracks[0].clips[0].clone();
+        let secondary = Clip {
+            id: Id::new_v4(),
+            start_frame: frames(2.0),
+            length_frames: frames(0.5),
+            ..primary.clone()
+        };
+        app.session.project.tracks[1].clips.push(secondary.clone());
+        let ctx = context();
+        select_group(&mut app, &ctx, [secondary.id, primary.id]);
+        let before = app.session.project.clone();
+        let block = app.clip_block(app.lane_bounds[&source], &primary, primary.start_frame);
+        let start = block.min + Vec2::new(20.0, 12.0);
+        let end = Pos2::new(start.x + 40.0, app.lane_bounds[&target].top() + 12.0);
+        clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
+        let cursor = clip_drag_frame(&mut app, &ctx, end, None, duplicate);
+        let raw = app
+            .move_group_preview(app.drag.as_ref().unwrap(), end, false)
+            .unwrap();
+        assert!(raw.iter().any(|preview| preview.clip.id == primary.id
+            && preview.track == target
+            && preview.valid));
+        assert!(
+            raw.iter()
+                .any(|preview| preview.clip.id == secondary.id && preview.track == midi)
+        );
+        assert_eq!(cursor, egui::CursorIcon::NotAllowed);
+        clip_drag_frame(&mut app, &ctx, end, Some(false), duplicate);
+        assert!(
+            app.error.is_none(),
+            "unexpected group drop dialog: {:?}",
+            app.error
+        );
+        assert_eq!(app.session.project, before);
+        assert_eq!(
+            app.selected_clips,
+            HashSet::from([primary.id, secondary.id])
+        );
+        assert!(app.job.is_none());
+        assert!(!app.dirty);
+        assert!(!app.history.as_ref().unwrap().can_undo());
+    }
+}
+
+#[test]
+fn clip_drag_can_return_from_an_incompatible_midi_track_to_an_audio_track() {
+    for duplicate in [false, true] {
+        let (mut app, source) = fixture();
+        let midi = app.session.project.add_midi_track().unwrap();
+        let target = app.session.project.add_track().unwrap();
+        let clip = app.session.project.tracks[0].clips[0].clone();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        let block = app.clip_block(app.lane_bounds[&source], &clip, clip.start_frame);
+        let start = block.min + Vec2::new(20.0, 12.0);
+        let invalid = Pos2::new(start.x + 40.0, app.lane_bounds[&midi].top() + 12.0);
+        clip_drag_frame(&mut app, &ctx, start, Some(true), duplicate);
+        let cursor = clip_drag_frame(&mut app, &ctx, invalid, None, duplicate);
+        assert_eq!(cursor, egui::CursorIcon::NotAllowed);
+        assert_eq!(app.session.project, before);
+        let valid = Pos2::new(invalid.x, app.lane_bounds[&target].top() + 12.0);
+        let cursor = clip_drag_frame(&mut app, &ctx, valid, None, duplicate);
+        assert_eq!(
+            cursor,
+            if duplicate {
+                egui::CursorIcon::Copy
+            } else {
+                egui::CursorIcon::Grabbing
+            }
+        );
+        clip_drag_frame(&mut app, &ctx, valid, Some(false), duplicate);
+        assert!(app.error.is_none());
+        assert!(app.job.is_none());
+        assert_eq!(app.session.project.tracks[2].clips.len(), 1);
+        assert!(app.session.project.tracks[1].clips.is_empty());
+        assert_eq!(
+            app.session.project.tracks[0]
+                .clips
+                .iter()
+                .any(|c| c.id == clip.id),
+            duplicate
+        );
+        if duplicate {
+            assert_ne!(app.session.project.tracks[2].clips[0].id, clip.id);
+        } else {
+            assert_eq!(app.session.project.tracks[2].clips[0].id, clip.id);
+        }
+        app.session.project.validate().unwrap();
+    }
+}
+
+#[test]
+fn unexpected_missing_clip_metadata_still_reports_a_transaction_error() {
+    let (mut app, source) = fixture();
+    let target = app.session.project.add_track().unwrap();
+    let clip = app.session.project.tracks[0].clips[0].clone();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    let block = app.clip_block(app.lane_bounds[&source], &clip, clip.start_frame);
+    let start = block.min + Vec2::new(20.0, 12.0);
+    let end = Pos2::new(start.x + 40.0, app.lane_bounds[&target].top() + 12.0);
+    clip_drag_frame(&mut app, &ctx, start, Some(true), false);
+    clip_drag_frame(&mut app, &ctx, end, None, false);
+    app.drag.as_mut().unwrap().clips[0].clip.asset_id = Id::new_v4();
+    clip_drag_frame(&mut app, &ctx, end, Some(false), false);
+    assert_eq!(
+        app.error.as_deref(),
+        Some("Clip references a missing asset record")
+    );
+    assert_eq!(app.session.project, before);
+    assert!(app.job.is_none());
+    assert!(!app.dirty);
+    assert!(!app.history.as_ref().unwrap().can_undo());
 }
