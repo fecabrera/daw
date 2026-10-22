@@ -1,5 +1,6 @@
 [workspace]
 resolver = "3"
+exclude = ["vendor/charon-audio"]
 members = ["crates/separation", "crates/saturator", "crates/bitcrusher", "crates/stereo-spread", "crates/direction-mixer", "crates/sampler", "crates/macro", "crates/lfo", "crates/amplitude", "crates/timestretch", "crates/timestretch-cli", "crates/unit-core", "crates/oscillator", "crates/envelope", "crates/equalizer", "crates/drive", "crates/auto-filter", "crates/compressor", "crates/limiter", "crates/ott", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
 default-members = ["apps/desktop", "apps/cli"]
 
@@ -55,3 +56,12 @@ rfd = "0.15"
 clap = { version = "4.5", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Keep Charon's public ort API, but use checksum-pinned native 1.31 artifacts.
+# This upstream revision includes the Loop/Scan model-load validation fix.
+[patch.crates-io]
+ort-sys = { git = "https://github.com/pykeio/ort", rev = "f2a5f73c9dd9ff3682303481cc792bf4669e3e94" }
+
+# Provider-policy compatibility patch; upstream processing is retained unchanged.
+[patch."https://github.com/Valkyra-Labs/charon-audio"]
+charon-audio = { path = "vendor/charon-audio" }

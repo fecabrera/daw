@@ -53,6 +53,15 @@ pub fn decode_wav_at_rate(path: &Path, sample_rate_hz: u32) -> Result<AudioData>
     decode_wav_cancellable(path, sample_rate_hz, &|| false)
 }
 
+/// Exact ceiling-rounded frame count shared by preparation and resampling.
+pub fn resampled_frames(frames: u64, input_rate: u32, output_rate: u32) -> Result<u64> {
+    if input_rate == 0 || output_rate == 0 {
+        return Err(Error("Invalid resampling rate".into()));
+    }
+    u64::try_from((u128::from(frames) * u128::from(output_rate)).div_ceil(u128::from(input_rate)))
+        .map_err(|_| Error("Resampled audio exceeds supported bounds".into()))
+}
+
 /// Decode on a worker. Cancellation is checked between packets, conversion blocks and peaks.
 pub fn decode_wav_cancellable(
     path: &Path,
@@ -81,10 +90,7 @@ pub fn decode_wav_cancellable(
             path.display()
         )));
     }
-    let target_frames = (declared_frames as u64)
-        .checked_mul(u64::from(sample_rate_hz))
-        .map(|n| n.div_ceil(u64::from(spec.sample_rate)))
-        .ok_or_else(|| Error("Audio preparation exceeds supported bounds".into()))?;
+    let target_frames = resampled_frames(declared_frames as u64, spec.sample_rate, sample_rate_hz)?;
     let scratch = if spec.sample_rate == sample_rate_hz {
         0
     } else {
@@ -234,9 +240,11 @@ fn convert_samples(
             .map_err(|e| Error(e.to_string()))?;
     let input_size = converter.input_frames_next();
     let delay = converter.output_delay();
-    let target = usize::try_from(
-        (samples.len() as u128 * u128::from(output_rate)).div_ceil(u128::from(input_rate)),
-    )
+    let target = usize::try_from(resampled_frames(
+        samples.len() as u64,
+        input_rate,
+        output_rate,
+    )?)
     .map_err(|_| Error("Resampled audio exceeds supported bounds".into()))?;
     let mut out = Vec::new();
     out.try_reserve_exact(target)
@@ -352,6 +360,15 @@ fn prepare_peaks(
 mod preparation_tests {
     use super::*;
     use std::cell::Cell;
+    #[test]
+    fn resampled_frame_counts_use_checked_ceiling_arithmetic() {
+        assert_eq!(resampled_frames(2401, 192_000, 44_100).unwrap(), 552);
+        assert_eq!(resampled_frames(552, 44_100, 192_000).unwrap(), 2404);
+        assert_eq!(resampled_frames(0, 48_000, 44_100).unwrap(), 0);
+        assert!(resampled_frames(1, 0, 48_000).is_err());
+        assert!(resampled_frames(1, 48_000, 0).is_err());
+        assert!(resampled_frames(u64::MAX, 1, u32::MAX).is_err());
+    }
     #[test]
     fn conversion_cancels_between_blocks_and_peaks_cancel_before_publication() {
         assert!(resample(&[[0.0; 2]], 1, 192_000).is_err());

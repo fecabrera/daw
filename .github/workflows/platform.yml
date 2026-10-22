@@ -57,6 +57,12 @@ jobs:
         id: tests
         run: cargo test --locked --workspace 2>&1 | tee work/ci-logs/tests.log
 
+      - name: Check Intel macOS targets
+        if: runner.os == 'macOS' && runner.arch == 'ARM64'
+        run: |
+          rustup target add x86_64-apple-darwin
+          cargo check --locked --workspace --all-targets --target x86_64-apple-darwin 2>&1 | tee work/ci-logs/intel-check.log
+
       - name: Check the headless CLI
         id: cli
         run: |

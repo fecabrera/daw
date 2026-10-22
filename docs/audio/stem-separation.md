@@ -8,7 +8,7 @@ Split an audio clip into Drums, Bass, Other, and Vocals. Separation uses local H
 2. Choose a **CPU model**: Charon's four-stem, in-graph HTDemucs ONNX model.
 3. On macOS, optionally choose a **CoreML model**: the split-transform HTDemucs ONNX export for Charon. A `.mlmodel` or `.mlpackage` is not supported.
 
-A CPU model is required for fallback. With a CoreML model selected, macOS tries CoreML first. Otherwise it uses CPU. Windows and Linux use CPU. CoreML can use both the CPU and GPU.
+A CPU model is required for fallback. With a CoreML model selected, macOS tries CoreML first. Otherwise it uses CPU. Windows and Linux use CPU. CoreML can use both the CPU and GPU. Stem separation is unavailable on Intel macOS; the rest of the app remains available, and separation controls are disabled.
 
 Model loading needs substantial memory. CoreML can take tens of seconds to compile on first use. Later loads can also take time. Compiled CoreML files use a separate user cache and can occupy more than 1 GB. Model files stay where you selected them.
 

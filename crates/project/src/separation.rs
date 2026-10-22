@@ -71,6 +71,9 @@ impl Session {
         models: &SeparationModels,
         progress: &SeparationProgress,
     ) -> Result<PreparedSeparation> {
+        if !crate::SEPARATION_AVAILABLE {
+            return Err(error(crate::SEPARATION_UNAVAILABLE_REASON));
+        }
         self.separate_clip_with(clip_id, progress, |samples, directory| {
             daw_separation::separate(samples, models, directory, progress).map_err(error)
         })
@@ -135,29 +138,13 @@ impl Session {
         for name in daw_separation::STEMS {
             progress.check().map_err(error)?;
             let path = directory.join(format!("{name}.wav"));
-            let data =
-                daw_media::decode_wav_at_rate(&path, self.project.sample_rate_hz).map_err(error)?;
-            if data.metadata.channels != 2 || data.samples.iter().flatten().any(|v| !v.is_finite())
-            {
-                return Err(error("Invalid separated stereo audio"));
-            }
-            // Resampling can differ by one rounding frame. Preserve the exact
-            // arranged duration, without accepting a truncated inference result.
-            if data.samples.len().abs_diff(clip.length_frames as usize) > 2 {
-                return Err(error("Stem duration does not match the clip"));
-            }
-            let mut samples = (*data.samples).clone();
-            samples.resize(clip.length_frames as usize, [0.0; 2]);
-            let mut encoder =
-                WavEncoder::at_sample_rate(&path, WavCodec::Float32, self.project.sample_rate_hz)
-                    .map_err(error)?;
-            for block in samples.chunks(8192) {
-                progress.check().map_err(error)?;
-                encoder.write_frames(block).map_err(error)?;
-            }
-            encoder.finish().map_err(error)?;
-            let data =
-                daw_media::decode_wav_at_rate(&path, self.project.sample_rate_hz).map_err(error)?;
+            let data = prepare_stem(
+                &path,
+                input.len() as u64,
+                clip.length_frames,
+                self.project.sample_rate_hz,
+                &|| progress.cancel.load(Ordering::Relaxed),
+            )?;
             let id = next.import_decoded(&path, data, None, clip.start_frame)?;
             let track = next
                 .project
@@ -202,6 +189,42 @@ impl Session {
         prepared.session = Some(next);
         Ok(prepared)
     }
+}
+
+/// Normalize only the known rate-rounding surplus. Both full decode/peak passes
+/// use the same cancellation signal as inference and shared resampling.
+fn prepare_stem(
+    path: &Path,
+    model_frames: u64,
+    clip_frames: u64,
+    sample_rate_hz: u32,
+    cancelled: &impl Fn() -> bool,
+) -> Result<daw_media::AudioData> {
+    let data = daw_media::decode_wav_cancellable(path, sample_rate_hz, cancelled).map_err(error)?;
+    let expected =
+        daw_media::resampled_frames(model_frames, daw_separation::MODEL_RATE, sample_rate_hz)
+            .map_err(error)?;
+    if data.metadata.channels != 2
+        || data.metadata.sample_rate_hz != daw_separation::MODEL_RATE
+        || data.samples.len() as u64 != expected
+        || expected < clip_frames
+    {
+        return Err(error(
+            "Stem duration or format does not match the model output",
+        ));
+    }
+    let mut samples = (*data.samples).clone();
+    samples.truncate(usize::try_from(clip_frames).map_err(error)?);
+    let mut encoder =
+        WavEncoder::at_sample_rate(path, WavCodec::Float32, sample_rate_hz).map_err(error)?;
+    for block in samples.chunks(8192) {
+        if cancelled() {
+            return Err(error("Stem separation cancelled"));
+        }
+        encoder.write_frames(block).map_err(error)?;
+    }
+    encoder.finish().map_err(error)?;
+    daw_media::decode_wav_cancellable(path, sample_rate_hz, cancelled).map_err(error)
 }
 
 /// Copy only project-owned generated audio on Save As. External recordings stay
@@ -533,6 +556,82 @@ mod tests {
         assert_eq!(fs::read_dir(&stems).unwrap().count(), 0);
         assert_eq!(session.project, before);
     }
+    #[test]
+    fn all_project_rates_accept_exact_model_output_and_reject_truncated_stems() {
+        for rate in daw_core::SAMPLE_RATES {
+            let (_fixture, session, clip) = Fixture::new();
+            let mut session = session.with_audio_settings(rate, 512).unwrap();
+            for residue in [0, 1, 2, 3, 9] {
+                let length = 2400 + residue;
+                session.project.tracks[0].clips[0].length_frames = length;
+                let next = session
+                    .separate_clip_with(clip, &SeparationProgress::default(), fake)
+                    .unwrap_or_else(|e| panic!("rate {rate}, length {length}: {e}"))
+                    .publish();
+                for track in next.project.tracks.iter().filter(|t| t.group_id.is_some()) {
+                    let stem = &track.clips[0];
+                    assert_eq!(stem.length_frames, length);
+                    let audio = next.audio_for_clip(stem).unwrap();
+                    assert_eq!(audio.samples.len() as u64, length);
+                    assert!(
+                        audio
+                            .samples
+                            .iter()
+                            .all(|s| (s[0] + 2.0 * s[1]).abs() < 1e-5)
+                    );
+                }
+            }
+            let before = session.project.clone();
+            assert!(
+                session
+                    .separate_clip_with(clip, &SeparationProgress::default(), |input, path| {
+                        fake(&input[..input.len() - 1], path)
+                    })
+                    .err()
+                    .unwrap()
+                    .to_string()
+                    .contains("model output")
+            );
+            assert_eq!(session.project, before);
+        }
+    }
+
+    #[test]
+    fn both_post_inference_decodes_honor_cancellation_and_cleanup() {
+        for second_decode in [false, true] {
+            let (fixture, session, _) = Fixture::new();
+            let before = session.project.clone();
+            let directory = reserve_directory(&fixture.0.join("stems"), "cancel-test").unwrap();
+            fake(&vec![[0.2, -0.1]; 2205], &directory).unwrap();
+            let staged = PreparedSeparation {
+                session: None,
+                directory: Some(directory.clone()),
+                warnings: Vec::new(),
+            };
+            let path = directory.join("drums.wav");
+            let polls = std::cell::Cell::new(0);
+            let cancelled = || {
+                // Detect the finalized project-rate file to cancel inside the
+                // second decoder, rather than during normalization/encoding.
+                let in_stage = !second_decode
+                    || hound::WavReader::open(&path)
+                        .is_ok_and(|r| r.spec().sample_rate == 48_000 && r.duration() == 2400);
+                if in_stage {
+                    polls.set(polls.get() + 1);
+                }
+                polls.get() >= 3
+            };
+            let failure = prepare_stem(&path, 2205, 2400, 48_000, &cancelled)
+                .err()
+                .unwrap();
+            assert!(failure.to_string().contains("cancelled"), "{failure}");
+            assert_eq!(polls.get(), 3);
+            drop(staged);
+            assert!(!directory.exists());
+            assert_eq!(session.project, before);
+        }
+    }
+
     #[test]
     fn same_name_jobs_use_distinct_directories() {
         let (_fixture, session, clip) = Fixture::new();

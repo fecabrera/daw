@@ -797,7 +797,6 @@ dependencies = [
 [[package]]
 name = "charon-audio"
 version = "0.1.2"
-source = "git+https://github.com/Valkyra-Labs/charon-audio?rev=bc045cd80f009ea863772c5afef15928101df66f#bc045cd80f009ea863772c5afef15928101df66f"
 dependencies = [
  "flacenc",
  "hound",
@@ -1371,6 +1370,7 @@ dependencies = [
  "daw-media",
  "dirs",
  "ndarray 0.15.6",
+ "ort",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -3617,8 +3617,7 @@ dependencies = [
 [[package]]
 name = "ort-sys"
 version = "2.0.0-rc.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf211e3776eea6aec988552fa118dd746d70e1b1e5e244058d1c98015f3e5872"
+source = "git+https://github.com/pykeio/ort?rev=f2a5f73c9dd9ff3682303481cc792bf4669e3e94#f2a5f73c9dd9ff3682303481cc792bf4669e3e94"
 dependencies = [
  "hmac-sha256",
  "lzma-rust2",

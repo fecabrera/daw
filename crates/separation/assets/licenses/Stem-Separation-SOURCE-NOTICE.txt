@@ -2,8 +2,14 @@ Stem-separation dependency source notice
 
 Charon source: https://github.com/Valkyra-Labs/charon-audio
 Pinned commit: bc045cd80f009ea863772c5afef15928101df66f
+Local compatibility patch: vendor/charon-audio/DAW-PATCH.md in the DAW source.
+The patch resets automatic device selection before explicit providers; inference and DSP are unchanged.
 
-ONNX Runtime source and native third-party notices: https://github.com/microsoft/onnxruntime/tree/v1.28.0
+ort-sys source patch: https://github.com/pykeio/ort/tree/f2a5f73c9dd9ff3682303481cc792bf4669e3e94
+The patch keeps binding version 2.0.0-rc.13 and selects checksum-pinned native 1.31.0 artifacts.
+Intel macOS omits the native separation backend.
+
+ONNX Runtime source and native third-party notices: https://github.com/microsoft/onnxruntime/tree/v1.31.0
 
 No pretrained model weights are included or downloaded by the application.
 

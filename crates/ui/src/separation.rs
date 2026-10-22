@@ -34,7 +34,10 @@ impl Status {
 }
 impl DawUi {
     pub(super) fn separate_clip(&mut self, clip: Id) {
-        if !self.file_action_enabled(FileAction::Import) || self.separation_status.is_some() {
+        if !daw_project::SEPARATION_AVAILABLE
+            || !self.file_action_enabled(FileAction::Import)
+            || self.separation_status.is_some()
+        {
             return;
         }
         let progress = SeparationProgress::default();
@@ -66,6 +69,16 @@ impl DawUi {
 mod tests {
     use super::*;
     #[test]
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    fn unsupported_target_does_not_start_a_job() {
+        let mut app = DawUi::default();
+        app.separate_clip(Id::new_v4());
+        assert!(app.job.is_none());
+        assert!(app.separation_status.is_none());
+    }
+
+    #[test]
+    #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
     fn failure_stays_in_status_and_guards_project_actions() {
         let mut app = DawUi::default();
         app.session.folder = Some(std::env::temp_dir());

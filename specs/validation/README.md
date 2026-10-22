@@ -3875,3 +3875,28 @@ Completed automated checks:
 - `cargo fmt --all --check` and `git diff --check`: passed.
 
 Tests used generated audio and the existing deterministic separation fixture. No model inference, native UI/device checks, release packaging, or Windows/Linux execution was repeated for this history-only fix.
+
+### PR #2 F001–F004: Stem backend and preparation fixes — 2026-10-22
+
+- F001: Intel macOS omits the unsupported Charon/ONNX backend. Shared target availability disables model controls and the clip action with an explanation, and the project API rejects unsupported requests before preparation. Added target-specific API/UI tests and an Intel cross-check to macOS ARM64 CI.
+- F002: Decoder admission, resampling and stem preparation share checked ceiling frame arithmetic. Preparation validates the exact model-to-project count and trims its known rounding surplus. Synthetic regressions cover all six project rates, five frame-count residues, exact durations/stereo, and truncated-output rejection.
+- F003: Both post-inference decode/resample/peak passes use the shared cancellable decoder. Deterministic tests cancel inside each decoder and verify unpublished-file cleanup and unchanged project state.
+- F004: Pin native runtime 1.31.0 through upstream `ort-sys` revision `f2a5f73c9dd9ff3682303481cc792bf4669e3e94`; its distribution table retains per-target SHA-256 hashes. Updated runtime notices. A separate-process synthetic Loop regression verifies the linked version and the exact `INVALID_GRAPH` rejection for upstream #32609.
+
+Native smoke testing caught a compatibility issue: ort's automatic efficiency policy selected CoreML even for a CPU-only model under runtime 1.31. The small [Charon source patch](../../vendor/charon-audio/DAW-PATCH.md) resets that policy before explicit providers are registered. The retained upstream processing and low-memory settings are unchanged. A weights-free native identity-model test covers stream stereo/duration and failed-CoreML-to-CPU fallback.
+
+Completed checks:
+
+- `cargo test --offline --locked --workspace`: 1,106 passed, 0 failed, 3 opt-in tests ignored before the final provider-policy patch. After that patch, affected media/project/separation suites passed; the final separation suite passed all three tests, including malformed-model rejection and native streaming/fallback.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed on final code.
+- Intel macOS desktop and CLI cross-builds passed. Final `cargo check --offline --locked --workspace --all-targets --target x86_64-apple-darwin` passed using the installed rustup target; the Intel dependency graph contains neither Charon nor ort-sys. No Intel hardware execution is claimed.
+- Opt-in project smoke tests passed with the existing local CPU model, the existing local split CoreML model, and an intentionally missing CoreML path. Each test used generated stereo WAV input, imported four aligned finite stems, saved, and reopened the project. The CoreML run had no fallback warning; the intentional failure retained the CoreML warning and completed through CPU.
+- Formatting, whitespace, and the headless CLI smoke check passed.
+
+The initial sandboxed model runs could not create native compiler working directories. Unrestricted generated-input checks then exposed the provider-policy issue above; the final CPU, CoreML and fallback runs passed after its correction. No private recording or pretrained weights were added to source. Windows/Linux runtime execution, Intel hardware execution, native UI/device checks, release packaging, broad separation quality measurements, and a complete native dependency audit were not repeated.
+
+### Static CoreML release linkage — 2026-10-22
+
+The native runtime update exposed a thin-LTO release link failure: CoreML availability checks referenced `__isPlatformVersionAtLeast`, but Rust's native link omitted Apple Clang's compiler runtime. `daw-separation/build.rs` now locates `libclang_rt.osx.a` through the selected Xcode/Command Line Tools `xcrun` and publishes its static linkage to consumers. Only Apple Silicon macOS runs this step; application crates do not duplicate it.
+
+The macOS release package rebuilt successfully through `sh tools/package_macos.sh release`. All three separation tests passed in release mode, including separate-process malformed-model rejection and native stream/fallback. Release CLI linking, focused Clippy, formatting and whitespace checks also passed. No native UI/device or older-macOS compatibility check is claimed.

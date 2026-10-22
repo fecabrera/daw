@@ -227,8 +227,13 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
                 label_text("Accent color") + ui.spacing().item_spacing.x + 14.0,
             );
             let models = std::sync::Arc::make_mut(&mut settings.separation_models);
-            model_row(ui, label_width, "CPU model", &mut models.cpu);
-            #[cfg(target_os = "macos")]
+            ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE, |ui| {
+                model_row(ui, label_width, "CPU model", &mut models.cpu);
+            });
+            if !daw_project::SEPARATION_AVAILABLE {
+                ui.label(daw_project::SEPARATION_UNAVAILABLE_REASON);
+            }
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
             model_row(ui, label_width, "CoreML model", &mut models.coreml);
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             crate::rows::field(

@@ -106,6 +106,8 @@ Create an app bundle with `sh tools/package_macos.sh debug`. Open `target/debug/
 
 Create a disk image with `sh tools/package_macos_dmg.sh release`. Use `debug` for a debug build. The image is `target/<profile>/DAW-macos-arm64.dmg` on Apple Silicon or `DAW-macos-x64.dmg` on Intel. Open the image and drag DAW to Applications. The app includes the project license and dependency notices in `Contents/Resources`. The image is unsigned and the app is not notarized.
 
+Stem separation requires Apple Silicon on macOS. Intel builds omit that backend and disable its controls; the other app features remain available.
+
 ### Linux
 
 Install Rust through Rustup, a C++ compiler, Clang/libclang, ALSA development libraries, pkg-config, and OpenSSL development headers (for build-time runtime downloads). Ensure the XDG Desktop Portal service is available for file dialogs. Package names depend on your distribution.

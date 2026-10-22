@@ -1,4 +1,7 @@
 mod separation;
+pub use daw_separation::{
+    AVAILABLE as SEPARATION_AVAILABLE, UNAVAILABLE_REASON as SEPARATION_UNAVAILABLE_REASON,
+};
 pub use separation::{PreparedSeparation, SeparationModels, SeparationProgress};
 mod history;
 pub use history::{HistoryMemory, SessionHistory};
