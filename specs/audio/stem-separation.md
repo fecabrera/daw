@@ -38,7 +38,7 @@ On a CoreML load, inference, or output-validation error, discard its writers and
 
 Compiled CoreML data lives under the user cache directory's `DAW/Charon/CoreML/ort-1.31` subtree, keyed by Charon's model-content hash. It is separate from project stems, model locations, and seek caches. Models are loaded per job; a resident model service is not implemented. Cold load can dominate elapsed time. See the [CPU evaluation](stem-separation-evaluation.md) and [CoreML evaluation](stem-separation-coreml-evaluation.md); their timing evidence is not a feature-level latency guarantee.
 
-The shared report progress bar fills the available dialog content width. Retain the dialog's existing left and right padding for separation and export reports.
+The shared report uses the platform-neutral loading message “Preparing audio and loading model…”. Do not mention CoreML compilation in this message because Windows, Linux, and CPU-only macOS jobs do not use CoreML. The shared report progress bar fills the available dialog content width. Retain the dialog's existing left and right padding for separation and export reports.
 
 ## Files, failure, and persistence
 

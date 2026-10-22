@@ -15,7 +15,7 @@ impl Status {
             title: "Stem-separation status",
             state: &self.state,
             running_text: if total == 0 {
-                "Preparing audio and loading model (CoreML may compile)…"
+                "Preparing audio and loading model…"
             } else if done >= total {
                 "Preparing stem tracks…"
             } else {

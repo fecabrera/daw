@@ -3935,3 +3935,18 @@ Completed automated checks:
 - `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
 
 Tests used generated WAV fixtures and temporary directories. No user media or model weights were used. Native UI/device interaction, Windows/Linux execution, real-model separation and release packaging were not repeated. Temporary storage has no crash-recovery or stale-directory cleanup service. This behavior supersedes the earlier saved-project prerequisite.
+
+### Platform-neutral separation loading message — 2026-10-22
+
+Replaced the shared loading text with “Preparing audio and loading model…” so CPU jobs on Windows, Linux, and macOS do not show a CoreML compilation note. Backend selection is unchanged. Updated the user guide and separation specification.
+
+Completed automated checks on Windows:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo build --offline --locked --release -p daw-desktop`: passed; rebuilt `target/release/daw-desktop.exe`.
+- `cargo test --offline --locked --workspace`: failed in the unchanged project test `separation::tests::failed_first_save_retains_temporary_stems_and_the_unsaved_session`, at `assert!(next.save(&blocked).is_err())`. The test expected saving to fail with a directory at `project.json`, but the save succeeded on this Windows run. The suite stopped before UI tests; this run does not establish a passing workspace test suite.
+- `cargo test --offline --locked -p daw-ui separation --lib`: all 3 separation UI tests passed.
+- `git diff --check`: passed.
+
+Native UI/device interaction, real-model inference, macOS/Linux execution, and release packaging were not repeated for this text change.

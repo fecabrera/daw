@@ -18,6 +18,8 @@ Model loading needs substantial memory. CoreML can take tens of seconds to compi
 2. Keep the status dialog open while the job runs. It shows progress, errors, and warnings. Choose **Cancel** to stop the job.
 3. Close the finished report.
 
+The status shows **Preparing audio and loading model…** before separation progress starts. Windows and Linux load the CPU model. On Apple Silicon macOS, a selected CoreML model can also need time to compile.
+
 Separation uses the clicked clip's trim, repeats, stretch, and transpose. It excludes track, group, and Master processing. Each stem keeps the clip gain. The source file stays unchanged.
 
 A new group appears at the end of the track list with one audio track per stem. All four clips start at the original clip's position and have its duration. The original clip stays in place, disabled and shown with the same neutral header and muted foreground colors as disabled units. Right-click it and choose **Enable clip** to hear it again. Disable or mute the stems first if you do not want both versions to play.
