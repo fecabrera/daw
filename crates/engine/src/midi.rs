@@ -507,6 +507,7 @@ impl MidiTrackRuntime {
         let clips: Vec<PatternClip> = track
             .clips
             .iter()
+            .filter(|clip| !clip.muted)
             .filter_map(|clip| {
                 let pattern = project
                     .assets
@@ -636,6 +637,7 @@ impl MidiTrackRuntime {
         project.tempo_bpm.to_bits().hash(&mut hash);
         project.sample_rate_hz.hash(&mut hash);
         for clip in &track.clips {
+            clip.muted.hash(&mut hash);
             if let Some(asset) = project.assets.iter().find(|a| a.id == clip.asset_id) {
                 format!("{:?}", asset.midi_pattern).hash(&mut hash);
             }
@@ -1525,6 +1527,43 @@ mod tests {
             runtime.sample(frame);
         }
         assert_eq!(runtime.held_sample(), [0.0; 2]);
+    }
+
+    #[test]
+    fn disabled_midi_clips_remove_note_events_and_invalidate_history() {
+        let mut project = Project::default();
+        let track = project.add_midi_track().unwrap();
+        project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
+        let clip = project.add_midi_pattern(track, 0).unwrap();
+        project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: MidiPattern {
+                    length_ticks: 3840,
+                    notes: vec![MidiNote {
+                        id: Id::new_v4(),
+                        start_tick: 0,
+                        length_ticks: 1920,
+                        pitch: 60,
+                        velocity: 100,
+                    }],
+                },
+            })
+            .unwrap();
+        let active = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        assert_eq!(active.clips.len(), 1);
+        project
+            .edit(Edit::SetClipMuted {
+                clip_id: clip,
+                muted: true,
+            })
+            .unwrap();
+        let mut disabled = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
+        assert!(disabled.clips.is_empty());
+        assert_ne!(active.fingerprint(), disabled.fingerprint());
+        for frame in 0..2000 {
+            assert_eq!(disabled.sample(frame), [0.0; 2]);
+        }
     }
 
     #[test]

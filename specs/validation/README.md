@@ -3827,3 +3827,39 @@ Completed the previously unmeasured CoreML path using the same hashed audio and 
 - Documentation/data checks: original baseline hash retained; source/reference hashes and reconstructed long input checked; 18 new one-shot records and nine resident separations validated; per-stem comparisons, derived summary values, JSON, local links and whitespace checked. App source, dependencies, fixtures and models remain unchanged in tracked scope. DAW workspace tests and packaging were not rerun for this documentation-only follow-up.
 
 Remaining limits: one host, five AAC-derived excerpts, artificial long workload, no blind listening or live playback/UI contention, no broader device/platform or signed-package checks, no hardware-level GPU trace, no dedicated CPU-target split export measurement. Model-use/redistribution terms remain unresolved. This follow-up closes the earlier lack of local CoreML measurements; it does not grant release acceptance.
+
+## Stem separation — 2026-10-21
+
+Implemented [stem separation](../audio/stem-separation.md) with local model preferences, CoreML on macOS, a separate low-memory CPU fallback, streaming output through the shared WAV encoder, worker-side import, atomic group publication, and a disabled original clip. Added shared export/separation progress reporting and project-owned generated-source persistence.
+
+Completed checks:
+
+- `cargo test --workspace --locked`: passed, including documentation tests. The project, UI separation, and disabled-clip tests were also rerun after the final persistence/test changes. Existing opt-in acceptance tests remained ignored.
+
+- `cargo check --workspace --all-targets`: passed on macOS ARM64.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed.
+- Affected library tests: engine, project, separation, and UI passed. Project regressions cover loop input and gain, exact aligned durations, original-source preservation, grouping, unique folders, cancellation/failure/discard cleanup, Save As, and Undo/Redo after Save As. Additional focused tests cover disabled audio/MIDI scheduling and history invalidation, preference persistence, and guarded failure reports without a second error dialog.
+- `cargo test -p daw-project --locked`: passed, including storage, export, transpose, and Sampler preparation workflows after the generated-source/history changes.
+- `cargo build -p daw-cli --locked` and `python3 tools/check_cli.py`: passed. The smoke check covers codecs, deterministic export, missing sources, multi-track projects, group buses, overwrite protection, and exit codes without graphics/audio devices.
+- Opt-in release test `model_smoke::local_models_separate_and_import`: passed with the local CPU model, local CoreML split model, and an intentionally missing CoreML model to force CPU fallback. Each run used the same local stereo test WAV and verified four finite, duration-matched, aligned stems plus saved-project reopening. The fallback run retained the CoreML error as a warning. No weights or test recordings were added to the repository.
+- `sh tools/package_macos.sh release`: passed. `otool -L` reports system libraries/frameworks, including CoreML; no external ONNX Runtime dylib is required. Every separation notice is present in the bundle. Linux CI setup includes the OpenSSL headers needed for build-time native TLS downloads; Linux and Windows packaging includes the same notices.
+- Local Markdown link checks: passed for changed documents and new feature guides/specifications.
+
+Native checks: model controls and persisted filenames were inspected in the macOS Settings dialog. A generated test project then completed separation through Timeline’s clip context menu and status dialog. Its four tracks were visibly aligned with the dimmed original; the original menu offered Enable clip. Native Undo/Redo removed/restored the group. Regular Save persisted the disabled original, all four aligned frame ranges, retained clip gain, and project-relative stem files. The app was returned to an empty project afterward. The local CoreML model test exercised the actual native provider configuration. These checks do not establish Windows/Linux runtime behavior, Intel Mac support, device underrun rates during separation, or quality across arbitrary material. Cold model loading and inference calls remain non-interruptible; cancellation takes effect at the next shared checkpoint. A native out-of-memory process abort is outside the in-process recovery guarantee. Full model-dependent acceptance is opt-in; the normal test suite does not distribute or require weights.
+
+### Status report progress width — 2026-10-21
+
+The shared export/separation report progress bar now fills the available content width, keeping the dialog's existing horizontal padding. Focused export-status and separation UI tests passed, as did formatting, strict workspace Clippy, and whitespace checks. The macOS release bundle was rebuilt. This change does not alter audio processing; the full audio suite was not repeated for this layout adjustment.
+
+### Disabled clip palettes — 2026-10-21
+
+Disabled clips now use an opaque dimmed version of their resolved palette instead of reducing painter opacity. Track-color inheritance and clip overrides retain their hue; the header, channel fill, waveform/MIDI notes, and text share the dimmed palette. The selection outline keeps its normal color and width. Opaque fills prevent timeline grid lines from showing through disabled clips.
+
+The new painting regression passed for inherited and overridden colors in dark and light themes, including opaque fills, waveform/text colors, and full-strength selection outlines. All 557 UI library tests passed. Strict workspace Clippy, formatting, and whitespace checks passed. The macOS release bundle was rebuilt; no audio-processing behavior changed.
+
+### Greyed disabled clip palettes — 2026-10-21
+
+Supersedes the disabled-palette color treatment above. Disabled clips now desaturate their resolved body toward grey with a small retained color tint. They reuse the standard clip palette builder for readable text, waveforms, note colors, and related fills, instead of fading foregrounds toward the panel. Opaque fills and normal selection outlines remain.
+
+The painting regression now checks reduced color saturation and foreground contrast in both themes. All 557 UI tests, strict workspace Clippy, formatting, and whitespace checks passed. The macOS release app was rebuilt. No audio behavior changed.

@@ -200,6 +200,21 @@ impl SessionHistory {
         // Undo never changes the save destination or seeks playback. A rate change
         // retains the current time, expressed in the restored project's frame units.
         next.folder = live.folder.clone();
+        // Save As copies generated stems. Restore their latest saved location by
+        // stable asset ID, including Redo entries made before that copy.
+        if let Some(saved) = &self.saved {
+            for asset in next
+                .project
+                .assets
+                .iter_mut()
+                .filter(|a| a.source.kind == "generated")
+            {
+                if let Some(current) = saved.assets.iter().find(|a| a.id == asset.id) {
+                    asset.source = current.source.clone();
+                }
+            }
+        }
+
         let denominator = u128::from(live.project.sample_rate_hz);
         let frame = (u128::from(live.project.transport.playhead_frame)
             * u128::from(next.project.sample_rate_hz)

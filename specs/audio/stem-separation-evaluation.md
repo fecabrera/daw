@@ -1,5 +1,7 @@
 # Stem separation backend evaluation
 
+This is the pre-integration benchmark record. The current workflow is specified in [Stem separation](stem-separation.md).
+
 Date: 2026-10-21. Status: research; no separation feature or dependency is added to the application.
 
 ## Decision

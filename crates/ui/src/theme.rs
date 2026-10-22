@@ -134,6 +134,19 @@ pub struct ClipColors {
     pub text: Color32,
 }
 
+impl ClipColors {
+    /// Keep a small hint of clip color in an otherwise grey, opaque palette.
+    /// Painter opacity would let the timeline grid show through the clip.
+    pub fn dimmed(self, ctx: &Context) -> Self {
+        let grey = ((299 * u32::from(self.body.r())
+            + 587 * u32::from(self.body.g())
+            + 114 * u32::from(self.body.b()))
+            / 1000) as u8;
+        let subdued = blend(Color32::from_gray(grey), self.body, 12);
+        clip_palette(blend(palette(ctx).panel, subdued, 80))
+    }
+}
+
 impl Default for ClipColors {
     fn default() -> Self {
         Self {
@@ -155,7 +168,11 @@ pub fn clip_colors(
     if color == daw_core::LEGACY_CLIP_COLOR {
         return ClipColors::default();
     }
-    let body = display_color(color);
+    clip_palette(display_color(color))
+}
+
+/// Derive readable foregrounds and related surfaces from one clip body color.
+fn clip_palette(body: Color32) -> ClipColors {
     let header = blend(body, Color32::BLACK, 20);
     ClipColors {
         body,

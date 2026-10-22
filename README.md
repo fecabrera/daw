@@ -17,17 +17,19 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Export and CLI:** export stereo WAV or MP3 files; validate projects and render audio from the command line.
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 
+Stem separation uses local Charon HTDemucs models, with CoreML on macOS and CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
+
 ## Status and planned work
 
 Audio and MIDI workflows are available in four views: **Timeline**, **Instrument**, **Editor**, and **Mixer**.
 
-The project format is experimental. Saved projects reference external audio files; they do not bundle recordings. Missing audio files remain visible and play as silence.
+The project format is experimental. Saved projects reference external recordings. Generated stems are stored inside the project folder. Missing audio files remain visible and play as silence.
 
 Planned work includes audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
 
 ## Build and run
 
-Run commands from the repository root with the toolchain pinned in [rust-toolchain.toml](rust-toolchain.toml). Dependency and minimum Rust versions are defined in [Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock). Rubber Band is built from bundled source and requires a C++ compiler and Clang/libclang for its Rust bindings. The packaged app needs no separate Rubber Band or LAME installation.
+Run commands from the repository root with the toolchain pinned in [rust-toolchain.toml](rust-toolchain.toml). Dependency and minimum Rust versions are defined in [Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock). Rubber Band is built from bundled source and requires a C++ compiler and Clang/libclang for its Rust bindings. The packaged app needs no separate Rubber Band, LAME, or ONNX Runtime installation. The first build downloads the pinned ONNX Runtime binaries; it does not download model weights.
 
 ### Windows
 
@@ -106,7 +108,7 @@ Create a disk image with `sh tools/package_macos_dmg.sh release`. Use `debug` fo
 
 ### Linux
 
-Install Rust through Rustup, a C++ compiler, Clang/libclang, and ALSA development libraries. Ensure the XDG Desktop Portal service is available for file dialogs. Package names depend on your distribution.
+Install Rust through Rustup, a C++ compiler, Clang/libclang, ALSA development libraries, pkg-config, and OpenSSL development headers (for build-time runtime downloads). Ensure the XDG Desktop Portal service is available for file dialogs. Package names depend on your distribution.
 
 ```sh
 cargo build -p daw-desktop
@@ -140,4 +142,4 @@ Workers also upload command logs as `logs-test-<OS>-<architecture>` and `logs-bu
 
 ## Licenses
 
-Original code uses the [BSD 2-Clause License](LICENSE). Bundled dependencies have separate terms. Their notices are included with the [media libraries](crates/media/assets/licenses), [fonts](crates/ui/assets/fonts), [icons](crates/ui/assets/icons), [UI dependencies](crates/ui/assets/licenses), and [oscillator dependencies](crates/oscillator/assets/licenses), and [EQ dependencies](crates/equalizer/assets/licenses).
+Original code uses the [BSD 2-Clause License](LICENSE). Bundled dependencies have separate terms. Their notices are included with the [media libraries](crates/media/assets/licenses), [fonts](crates/ui/assets/fonts), [icons](crates/ui/assets/icons), [UI dependencies](crates/ui/assets/licenses), and [oscillator dependencies](crates/oscillator/assets/licenses), and [EQ dependencies](crates/equalizer/assets/licenses), and [stem-separation dependencies](crates/separation/assets/licenses).

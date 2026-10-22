@@ -1,3 +1,5 @@
+mod separation;
+pub use separation::{PreparedSeparation, SeparationModels, SeparationProgress};
 mod history;
 pub use history::{HistoryMemory, SessionHistory};
 mod clip_audio;
@@ -336,6 +338,7 @@ impl Session {
             None => next.add_track().map_err(error)?,
         };
         let clip = Clip {
+            muted: false,
             stretch: None,
             id: clip_id,
             asset_id,
@@ -401,6 +404,7 @@ impl Session {
         let folder = absolute(folder)?;
         fs::create_dir_all(folder.join("assets")).map_err(error)?;
         let mut next = self.project.clone();
+        let mut generated = separation::copy_generated(self, &mut next, &folder)?;
         for asset in &mut next.assets {
             if asset.midi_pattern.is_some() {
                 continue;
@@ -411,7 +415,11 @@ impl Session {
                 .iter()
                 .find(|a| a.id == asset.id)
                 .unwrap();
-            let path = self.source_path(original)?;
+            let path = if asset.source.kind == "generated" && asset.source.path_kind == "absolute" {
+                PathBuf::from(&asset.source.path)
+            } else {
+                self.source_path(original)?
+            };
             if let Some(relative) = relative_path(&folder, &path) {
                 asset.source.path = relative.to_string_lossy().into_owned();
                 asset.source.path_kind = "relative".into();
@@ -440,6 +448,7 @@ impl Session {
             let _ = fs::remove_file(&temp);
         }
         result?;
+        generated.0.clear();
         self.project = next;
         self.folder = Some(folder);
         Ok(())

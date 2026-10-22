@@ -1,5 +1,7 @@
 # Charon CoreML benchmark
 
+This is the pre-integration benchmark record. The current workflow is specified in [Stem separation](stem-separation.md).
+
 Date: 2026-10-21. Follow-up to the [backend evaluation](stem-separation-evaluation.md). This is research on one Mac, not an implemented app feature or release acceptance.
 
 ## Result

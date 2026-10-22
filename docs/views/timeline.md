@@ -82,3 +82,9 @@ Select a track, group, or Master, then use the [Effects catalog](instrument.md#e
 Drag an installed effect header from the effects lane onto another track’s header or clip lane to append it to that track’s effects. Audio tracks, MIDI tracks, and groups accept effects. Drop onto the fixed Master block to append effects to Master. Shift-click effects first to move a selected group in chain order. Hold Option on macOS or Ctrl on Windows/Linux to copy instead; the modifier at release determines the action. The target row has an outline during a valid drag. Release to apply the change, or press Escape to cancel.
 
 A drop selects the destination track or Master and the transferred effects. Effects that use modulation sources from another track show a forbidden cursor and reject the whole group without changing either chain. Master cannot use track modulation sources. Remove incompatible source assignments before transferring effects.
+
+## Stem separation
+
+Right-click an audio clip and choose **Stem-separation** to create a group with aligned Drums, Bass, Other, and Vocals tracks. The original stays in place, disabled. Save the project and select local models in Settings first. See [Stem separation](../audio/stem-separation.md) for setup, progress, cancellation, and file storage.
+
+Right-click a disabled clip and choose **Enable clip** to restore it. **Disable clip** silences only that clip and shows a greyed version of its color. These actions support Undo and Redo.

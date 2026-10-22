@@ -1,7 +1,7 @@
 //! DWM-owned caption buttons and frame behavior around the egui header.
 //! The subclass runs on the window thread; removal precedes freeing its boxed state.
 use daw_ui::{
-    settings::{AppSettings, ColorTheme, TitlebarStyle},
+    settings::{ColorTheme, TitlebarStyle},
     titlebar::{CaptionMetrics, HeaderLayout},
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -35,7 +35,7 @@ struct State {
 pub struct Titlebar {
     window: HWND,
     state: Box<State>,
-    applied: Option<(AppSettings, f32, bool)>,
+    applied: Option<(ColorTheme, TitlebarStyle, f32, bool)>,
 }
 impl Titlebar {
     pub fn new(context: &eframe::CreationContext<'_>) -> Option<Self> {
@@ -91,10 +91,17 @@ impl Titlebar {
             .replace(settings.titlebar == TitlebarStyle::Custom)
             != (settings.titlebar == TitlebarStyle::Custom);
         self.state.scale.set(ctx.pixels_per_point());
-        if self.applied != Some((settings, ctx.pixels_per_point(), maximized)) {
+        let appearance = (
+            settings.theme,
+            settings.titlebar,
+            ctx.pixels_per_point(),
+            maximized,
+        );
+        if self.applied != Some(appearance) {
             let theme_changed = self
                 .applied
-                .is_none_or(|(previous, _, _)| previous.theme != settings.theme);
+                .as_ref()
+                .is_none_or(|(theme, _, _, _)| *theme != settings.theme);
             // SAFETY: live HWND and initialized attribute data with its documented size.
             unsafe {
                 let dark = i32::from(settings.theme == ColorTheme::Dark);
@@ -146,7 +153,7 @@ impl Titlebar {
                     ctx.request_repaint();
                 }
             }
-            self.applied = Some((settings, ctx.pixels_per_point(), maximized));
+            self.applied = Some(appearance);
         }
         let mut metrics = CaptionMetrics {
             top_inset: top_inset as f32 / ctx.pixels_per_point(),
@@ -340,7 +347,7 @@ mod tests {
         let original_style = unsafe { GetWindowLongPtrW(window, GWL_STYLE) };
         let mut settings = ui.settings();
         settings.titlebar = TitlebarStyle::Custom;
-        ui.set_settings(&ctx, settings);
+        ui.set_settings(&ctx, settings.clone());
         adapter.prepare(&mut ui, &ctx);
         let mut custom = native;
         unsafe {
@@ -413,7 +420,7 @@ mod tests {
         adapter.state.layout.borrow_mut().blocked = true;
         assert_eq!(hit(200, 20), HTCLIENT as LRESULT);
         settings.titlebar = TitlebarStyle::Native;
-        ui.set_settings(&ctx, settings);
+        ui.set_settings(&ctx, settings.clone());
         adapter.prepare(&mut ui, &ctx);
         let mut restored = native;
         unsafe {

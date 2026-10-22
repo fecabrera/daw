@@ -28,6 +28,42 @@ impl DawUi {
                 self.open_clip_editor(clip.id, track_id, ui.ctx());
                 ui.close();
             }
+            if self.view_mode == ViewMode::Timeline
+                && self
+                    .session
+                    .project
+                    .assets
+                    .iter()
+                    .any(|a| a.id == clip.asset_id && a.midi_pattern.is_none())
+            {
+                let ready = self.file_action_enabled(FileAction::Import)
+                    && self.session.folder.is_some()
+                    && self.settings.separation_models.cpu.is_some();
+                if ui
+                    .add_enabled(ready, egui::Button::new("Stem-separation"))
+                    .on_disabled_hover_text(
+                        "Save the project and select a CPU model in Settings first",
+                    )
+                    .clicked()
+                {
+                    self.separate_clip(clip.id);
+                    ui.close();
+                }
+            }
+            if ui
+                .button(if clip.muted {
+                    "Enable clip"
+                } else {
+                    "Disable clip"
+                })
+                .clicked()
+            {
+                self.edit(Edit::SetClipMuted {
+                    clip_id: clip.id,
+                    muted: !clip.muted,
+                });
+                ui.close();
+            }
             let targets = if selected {
                 self.selected_clip_ids()
             } else {

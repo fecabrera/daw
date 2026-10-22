@@ -59,6 +59,7 @@ mod instrument_component_drag;
 mod instrument_main;
 mod instrument_panel;
 mod instrument_selection;
+mod job_report;
 pub mod knobs;
 mod layer_effects;
 mod lfo_controls;
@@ -72,6 +73,7 @@ mod modulation_panel;
 mod ott_panel;
 mod parameter_knobs;
 mod saturator_panel;
+mod separation;
 mod stereo_spread_panel;
 mod strip_reorder;
 mod timeline_toolbar;
@@ -301,6 +303,7 @@ enum Job {
     Loaded(Session, bool),
     Saved(Session),
     Exported(Vec<String>),
+    Separated(daw_project::PreparedSeparation),
 }
 
 enum Action {
@@ -791,6 +794,7 @@ pub struct DawUi {
     export_settings: ExportSettings,
     export_dialog: Option<ExportSettings>,
     export_status: Option<export_status::ExportStatus>,
+    separation_status: Option<separation::Status>,
     overwrite_settings: ExportSettings,
     allow_close: bool,
     native_menu: bool,
@@ -895,6 +899,7 @@ impl Default for DawUi {
             export_settings: ExportSettings::default(),
             export_dialog: None,
             export_status: None,
+            separation_status: None,
             overwrite_settings: ExportSettings::default(),
             allow_close: false,
             native_menu: false,
@@ -908,12 +913,12 @@ impl Default for DawUi {
 }
 impl DawUi {
     pub fn settings(&self) -> settings::AppSettings {
-        self.settings
+        self.settings.clone()
     }
 
     pub fn set_settings(&mut self, ctx: &egui::Context, settings: settings::AppSettings) {
+        theme::apply(ctx, settings.clone());
         self.settings = settings;
-        theme::apply(ctx, settings);
         self.configure_audio_cache(false);
     }
 
@@ -1366,6 +1371,24 @@ impl DawUi {
                     self.unsaved_prompt = false;
                     self.perform_pending();
                 }
+                Ok(Job::Separated(prepared)) => {
+                    if let Some(status) = &mut self.separation_status {
+                        if status
+                            .progress
+                            .cancel
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            status.state = job_report::State::Cancelled;
+                        } else {
+                            status.warnings = prepared.warnings.clone();
+                            status.state = job_report::State::Complete;
+                            let mut session = prepared.publish();
+                            session.project.transport = self.session.project.transport.clone();
+                            self.session = session;
+                            self.changed();
+                        }
+                    }
+                }
                 Ok(Job::Exported(warnings)) => {
                     if let Some(status) = &mut self.export_status {
                         status.warnings = warnings;
@@ -1373,7 +1396,17 @@ impl DawUi {
                     }
                 }
                 Err(e) => {
-                    if let Some(status) = &mut self.export_status {
+                    if let Some(status) = &mut self.separation_status {
+                        status.state = if status
+                            .progress
+                            .cancel
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            job_report::State::Cancelled
+                        } else {
+                            job_report::State::Failed(e)
+                        };
+                    } else if let Some(status) = &mut self.export_status {
                         status.state = export_status::State::Failed(e);
                     } else {
                         self.fail(e);
@@ -1983,6 +2016,7 @@ impl DawUi {
                     self.export_dialog.is_none()
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
+                        && self.separation_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
                         && !self.settings_open,
@@ -2031,6 +2065,7 @@ impl DawUi {
                                 && self.export_dialog.is_none()
                                 && self.overwrite.is_none()
                                 && self.export_status.is_none()
+                                && self.separation_status.is_none()
                                 && self.project_name_dialog.is_none()
                                 && self.project_settings.is_none()
                                 && !self.settings_open,
@@ -2054,6 +2089,7 @@ impl DawUi {
                         && self.export_dialog.is_none()
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
+                        && self.separation_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
                         && !self.settings_open,
@@ -2120,6 +2156,7 @@ impl DawUi {
         }
         if self.job.is_none()
             && self.export_status.is_none()
+            && self.separation_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
             && !self.settings_open
@@ -2290,6 +2327,7 @@ impl DawUi {
             && self.overwrite.is_none()
             && self.export_dialog.is_none()
             && self.export_status.is_none()
+            && self.separation_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
             && !self.settings_open
@@ -4574,6 +4612,7 @@ impl DawUi {
             target.snap_zoom,
         );
         let clip = Clip {
+            muted: false,
             stretch: None,
             id: Id::nil(),
             asset_id: Id::nil(),
@@ -5039,6 +5078,11 @@ impl DawUi {
         {
             self.error = None;
         }
+        if let Some(status) = &self.separation_status
+            && status.show(ctx)
+        {
+            self.separation_status = None;
+        }
         if let Some(status) = &self.export_status
             && status.show(ctx)
         {
@@ -5106,6 +5150,7 @@ mod tests {
             decoded_frame_count: 480000,
         });
         app.session.project.tracks[0].clips.push(Clip {
+            muted: false,
             stretch: None,
             id: Id::new_v4(),
             asset_id: asset,
@@ -5181,7 +5226,7 @@ mod tests {
                 accent: settings::AccentColor::Teal,
                 ..Default::default()
             };
-            app.set_settings(&ctx, settings);
+            app.set_settings(&ctx, settings.clone());
             frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let palette = theme::palette(&ctx);
@@ -5253,7 +5298,7 @@ mod tests {
             accent: settings::AccentColor::Teal,
             ..Default::default()
         };
-        app.set_settings(&ctx, settings);
+        app.set_settings(&ctx, settings.clone());
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let color = settings.accent.color();
         let block = app.clip_block(
@@ -11399,6 +11444,69 @@ mod tests {
         );
         app.session.project.validate().unwrap();
     }
+    #[test]
+    fn disabled_clips_use_opaque_dimmed_palettes_and_keep_selection_visible() {
+        let source = TestWav::new();
+        let mut audio = daw_media::decode_wav(&source.0).unwrap();
+        audio.metadata.channels = 2;
+        for appearance in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+            for custom in [
+                None,
+                Some(daw_core::RgbColor {
+                    r: 210,
+                    g: 80,
+                    b: 35,
+                }),
+            ] {
+                let (mut app, track) = fixture();
+                let clip = &mut app.session.project.tracks[0].clips[0];
+                clip.muted = true;
+                clip.color = custom;
+                clip.length_frames = 48_000;
+                let id = clip.id;
+                app.session.audio.insert(clip.asset_id, audio.clone());
+                app.select_clip(id, track, false);
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: appearance,
+                        ..Default::default()
+                    },
+                );
+                let base = theme::clip_colors(app.session.project.tracks[0].color, custom);
+                let colors = base.dimmed(&ctx);
+                assert_ne!(base, colors);
+                let chroma =
+                    |c: egui::Color32| c.r().max(c.g()).max(c.b()) - c.r().min(c.g()).min(c.b());
+                assert!(chroma(colors.body) < chroma(base.body) / 3);
+                let brightness = |c: egui::Color32| {
+                    (299 * i32::from(c.r()) + 587 * i32::from(c.g()) + 114 * i32::from(c.b()))
+                        / 1000
+                };
+                assert!((brightness(colors.text) - brightness(colors.header)).abs() >= 90);
+                assert!((brightness(colors.waveform) - brightness(colors.body)).abs() >= 80);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                for fill in [colors.body, colors.header, colors.channel] {
+                    assert_eq!(fill.a(), 255);
+                    assert!(
+                        shapes
+                            .iter()
+                            .any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == fill))
+                    );
+                }
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == colors.waveform)));
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == colors.text)));
+                let block = app.clip_block(
+                    app.lane_bounds[&track],
+                    &app.session.project.tracks[0].clips[0],
+                    0,
+                );
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == block && r.stroke == theme::selection_outline(&ctx))));
+            }
+        }
+    }
+
     #[test]
     fn saved_colors_render_on_clips_and_drag_previews_with_neutral_track_panels() {
         let source = TestWav::new();

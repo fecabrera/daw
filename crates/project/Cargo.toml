@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+daw-separation.workspace = true
 daw-core.workspace = true
 daw-media.workspace = true
 daw-engine.workspace = true

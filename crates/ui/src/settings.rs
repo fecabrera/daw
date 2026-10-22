@@ -139,9 +139,10 @@ impl TitlebarStyle {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
+    pub separation_models: std::sync::Arc<daw_project::SeparationModels>,
     pub accent: AccentColor,
     pub theme: ColorTheme,
     pub titlebar: TitlebarStyle,
@@ -155,8 +156,8 @@ impl AppSettings {
         json.and_then(|json| serde_json::from_str(json).ok())
             .unwrap_or_default()
     }
-    pub fn to_json(self) -> String {
-        serde_json::to_string(&self).expect("Settings contain only serializable enum values")
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(&self).expect("Settings contain only serializable preferences")
     }
 }
 
@@ -170,6 +171,41 @@ fn swatch(ui: &egui::Ui, rect: Rect, color: Color32) {
             crate::theme::palette(ui.ctx()).text.gamma_multiply(0.4),
         ),
         StrokeKind::Inside,
+    );
+}
+
+fn model_row(ui: &mut egui::Ui, width: f32, label: &str, path: &mut Option<std::path::PathBuf>) {
+    crate::rows::field(
+        ui,
+        width,
+        |ui| {
+            ui.label(label);
+        },
+        |ui| {
+            ui.horizontal(|ui| {
+                ui.label(path.as_ref().and_then(|p| p.file_name()).map_or_else(
+                    || "Not selected".into(),
+                    |n| n.to_string_lossy().into_owned(),
+                ))
+                .on_hover_text(path.as_ref().map_or_else(
+                    || "Select a local HTDemucs ONNX model. No models are downloaded.".into(),
+                    |p| p.display().to_string(),
+                ));
+                if ui.button("Choose…").clicked()
+                    && let Some(selected) = rfd::FileDialog::new()
+                        .add_filter("ONNX model", &["onnx"])
+                        .pick_file()
+                {
+                    *path = Some(selected);
+                }
+                if ui
+                    .add_enabled(path.is_some(), egui::Button::new("Clear"))
+                    .clicked()
+                {
+                    *path = None;
+                }
+            });
+        },
     );
 }
 
@@ -190,6 +226,10 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
             let label_width = label_text("Split MIDI notes").max(
                 label_text("Accent color") + ui.spacing().item_spacing.x + 14.0,
             );
+            let models = std::sync::Arc::make_mut(&mut settings.separation_models);
+            model_row(ui, label_width, "CPU model", &mut models.cpu);
+            #[cfg(target_os = "macos")]
+            model_row(ui, label_width, "CoreML model", &mut models.coreml);
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             crate::rows::field(
                 ui,
@@ -224,7 +264,7 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
                                     .selectable_value(&mut settings.theme, theme, theme.name())
                                     .changed()
                                 {
-                                    crate::theme::apply(ctx, *settings);
+                                    crate::theme::apply(ctx, settings.clone());
                                 }
                             }
                         });
@@ -321,7 +361,7 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
                                 });
                                 if response.clicked() {
                                     settings.accent = accent;
-                                    crate::theme::apply(ctx, *settings);
+                                    crate::theme::apply(ctx, settings.clone());
                                     ui.close();
                                 }
                             }
@@ -492,7 +532,7 @@ mod tests {
             titlebar: TitlebarStyle::Custom,
             ..Default::default()
         };
-        crate::theme::apply(&ctx, settings);
+        crate::theme::apply(&ctx, settings.clone());
         frame(&ctx, &mut settings, vec![]);
         click(&ctx, &mut settings, "Custom");
         click(&ctx, &mut settings, "Native");
@@ -520,7 +560,7 @@ mod tests {
                         theme,
                         ..Default::default()
                     };
-                    crate::theme::apply(&ctx, settings);
+                    crate::theme::apply(&ctx, settings.clone());
                     for _ in 0..12 {
                         frame(&ctx, &mut settings, vec![]);
                     }
@@ -583,7 +623,7 @@ mod tests {
             accent: AccentColor::Teal,
             ..Default::default()
         };
-        crate::theme::apply(&ctx, settings);
+        crate::theme::apply(&ctx, settings.clone());
         frame(&ctx, &mut settings, vec![]);
         let dark_style = ctx.global_style();
         click(&ctx, &mut settings, "Dark");

@@ -163,6 +163,7 @@ mod tests {
 
     fn clip(offset: u64, length: u64, repeat: Option<ClipLoop>) -> Clip {
         Clip {
+            muted: false,
             stretch: None,
             id: Id::nil(),
             asset_id: Id::nil(),

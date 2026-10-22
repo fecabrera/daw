@@ -227,6 +227,9 @@ pub struct Track {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
+    /// Disabled clips retain their content but do not generate audio or note events.
+    #[serde(default)]
+    pub muted: bool,
     pub id: Id,
     pub asset_id: Id,
     pub name: String,
@@ -474,7 +477,7 @@ impl Project {
                 }
                 continue;
             }
-            if a.source.kind != "external"
+            if !matches!(a.source.kind.as_str(), "external" | "generated")
                 || !matches!(a.source.path_kind.as_str(), "relative" | "absolute")
                 || a.source.path.is_empty()
             {
@@ -865,6 +868,9 @@ impl Project {
             Edit::SetClipName { clip_id, name } => {
                 self.clip_mut(clip_id)?.name = clip_name(&name)?.to_owned();
             }
+            Edit::SetClipMuted { clip_id, muted } => {
+                self.clip_mut(clip_id)?.muted = muted;
+            }
             Edit::SetClipGain { clip_id, gain_db } => {
                 self.clip_mut(clip_id)?.gain_db = gain_db;
             }
@@ -1089,6 +1095,10 @@ pub enum Edit {
         clip_id: Id,
         name: String,
     },
+    SetClipMuted {
+        clip_id: Id,
+        muted: bool,
+    },
     SetClipGain {
         clip_id: Id,
         gain_db: f32,
@@ -1246,6 +1256,7 @@ mod tests {
     #[test]
     fn stretch_scales_offsets_and_repeats_and_can_return_to_original_duration() {
         let clip = Clip {
+            muted: false,
             id: Id::nil(),
             asset_id: Id::nil(),
             name: "Trimmed".into(),
@@ -1305,6 +1316,7 @@ mod tests {
             (13, 0, false),
         ] {
             let mut clip = Clip {
+                muted: false,
                 stretch: None,
                 id: Id::nil(),
                 asset_id: Id::nil(),
@@ -1473,6 +1485,7 @@ mod tests {
         });
         let clip_id = Id::new_v4();
         project.tracks[0].clips.push(Clip {
+            muted: false,
             id: clip_id,
             asset_id,
             name: "Take".into(),

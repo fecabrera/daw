@@ -44,3 +44,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 - [Seek cache profiles](projects/README.md#seek-cache-profiles): choose background CPU and memory use.
 - [Split MIDI notes](projects/README.md#split-midi-notes): choose how a note that crosses the playhead is divided.
 - [Features and roadmap](roadmap.md).
+
+## Audio preparation
+
+- [Stem separation](audio/stem-separation.md): local models, four-stem groups, progress, and source retention.
