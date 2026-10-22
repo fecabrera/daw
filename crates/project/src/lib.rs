@@ -400,6 +400,7 @@ impl Session {
         if let Err(e) = next.save(&folder) {
             // Only remove empty directories; retain any unrelated files that appeared meanwhile.
             let _ = fs::remove_dir(folder.join("assets"));
+            let _ = fs::remove_dir(folder.join("stems"));
             let _ = fs::remove_dir(&folder);
             return Err(e);
         }

@@ -3982,3 +3982,18 @@ Completed automated checks on Windows with the pinned toolchain:
 - `cargo fmt --all --check` and `git diff --check`: passed.
 
 Tests used generated media in temporary directories. Native UI/device interaction, real HTDemucs/CoreML inference, macOS/Linux execution and release packaging were not repeated. The two minor review findings and dependency coverage limits are outside these two major fixes; this record does not change the pinned review artifacts or certify a new review verdict.
+
+### PR #2 F003: failed Save As cleanup — 2026-10-22
+
+Failed `Session::save_new` now removes its empty `stems` root before removing the exclusively created project folder. Cleanup uses non-recursive directory removal, as with the existing `assets` cleanup, so unrelated contents remain intact. This releases the project name after a generated-source copy fails and permits retry after restoring the missing source.
+
+Completed automated checks on Windows with the pinned toolchain:
+
+- Added `failed_generated_save_as_releases_the_name_and_allows_retry` in the project workflow suite. It failed before the fix because the `Retry` project folder remained. It now passes after staging one stem and failing on a missing second stem. The test verifies unchanged live state, save destination and original manifest, retained source/sibling files, removal of the failed destination, successful same-name retry after source restoration, and reopen with matching prepared samples and no warnings.
+- `cargo test --offline --locked -p daw-project --test workflow`: all 64 tests passed.
+- `cargo test --offline --locked --workspace`: 1,122 passed, 0 failed, 3 opt-in acceptance/model tests ignored.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo build --offline --locked -p daw-cli` and `tools/check_cli.py` using Python 3.12: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+
+Tests used generated WAV fixtures in temporary directories. Native UI/device interaction, real HTDemucs/CoreML inference, macOS/Linux execution and release packaging were not repeated. No dependency version changed; the separate ONNX advisory and dependency coverage limits remain outside this fix. The pinned review artifacts remain unchanged.

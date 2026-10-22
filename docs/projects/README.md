@@ -8,6 +8,8 @@ First Save and Save As ask for a project name and a parent folder. They create a
 
 When leaving a modified project, choose Save, Discard, or Cancel. A cancelled or failed operation retains the current project. Missing recordings remain visible and play as silence. Files that became shorter supply silence for unavailable sections.
 
+If Save As fails because a generated stem is missing, restore that file and retry the same project name and location. A failed Save As removes its empty new project folders and retains unrelated contents.
+
 Saving fails if a directory occupies the `project.json` destination. The directory and its contents remain intact. Move that directory out of the project folder or choose another save location, then retry.
 
 ## Project Settings
