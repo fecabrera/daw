@@ -58,8 +58,10 @@ fn config_for(kind: ModelKind, path: &Path) -> Result<SeparatorConfig, Error> {
 fn run_models(
     models: &Models,
     progress: &Progress,
-    mut run: impl FnMut(SeparatorConfig) -> Result<(), Error>,
+    run: impl FnMut(SeparatorConfig) -> Result<(), Error>,
 ) -> Result<Vec<String>, Error> {
+    #[cfg(target_os = "macos")]
+    let mut run = run;
     progress.check()?;
     #[cfg(target_os = "macos")]
     let mut warnings = Vec::new();

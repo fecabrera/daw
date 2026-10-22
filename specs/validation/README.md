@@ -4061,3 +4061,21 @@ Repository checks on macOS arm64 with the pinned toolchain:
 - Documentation link targets and `git diff --check`: passed.
 
 The change only rearranges application UI controls, so CLI smoke checks were not repeated. Native UI interaction and Windows/Linux execution were not performed; automated egui tests do not establish native window behavior.
+
+## 2026-10-22 — Separation build warning on Windows and Linux
+
+Windows and Linux CI rejected `run_models` because its runner parameter was declared mutable while only the macOS CoreML branch borrowed it mutably. The function now takes an immutable parameter and creates its mutable binding only in the macOS configuration. CPU dispatch, CoreML preference, fallback and cancellation behavior are unchanged.
+
+A temporary host-side compile harness extracts the production function and substitutes a feature flag for its macOS predicate, with minimal backend stubs. With warnings denied, the original non-macOS branch reproduces the reported `unused_mut` error; the corrected non-macOS and macOS branches compile and pass dispatch assertions. This checks the conditional Rust function, not a native Windows/Linux dependency build.
+
+The seven native separation tests passed on macOS arm64, including CPU/CoreML inference fixtures, preference/fallback, cancellation and output-contract rejection. Native Windows/Linux builds remain to be verified by CI.
+
+Completed with the pinned Rust toolchain on macOS arm64:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --offline --locked --workspace`: passed, including all 566 UI tests. Existing opt-in real-model and release acceptance tests remain ignored.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- `git diff --check`: passed.
+
+This correction changes conditional binding mutability only. Native UI/device checks and CLI smoke checks were not repeated.
