@@ -69,6 +69,8 @@ pub struct Session {
     pub stretched_audio: daw_media::ClipAudioCache,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
+    // Clones and history share ownership until generated sources are saved or released.
+    temporary_stems: Vec<std::sync::Arc<separation::TemporaryStems>>,
 }
 impl Session {
     /// Prepare an atomic project-rate change on a worker. Source files stay untouched.
@@ -177,6 +179,7 @@ impl Session {
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             folder: Some(folder),
+            temporary_stems: Vec::new(),
             warnings: if upgraded_stretch {
                 vec![format!(
                     "Integrated time stretch upgraded from revision {previous_stretch_revision} to {}; prepared audio rebuilt. The sound can change. Save to retain the new revision.",
@@ -454,6 +457,7 @@ impl Session {
         generated.0.clear();
         self.project = next;
         self.folder = Some(folder);
+        self.retain_temporary_stems();
         Ok(())
     }
     pub fn export(&self, path: &Path, overwrite: bool) -> Result<Vec<String>> {

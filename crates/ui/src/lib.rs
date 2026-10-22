@@ -1382,6 +1382,7 @@ impl DawUi {
                         {
                             status.state = job_report::State::Cancelled;
                         } else {
+                            status.path = prepared.directory().to_owned();
                             status.warnings = prepared.warnings.clone();
                             status.state = job_report::State::Complete;
                             let mut session = prepared.publish();

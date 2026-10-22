@@ -85,6 +85,6 @@ A drop selects the destination track or Master and the transferred effects. Effe
 
 ## Stem separation
 
-Right-click an audio clip and choose **Stem-separation** to create a group with aligned Drums, Bass, Other, and Vocals tracks. The original stays in place, disabled. Save the project and select local models in Settings first. See [Stem separation](../audio/stem-separation.md) for setup, progress, cancellation, and file storage.
+Right-click an audio clip and choose **Stem-separation** to create a group with aligned Drums, Bass, Other, and Vocals tracks. The original stays in place, disabled. Select local models in Settings first. Unsaved projects use temporary stem storage until the first save. See [Stem separation](../audio/stem-separation.md) for setup, progress, cancellation, and file storage.
 
 Right-click a disabled clip and choose **Enable clip** to restore it. **Disable clip** silences only that clip and shows a greyed version of its color. These actions support Undo and Redo.

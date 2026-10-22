@@ -3919,3 +3919,19 @@ Completed automated checks:
 - `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
 
 Tests used generated media in temporary directories. Native UI/device interactions, Windows/Linux execution and release packaging were not repeated. This correction supersedes the earlier record-before-mark-saved completion order recorded in the stem persistence validation.
+
+### Unsaved-project stem storage — 2026-10-22
+
+Stem separation now supports unsaved projects. The existing preparation pipeline reserves an exclusively created temporary root and retains private shared owners in session/worker/history clones. Unsaved generated assets keep absolute source paths without setting a project folder. First Save reuses generated-asset copying and shared history retargeting, then releases temporary owners only when their source references have moved or been discarded. Failed saves retain the original temporary sources. The menu and action share the model/idle/platform readiness check. The completed report displays the actual output directory.
+
+Completed automated checks:
+
+- `cargo test --offline --locked -p daw-project -p daw-ui`: 86 project and 558 UI tests passed; 1 opt-in local-model test ignored. New project regressions cover unsaved separation, session/worker ownership, Undo/Redo and history eviction, first-save relocation and reopen, save while separation is undone, failed first save and retry, cancellation, backend failure and discarded-result cleanup. Existing saved-project/history/rate/import behavior passed.
+- `cargo test --offline --locked -p daw-ui separation --lib`: 3 passed, including the additional shared readiness regression for saved/unsaved folders, missing models and blocking jobs. The failure/status guard test now starts from an unsaved project.
+- `cargo test --offline --locked -p daw-project --lib same_name_jobs_use_distinct_directories`: passed after extending the collision check to saved and unsaved projects.
+- `cargo clippy --offline --locked -p daw-project -p daw-ui --all-targets -- -D warnings`: passed.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+
+Tests used generated WAV fixtures and temporary directories. No user media or model weights were used. Native UI/device interaction, Windows/Linux execution, real-model separation and release packaging were not repeated. Temporary storage has no crash-recovery or stale-directory cleanup service. This behavior supersedes the earlier saved-project prerequisite.

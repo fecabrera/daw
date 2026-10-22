@@ -35,23 +35,20 @@ impl DawUi {
                     .assets
                     .iter()
                     .any(|a| a.id == clip.asset_id && a.midi_pattern.is_none())
-            {
-                let ready = daw_project::SEPARATION_AVAILABLE
-                    && self.file_action_enabled(FileAction::Import)
-                    && self.session.folder.is_some()
-                    && self.settings.separation_models.cpu.is_some();
-                if ui
-                    .add_enabled(ready, egui::Button::new("Stem-separation"))
+                && ui
+                    .add_enabled(
+                        self.separation_enabled(),
+                        egui::Button::new("Stem-separation"),
+                    )
                     .on_disabled_hover_text(if daw_project::SEPARATION_AVAILABLE {
-                        "Save the project and select a CPU model in Settings first"
+                        "Select a CPU model in Settings first"
                     } else {
                         daw_project::SEPARATION_UNAVAILABLE_REASON
                     })
                     .clicked()
-                {
-                    self.separate_clip(clip.id);
-                    ui.close();
-                }
+            {
+                self.separate_clip(clip.id);
+                ui.close();
             }
             if ui
                 .button(if clip.muted {

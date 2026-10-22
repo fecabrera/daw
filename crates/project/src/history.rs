@@ -198,6 +198,7 @@ impl SessionHistory {
                     asset.source = current.source.clone();
                 }
             }
+            entry.session.retain_temporary_stems();
             entry.model_bytes = snapshot_model_bytes(&entry.session);
         }
         self.saved = Some(saved);
@@ -247,6 +248,7 @@ fn snapshot(session: &Session) -> Result<Snapshot> {
             asset.source.path_kind = "absolute".into();
         }
     }
+    next.retain_temporary_stems();
     let model_bytes = snapshot_model_bytes(&next);
     Ok(Snapshot {
         session: next,
@@ -260,7 +262,8 @@ fn snapshot_model_bytes(session: &Session) -> u64 {
         &session.audio,
         &session.stretched_audio,
         &session.sampler_audio,
-    ) + session.folder.as_ref().map_or(0, |p| p.capacity() as u64)
+    ) + session.temporary_stems_memory_bytes()
+        + session.folder.as_ref().map_or(0, |p| p.capacity() as u64)
         + (session.warnings.capacity() * std::mem::size_of::<String>()) as u64
         + session
             .warnings

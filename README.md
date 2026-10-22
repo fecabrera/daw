@@ -23,7 +23,7 @@ Stem separation uses local Charon HTDemucs models, with CoreML on macOS and CPU 
 
 Audio and MIDI workflows are available in four views: **Timeline**, **Instrument**, **Editor**, and **Mixer**.
 
-The project format is experimental. Saved projects reference external recordings. Generated stems are stored inside the project folder. Missing audio files remain visible and play as silence.
+The project format is experimental. Saved projects reference external recordings. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
 
 Planned work includes audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
 

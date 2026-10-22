@@ -9,6 +9,22 @@ use std::{
     sync::atomic::Ordering,
 };
 
+/// Only owns a fresh, exclusively created temporary directory. Session/history
+/// clones keep files alive independently of the separation job and save worker.
+pub(super) struct TemporaryStems(PathBuf);
+impl TemporaryStems {
+    fn new() -> Result<Self> {
+        let path = std::env::temp_dir().join(format!("daw-temporary-stems-{}", Id::new_v4()));
+        fs::create_dir(&path).map_err(error)?;
+        Ok(Self(path))
+    }
+}
+impl Drop for TemporaryStems {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 /// Unpublished output owns its directory. Failure, cancellation, or a dropped
 /// worker receiver removes only this job's files. Published files survive undo.
 pub struct PreparedSeparation {
@@ -24,6 +40,11 @@ impl Drop for PreparedSeparation {
     }
 }
 impl PreparedSeparation {
+    pub fn directory(&self) -> &Path {
+        self.directory
+            .as_deref()
+            .expect("Unpublished stem directory")
+    }
     pub fn publish(mut self) -> Session {
         self.directory = None;
         self.session
@@ -65,6 +86,35 @@ fn reserve_directory(parent: &Path, name: &str) -> Result<PathBuf> {
     Err(error("No unused stem folder name available"))
 }
 impl Session {
+    /// Release only storage no longer referenced by this session. Other worker
+    /// and history snapshots retain their own shared owners until retargeted.
+    pub(crate) fn retain_temporary_stems(&mut self) {
+        if self.temporary_stems.is_empty() {
+            return;
+        }
+        let sources: Vec<_> = self
+            .project
+            .assets
+            .iter()
+            .filter_map(|asset| self.source_path(asset).ok())
+            .collect();
+        self.temporary_stems.retain(|directory| {
+            sources
+                .iter()
+                .any(|source| source.starts_with(&directory.0))
+        });
+    }
+
+    pub(crate) fn temporary_stems_memory_bytes(&self) -> u64 {
+        (self.temporary_stems.capacity() * std::mem::size_of::<std::sync::Arc<TemporaryStems>>())
+            as u64
+            + self
+                .temporary_stems
+                .iter()
+                .map(|directory| directory.0.capacity() as u64)
+                .sum::<u64>()
+    }
+
     pub fn separate_clip(
         &self,
         clip_id: Id,
@@ -84,10 +134,6 @@ impl Session {
         progress: &SeparationProgress,
         run: impl FnOnce(&[[f32; 2]], &Path) -> Result<Vec<String>>,
     ) -> Result<PreparedSeparation> {
-        let folder = self
-            .folder
-            .as_ref()
-            .ok_or_else(|| error("Save the project before separating a clip"))?;
         progress.check().map_err(error)?;
         let clip = self
             .project
@@ -125,6 +171,17 @@ impl Session {
             &|| progress.cancel.load(Ordering::Relaxed),
         )
         .map_err(error)?;
+        let temporary = self
+            .folder
+            .is_none()
+            .then(TemporaryStems::new)
+            .transpose()?
+            .map(std::sync::Arc::new);
+        let folder = self
+            .folder
+            .as_deref()
+            .or_else(|| temporary.as_ref().map(|directory| directory.0.as_path()))
+            .expect("Saved folder or owned temporary storage");
         let directory = reserve_directory(&folder.join("stems"), &clip.name)?;
         let mut prepared = PreparedSeparation {
             session: None,
@@ -134,6 +191,9 @@ impl Session {
         prepared.warnings = run(&input, &directory)?;
         progress.check().map_err(error)?;
         let mut next = self.clone();
+        if let Some(temporary) = &temporary {
+            next.temporary_stems.push(temporary.clone());
+        }
         let mut tracks = Vec::new();
         for name in daw_separation::STEMS {
             progress.check().map_err(error)?;
@@ -165,12 +225,14 @@ impl Session {
                 .find(|a| a.id == stem.asset_id)
                 .unwrap();
             asset.source.kind = "generated".into();
-            asset.source.path = path
-                .strip_prefix(folder)
-                .map_err(error)?
-                .to_string_lossy()
-                .into_owned();
-            asset.source.path_kind = "relative".into();
+            if self.folder.is_some() {
+                asset.source.path = path
+                    .strip_prefix(folder)
+                    .map_err(error)?
+                    .to_string_lossy()
+                    .into_owned();
+                asset.source.path_kind = "relative".into();
+            }
         }
         next.project
             .edit(Edit::Batch(vec![
@@ -333,6 +395,189 @@ mod tests {
         }
         Ok(vec!["Test warning".into()])
     }
+
+    #[test]
+    fn unsaved_stems_survive_undo_and_first_save_retargets_history_before_cleanup() {
+        let (fixture, mut session, clip) = Fixture::new();
+        session.folder = None;
+        let mut history = crate::SessionHistory::new(&session, false).unwrap();
+        let prepared = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap();
+        let directory = prepared.directory().to_owned();
+        let temporary = directory.parent().unwrap().parent().unwrap().to_owned();
+        let mut next = prepared.publish();
+        assert!(next.folder.is_none());
+        assert_eq!(next.project.tracks.len(), 6);
+        assert!(next.project.tracks[0].clips[0].muted);
+        history.record(&next).unwrap();
+        let undone = history.undo(&next).unwrap();
+        drop(next);
+        assert!(directory.join("drums.wav").is_file());
+        next = history.redo(&undone).unwrap();
+        next.project.master.gain_db = -3.0;
+        history.record(&next).unwrap();
+        next = history.undo(&next).unwrap();
+        assert!(history.can_redo());
+
+        let saved = fixture.0.join("first-save");
+        next.save(&saved).unwrap();
+        // Retained history still needs the old files until its paths are retargeted.
+        assert!(temporary.is_dir());
+        history.mark_saved(&next).unwrap();
+        history.record(&next).unwrap();
+        assert!(!temporary.exists());
+        assert!(history.is_saved());
+        assert!(history.can_redo());
+        next = history.redo(&next).unwrap();
+        assert_eq!(next.project.master.gain_db, -3.0);
+        next = history.undo(&next).unwrap();
+        let before_separation = history.undo(&next).unwrap();
+        assert_eq!(before_separation.project.tracks.len(), 1);
+        next = history.redo(&before_separation).unwrap();
+        assert!(history.is_saved());
+        for asset in next
+            .project
+            .assets
+            .iter()
+            .filter(|a| a.source.kind == "generated")
+        {
+            let path = next.source_path(asset).unwrap();
+            assert!(path.starts_with(saved.join("stems")), "{path:?}");
+            assert!(path.is_file());
+        }
+        let reopened = Session::open(&saved).unwrap();
+        assert_eq!(reopened.project.tracks.len(), 6);
+        assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
+        for track in reopened
+            .project
+            .tracks
+            .iter()
+            .filter(|t| t.group_id.is_some())
+        {
+            assert_eq!(
+                reopened
+                    .audio_for_clip(&track.clips[0])
+                    .unwrap()
+                    .samples
+                    .len(),
+                2400
+            );
+            assert_eq!(track.clips[0].start_frame, 9600);
+        }
+    }
+
+    #[test]
+    fn temporary_stems_are_shared_until_the_last_session_is_released() {
+        let (_fixture, mut session, clip) = Fixture::new();
+        session.folder = None;
+        let prepared = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap();
+        let directory = prepared.directory().to_owned();
+        let temporary = directory.parent().unwrap().parent().unwrap().to_owned();
+        let published = prepared.publish();
+        let mut history = crate::SessionHistory::new(&session, false).unwrap();
+        history.record(&published).unwrap();
+        let worker = published.clone();
+        drop(published);
+        assert!(directory.join("drums.wav").is_file());
+        drop(worker);
+        let restored = history.undo(&session).unwrap();
+        assert_eq!(restored.project.tracks.len(), 1);
+        assert!(directory.join("drums.wav").is_file());
+        history.release_optional_memory();
+        assert!(!temporary.exists());
+    }
+
+    #[test]
+    fn first_save_with_separation_undone_keeps_temporary_stems_for_redo() {
+        let (fixture, mut session, clip) = Fixture::new();
+        session.folder = None;
+        let mut history = crate::SessionHistory::new(&session, false).unwrap();
+        let prepared = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap();
+        let directory = prepared.directory().to_owned();
+        let temporary = directory.parent().unwrap().parent().unwrap().to_owned();
+        let mut next = prepared.publish();
+        history.record(&next).unwrap();
+        next = history.undo(&next).unwrap();
+        let saved = fixture.0.join("undone-first-save");
+        next.save(&saved).unwrap();
+        history.mark_saved(&next).unwrap();
+        history.record(&next).unwrap();
+        assert!(history.can_redo());
+        assert!(directory.join("drums.wav").is_file());
+        next = history.redo(&next).unwrap();
+        next.save(&saved).unwrap();
+        history.mark_saved(&next).unwrap();
+        history.record(&next).unwrap();
+        assert!(!temporary.exists());
+        assert_eq!(Session::open(&saved).unwrap().project.tracks.len(), 6);
+    }
+
+    #[test]
+    fn failed_first_save_retains_temporary_stems_and_the_unsaved_session() {
+        let (fixture, mut session, clip) = Fixture::new();
+        session.folder = None;
+        let prepared = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap();
+        let directory = prepared.directory().to_owned();
+        let mut next = prepared.publish();
+        let before = next.project.clone();
+        let blocked = fixture.0.join("blocked-save");
+        fs::create_dir_all(blocked.join("project.json")).unwrap();
+        assert!(next.save(&blocked).is_err());
+        assert!(next.folder.is_none());
+        assert_eq!(next.project, before);
+        assert!(directory.join("drums.wav").is_file());
+        assert_eq!(fs::read_dir(blocked.join("stems")).unwrap().count(), 0);
+        let saved = fixture.0.join("retry-save");
+        next.save(&saved).unwrap();
+        assert!(!directory.exists());
+        assert_eq!(Session::open(&saved).unwrap().project.tracks.len(), 6);
+    }
+
+    #[test]
+    fn unsaved_failures_cancellation_and_discard_clean_only_their_temporary_files() {
+        let (fixture, mut session, clip) = Fixture::new();
+        session.folder = None;
+        let before = session.project.clone();
+        for cancel in [false, true] {
+            let progress = SeparationProgress::default();
+            let mut temporary = PathBuf::new();
+            let result = session.separate_clip_with(clip, &progress, |samples, path| {
+                temporary = path.parent().unwrap().parent().unwrap().to_owned();
+                fake(samples, path)?;
+                if cancel {
+                    progress.cancel.store(true, Ordering::Relaxed);
+                    Ok(Vec::new())
+                } else {
+                    Err(error("Inference failed"))
+                }
+            });
+            assert!(result.is_err());
+            assert!(!temporary.as_os_str().is_empty());
+            assert!(!temporary.exists());
+        }
+        let prepared = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap();
+        let temporary = prepared
+            .directory()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_owned();
+        drop(prepared);
+        assert!(!temporary.exists());
+        assert_eq!(session.project, before);
+        assert!(fixture.0.join("original.wav").is_file());
+    }
+
     #[test]
     fn separation_preserves_original_aligns_group_and_reopens_after_save_as() {
         let (fixture, session, clip) = Fixture::new();
@@ -635,13 +880,19 @@ mod tests {
     #[test]
     fn same_name_jobs_use_distinct_directories() {
         let (_fixture, session, clip) = Fixture::new();
-        let first = session
-            .separate_clip_with(clip, &SeparationProgress::default(), fake)
-            .unwrap();
-        let second = session
-            .separate_clip_with(clip, &SeparationProgress::default(), fake)
-            .unwrap();
-        assert_ne!(first.directory, second.directory);
+        for saved in [false, true] {
+            let mut session = session.clone();
+            if !saved {
+                session.folder = None;
+            }
+            let first = session
+                .separate_clip_with(clip, &SeparationProgress::default(), fake)
+                .unwrap();
+            let second = session
+                .separate_clip_with(clip, &SeparationProgress::default(), fake)
+                .unwrap();
+            assert_ne!(first.directory, second.directory);
+        }
     }
 }
 

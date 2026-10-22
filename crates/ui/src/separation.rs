@@ -4,7 +4,7 @@ pub(super) struct Status {
     pub progress: SeparationProgress,
     pub state: job_report::State,
     pub warnings: Vec<String>,
-    path: PathBuf,
+    pub(super) path: PathBuf,
 }
 impl Status {
     pub fn show(&self, ctx: &egui::Context) -> bool {
@@ -33,11 +33,15 @@ impl Status {
     }
 }
 impl DawUi {
+    pub(super) fn separation_enabled(&self) -> bool {
+        daw_project::SEPARATION_AVAILABLE
+            && self.file_action_enabled(FileAction::Import)
+            && self.separation_status.is_none()
+            && self.settings.separation_models.cpu.is_some()
+    }
+
     pub(super) fn separate_clip(&mut self, clip: Id) {
-        if !daw_project::SEPARATION_AVAILABLE
-            || !self.file_action_enabled(FileAction::Import)
-            || self.separation_status.is_some()
-        {
+        if !self.separation_enabled() {
             return;
         }
         let progress = SeparationProgress::default();
@@ -59,8 +63,8 @@ impl DawUi {
                 .session
                 .folder
                 .clone()
-                .unwrap_or_default()
-                .join("stems"),
+                .map(|folder| folder.join("stems"))
+                .unwrap_or_else(std::env::temp_dir),
         });
     }
 }
@@ -68,6 +72,21 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn readiness_requires_a_model_and_idle_app_but_not_a_save_folder() {
+        let mut app = DawUi::default();
+        assert!(!app.separation_enabled());
+        std::sync::Arc::make_mut(&mut app.settings.separation_models).cpu =
+            Some(PathBuf::from("cpu-model.onnx"));
+        for folder in [None, Some(std::env::temp_dir())] {
+            app.session.folder = folder;
+            assert_eq!(app.separation_enabled(), daw_project::SEPARATION_AVAILABLE);
+        }
+        let (_sender, receiver) = std::sync::mpsc::channel();
+        app.job = Some(receiver);
+        assert!(!app.separation_enabled());
+    }
+
     #[test]
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
     fn unsupported_target_does_not_start_a_job() {
@@ -81,14 +100,19 @@ mod tests {
     #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
     fn failure_stays_in_status_and_guards_project_actions() {
         let mut app = DawUi::default();
-        app.session.folder = Some(std::env::temp_dir());
         app.settings.separation_models = std::sync::Arc::new(daw_project::SeparationModels {
             cpu: Some(std::env::temp_dir().join("daw-missing-test-model.onnx")),
             coreml: None,
         });
+        assert!(app.session.folder.is_none());
+        assert!(app.separation_enabled());
         let before = app.session.project.clone();
         app.separate_clip(Id::new_v4());
         assert!(app.separation_status.is_some());
+        assert_eq!(
+            app.separation_status.as_ref().unwrap().path,
+            std::env::temp_dir()
+        );
         assert!(!app.file_action_enabled(FileAction::Save));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         loop {

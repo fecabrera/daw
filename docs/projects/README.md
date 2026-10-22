@@ -4,7 +4,7 @@ Projects store the arrangement, instruments, effects, and settings. Audio record
 
 ## Save and open
 
-First Save and Save As ask for a project name and a parent folder. They create a new named project folder. Regular Save uses the current location. It writes the project state from when you pressed Save in the background. The workspace stays visible and editable, and the status bar shows Saving project. Changes made during the write remain marked as unsaved; save again to include them. File menu actions are unavailable until the write finishes. Save As preserves the references to the original recordings; it does not copy them into the new project. Generated [stems](../audio/stem-separation.md) are copied into the new project folder.
+First Save and Save As ask for a project name and a parent folder. They create a new named project folder. Regular Save uses the current location. It writes the project state from when you pressed Save in the background. The workspace stays visible and editable, and the status bar shows Saving project. Changes made during the write remain marked as unsaved; save again to include them. File menu actions are unavailable until the write finishes. Save As preserves the references to the original recordings; it does not copy them into the new project. Generated [stems](../audio/stem-separation.md) are copied into the new project folder, including temporary stems created before the first save.
 
 When leaving a modified project, choose Save, Discard, or Cancel. A cancelled or failed operation retains the current project. Missing recordings remain visible and play as silence. Files that became shorter supply silence for unavailable sections.
 
