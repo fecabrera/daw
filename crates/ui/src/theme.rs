@@ -135,15 +135,17 @@ pub struct ClipColors {
 }
 
 impl ClipColors {
-    /// Keep a small hint of clip color in an otherwise grey, opaque palette.
+    /// Match disabled units with a neutral header and secondary foregrounds.
     /// Painter opacity would let the timeline grid show through the clip.
     pub fn dimmed(self, ctx: &Context) -> Self {
-        let grey = ((299 * u32::from(self.body.r())
-            + 587 * u32::from(self.body.g())
-            + 114 * u32::from(self.body.b()))
-            / 1000) as u8;
-        let subdued = blend(Color32::from_gray(grey), self.body, 12);
-        clip_palette(blend(palette(ctx).panel, subdued, 80))
+        let colors = palette(ctx);
+        Self {
+            body: colors.panel,
+            header: unit_header_fill(ctx, false),
+            channel: colors.panel,
+            waveform: colors.secondary,
+            text: colors.secondary,
+        }
     }
 }
 

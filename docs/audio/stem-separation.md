@@ -21,7 +21,7 @@ Model loading needs substantial memory. CoreML can take tens of seconds to compi
 
 Separation uses the clicked clip's trim, repeats, stretch, and transpose. It excludes track, group, and Master processing. Each stem keeps the clip gain. The source file stays unchanged.
 
-A new group appears at the end of the track list with one audio track per stem. All four clips start at the original clip's position and have its duration. The original clip stays in place, disabled and shown with a greyed version of its color. Right-click it and choose **Enable clip** to hear it again. Disable or mute the stems first if you do not want both versions to play.
+A new group appears at the end of the track list with one audio track per stem. All four clips start at the original clip's position and have its duration. The original clip stays in place, disabled and shown with the same neutral header and muted foreground colors as disabled units. Right-click it and choose **Enable clip** to hear it again. Disable or mute the stems first if you do not want both versions to play.
 
 Files are stored in `stems/<clip name>/` inside the project folder. An existing folder is retained; a number is added to the new folder name. Save the project to retain the new arrangement. Save As copies generated stems to the new project folder.
 

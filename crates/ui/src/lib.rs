@@ -11477,15 +11477,12 @@ mod tests {
                 let base = theme::clip_colors(app.session.project.tracks[0].color, custom);
                 let colors = base.dimmed(&ctx);
                 assert_ne!(base, colors);
-                let chroma =
-                    |c: egui::Color32| c.r().max(c.g()).max(c.b()) - c.r().min(c.g()).min(c.b());
-                assert!(chroma(colors.body) < chroma(base.body) / 3);
-                let brightness = |c: egui::Color32| {
-                    (299 * i32::from(c.r()) + 587 * i32::from(c.g()) + 114 * i32::from(c.b()))
-                        / 1000
-                };
-                assert!((brightness(colors.text) - brightness(colors.header)).abs() >= 90);
-                assert!((brightness(colors.waveform) - brightness(colors.body)).abs() >= 80);
+                let palette = theme::palette(&ctx);
+                assert_eq!(colors.header, theme::unit_header_fill(&ctx, false));
+                assert_eq!(colors.body, palette.panel);
+                assert_eq!(colors.channel, palette.panel);
+                assert_eq!(colors.text, palette.secondary);
+                assert_eq!(colors.waveform, palette.secondary);
                 let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                 for fill in [colors.body, colors.header, colors.channel] {
                     assert_eq!(fill.a(), 255);
