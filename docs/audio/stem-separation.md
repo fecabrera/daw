@@ -25,6 +25,6 @@ A new group appears at the end of the track list with one audio track per stem. 
 
 Files are stored in `stems/<clip name>/` inside the project folder. An existing folder is retained; a number is added to the new folder name. Save the project to retain the new arrangement. Save As copies generated stems to the new project folder.
 
-Undo restores the arrangement. It retains generated files so Redo can restore the stems. Failure or cancellation leaves the arrangement unchanged and removes unpublished stem files. Cancellation waits for the current model operation to return; it is not immediate during model loading or inference.
+Undo restores the arrangement. It retains generated files so Redo can restore the stems. After Save As copies the stems, Undo/Redo uses those copies, including when you save with the separation undone and then redo it. Failure or cancellation leaves the arrangement unchanged and removes unpublished stem files. Cancellation waits for the current model operation to return; it is not immediate during model loading or inference.
 
 Separation can leave bleed or artifacts. It processes one clip at a time and needs memory for model processing, the arranged input, and prepared stem audio. Long clips can use substantial memory. A CoreML error triggers a fresh CPU attempt and appears as a warning in the finished report. If CPU processing also fails, the report shows the error.

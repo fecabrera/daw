@@ -3863,3 +3863,15 @@ The new painting regression passed for inherited and overridden colors in dark a
 Supersedes the disabled-palette color treatment above. Disabled clips now desaturate their resolved body toward grey with a small retained color tint. They reuse the standard clip palette builder for readable text, waveforms, note colors, and related fills, instead of fading foregrounds toward the panel. Opaque fills and normal selection outlines remain.
 
 The painting regression now checks reduced color saturation and foreground contrast in both themes. All 557 UI tests, strict workspace Clippy, formatting, and whitespace checks passed. The macOS release app was rebuilt. No audio behavior changed.
+
+### F001: Generated stem paths in retained history — 2026-10-21
+
+Shared save completion now retargets generated asset paths by stable ID in every retained history snapshot, including pending grouped edits. Saving with separation undone no longer erases the destination paths needed by Redo. Snapshot memory accounting and the existing byte limit include the updated paths; the saved-state baseline remains independent.
+
+Completed automated checks:
+
+- `cargo test --offline --locked -p daw-project`: 79 passed, 0 failed, 1 local-model test ignored. The new synthetic regressions cover the UI's record-then-mark-saved sequence, Save As → undo separation → Save → redo, deletion of the first project folder before the final Save/reopen, and save completion with newer grouped edits. Existing history memory limits, dirty-state handling, storage, export, transpose, and Sampler tests passed.
+- `cargo clippy --offline --locked -p daw-project --all-targets -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+
+Tests used generated audio and the existing deterministic separation fixture. No model inference, native UI/device checks, release packaging, or Windows/Linux execution was repeated for this history-only fix.

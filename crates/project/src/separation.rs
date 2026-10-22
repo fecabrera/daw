@@ -395,6 +395,115 @@ mod tests {
         );
     }
     #[test]
+    fn saving_undone_separation_keeps_save_as_paths_for_redo() {
+        let (fixture, session, clip) = Fixture::new();
+        let mut history = crate::SessionHistory::new(&session, false).unwrap();
+        let mut next = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap()
+            .publish();
+        history.record(&next).unwrap();
+        let copy = fixture.0.join("copy");
+        next.save(&copy).unwrap();
+        // Match UI Job::Saved: record the returned session before marking it saved.
+        history.record(&next).unwrap();
+        history.mark_saved(&next).unwrap();
+        assert!(history.is_saved());
+        while next.project.tracks.len() != 1 {
+            next = history.undo(&next).unwrap();
+        }
+        assert!(!history.is_saved());
+        next.save(&copy).unwrap();
+        history.record(&next).unwrap();
+        history.mark_saved(&next).unwrap();
+        assert!(history.is_saved());
+        assert!(history.can_redo());
+
+        // The copy must be independent of the first project's generated files.
+        fs::remove_dir_all(fixture.0.join("project")).unwrap();
+        while let Some(redone) = history.redo(&next) {
+            next = redone;
+            let assets: Vec<_> = next
+                .project
+                .assets
+                .iter()
+                .filter(|a| a.source.kind == "generated")
+                .collect();
+            assert_eq!(assets.len(), 4);
+            for asset in assets {
+                let path = next.source_path(asset).unwrap();
+                assert!(path.starts_with(copy.join("stems")), "{path:?}");
+                assert!(path.is_file());
+            }
+            assert!(!history.is_saved());
+        }
+        next.save(&copy).unwrap();
+        history.record(&next).unwrap();
+        history.mark_saved(&next).unwrap();
+        assert!(history.is_saved());
+        let reopened = Session::open(&copy).unwrap();
+        assert_eq!(reopened.project.tracks.len(), 6);
+        assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
+        assert!(reopened.project.tracks[0].clips[0].muted);
+        for track in reopened
+            .project
+            .tracks
+            .iter()
+            .filter(|t| t.group_id.is_some())
+        {
+            assert_eq!(
+                reopened
+                    .audio_for_clip(&track.clips[0])
+                    .unwrap()
+                    .samples
+                    .len(),
+                2400
+            );
+        }
+    }
+
+    #[test]
+    fn save_completion_retargets_grouped_history_without_losing_newer_edits() {
+        let (fixture, session, clip) = Fixture::new();
+        let mut next = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap()
+            .publish();
+        let mut history = crate::SessionHistory::new(&next, false).unwrap();
+        let mut saved = next.clone();
+        saved.save(&fixture.0.join("copy")).unwrap();
+        history.begin_group();
+        next.project.name = "Newer grouped edit".into();
+        history.record(&next).unwrap();
+        history.mark_saved(&saved).unwrap();
+        assert!(!history.is_saved());
+        history.finish_group();
+
+        let restored = history.undo(&saved).unwrap();
+        assert!(history.is_saved());
+        let redone = history.redo(&restored).unwrap();
+        assert_eq!(redone.project.name, "Newer grouped edit");
+        assert!(!history.is_saved());
+        for state in [&restored, &redone] {
+            let generated: Vec<_> = state
+                .project
+                .assets
+                .iter()
+                .filter(|a| a.source.kind == "generated")
+                .collect();
+            assert_eq!(generated.len(), 4);
+            for asset in generated {
+                assert!(
+                    state
+                        .source_path(asset)
+                        .unwrap()
+                        .starts_with(fixture.0.join("copy"))
+                );
+            }
+        }
+    }
+
+    #[test]
     fn failed_cancelled_and_discarded_jobs_leave_no_stems_or_edits() {
         let (_fixture, session, clip) = Fixture::new();
         let before = session.project.clone();
