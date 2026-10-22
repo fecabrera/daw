@@ -3900,3 +3900,8 @@ The initial sandboxed model runs could not create native compiler working direct
 The native runtime update exposed a thin-LTO release link failure: CoreML availability checks referenced `__isPlatformVersionAtLeast`, but Rust's native link omitted Apple Clang's compiler runtime. `daw-separation/build.rs` now locates `libclang_rt.osx.a` through the selected Xcode/Command Line Tools `xcrun` and publishes its static linkage to consumers. Only Apple Silicon macOS runs this step; application crates do not duplicate it.
 
 The macOS release package rebuilt successfully through `sh tools/package_macos.sh release`. All three separation tests passed in release mode, including separate-process malformed-model rejection and native stream/fallback. Release CLI linking, focused Clippy, formatting and whitespace checks also passed. No native UI/device or older-macOS compatibility check is claimed.
+### Stem Save As path assertion on Windows — 2026-10-22
+
+The stem Save As/reopen regression now checks the `stems` directory with `Path::starts_with` instead of a literal `stems/` string prefix. Saved relative paths use native separators, including backslashes on Windows. Save and import behavior are unchanged.
+
+The focused `separation_preserves_original_aligns_group_and_reopens_after_save_as` test passed on macOS. `cargo fmt --all --check` and `git diff --check` passed. Native Windows execution remains for CI; it was not run locally.

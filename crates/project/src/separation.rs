@@ -410,7 +410,7 @@ mod tests {
                 .assets
                 .iter()
                 .filter(|a| a.source.kind == "generated")
-                .all(|a| a.source.path.starts_with("stems/"))
+                .all(|a| Path::new(&a.source.path).starts_with("stems"))
         );
         assert_eq!(
             fs::read(fixture.0.join("original.wav")).unwrap(),
