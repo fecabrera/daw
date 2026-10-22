@@ -428,17 +428,17 @@ mod tests {
         history.record(&next).unwrap();
         let copy = fixture.0.join("copy");
         next.save(&copy).unwrap();
-        // Match UI Job::Saved: record the returned session before marking it saved.
-        history.record(&next).unwrap();
+        // Match UI Job::Saved: retarget history before recording saved metadata.
         history.mark_saved(&next).unwrap();
+        history.record(&next).unwrap();
         assert!(history.is_saved());
         while next.project.tracks.len() != 1 {
             next = history.undo(&next).unwrap();
         }
         assert!(!history.is_saved());
         next.save(&copy).unwrap();
-        history.record(&next).unwrap();
         history.mark_saved(&next).unwrap();
+        history.record(&next).unwrap();
         assert!(history.is_saved());
         assert!(history.can_redo());
 
@@ -461,8 +461,8 @@ mod tests {
             assert!(!history.is_saved());
         }
         next.save(&copy).unwrap();
-        history.record(&next).unwrap();
         history.mark_saved(&next).unwrap();
+        history.record(&next).unwrap();
         assert!(history.is_saved());
         let reopened = Session::open(&copy).unwrap();
         assert_eq!(reopened.project.tracks.len(), 6);

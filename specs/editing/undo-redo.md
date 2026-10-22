@@ -28,6 +28,8 @@ The exact successful save snapshot becomes the saved checkpoint, including when 
 
 Save As keeps history and its new save destination; a changed project name is a metadata edit. New, Close, and successful Open reset history. No history is serialized. External exports and source files are not undone.
 
+On blocking save completion, call shared `SessionHistory::mark_saved` before recording the returned session. It retargets generated asset locations in retained snapshots before structural comparison. Relocation alone must not clear Redo or add an Undo entry; a real project-name change still records an edit. Regular Save only marks its exact written checkpoint and must not record or publish that older snapshot over newer edits.
+
 ## Commands
 
 `HistoryAction` supplies labels and exact shortcuts to both UI and native menus. macOS Edit exposes Command+Z and Command+Shift+Z. Windows/Linux Edit exposes Ctrl+Z and Ctrl+Shift+Z. Disabled stacks stay disabled. Shift+Z cannot fall through to Undo, held-key repeats are ignored, and native dispatch removes a duplicate forwarded event.

@@ -3905,3 +3905,17 @@ The macOS release package rebuilt successfully through `sh tools/package_macos.s
 The stem Save As/reopen regression now checks the `stems` directory with `Path::starts_with` instead of a literal `stems/` string prefix. Saved relative paths use native separators, including backslashes on Windows. Save and import behavior are unchanged.
 
 The focused `separation_preserves_original_aligns_group_and_reopens_after_save_as` test passed on macOS. `cargo fmt --all --check` and `git diff --check` passed. Native Windows execution remains for CI; it was not run locally.
+
+### PR #2 F001: Preserve Redo during stem Save As — 2026-10-22
+
+Blocking save completion now calls the existing shared `SessionHistory::mark_saved` through the UI history helper before recording the returned session. Generated source relocation is normalized before structural comparison, so a same-name Save As retains Redo and adds no Undo entry. A real project-name change still records an edit. Regular-save snapshot handling and bounded history retargeting remain shared and unchanged.
+
+Completed automated checks:
+
+- Added a UI regression using real generated WAV import, `save_named`, the save worker and `poll`. It failed before the fix at “relocation alone must preserve Redo” and passed afterward. Both same-name and renamed Save As cases verify history, saved-state tracking, destination retention and copied-source availability after removal of the original project folder.
+- `cargo test --offline --locked -p daw-project -p daw-ui`: 639 passed, 0 failed, 1 opt-in local-model test ignored. Existing generated-source Save As/Undo/Save/Redo, grouped newer-edit, memory-limit, save-failure and UI lifecycle coverage passed. Updated the existing project regression to use the corrected save-completion order.
+- `cargo clippy --offline --locked -p daw-ui -p daw-project --all-targets -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+
+Tests used generated media in temporary directories. Native UI/device interactions, Windows/Linux execution and release packaging were not repeated. This correction supersedes the earlier record-before-mark-saved completion order recorded in the stem persistence validation.

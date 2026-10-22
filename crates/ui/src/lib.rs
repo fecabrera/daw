@@ -1364,9 +1364,11 @@ impl DawUi {
                 Ok(Job::Saved(session)) => {
                     self.project_name_dialog = None;
                     self.session = session;
-                    self.record_history();
                     self.saved_navigation_revision = self.navigation_revision;
+                    // Relocation is not an edit. Retarget retained sources before
+                    // recording any real name change, so path-only saves keep Redo.
                     self.history_saved(&self.session.clone());
+                    self.record_history();
                     self.dirty = false;
                     self.unsaved_prompt = false;
                     self.perform_pending();
@@ -9101,6 +9103,68 @@ mod tests {
     impl Drop for SaveLocation {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn save_as_retargets_stems_before_recording_history_and_preserves_name_edits() {
+        for rename in [false, true] {
+            let location = SaveLocation::new();
+            let wav = TestWav::new();
+            let mut app = DawUi::default();
+            app.session.import(&wav.0, None, 0).unwrap();
+            app.session.project.assets[0].source.kind = "generated".into();
+            let original = location.0.join("original");
+            app.session.save(&original).unwrap();
+            let original_name = app.session.project.name.clone();
+            app.ensure_history();
+            app.session.project.master.gain_db = -3.0;
+            app.mark_dirty();
+            app.session = app.history.as_mut().unwrap().undo(&app.session).unwrap();
+            assert!(app.history.as_ref().unwrap().can_redo());
+            assert!(!app.history.as_ref().unwrap().can_undo());
+
+            let name = if rename {
+                "Renamed mix".to_owned()
+            } else {
+                original_name.clone()
+            };
+            app.save_named(name.clone(), Some(location.0.clone()));
+            wait_for_save(&mut app);
+            assert!(app.error.is_none(), "{:?}", app.error);
+            assert!(!app.dirty);
+            let destination = location.0.join(&name);
+            assert_eq!(app.session.folder.as_ref(), Some(&destination));
+            // History must use the saved copies, even after the old folder is gone.
+            std::fs::remove_dir_all(original).unwrap();
+            let history = app.history.as_mut().unwrap();
+            assert!(history.is_saved());
+            if rename {
+                assert!(!history.can_redo(), "a real name edit clears Redo");
+                app.session = history.undo(&app.session).unwrap();
+                assert_eq!(app.session.project.name, original_name);
+                assert!(!history.is_saved());
+                assert!(!history.can_undo(), "no relocation-only Undo entry");
+                app.session = history.redo(&app.session).unwrap();
+                assert_eq!(app.session.project.name, name);
+                assert!(history.is_saved());
+            } else {
+                assert!(history.can_redo(), "relocation alone must preserve Redo");
+                assert!(!history.can_undo(), "no relocation-only Undo entry");
+                app.session = history.redo(&app.session).unwrap();
+                assert_eq!(app.session.project.master.gain_db, -3.0);
+                assert!(!history.is_saved());
+                app.session = history.undo(&app.session).unwrap();
+                assert_eq!(app.session.project.master.gain_db, 0.0);
+                assert!(history.is_saved());
+                assert!(!history.can_undo());
+            }
+            assert_eq!(app.session.folder.as_ref(), Some(&destination));
+            for asset in &app.session.project.assets {
+                let path = app.session.source_path(asset).unwrap();
+                assert!(path.starts_with(destination.join("stems")), "{path:?}");
+                assert!(path.is_file());
+            }
         }
     }
 
