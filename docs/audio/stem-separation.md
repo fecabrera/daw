@@ -15,7 +15,7 @@ Model loading needs substantial memory. CoreML can take tens of seconds to compi
 ## Separate a clip
 
 1. In Timeline, right-click an audio clip and choose **Stem-separation**.
-2. Keep the status dialog open while the job runs. It shows progress, errors, and warnings. Choose **Cancel** to stop the job.
+2. Keep the status dialog open while the job runs. It shows progress, errors, and warnings. Choose **Cancel** in the dialog or status bar to stop the job.
 3. Close the finished report.
 
 The status shows **Preparing audio and loading model…** before separation progress starts. Windows and Linux load the CPU model. On Apple Silicon macOS, a selected CoreML model can also need time to compile.
@@ -24,7 +24,7 @@ Separation uses the clicked clip's trim, repeats, stretch, and transpose. It exc
 
 A new group appears at the end of the track list with one audio track per stem. All four clips start at the original clip's position and have its duration. The original clip stays in place, disabled and shown with the same neutral header and muted foreground colors as disabled units. Right-click it and choose **Enable clip** to hear it again. Disable or mute the stems first if you do not want both versions to play.
 
-You can separate clips before saving the project. Unsaved projects use temporary storage. The completed status dialog shows the stem folder. The first save copies the stems into `stems/<clip name>/` inside the project folder. Saved projects write new stems there directly. An existing folder is retained; a number is added to the new folder name. Save the project to retain the new arrangement. Save As copies generated stems to the new project folder.
+You can separate clips before saving the project. Unsaved projects use temporary storage. The completed status dialog shows the stem folder. The first save copies the stems into `stems/<clip name>/` inside the project folder. Saved projects write new stems there directly. An existing folder is retained; a number is added to the new folder name. Long folder names are shortened to fit the filesystem limit. Save the project to retain the new arrangement. Save As copies generated stems to the new project folder.
 
 Temporary stems remain available to the project and Undo/Redo until saved or discarded. Closing an unsaved project discards them. Temporary storage is not crash recovery; save the project to keep the stems.
 

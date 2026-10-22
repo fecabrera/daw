@@ -2034,12 +2034,17 @@ impl DawUi {
                         ui.spinner();
                         ui.label(&self.busy);
                         if self.settings_cancel.is_some() && ui.button("Cancel").clicked() {
-                            if let Some(cancel) = self.settings_cancel.take() {
+                            if let Some(cancel) = &self.settings_cancel {
                                 cancel.store(true, Ordering::Relaxed);
                             }
-                            // Drop this receiver: a cancelled worker can never publish a late result.
-                            self.job = None;
-                            self.busy.clear();
+                            // Separation must acknowledge cancellation before its
+                            // report can close. Its publication path checks the flag.
+                            if self.separation_status.is_none() {
+                                self.settings_cancel = None;
+                                // Other preparation jobs reject late publication.
+                                self.job = None;
+                                self.busy.clear();
+                            }
                         }
                     } else if self.regular_save.is_some() {
                         ui.spinner();
@@ -5118,6 +5123,7 @@ mod tests {
     mod resize_neighbors;
     mod sampler;
     mod saving;
+    mod separation;
     mod track_groups;
     mod track_header;
     mod track_shortcuts;

@@ -3997,3 +3997,26 @@ Completed automated checks on Windows with the pinned toolchain:
 - `cargo fmt --all --check` and `git diff --check`: passed.
 
 Tests used generated WAV fixtures in temporary directories. Native UI/device interaction, real HTDemucs/CoreML inference, macOS/Linux execution and release packaging were not repeated. No dependency version changed; the separate ONNX advisory and dependency coverage limits remain outside this fix. The pinned review artifacts remain unchanged.
+
+### PR #2 F001 and F004: cancellation and stem folder names — 2026-10-22
+
+These corrections address F001 and F004 from the five-reviewer run pinned to `6ac9634`.
+
+Status-bar Cancel now sets the separation cancellation flag and retains the job receiver. Both Cancel controls wait for the worker response before the report enters its cancelled state. Closing that report restores editing and file actions. Other preparation jobs retain their existing late-result rejection.
+
+Stem directory reservation now bounds the complete basename to 255 UTF-8 bytes, including a collision suffix. It truncates only at character boundaries and shares the folder-name byte limit with project-name validation. Separation and generated-source copies use the same reservation helper. The user guide and specification describe both corrections.
+
+Completed automated checks on macOS arm64 with the pinned 1.97.0 toolchain:
+
+- The new egui cancellation regression failed before the fix because status-bar Cancel removed the receiver. It now passes for both Cancel buttons, with an explicit cancellation response and with worker disconnection. It verifies that Escape cannot dismiss a running report, Close restores editing/file actions after acknowledgement, and project state remains unchanged.
+- The new folder-reservation regression failed before the fix because a 252-byte name grew beyond 255 bytes after numbering. It now passes for ordinary names, 252/255-byte multibyte names, longer four-byte-character names, and one- and two-digit collision suffixes. Existing files remain intact.
+- A second project regression passes for repeated separation followed by Save As into an existing stem-folder collision. It verifies bounded names, retained files, copied generated sources and successful reopen without warnings.
+- `cargo fmt --all --check` and `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --offline --locked --workspace`: passed, including all 561 UI tests. Opt-in real-model and release acceptance tests remained ignored.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: passed. CLI checks cover WAV/MP3 codecs and bitrates, repeatability, missing sources, track/group rendering, overwrite protection and exit codes.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- `git diff --check`: passed.
+
+The first workspace test build used `CARGO_NET_OFFLINE=true`, which made `ort-sys` skip native runtime linkage. Removing that environment flag and retaining Cargo's `--offline` option allowed the cached runtime to link; the complete workspace rerun passed. This required no dependency or implementation change.
+
+Tests used generated media and temporary directories. Native UI/device interaction, real HTDemucs/CoreML inference and Windows/Linux execution were not performed. The filename byte limit was checked on macOS; native Linux filesystem execution remains unverified. Scope is F001/F004; the pinned review artifacts remain unchanged.

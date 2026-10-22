@@ -65,6 +65,7 @@ fn reserve_directory(parent: &Path, name: &str) -> Result<PathBuf> {
         })
         .take(100)
         .collect();
+    let clean = &clean[..clean.floor_char_boundary(crate::MAX_FOLDER_NAME_BYTES)];
     let clean = clean.trim().trim_end_matches('.');
     let clean = if crate::project_folder_name(clean).is_ok() {
         clean
@@ -72,11 +73,14 @@ fn reserve_directory(parent: &Path, name: &str) -> Result<PathBuf> {
         "Clip"
     };
     for index in 0..10_000 {
-        let path = parent.join(if index == 0 {
-            clean.to_owned()
+        let suffix = if index == 0 {
+            String::new()
         } else {
-            format!("{clean} ({index})")
-        });
+            format!(" ({index})")
+        };
+        // The filesystem limit applies to the complete UTF-8 basename.
+        let end = clean.floor_char_boundary(crate::MAX_FOLDER_NAME_BYTES - suffix.len());
+        let path = parent.join(format!("{}{suffix}", &clean[..end]));
         match fs::create_dir(&path) {
             Ok(()) => return Ok(path),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
@@ -426,6 +430,91 @@ mod tests {
             encoder.finish().map_err(error)?;
         }
         Ok(vec!["Test warning".into()])
+    }
+
+    #[test]
+    fn stem_folder_collisions_keep_multibyte_names_within_the_byte_limit() {
+        let (fixture, _, _) = Fixture::new();
+        for name in [
+            "Clip".into(),
+            "界".repeat(84),
+            "界".repeat(85),
+            "🎵".repeat(100),
+        ] {
+            let parent = fixture.0.join(Id::new_v4().to_string());
+            for index in 0..12 {
+                let path = reserve_directory(&parent, &name).unwrap();
+                let basename = path.file_name().unwrap().to_str().unwrap();
+                assert!(basename.len() <= 255, "{basename}");
+                assert!(basename.starts_with(name.chars().next().unwrap()));
+                crate::project_folder_name(basename).unwrap();
+                if index > 0 {
+                    assert!(basename.ends_with(&format!(" ({index})")));
+                }
+                fs::write(path.join("keep.txt"), index.to_string()).unwrap();
+            }
+            assert_eq!(fs::read_dir(&parent).unwrap().count(), 12);
+            for entry in fs::read_dir(&parent).unwrap() {
+                assert!(entry.unwrap().path().join("keep.txt").is_file());
+            }
+        }
+    }
+
+    #[test]
+    fn multibyte_stem_collisions_survive_repeated_separation_and_save_as() {
+        let (fixture, mut session, clip) = Fixture::new();
+        let name = "界".repeat(84);
+        session.project.tracks[0].clips[0].name = name.clone();
+        let first = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap();
+        let first_directory = first.directory().to_owned();
+        let _first = first.publish();
+        let second = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap();
+        let second_directory = second.directory().to_owned();
+        assert_ne!(first_directory, second_directory);
+        let mut next = second.publish();
+        let destination = fixture.0.join("copy");
+        let occupied = reserve_directory(
+            &destination.join("stems"),
+            second_directory.file_name().unwrap().to_str().unwrap(),
+        )
+        .unwrap();
+        fs::write(occupied.join("keep.txt"), b"existing folder").unwrap();
+        next.save(&destination).unwrap();
+        assert_eq!(
+            fs::read(occupied.join("keep.txt")).unwrap(),
+            b"existing folder"
+        );
+        assert!(first_directory.join("drums.wav").is_file());
+        assert!(second_directory.join("drums.wav").is_file());
+        let reopened = Session::open(&destination).unwrap();
+        assert_eq!(reopened.project.tracks.len(), 6);
+        assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
+        for asset in reopened
+            .project
+            .assets
+            .iter()
+            .filter(|a| a.source.kind == "generated")
+        {
+            let source = reopened.source_path(asset).unwrap();
+            assert!(source.starts_with(destination.join("stems")));
+            assert_ne!(source.parent().unwrap(), occupied);
+            assert!(
+                source
+                    .parent()
+                    .unwrap()
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .len()
+                    <= 255
+            );
+            assert!(source.is_file());
+        }
     }
 
     #[test]

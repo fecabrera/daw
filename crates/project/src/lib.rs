@@ -25,13 +25,15 @@ fn error(e: impl std::fmt::Display) -> Error {
     Error(e.to_string())
 }
 
+const MAX_FOLDER_NAME_BYTES: usize = 255;
+
 /// A portable folder name, shared by the naming dialog and project creation.
 pub fn project_folder_name(name: &str) -> Result<&str> {
     let name = name.trim();
     if name.is_empty() || name == "." || name == ".." {
         return Err(error("Enter a project name"));
     }
-    if name.len() > 255 {
+    if name.len() > MAX_FOLDER_NAME_BYTES {
         return Err(error("Project name is too long"));
     }
     if name.ends_with('.')
