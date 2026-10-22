@@ -4,7 +4,7 @@ Split an audio clip into Drums, Bass, Other, and Vocals. Separation uses local H
 
 ## Set up models
 
-1. Open Settings.
+1. Open Settings and find **Stem Separation**.
 2. On Apple Silicon macOS, choose a **CoreML model**, a **CPU model**, or both. Windows and Linux use a **CPU model**.
 3. Wait for validation to finish. Separation becomes available when at least one supported model passes.
 

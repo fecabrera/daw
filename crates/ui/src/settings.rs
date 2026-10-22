@@ -249,14 +249,7 @@ pub fn show(
             let label_width = label_text("Split MIDI notes").max(
                 label_text("Accent color") + ui.spacing().item_spacing.x + 14.0,
             );
-            ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE && models_enabled, |ui| {
-                model_row(ui, label_width, daw_project::SeparationModelKind::Cpu, models.cpu.as_deref(), model_action);
-                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-                model_row(ui, label_width, daw_project::SeparationModelKind::CoreMl, models.coreml.as_deref(), model_action);
-            });
-            if !daw_project::SEPARATION_AVAILABLE {
-                ui.label(daw_project::SEPARATION_UNAVAILABLE_REASON);
-            }
+            ui.strong("Appearance");
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             crate::rows::field(
                 ui,
@@ -295,51 +288,6 @@ pub fn show(
                                 }
                             }
                         });
-                },
-            );
-            crate::rows::field(
-                ui, label_width,
-                |ui| { ui.label("Seek cache"); },
-                |ui| {
-                    egui::ComboBox::from_id_salt("seek_cache")
-                        .selected_text(settings.seek_cache.name())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for profile in CacheProfile::ALL {
-                                let hint = match profile {
-                                    CacheProfile::Light => "32 MiB of checkpoints. Lower background load; builds while stopped or paused.",
-                                    CacheProfile::Balanced => "128 MiB of checkpoints. Moderate background work, including during playback.",
-                                    CacheProfile::Responsive => "256 MiB of checkpoints. More background work for faster cache coverage.",
-                                };
-                                ui.selectable_value(&mut settings.seek_cache, profile, profile.name())
-                                    .on_hover_text(hint);
-                            }
-                        })
-                        .response.on_hover_text("Prepares exact seek history. Profiles change CPU and memory use; sound stays the same.");
-                },
-            );
-            crate::rows::field(
-                ui,
-                label_width,
-                |ui| {
-                    ui.label("Split MIDI notes");
-                },
-                |ui| {
-                    egui::ComboBox::from_id_salt("midi_note_split")
-                        .selected_text(settings.midi_note_split.name())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for mode in daw_core::MidiNoteSplit::ALL {
-                                let hint = match mode {
-                                    daw_core::MidiNoteSplit::Split => "A note that crosses the playhead becomes two notes.",
-                                    daw_core::MidiNoteSplit::PreserveFirst => "A note that crosses the playhead stays on the first clip.",
-                                };
-                                ui.selectable_value(&mut settings.midi_note_split, mode, mode.name())
-                                    .on_hover_text(hint);
-                            }
-                        })
-                        .response
-                        .on_hover_text("Applies when you split MIDI clips. Audio clips are unchanged. This choice stays on this computer.");
                 },
             );
             let swatch_color = settings.accent.color();
@@ -395,6 +343,65 @@ pub fn show(
                         });
                 },
             );
+            ui.separator();
+            ui.strong("Playback");
+            crate::rows::field(
+                ui, label_width,
+                |ui| { ui.label("Seek cache"); },
+                |ui| {
+                    egui::ComboBox::from_id_salt("seek_cache")
+                        .selected_text(settings.seek_cache.name())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for profile in CacheProfile::ALL {
+                                let hint = match profile {
+                                    CacheProfile::Light => "32 MiB of checkpoints. Lower background load; builds while stopped or paused.",
+                                    CacheProfile::Balanced => "128 MiB of checkpoints. Moderate background work, including during playback.",
+                                    CacheProfile::Responsive => "256 MiB of checkpoints. More background work for faster cache coverage.",
+                                };
+                                ui.selectable_value(&mut settings.seek_cache, profile, profile.name())
+                                    .on_hover_text(hint);
+                            }
+                        })
+                        .response.on_hover_text("Prepares exact seek history. Profiles change CPU and memory use; sound stays the same.");
+                },
+            );
+            ui.separator();
+            ui.strong("MIDI");
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Split MIDI notes");
+                },
+                |ui| {
+                    egui::ComboBox::from_id_salt("midi_note_split")
+                        .selected_text(settings.midi_note_split.name())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for mode in daw_core::MidiNoteSplit::ALL {
+                                let hint = match mode {
+                                    daw_core::MidiNoteSplit::Split => "A note that crosses the playhead becomes two notes.",
+                                    daw_core::MidiNoteSplit::PreserveFirst => "A note that crosses the playhead stays on the first clip.",
+                                };
+                                ui.selectable_value(&mut settings.midi_note_split, mode, mode.name())
+                                    .on_hover_text(hint);
+                            }
+                        })
+                        .response
+                        .on_hover_text("Applies when you split MIDI clips. Audio clips are unchanged. This choice stays on this computer.");
+                },
+            );
+            ui.separator();
+            ui.strong("Stem Separation");
+            ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE && models_enabled, |ui| {
+                model_row(ui, label_width, daw_project::SeparationModelKind::Cpu, models.cpu.as_deref(), model_action);
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                model_row(ui, label_width, daw_project::SeparationModelKind::CoreMl, models.coreml.as_deref(), model_action);
+            });
+            if !daw_project::SEPARATION_AVAILABLE {
+                ui.label(daw_project::SEPARATION_UNAVAILABLE_REASON);
+            }
         })
         .is_some();
     close || (!popup_was_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)))

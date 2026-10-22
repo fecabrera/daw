@@ -4045,3 +4045,19 @@ Completed repository checks with the pinned Rust 1.97.0 toolchain:
 The initial Clippy run identified an unnecessary unwrap in validation scheduling. It was removed before the successful reruns. Checks used the local Cargo cache and Cargo's `--offline` option. No dependency pins changed.
 
 Native UI/device gestures, production HTDemucs weights and Windows/Linux execution were not tested. Native CPU/CoreML checks used synthetic fixtures, so they establish loading and output-contract behavior rather than separation quality or GPU coverage. Existing opt-in real-model and release acceptance tests remain ignored. Startup and model-replacement behavior were checked through automated UI state and worker tests.
+
+## 2026-10-22 — Application Settings categories
+
+Application Settings now groups existing controls into expanded Appearance, Playback, MIDI and Stem Separation sections. Appearance contains Titlebar where supported, Theme and Accent color; Playback contains Seek cache; MIDI contains Split MIDI notes; Stem Separation contains the existing model controls and platform notice. Bold body-text headings and standard separators retain the shared dialog, common label column and Close action. No settings schema or control behavior changed. User-guide navigation and the implementation specification describe the categories.
+
+`cargo test --offline --locked -p daw-ui --lib` passed all 566 existing UI tests. Coverage includes theme/accent/titlebar controls, seek-cache and MIDI dropdowns, popup dismissal, settings guards, model validation and cancellation. No new layout-only tests were added.
+
+Repository checks on macOS arm64 with the pinned toolchain:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --offline --locked --workspace`: passed, including all 566 UI tests. Existing opt-in real-model and release acceptance tests remain ignored.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Documentation link targets and `git diff --check`: passed.
+
+The change only rearranges application UI controls, so CLI smoke checks were not repeated. Native UI interaction and Windows/Linux execution were not performed; automated egui tests do not establish native window behavior.

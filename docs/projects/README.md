@@ -20,9 +20,22 @@ Processing rates are 44.1, 48, 88.2, 96, 176.4, and 192 kHz; the default is 48 k
 
 Audio settings changes prepare the required audio before replacing the session. Success stops playback so you can restart it with the new settings. Failure or cancellation retains the previous project and playback.
 
+## Application Settings
+
+Open Settings from the app-name menu on macOS or File on Windows/Linux. Use Command+, on macOS or Ctrl+, on Windows/Linux.
+
+Settings groups controls into four categories:
+
+- **Appearance**: titlebar style where supported, theme, and accent color.
+- **Playback**: seek cache profile.
+- **MIDI**: how notes are divided when splitting clips.
+- **Stem Separation**: local model selection and validation.
+
+Changes apply on this computer and are retained across restarts. Close retains your choices. These preferences are separate from Project Settings.
+
 ## Seek cache profiles
 
-Open application **Settings** and choose **Seek cache**. The choice applies on this computer and is retained across restarts. **Balanced** is the default. It is separate from Project Settings and is not saved in the project.
+Open application **Settings** and choose **Playback > Seek cache**. The choice applies on this computer and is retained across restarts. **Balanced** is the default. It is separate from Project Settings and is not saved in the project.
 
 | Profile | Checkpoint memory limit | Background behavior and tradeoff |
 | --- | --- | --- |
@@ -36,7 +49,7 @@ Changing profile keeps valid checkpoints where possible and does not stop playba
 
 ## Split MIDI notes
 
-Open application Settings and choose Split MIDI notes. Split into two is the default. A MIDI note that crosses the playhead becomes two notes. Preserve first keeps that note on the clip before the playhead and does not continue it on the new clip. The choice applies on this computer and is kept across restarts. It is not saved in the project. Audio clips are unaffected.
+Open application Settings and choose **MIDI > Split MIDI notes**. Split into two is the default. A MIDI note that crosses the playhead becomes two notes. Preserve first keeps that note on the clip before the playhead and does not continue it on the new clip. The choice applies on this computer and is kept across restarts. It is not saved in the project. Audio clips are unaffected.
 
 ## Memory and large projects
 
@@ -71,4 +84,4 @@ Choose your own output path. An existing file needs the explicit `--overwrite` o
 
 ## Stem-separation models
 
-Choose local CPU and optional macOS CoreML model files in application Settings. These paths apply on this computer and are not saved in projects. See [Stem separation](../audio/stem-separation.md) for supported models and the separation workflow.
+Choose and validate local model files under **Settings > Stem Separation**. Apple Silicon macOS supports CoreML, CPU, or both; Windows and Linux use CPU. These paths apply on this computer and are not saved in projects. See [Stem separation](../audio/stem-separation.md) for supported models and the separation workflow.
