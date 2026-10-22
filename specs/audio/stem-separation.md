@@ -61,3 +61,5 @@ Cancellation checks input preparation, resampling, streaming reads/writes, model
 Models are user-provided. No rights to distribute pretrained weights are assumed. Keep Charon, ONNX Runtime, and new Rust dependency notices in `crates/separation/assets/licenses`; all three platform packaging paths include them. The runtime binaries are build dependencies, distinct from model weights.
 
 Automated regressions use a deterministic injected separation function to test arrangement/import ownership without requiring models. An ignored opt-in project test exercises real local models and WAV input with `DAW_STEM_CPU_MODEL`, optional `DAW_STEM_COREML_MODEL`, and `DAW_STEM_INPUT`. Never commit weights or test recordings. Executed checks belong in the [validation record](../validation/README.md).
+
+The [native dependency audit](stem-native-dependencies.md) records the exact selected archives, source-derived component inventory, current advisory dispositions, compiler-runtime terms and per-platform packaging requirements. Its ONNX 1.22.0 advisory is a pending remediation item; runtime 1.31.0 alone does not make every transitive component current.

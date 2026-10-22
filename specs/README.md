@@ -8,6 +8,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Iteration 1 implementation specification](architecture/iteration-1.md).
 - [Modular audio units](architecture/modular-audio-units.md).
 - [Prepared rendering and performance](architecture/performance.md).
+- [Stem-separation native dependency audit](audio/stem-native-dependencies.md): pinned native components, advisories, licenses and platform packaging.
 - [Parallel cache preparation validation — 2026-10-19](validation/parallel-cache-preparation-2026-10-19.md).
 - [Architecture review — 2026-10-19](architecture/review-2026-10-19/README.md): current architecture, pipelines, workflow stages, cache ownership, findings and review decisions.
 
