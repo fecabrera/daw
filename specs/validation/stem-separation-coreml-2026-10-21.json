@@ -1,0 +1,2199 @@
+{
+  "date": "2026-10-21",
+  "scope": "CoreML follow-up to local stem-separation evaluation; not release acceptance",
+  "app_head": "57fc4ac445f94435100fdf0882f4700fae8f8b50",
+  "charon_commit": "bc045cd80f009ea863772c5afef15928101df66f",
+  "host": {
+    "chip": "Apple M4 Pro",
+    "cpu_cores": 14,
+    "unified_memory_gib": 48,
+    "os": "macOS 27.0.1",
+    "rust": "rustc 1.97.0 (2d8144b78 2026-07-07) (Homebrew)"
+  },
+  "baseline_record": "stem-separation-2026-10-21.json",
+  "baseline_sha256": "9f777e39ff8715611a79b79644c204864f17363363273c02ee7bfa415700538a",
+  "input_checks": "all five decoded mixtures and reference stems match the baseline SHA-256 values; same 68.034-second concatenation, silence and 48 kHz probe",
+  "method": {
+    "one_shot": "same evaluate.py metric method, --split --ep coreml or --split --ep cpu; fresh process; model load, decode, separation and WAV writes included; NumPy/FFmpeg metrics excluded",
+    "model": "same newly exported CoreML-compatible graph and processing options on CPU and CoreML; compare original in-graph CPU separately",
+    "runtime": "Rust ort 2.0.0-rc.13, downloaded native ONNX Runtime 1.28.0; Python export checker onnxruntime 1.31.0",
+    "configuration": "split preset: Extended graph optimization, memory_pattern=false, cpu_arena=true, no shifts; CoreML MLProgram, static shapes, CPUAndGPU; CPU fallback allowed within CoreML, actual ORT assignment audited separately",
+    "input_rate_hz": 44100,
+    "memory": "macOS /usr/bin/time -l bytes; RSS and footprint differ; resident counters retain peaks across the process lifetime",
+    "cold_state": "first profile with empty Charon cache for new model hash; OS internal caches not purged; next fresh one-shot still slow, retained in results",
+    "instrumentation": "scratch only: print configured provider; optional STEM_EVAL_ORT_PROFILE enabled only in untimed provider audit; finite/channel/frame assertions outside resident timer; no inference math changes",
+    "limits": [
+      "one Mac and five AAC-derived excerpts plus artificial concatenation",
+      "CoreML graph assignment verified, no hardware-level per-kernel GPU trace or GPU-only claim",
+      "No live DAW playback contention, blind listening, Windows/Linux or packaging verification"
+    ]
+  },
+  "export": {
+    "model": "htdemucs_split_coreml.onnx",
+    "sha256": "af57ac5ce9e8399415fb754faa11f438e5a6ffee7ec6870309ede64abf01a3c6",
+    "bytes": 172152058,
+    "nodes": 2055,
+    "initializers": 757,
+    "opsets": [
+      {
+        "domain": "",
+        "version": 18
+      }
+    ],
+    "checkpoint_files": {
+      "hf-cache/hub/models--adefossez--HTDemucs/blobs/d9fa14133cfcc034a6758923bb3a8ca9f8dfd0b582134643bbf83f72c17576dd": {
+        "sha256": "d9fa14133cfcc034a6758923bb3a8ca9f8dfd0b582134643bbf83f72c17576dd",
+        "bytes": 84025440
+      },
+      "hf-cache/hub/models--adefossez--HTDemucs/snapshots/cbc8a9b1a87023b7fd74e7b3412e6321c0eab003/955717e8.safetensors": {
+        "sha256": "d9fa14133cfcc034a6758923bb3a8ca9f8dfd0b582134643bbf83f72c17576dd",
+        "bytes": 84025440
+      },
+      "hf-cache/hub/blobs/d6/d6487147b31512c1f65182852fe1c24c3ab2416ec3f29dcca4a566e96ce15fd6": {
+        "sha256": "d9fa14133cfcc034a6758923bb3a8ca9f8dfd0b582134643bbf83f72c17576dd",
+        "bytes": 84025440
+      }
+    },
+    "python_packages": [
+      "anyio==4.15.1",
+      "cffi==2.1.1",
+      "click==8.5.0",
+      "demucs==4.1.0",
+      "einops==0.8.2",
+      "filelock==4.2.4",
+      "flatbuffers==25.12.19",
+      "fsspec==2026.9.0",
+      "h11==0.16.0",
+      "hf-xet==1.7.0",
+      "httpcore2==2.16.0",
+      "httpx2==2.16.0",
+      "huggingface_hub==2.2.0",
+      "idna==3.20",
+      "Jinja2==3.1.6",
+      "julius==0.2.8",
+      "lameenc==1.9.0",
+      "MarkupSafe==3.0.4",
+      "ml_dtypes==0.6.0",
+      "mpmath==1.3.0",
+      "networkx==3.7",
+      "numpy==2.5.4",
+      "onnx==1.23.2",
+      "onnx-ir==1.1.0",
+      "onnxruntime==1.31.0",
+      "onnxscript==0.7.2",
+      "packaging==26.3",
+      "protobuf==7.36.2",
+      "pycparser==3.11",
+      "PyYAML==6.0.3",
+      "safetensors==0.8.0",
+      "setuptools==84.2.1",
+      "soundfile==0.14.0",
+      "sphn==0.2.1",
+      "sympy==1.14.0",
+      "torch==2.14.0",
+      "tqdm==4.70.1",
+      "truststore==0.10.5",
+      "typing_extensions==4.16.0"
+    ],
+    "patched_split_vs_pytorch_max_abs": 3.129e-07,
+    "onnx_cpu_host_istft_vs_pytorch_max_abs": 6.551e-05,
+    "export_script_sha256": "525a77552f94f0ddaa8de771ed8fd1db147dd85c7b974d35386ae01860b3025b"
+  },
+  "compiled_cache_du_bytes": 1790144512,
+  "empty_cache_profile": {
+    "runs": [
+      {
+        "label": "split=1 ep=coreml shifts=0 runs=1",
+        "run": 0,
+        "audio_s": 6.8,
+        "decode_s": 0.0,
+        "load_s": 25.26,
+        "separate_s": 5.33,
+        "rtf": 1.28,
+        "rss_decode_mb": 16,
+        "rss_load_mb": 2905,
+        "rss_peak_mb": 2905,
+        "checksum": 168.133
+      }
+    ],
+    "process_wall_s": 31.04,
+    "peak_rss_bytes": 3046080512,
+    "peak_footprint_bytes": 2297498576,
+    "reported_provider": "CoreML",
+    "output_checks": "four stems; finite samples; stereo; exact source frames; asserted outside separation timer",
+    "scope": "decode/load once; separate three times for resident configurations; no WAV writes; RSS is process-lifetime peak"
+  },
+  "one_shot_runs": [
+    {
+      "backend": "charon-coreml",
+      "label": "playlist-1",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 2.922988042002544,
+      "peak_rss_bytes": 1234960384,
+      "peak_footprint_bytes": 1747322824,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6407735347747803
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.28612446784973145
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.43364647030830383
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6954442262649536
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/playlist70.wav",
+        "work/stem-evaluation/outputs/charon-coreml/playlist-1",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004520906719252987
+    },
+    {
+      "backend": "charon-coreml",
+      "label": "playlist-2",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 2.8226395420497283,
+      "peak_rss_bytes": 1239498752,
+      "peak_footprint_bytes": 1754498992,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6407735347747803
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.28612446784973145
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.43364647030830383
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6954442262649536
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/playlist70.wav",
+        "work/stem-evaluation/outputs/charon-coreml/playlist-2",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004520906719252987
+    },
+    {
+      "backend": "charon-coreml",
+      "label": "playlist-3",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 2.8119468750082888,
+      "peak_rss_bytes": 1238777856,
+      "peak_footprint_bytes": 1755170760,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6407735347747803
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.28612446784973145
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.43364647030830383
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6954442262649536
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/playlist70.wav",
+        "work/stem-evaluation/outputs/charon-coreml/playlist-3",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004520906719252987
+    },
+    {
+      "backend": "charon-coreml",
+      "label": "quality-01",
+      "input": "inputs/01/mixture.wav",
+      "exit": 0,
+      "wall_s": 25.97245754202595,
+      "peak_rss_bytes": 3051601920,
+      "peak_footprint_bytes": 2426735592,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.44206514954566956,
+          "sdr_db": 14.349156340080103,
+          "mixture_sdr_db": 0.5875073573928156
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.22565515339374542,
+          "sdr_db": 4.373834559912259,
+          "mixture_sdr_db": -9.130866761249193
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.2542934715747833,
+          "sdr_db": 4.6752409027940285,
+          "mixture_sdr_db": -8.249139328444752
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.21733084321022034,
+          "sdr_db": 15.425267890835293,
+          "mixture_sdr_db": -4.98953157930977
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/01/mixture.wav",
+        "work/stem-evaluation/outputs/charon-coreml/quality-01",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.002663456709783949
+    },
+    {
+      "backend": "charon-coreml",
+      "label": "quality-02",
+      "input": "inputs/02/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.0753989170189016,
+      "peak_rss_bytes": 1209122816,
+      "peak_footprint_bytes": 1629112096,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.5393989682197571,
+          "sdr_db": 8.246918436511795,
+          "mixture_sdr_db": -4.282583520445543
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.32408255338668823,
+          "sdr_db": 10.198114177057427,
+          "mixture_sdr_db": -7.747117991326809
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.3565368056297302,
+          "sdr_db": 7.762610262286786,
+          "mixture_sdr_db": -2.113236357354645
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.27555567026138306,
+          "sdr_db": 8.912577107863278,
+          "mixture_sdr_db": -6.002442535781908
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/02/mixture.wav",
+        "work/stem-evaluation/outputs/charon-coreml/quality-02",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.005395937257980541
+    },
+    {
+      "backend": "charon-coreml",
+      "label": "quality-03",
+      "input": "inputs/03/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.1103121250052936,
+      "peak_rss_bytes": 1210564608,
+      "peak_footprint_bytes": 1595639608,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.5073335766792297,
+          "sdr_db": 5.120469924211081,
+          "mixture_sdr_db": -10.044277284540028
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.09744244068861008,
+          "sdr_db": 5.835905207926595,
+          "mixture_sdr_db": -8.862725115023643
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.5482438802719116,
+          "sdr_db": 6.813755850456888,
+          "mixture_sdr_db": -0.9489510933089363
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.4475225508213043,
+          "sdr_db": 7.678049393139142,
+          "mixture_sdr_db": -2.5231096252585745
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/03/mixture.wav",
+        "work/stem-evaluation/outputs/charon-coreml/quality-03",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.004819007627019812
+    },
+    {
+      "backend": "charon-coreml",
+      "label": "quality-04",
+      "input": "inputs/04/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.1899956249981187,
+      "peak_rss_bytes": 1210613760,
+      "peak_footprint_bytes": 1611106128,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.461203932762146,
+          "sdr_db": 7.025087579517621,
+          "mixture_sdr_db": -9.851106231395724
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.2803981900215149,
+          "sdr_db": 10.989095619050513,
+          "mixture_sdr_db": -7.107786413539467
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.46695175766944885,
+          "sdr_db": 5.155778060902057,
+          "mixture_sdr_db": -1.9764055783649939
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.6742201447486877,
+          "sdr_db": 5.713975450994613,
+          "mixture_sdr_db": -2.387929575735327
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/04/mixture.wav",
+        "work/stem-evaluation/outputs/charon-coreml/quality-04",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.00510777069083634
+    },
+    {
+      "backend": "charon-coreml",
+      "label": "quality-05",
+      "input": "inputs/05/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.1464645419619046,
+      "peak_rss_bytes": 1208975360,
+      "peak_footprint_bytes": 1631111040,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.6268211007118225,
+          "sdr_db": 9.99541195892122,
+          "mixture_sdr_db": -4.234944604751002
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.210402250289917,
+          "sdr_db": 10.215791906675156,
+          "mixture_sdr_db": -6.592864131045767
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.2515711784362793,
+          "sdr_db": 4.723610766793749,
+          "mixture_sdr_db": -4.884386622759967
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.37644538283348083,
+          "sdr_db": 6.067715986666667,
+          "mixture_sdr_db": -3.381775107551893
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/05/mixture.wav",
+        "work/stem-evaluation/outputs/charon-coreml/quality-05",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.004812702836580115
+    },
+    {
+      "backend": "charon-coreml",
+      "label": "rate48",
+      "input": "inputs/input48.wav",
+      "exit": 0,
+      "wall_s": 1.118275583954528,
+      "peak_rss_bytes": 1209106432,
+      "peak_footprint_bytes": 1620658024,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300033
+          },
+          "frames": 300033,
+          "nonfinite_samples": 0,
+          "peak": 0.4428604245185852
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300033
+          },
+          "frames": 300033,
+          "nonfinite_samples": 0,
+          "peak": 0.2269182652235031
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300033
+          },
+          "frames": 300033,
+          "nonfinite_samples": 0,
+          "peak": 0.25286349654197693
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300033
+          },
+          "frames": 300033,
+          "nonfinite_samples": 0,
+          "peak": 0.21752415597438812
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/input48.wav",
+        "work/stem-evaluation/outputs/charon-coreml/rate48",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "48000",
+        "channels": 2,
+        "time_base": "1/48000",
+        "duration_ts": 326566
+      },
+      "input_frames": 300033,
+      "audio_s": 6.8034693877551025,
+      "sum_residual_rms": 0.0027448380936001527
+    },
+    {
+      "backend": "charon-coreml",
+      "label": "silence",
+      "input": "inputs/silence.wav",
+      "exit": 0,
+      "wall_s": 1.3103346669813618,
+      "peak_rss_bytes": 1209106432,
+      "peak_footprint_bytes": 1575585640,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/silence.wav",
+        "work/stem-evaluation/outputs/charon-coreml/silence",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "coreml",
+        "--split"
+      ],
+      "reported_provider": "CoreML",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 44100
+      },
+      "input_frames": 44100,
+      "audio_s": 1.0,
+      "sum_residual_rms": 0.0
+    },
+    {
+      "backend": "charon-split-cpu",
+      "label": "playlist-1",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 6.813190584012773,
+      "peak_rss_bytes": 3715694592,
+      "peak_footprint_bytes": 3702001048,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.640775203704834
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.2861328423023224
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.4336341917514801
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6954421997070312
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/playlist70.wav",
+        "work/stem-evaluation/outputs/charon-split-cpu/playlist-1",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "cpu",
+        "--split"
+      ],
+      "reported_provider": "CPU",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004520817989586473
+    },
+    {
+      "backend": "charon-split-cpu",
+      "label": "playlist-2",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 6.850648874999024,
+      "peak_rss_bytes": 3720970240,
+      "peak_footprint_bytes": 3707276696,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.640775203704834
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.2861328423023224
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.4336341917514801
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6954421997070312
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/playlist70.wav",
+        "work/stem-evaluation/outputs/charon-split-cpu/playlist-2",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "cpu",
+        "--split"
+      ],
+      "reported_provider": "CPU",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004520817989586473
+    },
+    {
+      "backend": "charon-split-cpu",
+      "label": "playlist-3",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 6.8844862499972805,
+      "peak_rss_bytes": 3715448832,
+      "peak_footprint_bytes": 3701755288,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.640775203704834
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.2861328423023224
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.4336341917514801
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6954421997070312
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/playlist70.wav",
+        "work/stem-evaluation/outputs/charon-split-cpu/playlist-3",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "cpu",
+        "--split"
+      ],
+      "reported_provider": "CPU",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004520817989586473
+    },
+    {
+      "backend": "charon-split-cpu",
+      "label": "quality-01",
+      "input": "inputs/01/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.5780389580177143,
+      "peak_rss_bytes": 3530162176,
+      "peak_footprint_bytes": 3516353776,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.4420790374279022,
+          "sdr_db": 14.349231615821733,
+          "mixture_sdr_db": 0.5875073573928156
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.22564539313316345,
+          "sdr_db": 4.373977448249007,
+          "mixture_sdr_db": -9.130866761249193
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.2542816996574402,
+          "sdr_db": 4.675735444157438,
+          "mixture_sdr_db": -8.249139328444752
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.2173304259777069,
+          "sdr_db": 15.425302383385402,
+          "mixture_sdr_db": -4.98953157930977
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/01/mixture.wav",
+        "work/stem-evaluation/outputs/charon-split-cpu/quality-01",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "cpu",
+        "--split"
+      ],
+      "reported_provider": "CPU",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.0026630295745394593
+    },
+    {
+      "backend": "charon-split-cpu",
+      "label": "quality-02",
+      "input": "inputs/02/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.539692374994047,
+      "peak_rss_bytes": 3543678976,
+      "peak_footprint_bytes": 3529903392,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.539408266544342,
+          "sdr_db": 8.246948760261727,
+          "mixture_sdr_db": -4.282583520445543
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.3240814208984375,
+          "sdr_db": 10.197772251876753,
+          "mixture_sdr_db": -7.747117991326809
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.35653194785118103,
+          "sdr_db": 7.762563313497376,
+          "mixture_sdr_db": -2.113236357354645
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.2755570709705353,
+          "sdr_db": 8.912675871711835,
+          "mixture_sdr_db": -6.002442535781908
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/02/mixture.wav",
+        "work/stem-evaluation/outputs/charon-split-cpu/quality-02",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "cpu",
+        "--split"
+      ],
+      "reported_provider": "CPU",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.005396019955324559
+    },
+    {
+      "backend": "charon-split-cpu",
+      "label": "quality-03",
+      "input": "inputs/03/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.5046512080007233,
+      "peak_rss_bytes": 3531014144,
+      "peak_footprint_bytes": 3517205744,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.507343053817749,
+          "sdr_db": 5.120484709469083,
+          "mixture_sdr_db": -10.044277284540028
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.09744178503751755,
+          "sdr_db": 5.835800479255676,
+          "mixture_sdr_db": -8.862725115023643
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.5482307076454163,
+          "sdr_db": 6.81365873263387,
+          "mixture_sdr_db": -0.9489510933089363
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.4475162625312805,
+          "sdr_db": 7.677997740528105,
+          "mixture_sdr_db": -2.5231096252585745
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/03/mixture.wav",
+        "work/stem-evaluation/outputs/charon-split-cpu/quality-03",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "cpu",
+        "--split"
+      ],
+      "reported_provider": "CPU",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.004819046313536989
+    },
+    {
+      "backend": "charon-split-cpu",
+      "label": "quality-04",
+      "input": "inputs/04/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.5514547500060871,
+      "peak_rss_bytes": 3526377472,
+      "peak_footprint_bytes": 3512552664,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.46120864152908325,
+          "sdr_db": 7.0251828455146565,
+          "mixture_sdr_db": -9.851106231395724
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.28039586544036865,
+          "sdr_db": 10.98946256848204,
+          "mixture_sdr_db": -7.107786413539467
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.46694216132164,
+          "sdr_db": 5.155917015670951,
+          "mixture_sdr_db": -1.9764055783649939
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.6742154955863953,
+          "sdr_db": 5.714054006020688,
+          "mixture_sdr_db": -2.387929575735327
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/04/mixture.wav",
+        "work/stem-evaluation/outputs/charon-split-cpu/quality-04",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "cpu",
+        "--split"
+      ],
+      "reported_provider": "CPU",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.005107426548728639
+    },
+    {
+      "backend": "charon-split-cpu",
+      "label": "quality-05",
+      "input": "inputs/05/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.553070000023581,
+      "peak_rss_bytes": 3510681600,
+      "peak_footprint_bytes": 3496873200,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.6268101930618286,
+          "sdr_db": 9.99543856100493,
+          "mixture_sdr_db": -4.234944604751002
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.21040356159210205,
+          "sdr_db": 10.216069260388538,
+          "mixture_sdr_db": -6.592864131045767
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.25157150626182556,
+          "sdr_db": 4.72357910444674,
+          "mixture_sdr_db": -4.884386622759967
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.37644368410110474,
+          "sdr_db": 6.067723257982637,
+          "mixture_sdr_db": -3.381775107551893
+        }
+      },
+      "command": [
+        "work/stem-evaluation/target-charon/release/examples/separate",
+        "work/stem-evaluation/inputs/05/mixture.wav",
+        "work/stem-evaluation/outputs/charon-split-cpu/quality-05",
+        "work/stem-evaluation/models/htdemucs_split_coreml.onnx",
+        "--format",
+        "wav32",
+        "--shifts",
+        "0",
+        "--ep",
+        "cpu",
+        "--split"
+      ],
+      "reported_provider": "CPU",
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.004812469403811733
+    }
+  ],
+  "resident_profiles": {
+    "original_cpu": {
+      "runs": [
+        {
+          "label": "ep=cpu shifts=0 runs=3",
+          "run": 0,
+          "audio_s": 68.03,
+          "decode_s": 0.01,
+          "load_s": 2.84,
+          "separate_s": 8.22,
+          "rtf": 8.28,
+          "rss_decode_mb": 57,
+          "rss_load_mb": 627,
+          "rss_peak_mb": 1808,
+          "checksum": 1711.775
+        },
+        {
+          "label": "ep=cpu shifts=0 runs=3",
+          "run": 1,
+          "audio_s": 68.03,
+          "decode_s": 0.01,
+          "load_s": 2.84,
+          "separate_s": 8.13,
+          "rtf": 8.37,
+          "rss_decode_mb": 57,
+          "rss_load_mb": 627,
+          "rss_peak_mb": 1812,
+          "checksum": 1711.775
+        },
+        {
+          "label": "ep=cpu shifts=0 runs=3",
+          "run": 2,
+          "audio_s": 68.03,
+          "decode_s": 0.01,
+          "load_s": 2.84,
+          "separate_s": 8.1,
+          "rtf": 8.4,
+          "rss_decode_mb": 57,
+          "rss_load_mb": 627,
+          "rss_peak_mb": 1814,
+          "checksum": 1711.775
+        }
+      ],
+      "process_wall_s": 27.4,
+      "peak_rss_bytes": 1901887488,
+      "peak_footprint_bytes": 1813956696,
+      "reported_provider": "CPU",
+      "output_checks": "four stems; finite samples; stereo; exact source frames; asserted outside separation timer",
+      "scope": "decode/load once; separate three times for resident configurations; no WAV writes; RSS is process-lifetime peak"
+    },
+    "coreml": {
+      "runs": [
+        {
+          "label": "split=1 ep=coreml shifts=0 runs=3",
+          "run": 0,
+          "audio_s": 68.03,
+          "decode_s": 0.01,
+          "load_s": 0.85,
+          "separate_s": 2.23,
+          "rtf": 30.57,
+          "rss_decode_mb": 57,
+          "rss_load_mb": 1176,
+          "rss_peak_mb": 1176,
+          "checksum": 1714.9
+        },
+        {
+          "label": "split=1 ep=coreml shifts=0 runs=3",
+          "run": 1,
+          "audio_s": 68.03,
+          "decode_s": 0.01,
+          "load_s": 0.85,
+          "separate_s": 1.98,
+          "rtf": 34.29,
+          "rss_decode_mb": 57,
+          "rss_load_mb": 1176,
+          "rss_peak_mb": 1176,
+          "checksum": 1714.9
+        },
+        {
+          "label": "split=1 ep=coreml shifts=0 runs=3",
+          "run": 2,
+          "audio_s": 68.03,
+          "decode_s": 0.01,
+          "load_s": 0.85,
+          "separate_s": 1.98,
+          "rtf": 34.3,
+          "rss_decode_mb": 57,
+          "rss_load_mb": 1176,
+          "rss_peak_mb": 1176,
+          "checksum": 1714.9
+        }
+      ],
+      "process_wall_s": 7.14,
+      "peak_rss_bytes": 1233272832,
+      "peak_footprint_bytes": 1743406976,
+      "reported_provider": "CoreML",
+      "output_checks": "four stems; finite samples; stereo; exact source frames; asserted outside separation timer",
+      "scope": "decode/load once; separate three times for resident configurations; no WAV writes; RSS is process-lifetime peak"
+    },
+    "same_export_cpu": {
+      "runs": [
+        {
+          "label": "split=1 ep=cpu shifts=0 runs=3",
+          "run": 0,
+          "audio_s": 68.03,
+          "decode_s": 0.01,
+          "load_s": 0.18,
+          "separate_s": 6.46,
+          "rtf": 10.52,
+          "rss_decode_mb": 57,
+          "rss_load_mb": 591,
+          "rss_peak_mb": 3528,
+          "checksum": 1711.781
+        },
+        {
+          "label": "split=1 ep=cpu shifts=0 runs=3",
+          "run": 1,
+          "audio_s": 68.03,
+          "decode_s": 0.01,
+          "load_s": 0.18,
+          "separate_s": 6.29,
+          "rtf": 10.82,
+          "rss_decode_mb": 57,
+          "rss_load_mb": 591,
+          "rss_peak_mb": 3535,
+          "checksum": 1711.781
+        },
+        {
+          "label": "split=1 ep=cpu shifts=0 runs=3",
+          "run": 2,
+          "audio_s": 68.03,
+          "decode_s": 0.01,
+          "load_s": 0.18,
+          "separate_s": 6.21,
+          "rtf": 10.96,
+          "rss_decode_mb": 57,
+          "rss_load_mb": 591,
+          "rss_peak_mb": 3535,
+          "checksum": 1711.781
+        }
+      ],
+      "process_wall_s": 19.24,
+      "peak_rss_bytes": 3706601472,
+      "peak_footprint_bytes": 3693055360,
+      "reported_provider": "CPU",
+      "output_checks": "four stems; finite samples; stereo; exact source frames; asserted outside separation timer",
+      "scope": "decode/load once; separate three times for resident configurations; no WAV writes; RSS is process-lifetime peak"
+    }
+  },
+  "comparisons": [
+    {
+      "reference": "charon-cpu",
+      "label": "quality-01",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 3.4332275390625e-05,
+      "agreement_db": 85.33749393315995,
+      "sdr_difference_db": -7.621710983229946e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-01",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 8.03917646408081e-05,
+      "agreement_db": 70.38129636534173,
+      "sdr_difference_db": -0.00014112868899829323
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-01",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.690621376037598e-05,
+      "agreement_db": 73.07855411304041,
+      "sdr_difference_db": -0.0004932328890223658
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-01",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 1.2442469596862793e-05,
+      "agreement_db": 95.52119067039945,
+      "sdr_difference_db": -3.346423615369076e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-02",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 5.8844685554504395e-05,
+      "agreement_db": 84.92649869255044,
+      "sdr_difference_db": -3.0262903923272688e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-02",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 3.0502676963806152e-05,
+      "agreement_db": 81.72255180548717,
+      "sdr_difference_db": 0.00034150921920428345
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-02",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 4.89652156829834e-05,
+      "agreement_db": 83.8713014159663,
+      "sdr_difference_db": 4.6581566405912156e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-02",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 1.9803643226623535e-05,
+      "agreement_db": 88.06157057417748,
+      "sdr_difference_db": -9.940101992533812e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-03",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.64740800857544e-05,
+      "agreement_db": 79.75529847866098,
+      "sdr_difference_db": -1.4179590522189756e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-03",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 3.722868859767914e-05,
+      "agreement_db": 76.24379242214077,
+      "sdr_difference_db": 0.00010494821503215235
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-03",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 4.023313522338867e-05,
+      "agreement_db": 82.25803029565543,
+      "sdr_difference_db": 9.78105937878837e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-03",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 2.7008354663848877e-05,
+      "agreement_db": 90.1347592955505,
+      "sdr_difference_db": 5.1657450786279924e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-04",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 5.7850033044815063e-05,
+      "agreement_db": 82.48669768341009,
+      "sdr_difference_db": -9.421314199542508e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-04",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 4.404410719871521e-05,
+      "agreement_db": 80.40534207864727,
+      "sdr_difference_db": -0.0003648949803505275
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-04",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.77257776260376e-05,
+      "agreement_db": 83.56407365824023,
+      "sdr_difference_db": -0.00013922348331707468
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-04",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 3.364682197570801e-05,
+      "agreement_db": 87.08965631605832,
+      "sdr_difference_db": -7.942831966634145e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-05",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.696581840515137e-05,
+      "agreement_db": 85.50167770806183,
+      "sdr_difference_db": -2.708966149356229e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-05",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.669387221336365e-05,
+      "agreement_db": 81.52907800844312,
+      "sdr_difference_db": -0.0002787728916704424
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-05",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 2.338271588087082e-05,
+      "agreement_db": 82.87350442275977,
+      "sdr_difference_db": 3.154070955702082e-05
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "quality-05",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 2.621859312057495e-05,
+      "agreement_db": 88.38382950503573,
+      "sdr_difference_db": -7.113919360257626e-06
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "playlist-1",
+      "stem": "drums",
+      "samples_per_channel": 3000320,
+      "max_absolute_difference": 5.966797471046448e-05,
+      "agreement_db": 84.15339581484731
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "playlist-1",
+      "stem": "bass",
+      "samples_per_channel": 3000320,
+      "max_absolute_difference": 8.549541234970093e-05,
+      "agreement_db": 77.03284865298686
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "playlist-1",
+      "stem": "other",
+      "samples_per_channel": 3000320,
+      "max_absolute_difference": 6.0733407735824585e-05,
+      "agreement_db": 80.56830136508239
+    },
+    {
+      "reference": "charon-cpu",
+      "label": "playlist-1",
+      "stem": "vocals",
+      "samples_per_channel": 3000320,
+      "max_absolute_difference": 3.1463801860809326e-05,
+      "agreement_db": 86.95197135644547
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-01",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 3.4183263778686523e-05,
+      "agreement_db": 85.33663961848282,
+      "sdr_difference_db": -7.52757416293548e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-01",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 8.044019341468811e-05,
+      "agreement_db": 70.37855523765131,
+      "sdr_difference_db": -0.00014288833674758195
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-01",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.693601608276367e-05,
+      "agreement_db": 73.07608367248618,
+      "sdr_difference_db": -0.0004945413634098728
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-01",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 1.2487173080444336e-05,
+      "agreement_db": 95.53951047699411,
+      "sdr_difference_db": -3.449255010856689e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-02",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 5.798041820526123e-05,
+      "agreement_db": 84.93553996287304,
+      "sdr_difference_db": -3.032374993239273e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-02",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 3.038346767425537e-05,
+      "agreement_db": 81.72465535309728,
+      "sdr_difference_db": 0.00034192518067399646
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-02",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 4.8547983169555664e-05,
+      "agreement_db": 83.86969772533426,
+      "sdr_difference_db": 4.6948789409917424e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-02",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 1.952052116394043e-05,
+      "agreement_db": 88.06132838368825,
+      "sdr_difference_db": -9.87638485572262e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-03",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.620585918426514e-05,
+      "agreement_db": 79.77362142852411,
+      "sdr_difference_db": -1.478525800191477e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-03",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 3.72081995010376e-05,
+      "agreement_db": 76.24511443851291,
+      "sdr_difference_db": 0.00010472867091948501
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-03",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 3.983825445175171e-05,
+      "agreement_db": 82.26653614544378,
+      "sdr_difference_db": 9.711782301735639e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-03",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 2.6807188987731934e-05,
+      "agreement_db": 90.15497925034867,
+      "sdr_difference_db": 5.165261103723395e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-04",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 5.830824375152588e-05,
+      "agreement_db": 82.46536035401753,
+      "sdr_difference_db": -9.526599703590932e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-04",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 4.4170767068862915e-05,
+      "agreement_db": 80.39064227165167,
+      "sdr_difference_db": -0.0003669494315268196
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-04",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.80685043334961e-05,
+      "agreement_db": 83.55633336502534,
+      "sdr_difference_db": -0.00013895476889391745
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-04",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 3.3468008041381836e-05,
+      "agreement_db": 87.11724972179867,
+      "sdr_difference_db": -7.855502607512221e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-05",
+      "stem": "drums",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.669759750366211e-05,
+      "agreement_db": 85.51786109720805,
+      "sdr_difference_db": -2.6602083709192925e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-05",
+      "stem": "bass",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 6.628036499023438e-05,
+      "agreement_db": 81.54736685815058,
+      "sdr_difference_db": -0.00027735371338266646
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-05",
+      "stem": "other",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 2.3412518203258514e-05,
+      "agreement_db": 82.88552811123128,
+      "sdr_difference_db": 3.166234700913151e-05
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "quality-05",
+      "stem": "vocals",
+      "samples_per_channel": 300032,
+      "max_absolute_difference": 2.6084482669830322e-05,
+      "agreement_db": 88.39756833393707,
+      "sdr_difference_db": -7.271315969781256e-06
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "playlist-1",
+      "stem": "drums",
+      "samples_per_channel": 3000320,
+      "max_absolute_difference": 6.004422903060913e-05,
+      "agreement_db": 84.15057086776322
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "playlist-1",
+      "stem": "bass",
+      "samples_per_channel": 3000320,
+      "max_absolute_difference": 8.55959951877594e-05,
+      "agreement_db": 77.02984010261802
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "playlist-1",
+      "stem": "other",
+      "samples_per_channel": 3000320,
+      "max_absolute_difference": 6.086006760597229e-05,
+      "agreement_db": 80.56389723669272
+    },
+    {
+      "reference": "charon-split-cpu",
+      "label": "playlist-1",
+      "stem": "vocals",
+      "samples_per_channel": 3000320,
+      "max_absolute_difference": 3.106892108917236e-05,
+      "agreement_db": 86.95678691749092
+    }
+  ],
+  "provider_audit": {
+    "model_compute_units": "CPUAndGPU",
+    "runtime_provider_kernel_events": {
+      "CoreMLExecutionProvider": 2
+    },
+    "partitions": 1,
+    "optimized_graph_nodes": 1982,
+    "coreml_supported_nodes": 1982,
+    "raw_profile_sha256": "65716a7915fef0a003190eb7ef4111c4f3e4eab07d6bb84cc98df8602f43f5b8",
+    "native_log_sha256": "4e725440d3d32b5bb00930c704e20a0981f47171f2f9be32fdc2fc4d0861fda9",
+    "scope": "ORT model graph assignment, not a hardware per-kernel GPU trace; CPU host STFT/iSTFT remains"
+  }
+}

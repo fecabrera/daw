@@ -3802,3 +3802,28 @@ Regression coverage holds real Timeline and Instrument knobs, calls the public n
 - `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
 
 Native AppKit key/menu delivery, native pointer timing, live device playback and Windows/Linux execution were not checked. Automated egui input and public-dispatch tests do not establish native platform behavior.
+
+## Stem separation backend evaluation — 2026-10-21
+
+Evaluated pinned demucs-rs and Charon revisions for a possible offline clip operation. This adds research documentation and [machine-readable local measurements](stem-separation-2026-10-21.json), not an application feature or dependency. See the [evaluation and integration proposal](../audio/stem-separation-evaluation.md) for model hashes, method, licensing evidence and remaining gates.
+
+- Built both upstream release evaluators with locked dependencies in ignored scratch storage; also built the demucs-rs CPU feature. Two scratch-only changes isolate Charon's workspace and redirect demucs-rs model-cache reads. No inference math was changed.
+- Recorded 24 local invocations: five reference excerpts and three long-workload repeats for Metal/Charon CPU, first GPU setup, silence/rate probes, and three demucs-rs CPU controls. All five scored excerpts were finite on both primary paths. Current demucs-rs Metal returned non-finite audio in its first setup run, all three long-workload repeats and the 48 kHz probe despite successful exits. Charon CPU and the CPU controls returned finite audio.
+- For the 68.034-second concatenation, Charon CPU completed in 11.17/11.09/11.18 seconds; the single valid demucs-rs CPU control took 152.02 seconds. Failed Metal runs are not ranked as successful throughput. Memory evidence records RSS and physical footprint separately.
+- Checked exact frames/stereo, non-finite samples, reference-stem SDR, digital silence and rate behavior. demucs-rs returned one extra frame at 48 kHz; Charon returned model-rate audio. Local model permissions remain unresolved despite permissive library licenses and third-party model labels.
+- Documentation/data checks: JSON parsed with finite metric values; all 24 records have four stereo stems and consistent expected frame metadata; reported medians/timings checked against recorded values; local document links and `git diff --check` passed. No DAW source, dependency, audio fixture, project or model artifact changed.
+
+Limits: five AAC-derived research previews and an artificial concatenation, one Mac, no blind listening or local PyTorch parity check, no optimized Charon CoreML export, no Windows/Linux or live playback-contention tests, no complete transitive-license/security audit. Upstream measurements are attributed and kept separate from local runs. DAW workspace tests and packaging were not rerun for this documentation-only change.
+
+## Charon CoreML follow-up — 2026-10-21
+
+Completed the previously unmeasured CoreML path using the same hashed audio and pinned Charon revision. See the [CoreML benchmark](../audio/stem-separation-coreml-evaluation.md) and [follow-up measurements](stem-separation-coreml-2026-10-21.json). The original 24-run baseline JSON is unchanged.
+
+- Exported the official HTDemucs checkpoint through Charon's checked CoreML-target exporter. The split/PyTorch and ONNX-CPU/PyTorch maximum differences passed its 1e-3 gate. Recorded checkpoint/export hashes, structure and Python/native runtime versions. Built release `separate` and `profile` examples with `--features coreml` in scratch storage.
+- Completed five excerpt and three long one-shot runs each on CoreML and CPU using the same split export, plus three reused-model separations each for original CPU, same-export CPU and CoreML. All outputs passed finite/stereo/frame checks. Added separate empty-cache, silence, 48 kHz and provider-audit probes; timing tables exclude instrumentation/metric work.
+- Audited actual ORT assignment: one CoreML partition, all 1,982 optimized model nodes supported, no CPU-provider model-kernel events in the recorded profile. CoreML is configured CPUAndGPU; host transforms remain CPU work. This is not a hardware-level GPU execution trace.
+- Median 68.034-second process time: 2.82 s CoreML versus 11.17 s recorded original CPU and 6.85 s same-export CPU. Reused-model separation medians: 1.98 / 8.13 / 6.29 s respectively. Excerpt SDR changes stayed below 0.0005 dB. Peak RSS, physical footprint and disk cache usage are reported separately.
+- Retained startup evidence: first empty-cache model load/compile 25.26 s; another fresh process took 25.97 s despite cached files. Warm results do not establish universal startup latency. The CoreML cache occupied about 1.67 GiB locally; same-export CPU fallback used more memory than the original low-memory CPU path.
+- Documentation/data checks: original baseline hash retained; source/reference hashes and reconstructed long input checked; 18 new one-shot records and nine resident separations validated; per-stem comparisons, derived summary values, JSON, local links and whitespace checked. App source, dependencies, fixtures and models remain unchanged in tracked scope. DAW workspace tests and packaging were not rerun for this documentation-only follow-up.
+
+Remaining limits: one host, five AAC-derived excerpts, artificial long workload, no blind listening or live playback/UI contention, no broader device/platform or signed-package checks, no hardware-level GPU trace, no dedicated CPU-target split export measurement. Model-use/redistribution terms remain unresolved. This follow-up closes the earlier lack of local CoreML measurements; it does not grant release acceptance.

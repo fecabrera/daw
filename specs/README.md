@@ -45,6 +45,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).
 - [Timestretch, offline pitch, and independent implementation rule](audio/timestretch.md).
 - [Timestretch acceptance plan](acceptance/timestretch.md).
+- [Stem separation backend evaluation](audio/stem-separation-evaluation.md): local quality, speed, memory, model-license evidence and proposed app integration; no feature is implemented.
+- [Charon CoreML benchmark](audio/stem-separation-coreml-evaluation.md): same-audio GPU/CPU quality, startup, memory, same-export control and reused-model measurements.
 
 ## Evidence
 
