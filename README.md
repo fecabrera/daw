@@ -17,7 +17,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Export and CLI:** export stereo WAV or MP3 files; validate projects and render audio from the command line.
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 
-Stem separation uses local Charon HTDemucs models, with CoreML on macOS and CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
+Stem separation uses local Charon HTDemucs models, with CoreML on Apple Silicon macOS and CPU on supported platforms. Either validated model enables separation; CoreML takes priority, with optional CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
 
 ## Status and planned work
 

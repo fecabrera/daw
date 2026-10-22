@@ -4020,3 +4020,28 @@ Completed automated checks on macOS arm64 with the pinned 1.97.0 toolchain:
 The first workspace test build used `CARGO_NET_OFFLINE=true`, which made `ort-sys` skip native runtime linkage. Removing that environment flag and retaining Cargo's `--offline` option allowed the cached runtime to link; the complete workspace rerun passed. This required no dependency or implementation change.
 
 Tests used generated media and temporary directories. Native UI/device interaction, real HTDemucs/CoreML inference and Windows/Linux execution were not performed. The filename byte limit was checked on macOS; native Linux filesystem execution remains unverified. Scope is F001/F004; the pinned review artifacts remain unchanged.
+
+## 2026-10-22 — Validated model selection and optional CPU fallback
+
+Model selection now loads the requested CPU or CoreML backend and runs a short, nonzero stereo probe on the existing worker. The production output adapter checks the four ordered stem names, stereo channels, 44.1 kHz rate, finite samples and exact output duration without writing stem files. Either validated model enables separation on its supported platform. CoreML takes priority when both models pass; a separate CPU fallback is optional. Failure without a fallback retains the project and reports the error.
+
+A candidate path is accepted and persisted only after successful validation. Failed replacement retains a different accepted model; a failed recheck of the same path clears it. Cancellation retains the previous model, keeps the worker receiver until acknowledgement and rejects late success. Saved paths are revalidated at startup. Superseded workers cannot overwrite newer settings. Validation state is not serialized into settings or projects.
+
+Focused automated checks passed on macOS arm64:
+
+- Native CPU validation accepts the generated four-stem fixture and rejects missing paths and the split-model input contract. Native CoreML loading/inference with an isolated temporary compilation cache accepts the generated split fixture and rejects the CPU-model contract. These fixtures contain no pretrained weights.
+- Backend tests cover CoreML-only success, preference with both models, optional CPU retry, failure without fallback, cancellation without retry, and invalid output metadata, channels, lengths and non-finite samples.
+- UI tests cover delayed acceptance, rejected replacement, clearing each model independently, startup rejection, superseded results, and status-bar cancellation that retains the previous model and project.
+
+Completed repository checks with the pinned Rust 1.97.0 toolchain:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed, including a final rerun after the same-path rejection change.
+- `cargo test --offline --locked --workspace`: passed. The workspace build included 565 UI tests. After the final same-path rejection change, all nine focused separation UI tests and the complete 566-test UI suite passed.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- `git diff --check`: passed.
+
+The initial Clippy run identified an unnecessary unwrap in validation scheduling. It was removed before the successful reruns. Checks used the local Cargo cache and Cargo's `--offline` option. No dependency pins changed.
+
+Native UI/device gestures, production HTDemucs weights and Windows/Linux execution were not tested. Native CPU/CoreML checks used synthetic fixtures, so they establish loading and output-contract behavior rather than separation quality or GPU coverage. Existing opt-in real-model and release acceptance tests remain ignored. Startup and model-replacement behavior were checked through automated UI state and worker tests.

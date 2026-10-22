@@ -174,42 +174,65 @@ fn swatch(ui: &egui::Ui, rect: Rect, color: Color32) {
     );
 }
 
-fn model_row(ui: &mut egui::Ui, width: f32, label: &str, path: &mut Option<std::path::PathBuf>) {
+pub struct ModelAction {
+    pub kind: daw_project::SeparationModelKind,
+    pub path: Option<std::path::PathBuf>,
+}
+
+fn model_row(
+    ui: &mut egui::Ui,
+    width: f32,
+    kind: daw_project::SeparationModelKind,
+    path: Option<&std::path::Path>,
+    action: &mut Option<ModelAction>,
+) {
     crate::rows::field(
         ui,
         width,
         |ui| {
-            ui.label(label);
+            ui.label(kind.name());
         },
         |ui| {
             ui.horizontal(|ui| {
-                ui.label(path.as_ref().and_then(|p| p.file_name()).map_or_else(
+                ui.label(path.and_then(|p| p.file_name()).map_or_else(
                     || "Not selected".into(),
                     |n| n.to_string_lossy().into_owned(),
                 ))
-                .on_hover_text(path.as_ref().map_or_else(
-                    || "Select a local HTDemucs ONNX model. No models are downloaded.".into(),
-                    |p| p.display().to_string(),
+                .on_hover_text(path.map_or_else(
+                    || {
+                        "Choose a local HTDemucs ONNX model to validate. No models are downloaded."
+                            .into()
+                    },
+                    |p| format!("Validated model: {}", p.display()),
                 ));
                 if ui.button("Choose…").clicked()
                     && let Some(selected) = rfd::FileDialog::new()
                         .add_filter("ONNX model", &["onnx"])
                         .pick_file()
                 {
-                    *path = Some(selected);
+                    *action = Some(ModelAction {
+                        kind,
+                        path: Some(selected),
+                    });
                 }
                 if ui
                     .add_enabled(path.is_some(), egui::Button::new("Clear"))
                     .clicked()
                 {
-                    *path = None;
+                    *action = Some(ModelAction { kind, path: None });
                 }
             });
         },
     );
 }
 
-pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
+pub fn show(
+    ctx: &Context,
+    settings: &mut AppSettings,
+    models: &daw_project::SeparationModels,
+    models_enabled: bool,
+    model_action: &mut Option<ModelAction>,
+) -> bool {
     let popup_was_open = egui::Popup::is_any_open(ctx);
     let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
         .show_with_content(ctx, |ui| {
@@ -226,15 +249,14 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
             let label_width = label_text("Split MIDI notes").max(
                 label_text("Accent color") + ui.spacing().item_spacing.x + 14.0,
             );
-            let models = std::sync::Arc::make_mut(&mut settings.separation_models);
-            ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE, |ui| {
-                model_row(ui, label_width, "CPU model", &mut models.cpu);
+            ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE && models_enabled, |ui| {
+                model_row(ui, label_width, daw_project::SeparationModelKind::Cpu, models.cpu.as_deref(), model_action);
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                model_row(ui, label_width, daw_project::SeparationModelKind::CoreMl, models.coreml.as_deref(), model_action);
             });
             if !daw_project::SEPARATION_AVAILABLE {
                 ui.label(daw_project::SEPARATION_UNAVAILABLE_REASON);
             }
-            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-            model_row(ui, label_width, "CoreML model", &mut models.coreml);
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             crate::rows::field(
                 ui,
@@ -394,7 +416,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| closed = show(ui.ctx(), settings),
+            |ui| closed = show(ui.ctx(), settings, &Default::default(), true, &mut None),
         );
         output.textures_delta.clear();
         (closed, output.shapes)

@@ -10,6 +10,7 @@ mod placement;
 mod portion;
 mod range_selection;
 mod regular_save;
+mod separation_models;
 pub use history::HistoryAction;
 mod resize;
 mod sampler_panel;
@@ -304,6 +305,7 @@ enum Job {
     Saved(Session),
     Exported(Vec<String>),
     Separated(daw_project::PreparedSeparation),
+    ModelValidated(Result<(), String>),
 }
 
 enum Action {
@@ -732,6 +734,7 @@ pub struct DawUi {
     mixer_faders: HashMap<Option<Id>, Rect>,
     settings: settings::AppSettings,
     settings_open: bool,
+    separation_models: separation_models::State,
     project_settings: Option<project_settings::ProjectSettings>,
     pub session: Session,
     history: Option<daw_project::SessionHistory>,
@@ -837,6 +840,7 @@ impl Default for DawUi {
             mixer_faders: HashMap::new(),
             settings: settings::AppSettings::default(),
             settings_open: false,
+            separation_models: Default::default(),
             project_settings: None,
             session: Session::default(),
             history: None,
@@ -917,8 +921,12 @@ impl DawUi {
     }
 
     pub fn set_settings(&mut self, ctx: &egui::Context, settings: settings::AppSettings) {
+        let models_changed = self.settings.separation_models != settings.separation_models;
         theme::apply(ctx, settings.clone());
         self.settings = settings;
+        if models_changed {
+            self.revalidate_separation_models();
+        }
         self.configure_audio_cache(false);
     }
 
@@ -1263,6 +1271,7 @@ impl DawUi {
             self.busy.clear();
             self.settings_cancel = None;
             match message {
+                Ok(Job::ModelValidated(result)) => self.finish_model_validation(result),
                 Ok(Job::AudioSettings(mut session)) => {
                     let old_rate = self.session.project.sample_rate_hz;
                     let playhead = self
@@ -1399,7 +1408,9 @@ impl DawUi {
                     }
                 }
                 Err(e) => {
-                    if let Some(status) = &mut self.separation_status {
+                    if self.separation_models.running() {
+                        self.finish_model_validation(Err(e));
+                    } else if let Some(status) = &mut self.separation_status {
                         status.state = if status
                             .progress
                             .cancel
@@ -1419,6 +1430,7 @@ impl DawUi {
                 }
             }
         }
+        self.start_next_model_validation();
     }
     fn seek(&mut self, frame: u64) {
         self.session.project.transport.playhead_frame = frame;
@@ -2037,9 +2049,10 @@ impl DawUi {
                             if let Some(cancel) = &self.settings_cancel {
                                 cancel.store(true, Ordering::Relaxed);
                             }
-                            // Separation must acknowledge cancellation before its
-                            // report can close. Its publication path checks the flag.
-                            if self.separation_status.is_none() {
+                            // Keep separation and model-check receivers until acknowledgement.
+                            // Both publication paths reject cancelled results.
+                            if self.separation_status.is_none() && !self.separation_models.running()
+                            {
                                 self.settings_cancel = None;
                                 // Other preparation jobs reject late publication.
                                 self.job = None;
@@ -4999,8 +5012,22 @@ impl DawUi {
                 None => self.project_settings = Some(draft),
             }
         }
-        if self.settings_open && settings::show(ctx, &mut self.settings) {
-            self.settings_open = false;
+        if self.settings_open {
+            let mut model_action = None;
+            let enabled =
+                self.job.is_none() && !self.separation_models.busy() && self.error.is_none();
+            if settings::show(
+                ctx,
+                &mut self.settings,
+                &self.separation_models.validated,
+                enabled,
+                &mut model_action,
+            ) {
+                self.settings_open = false;
+            }
+            if let Some(action) = model_action {
+                self.change_separation_model(action);
+            }
         }
         #[derive(Clone, Copy)]
         enum UnsavedChoice {

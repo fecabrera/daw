@@ -1,5 +1,5 @@
 //! Supported-target Charon adapter. Backend types stay private.
-use super::{Error, MODEL_RATE, Models, Progress, STEMS};
+use super::{Error, MODEL_RATE, ModelKind, Models, Progress, STEMS};
 use charon_audio::{AudioSource, CancelToken, Control, Separator, SeparatorConfig, StemSink};
 use daw_media::{AudioEncoder, WavCodec, WavEncoder};
 use std::{path::Path, sync::atomic::Ordering};
@@ -18,40 +18,78 @@ pub fn separate(
             "Separation needs finite, nonempty stereo audio".into(),
         ));
     }
-    let cpu = models
-        .cpu
-        .as_ref()
-        .filter(|p| p.is_file())
-        .ok_or_else(|| Error("Select a local CPU HTDemucs ONNX model in Settings".into()))?;
+    run_models(models, progress, |config| {
+        attempt(samples, config, Some(directory), progress).map_err(|e| Error(e.to_string()))
+    })
+}
+
+fn config_for(kind: ModelKind, path: &Path) -> Result<SeparatorConfig, Error> {
+    if !kind.available() {
+        return Err(Error(format!(
+            "{} is unavailable on this platform",
+            kind.name()
+        )));
+    }
+    if !path.is_file() {
+        return Err(Error(format!(
+            "{} file is missing: {}",
+            kind.name(),
+            path.display()
+        )));
+    }
+    match kind {
+        ModelKind::Cpu => Ok(SeparatorConfig::htdemucs(path)),
+        ModelKind::CoreMl => {
+            #[cfg(target_os = "macos")]
+            {
+                let cache = dirs::cache_dir()
+                    .ok_or_else(|| Error("User cache directory is unavailable".into()))?;
+                let mut config = SeparatorConfig::htdemucs_split(path);
+                config.model.onnx.execution_provider = charon_audio::ExecutionProvider::CoreMl;
+                config.model.onnx.coreml_cache_dir = Some(cache.join("DAW/Charon/CoreML/ort-1.31"));
+                Ok(config)
+            }
+            #[cfg(not(target_os = "macos"))]
+            unreachable!("CoreML availability was checked above")
+        }
+    }
+}
+
+fn run_models(
+    models: &Models,
+    progress: &Progress,
+    mut run: impl FnMut(SeparatorConfig) -> Result<(), Error>,
+) -> Result<Vec<String>, Error> {
+    progress.check()?;
     #[cfg(target_os = "macos")]
     let mut warnings = Vec::new();
     #[cfg(not(target_os = "macos"))]
     let warnings: Vec<String> = Vec::new();
     #[cfg(target_os = "macos")]
     if let Some(model) = &models.coreml {
-        let result = dirs::cache_dir()
-            .ok_or_else(|| Error("User cache directory is unavailable".into()))
-            .and_then(|cache| {
-                let mut config = SeparatorConfig::htdemucs_split(model);
-                config.model.onnx.execution_provider = charon_audio::ExecutionProvider::CoreMl;
-                config.model.onnx.coreml_cache_dir = Some(cache.join("DAW/Charon/CoreML/ort-1.31"));
-                attempt(samples, config, directory, progress).map_err(|e| Error(e.to_string()))
-            });
-        match result {
+        match config_for(ModelKind::CoreMl, model).and_then(&mut run) {
             Ok(()) => return Ok(warnings),
             Err(e) => {
                 progress.check()?;
+                if models.cpu.is_none() {
+                    return Err(Error(format!(
+                        "CoreML separation failed: {e}\nNo CPU fallback model is selected"
+                    )));
+                }
                 warnings.push(format!("CoreML failed; used CPU instead: {e}"));
                 progress.done.store(0, Ordering::Relaxed);
                 progress.total.store(0, Ordering::Relaxed);
             }
         }
     }
+    let cpu = models.cpu.as_ref().ok_or_else(|| {
+        Error("Select and validate a supported HTDemucs ONNX model in Settings".into())
+    })?;
     #[cfg(target_os = "macos")]
     if models.coreml.is_none() {
         warnings.push("No CoreML model selected; used CPU".into());
     }
-    attempt(samples, SeparatorConfig::htdemucs(cpu), directory, progress).map_err(|e| {
+    config_for(ModelKind::Cpu, cpu).and_then(run).map_err(|e| {
         Error(if warnings.is_empty() {
             e.to_string()
         } else {
@@ -60,10 +98,24 @@ pub fn separate(
     })?;
     Ok(warnings)
 }
+
+pub(super) fn validate_model(
+    kind: ModelKind,
+    path: &Path,
+    progress: &Progress,
+) -> Result<(), Error> {
+    // A full model window is padded by Charon, but no stem files are created.
+    let probe: [[f32; 2]; 128] = std::array::from_fn(|i| {
+        let value = (i as f32 * 0.1).sin() * 0.1;
+        [value, -value * 0.5]
+    });
+    attempt(&probe, config_for(kind, path)?, None, progress).map_err(|e| Error(e.to_string()))
+}
+
 fn attempt(
     samples: &[[f32; 2]],
     config: SeparatorConfig,
-    directory: &Path,
+    directory: Option<&Path>,
     progress: &Progress,
 ) -> charon_audio::Result<()> {
     let separator = Separator::new(config)?;
@@ -123,7 +175,7 @@ impl AudioSource for Source<'_> {
     }
 }
 struct Sink<'a> {
-    directory: &'a Path,
+    directory: Option<&'a Path>,
     progress: &'a Progress,
     encoders: Vec<WavEncoder>,
     counts: [usize; 4],
@@ -142,15 +194,17 @@ impl StemSink for Sink<'_> {
                 "Expected four stereo HTDemucs stems at 44.1 kHz".into(),
             ));
         }
-        for name in STEMS {
-            self.encoders.push(
-                WavEncoder::at_sample_rate(
-                    &self.directory.join(format!("{name}.wav")),
-                    WavCodec::Float32,
-                    MODEL_RATE,
-                )
-                .map_err(|e| e.to_string())?,
-            );
+        if let Some(directory) = self.directory {
+            for name in STEMS {
+                self.encoders.push(
+                    WavEncoder::at_sample_rate(
+                        &directory.join(format!("{name}.wav")),
+                        WavCodec::Float32,
+                        MODEL_RATE,
+                    )
+                    .map_err(|e| e.to_string())?,
+                );
+            }
         }
         Ok(())
     }
@@ -161,13 +215,22 @@ impl StemSink for Sink<'_> {
         if stem >= 4 || block.nrows() != 2 {
             return Err("Invalid stem output".into());
         }
-        let frames: Vec<_> = (0..block.ncols())
-            .map(|i| [block[[0, i]], block[[1, i]]])
-            .collect();
-        self.encoders[stem]
-            .write_frames(&frames)
-            .map_err(|e| e.to_string())?;
-        self.counts[stem] += frames.len();
+        if block.iter().any(|v| !v.is_finite()) {
+            return Err("Stem output contains non-finite samples".into());
+        }
+        let count = self.counts[stem]
+            .checked_add(block.ncols())
+            .filter(|n| *n <= self.expected)
+            .ok_or("Stem duration exceeds input")?;
+        if self.directory.is_some() {
+            let frames: Vec<_> = (0..block.ncols())
+                .map(|i| [block[[0, i]], block[[1, i]]])
+                .collect();
+            self.encoders[stem]
+                .write_frames(&frames)
+                .map_err(|e| e.to_string())?;
+        }
+        self.counts[stem] = count;
         Ok(())
     }
     fn finish(&mut self) -> charon_audio::Result<()> {
@@ -183,6 +246,179 @@ impl StemSink for Sink<'_> {
 
 #[cfg(test)]
 mod tests {
+    fn fixture(name: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../vendor/charon-audio/tests/fixtures")
+            .join(name)
+    }
+
+    #[test]
+    fn validation_loads_the_backend_and_rejects_the_wrong_contract() {
+        let p = super::Progress::default();
+        super::validate_model(super::ModelKind::Cpu, &fixture("identity_4stems.onnx"), &p).unwrap();
+        assert!(
+            super::validate_model(super::ModelKind::Cpu, &fixture("identity_split.onnx"), &p)
+                .is_err()
+        );
+        assert!(
+            super::validate_model(super::ModelKind::Cpu, &fixture("missing.onnx"), &p).is_err()
+        );
+        p.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(
+            crate::validate_model(super::ModelKind::Cpu, &fixture("identity_4stems.onnx"), &p)
+                .unwrap_err()
+                .to_string()
+                .contains("cancelled")
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_coreml_validation_checks_split_model_without_cpu_fallback() {
+        let cache = std::env::temp_dir().join(format!(
+            "daw-model-validation-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&cache).unwrap();
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(cache.clone());
+        for (model, accepted) in [
+            ("identity_split.onnx", true),
+            ("identity_4stems.onnx", false),
+        ] {
+            let mut config = super::config_for(super::ModelKind::CoreMl, &fixture(model)).unwrap();
+            config.model.onnx.coreml_cache_dir = Some(cache.clone());
+            let result = super::attempt(
+                &[[0.1, -0.05]; 128],
+                config,
+                None,
+                &super::Progress::default(),
+            );
+            assert_eq!(result.is_ok(), accepted, "{model}: {result:?}");
+        }
+    }
+
+    #[test]
+    fn validation_rejects_invalid_stem_metadata_samples_and_lengths() {
+        use charon_audio::StemSink;
+        let progress = super::Progress::default();
+        let mut sink = super::Sink {
+            directory: None,
+            progress: &progress,
+            encoders: Vec::new(),
+            counts: [0; 4],
+            expected: 2,
+        };
+        let stems: Vec<_> = super::STEMS.iter().map(|s| s.to_string()).collect();
+        assert!(sink.begin(&stems, 1, super::MODEL_RATE).is_err());
+        assert!(sink.begin(&stems, 2, 48_000).is_err());
+        assert!(sink.begin(&stems[..3], 2, super::MODEL_RATE).is_err());
+        sink.begin(&stems, 2, super::MODEL_RATE).unwrap();
+        assert!(
+            sink.write(0, ndarray::Array2::from_elem((2, 2), f32::NAN).view())
+                .is_err()
+        );
+        assert!(
+            sink.write(0, ndarray::Array2::zeros((1, 2)).view())
+                .is_err()
+        );
+        assert!(
+            sink.write(4, ndarray::Array2::zeros((2, 2)).view())
+                .is_err()
+        );
+        assert!(
+            sink.write(0, ndarray::Array2::zeros((2, 3)).view())
+                .is_err()
+        );
+        assert!(sink.finish().is_err());
+        for stem in 0..4 {
+            sink.write(stem, ndarray::Array2::zeros((2, 2)).view())
+                .unwrap();
+        }
+        sink.finish().unwrap();
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn coreml_is_preferred_and_cpu_fallback_is_optional() {
+        use super::{Error, ModelKind, Models, Progress};
+        use charon_audio::ExecutionProvider;
+        let model = fixture("identity_4stems.onnx");
+        for cpu in [None, Some(fixture("missing.onnx"))] {
+            let mut calls = 0;
+            let warnings = super::run_models(
+                &Models {
+                    cpu,
+                    coreml: Some(model.clone()),
+                },
+                &Progress::default(),
+                |config| {
+                    calls += 1;
+                    assert_eq!(
+                        config.model.onnx.execution_provider,
+                        ExecutionProvider::CoreMl
+                    );
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert_eq!(calls, 1);
+            assert!(warnings.is_empty());
+        }
+        let models = Models {
+            cpu: Some(model.clone()),
+            coreml: Some(model.clone()),
+        };
+        let mut providers = Vec::new();
+        let warnings = super::run_models(&models, &Progress::default(), |config| {
+            let provider = config.model.onnx.execution_provider;
+            providers.push(provider);
+            if provider == ExecutionProvider::CoreMl {
+                Err(Error("CoreML test failure".into()))
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap();
+        assert_eq!(
+            providers,
+            [ExecutionProvider::CoreMl, ExecutionProvider::Cpu]
+        );
+        assert!(warnings[0].contains("CoreML test failure"));
+        let error = super::run_models(
+            &Models {
+                cpu: None,
+                coreml: Some(model),
+            },
+            &Progress::default(),
+            |_| Err(Error("CoreML test failure".into())),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("CoreML test failure"));
+        assert!(error.to_string().contains("No CPU fallback"));
+        assert!(ModelKind::CoreMl.available());
+
+        let p = Progress::default();
+        let mut calls = 0;
+        let error = super::run_models(&models, &p, |_| {
+            calls += 1;
+            p.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            Err(Error("cancelled in CoreML".into()))
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1);
+        assert!(error.to_string().contains("cancelled"));
+    }
+
     #[test]
     fn native_cpu_stream_and_failed_coreml_fallback_preserve_stereo_and_duration() {
         let directory = std::env::temp_dir().join(format!(

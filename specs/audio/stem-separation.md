@@ -2,7 +2,7 @@
 
 ## Accepted behavior
 
-Timeline's audio-clip context menu contains **Stem-separation**. It acts on the clicked clip, independently of a multi-clip selection. Require a configured local CPU model; saved and unsaved projects are supported. The menu and action share one readiness guard without a save-folder prerequisite. Do not bundle, fetch, or redistribute weights. Store machine-local model paths in application Settings, outside the project manifest.
+Timeline's audio-clip context menu contains **Stem-separation**. It acts on the clicked clip, independently of a multi-clip selection. Require at least one validated local model supported by the platform; saved and unsaved projects are supported. The menu and action share one readiness guard without a save-folder prerequisite. Do not bundle, fetch, or redistribute weights. Store machine-local model paths in application Settings, outside the project manifest.
 
 The arranged clip is the input: resolve the shared prepared buffer for the saved stretch engine/revision and transpose, then map trim and repeat coordinates through `Clip::source_frame`. Apply the shared loop-seam fade. Exclude outer fades from the input because normal stem playback supplies them. Do not bake clip gain, track/group/Master mix settings, effects, or modulation. Copy clip gain to each resulting stem.
 
@@ -12,7 +12,7 @@ Publish a new processing group and four ordinary audio tracks, in Drums/Bass/Oth
 
 | Stage | Owner | Contract |
 | --- | --- | --- |
-| Menu and configuration | `daw-ui` | Existing file-action/job/dialog guards; local ONNX pickers; no inference in painting |
+| Menu and configuration | `daw-ui` | Existing file-action/job/dialog guards; local ONNX pickers; worker validation before acceptance; no inference in painting |
 | Snapshot and scheduling | Existing UI `run_job` | Clone Session through shared immutable audio owners; one offline job; keep playback/session on failure |
 | Input preparation | `daw-project` | Shared clip-buffer lookup and frame mapping; shared loop fade; cancellable shared resampling to stereo 44.1 kHz |
 | Model and separation | `daw-separation` | Pinned Charon revision; private backend types; stream source and output callbacks; finite stereo PCM |
@@ -26,6 +26,14 @@ The separation crate has no UI/device dependency. Dependencies flow project → 
 
 Charon runs windows in its existing serial stream pipeline. The adapter retains only one output block per write, not four whole model-rate output arrays. The arranged input and resampled input still need memory; imported project-rate buffers and peaks use the normal shared media path. There is no streaming disk-backed project audio or fixed job-memory guarantee.
 
+## Model selection and validation
+
+Setting a CPU or CoreML path schedules validation through the existing UI worker. Use only that model's explicit provider and preset; do not fall back to a different model during validation. Load the model and run a deterministic, finite, nonzero stereo probe at 44.1 kHz through the production streaming adapter. Charon pads the short input to its model window. Require Drums/Bass/Other/Vocals in order, two channels, the model rate, finite output and the exact probe-frame count. Discard output without creating stem files. CoreML validation can create compiled data in the existing user cache.
+
+Do not accept or persist a candidate until validation succeeds. Retain a different previous validated path on failed replacement, and retain the previous path on cancellation. A failed recheck of the currently accepted path clears it, because the file can change in place. Keep validation state only in memory and revalidate saved paths each application start; reject a saved path if that check fails. Ignore a worker result superseded by a settings replacement. Cancellation keeps the receiver until acknowledgement and cannot accept a late success. Model settings and validation do not edit the project or its history. Native load and inference remain uninterruptible.
+
+Either validated model enables separation, subject to the existing job/dialog guards. Apple Silicon macOS supports CoreML-only, CPU-only, or both; Windows/Linux support CPU. Intel macOS remains unsupported. Clearing one model retains the other. Both validated paths prefer CoreML, with the separate CPU model as optional fallback.
+
 ## Backends
 
 Retain Charon revision `bc045cd80f009ea863772c5afef15928101df66f` (0.1.2 source version) and the lockfile. Cargo overrides that Git source with `vendor/charon-audio`; its [patch record](../../vendor/charon-audio/DAW-PATCH.md) identifies the source and the provider-policy compatibility change. Reset ort’s automatic device policy before registering explicit CPU/CoreML providers, so a CPU-only model cannot silently select CoreML. Keep Charon’s processing and low-memory presets unchanged. Default features are disabled; enable the ONNX backend on supported targets and CoreML only on Apple Silicon macOS. Intel macOS builds omit Charon, ort and their native runtime; shared model/progress types remain available, while the project API returns an unsupported-target error before preparation. Settings and the clip menu use shared target availability to disable separation controls with an explanation. Desktop and CLI builds remain available. The default HTDemucs CPU preset uses its in-graph model and low-memory configuration. The optional macOS preset uses the split-transform ONNX model with CoreML CPUAndGPU compute units. CoreML is an execution provider, not a promise that every operation runs on a GPU. ONNX Runtime can assign unsupported nodes to CPU.
@@ -34,7 +42,7 @@ Pin the workspace `ort-sys` patch to upstream revision `f2a5f73c9dd9ff3682303481
 
 On Apple Silicon macOS, the separation crate's build script resolves Apple Clang's compiler runtime through `xcrun` and links `libclang_rt.osx.a`. Static CoreML objects use its platform-availability helper; Rust's native link does not add that library automatically. Keep this prerequisite in the backend crate so desktop, CLI, and tests share it, including thin-LTO release links. Intel macOS and other targets skip this step.
 
-On a CoreML load, inference, or output-validation error, discard its writers and retry using the separate CPU model and fresh files. Retain a warning. Do not retry a cancellation. Both paths validate stem identities/order, channel count, rate, finite samples, and exact model-rate duration. Whole-process termination or native out-of-memory abort cannot be recovered in-process.
+Try CoreML first when its validated path is present, without requiring a CPU path. On a CoreML load, inference, or output-validation error, discard its writers and retry using the separate validated CPU model and fresh files only if that model is selected. Without a CPU fallback, report the CoreML failure and retain the project. Retain a warning. Do not retry a cancellation. Both paths validate stem identities/order, channel count, rate, finite samples, and exact model-rate duration. Whole-process termination or native out-of-memory abort cannot be recovered in-process.
 
 Compiled CoreML data lives under the user cache directory's `DAW/Charon/CoreML/ort-1.31` subtree, keyed by Charon's model-content hash. It is separate from project stems, model locations, and seek caches. Models are loaded per job; a resident model service is not implemented. Cold load can dominate elapsed time. See the [CPU evaluation](stem-separation-evaluation.md) and [CoreML evaluation](stem-separation-coreml-evaluation.md); their timing evidence is not a feature-level latency guarantee.
 

@@ -16,6 +16,51 @@ pub struct Models {
     pub cpu: Option<PathBuf>,
     pub coreml: Option<PathBuf>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModelKind {
+    Cpu,
+    CoreMl,
+}
+impl ModelKind {
+    pub const ALL: [Self; 2] = [Self::CoreMl, Self::Cpu];
+
+    pub fn available(self) -> bool {
+        match self {
+            Self::Cpu => AVAILABLE,
+            Self::CoreMl => cfg!(all(target_os = "macos", target_arch = "aarch64")),
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Cpu => "CPU model",
+            Self::CoreMl => "CoreML model",
+        }
+    }
+}
+impl Models {
+    pub fn path(&self, kind: ModelKind) -> Option<&Path> {
+        match kind {
+            ModelKind::Cpu => self.cpu.as_deref(),
+            ModelKind::CoreMl => self.coreml.as_deref(),
+        }
+    }
+
+    pub fn set(&mut self, kind: ModelKind, path: Option<PathBuf>) {
+        match kind {
+            ModelKind::Cpu => self.cpu = path,
+            ModelKind::CoreMl => self.coreml = path,
+        }
+    }
+
+    /// Configuration only; the host publishes paths after worker validation.
+    pub fn is_configured(&self) -> bool {
+        ModelKind::ALL
+            .into_iter()
+            .any(|kind| kind.available() && self.path(kind).is_some())
+    }
+}
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct Error(pub String);
@@ -43,6 +88,27 @@ pub const UNAVAILABLE_REASON: &str = "Stem separation is unavailable on Intel ma
 
 #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 mod backend;
+
+/// Load the selected backend and check a short inference through the same
+/// four-stem output contract as separation. Call only from a worker.
+pub fn validate_model(kind: ModelKind, path: &Path, progress: &Progress) -> Result<(), Error> {
+    progress.check()?;
+    if !kind.available() {
+        return Err(Error(format!(
+            "{} is unavailable on this platform",
+            kind.name()
+        )));
+    }
+    #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
+    {
+        backend::validate_model(kind, path, progress)
+    }
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    {
+        let _ = path;
+        Err(Error(UNAVAILABLE_REASON.into()))
+    }
+}
 
 /// Writes only into the caller's newly reserved staging directory.
 pub fn separate(

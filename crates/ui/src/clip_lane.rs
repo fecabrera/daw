@@ -40,11 +40,7 @@ impl DawUi {
                         self.separation_enabled(),
                         egui::Button::new("Stem-separation"),
                     )
-                    .on_disabled_hover_text(if daw_project::SEPARATION_AVAILABLE {
-                        "Select a CPU model in Settings first"
-                    } else {
-                        daw_project::SEPARATION_UNAVAILABLE_REASON
-                    })
+                    .on_disabled_hover_text(self.separation_disabled_hint())
                     .clicked()
             {
                 self.separate_clip(clip.id);

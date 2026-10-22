@@ -5,10 +5,14 @@ Split an audio clip into Drums, Bass, Other, and Vocals. Separation uses local H
 ## Set up models
 
 1. Open Settings.
-2. Choose a **CPU model**: Charon's four-stem, in-graph HTDemucs ONNX model.
-3. On macOS, optionally choose a **CoreML model**: the split-transform HTDemucs ONNX export for Charon. A `.mlmodel` or `.mlpackage` is not supported.
+2. On Apple Silicon macOS, choose a **CoreML model**, a **CPU model**, or both. Windows and Linux use a **CPU model**.
+3. Wait for validation to finish. Separation becomes available when at least one supported model passes.
 
-A CPU model is required for fallback. With a CoreML model selected, macOS tries CoreML first. Otherwise it uses CPU. Windows and Linux use CPU. CoreML can use both the CPU and GPU. Stem separation is unavailable on Intel macOS; the rest of the app remains available, and separation controls are disabled.
+The CPU model must be Charon's four-stem, in-graph HTDemucs ONNX model. The CoreML model must be the split-transform HTDemucs ONNX export for Charon. A `.mlmodel` or `.mlpackage` is not supported.
+
+Selection loads the model and runs a short stereo test. A failed check rejects the new path and retains a different, previously accepted model. If the failed path was already selected, it is cleared. Cancel also retains the previous model and waits for the current native operation to return. Saved paths are checked again when the app starts; failed checks remove the invalid selection. Model validation does not change the project.
+
+With both models validated, macOS uses CoreML first and keeps CPU as fallback. A CoreML model works without a separate CPU model. If CoreML fails and no CPU model is selected, separation reports the error and leaves the arrangement unchanged. CoreML can use both the CPU and GPU. Stem separation is unavailable on Intel macOS; the rest of the app remains available, and separation controls are disabled.
 
 Model loading needs substantial memory. CoreML can take tens of seconds to compile on first use. Later loads can also take time. Compiled CoreML files use a separate user cache and can occupy more than 1 GB. Model files stay where you selected them.
 
@@ -32,4 +36,4 @@ Undo restores the arrangement. It retains generated files so Redo can restore th
 
 If you redo separation after saving it undone, use Save to copy any restored stems into the current project folder. Later saves and Undo/Redo use those copies. Edits made while Save runs remain marked as unsaved.
 
-Separation can leave bleed or artifacts. It processes one clip at a time and needs memory for model processing, the arranged input, and prepared stem audio. Long clips can use substantial memory. A CoreML error triggers a fresh CPU attempt and appears as a warning in the finished report. If CPU processing also fails, the report shows the error.
+Separation can leave bleed or artifacts. It processes one clip at a time and needs memory for model processing, the arranged input, and prepared stem audio. Long clips can use substantial memory. When a validated CPU model is also selected, a CoreML error triggers a fresh CPU attempt and appears as a warning in the finished report. If CPU processing also fails, the report shows the error.

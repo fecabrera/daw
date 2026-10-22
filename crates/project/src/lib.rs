@@ -1,6 +1,8 @@
 mod separation;
 pub use daw_separation::{
-    AVAILABLE as SEPARATION_AVAILABLE, UNAVAILABLE_REASON as SEPARATION_UNAVAILABLE_REASON,
+    AVAILABLE as SEPARATION_AVAILABLE, ModelKind as SeparationModelKind,
+    UNAVAILABLE_REASON as SEPARATION_UNAVAILABLE_REASON,
+    validate_model as validate_separation_model,
 };
 pub use separation::{PreparedSeparation, SeparationModels, SeparationProgress};
 mod history;

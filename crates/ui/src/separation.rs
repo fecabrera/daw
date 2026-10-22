@@ -33,11 +33,24 @@ impl Status {
     }
 }
 impl DawUi {
+    pub(super) fn separation_disabled_hint(&self) -> &'static str {
+        if !daw_project::SEPARATION_AVAILABLE {
+            daw_project::SEPARATION_UNAVAILABLE_REASON
+        } else if self.separation_models.validated.is_configured() {
+            "Finish the current operation before separating stems"
+        } else if daw_project::SeparationModelKind::CoreMl.available() {
+            "Select and validate a CPU or CoreML model in Settings first"
+        } else {
+            "Select and validate a CPU model in Settings first"
+        }
+    }
+
     pub(super) fn separation_enabled(&self) -> bool {
         daw_project::SEPARATION_AVAILABLE
             && self.file_action_enabled(FileAction::Import)
             && self.separation_status.is_none()
-            && self.settings.separation_models.cpu.is_some()
+            && !self.separation_models.busy()
+            && self.separation_models.validated.is_configured()
     }
 
     pub(super) fn separate_clip(&mut self, clip: Id) {
@@ -46,7 +59,7 @@ impl DawUi {
         }
         let progress = SeparationProgress::default();
         let session = self.session.clone();
-        let models = self.settings.separation_models.clone();
+        let models = self.separation_models.validated.clone();
         let worker_progress = progress.clone();
         self.run_job("Separating stems…", move || {
             session
@@ -78,6 +91,7 @@ mod tests {
         assert!(!app.separation_enabled());
         std::sync::Arc::make_mut(&mut app.settings.separation_models).cpu =
             Some(PathBuf::from("cpu-model.onnx"));
+        app.separation_models.validated = (*app.settings.separation_models).clone();
         for folder in [None, Some(std::env::temp_dir())] {
             app.session.folder = folder;
             assert_eq!(app.separation_enabled(), daw_project::SEPARATION_AVAILABLE);
@@ -104,6 +118,7 @@ mod tests {
             cpu: Some(std::env::temp_dir().join("daw-missing-test-model.onnx")),
             coreml: None,
         });
+        app.separation_models.validated = (*app.settings.separation_models).clone();
         assert!(app.session.folder.is_none());
         assert!(app.separation_enabled());
         let before = app.session.project.clone();
