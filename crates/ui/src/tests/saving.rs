@@ -1,12 +1,11 @@
 use super::*;
 
-fn hold_save(app: &mut DawUi) -> mpsc::Sender<Result<(), String>> {
+fn hold_save(app: &mut DawUi) -> mpsc::Sender<Result<Session, String>> {
     let (sender, receiver) = mpsc::channel();
     app.regular_save = Some(regular_save::PendingSave {
         receiver,
         project: app.session.project.project_id,
         revision: app.change_revision,
-        snapshot: app.session.clone(),
         navigation_revision: app.navigation_revision,
     });
     sender
@@ -111,7 +110,7 @@ fn regular_save_keeps_workspace_paint_and_effect_selection_stable() {
                     .contains(&egui::ViewportCommand::CancelClose)
             );
             assert!(!app.allow_close && !app.unsaved_prompt && app.pending.is_none());
-            sender.send(Ok(())).unwrap();
+            sender.send(Ok(app.session.clone())).unwrap();
             app.poll();
             assert!(!app.dirty && app.regular_save.is_none());
         }
@@ -146,6 +145,7 @@ fn regular_save_writes_a_snapshot_and_keeps_later_edits_and_transport() {
     assert_eq!(disk.project.transport.playhead_frame, 1234);
 
     // Worker-prepared edits (for example a stretch) also invalidate an in-flight save.
+    let written = app.session.clone();
     let sender = hold_save(&mut app);
     let mut prepared = app.session.clone();
     prepared.project.tracks[0].name = "Worker edit".into();
@@ -154,7 +154,7 @@ fn regular_save_writes_a_snapshot_and_keeps_later_edits_and_transport() {
     tx.send(Ok(Job::Loaded(prepared, true))).unwrap();
     app.poll();
     assert!(app.dirty);
-    sender.send(Ok(())).unwrap();
+    sender.send(Ok(written)).unwrap();
     app.poll();
     assert!(app.dirty);
     assert_eq!(app.session.project.tracks[0].name, "Worker edit");
@@ -165,6 +165,7 @@ fn regular_save_failure_disconnect_and_replaced_project_do_not_publish_old_state
     for outcome in ["failure", "disconnect", "replacement"] {
         let mut app = DawUi::default();
         app.mark_dirty();
+        let written = app.session.clone();
         let sender = hold_save(&mut app);
         if outcome == "replacement" {
             app.session = Session::default();
@@ -172,7 +173,7 @@ fn regular_save_failure_disconnect_and_replaced_project_do_not_publish_old_state
         let original = serde_json::to_value(&app.session.project).unwrap();
         match outcome {
             "failure" => sender.send(Err("test save failure".into())).unwrap(),
-            "replacement" => sender.send(Ok(())).unwrap(),
+            "replacement" => sender.send(Ok(written)).unwrap(),
             _ => {}
         }
         drop(sender);
@@ -184,5 +185,98 @@ fn regular_save_failure_disconnect_and_replaced_project_do_not_publish_old_state
             original
         );
         assert_eq!(app.error.is_some(), outcome != "replacement");
+    }
+}
+
+#[test]
+fn regular_save_retargets_generated_sources_without_replacing_newer_edits() {
+    for initially_saved in [false, true] {
+        let location = SaveLocation::new();
+        let wav = TestWav::new();
+        let mut app = DawUi::default();
+        let original = location.0.join("original");
+        if initially_saved {
+            app.session.save(&original).unwrap();
+        }
+        app.ensure_history();
+        app.session.import(&wav.0, None, 0).unwrap();
+        app.session.project.assets[0].source.kind = "generated".into();
+        if initially_saved {
+            app.session.save(&original).unwrap();
+        }
+        app.mark_dirty();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert!(app.session.project.assets.is_empty());
+        let name = app.session.project.name.clone();
+        app.save_named(name.clone(), Some(location.0.clone()));
+        wait_for_save(&mut app);
+        assert!(app.error.is_none(), "{:?}", app.error);
+        app.perform_history_action(HistoryAction::Redo, &ctx);
+        assert_eq!(app.session.project.assets.len(), 1);
+        let destination = location.0.join(name);
+        let asset_id = app.session.project.assets[0].id;
+        let audio = app.session.audio[&asset_id].samples.clone();
+
+        app.save(false);
+        assert!(app.regular_save.is_some());
+        // Completion must retarget the current and pending history states while
+        // preserving edits and navigation made after the worker snapshot.
+        app.history.as_mut().unwrap().begin_group();
+        app.session.project.tracks[0].name = "Newer grouped edit".into();
+        app.changed();
+        app.seek(1234);
+        wait_for_save(&mut app);
+        assert!(app.error.is_none(), "{:?}", app.error);
+        assert!(app.dirty);
+        assert_eq!(app.session.project.tracks[0].name, "Newer grouped edit");
+        assert_eq!(app.session.project.transport.playhead_frame, 1234);
+        assert!(std::sync::Arc::ptr_eq(
+            &audio,
+            &app.session.audio[&asset_id].samples
+        ));
+        let written = Session::open(&destination).unwrap();
+        let source = written.source_path(&written.project.assets[0]).unwrap();
+        assert!(source.starts_with(destination.join("stems")));
+        assert_eq!(
+            app.session
+                .source_path(&app.session.project.assets[0])
+                .unwrap(),
+            source
+        );
+        assert_ne!(written.project.tracks[0].name, "Newer grouped edit");
+        app.history.as_mut().unwrap().finish_group();
+        if initially_saved {
+            std::fs::remove_dir_all(&original).unwrap();
+        } else {
+            std::fs::remove_file(&wav.0).unwrap();
+        }
+        for action in [HistoryAction::Undo, HistoryAction::Redo] {
+            app.perform_history_action(action, &ctx);
+            assert_eq!(
+                app.session
+                    .source_path(&app.session.project.assets[0])
+                    .unwrap(),
+                source
+            );
+            assert!(source.is_file());
+            assert_eq!(app.session.project.transport.playhead_frame, 1234);
+        }
+        for _ in 0..2 {
+            app.save(false);
+            wait_for_save(&mut app);
+            assert!(app.error.is_none(), "{:?}", app.error);
+            assert!(!app.dirty);
+            assert_eq!(
+                std::fs::read_dir(destination.join("stems"))
+                    .unwrap()
+                    .count(),
+                1
+            );
+        }
+        let reopened = Session::open(&destination).unwrap();
+        assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
+        assert_eq!(reopened.project.tracks[0].name, "Newer grouped edit");
     }
 }

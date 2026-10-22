@@ -8,6 +8,8 @@ First Save and Save As ask for a project name and a parent folder. They create a
 
 When leaving a modified project, choose Save, Discard, or Cancel. A cancelled or failed operation retains the current project. Missing recordings remain visible and play as silence. Files that became shorter supply silence for unavailable sections.
 
+Saving fails if a directory occupies the `project.json` destination. The directory and its contents remain intact. Move that directory out of the project folder or choose another save location, then retry.
+
 ## Project Settings
 
 Use File > Project Settings to change the name, processing rate, buffer size, or [time-stretch engine](../audio/time-stretch.md). Apply accepts valid changes; Cancel or Escape discards the draft.

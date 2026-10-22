@@ -86,6 +86,38 @@ fn reserve_directory(parent: &Path, name: &str) -> Result<PathBuf> {
     Err(error("No unused stem folder name available"))
 }
 impl Session {
+    /// Merge saved generated-source locations without replacing newer edits or
+    /// transport. Resolve paths against the written session before changing self.
+    pub fn retarget_generated_sources(&mut self, written: &Session) -> Result<()> {
+        if self.project.project_id != written.project.project_id {
+            return Err(error("Saved sources belong to a different project"));
+        }
+        let sources = written
+            .project
+            .assets
+            .iter()
+            .filter(|asset| asset.source.kind == "generated")
+            .map(|asset| {
+                let mut source = asset.source.clone();
+                source.path = written.source_path(asset)?.to_string_lossy().into_owned();
+                source.path_kind = "absolute".into();
+                Ok((asset.id, source))
+            })
+            .collect::<Result<std::collections::HashMap<_, _>>>()?;
+        for asset in self
+            .project
+            .assets
+            .iter_mut()
+            .filter(|asset| asset.source.kind == "generated")
+        {
+            if let Some(source) = sources.get(&asset.id) {
+                asset.source = source.clone();
+            }
+        }
+        self.retain_temporary_stems();
+        Ok(())
+    }
+
     /// Release only storage no longer referenced by this session. Other worker
     /// and history snapshots retain their own shared owners until retargeted.
     pub(crate) fn retain_temporary_stems(&mut self) {
@@ -518,6 +550,65 @@ mod tests {
     }
 
     #[test]
+    fn regular_save_completion_retargets_temporary_stems_and_pending_history() {
+        let (fixture, mut session, clip) = Fixture::new();
+        session.folder = None;
+        let mut history = crate::SessionHistory::new(&session, false).unwrap();
+        let prepared = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap();
+        let directory = prepared.directory().to_owned();
+        let temporary = directory.parent().unwrap().parent().unwrap().to_owned();
+        let mut live = prepared.publish();
+        history.record(&live).unwrap();
+        live = history.undo(&live).unwrap();
+        let destination = fixture.0.join("first-save");
+        live.save(&destination).unwrap();
+        history.mark_saved(&live).unwrap();
+        history.record(&live).unwrap();
+        live = history.redo(&live).unwrap();
+        assert!(temporary.is_dir());
+
+        let mut written = live.clone();
+        written.save(&destination).unwrap();
+        history.begin_group();
+        live.project.tracks[0].name = "Newer grouped edit".into();
+        live.project.transport.playhead_frame = 1234;
+        history.record(&live).unwrap();
+        // The actual ordinary-save completion merges only saved source locations.
+        live.retarget_generated_sources(&written).unwrap();
+        history.mark_saved(&written).unwrap();
+        assert!(!temporary.exists());
+        assert_eq!(live.project.tracks[0].name, "Newer grouped edit");
+        assert_eq!(live.project.transport.playhead_frame, 1234);
+        assert!(!history.is_saved());
+        history.finish_group();
+        let restored = history.undo(&live).unwrap();
+        assert!(history.is_saved());
+        let redone = history.redo(&restored).unwrap();
+        assert_eq!(redone.project.tracks[0].name, "Newer grouped edit");
+        assert!(!history.is_saved());
+        for state in [&live, &restored, &redone] {
+            for asset in &state.project.assets {
+                if asset.source.kind == "generated" {
+                    let path = state.source_path(asset).unwrap();
+                    assert!(path.starts_with(destination.join("stems")));
+                    assert!(path.is_file());
+                } else {
+                    assert_eq!(
+                        state.source_path(asset).unwrap(),
+                        session.source_path(asset).unwrap()
+                    );
+                }
+            }
+        }
+        live.save(&destination).unwrap();
+        assert_eq!(fs::read_dir(destination.join("stems")).unwrap().count(), 1);
+        let reopened = Session::open(&destination).unwrap();
+        assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
+    }
+
+    #[test]
     fn failed_first_save_retains_temporary_stems_and_the_unsaved_session() {
         let (fixture, mut session, clip) = Fixture::new();
         session.folder = None;
@@ -529,7 +620,15 @@ mod tests {
         let before = next.project.clone();
         let blocked = fixture.0.join("blocked-save");
         fs::create_dir_all(blocked.join("project.json")).unwrap();
+        let sentinel = blocked.join("project.json/keep.txt");
+        fs::write(&sentinel, b"unrelated contents").unwrap();
         assert!(next.save(&blocked).is_err());
+        assert_eq!(fs::read(&sentinel).unwrap(), b"unrelated contents");
+        assert!(blocked.join("project.json").is_dir());
+        assert!(fs::read_dir(&blocked).unwrap().all(|entry| {
+            let name = entry.unwrap().file_name();
+            !name.to_string_lossy().contains("backup-") && !name.to_string_lossy().ends_with(".tmp")
+        }));
         assert!(next.folder.is_none());
         assert_eq!(next.project, before);
         assert!(directory.join("drums.wav").is_file());

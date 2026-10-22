@@ -30,6 +30,8 @@ Save As keeps history and its new save destination; a changed project name is a 
 
 On blocking save completion, call shared `SessionHistory::mark_saved` before recording the returned session. It retargets generated asset locations in retained snapshots before structural comparison. Relocation alone must not clear Redo or add an Undo entry; a real project-name change still records an edit. Regular Save only marks its exact written checkpoint and must not record or publish that older snapshot over newer edits.
 
+Regular Save returns the worker's written session, including copied generated-source locations. Merge those locations into live state through `Session::retarget_generated_sources`, then mark the written checkpoint saved. History uses the same source merge for its current, pending, Undo and Redo snapshots. Keep newer edits, transport, audio buffers and navigation/save revisions; release temporary owners only after their references move. A save for another project or a failed worker must not update live paths or history.
+
 ## Commands
 
 `HistoryAction` supplies labels and exact shortcuts to both UI and native menus. macOS Edit exposes Command+Z and Command+Shift+Z. Windows/Linux Edit exposes Ctrl+Z and Ctrl+Shift+Z. Disabled stacks stay disabled. Shift+Z cannot fall through to Undo, held-key repeats are ignored, and native dispatch removes a duplicate forwarded event.

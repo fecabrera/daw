@@ -597,6 +597,14 @@ fn same_file(a: &Path, b: &Path) -> bool {
             .is_some_and(|(a, b)| a == b)
 }
 fn replace_file(temp: &Path, target: &Path) -> Result<()> {
+    match fs::metadata(target) {
+        Ok(metadata) if !metadata.is_file() => {
+            return Err(error("Output destination is not a regular file"));
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(error(e)),
+    }
     #[cfg(not(target_os = "windows"))]
     {
         fs::rename(temp, target).map_err(error)

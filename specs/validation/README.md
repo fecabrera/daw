@@ -3965,3 +3965,20 @@ Completed checks:
 - Inventory JSON counts/source-commit/hash checks, Markdown local-link checks, `sh -n tools/package_macos.sh tools/package_linux.sh`, `cargo fmt --all --check`, and tracked/new-file whitespace checks passed.
 
 No DSP/application implementation or dependency version changed. No private media, weights, credentials, native binaries or caches were added to tracked files. No clean-machine Windows/Linux/Intel launch, arm64 foreign package execution, subjective separation test or new model inference was performed. An inventory and advisory audit does not certify an untested deployment: the ONNX advisory, matching-source release obligations and oldest-supported-OS smoke tests remain explicit release actions. The earlier review artifacts are retained unchanged; this audit is new evidence, not a rewritten PASS verdict.
+
+### PR #2 major save findings: ordinary Save and directory destinations — 2026-10-22
+
+Ordinary Save now returns the worker's successfully written session. Completion merges generated-source locations into the live session by stable asset ID and marks that exact written checkpoint saved. Live state and retained history use shared `Session::retarget_generated_sources`; newer edits, pending gestures, transport, prepared audio and revision guards stay intact. Temporary owners are pruned after their paths move. This prevents repeated stem copies and stale original-folder references after saving with separation undone and then redoing it.
+
+Shared file replacement now rejects an existing non-file destination before moving it to a Windows backup. A directory at `project.json` retains its name and contents. The failed-first-save regression checks preserved contents, unchanged session state, temporary-source retention, staged-copy and manifest-temp cleanup, and successful retry. This correction supersedes the failing Windows first-save result recorded under “Platform-neutral separation loading message”; that historical result remains unchanged above.
+
+Completed automated checks on Windows with the pinned toolchain:
+
+- The new UI regression failed before the implementation fix at the live/written generated-path comparison. It now covers unsaved first Save and same-name Save As with a generated clip undone, Redo, ordinary Save during a newer grouped edit and seek, shared prepared audio, Undo/Redo after removing original sources, repeated saves without extra stem directories, and successful reopen. All four regular-save UI tests passed.
+- The new project regression uses deterministic separation output and verifies live/current/pending/Undo/Redo source paths and temporary-directory release. All 13 focused separation tests passed, including the strengthened first-save failure regression.
+- `cargo test --offline --locked --workspace`: 1,121 passed, 0 failed, 3 opt-in acceptance/model tests ignored. This includes all 565 UI tests, the project save/history workflows, shared export checks and documentation tests.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo build --offline --locked -p daw-cli`: passed. `tools/check_cli.py` passed using Python 3.12, covering WAV/MP3 output, repeatability, missing sources, track/group rendering, overwrite protection and exit codes.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+
+Tests used generated media in temporary directories. Native UI/device interaction, real HTDemucs/CoreML inference, macOS/Linux execution and release packaging were not repeated. The two minor review findings and dependency coverage limits are outside these two major fixes; this record does not change the pinned review artifacts or certify a new review verdict.

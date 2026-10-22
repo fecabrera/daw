@@ -30,4 +30,6 @@ Temporary stems remain available to the project and Undo/Redo until saved or dis
 
 Undo restores the arrangement. It retains generated files so Redo can restore the stems. After Save As copies the stems, Undo/Redo uses those copies, including when you save with the separation undone and then redo it. Failure or cancellation leaves the arrangement unchanged and removes unpublished stem files. Cancellation waits for the current model operation to return; it is not immediate during model loading or inference.
 
+If you redo separation after saving it undone, use Save to copy any restored stems into the current project folder. Later saves and Undo/Redo use those copies. Edits made while Save runs remain marked as unsaved.
+
 Separation can leave bleed or artifacts. It processes one clip at a time and needs memory for model processing, the arranged input, and prepared stem audio. Long clips can use substantial memory. A CoreML error triggers a fresh CPU attempt and appears as a warning in the finished report. If CPU processing also fails, the report shows the error.

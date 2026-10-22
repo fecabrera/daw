@@ -174,7 +174,7 @@ impl SessionHistory {
     }
     /// Accept the exact snapshot written by a save worker, even if newer edits exist.
     pub fn mark_saved(&mut self, session: &Session) -> Result<()> {
-        let saved = snapshot(session)?.session.project;
+        let saved = snapshot(session)?.session;
         // Save As relocates project-owned files, not edits. Update every retained
         // snapshot so a later save without these assets cannot erase their locations.
         // Keep this state within bounded history rather than a separate path cache.
@@ -183,25 +183,10 @@ impl SessionHistory {
             .chain(self.undo.iter_mut())
             .chain(self.redo.iter_mut())
         {
-            for asset in entry
-                .session
-                .project
-                .assets
-                .iter_mut()
-                .filter(|a| a.source.kind == "generated")
-            {
-                if let Some(current) = saved
-                    .assets
-                    .iter()
-                    .find(|a| a.id == asset.id && a.source.kind == "generated")
-                {
-                    asset.source = current.source.clone();
-                }
-            }
-            entry.session.retain_temporary_stems();
+            entry.session.retarget_generated_sources(&saved)?;
             entry.model_bytes = snapshot_model_bytes(&entry.session);
         }
-        self.saved = Some(saved);
+        self.saved = Some(saved.project);
         self.enforce_memory_limit();
         Ok(())
     }
