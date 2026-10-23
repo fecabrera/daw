@@ -59,7 +59,17 @@ impl DawUi {
             self.midi_editor.scale_mode_bounds = Rect::NOTHING;
             self.midi_editor.scale_snap_bounds = Rect::NOTHING;
         }
-        if !audio {
+        if audio {
+            let allowed = ui.is_enabled() && self.editing_enabled();
+            let options_bounds = Rect::from_min_max(title.response.rect.min, rect.max);
+            egui::ScrollArea::vertical()
+                .id_salt("editor-clip-options-scroll")
+                .auto_shrink([false, false])
+                .show(&mut child, |ui| {
+                    self.clip_settings_body(ui, &panel, options_bounds, allowed)
+                });
+        } else {
+            self.clear_clip_settings_edits();
             egui::ScrollArea::vertical()
             .id_salt("editor-options-scroll")
             .auto_shrink([false, false])

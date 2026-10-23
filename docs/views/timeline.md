@@ -67,7 +67,7 @@ Horizontal scrolling moves the timeline while track controls stay fixed. Pinch z
 
 ## Clip settings
 
-Clip settings is available only in Timeline. Open it from the left rail with the headphone-file button. It uses the same column as the Effects catalog; opening either panel closes the other. You can close both. Leaving Timeline closes Clip settings and discards any unconfirmed text.
+In Timeline, open Clip settings from the left rail with the headphone-file button. It uses the same column as the Effects catalog; opening either panel closes the other. You can close both. Leaving Timeline closes this panel and discards any unconfirmed text. Audio tracks also offer these controls under **Clip options** in [Editor](editor.md).
 
 Select a clip to edit its name, gain, and transpose. The source row shows the audio file name, or MIDI pattern for a MIDI clip. These rows use the smaller catalog text, and the values are aligned to the left. The source is dimmed because it cannot be edited. A long name is shortened with an ellipsis; hover the source to see the full path. Gain is shown in dB, from silence (−∞ dB) to +12 dB, for example 0.0 dB. Transpose is shown in semitones, from −48 to +48, for example 0 semitones.
 

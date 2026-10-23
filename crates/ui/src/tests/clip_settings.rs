@@ -412,7 +412,7 @@ fn clip_settings_is_exclusive_with_the_catalogs_and_edits_the_selected_clip() {
 }
 
 #[test]
-fn clip_settings_is_timeline_only_and_leaving_discards_the_open_draft() {
+fn clip_settings_rail_is_timeline_only_and_switching_views_discards_the_open_draft() {
     for mode in [ViewMode::Instrument, ViewMode::Edit, ViewMode::Mixer] {
         let (mut app, track) = fixture();
         let ctx = context();
@@ -1062,4 +1062,178 @@ fn clip_settings_group_transpose_failure_retains_every_selected_clip() {
     assert_eq!(app.session.project, original);
     assert!(!app.dirty);
     assert!(!app.history.as_ref().unwrap().can_undo());
+}
+
+#[test]
+fn editor_audio_options_share_timeline_fields_layout_and_empty_selection_prompt() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        let clip = app.session.project.tracks[0].clips[0].id;
+        app.select_clip(clip, track, false);
+        app.clip_settings_visible = true;
+        app.timeline_catalog_visible = false;
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let timeline_title = text_pos(&shapes, "Clip settings").unwrap();
+        let fields = ["Name", "Source", "Gain", "Transpose"];
+        let timeline_positions = fields.map(|label| text_pos(&shapes, label).unwrap());
+        let before = app.session.project.clone();
+        app.dirty = false;
+        app.open_clip_editor(clip, track, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let editor_title = text_pos(&shapes, "Clip options").unwrap();
+        for (label, timeline) in fields.into_iter().zip(timeline_positions) {
+            let editor = text_pos(&shapes, label).unwrap();
+            assert!(((editor.x - editor_title.x) - (timeline.x - timeline_title.x)).abs() <= 0.5);
+            assert!(((editor.y - editor_title.y) - (timeline.y - timeline_title.y)).abs() <= 0.5);
+        }
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+        app.selected_clip = None;
+        app.selected_clips.clear();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(text_pos(&shapes, "Select a clip").is_some());
+        assert!(text_pos(&shapes, "Name").is_none());
+        assert_eq!(app.effects_bounds.clip_name, Rect::NOTHING);
+        assert_eq!(app.effects_bounds.clip_gain, Rect::NOTHING);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn editor_clip_options_edit_name_and_group_gain_through_shared_history() {
+    let (mut app, ctx, clip) = prepared_audio_fixture(daw_core::StretchEngine::INTEGRATED);
+    let track = app.session.project.tracks[0].id;
+    let mut second = app.session.project.tracks[0].clips[0].clone();
+    second.id = Id::new_v4();
+    second.start_frame = second.length_frames;
+    second.gain_db = -3.0;
+    let second_id = second.id;
+    app.session
+        .project
+        .edit(Edit::InsertClip {
+            track_id: track,
+            clip: second,
+        })
+        .unwrap();
+    app.history = None;
+    app.open_clip_editor(clip, track, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let source = app.session.project.assets.clone();
+    let name = app.effects_bounds.clip_name;
+    replace_field(&mut app, &ctx, name, "Editor clip", egui::Key::Enter);
+    assert_eq!(app.session.project.tracks[0].clips[0].name, "Editor clip");
+    app.selected_clips = [clip, second_id].into_iter().collect();
+    frame(&mut app, &ctx, vec![]);
+    let gain = app.effects_bounds.clip_gain;
+    replace_field(&mut app, &ctx, gain, "-6", egui::Key::Enter);
+    assert!(
+        app.session.project.tracks[0]
+            .clips
+            .iter()
+            .all(|c| c.gain_db == -6.0)
+    );
+    assert!(app.job.is_none());
+    assert_eq!(app.session.project.assets, source);
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project.tracks[0].clips[0].gain_db, 0.0);
+    assert_eq!(app.session.project.tracks[0].clips[1].gain_db, -3.0);
+    assert_eq!(app.session.project.tracks[0].clips[0].name, "Editor clip");
+    app.perform_history_action(HistoryAction::Redo, &ctx);
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    app.clip_settings_visible = true;
+    frame(&mut app, &ctx, vec![]);
+    assert!(
+        app.session.project.tracks[0]
+            .clips
+            .iter()
+            .all(|c| c.gain_db == -6.0)
+    );
+    assert_eq!(app.selected_clip, Some(clip));
+}
+
+#[test]
+fn editor_audio_transpose_uses_release_only_worker_publication_and_shared_undo() {
+    let (mut app, ctx, clip) = prepared_audio_fixture(daw_core::StretchEngine::INTEGRATED);
+    let track = app.session.project.tracks[0].id;
+    let asset = app.session.project.tracks[0].clips[0].asset_id;
+    let original = app.session.audio[&asset].samples.clone();
+    app.open_clip_editor(clip, track, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    app.dirty = false;
+    let point = app.effects_bounds.clip_transpose.center();
+    pointer(&mut app, &ctx, point, true, false);
+    pointer_move(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false);
+    assert_eq!(app.session.project.tracks[0].clips[0].transpose, 0);
+    assert!(app.clip_transpose_drag.is_some());
+    assert!(app.job.is_none());
+    assert!(!app.dirty);
+    pointer(&mut app, &ctx, point - Vec2::new(0.0, 12.0), false, false);
+    assert!(app.job.is_some());
+    assert_eq!(app.session.project.tracks[0].clips[0].transpose, 0);
+    wait_for_save(&mut app);
+    assert!(app.error.is_none(), "{:?}", app.error);
+    assert_eq!(app.session.project.tracks[0].clips[0].transpose, 12);
+    assert_eq!(app.selected_clip, Some(clip));
+    assert!(app.dirty);
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project.tracks[0].clips[0].transpose, 0);
+    assert!(std::sync::Arc::ptr_eq(
+        &original,
+        &app.session.audio[&asset].samples
+    ));
+    app.perform_history_action(HistoryAction::Redo, &ctx);
+    assert_eq!(app.session.project.tracks[0].clips[0].transpose, 12);
+}
+
+#[test]
+fn editor_clip_options_cancel_drafts_and_audio_previews_on_track_or_view_switches() {
+    let (mut app, ctx, clip) = prepared_audio_fixture(daw_core::StretchEngine::INTEGRATED);
+    let track = app.session.project.tracks[0].id;
+    let midi = app.session.project.add_midi_track().unwrap();
+    app.history = None;
+    app.open_clip_editor(clip, track, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    app.dirty = false;
+    let name = app.effects_bounds.clip_name;
+    open_field(&mut app, &ctx, name);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Text("Uncommitted name".into())],
+    );
+    app.set_view_mode(ViewMode::Timeline, &ctx);
+    assert!(app.clip_settings_draft.is_none());
+    assert_eq!(app.session.project, before);
+    frame(&mut app, &ctx, vec![]);
+    for switch_track in [true, false] {
+        app.open_clip_editor(clip, track, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let point = app.effects_bounds.clip_transpose.center();
+        let end = point - Vec2::new(0.0, 12.0);
+        pointer(&mut app, &ctx, point, true, false);
+        pointer_move(&mut app, &ctx, end, false);
+        assert!(app.clip_transpose_drag.is_some());
+        if switch_track {
+            app.selected_clip = None;
+            app.selected_clips.clear();
+            app.select_track(midi, false);
+            frame(&mut app, &ctx, vec![]);
+        } else {
+            app.set_view_mode(ViewMode::Timeline, &ctx);
+        }
+        assert!(app.clip_transpose_drag.is_none());
+        pointer(&mut app, &ctx, end, false, false);
+        assert!(app.job.is_none());
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
 }

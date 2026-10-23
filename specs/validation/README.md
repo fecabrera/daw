@@ -4345,3 +4345,16 @@ Completed checks:
 - The macOS debug bundle rebuild and CLI smoke checks pass.
 
 Logs are in ignored `work/midi-options-*.log`. Native UI, device playback, and Windows/Linux checks were not performed for this change.
+
+## Editor audio clip options — 2026-10-23
+
+Audio tracks now display the shared Timeline Name, Source, Gain, and Transpose fields under Editor’s Clip options header. This supersedes the earlier empty audio section. Both views use `clip_settings_body` for selection, group edits, validation, history, and release-only audio transpose preparation. An empty selection shows the standard prompt. Switching views or entering MIDI options clears pending text and audio previews.
+
+Completed checks:
+
+- All 588 UI tests pass. Four new egui regressions cover both-theme field geometry and the empty-selection prompt, name/group Gain edits with Undo/Redo, release-only audio Transpose publication with source preservation, and draft/preview cancellation on track or view changes.
+- `cargo test --offline --locked --workspace` passes, including doctests. Existing opt-in acceptance/performance tests remain ignored.
+- Strict workspace Clippy, formatting, and `git diff --check` pass.
+- The macOS debug bundle rebuild passes and updates `target/debug/DAW.app`.
+
+Logs are in ignored `work/editor-clip-options-*.log`. These are automated checks and a bundle build. Native UI, device playback, and Windows/Linux checks were not performed for this change.

@@ -7024,7 +7024,7 @@ fn scale_selection_dims_outside_keys_and_notes_in_both_themes_without_retuning()
 }
 
 #[test]
-fn editor_section_headers_share_panel_dividers_and_audio_options_remain_empty() {
+fn editor_section_headers_share_panel_dividers_and_audio_options_show_selection_prompt() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, midi, clip, _) = fixture();
         let audio = app.session.project.add_track().unwrap();
@@ -7061,6 +7061,7 @@ fn editor_section_headers_share_panel_dividers_and_audio_options_remain_empty() 
             assert!(has_text(title));
             assert_eq!(has_text("Root"), track == midi);
             assert_eq!(has_text("Snap to scale"), track == midi);
+            assert_eq!(has_text("Select a clip"), track == audio);
             for y in [
                 panel.top() + toolbars::HEIGHT - 0.5,
                 app.midi_editor.track_bounds.bottom() + toolbars::HEIGHT - 0.5,

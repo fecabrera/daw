@@ -121,10 +121,8 @@ impl DawUi {
         self.view_mode = mode;
         if mode != ViewMode::Timeline {
             self.clip_settings_visible = false;
-            self.clip_settings_draft = None;
-            self.clip_transpose_drag = None;
-            self.clip_settings_change = None;
         }
+        self.clear_clip_settings_edits();
         self.effects_catalog.clear();
         self.instrument_catalog.clear();
         self.selected_effects.clear();

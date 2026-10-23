@@ -89,6 +89,20 @@ impl DragChange {
 }
 
 impl super::DawUi {
+    pub(super) fn clear_clip_settings_edits(&mut self) {
+        self.clip_settings_draft = None;
+        self.clip_transpose_drag = None;
+        self.clip_settings_change = None;
+        #[cfg(test)]
+        {
+            self.effects_bounds.clip_settings = Rect::NOTHING;
+            self.effects_bounds.clip_name = Rect::NOTHING;
+            self.effects_bounds.clip_source = Rect::NOTHING;
+            self.effects_bounds.clip_gain = Rect::NOTHING;
+            self.effects_bounds.clip_transpose = Rect::NOTHING;
+        }
+    }
+
     pub(super) fn clip_settings_panel(
         &mut self,
         ui: &mut Ui,
@@ -98,6 +112,24 @@ impl super::DawUi {
     ) {
         let header = panel.header(ui, "Clip settings", |_| {});
         panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
+        self.clip_settings_body(ui, panel, bounds, enabled);
+    }
+
+    /// Timeline and Editor share fields, selection rules, and release-only audio preparation.
+    pub(super) fn clip_settings_body(
+        &mut self,
+        ui: &mut Ui,
+        panel: &panels::ControlPanel,
+        bounds: Rect,
+        enabled: bool,
+    ) {
+        #[cfg(test)]
+        {
+            self.effects_bounds.clip_name = Rect::NOTHING;
+            self.effects_bounds.clip_source = Rect::NOTHING;
+            self.effects_bounds.clip_gain = Rect::NOTHING;
+            self.effects_bounds.clip_transpose = Rect::NOTHING;
+        }
         let clips: Vec<_> = self
             .selected_clip_snapshots()
             .into_iter()
@@ -108,9 +140,7 @@ impl super::DawUi {
             .find(|clip| Some(clip.id) == self.selected_clip)
             .or_else(|| clips.first())
         else {
-            self.clip_settings_draft = None;
-            self.clip_transpose_drag = None;
-            self.clip_settings_change = None;
+            self.clear_clip_settings_edits();
             panel.padded_body(ui, |ui| {
                 crate::rows::centered(ui, panels::ControlPanel::content_row_height(ui), |ui| {
                     ui.label(
