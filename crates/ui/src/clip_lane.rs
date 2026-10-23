@@ -58,7 +58,7 @@ impl DawUi {
         }
         if self.midi_editor.content_active && (response.clicked() || response.context_menu_opened())
         {
-            self.retain_pattern_view();
+            self.retain_content_view();
         }
         if response.hovered()
             && let Some(pos) = response.hover_pos()
@@ -151,6 +151,11 @@ impl DawUi {
             }
             let mode = ClipDragMode::at(block, origin)
                 .with_stretch_modifier(ui.input(|input| clip_copy_modifier(input.modifiers)));
+            // Lower audio waveform bodies retain click selection. Only their
+            // headers and edges start clip gestures; note bodies have their own handlers.
+            if self.midi_editor.content_active && mode == ClipDragMode::Body {
+                return;
+            }
             if !self.clip_selected(clip.id) {
                 let additive = ui.input(|input| {
                     input.modifiers.shift
@@ -189,7 +194,7 @@ impl DawUi {
             });
             self.selected_clip = Some(clip.id);
             if self.content_clip_drag {
-                self.retain_pattern_view();
+                self.retain_content_view();
             }
         }
     }

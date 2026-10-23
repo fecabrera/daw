@@ -28,7 +28,8 @@ impl DawUi {
         let x = match edge {
             ClipEdge::Left => block.left(),
             ClipEdge::Right => {
-                block.left() + self.session.project.seconds(clip.length_frames) as f32 * self.zoom
+                block.left()
+                    + self.session.project.seconds(clip.length_frames) as f32 * self.view_zoom()
             }
         };
         // Leave the rest of the 8-point edge area available for ordinary trimming.

@@ -470,3 +470,347 @@ fn waveform_context_menu_dismisses_without_edits_and_does_not_open_in_empty_spac
     assert!(!egui::Popup::is_any_open(&ctx));
     assert_eq!(app.session.project, before);
 }
+
+fn gesture_fixture() -> (DawUi, egui::Context, Id) {
+    let (mut app, ctx, _, clip) = audio_fixture();
+    app.midi_editor.content.fitted = false;
+    app.midi_editor.content.zoom = 1500.0;
+    app.midi_editor.content.scroll = 0.08;
+    app.midi_editor.zoom = 600.0;
+    app.midi_editor.scroll = 0.04;
+    frame(&mut app, &ctx, vec![]);
+    (app, ctx, clip)
+}
+
+fn content_block(app: &DawUi, clip: Id) -> Rect {
+    let clip = app.session.project.tracks[0]
+        .clips
+        .iter()
+        .find(|c| c.id == clip)
+        .unwrap();
+    let lane = app.midi_editor.content.bounds;
+    let left = lane.left()
+        + (app.session.project.seconds(clip.start_frame) - app.midi_editor.content.scroll) as f32
+            * app.midi_editor.content.zoom;
+    Rect::from_min_max(
+        Pos2::new(left, lane.top()),
+        Pos2::new(
+            left + app.session.project.seconds(clip.length_frames) as f32
+                * app.midi_editor.content.zoom,
+            lane.bottom(),
+        ),
+    )
+}
+
+fn gesture_button(point: Pos2, pressed: bool, stretch: bool) -> egui::Event {
+    egui::Event::PointerButton {
+        pos: point,
+        pressed,
+        button: egui::PointerButton::Primary,
+        modifiers: egui::Modifiers {
+            shift: true,
+            alt: stretch && cfg!(target_os = "macos"),
+            ctrl: stretch && !cfg!(target_os = "macos"),
+            ..Default::default()
+        },
+    }
+}
+
+fn begin_audio_gesture(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    id: Id,
+    mode: ClipDragMode,
+    body: bool,
+    delta: f32,
+) -> Pos2 {
+    let block = content_block(app, id);
+    let left = matches!(
+        mode,
+        ClipDragMode::TrimLeft | ClipDragMode::LoopLeft | ClipDragMode::StretchLeft
+    );
+    let origin = Pos2::new(
+        if mode == ClipDragMode::Move {
+            block.center().x
+        } else if left {
+            block.left() + 1.0
+        } else {
+            block.right() - 1.0
+        },
+        block.top() + if body { 60.0 } else { 10.0 },
+    );
+    let modifiers = match gesture_button(origin, true, mode.stretch_edge().is_some()) {
+        egui::Event::PointerButton { modifiers, .. } => modifiers,
+        _ => unreachable!(),
+    };
+    frame(
+        app,
+        ctx,
+        vec![
+            egui::Event::ModifiersChanged(modifiers),
+            egui::Event::PointerMoved(origin),
+            gesture_button(origin, true, mode.stretch_edge().is_some()),
+        ],
+    );
+    let end = origin + Vec2::new(delta, 0.0);
+    frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
+    assert_eq!(app.drag.as_ref().map(|drag| drag.mode), Some(mode));
+    assert!(app.content_clip_drag);
+    end
+}
+
+#[test]
+fn audio_content_gestures_preview_and_commit_without_refitting_or_replacing_source_pcm() {
+    for (mode, body, delta, start, length) in [
+        (ClipDragMode::Move, false, 15.0, 5280, 2400),
+        (ClipDragMode::TrimLeft, true, 15.0, 5280, 1920),
+        (ClipDragMode::TrimRight, true, -15.0, 4800, 1920),
+        (ClipDragMode::LoopLeft, false, -15.0, 4320, 2880),
+        (ClipDragMode::LoopRight, false, 15.0, 4800, 2880),
+        (ClipDragMode::StretchLeft, false, -15.0, 4320, 2880),
+        (ClipDragMode::StretchRight, false, 15.0, 4800, 2880),
+        (ClipDragMode::StretchLeft, true, -15.0, 4320, 2880),
+        (ClipDragMode::StretchRight, true, 15.0, 4800, 2880),
+    ] {
+        let (mut app, ctx, id) = gesture_fixture();
+        let before = app.session.project.clone();
+        let asset = before.tracks[0].clips[0].asset_id;
+        let source = app.session.audio[&asset].samples.clone();
+        let view = (
+            app.midi_editor.content.zoom,
+            app.midi_editor.content.scroll,
+            app.midi_editor.zoom,
+            app.midi_editor.scroll,
+        );
+        let end = begin_audio_gesture(&mut app, &ctx, id, mode, body, delta);
+        assert_eq!(app.session.project, before, "preview {mode:?}");
+        assert!(!app.dirty);
+        let painted = shapes(&mut app, &ctx);
+        let lane = app.midi_editor.content.bounds;
+        let expected_left = lane.left() + (start as f32 / 48000.0 - 0.08) * 1500.0;
+        let color = theme::clip_colors(before.tracks[0].color, None).body;
+        assert!(
+            painted
+                .iter()
+                .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+            if rect.fill == color && (rect.rect.top() - lane.top()).abs() < 0.1
+            && (rect.rect.left() - expected_left).abs() < 0.2
+            && (rect.rect.width() - length as f32 / 48000.0 * 1500.0).abs() < 0.2)),
+            "waveform preview {mode:?}"
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![gesture_button(end, false, mode.stretch_edge().is_some())],
+        );
+        wait_for_save(&mut app);
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.error.is_none(), "{mode:?}: {:?}", app.error);
+        let clip = app.session.project.tracks[0]
+            .clips
+            .iter()
+            .find(|clip| clip.id == id)
+            .unwrap();
+        assert_eq!(
+            (clip.start_frame, clip.length_frames),
+            (start, length),
+            "{mode:?}"
+        );
+        assert_eq!(clip.asset_id, asset);
+        if matches!(mode, ClipDragMode::LoopLeft | ClipDragMode::LoopRight) {
+            assert_eq!(clip.repeat.unwrap().length_frames, 2400);
+        }
+        if mode.stretch_edge().is_some() {
+            assert!((clip.stretch.unwrap().ratio() - 1.2).abs() < 0.0001);
+            assert!(app.session.audio_for_clip(clip).is_some());
+        }
+        assert!(std::sync::Arc::ptr_eq(
+            &source,
+            &app.session.audio[&asset].samples
+        ));
+        assert_eq!(
+            (
+                app.midi_editor.content.zoom,
+                app.midi_editor.content.scroll,
+                app.midi_editor.zoom,
+                app.midi_editor.scroll
+            ),
+            view,
+            "{mode:?}"
+        );
+        assert!(app.drag.is_none());
+        assert!(!app.content_clip_drag);
+        assert!(app.dirty);
+    }
+}
+
+#[test]
+fn audio_content_shared_boundary_uses_lower_zoom_and_previews_both_clips() {
+    let (mut app, ctx, first) = gesture_fixture();
+    let neighbor = Clip {
+        id: Id::new_v4(),
+        start_frame: 7200,
+        source_offset_frame: 1200,
+        length_frames: 1200,
+        ..app.session.project.tracks[0].clips[0].clone()
+    };
+    let second = neighbor.id;
+    let track = app.session.project.tracks[0].id;
+    app.session
+        .project
+        .edit(Edit::InsertClip {
+            track_id: track,
+            clip: neighbor,
+        })
+        .unwrap();
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    let end = begin_audio_gesture(&mut app, &ctx, first, ClipDragMode::TrimRight, true, -15.0);
+    assert!(app.drag.as_ref().unwrap().linked_boundary);
+    assert_eq!(app.session.project, before);
+    let painted = shapes(&mut app, &ctx);
+    let lane = app.midi_editor.content.bounds;
+    let color = theme::clip_colors(before.tracks[0].color, None).body;
+    for (start, length) in [(4800, 1920), (6720, 1680)] {
+        let left = lane.left() + (start as f32 / 48000.0 - 0.08) * 1500.0;
+        assert!(painted.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+            if rect.fill == color && (rect.rect.top() - lane.top()).abs() < 0.1
+            && (rect.rect.left() - left).abs() < 0.2 && (rect.rect.width() - length as f32 / 48000.0 * 1500.0).abs() < 0.2)));
+    }
+    frame(&mut app, &ctx, vec![gesture_button(end, false, false)]);
+    wait_for_save(&mut app);
+    let clips = &app.session.project.tracks[0].clips;
+    let a = clips.iter().find(|clip| clip.id == first).unwrap();
+    let b = clips.iter().find(|clip| clip.id == second).unwrap();
+    assert_eq!(
+        (a.start_frame, a.length_frames, a.source_offset_frame),
+        (4800, 1920, 2400)
+    );
+    assert_eq!(
+        (b.start_frame, b.length_frames, b.source_offset_frame),
+        (6720, 1680, 720)
+    );
+    assert_eq!(
+        (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+        (1500.0, 0.08)
+    );
+    assert!(app.error.is_none());
+}
+
+#[test]
+fn audio_content_gestures_cancel_cleanly_on_escape_or_focus_loss() {
+    for focused in [true, false] {
+        for (mode, body) in [
+            (ClipDragMode::Move, false),
+            (ClipDragMode::TrimRight, true),
+            (ClipDragMode::LoopRight, false),
+            (ClipDragMode::StretchRight, true),
+        ] {
+            let (mut app, ctx, id) = gesture_fixture();
+            let before = app.session.project.clone();
+            let end = begin_audio_gesture(&mut app, &ctx, id, mode, body, 15.0);
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    focused,
+                    events: if focused {
+                        vec![egui::Event::Key {
+                            key: egui::Key::Escape,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: Default::default(),
+                        }]
+                    } else {
+                        vec![]
+                    },
+                    ..Default::default()
+                },
+                |ui| app.show(ui),
+            );
+            output.textures_delta.clear();
+            frame(
+                &mut app,
+                &ctx,
+                vec![gesture_button(end, false, mode.stretch_edge().is_some())],
+            );
+            assert_eq!(app.session.project, before);
+            assert_eq!(
+                (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+                (1500.0, 0.08)
+            );
+            assert!(app.drag.is_none());
+            assert!(!app.content_clip_drag);
+            assert!(app.job.is_none());
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn audio_content_boundary_removal_preserves_view_through_empty_selection() {
+    let (mut app, ctx, first) = gesture_fixture();
+    let neighbor = Clip {
+        id: Id::new_v4(),
+        start_frame: 7200,
+        source_offset_frame: 2400,
+        length_frames: 1200,
+        ..app.session.project.tracks[0].clips[0].clone()
+    };
+    let second = neighbor.id;
+    let track = app.session.project.tracks[0].id;
+    app.session
+        .project
+        .edit(Edit::InsertClip {
+            track_id: track,
+            clip: neighbor,
+        })
+        .unwrap();
+    frame(&mut app, &ctx, vec![]);
+    let before = app.session.project.clone();
+    let end = begin_audio_gesture(&mut app, &ctx, first, ClipDragMode::TrimRight, true, -75.0);
+    assert!(app.drag.as_ref().unwrap().linked_boundary);
+    let painted = shapes(&mut app, &ctx);
+    let lane = app.midi_editor.content.bounds;
+    let color = theme::clip_colors(before.tracks[0].color, None).body;
+    assert!(
+        painted
+            .iter()
+            .any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
+        if rect.fill == color && (rect.rect.top() - lane.top()).abs() < 0.1
+        && (rect.rect.width() - 112.5).abs() < 0.2))
+    );
+    assert_eq!(app.session.project, before);
+    frame(&mut app, &ctx, vec![gesture_button(end, false, false)]);
+    wait_for_save(&mut app);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.selected_clip, None);
+        assert_eq!(
+            (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+            (1500.0, 0.08)
+        );
+        assert_eq!(
+            (app.midi_editor.zoom, app.midi_editor.scroll),
+            (600.0, 0.04)
+        );
+    }
+    let clips = &app.session.project.tracks[0].clips;
+    assert_eq!(clips.len(), 1);
+    assert_eq!(
+        (
+            clips[0].id,
+            clips[0].start_frame,
+            clips[0].length_frames,
+            clips[0].source_offset_frame
+        ),
+        (second, 4800, 3600, 0)
+    );
+    // A subsequent explicit overview selection still restores automatic fitting.
+    app.select_clip(second, track, false);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.midi_editor.content.fitted);
+    assert!(
+        (app.midi_editor.content.zoom * 0.075 - app.midi_editor.content.bounds.width()).abs() < 0.1
+    );
+}

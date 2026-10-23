@@ -1,4 +1,4 @@
-//! Selected-clip waveform on the independent editor content viewport.
+//! Audio clip editing on the independent editor content viewport.
 use super::*;
 
 impl DawUi {
@@ -19,51 +19,43 @@ impl DawUi {
         let painter = ui.painter_at(lane);
         self.paint_grid(&painter, lane);
 
-        // Resolve after overview interactions so selection, trims, and deletion appear
-        // in this frame. The shared painter resolves prepared audio and source mapping.
+        // Use the same candidate transaction for lower MIDI and audio previews.
         let (track, _) = self.track_overview_content(ui);
-        let selected = track.as_ref().and_then(|track| {
-            track
-                .clips
-                .iter()
-                .find(|clip| Some(clip.id) == self.selected_clip)
-                .map(|clip| (track, clip))
+        let preview = self.editor_clip_preview(ui);
+        let track = track.as_ref().map(|track| {
+            preview
+                .as_ref()
+                .and_then(|project| {
+                    project
+                        .tracks
+                        .iter()
+                        .find(|candidate| candidate.id == track.id)
+                })
+                .unwrap_or(track)
         });
-        if let Some((track, _)) = selected {
-            if self.editing_enabled() && ui.is_enabled() && ui.input(|input| input.focused) {
-                let menu_open = egui::Popup::is_any_open(ui.ctx());
-                for clip in &track.clips {
-                    let visible = self
-                        .clip_block(lane, clip, clip.start_frame)
-                        .intersect(lane)
-                        .intersect(ui.clip_rect());
-                    if !visible.is_positive() {
-                        continue;
-                    }
-                    let response = ui
-                        .interact(
+        // A boundary preview can remove the primary clip; still paint its surviving neighbor.
+        let selected = track.filter(|_| self.selected_clip.is_some());
+        if let Some(track) = selected {
+            for clip in &track.clips {
+                let block = self.clip_block(lane, clip, clip.start_frame);
+                let visible = block.intersect(lane).intersect(ui.clip_rect());
+                if !visible.is_positive() {
+                    continue;
+                }
+                let response = ui
+                    .add_enabled_ui(self.edit_shortcuts_available(ui.ctx()), |ui| {
+                        ui.interact(
                             visible,
                             ui.id().with(("audio-editor-clip", clip.id)),
-                            Sense::click(),
+                            Sense::click_and_drag(),
                         )
-                        .on_hover_cursor(egui::CursorIcon::PointingHand);
-                    // Keep this popup alive across frames while blocking waveforms
-                    // beneath other menus. Timeline's menu owns targets and actions.
-                    if !menu_open || response.context_menu_opened() {
-                        response.context_menu(|ui| self.clip_context_menu(ui, clip.id));
-                    }
-                    if !menu_open && response.clicked() {
-                        self.editor_select_clip(clip.id, track.id);
-                        ui.ctx().request_repaint(); // Refresh the options panel painted before this lane.
-                    }
-                    response.widget_info(|| {
-                        egui::WidgetInfo::selected(
-                            egui::WidgetType::SelectableLabel,
-                            ui.is_enabled(),
-                            Some(clip.id) == self.selected_clip,
-                            &clip.name,
-                        )
-                    });
+                    })
+                    .inner
+                    .on_hover_cursor(egui::CursorIcon::PointingHand);
+                let clicked = response.clicked();
+                self.clip_lane_response(ui, track.id, clip, block, lane, response);
+                if clicked {
+                    ui.ctx().request_repaint();
                 }
             }
             for clip in &track.clips {
@@ -74,7 +66,7 @@ impl DawUi {
                         track.color,
                         block,
                         clip,
-                        Some(clip.id) == self.selected_clip,
+                        self.clip_selected(clip.id),
                         None,
                     );
                 }
@@ -115,5 +107,9 @@ impl DawUi {
             );
             self.timeline_scrollbar(ui);
         });
+        if self.drag.is_some() && self.content_clip_drag {
+            self.finish_clip_drag(ui);
+            self.retain_content_view();
+        }
     }
 }

@@ -393,7 +393,7 @@ impl DawUi {
         {
             self.delete_selected_midi_notes();
         }
-        let preview = self.midi_pattern_preview(ui);
+        let preview = self.editor_clip_preview(ui);
         let track = preview
             .as_ref()
             .and_then(|p| p.tracks.iter().find(|t| t.id == track.id))
@@ -501,7 +501,7 @@ impl DawUi {
         });
         if self.drag.is_some() && self.content_clip_drag {
             self.finish_clip_drag(ui);
-            self.retain_pattern_view();
+            self.retain_content_view();
         }
         if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
             && let Some(draw) = self.midi_editor.draw.take()

@@ -51,15 +51,6 @@ impl DawUi {
         }
     }
 
-    pub(super) fn retain_pattern_view(&mut self) {
-        if self.midi_editor.active_clip != self.selected_clip {
-            self.midi_editor.clear_note_selection();
-        }
-        self.midi_editor.active_clip = self.selected_clip;
-        self.midi_editor.content.fitted = false;
-        self.midi_editor.content.retain_on_selection = true;
-    }
-
     pub(super) fn midi_pattern_edges(
         &mut self,
         ui: &mut egui::Ui,
@@ -99,47 +90,6 @@ impl DawUi {
                     self.clip_lane_response(ui, track.id, clip, block, lane, response);
                 }
             }
-        }
-    }
-
-    // Core owns overwrite/trim/loop/stretch resolution. This adapter only supplies
-    // the shared preview ranges to the piano roll, including changed neighbors.
-    pub(super) fn midi_pattern_preview(&self, ui: &egui::Ui) -> Option<daw_core::Project> {
-        let drag = self.drag.as_ref().filter(|_| self.content_clip_drag)?;
-        let pointer = ui.input(|i| i.pointer.latest_pos())?;
-        let raw = self.raw_clip_drag_previews(drag, pointer, musical_time::snap_bypassed(ui));
-        if raw.is_empty() || raw.iter().any(|p| !p.valid) {
-            return None;
-        }
-        let mut clips: Vec<_> = raw.into_iter().map(|p| (p.track, p.clip)).collect();
-        if drag.mode == ClipDragMode::Move {
-            if drag.duplicate {
-                for (_, clip) in &mut clips {
-                    clip.id = Id::new_v4();
-                }
-            }
-            return self
-                .session
-                .project
-                .placed_clips(
-                    &clips
-                        .into_iter()
-                        .map(|(track_id, clip)| daw_core::ClipPlacement { track_id, clip })
-                        .collect::<Vec<_>>(),
-                )
-                .ok();
-        }
-        let clips: Vec<_> = clips.into_iter().map(|(_, clip)| clip).collect();
-        if let Some(edge) = drag.mode.stretch_edge() {
-            self.session.project.stretched_clips(&clips, edge).ok()
-        } else if let Some(edge) = drag.mode.resize_edge() {
-            if matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight) {
-                self.session.project.trimmed_clips(&clips, edge).ok()
-            } else {
-                self.session.project.resized_clips(&clips, edge).ok()
-            }
-        } else {
-            None
         }
     }
 

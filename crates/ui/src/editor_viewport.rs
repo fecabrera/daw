@@ -59,7 +59,15 @@ impl EditorViewport {
         track_end: u64,
     ) {
         let Some(clip) = clip else {
-            *self = Self::default();
+            // A lower-editor edit can remove its primary clip. Keep a manually
+            // retained view through empty selection; a later overview selection fits anew.
+            if self.retain_on_selection || !self.fitted {
+                self.clip = None;
+                self.fitted = false;
+                self.retain_on_selection = false;
+            } else {
+                *self = Self::default();
+            }
             return;
         };
         let start = clip.start_frame as f64 / f64::from(sample_rate_hz);
@@ -212,6 +220,63 @@ impl DawUi {
         #[cfg(test)]
         {
             self.midi_editor.content.ruler = rect;
+        }
+    }
+}
+
+impl DawUi {
+    pub(super) fn retain_content_view(&mut self) {
+        if self.midi_editor.active_clip != self.selected_clip {
+            self.midi_editor.clear_note_selection();
+        }
+        self.midi_editor.active_clip = self.selected_clip;
+        self.midi_editor.content.fitted = false;
+        self.midi_editor.content.retain_on_selection = true;
+    }
+
+    // Core owns overwrite/trim/loop/stretch resolution. This adapter only supplies
+    // the shared preview ranges to either content editor, including changed neighbors.
+    pub(super) fn editor_clip_preview(&self, ui: &egui::Ui) -> Option<daw_core::Project> {
+        let drag = self.drag.as_ref().filter(|_| self.content_clip_drag)?;
+        let pointer = ui.input(|i| i.pointer.latest_pos())?;
+        if let Some(result) =
+            self.linked_trim_result(drag, pointer, musical_time::snap_bypassed(ui))
+        {
+            return result.ok();
+        }
+        let raw = self.raw_clip_drag_previews(drag, pointer, musical_time::snap_bypassed(ui));
+        if raw.is_empty() || raw.iter().any(|p| !p.valid) {
+            return None;
+        }
+        let mut clips: Vec<_> = raw.into_iter().map(|p| (p.track, p.clip)).collect();
+        if drag.mode == ClipDragMode::Move {
+            if drag.duplicate {
+                for (_, clip) in &mut clips {
+                    clip.id = Id::new_v4();
+                }
+            }
+            return self
+                .session
+                .project
+                .placed_clips(
+                    &clips
+                        .into_iter()
+                        .map(|(track_id, clip)| daw_core::ClipPlacement { track_id, clip })
+                        .collect::<Vec<_>>(),
+                )
+                .ok();
+        }
+        let clips: Vec<_> = clips.into_iter().map(|(_, clip)| clip).collect();
+        if let Some(edge) = drag.mode.stretch_edge() {
+            self.session.project.stretched_clips(&clips, edge).ok()
+        } else if let Some(edge) = drag.mode.resize_edge() {
+            if matches!(drag.mode, ClipDragMode::TrimLeft | ClipDragMode::TrimRight) {
+                self.session.project.trimmed_clips(&clips, edge).ok()
+            } else {
+                self.session.project.resized_clips(&clips, edge).ok()
+            }
+        } else {
+            None
         }
     }
 }
