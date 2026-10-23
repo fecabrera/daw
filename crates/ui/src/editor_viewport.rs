@@ -108,6 +108,17 @@ impl EditorViewport {
 }
 
 impl DawUi {
+    pub(super) fn editor_scrollbar(&mut self, ui: &mut egui::Ui, bottom: f32, id: &'static str) {
+        let bounds = Rect::from_min_max(
+            Pos2::new(
+                ui.max_rect().left() + track_overview::LABEL_WIDTH,
+                bottom - SCROLLBAR_HEIGHT,
+            ),
+            Pos2::new(ui.max_rect().right(), bottom),
+        );
+        self.timeline_scrollbar_at(ui, bounds, id);
+    }
+
     pub(super) fn editor_content_header(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
         let clip = track
             .clips
@@ -126,41 +137,46 @@ impl DawUi {
             self.session.project.sample_rate_hz,
             track.clips.iter().map(Clip::end).max().unwrap_or(0),
         );
-        toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
-            let enabled = clip.is_some() && self.editing_enabled() && !self.midi_editor.dragging();
-            ui.add_enabled_ui(enabled, |ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let mut zoom = self.view_zoom();
-                    let response = toolbars::horizontal_zoom(
-                        ui,
-                        &mut zoom,
-                        self.midi_editor.content.minimum_zoom
-                            ..=self.midi_editor.content.maximum_zoom,
-                    );
-                    #[cfg(test)]
-                    {
-                        self.midi_editor.content.zoom_bounds = response.rect;
-                    }
-                    if response.changed() {
-                        self.set_view_zoom(zoom);
-                    }
+        let toolbar = rows::fixed(ui, toolbars::HEIGHT, |ui| {
+            toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
+                let enabled =
+                    clip.is_some() && self.editing_enabled() && !self.midi_editor.dragging();
+                ui.add_enabled_ui(enabled, |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let mut zoom = self.view_zoom();
+                        let response = toolbars::horizontal_zoom(
+                            ui,
+                            &mut zoom,
+                            self.midi_editor.content.minimum_zoom
+                                ..=self.midi_editor.content.maximum_zoom,
+                        );
+                        #[cfg(test)]
+                        {
+                            self.midi_editor.content.zoom_bounds = response.rect;
+                        }
+                        if response.changed() {
+                            self.set_view_zoom(zoom);
+                        }
 
-                    let fit = icons::fit_clip_button(ui);
-                    #[cfg(test)]
-                    {
-                        self.midi_editor.content.fit_bounds = fit.rect;
-                    }
-                    if fit.clicked() {
-                        self.midi_editor.content.fitted = true;
-                        self.midi_editor.content.zoom = self.midi_editor.content.fit_zoom;
-                        self.midi_editor.content.scroll = self.midi_editor.content.start;
-                    }
+                        let fit = icons::fit_clip_button(ui);
+                        #[cfg(test)]
+                        {
+                            self.midi_editor.content.fit_bounds = fit.rect;
+                        }
+                        if fit.clicked() {
+                            self.midi_editor.content.fitted = true;
+                            self.midi_editor.content.zoom = self.midi_editor.content.fit_zoom;
+                            self.midi_editor.content.scroll = self.midi_editor.content.start;
+                        }
+                    });
                 });
             });
         });
+        panels::ControlPanel::pinned_row_divider(ui, toolbar.response.rect);
+        panels::ControlPanel::row_dividers(ui, toolbar.response.rect, false, true);
         let viewport = Rect::from_min_max(
             ui.next_widget_position() + Vec2::new(track_overview::LABEL_WIDTH, 0.0),
-            ui.max_rect().max - Vec2::new(scrollbar, SCROLLBAR_HEIGHT),
+            ui.max_rect().max - Vec2::new(scrollbar, 0.0),
         );
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);

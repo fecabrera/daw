@@ -7044,10 +7044,14 @@ fn scale_selection_dims_outside_keys_and_notes_in_both_themes_without_retuning()
 
 #[test]
 fn editor_section_headers_share_panel_dividers_and_audio_options_show_selection_prompt() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+    for (color_theme, scale) in [settings::ColorTheme::Dark, settings::ColorTheme::Light]
+        .into_iter()
+        .flat_map(|theme| [1.0, 1.25, 1.5, 2.0].map(move |scale| (theme, scale)))
+    {
         let (mut app, midi, clip, _) = fixture();
         let audio = app.session.project.add_track().unwrap();
         let ctx = context();
+        ctx.set_pixels_per_point(scale);
         app.set_settings(
             &ctx,
             settings::AppSettings {
@@ -7057,17 +7061,19 @@ fn editor_section_headers_share_panel_dividers_and_audio_options_show_selection_
         );
         app.open_clip_editor(clip, midi, &ctx);
         app.session.project.tracks[0].midi_options.root = Some(9);
-        for (track, title) in [
-            (midi, "MIDI options"),
-            (audio, "Clip options"),
-            (midi, "MIDI options"),
+        for (track, title, size) in [
+            (midi, "MIDI options", Vec2::new(1280.0, 800.0)),
+            (audio, "Clip options", Vec2::new(960.0, 640.0)),
+            (midi, "MIDI options", Vec2::new(960.0, 640.0)),
+            (audio, "Clip options", Vec2::new(1280.0, 800.0)),
         ] {
             app.select_track(track, false);
             app.selected_clip = (track == midi).then_some(clip);
             app.selected_clips.clear();
             let before = format!("{:?}", app.session.project);
             app.dirty = false;
-            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            frame_shapes(&mut app, &ctx, vec![], size);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
             let panel = app.midi_editor.panel_bounds;
             let palette = theme::palette(&ctx);
             let has_text = |name: &str| {
@@ -7083,13 +7089,39 @@ fn editor_section_headers_share_panel_dividers_and_audio_options_show_selection_
             assert_eq!(has_text("Select a clip"), track == audio);
             for y in [
                 panel.top() + toolbars::HEIGHT - 0.5,
-                app.midi_editor.track_bounds.bottom() + toolbars::HEIGHT - 0.5,
+                app.midi_editor.content.ruler.top() - toolbars::HEIGHT - 0.5,
+                app.midi_editor.content.ruler.top() - 0.5,
             ] {
-                assert!(shapes.iter().any(|s| matches!(&s.shape,
+                assert!(
+                    shapes.iter().any(|s| matches!(&s.shape,
                     egui::Shape::LineSegment { points, stroke }
                     if points[0] == Pos2::new(panel.left(), y)
                         && points[1] == Pos2::new(panel.right(), y)
-                        && *stroke == Stroke::new(1.0, palette.border))));
+                        && *stroke == Stroke::new(1.0, palette.border))),
+                    "missing divider at {y}; panel lines: {:?}",
+                    shapes
+                        .iter()
+                        .filter_map(|s| match &s.shape {
+                            egui::Shape::LineSegment { points, .. }
+                                if points[0].x == panel.left() && points[1].x == panel.right() =>
+                                Some(points[0].y),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                );
+            }
+            for boundary in [
+                app.midi_editor.content.ruler.top() - toolbars::HEIGHT - 0.5,
+                app.midi_editor.content.ruler.top() - 0.5,
+            ] {
+                assert!(
+                    shapes.iter().any(|s| matches!(&s.shape,
+                    egui::Shape::LineSegment { points, stroke }
+                    if points[0] == Pos2::new(panel.right(), boundary)
+                        && points[1] == Pos2::new(size.x, boundary)
+                        && *stroke == Stroke::new(1.0, palette.border))),
+                    "the lower editor toolbar must continue the options divider at {boundary} (scale {scale})"
+                );
             }
             assert_eq!(app.session.project.tracks[0].midi_options.root, Some(9));
             if track == audio {

@@ -2,6 +2,28 @@ use egui::{Align, InnerResponse, Layout, Ui, Vec2};
 
 pub const NAME_FONT_SIZE: f32 = 13.0;
 
+/// Keep adjacent pane rows aligned even when text or frames round differently.
+pub(super) fn fixed<R>(
+    ui: &mut Ui,
+    height: f32,
+    content: impl FnOnce(&mut Ui) -> R,
+) -> InnerResponse<R> {
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), height),
+        egui::Sense::hover(),
+    );
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(Layout::top_down(Align::Min)),
+    );
+    child.set_clip_rect(rect.intersect(ui.clip_rect()));
+    InnerResponse {
+        inner: content(&mut child),
+        response,
+    }
+}
+
 /// Reserve the tallest control's height before placing vertically centered items.
 pub fn centered<R>(
     ui: &mut Ui,

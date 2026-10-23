@@ -2952,13 +2952,10 @@ impl DawUi {
         {
             self.scrollbar_bounds = scrollbar_rect;
         }
-        self.timeline_scrollbar_at(ui, scrollbar_rect, "timeline_scrollbar");
-
-        ui.set_max_height((scrollbar_rect.top() - bounds.top()).max(0.0));
         self.ruler(ui, &control_panel);
         let timeline_rect = Rect::from_min_max(
             Pos2::new(timeline_left, ui.cursor().top()),
-            Pos2::new(bounds.right(), scrollbar_rect.top()),
+            Pos2::new(bounds.right(), bounds.bottom()),
         );
         self.paint_grid(&painter.with_clip_rect(timeline_rect), timeline_rect);
         let background = ui.interact(
@@ -3055,6 +3052,7 @@ impl DawUi {
         if self.master_selected {
             panels::ControlPanel::selected_row(ui, master_label, master_rect);
         }
+        self.timeline_scrollbar_at(ui, scrollbar_rect, "timeline_scrollbar");
         let pointer = ui.input(|i| i.pointer.latest_pos())?;
         let master = master_rect.intersect(ui.clip_rect());
         if master.contains(pointer) {
@@ -3345,10 +3343,6 @@ impl DawUi {
             let offset = (self.view_scroll() - minimum) * f64::from(self.view_zoom());
             let output = ui
                 .scope(|ui| {
-                    ui.spacing_mut().scroll = egui::style::ScrollStyle {
-                        bar_width: 10.0,
-                        ..egui::style::ScrollStyle::solid()
-                    };
                     // The timeline paints only its visible range. This scroll area supplies
                     // the standard scrollbar and measures the full range in pixels.
                     egui::ScrollArea::horizontal()
@@ -3358,18 +3352,15 @@ impl DawUi {
                             self.midi_editor.content_active,
                         ))
                         .max_width(width)
-                        .max_height(1.0)
+                        .max_height(SCROLLBAR_HEIGHT)
                         .min_scrolled_height(0.0)
                         .auto_shrink([false, true])
-                        .scroll_bar_visibility(
-                            egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
-                        )
                         .scroll_source(egui::scroll_area::ScrollSource::SCROLL_BAR)
                         .horizontal_scroll_offset(offset as f32)
                         .show(ui, |ui| {
                             ui.allocate_space(Vec2::new(
                                 (extent as f32 * self.view_zoom()).max(width),
-                                1.0,
+                                SCROLLBAR_HEIGHT,
                             ));
                         })
                 })
@@ -6315,11 +6306,20 @@ mod tests {
                 app.clip_drag_previews(app.drag.as_ref().unwrap(), empty, false)[0].track_index,
                 3
             );
-            // Ruler, track controls, scrollbar, and outside the window cannot create tracks.
+            // The floating scrollbar no longer excludes a bottom strip from placement.
+            assert_eq!(
+                app.clip_drag_previews(
+                    app.drag.as_ref().unwrap(),
+                    Pos2::new(start.x, app.scrollbar_bounds.center().y),
+                    false,
+                )[0]
+                .track_index,
+                3
+            );
+            // Ruler, track controls, and outside the window cannot create tracks.
             for pointer in [
                 Pos2::new(start.x, app.timeline_bounds.top() - 10.0),
                 Pos2::new(TRACK_WIDTH - 10.0, empty.y),
-                Pos2::new(start.x, app.scrollbar_bounds.center().y),
                 Pos2::new(1400.0, empty.y),
             ] {
                 assert_eq!(

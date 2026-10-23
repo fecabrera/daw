@@ -4414,3 +4414,19 @@ The lower audio editor now reuses `clip_lane_response` for header move/copy, wav
 All 614 UI tests pass. Four new regressions cover both-edge move/trim/loop/stretch previews and commits, header/body modifier stretching, actual stretch preparation and prepared-buffer publication, unchanged original PCM ownership, source offsets at shared boundaries, both-clip previews, removal of the primary clip, retained zoom/scroll across idle empty-selection frames, later overview refitting, and Escape/focus-loss cancellation. Existing audio waveform selection, source mapping, prepared pitch/stretch display, context-menu persistence, and MIDI gesture tests remain passing.
 
 `cargo test --offline --locked --workspace` passes, including all 614 UI tests and doctests; existing opt-in acceptance/performance tests remain ignored. Formatting, strict workspace Clippy, `git diff --check`, and the debug macOS bundle rebuild pass. Logs are in ignored `work/audio-editor-gestures-*.log`. Native UI, device playback, and Windows/Linux checks were not performed for this change.
+
+
+## Editor separators and floating timeline scrollbars — 2026-10-23
+
+The lower Editor toolbar continues the options title’s top and bottom separators through the shared panel border painters. The overview and track header end at the same height, with no scrollbar spacer. Timeline, the overview, and the lower audio/MIDI editor inherit the effects lane’s standard floating scrollbar style and default visibility. Scrollbars overlay their content instead of allocating a row or reducing the editing area; their interactions and painting follow the canvas. Independent viewport clocks and existing clip gestures remain unchanged.
+
+The expanded section-header regression checks audio/MIDI track switches, both themes, and two window sizes. A new scrollbar regression checks fully visible hovered handles in both Editor panes and Timeline, including a theme width override, full-height content, and the absence of an overview-to-toolbar gap. Existing layout and drag tests now require Timeline content to reach the viewport bottom and allow clip placement in the former reserved bottom strip.
+
+The workspace test suite and doctests passed during this change, with existing opt-in acceptance/performance tests ignored. After the final overlay and border changes, the complete affected UI suite passed again: 615 tests. Final `cargo fmt --all --check`, strict workspace/all-target Clippy, and the debug macOS bundle rebuild passed. Cargo used the local cache with offline/locked options. Logs are in ignored `work/editor-alignment-*.log` and `work/editor-scrollbar-test.log`. Native UI, device playback, and Windows/Linux checks were not performed.
+
+
+## Editor border alignment at fractional display scales — 2026-10-23
+
+The Editor track header, options title, and lower toolbar now use the shared `rows::fixed` allocation. Their outer row geometry no longer expands with rounded text or frame sizes. This keeps the options-title and toolbar bottom borders aligned at fractional display scales without adding spacing or reducing the editing canvas. Existing shared panel border painters remain in use.
+
+The section-header regression now covers 100%, 125%, 150%, and 200% display scales, both themes, audio/MIDI track switches, and two window sizes. It allows the viewport to settle after a scale/size change before checking the painted boundaries. All 615 UI tests and the complete workspace suite, including doctests, pass. Existing opt-in acceptance/performance tests remain ignored. Formatting, strict workspace/all-target Clippy, `git diff --check`, and the debug macOS bundle rebuild pass. Logs are in ignored `work/editor-border-*.log`. Native UI, audio-device, and Windows/Linux checks were not performed.

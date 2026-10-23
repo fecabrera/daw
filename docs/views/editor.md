@@ -22,7 +22,7 @@ Timeline and Editor offer the same clip selection, time-range selection, copy/pa
 
 ## Track and scale controls
 
-The left panel stays visible while you scroll the piano roll. Its track header is beside the clip strip. Use the name dropdown to select a track. It selects that track's first clip, or shows an empty editor if the track has no clips. With no selected track, the editor stays blank below the ruler. Mute, Solo, Gain, Pan, and the stereo meters work as they do in Timeline.
+The left panel stays visible while you scroll the piano roll. Its track header is beside the clip strip. The options section below it aligns with the lower editor toolbar. Both editor panes use the same floating horizontal scrollbar as the effects lane. It appears over the content and does not reduce the editing area. Hover near the bottom of a pane to reveal and expand its scrollbar. Use the name dropdown to select a track. It selects that track's first clip, or shows an empty editor if the track has no clips. With no selected track, the editor stays blank below the ruler. Mute, Solo, Gain, Pan, and the stereo meters work as they do in Timeline.
 
 For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to **Off**, which disables Scale and Snap to scale. Select a root to enable those controls. Choose a scale to dim the piano keys and notes outside it. Enable **Snap to scale** to constrain newly drawn notes and pitch moves. Major is the initial scale and snapping starts off. Returning Root to Off removes the dimming and bypasses snapping; it retains your scale and snapping choices.
 

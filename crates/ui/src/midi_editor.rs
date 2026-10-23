@@ -359,10 +359,7 @@ impl DawUi {
         self.track_overview_strip(ui, &track, &assets);
         self.finish_clip_drag(ui);
         self.update_portion(ui);
-        rows::centered(ui, SCROLLBAR_HEIGHT, |ui| {
-            ui.allocate_exact_size(Vec2::new(KEY_WIDTH, SCROLLBAR_HEIGHT), Sense::hover());
-            self.timeline_scrollbar(ui);
-        });
+        self.editor_scrollbar(ui, ui.next_widget_position().y, "editor_overview_scrollbar");
         // Re-resolve after strip gestures and keep the content transform scoped to
         // the lower pane. Menus and overview gestures retain the overview clock.
         let (track, assets) = self.track_overview_content(ui);
@@ -407,7 +404,7 @@ impl DawUi {
         scroll
             .auto_shrink([false, false])
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-            .max_height((ui.available_height() - SCROLLBAR_HEIGHT).max(0.0))
+            .max_height(ui.available_height().max(0.0))
             .show(ui, |ui| {
                 let (canvas, _) = ui.allocate_exact_size(
                     Vec2::new(ui.available_width(), 128.0 * NOTE_HEIGHT),
@@ -495,10 +492,7 @@ impl DawUi {
                     );
                 }
             });
-        rows::centered(ui, SCROLLBAR_HEIGHT, |ui| {
-            ui.allocate_exact_size(Vec2::new(KEY_WIDTH, SCROLLBAR_HEIGHT), Sense::hover());
-            self.timeline_scrollbar(ui);
-        });
+        self.editor_scrollbar(ui, ui.max_rect().bottom(), "editor_content_scrollbar");
         if self.drag.is_some() && self.content_clip_drag {
             self.finish_clip_drag(ui);
             self.retain_content_view();

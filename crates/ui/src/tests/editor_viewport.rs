@@ -38,6 +38,71 @@ fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
 }
 
 #[test]
+fn editor_and_timeline_scrollbars_use_standard_theme_handles_without_clipping() {
+    for midi in [false, true] {
+        for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+            let (mut app, ctx, _, _, _) = fixture(midi);
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme,
+                    ..Default::default()
+                },
+            );
+            ctx.all_styles_mut(|style| {
+                style.animation_time = 0.0;
+                // A theme override must reach every lane instead of a local preset.
+                if theme == settings::ColorTheme::Dark {
+                    style.spacing.scroll.bar_width = 8.0;
+                }
+            });
+            frame(&mut app, &ctx, vec![]);
+            let panel = app.midi_editor.panel_bounds;
+            let overview = Rect::from_min_max(
+                Pos2::new(
+                    panel.right() + track_overview::LABEL_WIDTH,
+                    app.midi_editor.track_bounds.bottom() - SCROLLBAR_HEIGHT,
+                ),
+                Pos2::new(1280.0, app.midi_editor.track_bounds.bottom()),
+            );
+            let content = Rect::from_min_max(
+                Pos2::new(overview.left(), panel.bottom() - SCROLLBAR_HEIGHT),
+                Pos2::new(1280.0, panel.bottom()),
+            );
+            for view in [ViewMode::Edit, ViewMode::Timeline] {
+                app.view_mode = view;
+                frame(&mut app, &ctx, vec![]);
+                let bands = if view == ViewMode::Edit {
+                    assert_eq!(app.midi_editor.content.bounds.bottom(), panel.bottom());
+                    assert_eq!(
+                        app.midi_editor.content.ruler.top() - toolbars::HEIGHT,
+                        overview.bottom()
+                    );
+                    vec![overview, content]
+                } else {
+                    assert_eq!(app.timeline_bounds.bottom(), app.scrollbar_bounds.bottom());
+                    vec![app.scrollbar_bounds]
+                };
+                for band in bands {
+                    let pointer = Pos2::new(band.left() + 40.0, band.bottom() - 5.0);
+                    for _ in 0..3 {
+                        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(pointer)]);
+                    }
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    let thickness = ctx.global_style().spacing.scroll.bar_width;
+                    assert!(shapes.iter().any(|s| matches!(&s.shape,
+                        egui::Shape::Rect(r)
+                        if r.rect.width() > 30.0
+                            && (r.rect.height() - thickness).abs() < 0.01
+                            && (r.rect.intersect(s.clip_rect).intersect(band).height() - thickness).abs() < 0.01)),
+                        "standard hovered scrollbar handle must remain fully visible in {band:?} (MIDI: {midi}, view: {view:?})");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn selected_clip_fits_content_width_on_open_selection_and_resize_for_audio_and_midi() {
     for midi in [false, true] {
         let (mut app, ctx, track, first, second) = fixture(midi);

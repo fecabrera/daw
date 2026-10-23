@@ -27,12 +27,8 @@ impl DawUi {
         child.spacing_mut().item_spacing = Vec2::ZERO;
         let title = panel.header(&mut child, "Editor", |_| {});
         panels::ControlPanel::row_dividers(&child, title.response.rect, false, true);
-        let header = Rect::from_min_size(
-            child.next_widget_position(),
-            Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
-        );
-        self.editor_track_header(&mut child);
-        panels::ControlPanel::row_dividers(&child, header, false, true);
+        let header = rows::fixed(&mut child, ROW_HEIGHT, |ui| self.editor_track_header(ui));
+        panels::ControlPanel::row_dividers(&child, header.response.rect, false, true);
         let track_id = self
             .editor_track()
             .filter(|track| track.kind == TrackKind::Midi)
@@ -43,15 +39,17 @@ impl DawUi {
         let audio = self
             .editor_track()
             .is_some_and(|t| t.kind == TrackKind::Audio);
-        let title = panel.header(
-            &mut child,
-            if audio {
-                "Clip options"
-            } else {
-                "MIDI options"
-            },
-            |_| {},
-        );
+        let title = rows::fixed(&mut child, toolbars::HEIGHT, |ui| {
+            panel.header(
+                ui,
+                if audio {
+                    "Clip options"
+                } else {
+                    "MIDI options"
+                },
+                |_| {},
+            )
+        });
         panels::ControlPanel::row_dividers(&child, title.response.rect, false, true);
         #[cfg(test)]
         {

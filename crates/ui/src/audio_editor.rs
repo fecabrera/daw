@@ -4,10 +4,7 @@ use super::*;
 impl DawUi {
     pub(super) fn audio_editor(&mut self, ui: &mut egui::Ui) {
         let (canvas, _) = ui.allocate_exact_size(
-            Vec2::new(
-                ui.available_width(),
-                (ui.available_height() - SCROLLBAR_HEIGHT).max(0.0),
-            ),
+            Vec2::new(ui.available_width(), ui.available_height().max(0.0)),
             Sense::hover(),
         );
         let lane = Rect::from_min_max(
@@ -100,13 +97,7 @@ impl DawUi {
             canvas.y_range(),
             Stroke::new(1.0, palette.border),
         );
-        rows::centered(ui, SCROLLBAR_HEIGHT, |ui| {
-            ui.allocate_exact_size(
-                Vec2::new(track_overview::LABEL_WIDTH, SCROLLBAR_HEIGHT),
-                Sense::hover(),
-            );
-            self.timeline_scrollbar(ui);
-        });
+        self.editor_scrollbar(ui, canvas.bottom(), "editor_content_scrollbar");
         if self.drag.is_some() && self.content_clip_drag {
             self.finish_clip_drag(ui);
             self.retain_content_view();

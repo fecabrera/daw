@@ -3302,7 +3302,7 @@ fn timeline_places_catalog_left_of_tracks_and_lane_below_grid_in_both_themes() {
                 assert_eq!(app.master_bounds.bottom(), bounds.strip.top());
                 assert_eq!(app.scrollbar_bounds.bottom(), bounds.strip.top());
                 assert_eq!(app.scrollbar_bounds.left(), app.timeline_bounds.left());
-                assert_eq!(app.timeline_bounds.bottom(), app.scrollbar_bounds.top());
+                assert_eq!(app.timeline_bounds.bottom(), app.scrollbar_bounds.bottom());
                 assert!(bounds.strip.contains_rect(bounds.chain[0].1));
                 let bottom = bounds.strip.bottom();
                 let separators = shapes
