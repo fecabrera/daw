@@ -3513,8 +3513,12 @@ fn timeline_library_toolbar_spans_workspace_and_toggles_catalog_without_project_
                 rail.center().x
             );
             assert_eq!(
-                app.effects_bounds.library_toggle.top(),
+                app.effects_bounds.clip_settings_toggle.top(),
                 rail.top() + (rail.width() - crate::timeline_toolbar::BUTTON_SIZE) * 0.5
+            );
+            assert_eq!(
+                app.chords.bounds.toggle.top() - app.effects_bounds.library_toggle.bottom(),
+                7.0
             );
             let point = app.effects_bounds.entry.center();
             click(&mut app, &ctx, point);

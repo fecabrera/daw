@@ -1,5 +1,7 @@
 # Moving and copying units
 
+The shared Timeline toolbar places Clip settings, Effects, and Chords from top to bottom in Timeline. In Instrument, it places Instrument components above Effects and uses Lucide KeyboardMusic for the Instrument components button. Keep the effects-lane toggle at the bottom and preserve button identities, icons, selection, and catalog behavior.
+
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/editing/units.md).
 
 Instrument components can move between regular layers, Main, and the track effects lane of the same instrument. Drag a unit header onto the destination layer's label or component area. The effects lane’s insertion line marks the destination position. Hold Option on macOS, or Ctrl on Windows/Linux, to copy. The modifier can change during the drag; its state at release determines the action. The catalog does not need to be open.

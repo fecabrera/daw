@@ -41,13 +41,13 @@ pub(super) fn show(
     let padding = (WIDTH - BUTTON_SIZE) * 0.5;
     let top = bounds.min + Vec2::splat(padding);
     let step = BUTTON_SIZE + padding;
-    let clip_settings_at = top
+    let effects_at = top
         + Vec2::new(
             0.0,
-            if catalogs.components.is_some() {
-                2.0 * step
-            } else {
+            if catalogs.clip_settings.is_some() || catalogs.components.is_some() {
                 step
+            } else {
+                0.0
             },
         );
     let bottom = egui::pos2(top.x, bounds.bottom() - padding - BUTTON_SIZE);
@@ -58,21 +58,12 @@ pub(super) fn show(
     );
     rail.set_clip_rect(bounds.intersect(ui.clip_rect()));
     Buttons {
-        library: toggle_at(
-            &mut rail,
-            top,
-            "library",
-            icons::Lucide::Library,
-            "Show effects catalog",
-            catalogs.effects,
-            enabled,
-        ),
         components: catalogs.components.map(|selected| {
             toggle_at(
                 &mut rail,
-                top + Vec2::new(0.0, BUTTON_SIZE + padding),
+                top,
                 "instrument-components",
-                icons::Lucide::Piano,
+                icons::Lucide::KeyboardMusic,
                 "Show instrument components catalog",
                 selected,
                 enabled,
@@ -81,7 +72,7 @@ pub(super) fn show(
         clip_settings: catalogs.clip_settings.map(|selected| {
             toggle_at(
                 &mut rail,
-                clip_settings_at,
+                top,
                 "clip-settings",
                 icons::Lucide::FileHeadphone,
                 "Show clip settings",
@@ -89,6 +80,15 @@ pub(super) fn show(
                 enabled,
             )
         }),
+        library: toggle_at(
+            &mut rail,
+            effects_at,
+            "library",
+            icons::Lucide::Library,
+            "Show effects catalog",
+            catalogs.effects,
+            enabled,
+        ),
         chords: catalogs.chords.map(|selected| {
             toggle_at(
                 &mut rail,

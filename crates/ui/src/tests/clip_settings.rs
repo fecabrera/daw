@@ -227,7 +227,7 @@ fn clip_settings_is_exclusive_with_the_catalogs_and_edits_the_selected_clip() {
     let toggle = app.effects_bounds.clip_settings_toggle;
     assert_eq!(toggle.size(), Vec2::splat(24.0));
     assert_eq!(toggle.left(), library.left());
-    assert_eq!(toggle.top() - library.bottom(), 7.0);
+    assert_eq!(library.top() - toggle.bottom(), 7.0);
     assert!(app.timeline_catalog_visible);
     assert!(!app.clip_settings_visible);
     assert!(app.effects_bounds.library.width() > 0.0);
@@ -403,7 +403,7 @@ fn clip_settings_is_exclusive_with_the_catalogs_and_edits_the_selected_clip() {
     let library = app.effects_bounds.library_toggle;
     let components = app.instrument_catalog_bounds.toggle;
     let clip_toggle = app.effects_bounds.clip_settings_toggle;
-    assert_eq!(components.top() - library.bottom(), 7.0);
+    assert_eq!(library.top() - components.bottom(), 7.0);
     assert_eq!(clip_toggle, Rect::NOTHING);
     click(&mut app, &ctx, components.center());
     assert!(app.instrument_catalog_visible);

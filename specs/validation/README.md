@@ -4448,3 +4448,12 @@ Primary clicks and keyboard selection now audition the focused chord through the
 Focused project tests passed for audible instrument rendering, ancestor-bus gain, mute, unrelated solo, unchanged session data, invalid targets, cancellation, and slow-tempo bounds. Sampler regression coverage confirms audible required-pitch preparation without publishing preview notes or prepared variants. Final affected checks passed all 627 UI tests and 34 output tests. Callback allocation instrumentation covers replacement, cancellation, queue saturation, natural completion, retirement, and preview mixing without advancing stopped transport. UI tests cover primary clicks, keyboard movement, invalid track selections, drag exclusion, worker coalescing, stale results, and Stop cancellation.
 
 The complete workspace suite and doctests passed, with existing opt-in acceptance/performance tests ignored. The affected UI/output suites were rerun after the final Stop and repaint changes and passed. Final formatting, strict workspace/all-target Clippy, changed-document links, whitespace checks, and the debug macOS bundle rebuild passed. Cargo used the local offline cache and locked dependencies. Logs are in ignored `work/chord-audition-*.log`. Native UI, audio-device playback, and Windows/Linux checks were not performed.
+
+
+## Catalog toolbar order and Instrument components icon — 2026-10-23
+
+Timeline now orders its catalog buttons as Clip settings, Effects, and Chords. Instrument orders Instrument components before Effects and uses Lucide KeyboardMusic for the components button. Widget creation follows the visible order for keyboard focus. Existing button identities, selection behavior, and the bottom effects-lane toggle remain intact. User guides and the component specification describe the new layout.
+
+Updated existing layout assertions cover the new spacing and order in Timeline and Instrument, including both themes. All 627 UI tests pass with the final icon and button order. Final formatting, strict workspace/all-target Clippy, and the debug macOS bundle rebuild pass.
+
+The complete workspace suite and doctests passed, with existing opt-in acceptance/performance tests ignored. Changed-document links and staged/unstaged whitespace checks passed. Cargo used the local offline cache and locked dependencies. Final UI results are in ignored `work/catalog-order-ui-final.log`; workspace, Clippy, test-build, and packaging logs use the `work/catalog-order-` prefix. Native UI and Windows/Linux checks were not performed.

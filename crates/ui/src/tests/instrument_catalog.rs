@@ -234,7 +234,7 @@ fn instrument_catalog_is_exclusive_and_reuses_the_control_panel_in_both_themes()
         assert_eq!(toggle.size(), Vec2::splat(24.0));
         assert_eq!(toggle.left(), app.effects_bounds.library_toggle.left());
         assert_eq!(
-            toggle.top() - app.effects_bounds.library_toggle.bottom(),
+            app.effects_bounds.library_toggle.top() - toggle.bottom(),
             7.0
         );
         open(&mut app, &ctx);

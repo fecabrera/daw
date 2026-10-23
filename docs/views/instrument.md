@@ -1,5 +1,7 @@
 # Instruments and effects
 
+The left toolbar lists **Instrument components** above **Effects**. The Instrument components button shows a keyboard with a music note.
+
 An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline or Instrument to add effects.
 
 ## Instrument components
