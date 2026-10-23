@@ -299,6 +299,16 @@ impl Timeline {
         use egui::{Pos2, Stroke};
         let ticks = egui::Rect::from_min_max(labels.left_bottom(), rect.max);
         let loop_fill = crate::theme::ruler_loop_colors(painter.ctx(), enabled).0;
+        let selection_rect = egui::Rect::from_min_max(
+            Pos2::new(
+                rect.left() + self.pixel_at_frame(selection[0]) as f32,
+                labels.top(),
+            ),
+            Pos2::new(
+                rect.left() + self.pixel_at_frame(selection[1]) as f32,
+                labels.bottom(),
+            ),
+        );
         painter.line_segment(
             [ticks.left_top(), ticks.right_top()],
             Stroke::new(1.0_f32, crate::theme::palette(painter.ctx()).border),
@@ -322,21 +332,48 @@ impl Timeline {
                 Stroke::new(1.0_f32, crate::theme::palette(painter.ctx()).secondary),
             );
             if let Some(label) = tick.label {
-                let selected =
-                    tick.beat >= self.beats(selection[0]) && tick.beat < self.beats(selection[1]);
-                painter.text(
-                    Pos2::new(x + 3.0, labels.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    label,
-                    egui::FontId::proportional(11.0),
-                    if selected && enabled {
-                        crate::theme::contrast_color(loop_fill)
-                    } else if selected && painter.ctx().theme() == egui::Theme::Dark {
-                        crate::theme::CLIP_TEXT
-                    } else {
-                        crate::theme::palette(painter.ctx()).text
-                    },
+                let position = Pos2::new(x + 3.0, labels.center().y);
+                let font = egui::FontId::proportional(11.0);
+                let outside = crate::theme::palette(painter.ctx()).text;
+                let inside = if enabled {
+                    crate::theme::contrast_color(loop_fill)
+                } else if painter.ctx().theme() == egui::Theme::Dark {
+                    crate::theme::CLIP_TEXT
+                } else {
+                    outside
+                };
+                let galley = painter.layout_no_wrap(label.clone(), font.clone(), outside);
+                let bounds = egui::Rect::from_min_size(
+                    position - egui::vec2(0.0, galley.size().y * 0.5),
+                    galley.size(),
                 );
+                let selected = bounds.intersect(selection_rect);
+                if !selected.is_positive() || inside == outside {
+                    painter.text(position, egui::Align2::LEFT_CENTER, label, font, outside);
+                } else {
+                    // Color the glyphs by their actual background, not the tick's beat.
+                    // Frame rounding can place a loop end just after a tick, while its
+                    // inset label is outside. Partial labels must also keep their contrast.
+                    let left = egui::Rect::from_min_max(
+                        bounds.min,
+                        Pos2::new(selected.left(), bounds.bottom()),
+                    );
+                    let right = egui::Rect::from_min_max(
+                        Pos2::new(selected.right(), bounds.top()),
+                        bounds.max,
+                    );
+                    for (clip, color) in [(left, outside), (selected, inside), (right, outside)] {
+                        if clip.is_positive() {
+                            painter.with_clip_rect(clip).text(
+                                position,
+                                egui::Align2::LEFT_CENTER,
+                                label.clone(),
+                                font.clone(),
+                                color,
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -635,6 +672,99 @@ mod tests {
         );
         for length in [1, frames(1.13), u64::MAX - 1, u64::MAX] {
             assert!(timeline.snap_range(u64::MAX - length, length, []) <= u64::MAX - length);
+        }
+    }
+}
+
+#[cfg(test)]
+mod ruler_color_tests {
+    use super::*;
+    use egui::{Color32, Pos2, Rect, Vec2};
+
+    #[test]
+    fn labels_follow_the_background_at_rounded_and_partial_loop_edges() {
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            for enabled in [false, true] {
+                for tempo in [100.0, 123.0] {
+                    for split_label in [false, true] {
+                        let ctx = egui::Context::default();
+                        ctx.set_theme(theme);
+                        let timeline = Timeline::at_sample_rate(tempo, 50.0, 0.0, 48000);
+                        let tick_x = timeline
+                            .ticks(800.0)
+                            .find(|t| t.label.as_deref() == Some("2"))
+                            .unwrap()
+                            .x;
+                        let end = if split_label {
+                            timeline.frame_at_pixel(f64::from(tick_x + 5.0)) as u64
+                        } else {
+                            (4.0 * 60.0 * 48000.0 / f64::from(tempo)).ceil() as u64 + 1
+                        };
+                        let edge = timeline.pixel_at_frame(end) as f32;
+                        let mut output = ctx.run_ui(
+                            egui::RawInput {
+                                screen_rect: Some(Rect::from_min_size(
+                                    Pos2::ZERO,
+                                    Vec2::new(800.0, 100.0),
+                                )),
+                                ..Default::default()
+                            },
+                            |ui| {
+                                timeline.paint_ruler_ticks(
+                                    ui.painter(),
+                                    Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 40.0)),
+                                    Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 20.0)),
+                                    [0, end],
+                                    enabled,
+                                );
+                            },
+                        );
+                        output.textures_delta.clear();
+                        let outside = crate::theme::palette(&ctx).text;
+                        let inside = if enabled {
+                            Color32::BLACK
+                        } else if theme == egui::Theme::Dark {
+                            crate::theme::CLIP_TEXT
+                        } else {
+                            outside
+                        };
+                        let parts: Vec<_> = output
+                            .shapes
+                            .iter()
+                            .filter_map(|shape| {
+                                if let egui::Shape::Text(text) = &shape.shape
+                                    && text.galley.text() == "2"
+                                {
+                                    Some((shape.clip_rect, &text.galley.job.sections))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        assert!(!parts.is_empty());
+                        for (clip, sections) in &parts {
+                            let color = if clip.right() <= edge {
+                                inside
+                            } else {
+                                outside
+                            };
+                            assert!(sections.iter().all(|section| section.format.color == color));
+                            if color != outside {
+                                assert!(clip.right() <= edge);
+                            }
+                        }
+                        assert!(parts.iter().any(|(clip, sections)| (!split_label
+                            || inside == outside
+                            || clip.left() >= edge)
+                            && sections.iter().all(|s| s.format.color == outside)));
+                        if split_label && inside != outside {
+                            assert_eq!(parts.len(), 2);
+                        } else {
+                            assert_eq!(parts.len(), 1);
+                        }
+                    }
+                }
+            }
         }
     }
 }

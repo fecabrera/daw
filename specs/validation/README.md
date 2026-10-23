@@ -4302,3 +4302,9 @@ Native visual inspection was attempted but the Mac was locked. Native picker/dra
 Corrected the Grain window paths from −1..+1 to the shared −0.5..+0.5 coordinate bounds. The existing knob renderer now draws them at the required 10-by-6-point size with its standard 1.25-point stroke and active accent color. Grain shapes and audio behavior are unchanged.
 
 The new bounds/shape regression and all 574 UI library tests pass. Formatting, strict UI Clippy, `git diff --check`, and the debug macOS bundle rebuild pass. Logs are in ignored `work/granulizer/icon-*.log`. Native visual and other-platform checks were not run for this correction.
+
+## Ruler label background contrast — 2026-10-23
+
+The shared Timeline/Editor/sample ruler now colors text by the background under the glyphs instead of tick-beat membership. Dark-mode text outside the loop keeps the theme's light text color, including labels after a frame-rounded loop end. Labels crossing a range edge are clipped into inside/outside color regions. Enabled-loop contrast and disabled-selection styling remain theme-aware.
+
+All 575 UI tests pass, including both themes, enabled/disabled loops, two tempos, frame-rounded ends and partial-label intersections. Formatting, strict UI Clippy, `git diff --check` and the debug macOS bundle rebuild pass. Logs are in ignored `work/ruler-color-*.log`. Native visual and Windows/Linux checks were not run for this correction.

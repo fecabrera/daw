@@ -794,3 +794,7 @@ Validate identical workspace paint before/during a held save in all four views a
 ## Static Filter effect
 
 [Filter](../effects/filter.md) adds the Auto-filter Cutoff/Out controls as a separate versioned effect with no internal LFO. Use its shared portable processor in both effects, with shared catalog, routing, layer/track/Master hosts, controls and persistence.
+
+## Ruler label contrast
+
+The shared ruler painter colors label glyphs by their painted background. Outside the selection, use the theme text color; inside an enabled loop, use contrast against its fill. Disabled selections retain their existing theme-specific text. Clip a label that spans an edge into the corresponding color regions. Use pixel geometry, including the label inset, rather than tick-beat membership: integer frame rounding can place the end just past a tick while its label is outside the fill. Apply this contract to Timeline, Editor and sample previews through the shared painter.

@@ -57,7 +57,7 @@ Duplicating into new track space creates fresh track defaults. Group paste also 
 
 Press Space to play or pause from any view, pane, or focused control. Text fields take precedence: Space inserts a space while you edit text. Holding Space does not toggle playback repeatedly. Dialogs and blocking background jobs still disable the shortcut.
 
-The ruler uses four beats per bar, with bars and beats counted from 1. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI timing follows tempo.
+The ruler uses four beats per bar, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. Drag the selection band to choose a loop range; use Loop to enable it. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI timing follows tempo.
 
 Seeking and editing notes during playback keep the current audio and playhead running while the change is prepared. A seek then fades to the requested position. A note edit takes effect at the current playback position, without pausing or returning to an earlier position. Changes to effect latency use the same continuous playback behavior.
 
