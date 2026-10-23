@@ -116,14 +116,18 @@ pub fn button(ui: &mut Ui, icon: Lucide, name: &str, enabled: bool, color: Color
 /// User-supplied fit-width geometry. A white SVG mask takes the same theme tint
 /// as the Lucide controls while keeping one embedded image for both themes.
 pub(super) fn fit_clip_button(ui: &mut Ui) -> Response {
+    fit_width_button(ui, "Fit clip")
+}
+
+pub(super) fn fit_width_button(ui: &mut Ui, name: &str) -> Response {
     let image = egui::Image::new(egui::include_image!("../assets/icons/fit-clip.svg"))
         .fit_to_exact_size(Vec2::splat(TOOLBAR_ICON_SIZE))
         .tint(crate::theme::palette(ui.ctx()).text)
-        .alt_text("Fit clip");
+        .alt_text(name);
     image_button(
         ui,
         image,
-        "Fit clip",
+        name,
         true,
         Vec2::splat(TOOLBAR_BUTTON_SIZE),
         None,

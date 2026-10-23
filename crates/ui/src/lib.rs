@@ -7,6 +7,7 @@ mod audio_editor;
 mod clip_paint;
 mod clip_settings;
 mod editor_viewport;
+mod fit_viewport;
 mod history;
 mod looping;
 mod midi_editor;
@@ -774,6 +775,9 @@ pub struct DawUi {
     loop_drag: Option<LoopDrag>,
     lane_bounds: HashMap<Id, Rect>,
     timeline_bounds: Rect,
+    fit_all_requested: bool,
+    #[cfg(test)]
+    fit_all_bounds: Rect,
     #[cfg(test)]
     scrollbar_bounds: Rect,
     #[cfg(test)]
@@ -880,6 +884,9 @@ impl Default for DawUi {
             loop_drag: None,
             lane_bounds: HashMap::new(),
             timeline_bounds: Rect::NOTHING,
+            fit_all_requested: false,
+            #[cfg(test)]
+            fit_all_bounds: Rect::NOTHING,
             #[cfg(test)]
             scrollbar_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -2763,13 +2770,34 @@ impl DawUi {
             if self.view_mode.has_clip_lanes() {
                 let mut zoom = self.view_zoom();
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let response = toolbars::horizontal_zoom(ui, &mut zoom, MIN_ZOOM..=MAX_ZOOM);
+                    let response = toolbars::horizontal_zoom(
+                        ui,
+                        &mut zoom,
+                        MIN_ZOOM.min(self.view_zoom())..=MAX_ZOOM.max(self.view_zoom()),
+                    );
                     #[cfg(test)]
                     {
                         self.midi_editor.zoom_bounds = response.rect;
                     }
                     #[cfg(not(test))]
                     let _ = response;
+                    let enabled = self.fit_all_range().is_some()
+                        && self.editing_enabled()
+                        && self.track_drag.is_none()
+                        && self.loop_drag.is_none()
+                        && self.marquee.is_none()
+                        && self.portion_drag.is_none()
+                        && ui.input(|input| input.focused);
+                    let fit = ui
+                        .add_enabled_ui(enabled, |ui| icons::fit_width_button(ui, "Fit all clips"))
+                        .inner;
+                    #[cfg(test)]
+                    {
+                        self.fit_all_bounds = fit.rect;
+                    }
+                    if fit.clicked() {
+                        self.fit_all_requested = true;
+                    }
                 });
                 if self.view_mode.has_track_overview() {
                     self.midi_editor.zoom = zoom;
@@ -2883,6 +2911,7 @@ impl DawUi {
         let bounds = ui.max_rect();
         let timeline_left = bounds.left() + TRACK_WIDTH;
         let viewport = Rect::from_min_max(Pos2::new(timeline_left, bounds.top()), bounds.max);
+        self.apply_fit_all(viewport.width());
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
         let painter = ui.painter().clone();
@@ -3258,7 +3287,10 @@ impl DawUi {
                 self.midi_editor.content.maximum_zoom,
             )
         } else {
-            (MIN_ZOOM, MAX_ZOOM)
+            (
+                MIN_ZOOM.min(self.view_zoom()),
+                MAX_ZOOM.max(self.view_zoom()),
+            )
         };
         let zoom = (self.view_zoom() * factor).clamp(minimum_zoom, maximum_zoom);
         if zoom == self.view_zoom() {
@@ -3339,9 +3371,9 @@ impl DawUi {
                 })
                 .inner;
             let scroll = minimum + f64::from(output.state.offset.x) / f64::from(self.view_zoom());
-            // A fitted content view can have a large project-time origin. Do not
-            // treat the scrollbar's unchanged f32 offset as a manual pan.
-            let moved = !self.midi_editor.content_active || output.state.offset.x != offset as f32;
+            // A fitted view can have a large project-time origin. Do not treat
+            // the scrollbar's unchanged f32 offset as a manual pan.
+            let moved = output.state.offset.x != offset as f32;
             if moved && scroll != self.view_scroll() {
                 self.set_view_scroll(scroll);
                 ui.ctx().request_repaint();

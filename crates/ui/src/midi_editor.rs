@@ -345,6 +345,7 @@ impl DawUi {
                 ui.max_rect().top() + RULER_HEIGHT + ROW_HEIGHT,
             ),
         );
+        self.apply_fit_all(viewport.width());
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
         self.track_overview_ruler(ui);

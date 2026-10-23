@@ -279,3 +279,112 @@ fn panning_a_fitted_clip_retains_the_new_content_view_across_frames() {
         assert!(!app.dirty);
     }
 }
+
+#[test]
+fn fit_all_uses_each_panes_clip_scope_without_changing_content_or_project() {
+    for midi in [false, true] {
+        let (mut app, ctx, track, _, _) = fixture(midi);
+        let mut distant = app.session.project.tracks[0].clips[0].clone();
+        distant.id = Id::new_v4();
+        distant.start_frame = 480_000;
+        let other = app.session.project.add_track().unwrap();
+        app.session
+            .project
+            .tracks
+            .last_mut()
+            .unwrap()
+            .clips
+            .push(distant);
+        let before = app.session.project.clone();
+        let selection = app.selected_clip;
+        let content = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+        app.zoom = 50.0;
+        app.scroll = 2.0;
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.fit_all_bounds.right() < app.midi_editor.zoom_bounds.left());
+        let point = app.fit_all_bounds.center();
+        click(&mut app, &ctx, point);
+        frame(&mut app, &ctx, vec![]);
+        let lane = app.midi_editor.track_bounds;
+        assert!((app.midi_editor.zoom * 3.5 - lane.width()).abs() < 0.1);
+        assert_eq!(app.midi_editor.scroll, 1.0);
+        assert_eq!((app.zoom, app.scroll), (50.0, 2.0));
+        assert_eq!(
+            (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+            content
+        );
+        let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
+        app.view_mode = ViewMode::Timeline;
+        frame(&mut app, &ctx, vec![]);
+        let point = app.fit_all_bounds.center();
+        click(&mut app, &ctx, point);
+        frame(&mut app, &ctx, vec![]);
+        assert!((app.zoom * 11.0 - app.timeline_bounds.width()).abs() < 0.1);
+        assert_eq!(app.scroll, 1.0);
+        assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), overview);
+        assert_eq!(app.selected_clip, selection);
+        assert_eq!(app.selected_track, Some(track));
+        assert_ne!(track, other);
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn fit_all_keeps_exact_extreme_ranges_and_uses_current_layout_width() {
+    for length in [1, 480_000_000] {
+        let (mut app, ctx, _, _, _) = fixture(false);
+        app.view_mode = ViewMode::Timeline;
+        app.session.project.tracks[0].clips.truncate(1);
+        let clip = &mut app.session.project.tracks[0].clips[0];
+        clip.start_frame = 123_456_789;
+        clip.length_frames = length;
+        frame(&mut app, &ctx, vec![]);
+        // The toolbar records the request before workspace layout resolves it.
+        // Change the width on that same frame to reject stale lane measurements.
+        app.fit_all_requested = true;
+        frame_sized(&mut app, &ctx, vec![], Vec2::new(1400.0, 850.0));
+        for _ in 0..3 {
+            frame_sized(&mut app, &ctx, vec![], Vec2::new(1400.0, 850.0));
+            assert!(
+                (app.zoom as f64 * length as f64 / 48000.0 - app.timeline_bounds.width() as f64)
+                    .abs()
+                    < 0.1
+            );
+            assert_eq!(app.scroll, 123_456_789.0 / 48000.0);
+        }
+        // Returning toward the usual zoom range must not jump to its boundary.
+        let zoom = app.zoom;
+        let factor = if length == 1 { 0.5 } else { 2.0 };
+        let point = app.timeline_bounds.center();
+        frame_sized(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), egui::Event::Zoom(factor)],
+            Vec2::new(1400.0, 850.0),
+        );
+        assert!((app.zoom - zoom * factor).abs() < zoom * 0.0001);
+    }
+}
+
+#[test]
+fn fit_all_is_inactive_without_clips_and_while_settings_are_open() {
+    let mut app = DawUi::default();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    let before = (app.zoom, app.scroll);
+    let point = app.fit_all_bounds.center();
+    click(&mut app, &ctx, point);
+    assert_eq!((app.zoom, app.scroll), before);
+    assert!(!app.fit_all_requested);
+
+    let (mut app, ctx, _, _, _) = fixture(false);
+    app.view_mode = ViewMode::Timeline;
+    app.settings_open = true;
+    frame(&mut app, &ctx, vec![]);
+    let before = (app.zoom, app.scroll);
+    let point = app.fit_all_bounds.center();
+    click(&mut app, &ctx, point);
+    assert_eq!((app.zoom, app.scroll), before);
+    assert!(!app.fit_all_requested);
+}

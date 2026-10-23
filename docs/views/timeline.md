@@ -63,6 +63,8 @@ Seeking and editing notes during playback keep the current audio and playhead ru
 
 Recently prepared positions use cached sound state for faster seeks. The first seek, a seek outside the cached range, or a seek after a project edit can still require history reconstruction. This can delay when a change becomes audible. Rapid changes replace pending changes. Pause stops the active audio even while a seek or edit is being prepared; ordinary pause and resume retain the current sound state.
 
+Use **Fit all clips**, immediately left of the playback toolbar’s zoom control, to show every clip across all tracks. It fits from the earliest clip start to the latest clip end, including gaps. The button is disabled when there are no clips. It changes only the view.
+
 Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a MIDI clip to open it in [Editor](editor.md).
 
 ## Clip settings
