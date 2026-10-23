@@ -1,4 +1,4 @@
-//! Enlarged selected-clip waveform on the Editor's shared project clock.
+//! Selected-clip waveform on the independent editor content viewport.
 use super::*;
 
 impl DawUi {
@@ -29,10 +29,53 @@ impl DawUi {
                 .find(|clip| Some(clip.id) == self.selected_clip)
                 .map(|clip| (track, clip))
         });
-        if let Some((track, clip)) = selected {
-            let block = self.track_overview_clip_rect(lane, clip);
-            if block.intersects(lane) {
-                self.paint_clip(&painter, track.color, block, clip, false, None);
+        if let Some((track, _)) = selected {
+            if self.editing_enabled()
+                && ui.is_enabled()
+                && ui.input(|input| input.focused)
+                && !egui::Popup::is_any_open(ui.ctx())
+            {
+                for clip in &track.clips {
+                    let visible = self
+                        .clip_block(lane, clip, clip.start_frame)
+                        .intersect(lane)
+                        .intersect(ui.clip_rect());
+                    if !visible.is_positive() {
+                        continue;
+                    }
+                    let response = ui
+                        .interact(
+                            visible,
+                            ui.id().with(("audio-editor-clip", clip.id)),
+                            Sense::click(),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    if response.clicked() {
+                        self.editor_select_clip(clip.id, track.id);
+                        ui.ctx().request_repaint(); // Refresh the options panel painted before this lane.
+                    }
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::SelectableLabel,
+                            ui.is_enabled(),
+                            Some(clip.id) == self.selected_clip,
+                            &clip.name,
+                        )
+                    });
+                }
+            }
+            for clip in &track.clips {
+                let block = self.clip_block(lane, clip, clip.start_frame);
+                if block.intersect(lane).is_positive() {
+                    self.paint_clip(
+                        &painter,
+                        track.color,
+                        block,
+                        clip,
+                        Some(clip.id) == self.selected_clip,
+                        None,
+                    );
+                }
             }
         } else {
             painter.text(
@@ -43,7 +86,21 @@ impl DawUi {
                 palette.secondary,
             );
         }
-        self.paint_track_overview_playhead(&painter, lane);
+        let x = lane.left()
+            + (self
+                .session
+                .project
+                .seconds(self.session.project.transport.playhead_frame)
+                - self.view_scroll()) as f32
+                * self.view_zoom();
+        painter.line_segment(
+            [Pos2::new(x, lane.top()), Pos2::new(x, lane.bottom())],
+            Stroke::new(1.0, theme::accent(ui.ctx())),
+        );
+        #[cfg(test)]
+        {
+            self.midi_editor.content.bounds = lane;
+        }
         ui.painter().vline(
             lane.left(),
             canvas.y_range(),

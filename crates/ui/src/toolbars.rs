@@ -88,3 +88,42 @@ impl Toolbar {
         })
     }
 }
+
+/// Standard compact horizontal zoom slider and icon, laid out right to left by the host.
+pub fn horizontal_zoom(
+    ui: &mut Ui,
+    zoom: &mut f32,
+    limits: std::ops::RangeInclusive<f32>,
+) -> egui::Response {
+    let response = ui
+        .scope(|ui| {
+            ui.spacing_mut().slider_width = 56.0;
+            ui.spacing_mut().slider_rail_height = 4.0;
+            ui.spacing_mut().interact_size.y = 14.0;
+            ui.style_mut()
+                .text_styles
+                .insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
+            let response = ui.add(
+                egui::Slider::new(zoom, limits)
+                    .logarithmic(true)
+                    .show_value(false)
+                    .trailing_fill(false)
+                    .handle_shape(egui::style::HandleShape::Circle),
+            );
+            response.widget_info(|| {
+                egui::WidgetInfo::slider(ui.is_enabled(), f64::from(*zoom), "Horizontal zoom")
+            });
+            response.on_hover_text("Horizontal zoom: drag left to zoom out, right to zoom in")
+        })
+        .inner;
+    ui.add(
+        crate::icons::Lucide::MoveHorizontal
+            .size(16.0)
+            .stroke_width(2.0)
+            .color(theme::palette(ui.ctx()).text)
+            .image()
+            .alt_text("Horizontal zoom"),
+    )
+    .on_hover_text("Horizontal zoom");
+    response
+}

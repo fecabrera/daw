@@ -113,6 +113,23 @@ pub fn button(ui: &mut Ui, icon: Lucide, name: &str, enabled: bool, color: Color
     draw_button(ui, icon, name, enabled, color, None, TOOLBAR_ICON_SIZE)
 }
 
+/// User-supplied fit-width geometry. A white SVG mask takes the same theme tint
+/// as the Lucide controls while keeping one embedded image for both themes.
+pub(super) fn fit_clip_button(ui: &mut Ui) -> Response {
+    let image = egui::Image::new(egui::include_image!("../assets/icons/fit-clip.svg"))
+        .fit_to_exact_size(Vec2::splat(TOOLBAR_ICON_SIZE))
+        .tint(crate::theme::palette(ui.ctx()).text)
+        .alt_text("Fit clip");
+    image_button(
+        ui,
+        image,
+        "Fit clip",
+        true,
+        Vec2::splat(TOOLBAR_BUTTON_SIZE),
+        None,
+    )
+}
+
 /// Match small-text toggles while retaining the standard button and hit area.
 pub fn small_button(
     ui: &mut Ui,
@@ -379,6 +396,17 @@ fn draw_button(
         let regular_size = TOOLBAR_ICON_SIZE.min(ui.fonts_mut(|fonts| fonts.row_height(&font)));
         min_size = min_size.max(Vec2::splat(regular_size) + 2.0 * ui.spacing().button_padding);
     }
+    image_button(ui, image, name, enabled, min_size, selected)
+}
+
+fn image_button(
+    ui: &mut Ui,
+    image: egui::Image<'_>,
+    name: &str,
+    enabled: bool,
+    min_size: Vec2,
+    selected: Option<bool>,
+) -> Response {
     let mut button = egui::Button::image(image).min_size(min_size);
     if let Some(selected) = selected {
         button = button.selected(selected);

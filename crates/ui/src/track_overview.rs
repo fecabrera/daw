@@ -104,7 +104,6 @@ impl DawUi {
             Sense::hover(),
         );
         let lane = Rect::from_min_max(Pos2::new(band.left() + LABEL_WIDTH, band.top()), band.max);
-        self.midi_editor.timeline_left = lane.left();
         self.lane_bounds.clear();
         self.lane_bounds.insert(track.id, lane);
         self.timeline_bounds = lane;

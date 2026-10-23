@@ -36,6 +36,15 @@ fn shapes(app: &mut DawUi, ctx: &egui::Context) -> Vec<egui::epaint::ClippedShap
     frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0))
 }
 
+fn click(app: &mut DawUi, ctx: &egui::Context, point: Pos2) {
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    frame(app, ctx, vec![button(point, false)]);
+}
+
 fn waveform_body(app: &DawUi, shapes: &[egui::epaint::ClippedShape]) -> Rect {
     let color = theme::clip_colors(app.session.project.tracks[0].color, None).body;
     shapes
@@ -65,7 +74,7 @@ fn check_peaks(app: &DawUi, shapes: &[egui::epaint::ClippedShape], body: Rect) {
     let cached = app.session.audio_for_clip(clip);
     let audio = cached.unwrap_or(&app.session.audio[&clip.asset_id]);
     let color = theme::clip_colors(track.color, clip.color).waveform;
-    let frames_per_pixel = 48000.0 / f64::from(app.midi_editor.zoom);
+    let frames_per_pixel = 48000.0 / f64::from(app.midi_editor.content.zoom);
     let height = body.height() / f32::from(audio.metadata.channels);
     for fraction in [0.1, 0.35, 0.7] {
         let x = (body.left() + body.width() * fraction).floor();
@@ -101,7 +110,7 @@ fn check_peaks(app: &DawUi, shapes: &[egui::epaint::ClippedShape], body: Rect) {
 #[test]
 fn audio_editor_waveform_follows_primary_selection_zoom_scroll_and_playhead() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        let (mut app, ctx, track, first) = audio_fixture();
+        let (mut app, ctx, track, _first) = audio_fixture();
         if color_theme == settings::ColorTheme::Dark {
             let asset = &mut app.session.project.assets[0];
             asset.source_metadata.channels = 1;
@@ -129,10 +138,7 @@ fn audio_editor_waveform_follows_primary_selection_zoom_scroll_and_playhead() {
         let before = app.session.project.clone();
         let painted = shapes(&mut app, &ctx);
         let body = waveform_body(&app, &painted);
-        assert_eq!(
-            body.x_range(),
-            app.midi_editor.clip_bounds[&first].x_range()
-        );
+        assert_eq!(body.x_range(), app.midi_editor.content.bounds.x_range());
         assert!(body.height() > app.midi_editor.track_bounds.height() * 4.0);
         check_peaks(&app, &painted, body);
         let scroll = app.midi_editor.scroll;
@@ -140,28 +146,23 @@ fn audio_editor_waveform_follows_primary_selection_zoom_scroll_and_playhead() {
         let painted = shapes(&mut app, &ctx);
         let body = waveform_body(&app, &painted);
         assert_eq!(app.midi_editor.scroll, scroll);
-        assert_eq!(
-            body.x_range(),
-            app.midi_editor.clip_bounds[&second_id].x_range()
-        );
+        assert_eq!(body.x_range(), app.midi_editor.content.bounds.x_range());
         check_peaks(&app, &painted, body);
-        app.midi_editor.zoom *= 2.0;
-        app.midi_editor.scroll += 0.025;
-        app.session.project.transport.playhead_frame = 7440;
+        app.midi_editor.content.fitted = false;
+        app.midi_editor.content.zoom *= 2.0;
+        app.midi_editor.content.scroll += 0.025;
+        app.session.project.transport.playhead_frame = 8640;
         let painted = shapes(&mut app, &ctx);
         let zoomed = waveform_body(&app, &painted);
         assert!((zoomed.width() - body.width() * 2.0).abs() < 0.1);
-        assert_eq!(
-            zoomed.x_range(),
-            app.midi_editor.clip_bounds[&second_id].x_range()
-        );
-        let playhead_x = app.midi_editor.track_bounds.left()
-            + (0.155 - app.midi_editor.scroll) as f32 * app.midi_editor.zoom;
+        assert_eq!(app.midi_editor.scroll, scroll);
+        let playhead_x = app.midi_editor.content.bounds.left()
+            + (0.18 - app.midi_editor.content.scroll) as f32 * app.midi_editor.content.zoom;
         assert!(painted.iter().any(|shape| matches!(shape.shape,
             egui::Shape::LineSegment { points, stroke }
                 if stroke.color == theme::accent(&ctx)
                 && (points[0].x - playhead_x).abs() < 0.01
-                && points[0].y == app.midi_editor.track_bounds.bottom()
+                && points[0].y == app.midi_editor.content.bounds.top()
                 && points[1].y == zoomed.bottom())));
         app.session.project.transport = before.transport.clone();
         assert_eq!(app.session.project, before);
@@ -221,4 +222,112 @@ fn audio_editor_waveform_handles_missing_source_and_empty_selection() {
     assert!(!painted.iter().any(|shape| matches!(&shape.shape,
         egui::Shape::Text(text) if text.galley.text().contains("not available yet"))));
     assert!(!app.dirty);
+}
+
+fn selectable_waveforms() -> (DawUi, egui::Context, Id, Id) {
+    let (mut app, ctx, track, first) = audio_fixture();
+    let original = app.session.project.tracks[0].clips[0].clone();
+    let second = Clip {
+        id: Id::new_v4(),
+        name: "Other waveform".into(),
+        start_frame: original.end(),
+        source_offset_frame: 0,
+        length_frames: 2_400_000,
+        repeat: Some(daw_core::ClipLoop {
+            length_frames: 4800,
+            phase_frame: 0,
+        }),
+        ..original
+    };
+    let second_id = second.id;
+    app.session.project.tracks[0].clips.push(second);
+    // Pan to the long neighbor without changing the short clip's close-up zoom.
+    app.midi_editor.content.fitted = false;
+    app.midi_editor.content.scroll = 0.15;
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.selected_clip, Some(first));
+    assert_eq!(app.selected_track, Some(track));
+    (app, ctx, first, second_id)
+}
+
+#[test]
+fn clicking_editor_waveforms_selects_the_clip_without_changing_either_viewport() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, _, second) = selectable_waveforms();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        let content = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+        let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
+        let point = app.midi_editor.content.bounds.center();
+        click(&mut app, &ctx, point);
+        let painted = shapes(&mut app, &ctx);
+        assert_eq!(app.selected_clip, Some(second));
+        assert_eq!(app.selected_clips, HashSet::from([second]));
+        assert_eq!(app.midi_editor.content.clip, Some(second));
+        assert_eq!(
+            (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+            content
+        );
+        assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), overview);
+        assert!(painted.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == "Other waveform"
+                && text.pos.x < app.midi_editor.panel_bounds.right())));
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+        assert!(app.job.is_none());
+        assert!(app.drag.is_none());
+    }
+}
+
+#[test]
+fn editor_waveform_selection_ignores_unfocused_clicks_and_pointer_drags() {
+    let (mut app, ctx, first, second) = selectable_waveforms();
+    let point = app.midi_editor.content.bounds.center();
+    let before = app.session.project.clone();
+    let view = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+    for down in [true, false] {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                focused: false,
+                events: vec![
+                    egui::Event::WindowFocused(false),
+                    egui::Event::PointerMoved(point),
+                    button(point, down),
+                ],
+                ..Default::default()
+            },
+            |ui| app.show(ui),
+        );
+        output.textures_delta.clear();
+    }
+    assert_eq!(app.selected_clip, Some(first));
+    frame(&mut app, &ctx, vec![egui::Event::WindowFocused(true)]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    let end = point + Vec2::new(30.0, 0.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    assert_eq!(app.selected_clip, Some(first));
+    assert_eq!(
+        (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+        view
+    );
+    assert_eq!(app.session.project, before);
+    assert!(app.drag.is_none());
+    assert!(app.job.is_none());
+    assert!(!app.dirty);
+    click(&mut app, &ctx, point);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.selected_clip, Some(second));
 }

@@ -24,9 +24,15 @@ Each MIDI track keeps its own Root, Scale, and Snap to scale settings. Save the 
 
 Changing the root, scale, or snapping option leaves existing notes unchanged. Drawing snaps to the nearest scale note; equal distances use the lower note. Moving a group snaps the dragged note and keeps the intervals between selected notes. Timing-only moves and edge resizes keep the original pitches. Hold Shift to bypass both grid and scale snapping.
 
+## Editor zoom and scroll
+
+The track overview and lower editor have independent horizontal viewports. The playback toolbar’s zoom control and the scrollbar below the overview control the overview. The **Fit clip** button (outward arrows between two vertical edges), the zoom control immediately to its right above the lower ruler, and the bottom scrollbar control the waveform or piano roll. Pinch or scroll horizontally over the pane you want to change. The selected clip initially fills the lower editor width. Fit clip restores that view; while fitted, resizing the window keeps the clip fitted.
+
+Zoom out in either audio or MIDI content to see other clips on that track. MIDI note selection and group edits across clips keep the working viewport. Selecting a clip in the overview fits it in the lower pane. Clicking the lower ruler seeks with that pane’s zoom and scroll. Loop range gestures stay on the overview ruler. Zoom, scroll, and Fit clip do not modify the project. Seeking retains the overview ruler’s saved-navigation behavior.
+
 ## Audio clips
 
-Select an audio clip in the overview strip to see its enlarged waveform below. The waveform shares the ruler, horizontal zoom, scroll, and playhead with the strip. Mono uses one waveform lane; stereo shows both channels. Trim offsets, loop phases, and prepared stretch or transpose audio match Timeline. Selecting another clip on the same track keeps the viewport. Use the overview strip for clip gestures; the enlarged waveform is a display. Missing recordings show “Missing source”.
+Select an audio clip in the overview strip to see its enlarged waveform below. The lower editor has its own ruler, horizontal zoom, and scroll. It fits the selected clip to its width when you select a clip in the overview. Zoom out to see other clips on the same track. Both rulers follow the project playhead. Mono uses one waveform lane; stereo shows both channels. Trim offsets, loop phases, and prepared stretch or transpose audio match Timeline. Selecting another clip in the overview fits that clip in the lower editor and keeps the overview viewport. Click a waveform in the lower editor to select its clip and update Clip options without changing either viewport’s zoom or scroll. Use the overview strip for moving, trimming, looping, and stretching clips. Missing recordings show “Missing source”.
 
 The **Clip options** section shows the same Name, Source, Gain, and Transpose controls as [Timeline clip settings](timeline.md#clip-settings). Select a clip in the overview strip to edit it; with no selection, the panel shows “Select a clip”. Changes appear in both views and support Undo/Redo. Switching tracks or views discards unconfirmed text and audio transpose previews.
 

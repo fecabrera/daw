@@ -52,6 +52,8 @@ struct NoteSelection {
     toggle: bool,
 }
 pub(super) struct MidiEditor {
+    pub(super) content: crate::editor_viewport::EditorViewport,
+    pub(super) content_active: bool,
     #[cfg(test)]
     pub(crate) panel_bounds: Rect,
     #[cfg(test)]
@@ -79,7 +81,6 @@ pub(super) struct MidiEditor {
     pub(super) zoom: f32,
     pub(super) scroll: f64,
     pub(super) source_origin: f64,
-    pub(super) timeline_left: f32,
     pub(super) active_clip: Option<Id>,
     pub(super) active_track: Option<Id>,
     #[cfg(test)]
@@ -118,6 +119,8 @@ pub(super) struct MidiEditor {
 impl Default for MidiEditor {
     fn default() -> Self {
         Self {
+            content: Default::default(),
+            content_active: false,
             #[cfg(test)]
             panel_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -145,7 +148,6 @@ impl Default for MidiEditor {
             zoom: 240.0,
             scroll: 0.0,
             source_origin: 0.0,
-            timeline_left: 0.0,
             active_clip: None,
             active_track: None,
             #[cfg(test)]
@@ -330,13 +332,18 @@ impl DawUi {
                 self.midi_editor.clear_note_selection();
             }
         }
+        self.midi_editor.content_active = true;
         self.update_midi_notes(ui);
+        self.midi_editor.content_active = false;
         let previous_track = self.midi_editor.active_track;
         let (track, assets) = self.track_overview_content(ui);
         self.prepare_track_overview(track.as_ref());
         let viewport = Rect::from_min_max(
             Pos2::new(ui.max_rect().left() + KEY_WIDTH, ui.max_rect().top()),
-            ui.max_rect().max,
+            Pos2::new(
+                ui.max_rect().right(),
+                ui.max_rect().top() + RULER_HEIGHT + ROW_HEIGHT,
+            ),
         );
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
@@ -348,10 +355,33 @@ impl DawUi {
         self.track_overview_strip(ui, &track, &assets);
         self.finish_clip_drag(ui);
         self.update_portion(ui);
-        if track.kind != TrackKind::Midi {
-            self.audio_editor(ui);
+        rows::centered(ui, SCROLLBAR_HEIGHT, |ui| {
+            ui.allocate_exact_size(Vec2::new(KEY_WIDTH, SCROLLBAR_HEIGHT), Sense::hover());
+            self.timeline_scrollbar(ui);
+        });
+        // Re-resolve after strip gestures and keep the content transform scoped to
+        // the lower pane. Menus and overview gestures retain the overview clock.
+        let (track, assets) = self.track_overview_content(ui);
+        let Some(track) = track else {
             return;
+        };
+        self.midi_editor.content_active = true;
+        self.editor_content_header(ui, &track);
+        if track.kind == TrackKind::Midi {
+            self.piano_roll(ui, &track, &assets, previous_track);
+        } else {
+            self.audio_editor(ui);
         }
+        self.midi_editor.content_active = false;
+    }
+
+    fn piano_roll(
+        &mut self,
+        ui: &mut egui::Ui,
+        track: &daw_core::Track,
+        assets: &[daw_core::Asset],
+        previous_track: Option<Id>,
+    ) {
         if self.portion.is_none()
             && !self.midi_editor.dragging()
             && !ui.ctx().egui_wants_keyboard_input()
@@ -365,13 +395,21 @@ impl DawUi {
         }
         scroll
             .auto_shrink([false, false])
-            .max_height((ui.available_height() - 15.0).max(0.0))
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+            .max_height((ui.available_height() - SCROLLBAR_HEIGHT).max(0.0))
             .show(ui, |ui| {
                 let (canvas, _) = ui.allocate_exact_size(
                     Vec2::new(ui.available_width(), 128.0 * NOTE_HEIGHT),
                     Sense::hover(),
                 );
                 let grid_left = canvas.left() + KEY_WIDTH;
+                self.midi_editor.content.left = grid_left;
+                #[cfg(test)]
+                {
+                    self.midi_editor.content.bounds =
+                        Rect::from_min_max(Pos2::new(grid_left, canvas.top()), canvas.max)
+                            .intersect(ui.clip_rect());
+                }
                 let note_viewport =
                     Rect::from_min_max(Pos2::new(grid_left, canvas.top()), canvas.max)
                         .intersect(ui.clip_rect());
@@ -426,7 +464,7 @@ impl DawUi {
                     else {
                         continue;
                     };
-                    self.editor_clip_notes(ui, canvas, note_viewport, &track, clip, pattern);
+                    self.editor_clip_notes(ui, canvas, note_viewport, track, clip, pattern);
                 }
                 self.update_midi_notes(ui);
                 self.editor_note_selection(ui, note_viewport);
@@ -435,8 +473,8 @@ impl DawUi {
                         .session
                         .project
                         .seconds(self.session.project.transport.playhead_frame)
-                        - self.midi_editor.scroll) as f32
-                        * self.midi_editor.zoom;
+                        - self.view_scroll()) as f32
+                        * self.view_zoom();
                 if x >= grid_left && x <= canvas.right() {
                     p.line_segment(
                         [Pos2::new(x, canvas.top()), Pos2::new(x, canvas.bottom())],
@@ -571,12 +609,13 @@ impl DawUi {
             self.midi_editor.clear_note_selection();
         }
     }
-    fn editor_select_clip(&mut self, clip: Id, track: Id) {
+    pub(super) fn editor_select_clip(&mut self, clip: Id, track: Id) {
         if self.selected_clip != Some(clip) {
             self.midi_editor.clear_note_selection();
         }
         self.select_clip(clip, track, false);
         self.midi_editor.active_clip = Some(clip);
+        self.midi_editor.content.retain_on_selection = true;
     }
     pub(super) fn editor_pattern<'a>(
         &'a self,
@@ -598,11 +637,16 @@ impl DawUi {
             .unwrap_or(original)
     }
     fn editor_beat_width(&self, clip: &Clip) -> f32 {
-        self.midi_editor.zoom * 60.0 / self.session.project.tempo_bpm
+        self.midi_editor.content.zoom * 60.0 / self.session.project.tempo_bpm
             * clip.stretch.map_or(1.0, |s| s.ratio() as f32)
     }
     fn editor_step(&self, clip: &Clip) -> u32 {
-        (self.musical_timeline().visible_step() / clip.stretch.map_or(1.0, |s| s.ratio())
+        (self
+            .midi_editor
+            .content
+            .timeline(&self.session.project)
+            .visible_step()
+            / clip.stretch.map_or(1.0, |s| s.ratio())
             * f64::from(MIDI_TICKS_PER_BEAT))
         .round()
         .max(1.0) as u32
@@ -675,7 +719,7 @@ impl DawUi {
             Pos2::new(canvas.left() + KEY_WIDTH, canvas.top()),
             canvas.max,
         );
-        let block = self.track_overview_clip_rect(lane, clip);
+        let block = self.clip_block(lane, clip, clip.start_frame);
         let visible = block.intersect(viewport);
         if !visible.is_positive() {
             return;
@@ -688,8 +732,7 @@ impl DawUi {
         let phase = clip.repeat.map_or(0, |r| r.phase_frame);
         let rate = f64::from(self.session.project.sample_rate_hz);
         let frame_at = |x: f32| {
-            ((f64::from(x - block.left()) / f64::from(self.midi_editor.zoom)) * rate).max(0.0)
-                as u64
+            ((f64::from(x - block.left()) / f64::from(self.view_zoom())) * rate).max(0.0) as u64
         };
         let first = frame_at(visible.left()).saturating_add(phase) / base;
         let last = frame_at(visible.right()).saturating_add(phase) / base;
@@ -697,7 +740,7 @@ impl DawUi {
         // Below half a pixel per repetition, each visible pixel covers several
         // repeats. Paint their pitch coverage once instead of visiting every repeat.
         if clip.repeat.is_some()
-            && self.session.project.seconds(base) as f32 * self.midi_editor.zoom < 0.5
+            && self.session.project.seconds(base) as f32 * self.view_zoom() < 0.5
         {
             for note in &display.notes {
                 let start = self.session.project.midi_frame(note.start_tick);
@@ -746,17 +789,17 @@ impl DawUi {
             }
             let span = Rect::from_min_max(
                 Pos2::new(
-                    block.left() + start as f32 / rate as f32 * self.midi_editor.zoom,
+                    block.left() + start as f32 / rate as f32 * self.view_zoom(),
                     canvas.top(),
                 ),
                 Pos2::new(
-                    block.left() + end as f32 / rate as f32 * self.midi_editor.zoom,
+                    block.left() + end as f32 / rate as f32 * self.view_zoom(),
                     canvas.bottom(),
                 ),
             );
             let source_left = block.left()
                 + (local - i128::from(clip.source_offset_frame)) as f32 / rate as f32
-                    * self.midi_editor.zoom;
+                    * self.view_zoom();
             let grid = Rect::from_min_size(
                 Pos2::new(source_left, canvas.top()),
                 Vec2::new(
@@ -881,6 +924,7 @@ impl DawUi {
                         // Selecting a different pattern must retain the other selected notes.
                         self.select_clip(clip.id, track.id, false);
                         self.midi_editor.active_clip = Some(clip.id);
+                        self.midi_editor.content.retain_on_selection = true;
                         if self.midi_editor.selected_notes.remove(&(clip.id, note.id)) {
                             self.midi_editor.selected_note = pattern
                                 .notes
@@ -1034,7 +1078,7 @@ impl DawUi {
     ) {
         let anchor_frame = self
             .musical_timeline()
-            .frame_at_pixel(f64::from(anchor_x - self.midi_editor.timeline_left));
+            .frame_at_pixel(f64::from(anchor_x - self.midi_editor.content.left));
         let clip = clip.id;
         let previous_selection = self.midi_editor.selected_notes.clone();
         let previous_note = self.midi_editor.selected_note;
@@ -1076,6 +1120,7 @@ impl DawUi {
         // Changing the primary clip within this track must retain the note group and viewport.
         self.select_clip(clip, track.id, false);
         self.midi_editor.active_clip = Some(clip);
+        self.midi_editor.content.retain_on_selection = true;
         self.midi_editor.selected_note = Some(note);
         self.midi_editor.selected_notes = selected;
         self.midi_editor.drag = Some(NoteDrag {
@@ -1090,7 +1135,7 @@ impl DawUi {
     }
     fn update_midi_notes(&mut self, ui: &egui::Ui) {
         let timeline = self.musical_timeline();
-        let timeline_left = self.midi_editor.timeline_left;
+        let timeline_left = self.midi_editor.content.left;
         let bypass = musical_time::snap_bypassed(ui);
         let scale = self.editor_midi_options();
         if let Some(drag) = &mut self.midi_editor.drag

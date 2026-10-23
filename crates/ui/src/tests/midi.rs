@@ -51,6 +51,10 @@ fn fixture() -> (DawUi, Id, Id, Id) {
         .unwrap();
     app.session.project.tracks[0].clips[0].length_frames = 96_000;
     app.select_clip(clip, track, false);
+    // Gesture regressions use an explicit 240 px/s working view. Separate tests
+    // exercise the initial selected-clip fit and independent viewport controls.
+    app.midi_editor.content.clip = Some(clip);
+    app.midi_editor.content.fitted = false;
     (app, track, clip, note)
 }
 #[test]
@@ -3660,7 +3664,9 @@ fn piano_roll_note_size_and_snapping_follow_zoom_without_a_subdivision_selector(
         let clip = app.session.project.add_midi_pattern(track, 0).unwrap();
         let ctx = context();
         app.open_clip_editor(clip, track, &ctx);
-        app.midi_editor.zoom = zoom;
+        app.midi_editor.content.zoom = zoom;
+        app.midi_editor.content.clip = Some(clip);
+        app.midi_editor.content.fitted = false;
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         assert!(
             !shapes
@@ -3976,12 +3982,18 @@ fn edit_shows_only_selected_tracks_patterns_with_shared_geometry_and_contiguous_
         click_note_or_lane(&mut app, &ctx, b.center());
         assert_eq!(app.selected_clip, Some(second.id));
         assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), transform);
+        let content_transform = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+        let old_note = app.midi_editor.track_note_bounds[&(second.id, note)][0];
         app.midi_editor.zoom = 120.0;
         app.midi_editor.scroll = 0.5;
         frame(&mut app, &ctx, vec![]);
         let b = app.midi_editor.clip_bounds[&second.id];
         let note_b = app.midi_editor.track_note_bounds[&(second.id, note)][0];
-        assert!((note_b.left() - b.left() - 60.0).abs() < 0.1);
+        assert_eq!(
+            (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+            content_transform
+        );
+        assert_eq!(note_b, old_note);
         assert!((b.left() - lane.left() - 180.0).abs() < 0.1);
     }
 }
@@ -5672,7 +5684,7 @@ fn off_grid_notes_draw_move_and_resize_using_the_project_ruler_grid() {
             let original_note = pattern(&app).notes[0].clone();
             let ctx = context();
             app.open_clip_editor(clip, track, &ctx);
-            app.midi_editor.scroll = 0.025;
+            app.midi_editor.content.scroll = 0.025;
             frame(&mut app, &ctx, vec![]);
             let before = format!("{:?}", app.session.project);
             let note = app.midi_editor.note_bounds[&note_id];
@@ -5682,8 +5694,9 @@ fn off_grid_notes_draw_move_and_resize_using_the_project_ruler_grid() {
                 "move" => 60_000,
                 _ => 48_000,
             };
-            let target_x = app.midi_editor.track_bounds.left()
-                + (target as f64 / 48_000.0 - app.midi_editor.scroll) as f32 * app.midi_editor.zoom;
+            let target_x = app.midi_editor.content.left
+                + (target as f64 / 48_000.0 - app.midi_editor.content.scroll) as f32
+                    * app.midi_editor.content.zoom;
             if gesture == "draw" {
                 let point = Pos2::new(target_x + 2.0, note.center().y - 18.0);
                 draw_frame(

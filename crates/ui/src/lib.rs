@@ -6,6 +6,7 @@ pub use clip_menu::ClipMenuAction;
 mod audio_editor;
 mod clip_paint;
 mod clip_settings;
+mod editor_viewport;
 mod history;
 mod looping;
 mod midi_editor;
@@ -2762,44 +2763,13 @@ impl DawUi {
             if self.view_mode.has_clip_lanes() {
                 let mut zoom = self.view_zoom();
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.scope(|ui| {
-                        ui.spacing_mut().slider_width = 56.0;
-                        ui.spacing_mut().slider_rail_height = 4.0;
-                        ui.spacing_mut().interact_size.y = 14.0;
-                        ui.style_mut()
-                            .text_styles
-                            .insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
-                        let response = ui.add(
-                            egui::Slider::new(&mut zoom, MIN_ZOOM..=MAX_ZOOM)
-                                .logarithmic(true)
-                                .show_value(false)
-                                .trailing_fill(false)
-                                .handle_shape(egui::style::HandleShape::Circle),
-                        );
-                        #[cfg(test)]
-                        {
-                            self.midi_editor.zoom_bounds = response.rect;
-                        }
-                        response.widget_info(|| {
-                            egui::WidgetInfo::slider(
-                                ui.is_enabled(),
-                                f64::from(zoom),
-                                "Horizontal zoom",
-                            )
-                        });
-                        response.on_hover_text(
-                            "Horizontal zoom: drag left to zoom out, right to zoom in",
-                        );
-                    });
-                    ui.add(
-                        icons::Lucide::MoveHorizontal
-                            .size(16.0)
-                            .stroke_width(2.0)
-                            .color(theme::palette(ui.ctx()).text)
-                            .image()
-                            .alt_text("Horizontal zoom"),
-                    )
-                    .on_hover_text("Horizontal zoom");
+                    let response = toolbars::horizontal_zoom(ui, &mut zoom, MIN_ZOOM..=MAX_ZOOM);
+                    #[cfg(test)]
+                    {
+                        self.midi_editor.zoom_bounds = response.rect;
+                    }
+                    #[cfg(not(test))]
+                    let _ = response;
                 });
                 if self.view_mode.has_track_overview() {
                     self.midi_editor.zoom = zoom;
@@ -3132,6 +3102,9 @@ impl DawUi {
         panel.response.rect
     }
     fn timeline_extent(&self) -> f64 {
+        if self.midi_editor.content_active {
+            return self.midi_editor.content.end;
+        }
         self.session
             .project
             .seconds(self.session.project.end())
@@ -3279,14 +3252,22 @@ impl DawUi {
         if !factor.is_finite() || factor <= 0.0 || factor == 1.0 {
             return;
         }
-        let zoom = (self.view_zoom() * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+        let (minimum_zoom, maximum_zoom) = if self.midi_editor.content_active {
+            (
+                self.midi_editor.content.minimum_zoom,
+                self.midi_editor.content.maximum_zoom,
+            )
+        } else {
+            (MIN_ZOOM, MAX_ZOOM)
+        };
+        let zoom = (self.view_zoom() * factor).clamp(minimum_zoom, maximum_zoom);
         if zoom == self.view_zoom() {
             return;
         }
         let offset = f64::from(pointer.x - viewport.left());
         let anchor = self.view_scroll() + offset / f64::from(self.view_zoom());
-        let maximum =
-            (self.timeline_extent() - f64::from(viewport.width()) / f64::from(zoom)).max(0.0);
+        let maximum = (self.timeline_extent() - f64::from(viewport.width()) / f64::from(zoom))
+            .max(self.view_scroll_minimum());
         self.set_view_scroll(
             (anchor - offset / f64::from(zoom)).clamp(self.view_scroll_minimum(), maximum),
         );
@@ -3307,7 +3288,7 @@ impl DawUi {
         }
         let maximum = (self.timeline_extent()
             - f64::from(viewport.width()) / f64::from(self.view_zoom()))
-        .max(0.0);
+        .max(self.view_scroll_minimum());
         let scroll = (self.view_scroll() - f64::from(delta) / f64::from(self.view_zoom()))
             .clamp(self.view_scroll_minimum(), maximum);
         if scroll != self.view_scroll() {
@@ -3338,6 +3319,7 @@ impl DawUi {
                         .id_salt((
                             "timeline_horizontal_scroll",
                             self.view_mode.has_track_overview(),
+                            self.midi_editor.content_active,
                         ))
                         .max_width(width)
                         .max_height(1.0)
@@ -3357,7 +3339,10 @@ impl DawUi {
                 })
                 .inner;
             let scroll = minimum + f64::from(output.state.offset.x) / f64::from(self.view_zoom());
-            if scroll != self.view_scroll() {
+            // A fitted content view can have a large project-time origin. Do not
+            // treat the scrollbar's unchanged f32 offset as a manual pan.
+            let moved = !self.midi_editor.content_active || output.state.offset.x != offset as f32;
+            if moved && scroll != self.view_scroll() {
                 self.set_view_scroll(scroll);
                 ui.ctx().request_repaint();
             }
@@ -4055,35 +4040,49 @@ impl DawUi {
         .inner
     }
     fn view_zoom(&self) -> f32 {
-        if self.view_mode.has_track_overview() {
+        if self.midi_editor.content_active {
+            self.midi_editor.content.zoom
+        } else if self.view_mode.has_track_overview() {
             self.midi_editor.zoom
         } else {
             self.zoom
         }
     }
     fn set_view_zoom(&mut self, zoom: f32) {
-        if self.view_mode.has_track_overview() {
+        if self.midi_editor.content_active {
+            self.midi_editor.content.zoom = zoom;
+            self.midi_editor.content.fitted = false;
+        } else if self.view_mode.has_track_overview() {
             self.midi_editor.zoom = zoom;
         } else {
             self.zoom = zoom;
         }
     }
     fn view_scroll_minimum(&self) -> f64 {
-        if self.view_mode.has_track_overview() {
+        if self.midi_editor.content_active {
+            0.0
+        } else if self.view_mode.has_track_overview() {
             self.midi_editor.source_origin.min(0.0)
         } else {
             0.0
         }
     }
     fn view_scroll(&self) -> f64 {
-        if self.view_mode.has_track_overview() {
+        if self.midi_editor.content_active {
+            self.midi_editor.content.scroll
+        } else if self.view_mode.has_track_overview() {
             self.midi_editor.scroll
         } else {
             self.scroll
         }
     }
     fn set_view_scroll(&mut self, seconds: f64) {
-        if self.view_mode.has_track_overview() {
+        if self.midi_editor.content_active {
+            if seconds != self.midi_editor.content.scroll {
+                self.midi_editor.content.fitted = false;
+            }
+            self.midi_editor.content.scroll = seconds;
+        } else if self.view_mode.has_track_overview() {
             self.midi_editor.scroll = seconds;
         } else {
             self.scroll = seconds;
@@ -5147,6 +5146,7 @@ mod tests {
     mod clip_split;
     mod component_transfer;
     mod compressed_import;
+    mod editor_viewport;
     mod effects;
     mod envelope_units;
     mod filter;
