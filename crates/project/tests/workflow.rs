@@ -4720,3 +4720,107 @@ fn copied_layer_groups_keep_cross_layer_modulation_audio_and_round_trip() {
         assert!((a - b).abs() < 1e-6);
     }
 }
+
+#[test]
+fn compressed_clip_import_reopen_rate_change_and_export_preserve_sources() {
+    let f = Fixture::new();
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../media/tests/fixtures");
+    let mut session = Session::default();
+    let mut originals = Vec::new();
+    for extension in ["mp3", "aac", "m4a"] {
+        let source = f.0.join(format!("source.{extension}"));
+        fs::copy(fixtures.join(format!("tone-2.{extension}")), &source).unwrap();
+        let bytes = fs::read(&source).unwrap();
+        session.import(&source, None, 0).unwrap();
+        originals.push((source, bytes));
+    }
+    assert_eq!(session.project.tracks.len(), 3);
+    session.project.validate().unwrap();
+    let before = session.project.clone();
+    let folder = f.0.join("compressed-project");
+    session.save(&folder).unwrap();
+    let loaded = Session::open(&folder).unwrap();
+    assert!(loaded.warnings.is_empty());
+    assert_eq!(loaded.project.assets.len(), 3);
+    for asset in &before.assets {
+        assert_eq!(
+            *session.audio[&asset.id].samples,
+            *loaded.audio[&asset.id].samples
+        );
+        assert_eq!(loaded.audio[&asset.id].metadata.bits_per_sample, 0);
+    }
+    let changed = loaded.with_audio_settings(96_000, 256).unwrap();
+    for asset in &changed.project.assets {
+        assert_eq!(changed.audio[&asset.id].sample_rate_hz, 96_000);
+    }
+    changed
+        .export(&f.0.join("compressed-mix.wav"), false)
+        .unwrap();
+    let invalid = f.0.join("broken.mp3");
+    fs::write(&invalid, b"invalid mp3").unwrap();
+    let before_failure = serde_json::to_value(&session.project).unwrap();
+    assert!(session.import(&invalid, None, 0).is_err());
+    assert_eq!(
+        serde_json::to_value(&session.project).unwrap(),
+        before_failure
+    );
+    let mut invalid_metadata = session.project.clone();
+    invalid_metadata.assets[0].source_metadata.bits_per_sample = 16;
+    assert!(invalid_metadata.validate().is_err());
+    for (source, bytes) in originals {
+        assert_eq!(fs::read(source).unwrap(), bytes);
+    }
+}
+
+#[test]
+fn aac_export_reuses_atomic_publication_progress_and_source_protection() {
+    use daw_media::{ExportFormat, ExportSettings};
+    let fixture = Fixture::new();
+    let source = fixture.wav("aac-source.wav", 96_000, 2, 16, false);
+    let original = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    session = session.with_audio_settings(96_000, 32).unwrap();
+    let settings = ExportSettings {
+        format: ExportFormat::Aac,
+        ..Default::default()
+    };
+    let output = fixture.0.join("mix.aac");
+    let mut events = Vec::new();
+    session
+        .export_with_progress(&output, false, settings, |frames, total| {
+            events.push((frames, total))
+        })
+        .unwrap();
+    assert_eq!(
+        events.last(),
+        Some(&(session.project.end(), session.project.end()))
+    );
+    let bytes = fs::read(&output).unwrap();
+    assert!(
+        session
+            .export_with_settings(&output, false, settings)
+            .is_err()
+    );
+    assert_eq!(fs::read(&output).unwrap(), bytes);
+    assert!(
+        session
+            .export_with_settings(&source, true, settings)
+            .is_err()
+    );
+    assert_eq!(fs::read(&source).unwrap(), original);
+    session.project.buffer_size_frames = 4096;
+    session
+        .export_with_settings(&output, true, settings)
+        .unwrap();
+    assert_eq!(fs::read(&output).unwrap(), bytes);
+    let audio = daw_media::decode_audio(&output).unwrap();
+    assert_eq!(audio.metadata.sample_format, "aac");
+    assert_eq!(audio.metadata.sample_rate_hz, 48_000);
+    assert!(fs::read_dir(&fixture.0).unwrap().all(|e| {
+        !e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".export-")
+    }));
+}

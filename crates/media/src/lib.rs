@@ -3,17 +3,22 @@ use rubato::Resampler;
 use std::{fs::File, path::Path, sync::Arc};
 
 pub use memory::{AudioMemoryUsage, audio_memory_bytes};
+mod aac_export;
 mod cache;
+mod decode;
+pub use decode::{IMPORT_EXTENSIONS, decode_audio, decode_audio_at_rate, decode_audio_cancellable};
 mod clip_audio;
 pub use clip_audio::{ClipAudioCache, ClipAudioKey, clip_audio};
 mod export;
 mod memory;
-pub use cache::decode_wav_cached;
+pub use cache::decode_audio_cached;
+pub use cache::decode_audio_cached as decode_wav_cached;
 pub use memory::{AUDIO_MEMORY_BUDGET_BYTES, AudioReservation, register_audio};
 mod sampler;
 mod stretch;
 pub use export::{
-    AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, Mp3Bitrate, WavCodec, WavEncoder,
+    AacBitrate, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, Mp3Bitrate, WavCodec,
+    WavEncoder,
 };
 pub use sampler::PreparedSampler;
 pub use stretch::{PreparedStretch, prepared_audio, stretch_audio, stretch_audio_with_engine};

@@ -14,7 +14,7 @@ Use ASD-STE100 principles and Plain Language for specifications, technical docum
 
 | Baseline ID | Required capability |
 | --- | --- |
-| MVP-01 | Import supported WAV sources and display waveforms. |
+| MVP-01 | Import supported WAV, MP3 and AAC-LC sources and display waveforms. |
 | MVP-02 | Add and delete tracks with no fixed track-count limit. Provide gain, pan/balance, mute, and solo. |
 | MVP-03 | Move, trim, split, and delete clips without changing source files or allowing overlap on one track. |
 | MVP-04 | Provide a timeline, left track list, top playback toolbar, zoom, and scrolling. |
@@ -22,7 +22,7 @@ Use ASD-STE100 principles and Plain Language for specifications, technical docum
 | MVP-06 | Mix tracks with master gain, peak meters, and a clipping indicator. |
 | MVP-07 | Use the default output device and handle initialization errors and disconnection. |
 | MVP-08 | Save and open folder-based projects with external source references. Preserve missing clips. |
-| MVP-10 | Export stereo WAV or MP3, including projects with missing sources. |
+| MVP-10 | Export stereo WAV, MP3 or AAC, including projects with missing sources. |
 | MVP-11 | Use a selectable project processing rate; default 48 kHz. |
 | MVP-12 | Apply short linear fades to clip boundaries. |
 | MVP-13 | Validate and export projects through a separate headless executable. |
@@ -39,7 +39,7 @@ Use a Cargo workspace with shared libraries and separate desktop and CLI executa
 | --- | --- | --- |
 | daw-core | Project entities, IDs, sample-time types, editing commands, validation | No UI, graphics, device, or file-dialog dependencies |
 | daw-engine | Transport, clip scheduling, reusable audio processors, mixing, render state | Depends on core; no file decoding or UI |
-| daw-media | Decoder and encoder interfaces, WAV/MP3 export, resampling, waveform generation | Supplies PCM assets to the engine |
+| daw-media | Decoder and encoder interfaces, WAV/MP3/AAC export, resampling, waveform generation | Supplies PCM assets to the engine |
 | daw-project | Manifest serialization, path resolution, loading, safe saving | Uses core and media through explicit interfaces |
 | daw-output | CPAL stream, device conversion, callback integration | Desktop device output only |
 | daw-ui | Shared panel foundation, controls, timeline, application presentation | Uses shared application commands and state |
@@ -66,7 +66,7 @@ Use one reusable application dialog component for project naming, export options
 | UI and rendering | egui, eframe; Glow/OpenGL on Windows for native caption composition, wgpu on macOS/Linux |
 | Command parsing | clap |
 | Device output | cpal |
-| Decoding | symphonia with WAV and PCM enabled |
+| Decoding | symphonia with WAV, PCM, MP3, AAC and ISO MP4 enabled |
 | WAV writing | hound |
 | MP3 writing | mp3lame-encoder with bundled LAME |
 | Resampling | rubato |
@@ -116,7 +116,7 @@ schema_version is optional and ignored. Do not branch on its value or reject a f
 - Store project tempo in tempo_bpm as a positive finite number. Default new projects and older manifests without this field to 120.0 BPM. Use tempo for the musical ruler, grid, and playhead monitor in 4/4. Changing it moves clip starts to preserve their beat positions. Clip durations and source audio stay unchanged. Reject the change if it would make clips overlap on the same track or exceed timeline bounds.
 - Store time values as nonnegative integer frames, using checked arithmetic. One frame contains one sample per channel. All clip offsets and lengths refer to decoded audio at the selected project rate.
 - Require finite gain values and pan within [-1, 1]. Validate numeric types without coercing strings into numbers.
-- Require source.kind to equal external. Accept relative or absolute path_kind values. Accept pcm_int and ieee_float source sample formats in the supported WAV combinations.
+- Require source.kind to equal external. Accept relative or absolute path_kind values. Accept pcm_int and ieee_float source sample formats in the supported WAV combinations, plus mp3/aac with bits_per_sample equal to zero.
 - Require each clip to reference an asset record. Missing asset records are invalid manifests; missing source files are warnings.
 - Require positive clip lengths and checked timeline ends. Normal clips require source_offset_frame + length_frames to fit the asset's saved decoded_frame_count. Looped clips store an optional `repeat` with positive length_frames and phase_frame less than that length. Their source offset plus repeat length must fit saved decoded bounds; their visible clip length can be longer. Omitted or null repeat fields retain normal clip behavior. Omit unset repeats when saving and default an omitted phase to zero.
 - Permit zero or more tracks with no fixed track-count limit in editing or project loading. Track capacity depends on available memory; playback capacity also depends on CPU performance and audio buffer settings.
@@ -144,7 +144,7 @@ Unreadable, malformed, or unsupported existing audio files are processing errors
 
 ## Import and editing
 
-Accept uncompressed WAV containing 16-bit or 24-bit integer PCM, or 32-bit IEEE float samples. Accept mono and stereo. Reject other encodings and files with more than two channels with a clear error.
+Accept uncompressed WAV containing 16-bit or 24-bit integer PCM, or 32-bit IEEE float samples. Also accept MP3 and AAC-LC as defined by [audio import](../audio/import.md). Accept mono and stereo. Reject other encodings and files with more than two channels with a clear error.
 
 Decode sources before playback. Convert their audio to 32-bit floating-point PCM at the selected project rate using Rubato when required. Preserve original channel metadata and source information. Generate waveform peak data on a worker thread. Commit the imported asset and clip only after decoding and placement validation succeed.
 
@@ -334,7 +334,7 @@ Use the supplied reference for a simple clip block:
 
 Export from frame zero to the greatest clip end, including leading silence and missing-source placeholders. Ignore the transport loop. Reject a project with no clips. Render offline using a snapshot of the project so later desktop edits do not change an export already in progress.
 
-Export options must open before the native destination chooser. Offer WAV codecs: 16-bit PCM, 24-bit PCM (default), and 32-bit IEEE float. Offer MP3 with MPEG Layer III (LAME) and CBR 128, 192 (default), 256, or 320 kbps. Use stereo at the project rate for WAV; MP3 uses 44.1 or 48 kHz and converts project rates above 48 kHz to 48 kHz. Show the output rate in both export dialogs. Retain the last accepted settings during the app session; cancel must not modify the project. Disable background editing while export options or replacement confirmation are open. Once export starts, show a shared Export status dialog with frame-based rendering/encoding progress, a finalization stage, destination, settings, warnings, completion notices, and errors. Keep progress below 100% until encoding finishes and the completed file is published. Keep the report visible until Close or Escape after success/failure; do not dismiss a running export. Scroll long paths and diagnostics. Block editing, playback shortcuts, clip actions, and file actions while the report is open. Route export failures, including worker disconnection, to this report instead of a separate error window.
+Export options must open before the native destination chooser. Offer WAV codecs: 16-bit PCM, 24-bit PCM (default), and 32-bit IEEE float. Offer MP3 with MPEG Layer III (LAME) and CBR 128, 192 (default), 256, or 320 kbps. Offer AAC-LC/ADTS with the same target bitrate choices and default; follow [AAC export](../audio/aac-export.md) for streaming conversion and padding limits. Use stereo at the project rate for WAV; MP3 uses 44.1 or 48 kHz and converts project rates above 48 kHz to 48 kHz. Show the output rate in both export dialogs. Retain the last accepted settings during the app session; cancel must not modify the project. Disable background editing while export options or replacement confirmation are open. Once export starts, show a shared Export status dialog with frame-based rendering/encoding progress, a finalization stage, destination, settings, warnings, completion notices, and errors. Keep progress below 100% until encoding finishes and the completed file is published. Keep the report visible until Close or Escape after success/failure; do not dismiss a running export. Scroll long paths and diagnostics. Block editing, playback shortcuts, clip actions, and file actions while the report is open. Route export failures, including worker disconnection, to this report instead of a separate error window.
 
 Apply triangular probability density function (TPDF) dither without noise shaping once before integer WAV quantization. Round to the nearest integer and saturate to the codec's valid range. Float WAV retains headroom without dither or clamping. MP3 clamps its normalized input and writes duration, encoder delay, and padding metadata for gapless decoding. Use a deterministic seed and a reproducible random sequence. Do not include variable timestamps in WAV output. Repeated exports and desktop/CLI exports of the same project must produce identical files on the same build and platform.
 
@@ -344,8 +344,8 @@ The executable name daw-cli is an internal working name:
 
 ```text
 daw-cli validate --project <folder>
-daw-cli render --project <folder> --output <file.wav|file.mp3> [--overwrite]
-  [--format wav|mp3] [--codec pcm16|pcm24|float32] [--bitrate 128|192|256|320]
+daw-cli render --project <folder> --output <file.wav|file.mp3|file.aac> [--overwrite]
+  [--format wav|mp3|aac] [--codec pcm16|pcm24|float32] [--bitrate 128|192|256|320]
 ```
 
 | Condition | CLI behavior |
@@ -356,7 +356,7 @@ daw-cli render --project <folder> --output <file.wav|file.mp3> [--overwrite]
 | Invalid command arguments | Return 2. |
 | Output already exists | Fail unless --overwrite is present. Desktop export requires an overwrite confirmation instead. |
 
-Infer format from the output extension when `--format` is absent. Reject a known extension that conflicts with the format. `--codec` applies to WAV; `--bitrate` applies to MP3.
+Infer format from the output extension when `--format` is absent. Reject a known extension that conflicts with the format. `--codec` applies to WAV; `--bitrate` applies to MP3 and AAC.
 
 Validation must inspect the manifest and referenced audio, not only JSON syntax. Headless commands must not initialize graphics, dialogs, or audio devices. CLI output must identify missing sources and affected clips. Never overwrite a source file or project manifest as an export destination.
 
@@ -413,7 +413,7 @@ The accepted [source-container architecture](modular-audio-units.md#one-source-c
 
 The Oscillator module has one container per source, with centered vertical knobs and a bottom control row. That row contains an 18-point circular Lucide Power toggle followed by an 11-point “Osc N” label with a 8-point gap. Center the pair in its strip. Use primary text for active labels and secondary text for muted labels. Retain the source number in its tooltip and accessibility name. On uses the view controls’ accent-tinted fill with a 1-point border and icon in the current accent color. Off uses the secondary text color, matching the dim label, for both icon and border. It controls only that source and retains its settings. Save mute state and default missing fields to unmuted. Muted sources advance with zero output in playback and export. Paint a 1-point theme-aware separator blended halfway between the panel and border colors between every adjacent strip, including before Add, below the panel-border contrast, spanning the full strip body from below the unit header to the bottom border. Give oscillator strips a fixed 90-point width, including padding, regardless of source count. Give every strip the same height and shared internal padding on all four sides, without extra outer padding or gaps. The add strip is a container with equal internal padding and an 18-point circular Plus button centered on both axes. Reuse the Power button’s shared circle, border, inactive colors, icon scale, and hover feedback. Both visible controls have the same 18-point outer diameter, including their border. The whole add strip is one button: highlight its background on hover/focus and activate Add on release anywhere in the strip, including padding. Use one interaction response so a click adds only one source. Provide tooltips and accessible names/state for these controls. Add a default source on button release. Right-click a column or knob to remove that source through its context menu. Removing all sources hides that layer’s Oscillator panel; the component catalog can add it again. Other layers continue to sound. Scroll horizontally when needed. Each oscillator has independent settings and per-note runtime state; sum outputs without normalization before track processing. Save the source list and load legacy single-oscillator state as a one-item list.
 
-Acceptance checks cover source isolation after copying and editing, note move/resize release and cancellation, wrong-type placement rollback, independent overlapping notes and note-offs, tempo/rate conversion, save/reopen/Save As, mixed WAV/MP3 export, block-size independence, and allocation-free note/transport/renderer processing. Record native-device and platform checks separately.
+Acceptance checks cover source isolation after copying and editing, note move/resize release and cancellation, wrong-type placement rollback, independent overlapping notes and note-offs, tempo/rate conversion, save/reopen/Save As, mixed WAV/MP3/AAC export, block-size independence, and allocation-free note/transport/renderer processing. Record native-device and platform checks separately.
 
 MIDI interaction refinement: create new one-beat patterns by double-clicking empty MIDI lane space in Timeline or the Editor track strip, retaining the current view. MIDI track/pattern creation, MIDI paste, and MIDI track duplication use the same guarded actions in both views. Editor shares the project ruler, playhead, loop selection, and playback-toolbar zoom control with Timeline while retaining its own horizontal transform. Double-click a note to delete it without changing clips that share the previous source.
 

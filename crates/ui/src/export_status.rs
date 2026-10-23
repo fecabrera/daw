@@ -43,6 +43,9 @@ impl ExportStatus {
         let frames = self.frames.load(Ordering::Relaxed).min(self.total);
         let codec = match self.settings.format {
             ExportFormat::Wav => self.settings.wav_codec.label().to_owned(),
+            ExportFormat::Aac => {
+                format!("AAC-LC · {} kbps target", self.settings.aac_bitrate.kbps())
+            }
             ExportFormat::Mp3 => format!(
                 "MPEG Layer III · {} kbps CBR",
                 self.settings.mp3_bitrate.kbps()

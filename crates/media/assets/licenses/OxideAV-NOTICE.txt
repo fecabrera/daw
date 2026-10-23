@@ -1,0 +1,11 @@
+AAC export uses unmodified oxideav-aac 0.1.7 and oxideav-core 0.1.41.
+Copyright (c) 2026 Karpelès Lab Inc. Licensed under MIT.
+See oxideav-aac-0.1.7-MIT.txt and oxideav-core-0.1.41-MIT.txt.
+
+Source repositories:
+https://github.com/OxideAV/oxideav-aac
+https://github.com/OxideAV/oxideav-core
+Exact source archives:
+https://crates.io/api/v1/crates/oxideav-aac/0.1.7/download
+https://crates.io/api/v1/crates/oxideav-core/0.1.41/download
+Cargo.lock records the versions and archive checksums.

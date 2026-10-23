@@ -20,7 +20,7 @@ Use a combination of ASD-STE100 principles and Plain Language (PL) for project d
 
 ## Objective
 
-Build a small multitrack audio editor for macOS, Linux, and Windows. A user must be able to import recordings, arrange clips, adjust the mix, save and reopen a project, and export a stereo WAV or MP3 file.
+Build a small multitrack audio editor for macOS, Linux, and Windows. A user must be able to import recordings, arrange clips, adjust the mix, save and reopen a project, and export a stereo WAV, MP3 or AAC file.
 
 Use Rust with egui for the desktop interface. Keep the audio engine independent of the interface. Future targets are iPadOS and Android; mobile delivery is outside the MVP.
 
@@ -30,7 +30,7 @@ Provide a headless command-line mode from the start, using the same project mode
 
 | ID | Area | Requirement |
 | --- | --- | --- |
-| MVP-01 | Import | Import WAV files and display a waveform for each clip. |
+| MVP-01 | Import | Import WAV, MP3 and AAC-LC files and display a waveform for each clip. |
 | MVP-02 | Tracks | Allow stereo audio tracks with no fixed track-count limit. Add and delete tracks. Provide gain, pan, mute, and solo controls per track. |
 | MVP-03 | Clips | Move, trim, split, and delete clips without modifying the source recording. Clips on the same track must not overlap; clips on different tracks can play simultaneously. |
 | MVP-04 | Timeline | Provide a simple timeline with a track list on the left and a toolbar above the timeline containing playback controls. Provide horizontal zoom and scrolling. |
@@ -38,7 +38,7 @@ Provide a headless command-line mode from the start, using the same project mode
 | MVP-06 | Mixing | Mixer tracks. Provide a master gain control and peak meters. |
 | MVP-07 | Output | Use the system's default audio output device. Display audio initialization errors. If the device disconnects, stop playback safely and display a clear error. |
 | MVP-08 | Projects | Save and open projects stored as folders containing manifest files and an assets directory. Reference external source audio files during the MVP. Open projects with missing sources normally, show a warning, and display affected clips as empty placeholders. |
-| MVP-10 | Export | Export the arrangement as a stereo WAV or MP3 file. |
+| MVP-10 | Export | Export the arrangement as a stereo WAV, MP3 or AAC file. |
 | MVP-11 | Sample rate | Use a selectable project processing rate (44.1, 48, 88.2, 96, 176.4, or 192 kHz; default 48 kHz). Convert imports to that rate. |
 | MVP-12 | Clip boundaries | Apply short fades at clip boundaries to prevent clicks. |
 | MVP-13 | Headless mode | Load and validate an existing project and export its arrangement as WAV or MP3 from the command line, without a graphical session or audio output device. |
@@ -56,7 +56,7 @@ Use stable Rust, edition 2024, and Cargo. Select compatible released crate versi
 | Waveforms and timeline | egui Painter with application code | Draw cached waveform peaks, clips, rulers, and meters. Generate waveform peaks on a background worker. |
 | Audio output | [cpal](https://github.com/RustAudio/cpal) | Default output device, stream configuration, audio callback, and stream errors. |
 | Audio engine | Application code in Rust | Sample-based transport, clip scheduling, gain/pan, mute/solo, fades, metering, and mixing. Reuse the rendering logic for live playback and offline export. |
-| Audio decoding | [symphonia](https://github.com/pdeljanov/Symphonia) | Enable WAV and PCM support for the MVP. Wrap it behind the decoder interface; enable more formats after the MVP. |
+| Audio decoding | [symphonia](https://github.com/pdeljanov/Symphonia) | Enable WAV, PCM, MP3, AAC and ISO MP4 support. See [audio import](../audio/import.md). |
 | WAV export | [hound](https://docs.rs/hound/latest/hound/) | Write WAV exports behind the encoder interface. |
 | Sample-rate conversion | [rubato](https://github.com/HEnquist/rubato) | Convert imported audio to the project processing rate on a background worker. |
 | Engine communication | [rtrb](https://docs.rs/rtrb/latest/rtrb/) and standard atomics | Preallocated single-producer/single-consumer command queues; atomic meter values and status counters. |
@@ -356,7 +356,7 @@ Future synth and effect work follows [Modular audio units design and decisions](
 2. Display their waveforms and move the clips.
 3. Play both tracks together with independent gain and mute controls.
 4. Seek and zoom while playback continues.
-5. Export the mix as a stereo WAV or MP3 file.
+5. Export the mix as a stereo WAV, MP3 or AAC file.
 6. Validate and export the same project through the headless CLI.
 
 After this milestone, implement the remaining MVP features.

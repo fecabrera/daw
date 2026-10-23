@@ -58,6 +58,36 @@ def main():
             run(2, "render", "--project", folder, "--output", first, *options)
         run(2, "render", "--project", folder, "--output", folder / "invalid.mp3", "--bitrate", "7")
         run(2, "render", "--project", folder, "--output", folder / "invalid.mp3", "--codec", "pcm16")
+        # Keep codec smoke coverage short; quality/rate coverage lives in media tests.
+        aac_project = copy.deepcopy(manifest)
+        aac_project["tracks"] = aac_project["tracks"][:1]
+        aac_project["tracks"][0]["clips"] = aac_project["tracks"][0]["clips"][:1]
+        aac_project["tracks"][0]["clips"][0].update(start_frame=0, length_frames=4800)
+        project.write_text(json.dumps(aac_project))
+        for bitrate in (128, 192, 256, 320):
+            aac = folder / f"{bitrate}.aac"
+            run(0, "render", "--project", folder, "--output", aac, "--bitrate", bitrate)
+            data = aac.read_bytes()
+            offset, packets = 0, 0
+            while offset < len(data):
+                assert len(data) - offset >= 7
+                header = data[offset:offset + 7]
+                assert header[0] == 0xff and header[1] & 0xf6 == 0xf0
+                assert header[2] >> 6 == 1  # AAC-LC
+                assert header[2] >> 2 & 15 == 3  # 48 kHz
+                assert ((header[2] & 1) << 2) | (header[3] >> 6) == 2
+                length = ((header[3] & 3) << 11) | (header[4] << 3) | (header[5] >> 5)
+                assert length >= 7 and offset + length <= len(data)
+                offset += length
+                packets += 1
+            assert packets == 6  # ceil(4800 / 1024) plus codec overlap flush
+            run(1, "render", "--project", folder, "--output", aac)
+            run(0, "render", "--project", folder, "--output", aac, "--format", "aac", "--bitrate", bitrate, "--overwrite")
+            assert aac.read_bytes() == data
+        for options in [("--codec", "pcm16"), ("--bitrate", "7"), ("--format", "wav")]:
+            run(2, "render", "--project", folder, "--output", folder / "invalid.aac", *options)
+        run(2, "render", "--project", folder, "--output", folder / "invalid.m4a", "--format", "aac")
+        project.write_text(json.dumps(manifest))
         # A unity group is a real processing bus and preserves the flat mix.
         grouped = copy.deepcopy(manifest)
         group = copy.deepcopy(grouped["tracks"][0])
@@ -92,7 +122,7 @@ def main():
         project.write_text("invalid json")
         run(1, "validate", "--project", folder)
         run(2, "render")
-    print("CLI smoke check passed: WAV/MP3 codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
+    print("CLI smoke check passed: WAV/MP3/AAC codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
 
 
 if __name__ == "__main__":

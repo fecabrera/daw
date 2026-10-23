@@ -110,7 +110,7 @@ fn preview_queue() -> &'static mpsc::SyncSender<PreviewRequest> {
                         let Ok(request) = receiver.lock().unwrap().recv() else {
                             return;
                         };
-                        let audio = daw_media::decode_wav_cached(
+                        let audio = daw_media::decode_audio_cached(
                             &request.source,
                             request.sample_rate_hz,
                             &|| request.cancelled.load(Ordering::Relaxed),

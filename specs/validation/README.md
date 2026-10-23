@@ -4137,3 +4137,85 @@ Final repository checks with the pinned Rust toolchain on macOS arm64:
 - Changed documentation link targets and `git diff HEAD --check`: passed.
 
 Native Windows/Linux execution and manual menu/keyboard interaction were not performed. The AppKit harness checks native menu objects and action tags rather than human input. CLI smoke checks were not repeated because shared import/render/export behavior and CLI code are unchanged.
+
+## 2026-10-23 — MP3 and AAC clip imports
+
+Added shared MP3 and AAC-LC decoding alongside strict WAV decoding. AAC supports
+ADTS `.aac` and ISO MP4 `.m4a`/`.mp4` sources. Menu import, file-hover/drop, Sampler,
+project reopen and processing-rate changes use the generalized weak decode cache.
+Compressed source metadata uses `mp3`/`aac` with zero PCM bit depth; core validation
+accepts these combinations without changing existing WAV metadata. Decoding,
+resampling, peaks, memory admission and cancellation remain on worker paths.
+Unsupported codecs/channel counts, invalid samples and detected truncated sources
+fail before session publication. MP3 gapless metadata is honored; AAC may retain
+container/encoder padding. Updated user guides, implementation requirements,
+locked dependency features and bundled Symphonia MPL/source notices.
+
+Focused checks on macOS arm64 with the pinned toolchain:
+
+- Three `daw-media` compressed-import integration tests passed. Synthetic mono and
+  stereo MP3, AAC and M4A fixtures cover all six project rates, frame conversion,
+  finite samples, mono duplication, independent stereo, waveform preparation,
+  weak cache reuse, MP3 encoder delay/padding, cancellation before/during decode,
+  unsupported rates, misleading extensions, corrupt input, unsupported 5.1 AAC,
+  and truncated MP3/MP4 data.
+- The project workflow regression passed import/save/reopen, original source
+  metadata and PCM preservation, processing-rate changes, WAV export, failed
+  import rollback and rejection of compressed metadata with a PCM bit depth.
+- The egui input regression passed worker import and hover/drop publication for
+  MP3, AAC and M4A. Existing WAV import behavior remains covered by the suite.
+- `cargo fmt --all --check` and
+  `cargo clippy --offline --locked --workspace --all-targets -- -D warnings` passed.
+- Changed documentation link targets and `git diff HEAD --check` passed.
+
+AAC export was added to the same change after the import checks started. It uses
+pinned MIT-licensed `oxideav-aac` 0.1.7 with locked `oxideav-core` 0.1.41, through
+a bounded streaming worker adapter. Desktop and CLI expose AAC-LC/ADTS `.aac`,
+independent 128/192/256/320 kbps target selection (192 default), and the actual
+output sample rate. Higher project rates convert to 48 kHz through streaming
+Rubato. The existing session export path retains publication, progress, warnings,
+overwrite/source protection and failure cleanup. AAC priming/padding and the
+absence of M4A export are documented. MIT/source notices use existing packaging.
+
+Completed AAC export checks:
+
+- An isolated dependency evaluation encoded a synthetic one-second stereo tone;
+  FFmpeg decoded the ADTS without errors to 49,152 finite stereo frames with
+  approximately 0.2504 peak and 0.1381 RMS. FFmpeg is a development check only.
+- Two media regressions passed all six project rates and four target bitrates,
+  independent Symphonia decoding, finite stereo samples and channel energy,
+  deterministic bytes across 512/137-frame writes, expected ADTS padding,
+  empty/one-frame/boundary tails, silence, clipping and non-finite rejection.
+- The project AAC regression passed 96-to-48 kHz export, progress, source and
+  overwrite protection, retained destination bytes on rejection, cleanup and
+  identical output across 32/4096-frame renderer blocks.
+- The export dialog regression passed AAC selection, bitrate changes, retained
+  MP3/WAV settings and existing action behavior. CLI argument checks passed AAC
+  extension inference, defaults, target rates and rejection of incompatible
+  codecs, extensions and bitrates.
+- Workspace Clippy with warnings denied passed after AAC export integration.
+
+Final validation:
+
+- The full `cargo test --offline --locked --workspace` run passed its test binaries,
+  including the unchanged long-running DSP suites. Its media documentation
+  compilation failed because AAC export and its dependency were added after that
+  run started. With the final dependency graph,
+  `cargo test --offline --locked --workspace --doc` passed.
+- Rechecked all affected crates after AAC export with
+  `cargo test --offline --locked -p daw-core -p daw-media -p daw-project -p daw-ui -p daw-cli`:
+  passed, including all 571 UI tests, both AAC export tests, all three compressed
+  import tests and all 66 project workflow tests. Existing opt-in tests remain
+  ignored. The final export-dialog label check also passed.
+- Final workspace formatting and Clippy with warnings denied passed.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py` passed.
+  Smoke coverage now includes short AAC exports at all four target rates, AAC-LC
+  ADTS headers, repeatability, overwrite handling and invalid argument rejection,
+  alongside existing WAV/MP3, missing-source and project checks.
+- `sh tools/package_macos.sh debug` passed; rebuilt `target/debug/DAW.app`.
+- Packaged Symphonia and OxideAV notices, changed documentation link targets and
+  `git diff HEAD --check` passed.
+
+Native Windows/Linux builds, manual file-dialog/drop interaction and listening
+checks were not performed. Automated egui input and independent decode checks do
+not establish native platform or perceptual audio quality.

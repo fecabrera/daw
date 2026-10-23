@@ -447,7 +447,7 @@ impl DawUi {
             let audio = if let Some(hover) = hover {
                 hover.into_audio()?
             } else {
-                daw_media::decode_wav_cached(&path, session.project.sample_rate_hz, &|| {
+                daw_media::decode_audio_cached(&path, session.project.sample_rate_hz, &|| {
                     cancel.load(Ordering::Relaxed)
                 })
                 .map_err(|e| e.to_string())?

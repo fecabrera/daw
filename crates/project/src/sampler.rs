@@ -42,7 +42,7 @@ impl Session {
     }
     pub fn with_sampler_file(&self, track: Id, layer: Id, path: &Path) -> Result<Self> {
         let path = absolute(path)?;
-        let data = daw_media::decode_wav_cached(&path, self.project.sample_rate_hz, &|| false)
+        let data = daw_media::decode_audio_cached(&path, self.project.sample_rate_hz, &|| false)
             .map_err(error)?;
         self.with_sampler_decoded(track, layer, &path, data, &|| false)
     }

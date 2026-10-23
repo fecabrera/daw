@@ -14,3 +14,4 @@ rubato.workspace = true
 thiserror.workspace = true
 mp3lame-encoder = "0.2.5"
 rubberband = "=0.1.5"
+oxideav-aac = "=0.1.7"

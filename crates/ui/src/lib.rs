@@ -1167,11 +1167,11 @@ impl DawUi {
         overwrite: bool,
     ) {
         let mut session = self.session.clone();
-        self.run_job("Importing WAV and building waveform", move || {
+        self.run_job("Importing audio and building waveform", move || {
             let audio = match prepared {
                 Some(prepared) => prepared.into_audio()?,
                 None => {
-                    daw_media::decode_wav_cached(&path, session.project.sample_rate_hz, &|| false)
+                    daw_media::decode_audio_cached(&path, session.project.sample_rate_hz, &|| false)
                         .map_err(|error| error.to_string())?
                 }
             };
@@ -2383,7 +2383,7 @@ impl DawUi {
             }
             FileAction::Import => {
                 if let Some(p) = rfd::FileDialog::new()
-                    .add_filter("WAV audio", &["wav"])
+                    .add_filter("Audio clips", daw_media::IMPORT_EXTENSIONS)
                     .pick_file()
                 {
                     self.import(p);
@@ -4723,7 +4723,7 @@ impl DawUi {
                 Pos2::new(block.center().x, block.top() + 44.0),
                 egui::Align2::CENTER_CENTER,
                 if hover.audio.is_some() {
-                    "Unsupported WAV"
+                    "Unsupported audio"
                 } else {
                     "Loading waveform…"
                 },
@@ -5141,6 +5141,7 @@ mod tests {
     mod clip_settings;
     mod clip_split;
     mod component_transfer;
+    mod compressed_import;
     mod effects;
     mod envelope_units;
     mod group_looping;

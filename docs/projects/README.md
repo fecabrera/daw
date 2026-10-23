@@ -67,7 +67,18 @@ Repeated imports of the same unchanged file can share audio storage. They remain
 
 Choose an export destination and format. WAV supports PCM16, PCM24, and float32 at the project rate; PCM24 is the default. MP3 supports 128, 192, 256, and 320 kbps; the default is 192 kbps. MP3 uses 48 kHz when the project rate is higher.
 
-Export includes the arranged project duration and does not append effect tails. It follows the same mute, solo, pan, and effect settings as playback. Missing sources produce warnings and silence. Integer WAV and MP3 clamp clipping; float32 WAV retains headroom and reports levels above 0 dBFS. No automatic normalization is applied.
+AAC exports stereo AAC-LC in an ADTS `.aac` file. Choose a target bitrate of 128,
+192, 256, or 320 kbps; the default is 192 kbps. Frame sizes vary with the audio.
+Projects above 48 kHz are converted to 48 kHz before encoding. The dialog and
+completion report show the output rate. AAC export uses the bundled encoder.
+It does not require FFmpeg. M4A/MP4 export is unavailable.
+
+ADTS does not store the original sample count or gapless trim information. AAC
+exports include codec priming and a padded final frame. Reimported AAC clips can
+therefore start with a short delay and last slightly longer than the arrangement.
+Use WAV when exact sample alignment is required.
+
+Export includes the arranged project duration and does not append effect tails. It follows the same mute, solo, pan, and effect settings as playback. Missing sources produce warnings and silence. Integer WAV, MP3, and AAC clamp clipping; float32 WAV retains headroom and reports levels above 0 dBFS. No automatic normalization is applied.
 
 Progress and completion appear in the status dialog. An existing destination requires replacement confirmation. Cancellation or failure leaves the previous destination intact.
 
@@ -79,6 +90,16 @@ Validate or export without opening a window or audio device. Run these commands 
 cargo run -p daw-cli -- validate --project examples/demo
 cargo run -p daw-cli -- render --project examples/demo --output /tmp/daw-export.wav
 ```
+
+Export AAC from the CLI with:
+
+```sh
+cargo run -p daw-cli -- render --project examples/demo --output /tmp/daw-export.aac --bitrate 192
+```
+
+The `.aac` extension selects AAC, or use `--format aac`. `--bitrate` applies to
+MP3 and AAC; `--codec` applies only to WAV. AAC export requires `.aac` rather
+than `.m4a` or `.mp4`.
 
 Choose your own output path. An existing file needs the explicit `--overwrite` option. The CLI reports warnings and export errors in the terminal. See the main [README](../../README.md#build-and-run) for setup.
 

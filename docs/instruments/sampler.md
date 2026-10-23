@@ -5,7 +5,7 @@ Sampler plays a selected audio region for each MIDI note. It is a source compone
 ## Load a sample
 
 1. In Instrument, select an empty layer and add Sampler from Sources in the component catalog. A layer can contain Sampler or Oscillator, not both. Use Replace source in an existing source's header menu to switch types.
-2. Drop one WAV file onto Sampler. Mono/stereo PCM16, PCM24, and float32 WAV files are supported.
+2. Drop one WAV, MP3, or AAC-LC file onto Sampler. Supported formats and limits match [clip import](../views/timeline.md#supported-imports).
 3. To use a Timeline audio clip, drag it over the Instrument view button, then drop it onto a Sampler. The Timeline clip stays in place. Its visible trim, repeats, and stretch are retained; track gain, pan, and effects are not captured.
 4. Play MIDI notes to audition the sample.
 

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Validate DAW projects and render stereo WAV or MP3 without graphics or audio devices"
+    about = "Validate DAW projects and render stereo WAV, MP3 or AAC without graphics or audio devices"
 )]
 struct Args {
     #[command(subcommand)]
@@ -24,7 +24,7 @@ enum Command {
         output: PathBuf,
         #[arg(long)]
         overwrite: bool,
-        #[arg(long, value_parser = ["wav", "mp3"])]
+        #[arg(long, value_parser = ["wav", "mp3", "aac"])]
         format: Option<String>,
         #[arg(long, value_parser = ["pcm16", "pcm24", "float32"])]
         codec: Option<String>,
@@ -100,30 +100,42 @@ fn export_settings(
         .and_then(|value| value.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    settings.format = match format.unwrap_or(if extension == "mp3" { "mp3" } else { "wav" }) {
+    settings.format = match format.unwrap_or(match extension.as_str() {
+        "mp3" => "mp3",
+        "aac" => "aac",
+        _ => "wav",
+    }) {
         "mp3" => ExportFormat::Mp3,
+        "aac" => ExportFormat::Aac,
         _ => ExportFormat::Wav,
     };
-    if ["wav", "mp3"].contains(&extension.as_str()) && extension != settings.format.extension() {
+    if ["wav", "mp3", "aac", "m4a", "mp4"].contains(&extension.as_str())
+        && extension != settings.format.extension()
+    {
         return Err(daw_project::Error(
             "Output extension does not match the export format".into(),
         ));
     }
-    if settings.format == ExportFormat::Mp3 {
+    if settings.format != ExportFormat::Wav {
         if codec.is_some() {
             return Err(daw_project::Error(
-                "--codec applies to WAV; MP3 uses MPEG Layer III (LAME)".into(),
+                "--codec applies to WAV; MP3 and AAC use their own encoders".into(),
             ));
         }
-        settings.mp3_bitrate = Mp3Bitrate::ALL
+        let selected = Mp3Bitrate::ALL
             .into_iter()
             .find(|value| value.kbps() == bitrate.unwrap_or(192))
             .ok_or_else(|| {
-                daw_project::Error("MP3 bitrate must be 128, 192, 256, or 320 kbps".into())
+                daw_project::Error("MP3/AAC bitrate must be 128, 192, 256, or 320 kbps".into())
             })?;
+        if settings.format == ExportFormat::Aac {
+            settings.aac_bitrate = selected;
+        } else {
+            settings.mp3_bitrate = selected;
+        }
     } else {
         if bitrate.is_some() {
-            return Err(daw_project::Error("--bitrate applies to MP3".into()));
+            return Err(daw_project::Error("--bitrate applies to MP3 or AAC".into()));
         }
         settings.wav_codec = match codec.unwrap_or("pcm24") {
             "pcm16" => WavCodec::Pcm16,
@@ -146,6 +158,15 @@ mod tests {
         let mp3 = export_settings(std::path::Path::new("mix.MP3"), None, None, Some(320)).unwrap();
         assert_eq!(mp3.format, ExportFormat::Mp3);
         assert_eq!(mp3.mp3_bitrate, Mp3Bitrate::Kbps320);
+        let aac = export_settings(std::path::Path::new("mix.AAC"), None, None, Some(256)).unwrap();
+        assert_eq!(aac.format, ExportFormat::Aac);
+        assert_eq!(aac.aac_bitrate, daw_media::AacBitrate::Kbps256);
+        assert_eq!(
+            export_settings(std::path::Path::new("mix.aac"), None, None, None)
+                .unwrap()
+                .aac_bitrate,
+            daw_media::AacBitrate::Kbps192
+        );
         assert_eq!(
             export_settings(std::path::Path::new("mix.wav"), None, Some("float32"), None)
                 .unwrap()
@@ -157,6 +178,10 @@ mod tests {
             ("mix.mp3", None, Some("pcm16"), None),
             ("mix.wav", None, None, Some(320)),
             ("mix.mp3", None, None, Some(123)),
+            ("mix.aac", Some("wav"), None, None),
+            ("mix.aac", None, Some("pcm16"), None),
+            ("mix.aac", None, None, Some(123)),
+            ("mix.m4a", Some("aac"), None, None),
         ] {
             assert!(export_settings(std::path::Path::new(path), format, codec, bitrate).is_err());
         }

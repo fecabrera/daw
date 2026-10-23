@@ -13,7 +13,7 @@ Source headers offer an explicit **Replace source** action. Replacement keeps th
 ## Loading and selecting audio
 
 1. Add Sampler to an empty regular layer, or replace its Oscillator component through the header menu.
-2. Drop one supported WAV file onto the unit. File decoding, project-rate conversion, and waveform preparation use the existing media/worker path. Mono/stereo PCM16, PCM24, and float32 WAV support matches ordinary import.
+2. Drop one supported WAV, MP3, or AAC-LC file onto the unit. File decoding, project-rate conversion, and waveform preparation use the existing media/worker path. Supported codecs, containers and channel limits match [ordinary import](../audio/import.md).
 3. To use a timeline audio clip, drag it over the Instrument view button. This opens Instrument on the first MIDI track with a Sampler. Drop onto that unit. The original timeline clip stays in place. The sampler retains its source trim, repeat length/phase, and existing stretch mapping; track gain, pan, and effects are not captured.
 4. Drag the preview's selection-bar edges to resize the region, its body to move it, or outside the current region to create another region. Shift bypasses the shared musical-grid/source-boundary snapping. Preview during the gesture; commit only on release. Escape, focus loss, or disabled editing cancels it.
 

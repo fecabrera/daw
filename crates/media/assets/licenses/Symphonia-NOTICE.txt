@@ -1,0 +1,12 @@
+Audio decoding uses unmodified Symphonia 0.5.5 crates, including the MP3 and
+AAC-LC decoders, RIFF/WAV and ISO MP4 readers, metadata and Xiph utilities.
+Copyright (c) 2019-2022 The Project Symphonia Developers.
+Licensed under the Mozilla Public License 2.0; see Symphonia-MPL-2.0.txt.
+
+Source: https://github.com/pdeljanov/Symphonia/tree/v0.5.5
+Exact source archives: https://crates.io/crates/symphonia/0.5.5/dependencies
+Each dependency's version and archive checksum are recorded in Cargo.lock.
+The corresponding unmodified source is available from crates.io, for example:
+https://crates.io/api/v1/crates/symphonia-codec-aac/0.5.5/download
+https://crates.io/api/v1/crates/symphonia-format-isomp4/0.5.5/download
+https://crates.io/api/v1/crates/symphonia-utils-xiph/0.5.5/download

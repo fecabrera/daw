@@ -33,7 +33,7 @@ fn revision(path: &Path) -> Result<Revision> {
 }
 /// Worker-only lookup. Modification time and length invalidate ordinary source replacements.
 /// No cache owner extends PCM lifetime, and a changed file during decode is never published.
-pub fn decode_wav_cached(
+pub fn decode_audio_cached(
     path: &Path,
     rate: u32,
     cancelled: &impl Fn() -> bool,
@@ -59,7 +59,7 @@ pub fn decode_wav_cached(
             });
         }
     }
-    let audio = crate::decode_wav_cancellable(&key.0, rate, cancelled)?;
+    let audio = crate::decode_audio_cancellable(&key.0, rate, cancelled)?;
     if before != revision(&key.0)? {
         return Err(Error(
             "Source changed during audio preparation; try again".into(),

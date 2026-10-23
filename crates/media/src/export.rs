@@ -11,19 +11,22 @@ pub enum ExportFormat {
     #[default]
     Wav,
     Mp3,
+    Aac,
 }
 impl ExportFormat {
-    pub const ALL: [Self; 2] = [Self::Wav, Self::Mp3];
+    pub const ALL: [Self; 3] = [Self::Wav, Self::Mp3, Self::Aac];
     pub fn label(self) -> &'static str {
         match self {
             Self::Wav => "WAV",
             Self::Mp3 => "MP3",
+            Self::Aac => "AAC",
         }
     }
     pub fn extension(self) -> &'static str {
         match self {
             Self::Wav => "wav",
             Self::Mp3 => "mp3",
+            Self::Aac => "aac",
         }
     }
 }
@@ -71,17 +74,20 @@ impl Mp3Bitrate {
         }
     }
 }
+/// AAC and MP3 expose the same target bitrate choices.
+pub type AacBitrate = Mp3Bitrate;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ExportSettings {
     pub format: ExportFormat,
     pub wav_codec: WavCodec,
     pub mp3_bitrate: Mp3Bitrate,
+    pub aac_bitrate: AacBitrate,
 }
 impl ExportSettings {
     pub fn output_sample_rate(self, project_rate_hz: u32) -> u32 {
         match self.format {
             ExportFormat::Wav => project_rate_hz,
-            ExportFormat::Mp3 => project_rate_hz.min(SAMPLE_RATE),
+            ExportFormat::Mp3 | ExportFormat::Aac => project_rate_hz.min(SAMPLE_RATE),
         }
     }
 }
@@ -249,6 +255,7 @@ impl AudioEncoder for Mp3Encoder {
 pub enum ExportEncoder {
     Wav(WavEncoder),
     Mp3(Mp3Encoder),
+    Aac(Box<crate::aac_export::AacEncoder>),
 }
 impl ExportEncoder {
     pub fn create(path: &Path, settings: ExportSettings) -> Result<Self> {
@@ -266,12 +273,19 @@ impl ExportEncoder {
             ExportFormat::Mp3 => {
                 Mp3Encoder::create(path, settings.mp3_bitrate, sample_rate_hz).map(Self::Mp3)
             }
+            ExportFormat::Aac => crate::aac_export::AacEncoder::create(
+                path,
+                settings.aac_bitrate.kbps(),
+                sample_rate_hz,
+            )
+            .map(|encoder| Self::Aac(Box::new(encoder))),
         }
     }
     pub fn clipped(&self) -> bool {
         match self {
             Self::Wav(encoder) => encoder.clipped,
             Self::Mp3(encoder) => encoder.clipped,
+            Self::Aac(encoder) => encoder.clipped,
         }
     }
 }
@@ -280,12 +294,14 @@ impl AudioEncoder for ExportEncoder {
         match self {
             Self::Wav(encoder) => encoder.write_frames(frames),
             Self::Mp3(encoder) => encoder.write_frames(frames),
+            Self::Aac(encoder) => encoder.write_frames(frames),
         }
     }
     fn finish(self) -> Result<()> {
         match self {
             Self::Wav(encoder) => encoder.finish(),
             Self::Mp3(encoder) => encoder.finish(),
+            Self::Aac(encoder) => encoder.finish(),
         }
     }
 }

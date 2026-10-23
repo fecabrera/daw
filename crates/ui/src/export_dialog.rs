@@ -52,24 +52,36 @@ pub fn show(
                     ExportFormat::Mp3 => {
                         ui.label("MPEG Layer III (LAME)");
                     }
+                    ExportFormat::Aac => {
+                        ui.label("AAC-LC (ADTS)");
+                    }
                 }
                 ui.end_row();
-                if settings.format == ExportFormat::Mp3 {
+                if settings.format != ExportFormat::Wav {
+                    let bitrate = if settings.format == ExportFormat::Aac {
+                        &mut settings.aac_bitrate
+                    } else {
+                        &mut settings.mp3_bitrate
+                    };
                     ui.label("Bitrate");
                     egui::ComboBox::from_id_salt("export_bitrate")
-                        .selected_text(format!("{} kbps", settings.mp3_bitrate.kbps()))
+                        .selected_text(format!("{} kbps", bitrate.kbps()))
                         .show_ui(ui, |ui| {
-                            for bitrate in Mp3Bitrate::ALL {
+                            for candidate in Mp3Bitrate::ALL {
                                 ui.selectable_value(
-                                    &mut settings.mp3_bitrate,
                                     bitrate,
-                                    format!("{} kbps", bitrate.kbps()),
+                                    candidate,
+                                    format!("{} kbps", candidate.kbps()),
                                 );
                             }
                         });
                     ui.end_row();
                     ui.label("Bitrate mode");
-                    ui.label("Constant (CBR)");
+                    ui.label(if settings.format == ExportFormat::Aac {
+                        "Variable (target bitrate)"
+                    } else {
+                        "Constant (CBR)"
+                    });
                     ui.end_row();
                 }
             });
@@ -148,6 +160,15 @@ mod tests {
         click(&ctx, &mut settings, "320 kbps");
         assert_eq!(settings.mp3_bitrate, Mp3Bitrate::Kbps320);
         click(&ctx, &mut settings, "MP3");
+        click(&ctx, &mut settings, "AAC");
+        assert_eq!(settings.format, ExportFormat::Aac);
+        let (_, shapes) = frame(&ctx, &mut settings, vec![]);
+        assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "AAC-LC (ADTS)")));
+        click(&ctx, &mut settings, "192 kbps");
+        click(&ctx, &mut settings, "256 kbps");
+        assert_eq!(settings.aac_bitrate, daw_media::AacBitrate::Kbps256);
+        assert_eq!(settings.mp3_bitrate, Mp3Bitrate::Kbps320);
+        click(&ctx, &mut settings, "AAC");
         click(&ctx, &mut settings, "WAV");
         assert_eq!(settings.wav_codec, WavCodec::Float32);
         assert_eq!(click(&ctx, &mut settings, "Export…"), Some(Action::Export));

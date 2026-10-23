@@ -11,7 +11,7 @@ Press Escape to clear selected clips or a selected clip time range first. Tracks
 ## Import and arrange
 
 1. Add an audio or MIDI track from the Track menu or the Tracks header.
-2. Use Clip > Import clip for WAV audio, or drop a supported WAV file on an audio track. Dropping into empty Timeline space creates a new audio track.
+2. Use Clip > Import clip for WAV, MP3, or AAC audio, or drop a supported audio file on an audio track. Dropping into empty Timeline space creates a new audio track.
 3. Drag a clip header to move it. Hold Option on macOS or Ctrl on Windows/Linux to copy it.
 4. Release to apply the change. Escape or focus loss cancels an active gesture.
 
@@ -31,7 +31,7 @@ Open **Clip** in the macOS menu bar or the Windows/Linux application menu. Its a
 - **Split at playhead**, **Stem-separation**.
 - **Edit clip**, **Disable clip**, **Delete clip**.
 
-Choose **Add MIDI pattern** with a MIDI track selected to place a new pattern at the playhead. It follows the same placement rules as other new clips: covered clips are trimmed, split, or removed. Undo restores the previous arrangement. Import clip uses the existing WAV import flow. Use Command+Shift+I on macOS or Ctrl+Shift+I on Windows/Linux to import a clip.
+Choose **Add MIDI pattern** with a MIDI track selected to place a new pattern at the playhead. It follows the same placement rules as other new clips: covered clips are trimmed, split, or removed. Undo restores the previous arrangement. Import clip accepts WAV, MP3, and AAC-LC audio. Use Command+Shift+I on macOS or Ctrl+Shift+I on Windows/Linux to import a clip.
 
 Edit, Disable and Stem-separation use the primary selected clip. Disable changes to **Enable clip** for a disabled clip. Delete removes all selected clips. Split acts on selected clips that cross the playhead. Unavailable actions are disabled; Stem-separation requires an audio clip in Timeline and a validated model.
 
@@ -102,3 +102,17 @@ A drop selects the destination track or Master and the transferred effects. Effe
 Right-click an audio clip and choose **Stem-separation** to create a group with aligned Drums, Bass, Other, and Vocals tracks. The original stays in place, disabled. Select local models in Settings first. Unsaved projects use temporary stem storage until the first save. See [Stem separation](../audio/stem-separation.md) for setup, progress, cancellation, and file storage.
 
 Right-click a disabled clip and choose **Enable clip** to restore it. **Disable clip** silences only that clip and shows a greyed version of its color. These actions support Undo and Redo.
+
+## Supported imports
+
+Import mono or stereo WAV, MP3, or AAC-LC clips. AAC-LC can use `.aac` (ADTS),
+`.m4a`, or `.mp4` containers. WAV supports PCM16, PCM24, and float32. Audio is
+converted to the project processing rate, and its waveform is prepared before
+the clip is added. The original recording remains unchanged and must remain
+available when reopening the project.
+
+HE-AAC, protected audio, other codecs inside MP4 files, and files with more than
+two channels are unsupported. A rejected import leaves the arrangement intact.
+MP3 encoder delay and padding are removed when the file provides that information.
+AAC files can retain encoder padding, so their clip length can be slightly longer
+than the original uncompressed recording.
