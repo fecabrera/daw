@@ -14,6 +14,7 @@ mod range_selection;
 mod regular_save;
 mod separation_models;
 pub use history::HistoryAction;
+mod granulizer_panel;
 mod resize;
 mod sampler_panel;
 mod stretch;
@@ -2197,7 +2198,7 @@ impl DawUi {
             {
                 self.file_drop_target = None;
                 if ctx.input(|i| i.raw.dropped_files.len()) > 1 {
-                    self.fail("Drop one audio file onto a Sampler");
+                    self.fail("Drop one audio file onto Sampler or Granulizer");
                 } else {
                     self.load_sampler_file(target, dropped.path().to_path_buf());
                 }
@@ -4884,7 +4885,7 @@ impl DawUi {
             if drag.mode == ClipDragMode::Move {
                 if let Some(target) = self.sampler_drop_target(pointer) {
                     if drag.clips.len() > 1 {
-                        self.fail("Drop one audio clip onto a Sampler");
+                        self.fail("Drop one audio clip onto Sampler or Granulizer");
                         return;
                     }
                     let session = self.session.clone();

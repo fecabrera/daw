@@ -1279,6 +1279,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-granulizer"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
+]
+
+[[package]]
 name = "daw-lfo"
 version = "0.1.0"
 dependencies = [
@@ -1362,6 +1369,7 @@ dependencies = [
 name = "daw-sampler"
 version = "0.1.0"
 dependencies = [
+ "daw-granulizer",
  "daw-unit-core",
 ]
 

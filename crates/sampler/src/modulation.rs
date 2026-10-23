@@ -11,6 +11,14 @@ impl Sampler {
         self.effective_gain
     }
     pub(super) fn process_modulated(&mut self, offset_db: f32) -> [f32; 2] {
+        self.update_gain(offset_db);
+        if self.granular.is_some() {
+            self.render_modulated_grains([0.0; 8])
+        } else {
+            self.render_sample()
+        }
+    }
+    fn update_gain(&mut self, offset_db: f32) {
         if self.remaining > 0 {
             self.gain += (self.target - self.gain) / self.remaining as f32;
             self.remaining -= 1;
@@ -23,7 +31,16 @@ impl Sampler {
             (self.gain * 10_f32.powf(offset.clamp(-96.0, 96.0) as f32 / 20.0))
                 .min(10_f32.powf(12.0 / 20.0))
         };
-        self.render_sample()
+    }
+    fn render_modulated_grains(&mut self, offsets: [f32; 8]) -> [f32; 2] {
+        let samples = self.bank[usize::from(self.root_note)]
+            .as_deref()
+            .map_or(&[][..], Vec::as_slice);
+        let audio = self.granular.as_mut().unwrap().process(samples, offsets);
+        audio.map(|v| {
+            (f64::from(v) * f64::from(self.effective_gain))
+                .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
+        })
     }
 }
 impl ModulationDestination for Sampler {
@@ -37,7 +54,21 @@ impl ModulationDestination for Sampler {
         modulation: &ModulationInputs,
         _: ModulationContext,
     ) -> Self::Audio {
-        self.process_modulated(modulation.offset(ModulationParameter::SamplerGain))
+        if self.granular.is_some() {
+            self.update_gain(modulation.offset(ModulationParameter::SamplerGain));
+            self.render_modulated_grains(modulation.offsets([
+                ModulationParameter::GrainSize,
+                ModulationParameter::GrainOverlap,
+                ModulationParameter::GrainPosition,
+                ModulationParameter::GrainSpeed,
+                ModulationParameter::GrainPitch,
+                ModulationParameter::GrainPositionJitter,
+                ModulationParameter::GrainPitchJitter,
+                ModulationParameter::GrainPan,
+            ]))
+        } else {
+            self.process_modulated(modulation.offset(ModulationParameter::SamplerGain))
+        }
     }
 }
 

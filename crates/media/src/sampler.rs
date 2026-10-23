@@ -57,6 +57,7 @@ impl PreparedSampler {
             return false;
         };
         self.matches_region(source, settings)
+            && (settings.granulizer.is_none() || self.variants.len() == 1)
             && offsets(settings, notes).all(|offset| {
                 self.variants
                     .get(&offset)
@@ -161,7 +162,13 @@ impl PreparedSampler {
 }
 
 fn offsets<'a>(settings: &'a SamplerSettings, notes: &'a [u8]) -> impl Iterator<Item = i8> + 'a {
-    std::iter::once(0).chain(notes.iter().filter_map(|&note| settings.pitch_offset(note)))
+    std::iter::once(0).chain(notes.iter().filter_map(|&note| {
+        if settings.granulizer.is_some() {
+            None
+        } else {
+            settings.pitch_offset(note)
+        }
+    }))
 }
 fn pitch(offset: i8) -> Pitch {
     // Offsets come only from the shared bounded Sampler mapping.

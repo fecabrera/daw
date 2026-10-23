@@ -81,7 +81,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 6] = [
+pub(super) const ENTRIES: [Entry; 7] = [
     Entry::layer("daw.oscillator", "Oscillator", Category::Sources, |l| {
         l.oscillators.push(Default::default())
     })
@@ -110,6 +110,10 @@ pub(super) const ENTRIES: [Entry; 6] = [
     .with_main(|main| main.macro_module.add()),
     Entry::layer("daw.sampler", "Sampler", Category::Sources, |l| {
         l.sampler = Some(Default::default())
+    })
+    .source(|l| l.sampler.is_none() && l.oscillators.is_empty()),
+    Entry::layer("daw.granulizer", "Granulizer", Category::Sources, |l| {
+        l.sampler = Some(daw_core::SamplerSettings::granular())
     })
     .source(|l| l.sampler.is_none() && l.oscillators.is_empty()),
 ];
@@ -268,7 +272,7 @@ impl DawUi {
             for (index, response) in &output.rows {
                 let entry = ENTRIES[*index];
                 if entry.source && !entry.can_add(settings, owner) {
-                    response.clone().on_hover_text("A layer can contain Oscillator or Sampler. Remove its source or use Replace source in the installed source header menu.");
+                    response.clone().on_hover_text("A layer can contain Oscillator, Sampler, or Granulizer. Remove its source or use Replace source in the installed source header menu.");
                 }
             }
         }

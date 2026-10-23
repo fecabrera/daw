@@ -445,6 +445,7 @@ impl MidiTrackRuntime {
                             .map(|l| {
                                 vec_bytes(&l.routes)
                                     + vec_bytes(&l.sampler_routes)
+                                    + l.sampler.as_ref().map_or(0, |s| s.heap_bytes())
                                     + vec_bytes(&l.sources)
                                     + l.sources
                                         .iter()
@@ -537,8 +538,16 @@ impl MidiTrackRuntime {
                         layers
                             .iter()
                             .filter_map(|l| l.sampler.as_ref())
-                            .filter_map(|s| audio.get(&s.id))
-                            .map(|a| a.samples.len() as u64)
+                            .filter_map(|s| {
+                                audio.get(&s.id).map(|a| {
+                                    let tail = if s.granulizer.is_some() {
+                                        u64::from(project.sample_rate_hz / 2)
+                                    } else {
+                                        0
+                                    };
+                                    (a.samples.len() as u64).saturating_add(tail)
+                                })
+                            })
                             .max()
                             .unwrap_or(0),
                     );
@@ -611,6 +620,7 @@ impl MidiTrackRuntime {
             if let Some(s) = &layer.sampler {
                 s.id.hash(&mut hash);
                 s.root_note.hash(&mut hash);
+                s.granulizer.is_some().hash(&mut hash);
                 if let Some(prepared) = sampler_audio.get(&s.id) {
                     for (offset, audio) in prepared.variants() {
                         offset.hash(&mut hash);
@@ -705,7 +715,12 @@ impl MidiTrackRuntime {
                 .collect(),
             layer_samples: vec![[0.0; 2]; layers.len()],
             effect_latency,
-            envelope_history: instrument.envelope_destinations().any(|(_, e)| {
+            envelope_history: layers.iter().any(|l| {
+                l.sampler.as_ref().is_some_and(|s| {
+                    s.granulizer.is_some()
+                        && audio.get(&s.id).is_some_and(|a| !a.samples.is_empty())
+                })
+            }) || instrument.envelope_destinations().any(|(_, e)| {
                 e.modulations
                     .iter()
                     .any(|r| r.source.is_some() && r.enabled && r.amount != 0.0)
@@ -1359,6 +1374,22 @@ impl MidiTrackRuntime {
             range[1] = range[1].max(db);
         }
         range.map(|v| if v.is_finite() { v } else { f32::NAN })
+    }
+    pub fn granular_snapshot(&self, layer: Id) -> Option<super::ModulationSnapshot> {
+        let mut result = [f32::NAN; super::MODULATION_SNAPSHOT_SIZE];
+        let sampler = self
+            .voices
+            .iter()
+            .filter(|v| v.active_last_sample)
+            .filter_map(|v| self.layer_index.get(&layer).and_then(|&i| v.layers.get(i)))
+            .filter_map(|l| l.sampler.as_ref())
+            .find(|s| s.active() && s.granular_snapshot().is_some())?;
+        let (values, positions) = sampler.granular_snapshot()?;
+        result[0] = sampler.position().map_or(f32::NAN, |p| p as f32);
+        result[1..3].copy_from_slice(&self.sampler_gain(layer));
+        result[3..11].copy_from_slice(&values);
+        result[11..27].copy_from_slice(&positions);
+        Some(result)
     }
     pub fn sampler_position(&self, layer: Id) -> f32 {
         self.voices

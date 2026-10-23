@@ -7,3 +7,4 @@ license = "BSD-2-Clause"
 
 [dependencies]
 daw-unit-core.workspace = true
+daw-granulizer.workspace = true

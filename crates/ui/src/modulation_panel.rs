@@ -462,6 +462,14 @@ pub(super) fn marker(
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(200.0, 20_000.0))
         }
         ModulationParameter::LimiterInput => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
+        ModulationParameter::GrainSize => offsets.map(|o| (base + o).clamp(10.0, 500.0)),
+        ModulationParameter::GrainOverlap => offsets.map(|o| (base + o).clamp(0.25, 8.0)),
+        ModulationParameter::GrainSpeed => offsets.map(|o| (base + o).clamp(-4.0, 4.0)),
+        ModulationParameter::GrainPitch => offsets.map(|o| (base + o).clamp(-48.0, 48.0)),
+        ModulationParameter::GrainPitchJitter => offsets.map(|o| (base + o).clamp(0.0, 48.0)),
+        ModulationParameter::GrainPosition
+        | ModulationParameter::GrainPositionJitter
+        | ModulationParameter::GrainPan => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
         ModulationParameter::LimiterCeiling => offsets.map(|o| (base + o).clamp(-24.0, 0.0)),
         ModulationParameter::LimiterRelease => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(1.0, 2000.0))
@@ -584,6 +592,16 @@ pub(super) fn marker(
         lines.push("Frequencies retain a 1 Hz gap; Lower is limited below Upper when modulated boundaries meet.".into());
     }
     let format_value = |value: f32| match parameter {
+        ModulationParameter::GrainSize => format!("{value:.1} ms"),
+        ModulationParameter::GrainOverlap | ModulationParameter::GrainSpeed => {
+            format!("{value:.2}×")
+        }
+        ModulationParameter::GrainPitch | ModulationParameter::GrainPitchJitter => {
+            format!("{value:.1} st")
+        }
+        ModulationParameter::GrainPosition
+        | ModulationParameter::GrainPositionJitter
+        | ModulationParameter::GrainPan => format!("{:.0}%", value * 100.0),
         ModulationParameter::EnvelopeSustain
         | ModulationParameter::EnvelopeAttackCurve
         | ModulationParameter::EnvelopeDecayCurve

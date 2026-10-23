@@ -42,7 +42,8 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | Location | Responsibility |
 | --- | --- |
 | `crates/unit-core` | Portable unit descriptors, port types, processing context, source lifecycle, curve definitions, and versioned oscillator/instrument/envelope/effect settings. No DAW, UI, or device dependencies. |
-| `crates/sampler` | Portable prepared stereo sample playback, local position, gain/power ramps, and boundary fades; no project, UI, media, or device dependencies. |
+| `crates/granulizer` | Portable bounded stereo grain synthesis, deterministic randomness, scan/pitch separation and windowing over host-owned PCM; no project, UI, media, or device dependencies. |
+| `crates/sampler` | Shared sample-source facade plus portable prepared stereo sample playback, local position, gain/power ramps, and boundary fades; no project, UI, media, or device dependencies. |
 | `crates/oscillator` | FunDSP-backed oscillator sources behind the shared unit API; keep backend types private. |
 | `crates/equalizer` | Reusable stereo 3-band EQ behind the shared effect API; keep FunDSP types private. |
 | `crates/saturator` | Portable stereo saturation, fixed 4× FIR oversampling, aligned dry/bypass paths, and shared modulation; no DAW, UI, media, or device dependencies. |

@@ -135,7 +135,8 @@ pub fn pan_coefficients(pan: f32, mono: bool) -> [f32; 2] {
 }
 
 /// Capacity for the largest current set of processed destination controls.
-pub const MODULATION_SNAPSHOT_SIZE: usize = daw_unit_core::ModulationParameter::OTT.len();
+// Reserve complete parameter/grain snapshots without per-unit callback storage.
+pub const MODULATION_SNAPSHOT_SIZE: usize = 32;
 pub type ModulationSnapshot = [f32; MODULATION_SNAPSHOT_SIZE];
 fn parameter_snapshot<const N: usize>(values: [f32; N]) -> ModulationSnapshot {
     std::array::from_fn(|i| values.get(i).copied().unwrap_or(f32::NAN))
@@ -441,7 +442,9 @@ impl Renderer {
         self.modulation_snapshot(target)
             .map(|v| std::array::from_fn(|i| v[i]))
     }
-    /// Full readings. EQ/Compressor use their parameter-list order; added unused slots contain NaN.
+    /// Full readings. EQ/Compressor use their parameter-list order; unused slots contain NaN.
+    /// Granulizer uses slot 0 for scan, 1/2 for gain extrema, 3..11 for parameters,
+    /// and 11..27 for up to sixteen grain positions from one active voice.
     pub fn modulation_snapshot(&self, target: ModulationTarget) -> Option<ModulationSnapshot> {
         match target {
             ModulationTarget::Envelope { track, layer, unit } => {
@@ -462,6 +465,9 @@ impl Renderer {
                     .any(|l| l.id == layer && l.sampler.is_some())
                 {
                     return None;
+                }
+                if let Some(values) = midi.granular_snapshot(layer) {
+                    return Some(values);
                 }
                 let gain = midi.sampler_gain(layer);
                 Some(parameter_snapshot([

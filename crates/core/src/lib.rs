@@ -1,3 +1,4 @@
+pub use daw_unit_core::{GrainWindow, GranulizerSettings};
 pub use daw_unit_core::{SATURATOR_TYPE_ID, SaturatorClipMode, SaturatorSettings, SaturatorShape};
 mod memory;
 mod sampler;

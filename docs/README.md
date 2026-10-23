@@ -13,6 +13,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 ## Instrument components
 
 - [Oscillator](instruments/oscillator.md)
+- [Granulizer](instruments/granulizer.md)
 - [Sampler](instruments/sampler.md)
 - [Envelope](instruments/envelope.md)
 - [LFO](instruments/lfo.md)

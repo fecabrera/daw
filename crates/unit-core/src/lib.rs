@@ -6,6 +6,8 @@ mod note_name;
 pub use note_name::{natural_note, note_name};
 mod audio_range;
 pub use audio_range::{ClipLoop, ClipStretch};
+mod granulizer;
+pub use granulizer::{GrainWindow, GranulizerSettings};
 mod sampler;
 pub use sampler::{SamplerInput, SamplerMode, SamplerSettings, SamplerTrigger};
 mod instrument_bus;

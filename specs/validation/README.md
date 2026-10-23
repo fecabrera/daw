@@ -4280,3 +4280,25 @@ Final repository checks:
 Manual native interaction, listening/device checks and native Windows/Linux
 execution were not performed. Automated egui geometry/input and exact DSP parity
 checks do not establish those platform or perceptual results.
+
+## Granulizer instrument component — 2026-10-23
+
+Added the Granulizer source through the shared sample-input component, with a portable `daw-granulizer` DSP crate. Grain/Scan/Random/Out strips reuse the common sample shell, knobs, window diagrams, modulation connections and component editing. Sampler and Granulizer share file/clip input, region preparation and source exclusions. Granular sources prepare only the root buffer; conversion drops unused offline pitches while retaining matching PCM. Version-2 sample settings protect granular projects from older readers; ordinary version-1 Sampler projects remain compatible.
+
+Completed automated checks:
+
+- `cargo fmt --all --check`, strict `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` pass with the pinned toolchain and locked dependencies. Commands used the local `work/cargo-home` cache and offline mode where supported. Final affected component, UI, engine and project regressions were also rerun after the source-version, boundary, sample-buffer and control-order adjustments.
+- Portable settings round-trip, legacy Sampler defaults, future/invalid version rejection, parameter bounds and window endpoints pass. All six project rates cover stereo relationships, scan/pitch independence, reverse/freeze, windows and finite output. Deterministic grain sequences, bounded analytical advance, fractional spacing, source ends, One-shot tails, parameter edits, nonfinite modulation and fixed grain capacity pass. A regression prevents fractional forward scans from sticking at the source end.
+- Shared MIDI tests cover Gain and all eight granular destinations through Per note/Retrigger/Legato Envelope, LFO and Macro sources. Live/offline and prepared-seek results agree. Compatible edits retain grain and route history. Allocation counters remain zero during rendering, snapshots, parameter updates and renderer inheritance. Gate and One-shot rendering agree across all six processing rates.
+- The project regressions cover selected-region preparation, root-only banks, PCM reuse, copy identities, Main rejection, all processing-rate conversions, save/reopen, float-WAV export, failed/cancelled preparation retention and unchanged recordings. Switching from ordinary Sampler removes unused pitch variants while retaining the root allocation.
+- All 573 egui UI tests pass, including Granulizer catalog installation, source exclusions and Grain/Scan/Random/Out controls in both themes. These are automated interactions, not native-window checks.
+- `cargo build -p daw-cli` and `python3 tools/check_cli.py` pass. The smoke script covers WAV/MP3/AAC export, bitrate choices, repeatability, missing recordings, groups, overwrite handling and exit codes.
+- `sh tools/package_macos.sh debug` builds the updated unsigned `target/debug/DAW.app`. Formatting, changed Markdown link targets and `git diff --check` pass. Local command logs remain in ignored `work/granulizer/`.
+
+Native visual inspection was attempted but the Mac was locked. Native picker/drag/device/listening checks, Windows/Linux builds and hardware performance measurements were not run. Linear grain interpolation can alias at large upward pitch shifts; this implementation does not establish listening-quality acceptance or measured real-time CPU limits. No external dependency or third-party source was added.
+
+## Granulizer window diagram bounds — 2026-10-23
+
+Corrected the Grain window paths from −1..+1 to the shared −0.5..+0.5 coordinate bounds. The existing knob renderer now draws them at the required 10-by-6-point size with its standard 1.25-point stroke and active accent color. Grain shapes and audio behavior are unchanged.
+
+The new bounds/shape regression and all 574 UI library tests pass. Formatting, strict UI Clippy, `git diff --check`, and the debug macOS bundle rebuild pass. Logs are in ignored `work/granulizer/icon-*.log`. Native visual and other-platform checks were not run for this correction.

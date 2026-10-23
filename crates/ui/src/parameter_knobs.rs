@@ -94,6 +94,33 @@ fn ott_frequency(low: bool) -> KnobSpec {
 }
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::GrainSize => KnobSpec::new("Grain size", 10.0..=500.0, 80.0, 1.0)
+            .value_label(time)
+            .format(time)
+            .endpoint_labels("10", "500"),
+        Parameter::GrainOverlap => KnobSpec::new("Overlap", 0.25..=8.0, 4.0, 0.05)
+            .value_label(|v| format!("{v:.2}×"))
+            .format(|v| format!("{v:.2}×"))
+            .endpoint_labels("0.25", "8"),
+        Parameter::GrainPosition => percent("Position", 0.0),
+        Parameter::GrainSpeed => KnobSpec::new("Scan speed", -4.0..=4.0, 1.0, 0.01)
+            .centered(0.0)
+            .bipolar()
+            .value_label(|v| format!("{v:.2}×"))
+            .format(|v| format!("{v:.2}×"))
+            .endpoint_labels("−4", "+4"),
+        Parameter::GrainPitch => KnobSpec::new("Grain pitch", -48.0..=48.0, 0.0, 0.1)
+            .centered(0.0)
+            .bipolar()
+            .value_label(|v| format!("{v:+.1} st"))
+            .format(|v| format!("{v:+.1} st"))
+            .endpoint_labels("−48", "+48"),
+        Parameter::GrainPositionJitter => percent("Position jitter", 0.0),
+        Parameter::GrainPitchJitter => KnobSpec::new("Pitch jitter", 0.0..=48.0, 0.0, 0.1)
+            .value_label(|v| format!("±{v:.1} st"))
+            .format(|v| format!("±{v:.1} st"))
+            .endpoint_labels("0", "48"),
+        Parameter::GrainPan => percent("Pan randomness", 0.0),
         Parameter::EnvelopeAttack => knobs::envelope_time_spec("Attack time", 5.0),
         Parameter::EnvelopeDecay => knobs::envelope_time_spec("Decay time", 100.0),
         Parameter::EnvelopeRelease => knobs::envelope_time_spec("Release time", 200.0),
@@ -222,7 +249,7 @@ pub(super) fn destination(parameter: Parameter) -> KnobSpec {
         Parameter::Pitch => knobs::pitch_spec(),
         Parameter::Amplitude => knobs::marked_gain_spec(),
         Parameter::OscillatorGain => knobs::marked_gain_spec().named("Oscillator gain"),
-        Parameter::SamplerGain => knobs::marked_gain_spec().named("Sampler gain"),
+        Parameter::SamplerGain => knobs::marked_gain_spec().named("Gain"),
         Parameter::Level => knobs::marked_gain_spec().named("Filter output level"),
         Parameter::Volume => knobs::marked_gain_spec().named("Drive volume"),
         Parameter::Frequency => frequency("Filter frequency", 1000.0),
@@ -414,7 +441,39 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 |v| format!("{v:+.1}:1"),
                 ["−19", "+19"],
             ),
-            Parameter::Pitch => (
+            Parameter::GrainSize => (
+                AmountMapping::Offset {
+                    origin: 10.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.0} ms"),
+                ["−490", "+490"],
+            ),
+            Parameter::GrainOverlap => (
+                AmountMapping::Offset {
+                    origin: 0.25,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.2}×"),
+                ["−7.75", "+7.75"],
+            ),
+            Parameter::GrainSpeed => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.2}×"),
+                ["−4", "+4"],
+            ),
+            Parameter::GrainPosition | Parameter::GrainPositionJitter | Parameter::GrainPan => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_percent,
+                ["−100", "+100"],
+            ),
+            Parameter::GrainPitch | Parameter::GrainPitchJitter | Parameter::Pitch => (
                 AmountMapping::Offset {
                     origin: 0.0,
                     direction: 1.0,

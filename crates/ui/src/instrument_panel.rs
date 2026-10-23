@@ -1280,7 +1280,13 @@ impl DawUi {
         );
 
         let mut replace_source = false;
+        let mut replace_granular = false;
         result.header.context_menu(|ui| {
+            if ui.button("Replace source with Granulizer").clicked() {
+                replace_source = true;
+                replace_granular = true;
+                ui.close();
+            }
             if ui.button("Replace source with Sampler").clicked() {
                 replace_source = true;
                 ui.close();
@@ -1296,7 +1302,11 @@ impl DawUi {
         if replace_source {
             layer.oscillators.clear();
             layer.oscillator_modulations.clear();
-            layer.sampler = Some(Default::default());
+            layer.sampler = Some(if replace_granular {
+                daw_core::SamplerSettings::granular()
+            } else {
+                Default::default()
+            });
             layer.component_order.retain(|c| !c.is_source());
         }
         #[cfg(test)]

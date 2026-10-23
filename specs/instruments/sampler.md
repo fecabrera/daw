@@ -6,14 +6,14 @@ Implemented design, updated 2026-10-18. Sampler is an instrument component for r
 
 ## Placement and source ownership
 
-Register Sampler once in the Instrument components catalog. A layer can have one Oscillator component or one Sampler component; the Oscillator component can still contain multiple oscillator strips. Empty layers remain silent. Sampler stays first in the layer and cannot enter Main. Conflicting catalog additions and installed transfers leave the project unchanged and show an unsupported-target hint. A catalog selection containing both source types cannot enter a regular layer.
+Register Sampler once in the Instrument components catalog. A layer can have one of Oscillator, Sampler, or [Granulizer](granulizer.md); the Oscillator component can still contain multiple oscillator strips. Empty layers remain silent. Sampler stays first in the layer and cannot enter Main. Conflicting catalog additions and installed transfers leave the project unchanged and show an unsupported-target hint. A catalog selection containing multiple source types cannot enter a regular layer.
 
 Source headers offer an explicit **Replace source** action. Replacement keeps the layer's identity, mix settings, modulators, and Amplitude stage. It discards the old source settings and oscillator pitch routes when applicable. Component selection, Delete/Backspace, header group moves/copies, focus, insertion previews, and cancellation reuse the existing component paths. Sampler copies receive a fresh sampler ID and share the immutable audio asset. Removing Sampler discards its settings; retained Envelope/LFO/Macro/Amplitude settings keep their existing restoration rules.
 
 ## Loading and selecting audio
 
 1. Add Sampler to an empty regular layer, or replace its Oscillator component through the header menu.
-2. Drop one supported WAV, MP3, or AAC-LC file onto the unit. File decoding, project-rate conversion, and waveform preparation use the existing media/worker path. Supported codecs, containers and channel limits match [ordinary import](../audio/import.md).
+2. Drop one supported WAV, MP3, or AAC-LC file onto the unit, or select Choose sample from its preview or header menu. File decoding, project-rate conversion, and waveform preparation use the existing media/worker path. Supported codecs, containers and channel limits match [ordinary import](../audio/import.md).
 3. To use a timeline audio clip, drag it over the Instrument view button. This opens Instrument on the first MIDI track with a Sampler. Drop onto that unit. The original timeline clip stays in place. The sampler retains its source trim, repeat length/phase, and existing stretch mapping; track gain, pan, and effects are not captured.
 4. Drag the preview's selection-bar edges to resize the region, its body to move it, or outside the current region to create another region. Shift bypasses the shared musical-grid/source-boundary snapping. Preview during the gesture; commit only on release. Escape, focus loss, or disabled editing cancels it.
 

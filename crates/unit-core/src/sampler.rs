@@ -46,6 +46,9 @@ impl SamplerInput {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SamplerSettings {
     pub id: Uuid,
+    /// Optional granular source; absent in legacy Sampler settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub granulizer: Option<crate::GranulizerSettings>,
     pub version: u32,
     pub enabled: bool,
     pub collapsed: bool,
@@ -80,6 +83,7 @@ impl Default for SamplerSettings {
     fn default() -> Self {
         Self {
             id: Uuid::new_v4(),
+            granulizer: None,
             version: 1,
             enabled: true,
             collapsed: false,
@@ -98,6 +102,29 @@ impl Default for SamplerSettings {
     }
 }
 impl SamplerSettings {
+    pub fn granular() -> Self {
+        Self {
+            granulizer: Some(Default::default()),
+            version: 2,
+            trigger: SamplerTrigger::Gate,
+            ..Default::default()
+        }
+    }
+    pub fn name(&self) -> &'static str {
+        if self.granulizer.is_some() {
+            "Granulizer"
+        } else {
+            "Sampler"
+        }
+    }
+    pub fn parameters(&self) -> &'static [crate::ModulationParameter] {
+        if self.granulizer.is_some() {
+            &crate::ModulationParameter::GRANULIZER
+        } else {
+            &[crate::ModulationParameter::SamplerGain]
+        }
+    }
+
     /// Full MIDI range, relative to the saved root note.
     pub fn pitch_offset(&self, note: u8) -> Option<i8> {
         let offset = i16::from(note) - i16::from(self.root_note);
@@ -113,7 +140,11 @@ impl SamplerSettings {
     }
     pub fn valid(&self) -> bool {
         !self.id.is_nil()
-            && self.version == 1
+            && self.version == if self.granulizer.is_some() { 2 } else { 1 }
+            && self
+                .granulizer
+                .as_ref()
+                .is_none_or(|g| g.valid() && self.mode == SamplerMode::Off)
             && self.root_note <= 127
             && self.gain_db.is_finite()
             && (SILENT_GAIN_DB..=12.0).contains(&self.gain_db)

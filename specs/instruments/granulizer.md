@@ -1,0 +1,47 @@
+# Granulizer source
+
+Implemented source contract. For operation, see the [user guide](../../docs/instruments/granulizer.md).
+
+## Ownership and compatibility
+
+`crates/granulizer` owns independent stereo overlap-add DSP over immutable host-supplied PCM. It depends only on `unit-core`. `GranulizerSettings` and `GrainWindow` live in `unit-core`; their version is 1. DSP uses a fixed 64-grain array, no callback allocation, locks, I/O, final-owner PCM replacement, or device dependencies.
+
+Granulizer composes the existing sample source shell rather than duplicating its input and lifecycle. Optional `SamplerSettings.granulizer` selects granular rendering; missing/None retains legacy Sampler behavior. Plain Sampler retains enclosing settings version 1. Granular sources use enclosing sample-settings version 2 so older readers reject them instead of silently playing ordinary samples. Instrument version 3 remains unchanged. Granular settings require SamplerMode::Off, finite bounded values, and version 1. Invalid settings and source conflicts fail the existing core transaction. Internal `InstrumentComponent::Sampler` identifies the mutually exclusive sample-source slot for either playback mode. Catalog and runtime descriptors distinguish `daw.sampler` from `daw.granulizer`. The Sources registration owns construction, eligibility, folder order, and Main rejection.
+
+The retained sample slot shares ID, input mapping, selection, root note, Gain, power, collapse, trigger, and modulation routing. Existing core transfers, copies, undo/redo, removal and source exclusion apply. Copies get fresh source and route IDs, retain the granular seed/settings, and share immutable audio. Sample-mode replacement preserves input/range and Gain routes, removes granular routes, resets duration mode to Off, and selects the new source's default trigger. Oscillator replacement removes sample ownership and routes, while preserving other layer components.
+
+`PreparedSampler` composes the source clip mapping and selected region on a worker. Granular inputs prepare only the unshifted selected region, regardless of MIDI pitches; live grain pitch does not use offline pitch variants. Existing source preparation, memory admission, cancellation, missing-source behavior, external paths, Save As and checked project-rate coordinate rescaling remain shared. Switching from Sampler to Granulizer drops unused offline pitch variants on the worker while reusing the matching root buffer. Knob edits reuse PCM; source/region/rate changes publish PCM and project atomically. Playback and export use the same MIDI runtime.
+
+## DSP and timing
+
+Size is 10–500 ms (80 default), overlap 0.25–8 (4), position 0–1 (0), speed −4–4 (1), pitch −48–48 semitones (0), position jitter 0–1 (0), pitch jitter 0–48 semitones (0), and random pan 0–1 (0). Loop defaults true, Window Hann, saved seed 1, Trigger Gate, root note C4, Gain 0 dB.
+
+Grain start interval is grain duration divided by overlap. Grain duration rounds to project frames, with a minimum of two. Grain read increment is `2^((MIDI − root + pitch + random pitch)/12)`. Linear interpolation shares one read clock for both channels. Signed source scan increment is independent of grain read increment. Position changes add a fractional-region displacement to that scan, rather than resetting elapsed note age. Zero speed freezes it. Loop wraps scans and individual grain reads; non-looping reads beyond the region supply silence. Scan order can reverse, but grains always read forward.
+
+Each grain latches size, window, pitch, pan and looping at birth. Window endpoints are zero. Hann uses `(1 − cos(2π phase))/2`; Triangle uses `2 min(phase, 1−phase)`; Trapezoid uses `min(1, 4 min(phase, 1−phase))`. Stereo balance uses `sqrt(1−pan)` and `sqrt(1+pan)`, unity at center. Mix divides by the greater of summed window weights and 1, preserving sparse-grain fades without amplifying window edges. Non-looping reads use a 5 ms boundary fade measured in output frames, independently of pitch. Nonfinite source samples are silent. Accumulation uses f64 and finite f32 output bounds.
+
+Three deterministic SplitMix-style draws per grain select position, pitch and pan. Saved seed and MIDI pitch initialize the sequence. Seeds do not depend on callback block size, pointer addresses, wall time, or renderer identity. Copying retains the seed. Grain saturation skips an incoming grain without replacing active grains; random draws and scheduling continue. Fixed storage bounds callback work even after changing long grains to short, dense grains.
+
+Gate follows the shared note gate and Amplitude release. One-shot emits for exactly the selected region's original frame count, independent of pitch/speed, then drains active grains (at most 500 ms). Non-looping scan ends can stop emission earlier. This bounds frozen/looping One-shot notes. The host reserves the extra half-second in release-slot scheduling. Trigger edits apply only to future notes.
+
+Compatible parameter edits retain active grains and note positions; base values ramp for 5 ms. Additive modulation offsets use the shared 1 ms smoother. Existing sample Gain/power ramps remain 5 ms. Root/content/source-kind changes invalidate runtime compatibility and reconstruct notes. Granular tracks request worker processing-history replay for exact modulated seeks; cancellation remains per prepared block. The unmodulated source's bulk advance reconstructs at most 64 grains analytically rather than looping through elapsed note frames in the callback. Large jumps, loop wraps, and ordinary rendering remain allocation-free.
+
+## Modulation and telemetry
+
+The sample source facade implements the shared typed destination contract with PerNote scope. It accepts same-instrument per-note and shared Envelope/LFO/Macro values, including Main. The existing prepared route vector, resolver, scope/reference checks, source indices, route history matching and source-enable ramps apply. Plain Sampler still validates only Gain; granular settings additionally accept GrainSize, GrainOverlap, GrainPosition, GrainSpeed, GrainPitch, GrainPositionJitter, GrainPitchJitter and GrainPan. Their signed amount limits are respectively 490 ms, 7.75×, 1 region, 4×, 48 semitones, 1 region, 48 semitones and 1 pan fraction. Final values clamp to the base ranges in the portable processor. No window/loop/trigger/root modulation and no internal LFO.
+
+Engine snapshots use 32 prepared slots. The existing Sampler target retains scan position in slot 0 and gain extrema in 1/2. Slots 3–10 hold eight effective granular values from one active voice; 11–26 hold up to sixteen active grain positions from that voice; unused slots are NaN. UI reads these snapshots without advancing a clock. Grain parameter markers use that voice's effective values; Gain retains all-voice extrema. PCM banks and grain storage are counted by existing render-plan/runtime memory accounting.
+
+## UI
+
+Reuse the sample-input shell, waveform/clip header, range selection, root-note editor, trigger dropdown, drop/navigation helpers, shared unit header, Power, collapse, selection and component drag handlers. The header includes Choose sample; decoding and preparation use the existing cancellable sample worker. The waveform stays on the left, with Root note / Trigger / Loop below. Granulizer hides the Sampler duration group.
+
+Four standard 90-point strips follow: Grain (Size / Overlap / Window), Scan (Position / Speed / Pitch), Random (Position jitter / Pitch jitter / Pan randomness), Out (Gain / reserved / reserved). Reuse shared row heights, margins, footer alignment and full-height dividers. Window uses KnobSpec::diagrams with actual window curves and accessible names. Normalize both path axes to −0.5 through +0.5; the shared renderer supplies the standard 10-by-6-point size, 1.25-point stroke and active accent color. Continuous controls and connection amount knobs derive from parameter_knobs. Modulation strips expand on the right. Compact/collapsed units retain source identity and drop targets.
+
+The waveform paints actual scan/grain positions and a clipped jitter interval. It does not simulate grain animation. Looping jitter can wrap outside the shaded interval at either edge. Future features are tempo-sync, transient/slice targeting, live capture, higher-quality grain interpolation and individual reverse grains.
+
+## Provenance and acceptance
+
+The design references the documented behavior of [Fruity Granulizer](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/plugins/Fruity%20Granulizer.htm). The implementation is independently written using ordinary windowed overlap-add, interpolation and deterministic hashing. No Fruity source code or assets are included. No third-party dependency was added.
+
+Acceptance covers settings migration/validation, all project rates and windows, independent scan/pitch, freeze/reverse/end behavior, stable random sequences, finite values and grain saturation, bulk seek reconstruction, typed modulation through every existing provider mode, prepared transport parity, no-allocation rendering/retargeting, shared source exclusions, UI controls in both themes, selected-region preparation, save/reopen, external source retention, rate changes, copy identities, worker rollback and float WAV export. Record executed checks and native/listening limits in the [validation history](../validation/README.md).

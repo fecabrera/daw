@@ -1072,3 +1072,58 @@ fn sampler_gain_modulation_reuses_header_strips_source_picker_marker_and_saved_v
         }
     }
 }
+
+#[test]
+fn granulizer_catalog_layout_controls_and_source_conflicts_use_shared_sample_shell() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let mut app = DawUi::default();
+        let track = app.session.project.add_midi_track().unwrap();
+        app.selected_track = Some(track);
+        let layer = app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .id;
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme,
+                ..Default::default()
+            },
+        );
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        add_component(&mut app, &ctx, layer, 6);
+        assert!(state(&app).granulizer.is_some());
+        assert_eq!(state(&app).trigger, daw_core::SamplerTrigger::Gate);
+        let bounds = &app.instrument_ui.samplers[0];
+        assert!(bounds.grains.iter().all(Rect::is_positive));
+        assert!(bounds.loop_toggle.is_positive());
+        assert_eq!(bounds.duration, Rect::NOTHING);
+        assert!(bounds.grains[0].left() > bounds.waveform.right());
+        assert!(bounds.grains[2].left() > bounds.grains[0].right());
+        assert!(bounds.grains[5].left() > bounds.grains[2].right());
+        assert!(bounds.gain.left() > bounds.grains[5].right());
+        let size = bounds.grains[0].center();
+        let toggle = bounds.loop_toggle.center();
+        click(&mut app, &ctx, size, false);
+        key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+        assert!(state(&app).granulizer.unwrap().size_ms > 80.0);
+        click(&mut app, &ctx, toggle, false);
+        assert!(!state(&app).granulizer.unwrap().looping);
+        let original = state(&app).clone();
+        let mut instrument = app.session.project.tracks[0].instrument.clone().unwrap();
+        crate::instrument_catalog::add_components(
+            &mut instrument,
+            layer,
+            &["daw.sampler", "daw.oscillator"],
+        );
+        assert_eq!(instrument.layers[0].sampler.as_ref().unwrap(), &original);
+        assert!(instrument.layers[0].oscillators.is_empty());
+        let main = instrument.main.id;
+        crate::instrument_catalog::add_components(&mut instrument, main, &["daw.granulizer"]);
+        assert!(instrument.main.visible_components().is_empty());
+    }
+}

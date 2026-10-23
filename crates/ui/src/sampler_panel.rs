@@ -36,6 +36,8 @@ pub(super) struct Bounds {
     pub gain: Rect,
     pub trigger: Rect,
     pub controls: Rect,
+    pub grains: [Rect; 9],
+    pub loop_toggle: Rect,
 }
 impl Bounds {
     fn new(track: Id, layer: Id) -> Self {
@@ -55,6 +57,8 @@ impl Bounds {
             gain: Rect::NOTHING,
             trigger: Rect::NOTHING,
             controls: Rect::NOTHING,
+            grains: [Rect::NOTHING; 9],
+            loop_toggle: Rect::NOTHING,
         }
     }
 }
@@ -115,7 +119,7 @@ impl DawUi {
         let margin = panels::PanelStyle::default().margin;
         let open = s.modulation_open;
         let live = self.output.as_ref().and_then(|o| {
-            o.modulation_values(daw_engine::ModulationTarget::Sampler {
+            o.modulation_snapshot(daw_engine::ModulationTarget::Sampler {
                 track,
                 layer: layer_id,
             })
@@ -129,6 +133,7 @@ impl DawUi {
             None,
             [live.map(|v| v[1]), live.map(|v| v[2])],
         );
+        let mut choose = false;
         let result = ui.scope_builder(egui::UiBuilder::new().ui_stack_info(
             egui::UiStackInfo::default().with_tag("unit-modulation-button")), |ui| panels::PanelStyle {
             margin: 0,
@@ -136,7 +141,7 @@ impl DawUi {
         }
         .unit(
             ui,
-            ("Sampler", compact),
+            (s.name(), compact),
             height,
             &mut enabled,
             &mut collapsed,
@@ -266,11 +271,24 @@ impl DawUi {
                                         egui::Color32::from_black_alpha(100),
                                     );
                                 }
+                                if let Some(g) = &s.granulizer {
+                                    let scan = live.as_ref().map_or(g.position * (s.end_frame - s.start_frame) as f32, |v| v[0]);
+                                    let jitter = live.as_ref().map_or(g.position_jitter, |v| v[8]);
+                                    let length = (s.end_frame - s.start_frame) as f32;
+                                    let to_x = |p: f32| pixel(s.start_frame) + p / input.length_frames as f32 * wave.width();
+                                    let range = Rect::from_min_max(egui::pos2(to_x((scan - jitter * length).max(0.0)), body.top()), egui::pos2(to_x((scan + jitter * length).min(length)), body.bottom()));
+                                    ui.painter_at(body).rect_filled(range, 0.0, theme::accent(ui.ctx()).linear_multiply(0.15));
+                                    if let Some(values) = &live {
+                                        for p in values[11..27].iter().filter(|p| p.is_finite()) {
+                                            ui.painter_at(body).vline(to_x(*p), body.y_range(), Stroke::new(1.0, palette.secondary));
+                                        }
+                                    }
+                                }
                                 if let Some(position) = self
                                     .output
                                     .as_ref()
                                     .and_then(|o| {
-                                        o.modulation_values(daw_engine::ModulationTarget::Sampler {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Sampler {
                                             track,
                                             layer: layer_id,
                                         })
@@ -303,6 +321,8 @@ impl DawUi {
                                     fonts::numeric(11.0),
                                     palette.secondary,
                                 );
+                                let picker = Rect::from_center_size(body.center() + egui::vec2(0.0, 24.0), egui::vec2(128.0, 22.0));
+                                if ui.put(picker, egui::Button::new("Choose sample…")).clicked() { choose = true; }
                             }
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x =
@@ -311,6 +331,10 @@ impl DawUi {
                                 bounds.root = root;
                                 bounds.sharp = sharp;
                                 bounds.root_group = group;
+                                if let Some(g) = &mut s.granulizer {
+                                    bounds.trigger = trigger(ui, &mut s.trigger);
+                                    bounds.loop_toggle = ui.checkbox(&mut g.looping, "Loop").on_hover_text("Wrap scan and grain reads inside the selected region").rect;
+                                } else {
                                 let (group, value, unit) = duration(
                                     ui,
                                     s,
@@ -321,6 +345,7 @@ impl DawUi {
                                 bounds.duration_value = value;
                                 bounds.duration_unit = unit;
                                 bounds.trigger = trigger(ui, &mut s.trigger);
+                                }
                             });
                         })
                     });
@@ -329,6 +354,9 @@ impl DawUi {
                         preview.response.rect.right(),
                         preview.response.rect.y_range().into(),
                     );
+                    if s.granulizer.is_some() {
+                        bounds.grains = crate::granulizer_panel::controls(ui, s, sources, live.as_ref(), compact);
+                    }
                     let strip = egui::Frame::new().inner_margin(margin).show(ui, |ui| {
                         ui.vertical(|ui| {
                             ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
@@ -361,15 +389,16 @@ impl DawUi {
                                 } else {
                                     icons::COMPACT_BUTTON_SIZE
                                 },
-                                |ui| rows::unit_label(ui, "Sample"),
+                                |ui| rows::unit_label(ui, if s.granulizer.is_some() { "Out" } else { "Sample" }),
                             );
                         })
                     });
                     bounds.controls = strip.response.rect;
                     if open {
                         panels::unit_divider(ui, strip.response.rect.right(), strip.response.rect.y_range().into());
+                        let parameters = s.parameters();
                         modulation_panel::body(ui, &mut s.modulations, sources,
-                            <SamplerSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS,
+                            parameters,
                             <SamplerSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
                     }
                 });
@@ -398,9 +427,29 @@ impl DawUi {
         );
         let mut remove = false;
         let mut replace = false;
+        let mut switch = false;
         result.header.context_menu(|ui| {
-            if ui.button("Remove sampler").clicked() {
+            if ui.button("Choose sample…").clicked() {
+                choose = true;
+                ui.close();
+            }
+            ui.separator();
+            if ui
+                .button(format!("Remove {}", s.name().to_lowercase()))
+                .clicked()
+            {
                 remove = true;
+                ui.close();
+            }
+            if ui
+                .button(if s.granulizer.is_some() {
+                    "Replace source with Sampler"
+                } else {
+                    "Replace source with Granulizer"
+                })
+                .clicked()
+            {
+                switch = true;
                 ui.close();
             }
             if ui.button("Replace source with Oscillator").clicked() {
@@ -408,6 +457,22 @@ impl DawUi {
                 ui.close();
             }
         });
+        if switch {
+            s.granulizer = if s.granulizer.is_some() {
+                None
+            } else {
+                Some(Default::default())
+            };
+            s.version = if s.granulizer.is_some() { 2 } else { 1 };
+            s.modulations
+                .retain(|r| r.parameter == daw_core::ModulationParameter::SamplerGain);
+            s.mode = SamplerMode::Off;
+            s.trigger = if s.granulizer.is_some() {
+                SamplerTrigger::Gate
+            } else {
+                SamplerTrigger::OneShot
+            };
+        }
         if remove || replace {
             layer.sampler = None;
             layer.prune_component_order();
@@ -418,6 +483,13 @@ impl DawUi {
         }
         // The full expanded body is a drop target; compact/collapsed units retain a target.
         self.instrument_ui.samplers.push(bounds);
+        if choose
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("Audio samples", daw_media::IMPORT_EXTENSIONS)
+                .pick_file()
+        {
+            self.load_sampler_file((track, layer_id), path);
+        }
         result.response.rect
     }
     pub(super) fn sampler_drop_target(&self, pointer: Pos2) -> Option<(Id, Id)> {

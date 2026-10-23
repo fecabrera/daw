@@ -1995,7 +1995,9 @@ mod modulation_meter_tests {
             std::array::from_fn(|i| handles[&limiter_key][i].load(Ordering::Relaxed))
         );
         let ott = renderer.modulation_snapshot(ott_key).unwrap();
-        assert!(ott.iter().all(|v| v.is_finite()));
+        let parameters = daw_core::ModulationParameter::OTT.len();
+        assert!(ott[..parameters].iter().all(|v| v.is_finite()));
+        assert!(ott[parameters..].iter().all(|v| v.is_nan()));
         assert_eq!(ott[14], 3.0);
         assert_eq!(
             ott.map(f32::to_bits),

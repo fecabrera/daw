@@ -566,3 +566,7 @@ Portable effect processors expose owned dynamic storage through `EffectUnit::hea
 ## Track group buses — 2026-10-20
 
 Tracks can route through nested stereo group buses before Master. Groups reuse track effect chains, mix controls, meters, unit editing, worker preparation, and existing effect processors. Each child path aligns before the group sum; group clocks account for upstream latency. See [track groups](../editing/track-groups.md) for the hierarchy, transactions, routing, cache, and UI contract.
+
+## Granulizer source — 2026-10-23
+
+The [Granulizer contract](../instruments/granulizer.md) adds a third source choice per regular layer. Its portable DSP crate composes the shared sample-source loading, routing and lifecycle rather than duplicating them. It retains source exclusion and Main restrictions, worker preparation and transport history, and the common source/destination modulation contract.

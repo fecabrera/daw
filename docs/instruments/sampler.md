@@ -4,8 +4,8 @@ Sampler plays a selected audio region for each MIDI note. It is a source compone
 
 ## Load a sample
 
-1. In Instrument, select an empty layer and add Sampler from Sources in the component catalog. A layer can contain Sampler or Oscillator, not both. Use Replace source in an existing source's header menu to switch types.
-2. Drop one WAV, MP3, or AAC-LC file onto Sampler. Supported formats and limits match [clip import](../views/timeline.md#supported-imports).
+1. In Instrument, select an empty layer and add Sampler from Sources in the component catalog. A layer can contain one of Sampler, Oscillator, or Granulizer. Use Replace source in an existing source's header menu to switch types.
+2. Drop one WAV, MP3, or AAC-LC file onto Sampler, or select **Choose sample…** in its header menu. Supported formats and limits match [clip import](../views/timeline.md#supported-imports).
 3. To use a Timeline audio clip, drag it over the Instrument view button, then drop it onto a Sampler. The Timeline clip stays in place. Its visible trim, repeats, and stretch are retained; track gain, pan, and effects are not captured.
 4. Play MIDI notes to audition the sample.
 
@@ -50,3 +50,5 @@ Existing projects use their saved root note for pitch playback. Non-root notes c
 Replacing audio selects the new full input while retaining an explicitly set duration target. Preparation failure or cancellation keeps the previous sample and playback. Missing recordings stay visible and play as silence; shortened recordings supply silence for unavailable parts. Saving and Save As retain external file references and do not bundle recordings.
 
 Reverse playback, internal looping, slicing, automatic pitch/tempo detection, multisampling, and live pitch modulation are not available. See [time stretching](../audio/time-stretch.md) and [modulation](../modulation/README.md).
+
+The source header menu offers **Choose sample…** and **Replace source with Granulizer**. Replacement retains the sample and selected region; see [Granulizer](granulizer.md) for grain controls.

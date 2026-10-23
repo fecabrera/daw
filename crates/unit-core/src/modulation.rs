@@ -135,6 +135,15 @@ pub enum ModulationParameter {
     LimiterLookahead,
     LimiterCeiling,
     SamplerGain,
+    GrainSize,
+    GrainOverlap,
+    GrainPosition,
+    GrainSpeed,
+    GrainPitch,
+    GrainPositionJitter,
+    GrainPitchJitter,
+    GrainPan,
+
     OscillatorGain,
     CompressorThreshold,
     CompressorRatio,
@@ -143,6 +152,17 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    pub const GRANULIZER: [Self; 9] = [
+        Self::SamplerGain,
+        Self::GrainSize,
+        Self::GrainOverlap,
+        Self::GrainPosition,
+        Self::GrainSpeed,
+        Self::GrainPitch,
+        Self::GrainPositionJitter,
+        Self::GrainPitchJitter,
+        Self::GrainPan,
+    ];
     pub const SATURATOR: [Self; 3] = [Self::SaturatorDrive, Self::Level, Self::DryWet];
     pub const OSCILLATOR: [Self; 2] = [Self::Pitch, Self::OscillatorGain];
     pub const ENVELOPE: [Self; 9] = [
@@ -270,6 +290,14 @@ impl ModulationParameter {
             Self::LimiterRelease => "Release",
             Self::LimiterLookahead => "Lookahead",
             Self::LimiterCeiling => "Ceiling",
+            Self::GrainSize => "Grain size",
+            Self::GrainOverlap => "Overlap",
+            Self::GrainPosition => "Position",
+            Self::GrainSpeed => "Scan speed",
+            Self::GrainPitch => "Pitch",
+            Self::GrainPositionJitter => "Position jitter",
+            Self::GrainPitchJitter => "Pitch jitter",
+            Self::GrainPan => "Pan randomness",
             Self::SamplerGain | Self::OscillatorGain => "Gain",
             Self::CompressorThreshold => "Threshold",
             Self::CompressorRatio => "Ratio",
@@ -301,6 +329,10 @@ impl ModulationParameter {
     }
     pub fn limit(self) -> f32 {
         match self {
+            Self::GrainSize => 490.0,
+            Self::GrainOverlap => 7.75,
+            Self::GrainSpeed => 4.0,
+            Self::GrainPitch | Self::GrainPitchJitter => 48.0,
             Self::EnvelopeAttack | Self::EnvelopeDecay | Self::EnvelopeRelease => 6.0,
             Self::OttLowFrequency
             | Self::OttHighFrequency
@@ -348,6 +380,9 @@ impl ModulationParameter {
     }
     pub fn unit(self) -> &'static str {
         match self {
+            Self::GrainSize => "ms",
+            Self::GrainOverlap | Self::GrainSpeed => "×",
+            Self::GrainPitch | Self::GrainPitchJitter => "semitones",
             Self::EnvelopeAttack | Self::EnvelopeDecay | Self::EnvelopeRelease => "oct",
             Self::OttLowFrequency
             | Self::OttHighFrequency

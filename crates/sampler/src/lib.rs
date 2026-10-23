@@ -10,6 +10,7 @@ pub type SampleBank = [Option<Arc<Vec<[f32; 2]>>>; 128];
 #[derive(Clone)]
 pub struct Sampler {
     bank: Arc<SampleBank>,
+    granular: Option<Box<daw_granulizer::Granulizer>>,
     note: u8,
     root_note: u8,
     position: u64,
@@ -39,6 +40,14 @@ impl Sampler {
         let target = gain(settings);
         Self {
             bank,
+            granular: settings.granulizer.map(|g| {
+                Box::new(daw_granulizer::Granulizer::new(
+                    context,
+                    g,
+                    settings.root_note,
+                    settings.trigger == daw_unit_core::SamplerTrigger::OneShot,
+                ))
+            }),
             note: settings.root_note,
             root_note: settings.root_note,
             position: 0,
@@ -53,14 +62,25 @@ impl Sampler {
     }
     pub fn descriptor(&self) -> UnitDescriptor {
         UnitDescriptor {
-            type_id: "daw.sampler",
-            name: "Sampler",
+            type_id: if self.granular.is_some() {
+                "daw.granulizer"
+            } else {
+                "daw.sampler"
+            },
+            name: if self.granular.is_some() {
+                "Granulizer"
+            } else {
+                "Sampler"
+            },
             is_source: true,
             inputs: &[PortKind::Modulation],
             outputs: &[PortKind::StereoAudio],
         }
     }
     pub fn retarget(&mut self, next: &Self) {
+        if let (Some(current), Some(next)) = (&mut self.granular, &next.granular) {
+            current.retarget(next);
+        }
         if self.target != next.target {
             self.target = next.target;
             self.remaining = self.fade_frames;
@@ -70,11 +90,17 @@ impl Sampler {
         self.note_on_at(self.root_note);
     }
     pub fn note_on_at(&mut self, note: u8) {
-        if !self.active {
+        if !self.active() {
             self.gain = self.target;
             self.remaining = 0;
             self.external.reset();
             self.effective_gain = self.target;
+        }
+        let length = self.bank[usize::from(self.root_note)]
+            .as_ref()
+            .map_or(0, |s| s.len());
+        if let Some(g) = &mut self.granular {
+            g.note_on(note, length);
         }
         self.note = note;
         self.position = 0;
@@ -82,11 +108,18 @@ impl Sampler {
     }
     fn samples(&self) -> &[[f32; 2]] {
         self.bank
-            .get(usize::from(self.note))
+            .get(usize::from(if self.granular.is_some() {
+                self.root_note
+            } else {
+                self.note
+            }))
             .and_then(Option::as_deref)
             .map_or(&[], Vec::as_slice)
     }
     pub fn reset(&mut self) {
+        if let Some(g) = &mut self.granular {
+            g.reset();
+        }
         self.position = 0;
         self.active = false;
         self.gain = self.target;
@@ -95,6 +128,13 @@ impl Sampler {
         self.effective_gain = self.target;
     }
     pub fn advance(&mut self, frames: u64) {
+        if let Some(g) = &mut self.granular {
+            let samples = self.bank[usize::from(self.root_note)]
+                .as_deref()
+                .map_or(&[][..], Vec::as_slice);
+            g.advance(frames, samples.len());
+            return;
+        }
         if self.active {
             self.position = self
                 .position
@@ -104,10 +144,25 @@ impl Sampler {
         self.active &= self.position < self.samples().len() as u64;
     }
     pub fn active(&self) -> bool {
-        self.active
+        self.granular.as_ref().map_or(self.active, |g| g.active())
     }
     pub fn position(&self) -> Option<u64> {
-        self.active.then_some(self.position)
+        self.granular
+            .as_ref()
+            .map_or_else(|| self.active.then_some(self.position), |g| g.position())
+    }
+    pub fn granular_snapshot(&self) -> Option<([f32; 8], [f32; 16])> {
+        self.granular
+            .as_ref()
+            .filter(|g| g.active())
+            .map(|g| (g.effective(), g.grain_positions()))
+    }
+    pub fn heap_bytes(&self) -> u64 {
+        if self.granular.is_some() {
+            std::mem::size_of::<daw_granulizer::Granulizer>() as u64
+        } else {
+            0
+        }
     }
     pub fn next_sample(&mut self) -> [f32; 2] {
         self.process_modulated(0.0)

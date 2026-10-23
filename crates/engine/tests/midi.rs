@@ -4381,3 +4381,137 @@ fn envelope_destinations_share_graph_rendering_history_and_live_route_updates() 
         assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     }
 }
+
+#[test]
+fn granulizer_shared_modulation_seek_and_compatible_updates_remain_allocation_free() {
+    for provider in 0..5 {
+        let mut p = sampler_modulated_plan(48000, SamplerTrigger::OneShot, provider);
+        let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
+        let layer = instrument.layers[0].id;
+        let settings = instrument.layers[0].sampler.as_mut().unwrap();
+        settings.version = 2;
+        settings.granulizer = Some(GranulizerSettings {
+            speed: -0.5,
+            position_jitter: 0.2,
+            pan: 0.5,
+            ..Default::default()
+        });
+        let source = settings.modulations[0].source;
+        for parameter in ModulationParameter::GRANULIZER.into_iter().skip(1) {
+            let mut route = Modulation::new(parameter);
+            route.source = source;
+            route.amount = parameter.limit() * 0.1;
+            settings.modulations.push(route);
+        }
+        p.project.validate().unwrap();
+        let target = daw_engine::ModulationTarget::Sampler {
+            track: p.project.tracks[0].id,
+            layer,
+        };
+        let mut reference = Renderer::new(p.clone());
+        let mut old = Renderer::new(p.clone());
+        reference.play();
+        old.play();
+        let mut history = vec![[0.0; 2]; 4000];
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        for expected in &mut history {
+            *expected = reference.next_sample();
+            assert_eq!(old.next_sample(), *expected);
+        }
+        let snapshot = old.modulation_snapshot(target).unwrap();
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert!(snapshot[3..11].iter().all(|v| v.is_finite()));
+        assert!(snapshot[11..27].iter().any(|v| v.is_finite()));
+        let mut next_plan = p.clone();
+        let settings = next_plan.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .sampler
+            .as_mut()
+            .unwrap();
+        settings.collapsed = true;
+        settings.modulation_open = true;
+        let mut next = Renderer::new(next_plan.clone());
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        next.inherit(&mut old);
+        for _ in 0..256 {
+            assert_eq!(next.next_sample(), reference.next_sample());
+        }
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        let settings = next_plan.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .sampler
+            .as_mut()
+            .unwrap();
+        settings.granulizer.as_mut().unwrap().size_ms = 20.0;
+        settings.granulizer.as_mut().unwrap().speed = 0.0;
+        settings.modulations.reverse();
+        let mut edited = Renderer::new(next_plan);
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|c| c.set(true));
+        edited.inherit(&mut next);
+        for _ in 0..512 {
+            assert!(edited.next_sample().iter().all(|v| v.is_finite()));
+        }
+        TRACK_ALLOCATIONS.with(|c| c.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        let mut sought = Renderer::new(p);
+        sought.prepare_transport(daw_engine::TransportState {
+            frame: 3000,
+            playing: true,
+            paused: false,
+            playback_start: None,
+        });
+        for (i, expected) in history[3000..4000].iter().enumerate() {
+            let actual = sought.next_sample();
+            if i >= 240 {
+                assert_eq!(actual, *expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn granulizer_live_offline_and_gate_one_shot_paths_agree_at_every_processing_rate() {
+    for rate in SAMPLE_RATES {
+        for trigger in [SamplerTrigger::Gate, SamplerTrigger::OneShot] {
+            let mut p = sampler_plan(rate, trigger);
+            let s = p.project.tracks[0].instrument.as_mut().unwrap().layers[0]
+                .sampler
+                .as_mut()
+                .unwrap();
+            s.version = 2;
+            s.granulizer = Some(GranulizerSettings {
+                speed: 0.0,
+                ..Default::default()
+            });
+            p.project.validate().unwrap();
+            let mut expected = vec![[0.0; 2]; rate as usize];
+            Renderer::new(p.clone()).render_offline(&mut expected);
+            assert!(expected.iter().any(|s| s[0] > 0.1));
+            assert!(expected[rate as usize / 2..].iter().all(|s| *s == [0.0; 2]));
+            assert!(expected.iter().all(|s| s[0] == -2.0 * s[1]));
+            let mut live = Renderer::new(p);
+            live.play();
+            ALLOCATIONS.with(|c| c.set(0));
+            TRACK_ALLOCATIONS.with(|c| c.set(true));
+            for (i, expected) in expected.into_iter().enumerate() {
+                let actual = live.next_sample();
+                if i >= rate as usize / 200 {
+                    assert_eq!(actual, expected);
+                }
+            }
+            TRACK_ALLOCATIONS.with(|c| c.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        }
+    }
+}

@@ -323,11 +323,16 @@ destination_settings!(
     Shared
 );
 
-destination_settings!(
-    crate::SamplerSettings,
-    &[ModulationParameter::SamplerGain],
-    PerNote
-);
+impl ModulationDestinationSettings for crate::SamplerSettings {
+    const MODULATION_PARAMETERS: &'static [ModulationParameter] = &ModulationParameter::GRANULIZER;
+    const MODULATION_SCOPE: ModulationScope = ModulationScope::PerNote;
+    fn modulations(&self) -> &[Modulation] {
+        &self.modulations
+    }
+    fn valid_modulations(&self) -> bool {
+        valid_modulations(&self.modulations, self.parameters())
+    }
+}
 
 destination_settings!(
     crate::LimiterSettings,

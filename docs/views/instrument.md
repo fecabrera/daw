@@ -9,6 +9,7 @@ The Instrument components catalog has three folders. Each folder starts collapse
 | Folder | Component | Use |
 | --- | --- | --- |
 | Sources | [Oscillator](../instruments/oscillator.md) | Generate Sine, Saw, Square, or Triangle tones. One Oscillator unit can contain several sources. |
+| Sources | [Granulizer](../instruments/granulizer.md) | Build overlapping grain textures from a selected audio region. |
 | Sources | [Sampler](../instruments/sampler.md) | Play a selected audio region when MIDI notes arrive. |
 | Modulators | [Envelope](../instruments/envelope.md) | Shape a parameter over the life of a note. |
 | Modulators | [LFO](../instruments/lfo.md) | Repeat a control pattern at a fixed or tempo-related rate. |
@@ -19,7 +20,7 @@ Use Up/Down to move through visible folders and components. On a folder, Enter h
 
 ## Layers
 
-A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain Oscillator or Sampler. It cannot contain both. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a layer.
+A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain one of Oscillator, Sampler, or Granulizer. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a layer.
 
 Layers show a waveform icon before their names. Output uses a keyboard icon. Click a regular layer header to select it. Shift-click toggles layers in the selection. Each selected layer has an outline. Output is selected separately and stays pinned at the bottom.
 
