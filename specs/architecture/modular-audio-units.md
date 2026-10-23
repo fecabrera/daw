@@ -516,7 +516,7 @@ Group registered components under Sources (Oscillator, Sampler), Modulators (Env
 
 ## Effects catalog categories — 2026-10-17
 
-Group effects under EQ & Filters (3-band EQ, Auto-filter), Dynamics (Compressor, OTT, Limiter), Distortion (Drive, Bitcrusher, Saturator), and Imaging (Direction Mixer, Stereo Spread). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
+Group effects under EQ & Filters (3-band EQ, Filter, Auto-filter), Dynamics (Compressor, OTT, Limiter), Distortion (Drive, Bitcrusher, Saturator), and Imaging (Direction Mixer, Stereo Spread). Reuse the Instrument catalog's shared folder, row, selection/focus, keyboard, scrolling, and drag-capture behavior. Registration owns category metadata; additions and group drops create fresh effects in visible folder order. Keep expansion in UI state with all folders initially collapsed. See [Effects catalog folders](../editing/components.md#effects-catalog-folders) for ownership, ordering, guards, and acceptance.
 
 ## Effect meter lifecycle
 

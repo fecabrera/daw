@@ -4219,3 +4219,64 @@ Final validation:
 Native Windows/Linux builds, manual file-dialog/drop interaction and listening
 checks were not performed. Automated egui input and independent decode checks do
 not establish native platform or perceptual audio quality.
+
+## 2026-10-23 — Filter effect without an internal LFO
+
+Added Filter under EQ & Filters with the Auto-filter Cutoff/Out controls in two
+90-point strips. The entire middle LFO section is omitted. Reused the panel,
+knobs/diagrams, modulation controls/indicators, power, compact/collapse, selection,
+catalog insertion and chain editing paths. Filter is available on audio/MIDI
+tracks, Master, regular instrument layers and Output. Version-1 `daw.filter`
+state contains no LFO controls and uses existing source/route validation,
+duplication, unknown-version preservation and transactional edits.
+
+The portable `daw-filter` crate now owns the stereo SVF, response mixing,
+parameter and bypass ramps, external modulation smoothing and telemetry.
+Auto-filter composes that processor with its existing LFO and clock. No external
+dependency was added or upgraded; FunDSP remains behind the shared filter API.
+Filter implements Shared-scope Frequency/Resonance/Level/Dry-Wet destinations
+through the existing typed modulation resolver. Engine registration, route-state
+retargeting, memory accounting and prepared fingerprints include the new type.
+
+Completed focused checks on macOS arm64 with the pinned Rust toolchain:
+
+- An isolated harness compiled the pre-change Auto-filter source and compared it
+  with the composed processor. Audio and effective-parameter arrays matched
+  exactly over all six rates, four shapes, five waveforms, live parameter/power
+  changes, reset and clock jumps.
+- All 12 Auto-filter tests passed, including the new static Filter parity test
+  across rates/shapes, external offsets, retarget and reset. Existing response,
+  smoothing, LFO and finite-output tests remain in place. Private implementation
+  assertions now observe public processed values and presentation-update parity.
+- Core Filter checks passed saved state/routes, fresh duplicate effect/route IDs,
+  unknown future versions, unsupported modulation parameters and invalid setting
+  rollback. Invalid edits retain the original complete chain.
+- Engine Filter/Auto-filter history tests passed processing, reset, seek and
+  compatible retarget with zero callback allocations. The extended shared-provider
+  matrix passed Filter with Envelope/LFO/Macro sources at all project rates,
+  live/export/block/seek/loop parity, telemetry, route reorder and live updates.
+- The project regression passed track/Master/layer/Output persistence, save/open,
+  rate changes, fresh track-copy effect identity, float WAV export/render parity
+  and unchanged original source bytes.
+- All 572 UI tests passed. New coverage checks both-theme catalog creation,
+  Cutoff/Out geometry and controls, omission of LFO controls, power and compact
+  mode. Group addition/drop tests include Filter on all existing target types.
+  Keyboard expectations include the new entry; lower catalog entries are scrolled
+  into view rather than assumed to fit in the previous viewport height.
+- Workspace Clippy with warnings denied and formatting passed. Changed
+  documentation link targets and `git diff --check` passed.
+
+Final repository checks:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --offline --locked --workspace`: passed, including all 572 UI tests
+  and the new Filter coverage. Existing opt-in real-model/release tests remain
+  ignored. Logs are under `work/filter-unit-20261023`.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Final changed documentation link targets and `git diff HEAD --check`: passed.
+
+Manual native interaction, listening/device checks and native Windows/Linux
+execution were not performed. Automated egui geometry/input and exact DSP parity
+checks do not establish those platform or perceptual results.

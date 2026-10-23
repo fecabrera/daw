@@ -19,6 +19,8 @@ mod lfo;
 pub use lfo::*;
 use serde::{Deserialize, Serialize};
 mod auto_filter;
+mod filter;
+pub use filter::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
 mod modulation;
 pub use modulation::*;
 mod saturator;

@@ -2,6 +2,8 @@
 
 Auto-filter combines a stereo filter with a repeating frequency sweep. Add it to an audio/MIDI track or Master from EQ & Filters in the Effects catalog.
 
+[Filter](filter.md) provides the same Cutoff and Out controls with a static cutoff.
+
 ## Controls
 
 | Section | Control | Range or choices | Default |

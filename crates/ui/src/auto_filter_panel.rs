@@ -126,22 +126,23 @@ fn footer(ui: &mut Ui, name: &str, compact: bool) {
         },
     );
 }
-pub(super) fn show(
+fn show_panel(
     ui: &mut Ui,
     settings: &mut AutoFilterSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<[f32; 5]>,
     sample_rate_hz: u32,
+    internal_lfo: bool,
 ) -> (Bounds, egui::Response) {
+    let (compact, height) = dimensions;
     ui.scope_builder(egui::UiBuilder::new().ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),|ui| {
     let modulation_open=settings.modulation_open;
     let bases = [settings.frequency_hz, settings.q, settings.level_db, settings.dry_wet];
     let mut markers: [Option<knobs::ModulationMarker>; 4] = std::array::from_fn(|i| crate::modulation_panel::marker(
         &settings.modulations, sources, daw_core::ModulationParameter::FILTER[i], bases[i], settings.enabled,
-        (i==0).then_some((settings.lfo_enabled, settings.strength_octaves)),
-        [live.map(|v| v[if i==0 {0}else{i+1}]), if i==0 {live.map(|v|v[1])}else{None}],
+        (i==0 && internal_lfo).then_some((settings.lfo_enabled, settings.strength_octaves)),
+        [live.map(|v| v[if i==0 {0}else{i+1}]), if i==0 && internal_lfo {live.map(|v|v[1])}else{None}],
     ));
     if let Some(marker) = &mut markers[0] { marker.range = marker.range.map(|v| v.min(sample_rate_hz as f32 * 0.45)); }
     let panel = panels::PanelStyle::default();
@@ -154,10 +155,10 @@ pub(super) fn show(
     };
     let mut enabled = settings.enabled;
     let mut collapsed = settings.collapsed;
-    let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(ui, ("Auto-filter", compact), height, &mut enabled, &mut collapsed, |ui| {
+    let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(ui, (if internal_lfo { "Auto-filter" } else { "Filter" }, compact), height, &mut enabled, &mut collapsed, |ui| {
         ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-            for section in 0..3 {
+            for section in (0..3).filter(|section| internal_lfo || *section != 1) {
                 let rect = ui.push_id(section, |ui| egui::Frame::new().inner_margin(panel.margin).show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         // One LFO strip owns two knob columns and three equal horizontal gaps.
@@ -210,6 +211,72 @@ pub(super) fn show(
     crate::modulation_panel::toggle(ui,&result.header,settings.collapsed,&mut settings.modulation_open);
     (bounds, result.header)
     }).inner
+}
+
+/// Auto-filter and Filter share their base controls, shell and modulation strips.
+pub(super) fn show(
+    ui: &mut Ui,
+    settings: &mut AutoFilterSettings,
+    compact: bool,
+    height: f32,
+    sources: &[crate::modulation_panel::Source],
+    live: Option<[f32; 5]>,
+    sample_rate_hz: u32,
+) -> (Bounds, egui::Response) {
+    show_panel(
+        ui,
+        settings,
+        (compact, height),
+        sources,
+        live,
+        sample_rate_hz,
+        true,
+    )
+}
+
+pub(super) fn show_static(
+    ui: &mut Ui,
+    settings: &mut daw_core::FilterSettings,
+    compact: bool,
+    height: f32,
+    sources: &[crate::modulation_panel::Source],
+    live: Option<[f32; 5]>,
+    sample_rate_hz: u32,
+) -> (Bounds, egui::Response) {
+    // This is a temporary control view, never saved or sent to the processor.
+    // Move routes into it so painting does not clone the connection list.
+    let mut view = AutoFilterSettings {
+        enabled: settings.enabled,
+        collapsed: settings.collapsed,
+        modulation_open: settings.modulation_open,
+        shape: settings.shape,
+        frequency_hz: settings.frequency_hz,
+        q: settings.q,
+        level_db: settings.level_db,
+        dry_wet: settings.dry_wet,
+        lfo_enabled: false,
+        modulations: std::mem::take(&mut settings.modulations),
+        ..Default::default()
+    };
+    let result = show_panel(
+        ui,
+        &mut view,
+        (compact, height),
+        sources,
+        live,
+        sample_rate_hz,
+        false,
+    );
+    settings.enabled = view.enabled;
+    settings.collapsed = view.collapsed;
+    settings.modulation_open = view.modulation_open;
+    settings.shape = view.shape;
+    settings.frequency_hz = view.frequency_hz;
+    settings.q = view.q;
+    settings.level_db = view.level_db;
+    settings.dry_wet = view.dry_wet;
+    settings.modulations = view.modulations;
+    result
 }
 
 #[cfg(test)]

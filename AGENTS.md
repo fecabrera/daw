@@ -50,7 +50,8 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/stereo-spread` | Portable spectral stereo widening with private FunDSP filter banks and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/direction-mixer` | Portable stereo direction/width and M/S decoding through the shared effect and modulation APIs; no DAW, UI, or device dependencies. |
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
-| `crates/auto-filter` | Portable stereo filter and transport-locked LFO behind the shared effect API; keep FunDSP types private. |
+| `crates/filter` | Portable stereo filtering, parameter/bypass smoothing and shared modulation; owns private FunDSP coefficients and integrators reused by Auto-filter. |
+| `crates/auto-filter` | Shared Filter processor plus a transport-locked LFO behind the effect API. |
 | `crates/ott` | Portable three-band upward/downward dynamics, phase-matched crossovers, and signed gain monitoring; keep FunDSP types private. |
 | `crates/limiter` | Portable stereo Peak/True Peak limiter, L/R and M/S dynamics, fixed latency, and gain-reduction monitoring; no DAW/UI/device dependencies. |
 | `crates/compressor` | Portable linked stereo dynamics and gain-reduction monitoring behind the shared effect API; keep FunDSP detector types private. |

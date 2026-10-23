@@ -1727,3 +1727,51 @@ fn group_buses_meter_and_retarget_without_callback_allocation() {
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     assert!(bus_peak[0] > 0.0 && bus_peak[0] < child_peak[0]);
 }
+
+#[test]
+fn filter_live_inheritance_preserves_state_and_processing_reset_and_retarget_do_not_allocate() {
+    let mut plan = plan(48000, false);
+    plan.project.tracks[0]
+        .effects
+        .push(EffectInstance::filter());
+    let mut reference = Renderer::new(plan.clone());
+    let mut current = Renderer::new(plan.clone());
+    reference.play();
+    current.play();
+    for _ in 0..700 {
+        assert_eq!(reference.next_sample(), current.next_sample());
+    }
+    let EffectSettings::Filter(s) = &mut plan.project.tracks[0].effects[0].unit else {
+        unreachable!()
+    };
+    s.collapsed = true;
+    let mut next = Renderer::new(plan.clone());
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+    next.inherit(&mut current);
+    for _ in 0..500 {
+        assert_eq!(next.next_sample(), reference.next_sample());
+    }
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    let EffectSettings::Filter(s) = &mut plan.project.tracks[0].effects[0].unit else {
+        unreachable!()
+    };
+    s.frequency_hz = 5000.0;
+    s.shape = FilterShape::HighPass;
+    let mut changed = Renderer::new(plan);
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(true));
+    changed.inherit(&mut next);
+    for _ in 0..1000 {
+        assert!(changed.next_sample().iter().all(|v| v.is_finite()));
+    }
+    changed.stop();
+    changed.seek(6000);
+    changed.play();
+    for _ in 0..500 {
+        changed.next_sample();
+    }
+    TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}

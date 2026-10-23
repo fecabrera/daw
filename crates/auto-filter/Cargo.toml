@@ -8,4 +8,4 @@ license = "BSD-2-Clause"
 [dependencies]
 daw-lfo.workspace = true
 daw-unit-core.workspace = true
-fundsp.workspace = true
+daw-filter.workspace = true

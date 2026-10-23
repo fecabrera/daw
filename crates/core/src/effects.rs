@@ -930,3 +930,71 @@ mod layer_effect_tests {
         assert!(copy.collapsed);
     }
 }
+
+#[cfg(test)]
+mod filter_tests {
+    use crate::*;
+    #[test]
+    fn filter_state_routes_versions_and_invalid_edits_are_preserved_atomically() {
+        let mut project = Project::default();
+        let track = project.add_track().unwrap();
+        let mut effect = EffectInstance::filter();
+        let EffectSettings::Filter(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.shape = FilterShape::Notch;
+        s.collapsed = true;
+        s.modulation_open = true;
+        s.modulations
+            .push(Modulation::new(ModulationParameter::Frequency));
+        project
+            .edit(Edit::SetEffects {
+                track_id: track,
+                effects: vec![effect.clone()],
+                compact: true,
+            })
+            .unwrap();
+        let saved = serde_json::to_value(&project).unwrap();
+        let loaded: Project = serde_json::from_value(saved.clone()).unwrap();
+        loaded.validate().unwrap();
+        assert_eq!(loaded.tracks[0].effects[0], effect);
+        let state = &saved["tracks"][0]["effects"][0]["unit"]["state"];
+        assert!(state.get("lfo_enabled").is_none());
+        let duplicate = effect.duplicate();
+        assert_ne!(duplicate.id, effect.id);
+        assert_ne!(
+            duplicate.unit.modulations()[0].id,
+            effect.unit.modulations()[0].id
+        );
+        for i in 0..7 {
+            let mut invalid = effect.clone();
+            let EffectSettings::Filter(s) = &mut invalid.unit else {
+                unreachable!()
+            };
+            match i {
+                0 => s.frequency_hz = 0.0,
+                1 => s.frequency_hz = f32::NAN,
+                2 => s.q = 10.1,
+                3 => s.level_db = 12.1,
+                4 => s.dry_wet = -0.1,
+                5 => s.version = 0,
+                _ => s.modulations[0].parameter = ModulationParameter::Amplitude,
+            }
+            assert!(
+                project
+                    .edit(Edit::SetEffects {
+                        track_id: track,
+                        effects: vec![invalid],
+                        compact: false
+                    })
+                    .is_err()
+            );
+            assert_eq!(serde_json::to_value(&project).unwrap(), saved);
+        }
+        let future =
+            serde_json::json!({"type_id":FILTER_TYPE_ID,"state":{"version":99,"future":true}});
+        let missing: EffectSettings = serde_json::from_value(future.clone()).unwrap();
+        assert!(missing.valid());
+        assert_eq!(serde_json::to_value(missing).unwrap(), future);
+    }
+}

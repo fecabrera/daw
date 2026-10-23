@@ -374,6 +374,9 @@ impl Renderer {
                     daw_core::EffectSettings::AutoFilter(_) => {
                         daw_unit_core::AUTO_FILTER_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::Filter(_) => {
+                        daw_unit_core::FILTER_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::Compressor(_) => {
                         daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
                     }

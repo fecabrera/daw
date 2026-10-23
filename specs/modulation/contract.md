@@ -182,3 +182,5 @@ Hosts publish values with matching `ModulationSourceIndex` generations. Shared r
 ## Saturator destination
 
 `SaturatorSettings` and the portable `Saturator` declare Shared `SATURATOR` inputs: SaturatorDrive, Level, DryWet. Drive appends typed slot 66; Level and blend reuse the existing typed slots. All routes reuse provider metadata/publication, source scope validation, cached resolution, route ramps, the additive smoother, history retargeting, destination-derived amount controls, markers, and processed snapshots. The portable processor owns final drive/gain/blend bounds and the fixed-latency oversampled DSP. Shape/Clip selectors remain discrete. See [Saturator](../effects/saturator.md).
+
+Filter uses the existing Frequency/Resonance/Level/Dry-Wet destination list and Shared scope, with the same routing, validation, amount controls and smoothing as Auto-filter. It has no internal LFO. See [Filter](../effects/filter.md).

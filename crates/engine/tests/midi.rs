@@ -3054,6 +3054,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                     (5, rate),
                     (6, rate),
                     (7, rate),
+                    (8, rate),
                 ]
             }))
     {
@@ -3103,6 +3104,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                 EffectInstance::stereo_spread,
                 EffectInstance::bitcrusher,
                 EffectInstance::saturator,
+                EffectInstance::filter,
             ][kind]();
             let target = ModulationTarget::Effect(effect.id);
             let parameters = [
@@ -3114,6 +3116,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                 &ModulationParameter::STEREO_SPREAD[..],
                 &ModulationParameter::BITCRUSHER[..],
                 &ModulationParameter::SATURATOR[..],
+                &ModulationParameter::FILTER[..],
             ][kind];
             let amounts = [
                 &[6.0, 0.5, 0.3, -6.0, 6.0, -0.5, 0.3][..],
@@ -3127,6 +3130,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                 &[0.3, 0.3, 0.5, -0.5][..],
                 &[6.0, -12.0, 8.0, -6.0, -0.25][..],
                 &[12.0, -6.0, -0.25][..],
+                &[1.0, 0.5, -6.0, -0.2][..],
             ][kind];
             let routes = match &mut effect.unit {
                 EffectSettings::Compressor(s) => &mut s.modulations,
@@ -3137,6 +3141,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                 EffectSettings::StereoSpread(s) => &mut s.modulations,
                 EffectSettings::Bitcrusher(s) => &mut s.modulations,
                 EffectSettings::Saturator(s) => &mut s.modulations,
+                EffectSettings::Filter(s) => &mut s.modulations,
                 _ => unreachable!(),
             };
             *routes = parameters
@@ -3158,6 +3163,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                 ModulationParameter::StereoSpreadLowerIntensity,
                 ModulationParameter::BitcrusherResolution,
                 ModulationParameter::SaturatorDrive,
+                ModulationParameter::Resonance,
             ][kind];
             for amount in [1.0, -1.0] {
                 routes.push(Modulation {
@@ -3242,6 +3248,7 @@ fn effect_modulation_shared_providers_match_live_export_blocks_seek_loop_and_upd
                 EffectSettings::StereoSpread(s) => s.modulation_open = true,
                 EffectSettings::Bitcrusher(s) => s.modulation_open = true,
                 EffectSettings::Saturator(s) => s.modulation_open = true,
+                EffectSettings::Filter(s) => s.modulation_open = true,
                 _ => unreachable!(),
             }
             let mut replacement = Renderer::new(reordered.clone());

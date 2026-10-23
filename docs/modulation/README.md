@@ -39,7 +39,7 @@ Assigned knobs have a status dot. Filled means active; hollow means inactive. Ho
 | 3-band EQ | Low/Mid/High Gain; Low/High Frequency and Q |
 | Drive | Volume, Gain, Tone, Color strength, Color frequency |
 | Bitcrusher | Drive, Resolution, Downsampling, Level, Dry/Wet; Resolution and Downsampling retain whole steps |
-| Auto-filter | Frequency, Resonance, Level, Dry/Wet |
+| Filter, Auto-filter | Frequency, Resonance, Level, Dry/Wet |
 | Compressor | Threshold, Ratio, Attack, Release, Knee, Level, Dry/Wet |
 | Limiter | Input, Release, Lookahead, Ceiling |
 | OTT | Low/High crossover; Low/Mid/High Depth, Input, Output, Attack, Release; Level, Dry/Wet |

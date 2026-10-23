@@ -111,7 +111,7 @@ The Effects catalog uses the same `Catalog::with_folders`, `ControlPanel` folder
 
 | Category | Effects, in display order |
 | --- | --- |
-| EQ & Filters | 3-band EQ, Auto-filter |
+| EQ & Filters | 3-band EQ, Filter, Auto-filter |
 | Dynamics | Compressor, OTT, Limiter |
 | Distortion | Drive, Bitcrusher, Saturator |
 | Imaging | Direction Mixer, Stereo Spread |

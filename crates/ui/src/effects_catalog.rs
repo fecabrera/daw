@@ -50,7 +50,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 10] = [
+pub(super) const ENTRIES: [Entry; 11] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -62,6 +62,12 @@ pub(super) const ENTRIES: [Entry; 10] = [
         "Drive",
         Category::Distortion,
         daw_core::EffectInstance::drive,
+    ),
+    Entry::new(
+        daw_core::FILTER_TYPE_ID,
+        "Filter",
+        Category::EqAndFilters,
+        daw_core::EffectInstance::filter,
     ),
     Entry::new(
         daw_core::AUTO_FILTER_TYPE_ID,

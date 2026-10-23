@@ -34,6 +34,7 @@ pub(crate) struct EffectsUiBounds {
     pub entry: Rect,
     pub drive_entry: Rect,
     pub auto_filter_entry: Rect,
+    pub filter_entry: Rect,
     pub compressor_entry: Rect,
     pub ott_entry: Rect,
     pub limiter_entry: Rect,
@@ -49,6 +50,7 @@ pub(crate) struct EffectsUiBounds {
     pub units: Vec<crate::equalizer_panel::Bounds>,
     pub drive_units: Vec<crate::drive_panel::Bounds>,
     pub auto_filter_units: Vec<crate::auto_filter_panel::Bounds>,
+    pub filter_units: Vec<crate::auto_filter_panel::Bounds>,
     pub compressor_units: Vec<crate::compressor_panel::Bounds>,
     pub ott_units: Vec<crate::ott_panel::Bounds>,
     pub limiter_units: Vec<crate::limiter_panel::Bounds>,
@@ -79,6 +81,7 @@ impl Default for EffectsUiBounds {
             entry: Rect::NOTHING,
             drive_entry: Rect::NOTHING,
             auto_filter_entry: Rect::NOTHING,
+            filter_entry: Rect::NOTHING,
             compressor_entry: Rect::NOTHING,
             ott_entry: Rect::NOTHING,
             limiter_entry: Rect::NOTHING,
@@ -94,6 +97,7 @@ impl Default for EffectsUiBounds {
             units: vec![],
             drive_units: vec![],
             auto_filter_units: vec![],
+            filter_units: vec![],
             compressor_units: vec![],
             ott_units: vec![],
             limiter_units: vec![],
@@ -182,6 +186,7 @@ impl DawUi {
             self.effects_bounds.units.clear();
             self.effects_bounds.drive_units.clear();
             self.effects_bounds.auto_filter_units.clear();
+            self.effects_bounds.filter_units.clear();
             self.effects_bounds.compressor_units.clear();
             self.effects_bounds.ott_units.clear();
             self.effects_bounds.limiter_units.clear();
@@ -321,6 +326,9 @@ impl DawUi {
                                     }
                                     daw_core::DRIVE_TYPE_ID => {
                                         self.effects_bounds.drive_entry = response.rect
+                                    }
+                                    daw_core::FILTER_TYPE_ID => {
+                                        self.effects_bounds.filter_entry = response.rect
                                     }
                                     daw_core::AUTO_FILTER_TYPE_ID => {
                                         self.effects_bounds.auto_filter_entry = response.rect
@@ -753,6 +761,25 @@ impl DawUi {
                                 let power = _bounds.power;
                                 #[cfg(test)]
                                 self.effects_bounds.auto_filter_units.push(_bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::Filter(settings) => {
+                                let (_bounds, header) = crate::auto_filter_panel::show_static(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_values(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                    self.session.project.sample_rate_hz,
+                                );
+                                let power = _bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.filter_units.push(_bounds);
                                 (header, power)
                             }
                             daw_core::EffectSettings::Ott(settings) => {

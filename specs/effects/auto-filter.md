@@ -26,6 +26,10 @@ Filter Shape and LFO Wave use the shared diagram selectors. Their diagrams show 
 
 The LFO footer switch stops modulation and leaves the static filter active at Frequency and Resonance. Its parameters remain editable and saved. Header power bypasses the whole unit. Both switches default to on. Rate mode changes retain the separate Hz and note values. Both rate knobs are bounded and show minimum/maximum labels without wrapping. Note rate has nine markers for straight durations only (4 bars through 1/64). Dotted and triplet choices remain selectable without markers. Strength has reference marks at each whole octave from 0 through 6, while retaining continuous adjustment and 0.1-octave keyboard steps. Note positions run from slowest (dotted 4 bars, labeled “4b D”) to fastest (triplet 1/64, labeled “1/64 T”), retaining all 27 durations and the 1/4-note reset. Knobs reuse shared dragging, Shift fine adjustment, arrow keys, double-click reset, bounds, tooltips, and accessibility.
 
+## Shared filter processing
+
+Auto-filter composes the portable [Filter processor](filter.md) with its internal LFO. Cutoff, Q, response mixing, output, bypass, external smoothing and telemetry have one shared implementation in `daw-filter`. Auto-filter retains its existing version-1 state and transport behavior.
+
 ## Processing
 
 `daw-auto-filter` is a portable stereo effect with no UI or DAW dependencies. It uses FunDSP's Simper state-variable coefficients with independent channel integrators. Low-pass and High-pass have 12 dB/octave asymptotic slopes; Band-pass is normalized to unity at its center and Q controls bandwidth. Notch removes the center frequency. Q also controls Low/High-pass resonance. Processing adds no latency.

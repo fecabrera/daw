@@ -52,6 +52,7 @@ fn effect_category_folders_share_navigation_and_retain_only_visible_selections()
             let rows = [
                 b.folders[0],
                 b.entry,
+                b.filter_entry,
                 b.auto_filter_entry,
                 b.folders[1],
                 b.compressor_entry,
@@ -66,7 +67,7 @@ fn effect_category_folders_share_navigation_and_retain_only_visible_selections()
                 rows.windows(2)
                     .all(|pair| pair[0].bottom() <= pair[1].top())
             );
-            assert!(rows.iter().all(|rect| b.library.contains_rect(*rect)));
+            assert!(rows[..3].iter().all(|rect| b.library.contains_rect(*rect)));
             let drive = b.drive_entry.center();
             click(&mut app, &ctx, drive);
             let compressor = app.effects_bounds.compressor_entry.center();
@@ -123,6 +124,7 @@ fn effect_category_group_additions_and_drops_follow_display_order_for_every_targ
                     b.compressor_entry.center(),
                     b.auto_filter_entry.center(),
                     b.entry.center(),
+                    b.filter_entry.center(),
                     b.direction_mixer_entry.center(),
                 ];
                 for (index, point) in points.into_iter().enumerate() {
@@ -163,6 +165,7 @@ fn effect_category_group_additions_and_drops_follow_display_order_for_every_targ
                     types,
                     [
                         daw_core::EQ_TYPE_ID,
+                        daw_core::FILTER_TYPE_ID,
                         daw_core::AUTO_FILTER_TYPE_ID,
                         daw_core::COMPRESSOR_TYPE_ID,
                         daw_core::OTT_TYPE_ID,
@@ -177,7 +180,7 @@ fn effect_category_group_additions_and_drops_follow_display_order_for_every_targ
                         .map(|effect| effect.id)
                         .collect::<HashSet<_>>()
                         .len(),
-                    7
+                    8
                 );
                 assert!(app.effects_drag.is_none());
                 assert!(app.dirty);
@@ -332,111 +335,154 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
         click(&mut app, &ctx, point);
         for (key, shift, expected) in [
             (egui::Key::ArrowDown, false, vec![]),
-            (egui::Key::ArrowDown, false, vec![entries[3]]),
-            (egui::Key::ArrowDown, true, vec![entries[3], entries[4]]),
+            (egui::Key::ArrowDown, false, vec![entries[4]]),
+            (egui::Key::ArrowDown, true, vec![entries[4], entries[5]]),
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[3], entries[4], entries[5]],
+                vec![entries[4], entries[5], entries[6]],
             ),
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[3], entries[4], entries[5]],
+                vec![entries[4], entries[5], entries[6]],
             ),
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1]],
+                vec![entries[4], entries[5], entries[6], entries[1]],
             ),
             (
                 egui::Key::ArrowDown,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1], entries[8]],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
-                ],
+                vec![entries[4], entries[5], entries[6], entries[1], entries[9]],
             ),
             (
                 egui::Key::ArrowDown,
                 true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
-                ],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                    entries[4],
+                    entries[5],
                     entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
                 ],
             ),
             (
                 egui::Key::ArrowDown,
                 true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
-                    entries[6], entries[7],
-                ],
-            ),
-            (
-                egui::Key::ArrowDown,
-                true,
-                vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
-                    entries[6], entries[7],
-                ],
-            ),
-            (
-                egui::Key::ArrowUp,
-                true,
-                vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                    entries[4],
+                    entries[5],
                     entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                ],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                    entries[7],
+                ],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                    entries[7],
+                    entries[8],
+                ],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                    entries[7],
+                    entries[8],
                 ],
             ),
             (
                 egui::Key::ArrowUp,
                 true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                    entries[7],
                 ],
             ),
             (
                 egui::Key::ArrowUp,
                 true,
                 vec![
-                    entries[3], entries[4], entries[5], entries[1], entries[8], entries[9],
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
                 ],
             ),
             (
                 egui::Key::ArrowUp,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1], entries[8]],
+                vec![
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                ],
             ),
             (
                 egui::Key::ArrowUp,
                 true,
-                vec![entries[3], entries[4], entries[5], entries[1]],
+                vec![entries[4], entries[5], entries[6], entries[1], entries[9]],
             ),
             (
                 egui::Key::ArrowUp,
                 true,
-                vec![entries[3], entries[4], entries[5]],
+                vec![entries[4], entries[5], entries[6], entries[1]],
             ),
             (
                 egui::Key::ArrowUp,
                 true,
-                vec![entries[3], entries[4], entries[5]],
+                vec![entries[4], entries[5], entries[6]],
             ),
-            (egui::Key::ArrowUp, true, vec![entries[3], entries[4]]),
-            (egui::Key::ArrowUp, true, vec![entries[3]]),
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![entries[4], entries[5], entries[6]],
+            ),
+            (egui::Key::ArrowUp, true, vec![entries[4], entries[5]]),
+            (egui::Key::ArrowUp, true, vec![entries[4]]),
             (egui::Key::ArrowUp, false, vec![]),
+            (egui::Key::ArrowUp, false, vec![entries[3]]),
             (egui::Key::ArrowUp, false, vec![entries[2]]),
             (egui::Key::ArrowUp, false, vec![entries[0]]),
         ] {
@@ -451,7 +497,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
         click_effect_with_shift(&mut app, &ctx, point, true);
         assert_eq!(
             app.effects_catalog.selection,
-            HashSet::from([entries[0], entries[3]])
+            HashSet::from([entries[0], entries[4]])
         );
         end_click_sequence(&mut app, &ctx);
         click_effect_with_shift(&mut app, &ctx, point, true);
@@ -4657,6 +4703,28 @@ fn stereo_spread_shared_controls_add_edit_reset_and_remove_on_every_target() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for target in ["track", "master", "instrument"] {
             let (mut app, ctx) = categorized_catalog_fixture(theme, target);
+            if !app
+                .effects_bounds
+                .library
+                .contains_rect(app.effects_bounds.stereo_spread_entry)
+            {
+                let pointer = app.effects_bounds.library.center();
+                for _ in 0..8 {
+                    frame(
+                        &mut app,
+                        &ctx,
+                        vec![
+                            egui::Event::PointerMoved(pointer),
+                            egui::Event::MouseWheel {
+                                unit: egui::MouseWheelUnit::Point,
+                                phase: egui::TouchPhase::Move,
+                                delta: Vec2::new(0.0, -80.0),
+                                modifiers: Default::default(),
+                            },
+                        ],
+                    );
+                }
+            }
             let point = app.effects_bounds.stereo_spread_entry.center();
             assert!(app.effects_bounds.stereo_spread_entry.is_positive());
             click(&mut app, &ctx, point);

@@ -1151,9 +1151,9 @@ dependencies = [
 name = "daw-auto-filter"
 version = "0.1.0"
 dependencies = [
+ "daw-filter",
  "daw-lfo",
  "daw-unit-core",
- "fundsp",
 ]
 
 [[package]]
@@ -1240,6 +1240,7 @@ dependencies = [
  "daw-drive",
  "daw-envelope",
  "daw-equalizer",
+ "daw-filter",
  "daw-lfo",
  "daw-limiter",
  "daw-macro",
@@ -1263,6 +1264,14 @@ dependencies = [
 
 [[package]]
 name = "daw-equalizer"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
+ "fundsp",
+]
+
+[[package]]
+name = "daw-filter"
 version = "0.1.0"
 dependencies = [
  "daw-unit-core",

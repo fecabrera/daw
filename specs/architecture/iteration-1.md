@@ -790,3 +790,7 @@ Regular Save to an existing project folder, with no pending close/new/open confi
 `crates/ui/src/regular_save.rs` owns the independent save receiver and the snapshot's project identity/change revision. Completion must not publish the saved session over current edits, prepared audio, or transport. Clear dirty state only when both identity and revision still match. All committed edits, metadata changes, explicit seeks, and worker-published modified sessions advance the revision; selection and automatic playback position updates do not. Failures/disconnects retain the current project and dirty state and use the existing error path. Continue polling/repainting while a save runs. Keep window-close protection active until the write completes. No callback, project schema, or shared save API changes are required.
 
 Validate identical workspace paint before/during a held save in all four views and both themes, retained selection/focus, active editing versus guarded file actions, real disk snapshot isolation, later edits/seeks and worker-prepared edits, clean repeated saves, failure/disconnect, stale project results, and existing named-save/save-before-close cancellation/failure tests. Native display and device behavior remain separate validation.
+
+## Static Filter effect
+
+[Filter](../effects/filter.md) adds the Auto-filter Cutoff/Out controls as a separate versioned effect with no internal LFO. Use its shared portable processor in both effects, with shared catalog, routing, layer/track/Master hosts, controls and persistence.

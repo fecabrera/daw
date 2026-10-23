@@ -33,6 +33,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Drive](effects/drive.md)
 - [Saturator](effects/saturator.md)
 - [Bitcrusher](effects/bitcrusher.md)
+- [Filter](effects/filter.md)
 - [Auto-filter](effects/auto-filter.md)
 - [Compressor](effects/compressor.md)
 - [OTT](effects/ott.md)

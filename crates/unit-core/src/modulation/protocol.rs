@@ -289,6 +289,7 @@ destination_settings!(
     &ModulationParameter::FILTER,
     Shared
 );
+destination_settings!(crate::FilterSettings, &ModulationParameter::FILTER, Shared);
 destination_settings!(crate::DriveSettings, &ModulationParameter::DRIVE, Shared);
 destination_settings!(crate::EqSettings, &ModulationParameter::EQUALIZER, Shared);
 

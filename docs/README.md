@@ -26,6 +26,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 - [Drive](effects/drive.md)
 - [Bitcrusher](effects/bitcrusher.md)
 - [Saturator](effects/saturator.md)
+- [Filter](effects/filter.md)
 - [Auto-filter](effects/auto-filter.md)
 - [Compressor](effects/compressor.md)
 - [OTT](effects/ott.md)

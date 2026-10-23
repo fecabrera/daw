@@ -4,6 +4,7 @@ use crate::{
 };
 use crate::{BITCRUSHER_STATE_VERSION, BITCRUSHER_TYPE_ID, BitcrusherSettings};
 use crate::{DIRECTION_MIXER_STATE_VERSION, DIRECTION_MIXER_TYPE_ID, DirectionMixerSettings};
+use crate::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
 use crate::{LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterSettings};
 use crate::{OTT_STATE_VERSION, OTT_TYPE_ID, OttSettings};
 use crate::{SATURATOR_STATE_VERSION, SATURATOR_TYPE_ID, SaturatorSettings};
@@ -75,6 +76,7 @@ pub enum EffectSettings {
     Eq3(EqSettings),
     Drive(DriveSettings),
     AutoFilter(AutoFilterSettings),
+    Filter(FilterSettings),
     Compressor(CompressorSettings),
     Ott(OttSettings),
     Limiter(LimiterSettings),
@@ -129,6 +131,10 @@ impl Serialize for EffectSettings {
             },
             Self::AutoFilter(settings) => StoredEffect {
                 type_id: AUTO_FILTER_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::Filter(settings) => StoredEffect {
+                type_id: FILTER_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
             },
             Self::Drive(drive) => StoredEffect {
@@ -236,6 +242,16 @@ impl<'de> Deserialize<'de> for EffectSettings {
             serde_json::from_value(stored.state)
                 .map(Self::AutoFilter)
                 .map_err(serde::de::Error::custom)
+        } else if stored.type_id == FILTER_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|version| version <= u64::from(FILTER_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::Filter)
+                .map_err(serde::de::Error::custom)
         } else if stored.type_id == COMPRESSOR_TYPE_ID
             && stored
                 .state
@@ -259,6 +275,7 @@ impl EffectSettings {
     pub fn modulations(&self) -> &[crate::Modulation] {
         match self {
             Self::AutoFilter(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::Filter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Eq3(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Compressor(s) => crate::ModulationDestinationSettings::modulations(s),
@@ -276,6 +293,7 @@ impl EffectSettings {
     pub fn modulations_mut(&mut self) -> &mut [crate::Modulation] {
         match self {
             Self::AutoFilter(s) => &mut s.modulations,
+            Self::Filter(s) => &mut s.modulations,
             Self::Drive(s) => &mut s.modulations,
             Self::Eq3(s) => &mut s.modulations,
             Self::Compressor(s) => &mut s.modulations,
@@ -294,6 +312,7 @@ impl EffectSettings {
             Self::Eq3(eq) => eq.valid(),
             Self::Drive(drive) => drive.valid(),
             Self::AutoFilter(settings) => settings.valid(),
+            Self::Filter(settings) => settings.valid(),
             Self::Compressor(settings) => settings.valid(),
             Self::Ott(settings) => settings.valid(),
             Self::Limiter(settings) => settings.valid(),
@@ -306,6 +325,7 @@ impl EffectSettings {
                     EQ_TYPE_ID => Some(EQ_STATE_VERSION),
                     DRIVE_TYPE_ID => Some(DRIVE_STATE_VERSION),
                     AUTO_FILTER_TYPE_ID => Some(AUTO_FILTER_STATE_VERSION),
+                    FILTER_TYPE_ID => Some(FILTER_STATE_VERSION),
                     COMPRESSOR_TYPE_ID => Some(COMPRESSOR_STATE_VERSION),
                     OTT_TYPE_ID => Some(OTT_STATE_VERSION),
                     LIMITER_TYPE_ID => Some(LIMITER_STATE_VERSION),
@@ -387,6 +407,12 @@ impl EffectInstance {
         Self {
             id: uuid::Uuid::new_v4(),
             unit: EffectSettings::AutoFilter(AutoFilterSettings::default()),
+        }
+    }
+    pub fn filter() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::Filter(FilterSettings::default()),
         }
     }
     pub fn drive() -> Self {

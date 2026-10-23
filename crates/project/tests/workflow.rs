@@ -4824,3 +4824,89 @@ fn aac_export_reuses_atomic_publication_progress_and_source_protection() {
             .starts_with(".export-")
     }));
 }
+
+#[test]
+fn filter_effects_survive_save_reopen_rate_changes_duplication_and_export() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("filter-source.wav", 48_000, 2, 24, false);
+    let original = fs::read(&source).unwrap();
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let audio_track = session.project.tracks[0].id;
+    let mut effect = daw_core::EffectInstance::filter();
+    let daw_core::EffectSettings::Filter(s) = &mut effect.unit else {
+        unreachable!()
+    };
+    s.shape = daw_core::FilterShape::HighPass;
+    s.frequency_hz = 1200.0;
+    s.q = 1.2;
+    s.dry_wet = 0.65;
+    session
+        .project
+        .edit(Edit::SetEffects {
+            track_id: audio_track,
+            effects: vec![effect.clone()],
+            compact: false,
+        })
+        .unwrap();
+    session
+        .project
+        .master
+        .effects
+        .push(daw_core::EffectInstance::filter());
+    session.project.add_midi_track().unwrap();
+    let instrument = session.project.tracks[1].instrument.as_mut().unwrap();
+    instrument.layers[0]
+        .effects
+        .push(daw_core::EffectInstance::filter());
+    instrument
+        .main
+        .effects
+        .push(daw_core::EffectInstance::filter());
+    session.project.validate().unwrap();
+    session.save(&fixture.0.join("filter-project")).unwrap();
+    let mut loaded = Session::open(&fixture.0.join("filter-project")).unwrap();
+    assert!(loaded.warnings.is_empty());
+    assert_eq!(loaded.project.tracks[0].effects[0], effect);
+    assert!(matches!(
+        loaded.project.master.effects[0].unit,
+        daw_core::EffectSettings::Filter(_)
+    ));
+    assert!(matches!(
+        loaded.project.tracks[1].instrument.as_ref().unwrap().layers[0].effects[0].unit,
+        daw_core::EffectSettings::Filter(_)
+    ));
+    assert!(matches!(
+        loaded.project.tracks[1]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .main
+            .effects[0]
+            .unit,
+        daw_core::EffectSettings::Filter(_)
+    ));
+    let output = fixture.0.join("filter-mix.wav");
+    let settings = daw_media::ExportSettings {
+        wav_codec: daw_media::WavCodec::Float32,
+        ..Default::default()
+    };
+    loaded
+        .export_with_settings(&output, false, settings)
+        .unwrap();
+    let mut expected = vec![[0.0; 2]; loaded.project.end() as usize];
+    loaded.plan().render(0, &mut expected);
+    assert_eq!(*daw_media::decode_wav(&output).unwrap().samples, expected);
+    let changed = loaded.with_audio_settings(96_000, 128).unwrap();
+    assert_eq!(changed.project.tracks[0].effects[0], effect);
+    loaded
+        .project
+        .edit(Edit::DuplicateTrack {
+            track_id: audio_track,
+            new_track_id: daw_core::Id::new_v4(),
+        })
+        .unwrap();
+    assert_ne!(loaded.project.tracks[1].effects[0].id, effect.id);
+    assert_eq!(loaded.project.tracks[1].effects[0].unit, effect.unit);
+    assert_eq!(fs::read(source).unwrap(), original);
+}

@@ -5144,6 +5144,7 @@ mod tests {
     mod compressed_import;
     mod effects;
     mod envelope_units;
+    mod filter;
     mod group_looping;
     mod group_stretch;
     mod history;

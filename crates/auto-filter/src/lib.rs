@@ -1,10 +1,10 @@
 //! Transport-locked stereo auto-filter. FunDSP supplies Simper SVF coefficients;
 //! the shared integrator state exposes all four shapes without parallel filters.
+use daw_filter::Filter;
 use daw_unit_core::{
     AUTO_FILTER_TYPE_ID, AutoFilterSettings, EffectUnit, LfoRateMode, PortKind, ProcessingContext,
     UnitDescriptor,
 };
-use fundsp::svf::SvfCoefs;
 
 #[derive(Clone, Copy)]
 struct Ramp {
@@ -38,36 +38,6 @@ impl Ramp {
         self.remaining = 0;
     }
 }
-#[derive(Default, Clone)]
-struct Filter {
-    ic1: f64,
-    ic2: f64,
-    coefs: SvfCoefs<f64>,
-    configured: Option<(f64, f64)>,
-}
-impl Filter {
-    fn sample(&mut self, input: f64, frequency: f64, q: f64, rate: f64, weights: [f64; 4]) -> f64 {
-        if self.configured != Some((frequency, q)) {
-            self.coefs = SvfCoefs::lowpass(rate, frequency, q);
-            self.configured = Some((frequency, q));
-        }
-        // Trapezoidal state-variable integration (Simper); see FunDSP's svf.rs.
-        let c = &self.coefs;
-        let v3 = input - self.ic2;
-        let band = c.a1 * self.ic1 + c.a2 * v3;
-        let low = self.ic2 + c.a2 * self.ic1 + c.a3 * v3;
-        self.ic1 = 2.0 * band - self.ic1;
-        self.ic2 = 2.0 * low - self.ic2;
-        let normalized_band = band / q;
-        let high = input - normalized_band - low;
-        let notch = input - normalized_band;
-        [low, high, normalized_band, notch]
-            .into_iter()
-            .zip(weights)
-            .map(|(value, weight)| value * weight)
-            .sum()
-    }
-}
 fn weights<const N: usize>(index: usize) -> [Ramp; N] {
     std::array::from_fn(|i| Ramp::new(f64::from(i == index)))
 }
@@ -75,19 +45,12 @@ use daw_lfo::waveform as wave;
 
 #[derive(Clone)]
 pub struct AutoFilter {
-    sample_rate: f64,
     fade: u32,
-    filters: [Filter; 2],
-    frequency_log: Ramp,
-    q: Ramp,
+    filter: Filter,
     depth: Ramp,
     lfo_mix: Ramp,
     sync_phase: Ramp,
     stereo_phase: Ramp,
-    level: Ramp,
-    wet: Ramp,
-    mix: Ramp,
-    shapes: [Ramp; 4],
     waves: [Ramp; 5],
     rate_mode: LfoRateMode,
     rate_hz: f32,
@@ -97,26 +60,17 @@ pub struct AutoFilter {
     modulation_alpha: f64,
     standalone_frame: u64,
     clock: daw_lfo::LfoClock,
-    external: daw_unit_core::ModulationSmoother<4>,
-    effective: [f32; 5],
 }
 impl AutoFilter {
     pub fn new(context: ProcessingContext, settings: &AutoFilterSettings) -> Self {
         let sample_rate = f64::from(context.sample_rate_hz);
         Self {
-            sample_rate,
             fade: (context.sample_rate_hz / 200).max(1),
-            filters: std::array::from_fn(|_| Filter::default()),
-            frequency_log: Ramp::new(f64::from(settings.frequency_hz).log2()),
-            q: Ramp::new(settings.q.into()),
+            filter: Filter::new(context, &filter_settings(settings)),
             depth: Ramp::new(settings.strength_octaves.into()),
             lfo_mix: Ramp::new(f64::from(settings.lfo_enabled)),
             sync_phase: Ramp::new(f64::from(settings.sync_phase_degrees) / 360.0),
             stereo_phase: Ramp::new(f64::from(settings.stereo_phase_degrees) / 360.0),
-            level: Ramp::new(10_f64.powf(f64::from(settings.level_db) / 20.0)),
-            wet: Ramp::new(settings.dry_wet.into()),
-            mix: Ramp::new(f64::from(settings.enabled)),
-            shapes: weights(settings.shape.index()),
             waves: weights(settings.wave.index()),
             rate_mode: settings.rate_mode,
             rate_hz: settings.rate_hz,
@@ -126,28 +80,16 @@ impl AutoFilter {
             modulation_alpha: 1.0 - (-1.0 / (0.001 * sample_rate)).exp(),
             standalone_frame: 0,
             clock: daw_lfo::LfoClock::new(context),
-            external: daw_unit_core::ModulationSmoother::new(context),
-            effective: [
-                settings.frequency_hz,
-                settings.frequency_hz,
-                settings.q,
-                10.0_f32.powf(settings.level_db / 20.0),
-                settings.dry_wet,
-            ],
         }
     }
     /// Last processed cutoff L/R (Hz), resonance (Q), output level (dB), and wet fraction.
     /// These include parameter ramps, external smoothing, bounds, and the stereo LFO.
     pub fn effective_parameters(&self) -> [f32; 5] {
-        let mut values = self.effective;
-        values[3] = 20.0 * values[3].log10();
-        values
+        self.filter.effective_parameters()
     }
     /// Called on compatible state publication; histories and unrelated ramps remain intact.
     pub fn retarget(&mut self, settings: &AutoFilterSettings) {
-        self.frequency_log
-            .retarget(f64::from(settings.frequency_hz).log2(), self.fade);
-        self.q.retarget(settings.q.into(), self.fade);
+        self.filter.retarget(&filter_settings(settings));
         self.depth
             .retarget(settings.strength_octaves.into(), self.fade);
         self.lfo_mix
@@ -156,13 +98,6 @@ impl AutoFilter {
             .retarget(f64::from(settings.sync_phase_degrees) / 360.0, self.fade);
         self.stereo_phase
             .retarget(f64::from(settings.stereo_phase_degrees) / 360.0, self.fade);
-        self.level
-            .retarget(10_f64.powf(f64::from(settings.level_db) / 20.0), self.fade);
-        self.wet.retarget(settings.dry_wet.into(), self.fade);
-        self.mix.retarget(f64::from(settings.enabled), self.fade);
-        for (i, ramp) in self.shapes.iter_mut().enumerate() {
-            ramp.retarget(f64::from(i == settings.shape.index()), self.fade);
-        }
         for (i, ramp) in self.waves.iter_mut().enumerate() {
             ramp.retarget(f64::from(i == settings.wave.index()), self.fade);
         }
@@ -186,27 +121,13 @@ impl AutoFilter {
         tempo_bpm: f32,
         offsets: [f32; 4],
     ) -> [f32; 2] {
-        let offsets = self.external.process(offsets);
         let phase = self.phase(frame, tempo_bpm);
-        let frequency = self.frequency_log.next();
-        let q = (self.q.next() + offsets[1]).clamp(0.1, 10.0);
         let depth = self.depth.next() * self.lfo_mix.next();
         let sync = self.sync_phase.next();
         let stereo = self.stereo_phase.next();
-        let shapes = std::array::from_fn(|i| self.shapes[i].next());
         let waves: [f64; 5] = std::array::from_fn(|i| self.waves[i].next());
-        let level = self.level.next();
-        let level = if offsets[2] == 0.0 {
-            level
-        } else {
-            (level * 10.0_f64.powf(offsets[2].clamp(-96.0, 96.0) / 20.0))
-                .min(10.0_f64.powf(12.0 / 20.0))
-        };
-        let wet = (self.wet.next() + offsets[3]).clamp(0.0, 1.0);
-        let mix = self.mix.next();
-        self.effective[2..].copy_from_slice(&[q as f32, level as f32, wet as f32]);
-        let mut output = [0.0; 2];
-        for ch in 0..2 {
+        let mut cutoff_offsets = [0.0; 2];
+        for (ch, cutoff_offset) in cutoff_offsets.iter_mut().enumerate() {
             let channel_phase = phase + sync + if ch == 1 { stereo } else { 0.0 };
             let modulation: f64 = waves
                 .iter()
@@ -218,17 +139,11 @@ impl AutoFilter {
             } else {
                 self.modulation[ch] += self.modulation_alpha * (modulation - self.modulation[ch]);
             }
-            let cutoff = 2_f64
-                .powf(frequency + depth * self.modulation[ch] + offsets[0])
-                .clamp(20.0, (self.sample_rate * 0.45).min(20_000.0));
-            self.effective[ch] = cutoff as f32;
-            let dry = f64::from(input[ch]);
-            let filtered = self.filters[ch].sample(dry, cutoff, q, self.sample_rate, shapes);
-            let processed = (dry + (filtered - dry) * wet) * level;
-            output[ch] = (dry + (processed - dry) * mix) as f32;
+            *cutoff_offset = depth * self.modulation[ch];
         }
         self.modulation_initialized = true;
-        output
+        self.filter
+            .process_with_cutoff_offsets(input, offsets, cutoff_offsets)
     }
 }
 impl EffectUnit for AutoFilter {
@@ -243,32 +158,19 @@ impl EffectUnit for AutoFilter {
     }
     fn reset(&mut self) {
         for ramp in [
-            &mut self.frequency_log,
-            &mut self.q,
             &mut self.depth,
             &mut self.lfo_mix,
             &mut self.sync_phase,
             &mut self.stereo_phase,
-            &mut self.level,
-            &mut self.wet,
-            &mut self.mix,
         ] {
             ramp.reset();
         }
-        for ramp in self.shapes.iter_mut().chain(&mut self.waves) {
+        for ramp in &mut self.waves {
             ramp.reset();
         }
-        self.filters = std::array::from_fn(|_| Filter::default());
+        self.filter.reset();
         self.clock.reset();
         self.modulation_initialized = false;
-        self.external.reset();
-        self.effective = [
-            2.0_f64.powf(self.frequency_log.value) as f32,
-            2.0_f64.powf(self.frequency_log.value) as f32,
-            self.q.value as f32,
-            self.level.value as f32,
-            self.wet.value as f32,
-        ];
         self.standalone_frame = 0;
     }
     /// Standalone hosts without a transport use 120 BPM and an advancing frame counter.
@@ -485,11 +387,17 @@ mod tests {
         for frame in 1000..1100 {
             filter.process_at([0.2; 2], frame, 120.0);
         }
-        let remaining = filter.frequency_log.remaining;
+        let mut before_presentation = filter.clone();
         settings.collapsed = true;
         settings.modulation_open = true;
         filter.retarget(&settings);
-        assert_eq!(filter.frequency_log.remaining, remaining);
+        let mut after_presentation = filter.clone();
+        for frame in 1100..1200 {
+            assert_eq!(
+                before_presentation.process_at([0.2; 2], frame, 120.0),
+                after_presentation.process_at([0.2; 2], frame, 120.0)
+            );
+        }
         settings.enabled = false;
         filter.retarget(&settings);
         for frame in 1100..1400 {
@@ -595,15 +503,18 @@ mod sweep_tests {
         };
         let mut filter = AutoFilter::new(context, &settings);
         filter.process_at([0.5; 2], 0, 120.0);
-        assert!((filter.filters[0].configured.unwrap().0 - 2000.0).abs() < 1e-9);
-        assert!((filter.filters[1].configured.unwrap().0 - 500.0).abs() < 1e-9);
+        assert!((f64::from(filter.effective_parameters()[0]) - 2000.0).abs() < 1e-9);
+        assert!((f64::from(filter.effective_parameters()[1]) - 500.0).abs() < 1e-9);
         settings.lfo_enabled = false;
         filter.retarget(&settings);
         for frame in 1..=240 {
             filter.process_at([0.5; 2], frame, 120.0);
         }
-        assert!((filter.filters[0].configured.unwrap().0 - 1000.0).abs() < 1e-9);
-        assert_eq!(filter.filters[0].configured, filter.filters[1].configured);
+        assert!((f64::from(filter.effective_parameters()[0]) - 1000.0).abs() < 1e-9);
+        assert_eq!(
+            filter.effective_parameters()[0],
+            filter.effective_parameters()[1]
+        );
     }
     #[test]
     fn waves_have_bounded_known_values_and_resonance_changes_the_filter_response() {
@@ -702,6 +613,78 @@ mod sweep_tests {
         assert_ne!(values[0], values[1]);
         for value in &values[..2] {
             assert!((20.0..=19845.0).contains(value));
+        }
+    }
+}
+
+/// DSP parameters only: routing is prepared by the host and passed as typed offsets.
+fn filter_settings(settings: &AutoFilterSettings) -> daw_unit_core::FilterSettings {
+    daw_unit_core::FilterSettings {
+        enabled: settings.enabled,
+        shape: settings.shape,
+        frequency_hz: settings.frequency_hz,
+        q: settings.q,
+        level_db: settings.level_db,
+        dry_wet: settings.dry_wet,
+        ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod static_filter_tests {
+    use super::*;
+    use daw_unit_core::{FilterSettings, FilterShape};
+    #[test]
+    fn static_filter_matches_auto_filter_without_its_lfo_at_every_rate_and_shape() {
+        for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {
+            for &shape in FilterShape::ALL {
+                let context = ProcessingContext {
+                    sample_rate_hz: rate,
+                    max_block_frames: 512,
+                };
+                let mut settings = FilterSettings {
+                    shape,
+                    ..Default::default()
+                };
+                let mut static_filter = Filter::new(context, &settings);
+                let mut auto_settings = AutoFilterSettings {
+                    shape,
+                    lfo_enabled: false,
+                    ..Default::default()
+                };
+                let mut auto = AutoFilter::new(context, &auto_settings);
+                for frame in 0..2048 {
+                    if frame == 500 {
+                        settings.frequency_hz = 7000.0;
+                        settings.q = 5.0;
+                        settings.dry_wet = 0.3;
+                        auto_settings.frequency_hz = settings.frequency_hz;
+                        auto_settings.q = settings.q;
+                        auto_settings.dry_wet = settings.dry_wet;
+                        static_filter.retarget(&settings);
+                        auto.retarget(&auto_settings);
+                    }
+                    let signal = [
+                        (frame as f32 * 0.03).sin() * 0.2,
+                        (frame as f32 * 0.02).cos() * 0.3,
+                    ];
+                    let offsets = [0.3, -0.1, 1.0, -0.2];
+                    assert_eq!(
+                        static_filter.process_modulated(signal, offsets),
+                        auto.process_modulated_at(signal, frame, 137.0, offsets)
+                    );
+                    assert_eq!(
+                        static_filter.effective_parameters(),
+                        auto.effective_parameters()
+                    );
+                }
+                static_filter.reset();
+                auto.reset();
+                assert_eq!(
+                    static_filter.process_sample([0.2; 2]),
+                    auto.process_sample([0.2; 2])
+                );
+            }
         }
     }
 }
