@@ -4358,3 +4358,11 @@ Completed checks:
 - The macOS debug bundle rebuild passes and updates `target/debug/DAW.app`.
 
 Logs are in ignored `work/editor-clip-options-*.log`. These are automated checks and a bundle build. Native UI, device playback, and Windows/Linux checks were not performed for this change.
+
+## Selected audio waveform in Editor — 2026-10-23
+
+Editor replaces its audio placeholder with an enlarged view of the primary selected clip. The new layout reuses the shared clip painter, prepared audio lookup, waveform peaks, overview clock, grid, playhead, zoom, scroll, and scrollbar. Clip gestures remain in the overview strip. The user guide and roadmap distinguish this waveform display from future direct waveform editing.
+
+All 591 UI tests pass. Three new automated regressions cover mono/stereo peaks, both themes, primary selection, viewport retention, zoom and playhead alignment, trim offsets, loop phases, prepared pitch/stretch audio and fallback previews, missing sources, and empty selections. Viewing the waveform leaves project data unchanged and starts no preparation jobs.
+
+`cargo test --offline --locked --workspace` passes, including doctests; existing opt-in acceptance/performance tests remain ignored. Formatting, strict workspace Clippy, `git diff --check`, and the debug macOS bundle rebuild pass. Logs are in ignored `work/audio-editor-*.log`. Native UI, device playback, and Windows/Linux checks were not performed for this change.

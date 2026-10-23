@@ -349,7 +349,7 @@ impl DawUi {
         self.finish_clip_drag(ui);
         self.update_portion(ui);
         if track.kind != TrackKind::Midi {
-            ui.label("The audio editor is not available yet.");
+            self.audio_editor(ui);
             return;
         }
         if self.portion.is_none()

@@ -28,6 +28,10 @@ Both the Editor title and the options section title use `ControlPanel::header` w
 
 Snap a new note's initial pitch to the nearest scale pitch in MIDI 0–127, choosing the lower pitch on a tie. A nonzero pitch move snaps the dragged anchor within the full selected group's pitch bounds, then applies one common semitone displacement to preserve intervals. Other group notes can therefore remain outside the scale. If those bounds contain no scale pitch, retain the bounded requested pitch. Timing-only moves, edge resizing, root/scale changes, and snapping toggles never retune notes. Shift bypasses both time and scale snapping. Preserve existing release-only transactions, immutable source isolation, cancellation, and no-op handling; do not add a pattern-wide retuning command.
 
+## Audio waveform display
+
+For an audio track, `audio_editor.rs` replaces the piano-roll area with an enlarged view of the primary selected clip. Reuse `paint_clip` and `waveforms::paint` so channel layout, clip colors/mute, source offsets, repeat phases/markers, prepared stretch/transpose lookup, fallback previews, and missing sources stay consistent with Timeline. Reuse the overview project clock, ruler gutter, grid, playhead, zoom/swipe, and horizontal scrollbar. Resolve clip content after overview interactions so selection and committed edits appear in the same frame. Draw only the visible waveform range; do not decode, build peaks, or prepare audio while painting. With no selected clip, show Select a clip. Keep clip gestures in the overview strip and project data unchanged by viewing, zooming, or scrolling.
+
 ## Instrument component catalog
 
 Instrument has a Piano catalog toggle directly below the Effects catalog toggle in the left toolbar. Both use the shared 24×24-point toggle and 16-point icon. Opening either catalog closes the other; closing the active catalog leaves both hidden. The component catalog uses the same 250-point sidebar, header, rows, selection colors, focus rules, and keyboard handling as Effects. It is available in Instrument only.

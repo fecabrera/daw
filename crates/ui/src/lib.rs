@@ -3,6 +3,7 @@ mod audio_preparation;
 mod clip_lane;
 mod clip_menu;
 pub use clip_menu::ClipMenuAction;
+mod audio_editor;
 mod clip_paint;
 mod clip_settings;
 mod history;
@@ -5138,6 +5139,7 @@ impl DawUi {
 
 #[cfg(test)]
 mod tests {
+    mod audio_editor;
     mod clip_duplication;
     mod clip_menu;
     mod clip_portion;

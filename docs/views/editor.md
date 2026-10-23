@@ -1,4 +1,4 @@
-# MIDI Editor
+# Editor
 
 MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
 
@@ -22,7 +22,13 @@ For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to 
 
 Each MIDI track keeps its own Root, Scale, and Snap to scale settings. Save the project to retain them after reopening. Changing these settings marks the project modified and supports Undo/Redo. Duplicating a MIDI track copies its options. Older projects start with Root Off, Major, and snapping off.
 
-Changing the root, scale, or snapping option leaves existing notes unchanged. Drawing snaps to the nearest scale note; equal distances use the lower note. Moving a group snaps the dragged note and keeps the intervals between selected notes. Timing-only moves and edge resizes keep the original pitches. Hold Shift to bypass both grid and scale snapping. Audio tracks keep their editor placeholder. Their **Clip options** section shows the same Name, Source, Gain, and Transpose controls as [Timeline clip settings](timeline.md#clip-settings). Select a clip in the overview strip to edit it; with no selection, the panel shows “Select a clip”. Changes appear in both views and support Undo/Redo. Switching tracks or views discards unconfirmed text and audio transpose previews.
+Changing the root, scale, or snapping option leaves existing notes unchanged. Drawing snaps to the nearest scale note; equal distances use the lower note. Moving a group snaps the dragged note and keeps the intervals between selected notes. Timing-only moves and edge resizes keep the original pitches. Hold Shift to bypass both grid and scale snapping.
+
+## Audio clips
+
+Select an audio clip in the overview strip to see its enlarged waveform below. The waveform shares the ruler, horizontal zoom, scroll, and playhead with the strip. Mono uses one waveform lane; stereo shows both channels. Trim offsets, loop phases, and prepared stretch or transpose audio match Timeline. Selecting another clip on the same track keeps the viewport. Use the overview strip for clip gestures; the enlarged waveform is a display. Missing recordings show “Missing source”.
+
+The **Clip options** section shows the same Name, Source, Gain, and Transpose controls as [Timeline clip settings](timeline.md#clip-settings). Select a clip in the overview strip to edit it; with no selection, the panel shows “Select a clip”. Changes appear in both views and support Undo/Redo. Switching tracks or views discards unconfirmed text and audio transpose previews.
 
 ## Add sound
 
