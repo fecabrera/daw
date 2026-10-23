@@ -30,11 +30,8 @@ impl DawUi {
                 .map(|clip| (track, clip))
         });
         if let Some((track, _)) = selected {
-            if self.editing_enabled()
-                && ui.is_enabled()
-                && ui.input(|input| input.focused)
-                && !egui::Popup::is_any_open(ui.ctx())
-            {
+            if self.editing_enabled() && ui.is_enabled() && ui.input(|input| input.focused) {
+                let menu_open = egui::Popup::is_any_open(ui.ctx());
                 for clip in &track.clips {
                     let visible = self
                         .clip_block(lane, clip, clip.start_frame)
@@ -50,7 +47,12 @@ impl DawUi {
                             Sense::click(),
                         )
                         .on_hover_cursor(egui::CursorIcon::PointingHand);
-                    if response.clicked() {
+                    // Keep this popup alive across frames while blocking waveforms
+                    // beneath other menus. Timeline's menu owns targets and actions.
+                    if !menu_open || response.context_menu_opened() {
+                        response.context_menu(|ui| self.clip_context_menu(ui, clip.id));
+                    }
+                    if !menu_open && response.clicked() {
                         self.editor_select_clip(clip.id, track.id);
                         ui.ctx().request_repaint(); // Refresh the options panel painted before this lane.
                     }

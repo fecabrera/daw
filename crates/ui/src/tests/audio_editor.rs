@@ -331,3 +331,142 @@ fn editor_waveform_selection_ignores_unfocused_clicks_and_pointer_drags() {
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.selected_clip, Some(second));
 }
+
+fn waveform_context_menu(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    point: Pos2,
+) -> Vec<egui::epaint::ClippedShape> {
+    for pressed in [true, false] {
+        frame(
+            app,
+            ctx,
+            vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Secondary,
+                    pressed,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+    }
+    // A context menu must still be rendered on subsequent frames, not only on open.
+    shapes(app, ctx)
+}
+
+fn menu_item(shapes: &[egui::epaint::ClippedShape], label: &str) -> Pos2 {
+    shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text() == label => {
+                Some(text.pos + text.galley.size() * 0.5)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing menu item {label}"))
+}
+
+#[test]
+fn waveform_context_menu_matches_timeline_and_keeps_selection_and_viewports() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, first, second) = selectable_waveforms();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        let content = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+        let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
+        let point = app.midi_editor.content.bounds.center();
+        let painted = waveform_context_menu(&mut app, &ctx, point);
+        assert!(egui::Popup::is_any_open(&ctx));
+        let expected = [
+            "Split at playhead",
+            "Stem-separation",
+            "Edit clip",
+            "Disable clip",
+            "Delete clip",
+        ];
+        let labels: Vec<_> = painted
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if expected.contains(&text.galley.text()) => {
+                    Some(text.galley.text())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, expected);
+        assert!(menu_item(&painted, expected[1]).y < menu_item(&painted, expected[2]).y);
+        assert_eq!(app.selected_clip, Some(first));
+        assert_eq!(app.selected_clips, HashSet::from([first]));
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+        assert_eq!(
+            (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+            content
+        );
+        assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), overview);
+        let disable = menu_item(&painted, "Disable clip");
+        click(&mut app, &ctx, disable);
+        frame(&mut app, &ctx, vec![]);
+        assert!(!egui::Popup::is_any_open(&ctx));
+        assert!(!app.session.project.tracks[0].clips[0].muted);
+        assert!(
+            app.session.project.tracks[0]
+                .clips
+                .iter()
+                .find(|c| c.id == second)
+                .unwrap()
+                .muted
+        );
+        assert_eq!(app.selected_clip, Some(first));
+        assert_eq!(
+            (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+            content
+        );
+        assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), overview);
+        assert!(app.dirty);
+    }
+}
+
+#[test]
+fn waveform_context_menu_dismisses_without_edits_and_does_not_open_in_empty_space() {
+    let (mut app, ctx, first, _) = selectable_waveforms();
+    let before = app.session.project.clone();
+    let view = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+    let point = app.midi_editor.content.bounds.center();
+    waveform_context_menu(&mut app, &ctx, point);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+    );
+    frame(&mut app, &ctx, vec![]);
+    assert!(!egui::Popup::is_any_open(&ctx));
+    assert_eq!(app.selected_clip, Some(first));
+    assert_eq!(
+        (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+        view
+    );
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+    app.midi_editor.content.scroll = 70.0;
+    frame(&mut app, &ctx, vec![]);
+    let point = app.midi_editor.content.bounds.center();
+    waveform_context_menu(&mut app, &ctx, point);
+    assert!(!egui::Popup::is_any_open(&ctx));
+    assert_eq!(app.session.project, before);
+}
