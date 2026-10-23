@@ -135,15 +135,6 @@ impl DawUi {
         }
         let palette = theme::palette(ui.ctx());
         ui.painter().rect_filled(band, 0.0, palette.background);
-        ui.painter()
-            .with_clip_rect(Rect::from_min_max(band.min, lane.left_bottom()))
-            .text(
-                Pos2::new(band.left() + 4.0, band.center().y),
-                egui::Align2::LEFT_CENTER,
-                &track.name,
-                egui::FontId::proportional(10.0),
-                palette.text,
-            );
         #[cfg(test)]
         {
             self.midi_editor.track_bounds = lane;

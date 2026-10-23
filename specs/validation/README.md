@@ -4308,3 +4308,25 @@ The new bounds/shape regression and all 574 UI library tests pass. Formatting, s
 The shared Timeline/Editor/sample ruler now colors text by the background under the glyphs instead of tick-beat membership. Dark-mode text outside the loop keeps the theme's light text color, including labels after a frame-rounded loop end. Labels crossing a range edge are clipped into inside/outside color regions. Enabled-loop contrast and disabled-selection styling remain theme-aware.
 
 All 575 UI tests pass, including both themes, enabled/disabled loops, two tempos, frame-rounded ends and partial-label intersections. Formatting, strict UI Clippy, `git diff --check` and the debug macOS bundle rebuild pass. Logs are in ignored `work/ruler-color-*.log`. Native visual and Windows/Linux checks were not run for this correction.
+
+## MIDI editor track header and scale controls — 2026-10-23
+
+Editor now has a full-height options panel and a track-header dropdown beside the clip strip. The header reuses track mute/solo, gain/pan inputs and stereo meters. Root defaults to Off; Scale and Snap to scale remain disabled until a root is selected. Scale selection dims out-of-scale key labels/rows and note fills without retuning source notes. The Scale heading retains the regular text size; its field labels, dropdowns and checkbox use the shared Small style.
+
+Snapping applies only to newly drawn notes and nonzero pitch moves. Group moves snap the anchor and retain intervals. Timing-only moves and edge resizes keep pitch; Shift bypasses snapping. Root Off bypasses pitch constraints and restores ordinary colors while retaining the chosen scale and snap option. These options remain application-session UI state.
+
+Completed checks:
+
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked -p daw-ui --lib`: all 582 UI tests pass. New coverage checks scale/root bounds, nearest pitches, group moves/copies, Shift bypass, timing-only moves, resizing, cancellation, unchanged sources, Root Off controls, track selection/mixing, panel alignment, both themes, note/key dimming, and compact control text.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked --workspace`: passes, including doctests. Existing ignored acceptance/performance tests remain ignored. The final UI suite above also passes after the later color and text-size changes.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passes.
+- `CARGO_HOME="$PWD/work/cargo-home" cargo fmt --all --check` and `git diff --check`: pass.
+- `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh debug`: passes; rebuilt `target/debug/DAW.app`.
+
+Logs are in ignored `work/editor-*.log`. These are automated checks and a bundle build. Native UI, device playback, and Windows/Linux checks were not completed for this change.
+
+## Editor panel section headings — 2026-10-23
+
+Both Editor panel sections now use the shared `ControlPanel::header` and bottom row-divider pattern. The lower section is MIDI options for MIDI tracks and Clip options for audio tracks. Audio options stay empty; returning to a MIDI track restores its scale controls without changing their choices or project data. These section names supersede the earlier Scale heading.
+
+`CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked --workspace` passes, including all 583 UI tests and doctests; existing ignored tests remain ignored. New coverage checks both themes, full-width title separators, MIDI/audio switching, absence of audio scale controls, retained MIDI choices, and clean project state. Strict workspace Clippy, formatting, `git diff --check`, and the macOS debug bundle rebuild also pass. Logs are in ignored `work/editor-sections-*.log`. Native UI and Windows/Linux checks were not run for this refinement.

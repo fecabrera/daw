@@ -2993,7 +2993,7 @@ fn midi_tracks_units_editor_and_clip_copy_use_shared_actions() {
     );
 }
 #[test]
-fn toolbar_track_dropdown_switches_units_and_edit_without_changing_the_project() {
+fn track_dropdown_switches_units_and_editor_header_without_changing_the_project() {
     let (mut app, first, first_clip, _) = fixture();
     let second = app.session.project.add_midi_track().unwrap();
     let second_clip = app
@@ -3043,7 +3043,13 @@ fn toolbar_track_dropdown_switches_units_and_edit_without_changing_the_project()
             })
             .min_by(|a, b| a.y.total_cmp(&b.y))
             .unwrap();
-        assert!(point.y < 130.0);
+        if mode == ViewMode::Edit {
+            assert!(app.midi_editor.selector_bounds.contains(point));
+            assert!(point.x < app.midi_editor.track_bounds.left());
+            assert!(app.midi_editor.track_bounds.y_range().contains(point.y));
+        } else {
+            assert!(point.y < 130.0);
+        }
         click_note_or_lane(&mut app, &ctx, point);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let bass = shapes
@@ -6637,4 +6643,432 @@ fn compact_layer_collapse_is_guarded_and_preserves_independent_unit_states_and_o
             .collapsed
     );
     assert!(!app.dirty);
+}
+
+#[test]
+fn scale_options_do_not_retune_existing_notes_and_drawing_uses_the_selected_scale() {
+    let (mut app, track, clip, _) = fixture();
+    let ctx = context();
+    app.open_clip_editor(clip, track, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let original = pattern(&app).clone();
+    let before = format!("{:?}", app.session.project);
+    app.dirty = false;
+    app.midi_editor.scale.root = Some(0);
+    frame(&mut app, &ctx, vec![]);
+    let snap = app.midi_editor.scale_snap_bounds.center();
+    click_note_or_lane(&mut app, &ctx, snap);
+    assert!(app.midi_editor.scale.snap);
+    assert!(!app.dirty);
+    app.midi_editor.scale.root = Some(2);
+    app.midi_editor.scale.scale = crate::midi_scale::Scale::Minor;
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(format!("{:?}", app.session.project), before);
+    let grid = app.midi_editor.grid_bounds;
+    let point = Pos2::new(
+        grid.left() + 60.0,
+        grid.top() + f32::from(127 - 61u8) * 18.0 + 9.0,
+    );
+    draw_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    assert_eq!(
+        pattern(&app),
+        &original,
+        "drawing is provisional until release"
+    );
+    frame(&mut app, &ctx, vec![button(point, false)]);
+    assert!(
+        pattern(&app)
+            .notes
+            .iter()
+            .any(|n| !original.notes.contains(n) && n.pitch == 60)
+    );
+    assert!(pattern(&app).notes.contains(&original.notes[0]));
+    assert!(app.dirty);
+}
+
+#[test]
+fn scale_snapped_note_moves_keep_group_intervals_and_shift_can_bypass() {
+    for (copy, shift, expected) in [(false, false, 62), (true, false, 62), (false, true, 63)] {
+        let (mut app, track, clip, note) = fixture();
+        let mut content = pattern(&app).clone();
+        let second = MidiNote {
+            id: Id::new_v4(),
+            start_tick: 2160,
+            length_ticks: 480,
+            pitch: 64,
+            velocity: 37,
+        };
+        content.notes.push(second.clone());
+        app.edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: content.clone(),
+        });
+        app.midi_editor.scale.snap = true;
+        app.midi_editor.scale.root = Some(0);
+        let ctx = context();
+        app.open_clip_editor(clip, track, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let bounds =
+            app.midi_editor.note_bounds[&note].union(app.midi_editor.note_bounds[&second.id]);
+        select_note_box(&mut app, &ctx, bounds);
+        let start = app.midi_editor.note_bounds[&note].center();
+        let end = start + Vec2::new(60.0, -54.0);
+        copy_note_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+            copy,
+            shift,
+        );
+        copy_note_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(end)],
+            copy,
+            shift,
+        );
+        assert_eq!(pattern(&app), &content);
+        copy_note_frame(&mut app, &ctx, vec![button(end, false)], copy, shift);
+        let selected = app.midi_editor.selected_notes();
+        let mut pitches: Vec<_> = pattern(&app)
+            .notes
+            .iter()
+            .filter(|n| selected.contains(&(clip, n.id)))
+            .map(|n| n.pitch)
+            .collect();
+        pitches.sort();
+        assert_eq!(pitches, vec![expected, expected + 4]);
+        assert_eq!(pattern(&app).notes.len(), if copy { 4 } else { 2 });
+        if copy {
+            for original in &content.notes {
+                assert!(pattern(&app).notes.contains(original));
+            }
+        }
+    }
+}
+
+#[test]
+fn scale_snapping_keeps_timing_only_moves_resizes_and_cancelled_moves_at_the_original_pitch() {
+    let (mut app, track, clip, note) = fixture();
+    let mut original = pattern(&app).clone();
+    original.notes[0].pitch = 61;
+    app.edit(Edit::ReplaceMidiPattern {
+        clip_id: clip,
+        pattern: original.clone(),
+    });
+    app.midi_editor.scale.snap = true;
+    app.midi_editor.scale.root = Some(0);
+    let ctx = context();
+    app.open_clip_editor(clip, track, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let point = app.midi_editor.note_bounds[&note].center();
+    let end = point + Vec2::new(60.0, 0.0);
+    copy_note_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+        false,
+        false,
+    );
+    copy_note_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(end)],
+        false,
+        false,
+    );
+    copy_note_frame(&mut app, &ctx, vec![button(end, false)], false, false);
+    assert_eq!(pattern(&app).notes[0].pitch, 61);
+    assert_eq!(
+        pattern(&app).notes[0].start_tick,
+        original.notes[0].start_tick + 480
+    );
+    frame(&mut app, &ctx, vec![]);
+    let rect = app.midi_editor.note_bounds[&note];
+    let edge = Pos2::new(rect.right() - 1.0, rect.center().y);
+    let end = edge + Vec2::new(60.0, -54.0);
+    copy_note_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(edge), button(edge, true)],
+        false,
+        false,
+    );
+    copy_note_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(end)],
+        false,
+        false,
+    );
+    copy_note_frame(&mut app, &ctx, vec![button(end, false)], false, false);
+    assert_eq!(pattern(&app).notes[0].pitch, 61);
+    let before = pattern(&app).clone();
+    frame(&mut app, &ctx, vec![]);
+    let point = app.midi_editor.note_bounds[&note].center();
+    copy_note_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+        false,
+        false,
+    );
+    copy_note_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point + Vec2::new(0.0, -54.0))],
+        false,
+        false,
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+    );
+    frame(&mut app, &ctx, vec![button(point, false)]);
+    assert_eq!(pattern(&app), &before);
+}
+
+#[test]
+fn editor_panel_retains_full_height_and_shared_track_controls_in_both_themes() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track, clip, _) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.open_clip_editor(clip, track, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let panel = app.midi_editor.panel_bounds;
+        assert_eq!(panel.width(), panels::ControlPanel::WIDTH);
+        assert_eq!(panel.top(), app.midi_editor.ruler_bounds.top());
+        assert_eq!(
+            panel.right() + crate::track_overview::LABEL_WIDTH,
+            app.midi_editor.grid_bounds.left()
+        );
+        assert!(panel.contains_rect(app.midi_editor.selector_bounds));
+        assert!(panel.bottom() > app.midi_editor.scale_snap_bounds.bottom() + 200.0);
+        let content = pattern(&app).clone();
+        let [mute, solo] = app.midi_editor.mix_bounds;
+        click_note_or_lane(&mut app, &ctx, mute.center());
+        assert!(app.session.project.tracks[0].muted);
+        click_note_or_lane(&mut app, &ctx, solo.center());
+        assert!(app.session.project.tracks[0].soloed);
+        assert_eq!(pattern(&app), &content);
+        assert!(app.dirty);
+        app.selected_track = None;
+        app.selected_clip = None;
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(panel, app.midi_editor.panel_bounds);
+        let snap = app.midi_editor.scale_snap_bounds.center();
+        click_note_or_lane(&mut app, &ctx, snap);
+        assert!(
+            !app.midi_editor.scale.snap,
+            "no track keeps scale controls disabled"
+        );
+    }
+}
+
+#[test]
+fn root_off_disables_scale_controls_and_selecting_a_root_enables_them() {
+    let (mut app, track, clip, _) = fixture();
+    let ctx = context();
+    app.open_clip_editor(clip, track, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let before = format!("{:?}", app.session.project);
+    app.dirty = false;
+    assert_eq!(app.midi_editor.scale.root, None);
+    let snap = app.midi_editor.scale_snap_bounds.center();
+    click_note_or_lane(&mut app, &ctx, snap);
+    assert!(!app.midi_editor.scale.snap);
+    let scale = app.midi_editor.scale_mode_bounds.center();
+    click_note_or_lane(&mut app, &ctx, scale);
+    assert!(!egui::Popup::is_any_open(&ctx));
+    let root = app.midi_editor.scale_root_bounds.center();
+    click_note_or_lane(&mut app, &ctx, root);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let c = shapes
+        .iter()
+        .find_map(|s| match &s.shape {
+            egui::Shape::Text(t) if t.galley.text() == "C" => {
+                Some(t.visual_bounding_rect().center())
+            }
+            _ => None,
+        })
+        .unwrap();
+    click_note_or_lane(&mut app, &ctx, c);
+    assert_eq!(app.midi_editor.scale.root, Some(0));
+    let snap = app.midi_editor.scale_snap_bounds.center();
+    click_note_or_lane(&mut app, &ctx, snap);
+    assert!(app.midi_editor.scale.snap);
+    let root = app.midi_editor.scale_root_bounds.center();
+    click_note_or_lane(&mut app, &ctx, root);
+    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+    let off = shapes
+        .iter()
+        .find_map(|s| match &s.shape {
+            egui::Shape::Text(t) if t.galley.text() == "Off" => {
+                Some(t.visual_bounding_rect().center())
+            }
+            _ => None,
+        })
+        .unwrap();
+    click_note_or_lane(&mut app, &ctx, off);
+    assert_eq!(app.midi_editor.scale.root, None);
+    assert_eq!(app.midi_editor.scale.snap_pitch(61, 0..=127, false), 61);
+    let snap = app.midi_editor.scale_snap_bounds.center();
+    click_note_or_lane(&mut app, &ctx, snap);
+    assert!(
+        app.midi_editor.scale.snap,
+        "Off disables the control and retains its choice"
+    );
+    assert_eq!(format!("{:?}", app.session.project), before);
+    assert!(!app.dirty);
+}
+
+#[test]
+fn scale_selection_dims_outside_keys_and_notes_in_both_themes_without_retuning() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, track, clip, in_scale) = fixture();
+        let mut content = pattern(&app).clone();
+        let outside = MidiNote {
+            id: Id::new_v4(),
+            start_tick: 0,
+            length_ticks: 240,
+            pitch: 61,
+            velocity: 100,
+        };
+        content.notes.push(outside.clone());
+        app.edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: content.clone(),
+        });
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.open_clip_editor(clip, track, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        app.dirty = false;
+        // Highlighting is independent from snapping and does not change the source.
+        for root in [None, Some(0), Some(1), None] {
+            app.midi_editor.scale.root = root;
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let palette = theme::palette(&ctx);
+            for (id, pitch) in [(in_scale, 60), (outside.id, 61)] {
+                let rect = app.midi_editor.note_bounds[&id].shrink(1.0);
+                let expected = if app.midi_editor.scale.contains_pitch(pitch) {
+                    theme::accent(&ctx)
+                } else {
+                    palette.secondary
+                };
+                assert!(
+                    shapes
+                        .iter()
+                        .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                    if r.rect == rect && r.fill == expected))
+                );
+            }
+            for (name, pitch) in [("C4", 60), ("C#4", 61)] {
+                let expected = if app.midi_editor.scale.contains_pitch(pitch) {
+                    palette.text
+                } else {
+                    palette.secondary
+                };
+                assert!(
+                    shapes
+                        .iter()
+                        .any(|s| matches!(&s.shape, egui::Shape::Text(t)
+                    if t.galley.text() == name && t.fallback_color == expected))
+                );
+            }
+            let small = egui::TextStyle::Small
+                .resolve(ctx.global_style().as_ref())
+                .size;
+            assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t)
+                if t.galley.text() == "Snap to scale"
+                    && t.galley.job.sections.iter().all(|section| section.format.font_id.size == small))));
+            assert_eq!(pattern(&app), &content);
+            assert!(!app.midi_editor.scale.snap);
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn editor_section_headers_share_panel_dividers_and_audio_options_remain_empty() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, midi, clip, _) = fixture();
+        let audio = app.session.project.add_track().unwrap();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.open_clip_editor(clip, midi, &ctx);
+        app.midi_editor.scale.root = Some(9);
+        for (track, title) in [
+            (midi, "MIDI options"),
+            (audio, "Clip options"),
+            (midi, "MIDI options"),
+        ] {
+            app.select_track(track, false);
+            app.selected_clip = (track == midi).then_some(clip);
+            app.selected_clips.clear();
+            let before = format!("{:?}", app.session.project);
+            app.dirty = false;
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let panel = app.midi_editor.panel_bounds;
+            let palette = theme::palette(&ctx);
+            let has_text = |name: &str| {
+                shapes.iter().any(|s| {
+                    matches!(&s.shape,
+                egui::Shape::Text(t) if t.galley.text() == name && panel.contains(t.pos))
+                })
+            };
+            assert!(has_text("Editor"));
+            assert!(has_text(title));
+            assert_eq!(has_text("Root"), track == midi);
+            assert_eq!(has_text("Snap to scale"), track == midi);
+            for y in [
+                panel.top() + toolbars::HEIGHT - 0.5,
+                app.midi_editor.track_bounds.bottom() + toolbars::HEIGHT - 0.5,
+            ] {
+                assert!(shapes.iter().any(|s| matches!(&s.shape,
+                    egui::Shape::LineSegment { points, stroke }
+                    if points[0] == Pos2::new(panel.left(), y)
+                        && points[1] == Pos2::new(panel.right(), y)
+                        && *stroke == Stroke::new(1.0, palette.border))));
+            }
+            assert_eq!(app.midi_editor.scale.root, Some(9));
+            if track == audio {
+                assert_eq!(app.midi_editor.scale_root_bounds, Rect::NOTHING);
+                assert_eq!(app.midi_editor.scale_mode_bounds, Rect::NOTHING);
+                assert_eq!(app.midi_editor.scale_snap_bounds, Rect::NOTHING);
+            }
+            assert_eq!(format!("{:?}", app.session.project), before);
+            assert!(!app.dirty);
+        }
+    }
 }

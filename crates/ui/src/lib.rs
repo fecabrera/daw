@@ -8,6 +8,8 @@ mod clip_settings;
 mod history;
 mod looping;
 mod midi_editor;
+mod midi_editor_panel;
+mod midi_scale;
 mod placement;
 mod portion;
 mod range_selection;
@@ -2793,10 +2795,6 @@ impl DawUi {
                             .alt_text("Horizontal zoom"),
                     )
                     .on_hover_text("Horizontal zoom");
-                    if self.view_mode.has_track_overview() {
-                        ui.separator();
-                        self.track_control(ui);
-                    }
                 });
                 if self.view_mode.has_track_overview() {
                     self.midi_editor.zoom = zoom;

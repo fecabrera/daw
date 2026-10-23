@@ -2,7 +2,30 @@ use super::*;
 use daw_core::TrackKind;
 
 impl DawUi {
+    pub(super) fn editor_track(&self) -> Option<&daw_core::Track> {
+        self.session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.clips.iter().any(|c| Some(c.id) == self.selected_clip))
+            .or_else(|| {
+                self.session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|t| Some(t.id) == self.selected_track)
+            })
+    }
+
     pub(super) fn track_control(&mut self, ui: &mut egui::Ui) {
+        self.track_dropdown(ui, None);
+    }
+
+    pub(super) fn track_dropdown(
+        &mut self,
+        ui: &mut egui::Ui,
+        width: Option<f32>,
+    ) -> egui::Response {
         ui.add_enabled_ui(
             !self.midi_editor.dragging()
                 && !self.instrument_ui.dragging()
@@ -20,13 +43,7 @@ impl DawUi {
                     .collect();
                 // Editor follows the active clip when Instrument or Timeline has selected another track.
                 let current = if self.view_mode == ViewMode::Edit {
-                    self.session
-                        .project
-                        .tracks
-                        .iter()
-                        .find(|t| t.clips.iter().any(|c| Some(c.id) == self.selected_clip))
-                        .map(|t| t.id)
-                        .or(self.selected_track)
+                    self.editor_track().map(|t| t.id)
                 } else {
                     self.selected_track
                 }
@@ -40,13 +57,15 @@ impl DawUi {
                     .and_then(|id| tracks.iter().find(|t| t.0 == id))
                     .map_or(prompt, |t| t.1.as_str());
                 let mut selected = current;
-                egui::ComboBox::from_id_salt("source-track")
-                    .selected_text(label)
-                    .show_ui(ui, |ui| {
-                        for (id, name) in &tracks {
-                            ui.selectable_value(&mut selected, Some(*id), name);
-                        }
-                    });
+                let mut combo = egui::ComboBox::from_id_salt("source-track").selected_text(label);
+                if let Some(width) = width {
+                    combo = combo.width(width).truncate();
+                }
+                let response = combo.show_ui(ui, |ui| {
+                    for (id, name) in &tracks {
+                        ui.selectable_value(&mut selected, Some(*id), name);
+                    }
+                });
                 if selected != current
                     && let Some(id) = selected
                 {
@@ -69,7 +88,9 @@ impl DawUi {
                         self.midi_editor.cancel();
                     }
                 }
+                response.response
             },
-        );
+        )
+        .inner
     }
 }

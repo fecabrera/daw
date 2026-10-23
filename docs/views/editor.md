@@ -14,6 +14,14 @@ A plain empty-space drag selects notes with a rectangle. Shift-click toggles ind
 
 Timeline and Editor offer the same clip selection, time-range selection, copy/paste, split, move, trim, loop, and stretch actions. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Editor's clip moves keep their track assignments. Shift bypasses grid snapping.
 
+## Track and scale controls
+
+The left panel stays visible while you scroll the piano roll. Its track header is beside the clip strip. Use the name dropdown to select a track. It selects that track's first clip, or shows an empty editor if the track has no clips. Mute, Solo, Gain, Pan, and the stereo meters work as they do in Timeline.
+
+For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to **Off**, which disables Scale and Snap to scale. Select a root to enable those controls. Choose a scale to dim the piano keys and notes outside it. Enable **Snap to scale** to constrain newly drawn notes and pitch moves. Major is the initial scale and snapping starts off. Returning Root to Off removes the dimming and bypasses snapping; it retains your scale and snapping choices. Scale options apply across editor tracks for the current app session; they are not saved in the project.
+
+Changing the root, scale, or snapping option leaves existing notes unchanged. Drawing snaps to the nearest scale note; equal distances use the lower note. Moving a group snaps the dragged note and keeps the intervals between selected notes. Timing-only moves and edge resizes keep the original pitches. Hold Shift to bypass both grid and scale snapping. Audio tracks keep their editor placeholder and show an empty **Clip options** section.
+
 ## Add sound
 
 1. Open Instrument and select the MIDI track and a layer.

@@ -52,6 +52,19 @@ struct NoteSelection {
     toggle: bool,
 }
 pub(super) struct MidiEditor {
+    pub(super) scale: crate::midi_scale::ScaleOptions,
+    #[cfg(test)]
+    pub(crate) panel_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) selector_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) scale_snap_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) scale_root_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) scale_mode_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) mix_bounds: [Rect; 2],
     #[cfg(test)]
     pub(crate) layer_bounds: HashMap<Id, crate::instrument_panel::LayerUiBounds>,
     #[cfg(test)]
@@ -106,6 +119,19 @@ pub(super) struct MidiEditor {
 impl Default for MidiEditor {
     fn default() -> Self {
         Self {
+            scale: Default::default(),
+            #[cfg(test)]
+            panel_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            selector_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            scale_snap_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            scale_root_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            scale_mode_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            mix_bounds: [Rect::NOTHING; 2],
             #[cfg(test)]
             layer_bounds: HashMap::new(),
             #[cfg(test)]
@@ -274,6 +300,21 @@ impl DawUi {
         self.set_view_mode(ViewMode::Edit, ctx);
     }
     pub(super) fn edit_view(&mut self, ui: &mut egui::Ui) {
+        let bounds = ui.available_rect_before_wrap();
+        self.midi_editor_panel(ui, bounds);
+        let canvas = Rect::from_min_max(bounds.min + Vec2::new(TRACK_WIDTH, 0.0), bounds.max);
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("editor-canvas")
+                .max_rect(canvas)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        child.set_clip_rect(canvas.intersect(ui.clip_rect()));
+        self.edit_canvas(&mut child);
+        ui.advance_cursor_after_rect(bounds);
+    }
+
+    fn edit_canvas(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         if !ui.is_enabled()
             || !ui.input(|i| i.focused)
@@ -354,7 +395,7 @@ impl DawUi {
                         p.rect_filled(
                             row,
                             0.0,
-                            if black_key(pitch) {
+                            if black_key(pitch) || !self.midi_editor.scale.contains_pitch(pitch) {
                                 palette.background
                             } else {
                                 palette.panel
@@ -369,7 +410,11 @@ impl DawUi {
                             egui::Align2::LEFT_CENTER,
                             note_name(pitch),
                             egui::FontId::proportional(10.0),
-                            palette.text,
+                            if self.midi_editor.scale.contains_pitch(pitch) {
+                                palette.text
+                            } else {
+                                palette.secondary
+                            },
                         );
                     }
                 }
@@ -672,7 +717,11 @@ impl DawUi {
                             Pos2::new(visible.right(), y + NOTE_HEIGHT - 2.0),
                         ),
                         0.0,
-                        theme::clip_colors(track.color, clip.color).header,
+                        if self.midi_editor.scale.contains_pitch(note.pitch) {
+                            theme::clip_colors(track.color, clip.color).header
+                        } else {
+                            palette.secondary
+                        },
                     );
                 }
             }
@@ -792,7 +841,9 @@ impl DawUi {
                 note_painter.rect_filled(
                     rect.shrink(1.0),
                     2.0,
-                    if Some(clip.id) == self.selected_clip {
+                    if !self.midi_editor.scale.contains_pitch(note.pitch) {
+                        palette.secondary
+                    } else if Some(clip.id) == self.selected_clip {
                         theme::accent(ui.ctx())
                     } else {
                         theme::clip_colors(track.color, clip.color).header
@@ -924,6 +975,11 @@ impl DawUi {
             {
                 let pitch = (127 - ((pointer.y - grid.top()) / NOTE_HEIGHT).floor() as i16)
                     .clamp(0, 127) as u8;
+                let pitch = self.midi_editor.scale.snap_pitch(
+                    pitch,
+                    0..=127,
+                    musical_time::snap_bypassed(ui),
+                );
                 self.editor_select_clip(clip.id, track.id);
                 let min_tick = (((span.left() - grid.left()) / beat_width
                     * MIDI_TICKS_PER_BEAT as f32)
@@ -1039,6 +1095,7 @@ impl DawUi {
         let timeline = self.musical_timeline();
         let timeline_left = self.midi_editor.timeline_left;
         let bypass = musical_time::snap_bypassed(ui);
+        let scale = self.midi_editor.scale;
         if let Some(drag) = &mut self.midi_editor.drag
             && ui.input(|i| {
                 i.pointer.primary_down() || i.pointer.button_released(egui::PointerButton::Primary)
@@ -1092,6 +1149,24 @@ impl DawUi {
                 }
                 pixels = pixels.clamp(min_pixels, max_pixels);
                 pitch_delta = pitch_delta.clamp(min_pitch_delta, max_pitch_delta);
+                // Snap the anchor only on a pitch move. Keep a common displacement
+                // for the group so timing-only drags and existing intervals stay intact.
+                if matches!(drag.mode, NoteDragMode::Move)
+                    && pitch_delta != 0
+                    && let Some(anchor) = drag.patterns.iter().find_map(|p| {
+                        p.notes
+                            .iter()
+                            .find(|n| (p.clip, n.original.id) == drag.anchor)
+                    })
+                {
+                    let original = i16::from(anchor.original.pitch);
+                    let pitch = scale.snap_pitch(
+                        (original - pitch_delta) as u8,
+                        (original - max_pitch_delta) as u8..=(original - min_pitch_delta) as u8,
+                        bypass,
+                    );
+                    pitch_delta = original - i16::from(pitch);
+                }
             }
             let duplicate = matches!(drag.mode, NoteDragMode::Move)
                 && ui.input(|i| clip_copy_modifier(i.modifiers))
