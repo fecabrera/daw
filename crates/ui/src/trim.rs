@@ -108,8 +108,12 @@ impl DawUi {
                 });
             }
             // Snap the requested edge once. One clip's source limit must not cap the group.
-            delta = i128::from(self.snap_frame(raw, 0..=u64::MAX, anchors, false))
-                - i128::from(original_edge);
+            delta = i128::from(self.clip_drag_timeline().snap_bounded(
+                raw,
+                0..=u64::MAX,
+                anchors,
+                false,
+            )) - i128::from(original_edge);
         }
         delta
     }

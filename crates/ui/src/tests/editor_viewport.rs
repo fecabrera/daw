@@ -388,3 +388,102 @@ fn fit_all_is_inactive_without_clips_and_while_settings_are_open() {
     assert_eq!((app.zoom, app.scroll), before);
     assert!(!app.fit_all_requested);
 }
+
+#[test]
+fn midi_pattern_headers_stay_visible_and_select_without_refitting() {
+    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, track, first, second) = fixture(true);
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme: color_theme,
+                ..Default::default()
+            },
+        );
+        app.midi_editor.content.fitted = false;
+        app.midi_editor.content.zoom = 150.0;
+        app.midi_editor.content.scroll = 0.5;
+        let before = app.session.project.clone();
+        app.dirty = false;
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let a = app.midi_editor.pattern_header_bounds[&first];
+        let b = app.midi_editor.pattern_header_bounds[&second];
+        assert_eq!(a.top(), app.midi_editor.content.ruler.bottom());
+        assert_eq!(a.bottom(), app.midi_editor.content.bounds.top());
+        assert_eq!(b.height(), 22.0);
+        for (header, selected) in [(a, true), (b, false)] {
+            let stroke = if selected {
+                theme::selection_outline(&ctx)
+            } else {
+                Stroke::new(1.0, theme::palette(&ctx).divider)
+            };
+            assert!(
+                shapes
+                    .iter()
+                    .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+                if (r.rect.left() - header.left()).abs() < 0.1
+                && (r.rect.right() - header.right()).abs() < 0.1
+                && r.rect.height() > 100.0 && r.stroke == stroke))
+            );
+        }
+        // Scroll the piano keys vertically; headers remain pinned below the ruler.
+        let point = app.midi_editor.content.bounds.center();
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::MouseWheel {
+                    phase: egui::TouchPhase::Move,
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0.0, -120.0),
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        assert_eq!(app.midi_editor.pattern_header_bounds[&first], a);
+        assert_eq!(app.midi_editor.pattern_header_bounds[&second], b);
+        let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
+        let content = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+        click(&mut app, &ctx, b.center());
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.selected_clip, Some(second));
+        assert_eq!(app.selected_track, Some(track));
+        assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), overview);
+        assert_eq!(
+            (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+            content
+        );
+        assert_eq!(app.midi_editor.pattern_header_bounds[&second], b);
+        assert!(!app.midi_editor.dragging());
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn midi_pattern_header_selection_respects_settings_and_window_focus() {
+    let (mut app, ctx, _, first, second) = fixture(true);
+    app.midi_editor.content.fitted = false;
+    app.midi_editor.content.zoom = 150.0;
+    app.midi_editor.content.scroll = 0.0;
+    frame(&mut app, &ctx, vec![]);
+    let point = app.midi_editor.pattern_header_bounds[&second].center();
+    for pressed in [true, false] {
+        let _ = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                focused: false,
+                events: vec![egui::Event::PointerMoved(point), button(point, pressed)],
+                ..Default::default()
+            },
+            |ui| app.show(ui),
+        );
+    }
+    assert_eq!(app.selected_clip, Some(first));
+    app.settings_open = true;
+    frame(&mut app, &ctx, vec![]);
+    let point = app.midi_editor.pattern_header_bounds[&second].center();
+    click(&mut app, &ctx, point);
+    assert_eq!(app.selected_clip, Some(first));
+}

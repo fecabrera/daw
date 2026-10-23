@@ -22,11 +22,31 @@ impl DawUi {
                 Sense::click_and_drag()
             },
         );
+        self.clip_lane_response(ui, track_id, clip, block, lane, response);
+    }
+
+    pub(super) fn clip_lane_response(
+        &mut self,
+        ui: &mut egui::Ui,
+        track_id: Id,
+        clip: &Clip,
+        block: Rect,
+        lane: Rect,
+        response: egui::Response,
+    ) {
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::SelectableLabel,
+                response.enabled(),
+                self.clip_selected(clip.id),
+                &clip.name,
+            )
+        });
         response.context_menu(|ui| {
             self.clip_context_menu(ui, clip.id);
             self.midi_clip_note_menu(ui, clip);
         });
-        if response.double_clicked() {
+        if response.double_clicked() && !self.midi_editor.content_active {
             self.open_clip_editor(clip.id, track_id, ui.ctx());
         }
         if response.clicked() {
@@ -35,6 +55,10 @@ impl DawUi {
                 track_id,
                 ui.input(|input| input.modifiers.shift || input.modifiers.command),
             );
+        }
+        if self.midi_editor.content_active && (response.clicked() || response.context_menu_opened())
+        {
+            self.retain_pattern_view();
         }
         if response.hovered()
             && let Some(pos) = response.hover_pos()
@@ -110,7 +134,8 @@ impl DawUi {
             // Edge drags keep trim, loop, and stretch. Command-drag, and a drag
             // that starts inside a time range, belongs to that range instead.
             let range_drag = !on_edge || (modifiers.command && !clip_copy_modifier(modifiers));
-            if range_drag
+            if !self.midi_editor.content_active
+                && range_drag
                 && self.begin_portion_drag(
                     origin,
                     self.ruler_frame(lane, origin),
@@ -151,6 +176,7 @@ impl DawUi {
             } else {
                 Vec::new()
             };
+            self.content_clip_drag = self.midi_editor.content_active;
             self.drag = Some(Drag {
                 clips,
                 clip: clip.clone(),
@@ -162,6 +188,9 @@ impl DawUi {
                     && ui.input(|input| clip_copy_modifier(input.modifiers)),
             });
             self.selected_clip = Some(clip.id);
+            if self.content_clip_drag {
+                self.retain_pattern_view();
+            }
         }
     }
 }

@@ -98,6 +98,8 @@ pub(super) struct MidiEditor {
     #[cfg(test)]
     pub(crate) pattern_bounds: Rect,
     #[cfg(test)]
+    pub(crate) pattern_header_bounds: HashMap<Id, Rect>,
+    #[cfg(test)]
     pub(crate) note_bounds: HashMap<Id, Rect>,
     #[cfg(test)]
     pub(crate) oscillator_bounds: Vec<Rect>,
@@ -164,6 +166,8 @@ impl Default for MidiEditor {
             zoom_bounds: Rect::NOTHING,
             #[cfg(test)]
             pattern_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            pattern_header_bounds: HashMap::new(),
             #[cfg(test)]
             note_bounds: HashMap::new(),
             #[cfg(test)]
@@ -350,7 +354,6 @@ impl DawUi {
         self.timeline_swipe(ui, viewport);
         self.track_overview_ruler(ui);
         let Some(track) = track else {
-            ui.label("Select a MIDI track to edit its patterns.");
             return;
         };
         self.track_overview_strip(ui, &track, &assets);
@@ -390,6 +393,13 @@ impl DawUi {
         {
             self.delete_selected_midi_notes();
         }
+        let preview = self.midi_pattern_preview(ui);
+        let track = preview
+            .as_ref()
+            .and_then(|p| p.tracks.iter().find(|t| t.id == track.id))
+            .unwrap_or(track);
+        let assets = preview.as_ref().map_or(assets, |p| p.assets.as_slice());
+        self.midi_pattern_headers(ui, track);
         let mut scroll = egui::ScrollArea::vertical().id_salt(("piano-roll", track.id));
         if previous_track != Some(track.id) {
             scroll = scroll.vertical_scroll_offset(55.0 * NOTE_HEIGHT);
@@ -467,8 +477,10 @@ impl DawUi {
                     };
                     self.editor_clip_notes(ui, canvas, note_viewport, track, clip, pattern);
                 }
+                self.midi_pattern_edges(ui, track, note_viewport);
                 self.update_midi_notes(ui);
                 self.editor_note_selection(ui, note_viewport);
+                self.midi_pattern_outlines(&ui.painter_at(note_viewport), track, note_viewport);
                 let x = grid_left
                     + (self
                         .session
@@ -487,6 +499,10 @@ impl DawUi {
             ui.allocate_exact_size(Vec2::new(KEY_WIDTH, SCROLLBAR_HEIGHT), Sense::hover());
             self.timeline_scrollbar(ui);
         });
+        if self.drag.is_some() && self.content_clip_drag {
+            self.finish_clip_drag(ui);
+            self.retain_pattern_view();
+        }
         if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
             && let Some(draw) = self.midi_editor.draw.take()
         {
@@ -721,6 +737,12 @@ impl DawUi {
             canvas.max,
         );
         let block = self.clip_block(lane, clip, clip.start_frame);
+        let edge_input = ui
+            .input(|i| i.pointer.press_origin().or_else(|| i.pointer.latest_pos()))
+            .is_some_and(|point| {
+                (point.x - block.left()).abs() < midi_pattern_headers::edge_width(block)
+                    || (point.x - block.right()).abs() < midi_pattern_headers::edge_width(block)
+            });
         let visible = block.intersect(viewport);
         if !visible.is_positive() {
             return;
@@ -767,12 +789,6 @@ impl DawUi {
                     );
                 }
             }
-            painter.rect_stroke(
-                block,
-                0.0,
-                Stroke::new(1.0, palette.secondary),
-                StrokeKind::Inside,
-            );
             ui.interact(
                 visible,
                 egui::Id::new(("dense-midi-repeats", clip.id)),
@@ -826,7 +842,8 @@ impl DawUi {
             }
             let note_painter = ui.painter_at(note_viewport);
             let mut note_ui = ui.new_child(egui::UiBuilder::new());
-            if self.drag.is_some()
+            if edge_input
+                || self.drag.is_some()
                 || self.midi_editor.drag.is_some()
                 || self.midi_editor.draw.is_some()
                 || self.midi_editor.selection.is_some()
@@ -1003,7 +1020,9 @@ impl DawUi {
                     );
                 }
             }
-            if !self.midi_editor.dragging()
+            if !edge_input
+                && self.drag.is_none()
+                && !self.midi_editor.dragging()
                 && ui.is_enabled()
                 && ui.input(|i| i.focused)
                 && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary))
@@ -1061,12 +1080,6 @@ impl DawUi {
                 self.midi_editor.select_note(clip.id, note);
             }
         }
-        painter.rect_stroke(
-            block,
-            0.0,
-            Stroke::new(1.0, palette.secondary),
-            StrokeKind::Inside,
-        );
     }
     fn start_midi_note_drag(
         &mut self,

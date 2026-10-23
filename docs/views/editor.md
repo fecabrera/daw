@@ -10,13 +10,19 @@ MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Sev
 4. Hold Command on macOS or Ctrl on Windows/Linux and drag in the piano roll to draw a note.
 5. Drag a note body to move it or an edge to change its length. Double-click a note to delete it.
 
+Each pattern has a named header below the lower ruler and an outline around its visible note area. Click a header to select that pattern without changing zoom or scroll. Headers stay visible when you scroll the piano keys vertically.
+
+Drag a header to move the selected patterns. Drag a header edge to loop them, or an edge beside the notes to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Changes preview during the drag and apply on release; Escape cancels. These gestures keep the lower editor’s zoom and scroll.
+
+Right-click a header or border for the shared clip menu, including Velocity and Delete note when a note is selected.
+
 A plain empty-space drag selects notes with a rectangle. Shift-click toggles individual notes; Shift-drag toggles notes within the rectangle. Delete or Backspace removes selected notes. Hold Option on macOS or Ctrl on Windows/Linux while moving notes to copy them. Escape cancels an active gesture.
 
 Timeline and Editor offer the same clip selection, time-range selection, copy/paste, split, move, trim, loop, and stretch actions. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Editor's clip moves keep their track assignments. Shift bypasses grid snapping.
 
 ## Track and scale controls
 
-The left panel stays visible while you scroll the piano roll. Its track header is beside the clip strip. Use the name dropdown to select a track. It selects that track's first clip, or shows an empty editor if the track has no clips. Mute, Solo, Gain, Pan, and the stereo meters work as they do in Timeline.
+The left panel stays visible while you scroll the piano roll. Its track header is beside the clip strip. Use the name dropdown to select a track. It selects that track's first clip, or shows an empty editor if the track has no clips. With no selected track, the editor stays blank below the ruler. Mute, Solo, Gain, Pan, and the stereo meters work as they do in Timeline.
 
 For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to **Off**, which disables Scale and Snap to scale. Select a root to enable those controls. Choose a scale to dim the piano keys and notes outside it. Enable **Snap to scale** to constrain newly drawn notes and pitch moves. Major is the initial scale and snapping starts off. Returning Root to Off removes the dimming and bypasses snapping; it retains your scale and snapping choices.
 

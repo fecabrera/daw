@@ -12,6 +12,7 @@ mod history;
 mod looping;
 mod midi_editor;
 mod midi_editor_panel;
+mod midi_pattern_headers;
 mod placement;
 mod portion;
 mod range_selection;
@@ -766,6 +767,7 @@ pub struct DawUi {
     zoom: f32,
     scroll: f64,
     drag: Option<Drag>,
+    content_clip_drag: bool,
     track_drag: Option<Id>,
     marquee: Option<Marquee>,
     portion: Option<portion::ClipPortion>,
@@ -875,6 +877,7 @@ impl Default for DawUi {
             zoom: 70.0,
             scroll: 0.0,
             drag: None,
+            content_clip_drag: false,
             track_drag: None,
             marquee: None,
             portion: None,
@@ -1100,6 +1103,7 @@ impl DawUi {
                 self.notices.clear();
                 self.scroll = 0.0;
                 self.drag = None;
+                self.content_clip_drag = false;
                 self.track_drag = None;
                 self.file_hover = None;
                 self.file_drop_target = None;
@@ -4143,8 +4147,27 @@ impl DawUi {
             Pos2::new(right.max(left + 2.0), lane.bottom()),
         )
     }
+    fn clip_drag_zoom(&self) -> f32 {
+        if self.content_clip_drag {
+            self.midi_editor.content.zoom
+        } else if self.view_mode.has_track_overview() {
+            self.midi_editor.zoom
+        } else {
+            self.zoom
+        }
+    }
+    fn clip_drag_timeline(&self) -> musical_time::Timeline {
+        // Snap absolute project frames using the origin pane's scale, even when
+        // another pane paints the same drag preview.
+        musical_time::Timeline::at_sample_rate(
+            self.session.project.tempo_bpm,
+            self.clip_drag_zoom(),
+            0.0,
+            self.session.project.sample_rate_hz,
+        )
+    }
     fn drag_delta(&self, drag: &Drag, pointer: Pos2) -> i64 {
-        (f64::from(pointer.x - drag.origin.x) / f64::from(self.view_zoom())
+        (f64::from(pointer.x - drag.origin.x) / f64::from(self.clip_drag_zoom())
             * f64::from(self.session.project.sample_rate_hz))
         .round() as i64
     }
@@ -4179,7 +4202,7 @@ impl DawUi {
             && raw == i128::from(bounded)
             && limits.contains(&bounded)
             && matches!(drag.mode, ClipDragMode::LoopLeft | ClipDragMode::LoopRight)
-            && let Some(frame) = self.musical_timeline().snap_anchor(
+            && let Some(frame) = self.clip_drag_timeline().snap_anchor(
                 bounded,
                 limits.clone(),
                 musical_time::size_boundaries(bounded, fixed, length),
@@ -4188,7 +4211,8 @@ impl DawUi {
             return frame;
         }
         let anchors = [clip.start_frame, clip.end(), *limits.start(), *limits.end()];
-        self.snap_frame(raw, limits, anchors, unsnapped)
+        self.clip_drag_timeline()
+            .snap_bounded(raw, limits, anchors, unsnapped)
     }
     fn selection_frame(
         &self,
@@ -4284,7 +4308,7 @@ impl DawUi {
             .min()?;
         let mut delta = raw.clamp(minimum, maximum);
         if !unsnapped && delta == raw && delta != 0 {
-            delta = self.musical_timeline().snap_group_delta(delta, &ranges);
+            delta = self.clip_drag_timeline().snap_group_delta(delta, &ranges);
         }
         let previews: Vec<_> = clips
             .iter()
@@ -4425,7 +4449,7 @@ impl DawUi {
             && let Ok(bounds) = self.session.project.midi_pattern_bounds(&clip, edge)
         {
             let delta = i128::from(self.drag_delta(drag, pointer));
-            let target = self.musical_timeline().snap_bounded(
+            let target = self.clip_drag_timeline().snap_bounded(
                 i128::from(bounds.edge_frame()) + delta,
                 bounds.frame_limits(),
                 std::iter::empty(),
@@ -4901,12 +4925,21 @@ impl DawUi {
         }
     }
     fn finish_clip_drag(&mut self, ui: &mut egui::Ui) {
+        self.finish_clip_drag_in_view(ui);
+        if self.drag.is_none() {
+            self.content_clip_drag = false;
+        }
+    }
+    fn finish_clip_drag_in_view(&mut self, ui: &mut egui::Ui) {
         if !ui.is_enabled()
             || !self.edit_environment_available()
             || !ui.input(|input| input.focused)
             || ui.input(|input| input.key_pressed(egui::Key::Escape))
         {
             self.drag = None;
+            return;
+        }
+        if self.drag.is_some() && self.content_clip_drag != self.midi_editor.content_active {
             return;
         }
         if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary))
@@ -5191,6 +5224,7 @@ mod tests {
     mod macros;
     mod menu_shortcuts;
     mod midi;
+    mod midi_pattern_gestures;
     mod mixer;
     mod placement_overwrite;
     mod project_settings;
