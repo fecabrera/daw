@@ -55,6 +55,7 @@ pub(super) struct Chords {
     pub catalog: catalog::Catalog,
     root: Option<usize>,
     pub drag: Option<ChordDrag>,
+    pub audition: chord_audition::State,
     #[cfg(test)]
     pub bounds: Bounds,
 }
@@ -64,6 +65,7 @@ impl Default for Chords {
             visible: false,
             root: None,
             drag: None,
+            audition: Default::default(),
             catalog: catalog::Catalog::new(LABELS.iter().flatten().map(|label| (*label, *label)))
                 .with_folders(
                     CHORD_ROOTS
@@ -175,6 +177,9 @@ impl DawUi {
             self.chords.catalog.filter_folder(self.chords.root);
             ui.ctx().request_repaint();
             return;
+        }
+        if allowed && let Some(index) = output.selected_entry {
+            self.audition_chord(chord(index));
         }
         if allowed && (output.add_selected || output.double_clicked.is_some()) {
             let chords = output.double_clicked.map_or_else(

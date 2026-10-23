@@ -55,6 +55,8 @@ pub(super) struct Output {
     pub folders: Vec<(usize, Response)>,
     pub add_selected: bool,
     pub double_clicked: Option<usize>,
+    /// Entry selected by a click or keyboard movement in this frame.
+    pub selected_entry: Option<usize>,
 }
 
 /// Selection is captured at the initial press, before any project mutation.
@@ -234,6 +236,7 @@ impl Catalog {
             folders: Vec::with_capacity(self.folders.len()),
             add_selected: action == Action::Add,
             double_clicked: None,
+            selected_entry: None,
         };
         let scroll = egui::ScrollArea::vertical()
             .id_salt(("catalog-rows", title))
@@ -276,6 +279,10 @@ impl Catalog {
                     match row {
                         Row::Folder(index) => output.folders.push((index, response)),
                         Row::Entry(index) => {
+                            if (clicked || (action == Action::Move && self.cursor == row))
+                                && self.selection.contains(self.entries[index].0) {
+                                output.selected_entry = Some(index);
+                            }
                             if clicked && response.double_clicked() {
                                 output.double_clicked = Some(index);
                             }

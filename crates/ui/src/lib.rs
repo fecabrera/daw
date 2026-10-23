@@ -46,6 +46,7 @@ mod application_menu;
 mod auto_filter_panel;
 mod bitcrusher_panel;
 mod catalog;
+mod chord_audition;
 mod chords_catalog;
 mod compressor_panel;
 pub mod dialogs;
@@ -1516,6 +1517,10 @@ impl DawUi {
         }
     }
     fn stop_action(&self) -> transport_controls::StopAction {
+        if self.chords.audition.preparing() || self.output.as_ref().is_some_and(|o| o.auditioning())
+        {
+            return transport_controls::StopAction::Stop;
+        }
         transport_controls::StopAction::from_transport(
             self.is_playing(),
             self.output
@@ -1525,6 +1530,10 @@ impl DawUi {
         )
     }
     fn stop(&mut self) {
+        self.chords.audition.cancel();
+        if let Some(output) = &self.output {
+            output.stop_audition();
+        }
         if let Some(output) = &mut self.output
             && let Err(e) = output.stop()
         {
@@ -2166,6 +2175,7 @@ impl DawUi {
                 self.sync_needed = false;
             }
         }
+        self.poll_chord_audition(&ctx, ui.is_enabled());
         self.prepare_idle_audio();
         self.dialogs(&ctx);
         self.effects_catalog.clear_if_unfocused(

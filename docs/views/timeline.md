@@ -17,6 +17,8 @@ Press Escape to clear selected clips or a selected clip time range first. Tracks
 
 Each chord is one 4/4 bar at the project tempo. Its notes sound together for the full bar, with roots from C4 through B4 and velocity 100. The catalog includes major, minor, diminished, augmented, sus2, sus4, major sixth, minor sixth, dominant seventh, major seventh, minor seventh, and half-diminished seventh chords. Edit the resulting notes in Editor.
 
+Select a MIDI track, then click a chord or select it with Up/Down to hear it through that track’s instrument and effects. A new selection replaces the previous preview. The preview lasts one bar, up to eight seconds, with up to one second for release and effect tails. Track, group, and Master mix controls apply; other tracks’ Solo settings do not block the preview. Empty instruments and muted tracks remain silent. Audition does not insert notes, move the playhead, or change the project. Stop or Escape cancels it; changing tracks, leaving Chords, or losing window focus also stops it. Sample-based instruments may need a short preparation delay.
+
 Double-click a chord to insert it at the playhead on the selected MIDI track. Enter inserts the selected chords there in catalog order, one after another. These actions require a selected MIDI track and keep the playhead in place. Shift-click selects several chords; dragging one selected chord places the whole selection in order.
 
 With catalog focus, Up/Down navigates visible rows. Shift+Up/Down extends or reduces the chord selection. Enter opens or closes a focused note folder, or inserts selected chords when a chord row has focus. Escape clears catalog selection and follows Timeline’s normal track/clip selection behavior.

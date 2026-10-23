@@ -1,3 +1,4 @@
+mod audition;
 mod separation;
 pub use daw_separation::{
     AVAILABLE as SEPARATION_AVAILABLE, ModelKind as SeparationModelKind,

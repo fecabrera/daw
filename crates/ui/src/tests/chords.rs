@@ -383,3 +383,103 @@ fn chord_sampler_pitches_prepare_before_publication_and_failure_retains_original
         }
     }
 }
+
+#[test]
+fn chord_clicks_and_keyboard_selection_audition_only_the_selected_midi_track() {
+    let (mut app, ctx, midi, audio) = setup();
+    let point = entry(&app, 0);
+    click(&mut app, &ctx, point, false);
+    assert!(app.chords.audition.requests.is_empty());
+    app.selected_track = Some(audio);
+    key(&mut app, &ctx, egui::Key::ArrowDown, false, false);
+    assert!(app.chords.audition.requests.is_empty());
+    app.selected_track = Some(midi);
+    let before = serde_json::to_string(&app.session.project).unwrap();
+    let dirty = app.dirty;
+    let point = entry(&app, 2);
+    click(&mut app, &ctx, point, false);
+    assert_eq!(
+        app.chords.audition.requests.last(),
+        Some(&(
+            midi,
+            daw_core::Chord {
+                root: 0,
+                kind: daw_core::ChordKind::Diminished
+            }
+        ))
+    );
+    key(&mut app, &ctx, egui::Key::ArrowDown, false, false);
+    assert_eq!(
+        app.chords.audition.requests.last(),
+        Some(&(
+            midi,
+            daw_core::Chord {
+                root: 0,
+                kind: daw_core::ChordKind::Augmented
+            }
+        ))
+    );
+    assert_eq!(app.chords.audition.requests.len(), 2);
+    assert_eq!(serde_json::to_string(&app.session.project).unwrap(), before);
+    assert_eq!(app.dirty, dirty);
+    let count = app.chords.audition.requests.len();
+    let point = egui::pos2(
+        app.timeline_bounds.left() + 50.0,
+        app.timeline_bounds.bottom() - 30.0,
+    );
+    begin(&mut app, &ctx, 3, point);
+    release(&mut app, &ctx, point);
+    assert_eq!(
+        app.chords.audition.requests.len(),
+        count,
+        "dragging does not audition"
+    );
+}
+
+#[test]
+fn chord_audition_prepares_sampler_pitches_without_publishing_them() {
+    let (mut app, _, midi, _) = setup();
+    let file = TestWav::new();
+    let layer = &mut app.session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.sampler = Some(Default::default());
+    let layer_id = layer.id;
+    app.session = app
+        .session
+        .with_sampler_file(midi, layer_id, &file.0)
+        .unwrap();
+    let project = serde_json::to_string(&app.session.project).unwrap();
+    let prepared = app.session.sampler_audio.clone();
+    let samples = app
+        .session
+        .audition_chord(
+            midi,
+            daw_core::Chord {
+                root: 0,
+                kind: daw_core::ChordKind::Major,
+            },
+            &|| false,
+        )
+        .unwrap();
+    assert!(samples.iter().flatten().any(|s| s.abs() > 0.001));
+    assert_eq!(
+        serde_json::to_string(&app.session.project).unwrap(),
+        project
+    );
+    for (id, before) in &prepared {
+        let after = &app.session.sampler_audio[id];
+        assert_eq!(
+            before
+                .variants()
+                .map(|(offset, _)| offset)
+                .collect::<Vec<_>>(),
+            after
+                .variants()
+                .map(|(offset, _)| offset)
+                .collect::<Vec<_>>()
+        );
+    }
+}

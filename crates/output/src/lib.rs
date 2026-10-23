@@ -1,3 +1,4 @@
+mod audition;
 mod cache_schedule;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use daw_core::Id;
@@ -344,8 +345,10 @@ type BuiltStream = (
     cpal::Stream,
     Producer<Command>,
     Consumer<Box<PreparedRenderer>>,
+    audition::Sender,
 );
 pub struct AudioOutput {
+    audition: audition::Sender,
     plan: Arc<RenderPlan>,
     desired_transport: Option<(u64, TransportState)>,
     project_rate_hz: u32,
@@ -394,6 +397,19 @@ impl AudioPreparation {
     }
 }
 impl AudioOutput {
+    /// Play prepared project-rate stereo audio independently of transport.
+    pub fn audition(&mut self, rate: u32, samples: Vec<[f32; 2]>) -> Result<(), String> {
+        if rate != self.project_rate_hz {
+            return Err("Audition sample rate differs from output".into());
+        }
+        self.audition.play(samples)
+    }
+    pub fn auditioning(&self) -> bool {
+        self.audition.playing()
+    }
+    pub fn stop_audition(&self) {
+        self.audition.stop();
+    }
     pub fn new(plan: RenderPlan) -> Result<Self, String> {
         Self::with_preparation(plan, None)
     }
@@ -447,6 +463,7 @@ impl AudioOutput {
                 status.clone(),
                 rate,
             )?;
+            let audition = state.audition_sender.take().unwrap();
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_band_meters(&mut state.renderer, &changes);
             state.renderer.bind_modulation(&modulation);
@@ -468,9 +485,9 @@ impl AudioOutput {
                 cpal::SampleFormat::U64 => stream!(u64),
                 _ => return Err("Unsupported output device sample format".into()),
             }?;
-            Ok((stream, commands, retired))
+            Ok((stream, commands, retired, audition))
         };
-        let (stream, commands, retired) = match build(&stream_config) {
+        let (stream, commands, retired, audition) = match build(&stream_config) {
             Ok(s) => s,
             Err(first) => {
                 if stream_config.buffer_size == cpal::BufferSize::Default {
@@ -497,6 +514,7 @@ impl AudioOutput {
             project_rate_hz,
             buffer_size_frames,
             _stream: stream,
+            audition,
             preparation: preparation.worker,
             prepare_revision: 0,
             prepared: None,
@@ -700,6 +718,7 @@ impl AudioOutput {
         self.prepare_revision != self.status.applied_revision.load(Ordering::Acquire)
     }
     pub fn drain(&mut self) {
+        self.audition.drain();
         while let Ok(mut old) = self.retired.pop() {
             if old.revision == self.prepare_revision
                 && let Some(transport) = old.reprepare.take()
@@ -739,6 +758,8 @@ impl AudioOutput {
     }
 }
 struct Callback {
+    audition: audition::Player,
+    audition_sender: Option<audition::Sender>,
     renderer: Box<PreparedRenderer>,
     commands: Consumer<Command>,
     retired: Producer<Box<PreparedRenderer>>,
@@ -786,7 +807,10 @@ impl Callback {
             .as_ref()
             .map(|c| c.output_buffer_allocate(true))
             .unwrap_or_default();
+        let (sender, audition) = audition::channel(project_rate_hz);
         Ok(Self {
+            audition,
+            audition_sender: Some(sender),
             renderer: Box::new(PreparedRenderer::try_new(plan, meters)?),
             commands,
             retired,
@@ -803,6 +827,7 @@ impl Callback {
         })
     }
     fn update(&mut self) {
+        self.audition.update();
         let started = std::time::Instant::now();
         self.activate_scheduled();
         for _ in 0..8 {
@@ -952,8 +977,9 @@ impl Callback {
     fn next_project_sample(&mut self) -> [f32; 2] {
         self.activate_scheduled();
         let sample = self.renderer.next_sample();
+        let audition = self.audition.next();
         self.rendered_frames += 1;
-        sample
+        [sample[0] + audition[0], sample[1] + audition[1]]
     }
     fn discard_buffered_output(&mut self) {
         // Discard cached samples from before the command. Keep filter history so
