@@ -18,7 +18,9 @@ Timeline and Editor offer the same clip selection, time-range selection, copy/pa
 
 The left panel stays visible while you scroll the piano roll. Its track header is beside the clip strip. Use the name dropdown to select a track. It selects that track's first clip, or shows an empty editor if the track has no clips. Mute, Solo, Gain, Pan, and the stereo meters work as they do in Timeline.
 
-For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to **Off**, which disables Scale and Snap to scale. Select a root to enable those controls. Choose a scale to dim the piano keys and notes outside it. Enable **Snap to scale** to constrain newly drawn notes and pitch moves. Major is the initial scale and snapping starts off. Returning Root to Off removes the dimming and bypasses snapping; it retains your scale and snapping choices. Scale options apply across editor tracks for the current app session; they are not saved in the project.
+For MIDI tracks, **MIDI options** contains the scale controls. Root defaults to **Off**, which disables Scale and Snap to scale. Select a root to enable those controls. Choose a scale to dim the piano keys and notes outside it. Enable **Snap to scale** to constrain newly drawn notes and pitch moves. Major is the initial scale and snapping starts off. Returning Root to Off removes the dimming and bypasses snapping; it retains your scale and snapping choices.
+
+Each MIDI track keeps its own Root, Scale, and Snap to scale settings. Save the project to retain them after reopening. Changing these settings marks the project modified and supports Undo/Redo. Duplicating a MIDI track copies its options. Older projects start with Root Off, Major, and snapping off.
 
 Changing the root, scale, or snapping option leaves existing notes unchanged. Drawing snaps to the nearest scale note; equal distances use the lower note. Moving a group snaps the dragged note and keeps the intervals between selected notes. Timing-only moves and edge resizes keep the original pitches. Hold Shift to bypass both grid and scale snapping. Audio tracks keep their editor placeholder and show an empty **Clip options** section.
 

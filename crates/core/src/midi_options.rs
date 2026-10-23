@@ -1,8 +1,11 @@
-//! Piano-roll input constraints. These are editor state, not pattern transformations.
+//! Saved per-track piano-roll constraints. These do not transform existing notes.
+use crate::{Error, Result};
+use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) enum Scale {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MidiScale {
     Chromatic,
     #[default]
     Major,
@@ -18,7 +21,7 @@ pub(super) enum Scale {
     MinorPentatonic,
     Blues,
 }
-impl Scale {
+impl MidiScale {
     pub const ALL: [Self; 13] = [
         Self::Chromatic,
         Self::Major,
@@ -71,16 +74,33 @@ impl Scale {
     }
 }
 
-#[derive(Clone, Copy, Default)]
-pub(super) struct ScaleOptions {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MidiOptions {
     pub root: Option<u8>,
-    pub scale: Scale,
+    pub scale: MidiScale,
     pub snap: bool,
 }
-impl ScaleOptions {
+impl MidiOptions {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn validate(self) -> Result<()> {
+        if self.root.is_some_and(|root| root >= 12) {
+            return Err(Error(
+                "MIDI scale root must be Off or a pitch class from 0 to 11".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn contains_pitch(self, pitch: u8) -> bool {
-        self.root
-            .is_none_or(|root| self.scale.intervals().contains(&((pitch + 12 - root) % 12)))
+        self.root.is_none_or(|root| {
+            self.scale
+                .intervals()
+                .contains(&((pitch % 12 + 12 - root % 12) % 12))
+        })
     }
 
     /// Choose the nearest allowed MIDI pitch, preferring the lower pitch on ties.
@@ -103,8 +123,8 @@ mod tests {
     #[test]
     fn snapping_obeys_root_scale_bounds_and_bypass() {
         for root in 0..12 {
-            for scale in Scale::ALL {
-                let options = ScaleOptions {
+            for scale in MidiScale::ALL {
+                let options = MidiOptions {
                     root: Some(root),
                     scale,
                     snap: true,
@@ -122,7 +142,7 @@ mod tests {
                 }
             }
         }
-        let options = ScaleOptions {
+        let options = MidiOptions {
             root: Some(0),
             snap: true,
             ..Default::default()
@@ -131,7 +151,7 @@ mod tests {
         assert_eq!(options.snap_pitch(61, 61..=63, false), 62);
         assert_eq!(options.snap_pitch(61, 61..=61, false), 61);
         assert_eq!(options.snap_pitch(127, 0..=127, false), 127);
-        let off = ScaleOptions {
+        let off = MidiOptions {
             snap: true,
             ..Default::default()
         };

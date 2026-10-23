@@ -235,6 +235,7 @@ impl Project {
             id: group_id,
             name: clip_name(&name)?.to_owned(),
             kind: TrackKind::Group,
+            midi_options: MidiOptions::default(),
             group_id: parent,
             group_collapsed: false,
             effects: vec![],

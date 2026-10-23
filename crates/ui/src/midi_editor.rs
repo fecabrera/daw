@@ -52,7 +52,6 @@ struct NoteSelection {
     toggle: bool,
 }
 pub(super) struct MidiEditor {
-    pub(super) scale: crate::midi_scale::ScaleOptions,
     #[cfg(test)]
     pub(crate) panel_bounds: Rect,
     #[cfg(test)]
@@ -119,7 +118,6 @@ pub(super) struct MidiEditor {
 impl Default for MidiEditor {
     fn default() -> Self {
         Self {
-            scale: Default::default(),
             #[cfg(test)]
             panel_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -395,7 +393,7 @@ impl DawUi {
                         p.rect_filled(
                             row,
                             0.0,
-                            if black_key(pitch) || !self.midi_editor.scale.contains_pitch(pitch) {
+                            if black_key(pitch) || !track.midi_options.contains_pitch(pitch) {
                                 palette.background
                             } else {
                                 palette.panel
@@ -410,7 +408,7 @@ impl DawUi {
                             egui::Align2::LEFT_CENTER,
                             note_name(pitch),
                             egui::FontId::proportional(10.0),
-                            if self.midi_editor.scale.contains_pitch(pitch) {
+                            if track.midi_options.contains_pitch(pitch) {
                                 palette.text
                             } else {
                                 palette.secondary
@@ -717,7 +715,7 @@ impl DawUi {
                             Pos2::new(visible.right(), y + NOTE_HEIGHT - 2.0),
                         ),
                         0.0,
-                        if self.midi_editor.scale.contains_pitch(note.pitch) {
+                        if track.midi_options.contains_pitch(note.pitch) {
                             theme::clip_colors(track.color, clip.color).header
                         } else {
                             palette.secondary
@@ -841,7 +839,7 @@ impl DawUi {
                 note_painter.rect_filled(
                     rect.shrink(1.0),
                     2.0,
-                    if !self.midi_editor.scale.contains_pitch(note.pitch) {
+                    if !track.midi_options.contains_pitch(note.pitch) {
                         palette.secondary
                     } else if Some(clip.id) == self.selected_clip {
                         theme::accent(ui.ctx())
@@ -975,11 +973,10 @@ impl DawUi {
             {
                 let pitch = (127 - ((pointer.y - grid.top()) / NOTE_HEIGHT).floor() as i16)
                     .clamp(0, 127) as u8;
-                let pitch = self.midi_editor.scale.snap_pitch(
-                    pitch,
-                    0..=127,
-                    musical_time::snap_bypassed(ui),
-                );
+                let pitch =
+                    track
+                        .midi_options
+                        .snap_pitch(pitch, 0..=127, musical_time::snap_bypassed(ui));
                 self.editor_select_clip(clip.id, track.id);
                 let min_tick = (((span.left() - grid.left()) / beat_width
                     * MIDI_TICKS_PER_BEAT as f32)
@@ -1095,7 +1092,7 @@ impl DawUi {
         let timeline = self.musical_timeline();
         let timeline_left = self.midi_editor.timeline_left;
         let bypass = musical_time::snap_bypassed(ui);
-        let scale = self.midi_editor.scale;
+        let scale = self.editor_midi_options();
         if let Some(drag) = &mut self.midi_editor.drag
             && ui.input(|i| {
                 i.pointer.primary_down() || i.pointer.button_released(egui::PointerButton::Primary)

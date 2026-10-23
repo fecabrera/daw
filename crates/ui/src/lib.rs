@@ -9,7 +9,6 @@ mod history;
 mod looping;
 mod midi_editor;
 mod midi_editor_panel;
-mod midi_scale;
 mod placement;
 mod portion;
 mod range_selection;
@@ -1525,12 +1524,17 @@ impl DawUi {
     }
     fn edit(&mut self, command: Edit) {
         self.ensure_history();
+        let editor_options_only = matches!(command, Edit::SetMidiOptions { .. });
         match self.session.project.edited(command) {
             Ok(project) => {
-                if self.prepare_audio_edit(&project, None) {
+                if !editor_options_only && self.prepare_audio_edit(&project, None) {
                     return;
                 }
                 self.session.project = project;
+                if editor_options_only {
+                    self.mark_dirty();
+                    return;
+                }
                 if self.track_name_edit.as_ref().is_some_and(|edit| {
                     !self
                         .session

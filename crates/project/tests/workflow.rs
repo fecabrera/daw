@@ -4910,3 +4910,71 @@ fn filter_effects_survive_save_reopen_rate_changes_duplication_and_export() {
     assert_eq!(loaded.project.tracks[1].effects[0].unit, effect.unit);
     assert_eq!(fs::read(source).unwrap(), original);
 }
+
+#[test]
+fn per_track_midi_options_survive_save_reopen_save_as_and_legacy_loading() {
+    use daw_core::{MidiOptions, MidiScale};
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    let first = session.project.add_midi_track().unwrap();
+    let second = session.project.add_midi_track().unwrap();
+    let audio = session.project.add_track().unwrap();
+    let first_options = MidiOptions {
+        root: Some(9),
+        scale: MidiScale::Minor,
+        snap: true,
+    };
+    // Preserve the selected scale and snap preference while Root is Off.
+    let second_options = MidiOptions {
+        root: None,
+        scale: MidiScale::Blues,
+        snap: true,
+    };
+    session
+        .project
+        .edit(Edit::SetMidiOptions {
+            track_id: first,
+            options: first_options,
+        })
+        .unwrap();
+    session
+        .project
+        .edit(Edit::SetMidiOptions {
+            track_id: second,
+            options: second_options,
+        })
+        .unwrap();
+    session.save(&fixture.0).unwrap();
+    let mut reopened = Session::open(&fixture.0).unwrap();
+    assert_eq!(reopened.project.tracks[0].midi_options, first_options);
+    assert_eq!(reopened.project.tracks[1].midi_options, second_options);
+    assert_eq!(reopened.project.tracks[2].id, audio);
+    assert_eq!(
+        reopened.project.tracks[2].midi_options,
+        MidiOptions::default()
+    );
+    let destination = fixture.0.join("copy");
+    reopened.save(&destination).unwrap();
+    let copy = Session::open(&destination).unwrap();
+    assert_eq!(copy.project.tracks, reopened.project.tracks);
+    let manifest = destination.join("project.json");
+    let mut legacy: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    for track in legacy["tracks"].as_array_mut().unwrap() {
+        track.as_object_mut().unwrap().remove("midi_options");
+    }
+    fs::write(&manifest, serde_json::to_vec(&legacy).unwrap()).unwrap();
+    let legacy = Session::open(&destination).unwrap();
+    assert!(
+        legacy
+            .project
+            .tracks
+            .iter()
+            .all(|t| t.midi_options == MidiOptions::default())
+    );
+    let mut corrupt: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixture.0.join("project.json")).unwrap()).unwrap();
+    corrupt["tracks"][0]["midi_options"]["root"] = 12.into();
+    fs::write(&manifest, serde_json::to_vec(&corrupt).unwrap()).unwrap();
+    assert!(Session::open(&destination).is_err());
+}

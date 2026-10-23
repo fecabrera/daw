@@ -6652,18 +6652,17 @@ fn scale_options_do_not_retune_existing_notes_and_drawing_uses_the_selected_scal
     app.open_clip_editor(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let original = pattern(&app).clone();
-    let before = format!("{:?}", app.session.project);
     app.dirty = false;
-    app.midi_editor.scale.root = Some(0);
+    app.session.project.tracks[0].midi_options.root = Some(0);
     frame(&mut app, &ctx, vec![]);
     let snap = app.midi_editor.scale_snap_bounds.center();
     click_note_or_lane(&mut app, &ctx, snap);
-    assert!(app.midi_editor.scale.snap);
-    assert!(!app.dirty);
-    app.midi_editor.scale.root = Some(2);
-    app.midi_editor.scale.scale = crate::midi_scale::Scale::Minor;
+    assert!(app.session.project.tracks[0].midi_options.snap);
+    assert!(app.dirty);
+    app.session.project.tracks[0].midi_options.root = Some(2);
+    app.session.project.tracks[0].midi_options.scale = daw_core::MidiScale::Minor;
     frame(&mut app, &ctx, vec![]);
-    assert_eq!(format!("{:?}", app.session.project), before);
+    assert_eq!(pattern(&app), &original);
     let grid = app.midi_editor.grid_bounds;
     let point = Pos2::new(
         grid.left() + 60.0,
@@ -6707,8 +6706,8 @@ fn scale_snapped_note_moves_keep_group_intervals_and_shift_can_bypass() {
             clip_id: clip,
             pattern: content.clone(),
         });
-        app.midi_editor.scale.snap = true;
-        app.midi_editor.scale.root = Some(0);
+        app.session.project.tracks[0].midi_options.snap = true;
+        app.session.project.tracks[0].midi_options.root = Some(0);
         let ctx = context();
         app.open_clip_editor(clip, track, &ctx);
         frame(&mut app, &ctx, vec![]);
@@ -6760,8 +6759,8 @@ fn scale_snapping_keeps_timing_only_moves_resizes_and_cancelled_moves_at_the_ori
         clip_id: clip,
         pattern: original.clone(),
     });
-    app.midi_editor.scale.snap = true;
-    app.midi_editor.scale.root = Some(0);
+    app.session.project.tracks[0].midi_options.snap = true;
+    app.session.project.tracks[0].midi_options.root = Some(0);
     let ctx = context();
     app.open_clip_editor(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
@@ -6877,7 +6876,7 @@ fn editor_panel_retains_full_height_and_shared_track_controls_in_both_themes() {
         let snap = app.midi_editor.scale_snap_bounds.center();
         click_note_or_lane(&mut app, &ctx, snap);
         assert!(
-            !app.midi_editor.scale.snap,
+            !app.session.project.tracks[0].midi_options.snap,
             "no track keeps scale controls disabled"
         );
     }
@@ -6889,12 +6888,12 @@ fn root_off_disables_scale_controls_and_selecting_a_root_enables_them() {
     let ctx = context();
     app.open_clip_editor(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
-    let before = format!("{:?}", app.session.project);
+    let before = pattern(&app).clone();
     app.dirty = false;
-    assert_eq!(app.midi_editor.scale.root, None);
+    assert_eq!(app.session.project.tracks[0].midi_options.root, None);
     let snap = app.midi_editor.scale_snap_bounds.center();
     click_note_or_lane(&mut app, &ctx, snap);
-    assert!(!app.midi_editor.scale.snap);
+    assert!(!app.session.project.tracks[0].midi_options.snap);
     let scale = app.midi_editor.scale_mode_bounds.center();
     click_note_or_lane(&mut app, &ctx, scale);
     assert!(!egui::Popup::is_any_open(&ctx));
@@ -6911,10 +6910,10 @@ fn root_off_disables_scale_controls_and_selecting_a_root_enables_them() {
         })
         .unwrap();
     click_note_or_lane(&mut app, &ctx, c);
-    assert_eq!(app.midi_editor.scale.root, Some(0));
+    assert_eq!(app.session.project.tracks[0].midi_options.root, Some(0));
     let snap = app.midi_editor.scale_snap_bounds.center();
     click_note_or_lane(&mut app, &ctx, snap);
-    assert!(app.midi_editor.scale.snap);
+    assert!(app.session.project.tracks[0].midi_options.snap);
     let root = app.midi_editor.scale_root_bounds.center();
     click_note_or_lane(&mut app, &ctx, root);
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
@@ -6928,16 +6927,21 @@ fn root_off_disables_scale_controls_and_selecting_a_root_enables_them() {
         })
         .unwrap();
     click_note_or_lane(&mut app, &ctx, off);
-    assert_eq!(app.midi_editor.scale.root, None);
-    assert_eq!(app.midi_editor.scale.snap_pitch(61, 0..=127, false), 61);
+    assert_eq!(app.session.project.tracks[0].midi_options.root, None);
+    assert_eq!(
+        app.session.project.tracks[0]
+            .midi_options
+            .snap_pitch(61, 0..=127, false),
+        61
+    );
     let snap = app.midi_editor.scale_snap_bounds.center();
     click_note_or_lane(&mut app, &ctx, snap);
     assert!(
-        app.midi_editor.scale.snap,
+        app.session.project.tracks[0].midi_options.snap,
         "Off disables the control and retains its choice"
     );
-    assert_eq!(format!("{:?}", app.session.project), before);
-    assert!(!app.dirty);
+    assert_eq!(pattern(&app), &before);
+    assert!(app.dirty);
 }
 
 #[test]
@@ -6970,12 +6974,15 @@ fn scale_selection_dims_outside_keys_and_notes_in_both_themes_without_retuning()
         app.dirty = false;
         // Highlighting is independent from snapping and does not change the source.
         for root in [None, Some(0), Some(1), None] {
-            app.midi_editor.scale.root = root;
+            app.session.project.tracks[0].midi_options.root = root;
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let palette = theme::palette(&ctx);
             for (id, pitch) in [(in_scale, 60), (outside.id, 61)] {
                 let rect = app.midi_editor.note_bounds[&id].shrink(1.0);
-                let expected = if app.midi_editor.scale.contains_pitch(pitch) {
+                let expected = if app.session.project.tracks[0]
+                    .midi_options
+                    .contains_pitch(pitch)
+                {
                     theme::accent(&ctx)
                 } else {
                     palette.secondary
@@ -6988,7 +6995,10 @@ fn scale_selection_dims_outside_keys_and_notes_in_both_themes_without_retuning()
                 );
             }
             for (name, pitch) in [("C4", 60), ("C#4", 61)] {
-                let expected = if app.midi_editor.scale.contains_pitch(pitch) {
+                let expected = if app.session.project.tracks[0]
+                    .midi_options
+                    .contains_pitch(pitch)
+                {
                     palette.text
                 } else {
                     palette.secondary
@@ -7007,7 +7017,7 @@ fn scale_selection_dims_outside_keys_and_notes_in_both_themes_without_retuning()
                 if t.galley.text() == "Snap to scale"
                     && t.galley.job.sections.iter().all(|section| section.format.font_id.size == small))));
             assert_eq!(pattern(&app), &content);
-            assert!(!app.midi_editor.scale.snap);
+            assert!(!app.session.project.tracks[0].midi_options.snap);
             assert!(!app.dirty);
         }
     }
@@ -7027,7 +7037,7 @@ fn editor_section_headers_share_panel_dividers_and_audio_options_remain_empty() 
             },
         );
         app.open_clip_editor(clip, midi, &ctx);
-        app.midi_editor.scale.root = Some(9);
+        app.session.project.tracks[0].midi_options.root = Some(9);
         for (track, title) in [
             (midi, "MIDI options"),
             (audio, "Clip options"),
@@ -7061,7 +7071,7 @@ fn editor_section_headers_share_panel_dividers_and_audio_options_remain_empty() 
                         && points[1] == Pos2::new(panel.right(), y)
                         && *stroke == Stroke::new(1.0, palette.border))));
             }
-            assert_eq!(app.midi_editor.scale.root, Some(9));
+            assert_eq!(app.session.project.tracks[0].midi_options.root, Some(9));
             if track == audio {
                 assert_eq!(app.midi_editor.scale_root_bounds, Rect::NOTHING);
                 assert_eq!(app.midi_editor.scale_mode_bounds, Rect::NOTHING);
@@ -7070,5 +7080,99 @@ fn editor_section_headers_share_panel_dividers_and_audio_options_remain_empty() 
             assert_eq!(format!("{:?}", app.session.project), before);
             assert!(!app.dirty);
         }
+    }
+}
+
+#[test]
+fn per_track_midi_options_mark_dirty_support_history_and_switch_without_inheriting_choices() {
+    let (mut app, first, clip, _) = fixture();
+    let second = app.session.project.add_midi_track().unwrap();
+    let first_options = daw_core::MidiOptions {
+        root: Some(0),
+        ..Default::default()
+    };
+    let second_options = daw_core::MidiOptions {
+        root: Some(2),
+        scale: daw_core::MidiScale::Dorian,
+        snap: false,
+    };
+    app.session.project.tracks[0].midi_options = first_options;
+    app.session.project.tracks[1].midi_options = second_options;
+    let ctx = context();
+    app.open_clip_editor(clip, first, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let source = pattern(&app).clone();
+    app.sync_needed = false;
+    let snap = app.midi_editor.scale_snap_bounds.center();
+    click_note_or_lane(&mut app, &ctx, snap);
+    assert!(app.editor_midi_options().snap);
+    assert!(app.dirty);
+    assert!(
+        !app.sync_needed,
+        "editor metadata does not rebuild playback"
+    );
+    assert!(app.job.is_none());
+    assert_eq!(pattern(&app), &source);
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.editor_midi_options(), first_options);
+    assert!(!app.dirty);
+    app.perform_history_action(HistoryAction::Redo, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.editor_midi_options().snap);
+    let revision = app.change_revision;
+    app.selected_clip = None;
+    app.select_track(second, false);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.editor_midi_options(), second_options);
+    assert_eq!(app.change_revision, revision);
+    assert!(app.session.project.tracks[0].midi_options.snap);
+    assert_eq!(pattern(&app), &source);
+    // Check before the next UI frame can consume a renderer-sync request.
+    app.sync_needed = false;
+    app.edit(Edit::SetMidiOptions {
+        track_id: second,
+        options: daw_core::MidiOptions {
+            root: Some(7),
+            ..second_options
+        },
+    });
+    assert!(!app.sync_needed);
+    assert!(app.job.is_none());
+    assert_eq!(app.editor_midi_options().root, Some(7));
+}
+
+#[test]
+fn drawing_uses_each_selected_tracks_saved_scale_constraints() {
+    let (mut app, first, first_clip, _) = fixture();
+    let second = app.session.project.add_midi_track().unwrap();
+    let second_clip = app.session.project.add_midi_pattern(second, 0).unwrap();
+    app.session.project.tracks[0].midi_options = daw_core::MidiOptions {
+        root: Some(0),
+        snap: true,
+        ..Default::default()
+    };
+    app.session.project.tracks[1].midi_options = daw_core::MidiOptions {
+        root: Some(2),
+        snap: true,
+        ..Default::default()
+    };
+    let ctx = context();
+    for (track, clip, expected) in [(first, first_clip, 60), (second, second_clip, 61)] {
+        app.open_clip_editor(clip, track, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let grid = app.midi_editor.grid_bounds;
+        let point = Pos2::new(
+            grid.left() + 30.0,
+            grid.top() + f32::from(127 - 61u8) * 18.0 + 9.0,
+        );
+        let before = pattern_for_clip(&app, clip).notes.clone();
+        draw_click(&mut app, &ctx, point);
+        assert!(
+            pattern_for_clip(&app, clip)
+                .notes
+                .iter()
+                .any(|note| !before.contains(note) && note.pitch == expected)
+        );
     }
 }

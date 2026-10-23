@@ -1,9 +1,15 @@
 //! Fixed editor options and the selected track's shared mixing controls.
 use super::*;
-use crate::midi_scale::Scale;
 use daw_core::TrackKind;
+use daw_core::{MidiOptions, MidiScale as Scale};
 
 impl DawUi {
+    pub(super) fn editor_midi_options(&self) -> MidiOptions {
+        self.editor_track()
+            .filter(|track| track.kind == TrackKind::Midi)
+            .map_or(MidiOptions::default(), |track| track.midi_options)
+    }
+
     pub(super) fn midi_editor_panel(&mut self, ui: &mut egui::Ui, bounds: Rect) {
         let panel = panels::ControlPanel::begin(ui, bounds);
         let rect = Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, bounds.height()));
@@ -27,9 +33,13 @@ impl DawUi {
         );
         self.editor_track_header(&mut child);
         panels::ControlPanel::row_dividers(&child, header, false, true);
-        let midi = self
+        let track_id = self
             .editor_track()
-            .is_some_and(|t| t.kind == TrackKind::Midi);
+            .filter(|track| track.kind == TrackKind::Midi)
+            .map(|track| track.id);
+        let midi = track_id.is_some();
+        let original = self.editor_midi_options();
+        let mut options = original;
         let audio = self
             .editor_track()
             .is_some_and(|t| t.kind == TrackKind::Audio);
@@ -58,7 +68,6 @@ impl DawUi {
                     ui.add_space(8.0);
                     ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
                     ui.add_enabled_ui(midi && !self.midi_editor.dragging(), |ui| {
-                        let options = &mut self.midi_editor.scale;
                         panel.field_row(ui, 45.0, |ui| { ui.label("Root"); }, |ui| {
                             const ROOTS: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
                             let response = egui::ComboBox::from_id_salt("scale-root")
@@ -94,6 +103,11 @@ impl DawUi {
                     });
                 });
             });
+        }
+        if options != original
+            && let Some(track_id) = track_id
+        {
+            self.edit(Edit::SetMidiOptions { track_id, options });
         }
         panel.finish(ui);
     }

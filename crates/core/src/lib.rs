@@ -9,6 +9,7 @@ pub use daw_unit_core::{
 };
 pub use daw_unit_core::{STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
 mod midi;
+mod midi_options;
 pub use daw_unit_core::{
     AUTO_FILTER_TYPE_ID, AutoFilterSettings, COMPRESSOR_TYPE_ID, CompressorDetection,
     CompressorSettings, CurveShape, DRIVE_TYPE_ID, DriveColorShape, DriveSettings, EQ_TYPE_ID,
@@ -25,6 +26,7 @@ pub use daw_unit_core::{
     Modulation, ModulationParameter, ModulationSourceId, ModulationValue,
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
+pub use midi_options::{MidiOptions, MidiScale};
 mod audio_settings;
 mod stretch_engine;
 pub use stretch_engine::{StretchEngine, StretchEngineId};
@@ -214,6 +216,9 @@ pub struct Track {
     pub effects_compact: bool,
     #[serde(default)]
     pub kind: TrackKind,
+    /// Per-track editor constraints; these do not retune saved notes.
+    #[serde(default, skip_serializing_if = "MidiOptions::is_default")]
+    pub midi_options: MidiOptions,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instrument: Option<InstrumentSettings>,
     pub id: Id,
@@ -501,6 +506,10 @@ impl Project {
         let assets: std::collections::HashMap<_, _> =
             self.assets.iter().map(|a| (a.id, a)).collect();
         for t in &self.tracks {
+            t.midi_options.validate()?;
+            if t.kind != TrackKind::Midi && !t.midi_options.is_default() {
+                return Err(invalid("MIDI options require a MIDI track"));
+            }
             if !ids.insert(t.id) {
                 return Err(invalid("Duplicate track ID"));
             }
@@ -643,6 +652,7 @@ impl Project {
             effects: vec![],
             effects_compact: false,
             kind: TrackKind::Audio,
+            midi_options: MidiOptions::default(),
             instrument: None,
             id,
             name: format!("Audio {}", self.tracks.len() + 1),
@@ -842,6 +852,18 @@ impl Project {
                     region.end_frame = checked_frame((region.end_frame as f64 * ratio).ceil())?;
                     self.tempo_bpm = bpm;
                 }
+            }
+            Edit::SetMidiOptions { track_id, options } => {
+                let track = self
+                    .tracks
+                    .iter_mut()
+                    .find(|t| t.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?;
+                if track.kind != TrackKind::Midi {
+                    return Err(Error("MIDI options require a MIDI track".into()));
+                }
+                options.validate()?;
+                track.midi_options = options;
             }
             Edit::SetTrackMuted { track_id, muted } => {
                 self.tracks
@@ -1076,6 +1098,10 @@ pub enum Edit {
     /// Final overlap/bounds validation is transactional.
     SetTempo {
         bpm: f32,
+    },
+    SetMidiOptions {
+        track_id: Id,
+        options: MidiOptions,
     },
     SetTrackMuted {
         track_id: Id,

@@ -4330,3 +4330,18 @@ Logs are in ignored `work/editor-*.log`. These are automated checks and a bundle
 Both Editor panel sections now use the shared `ControlPanel::header` and bottom row-divider pattern. The lower section is MIDI options for MIDI tracks and Clip options for audio tracks. Audio options stay empty; returning to a MIDI track restores its scale controls without changing their choices or project data. These section names supersede the earlier Scale heading.
 
 `CARGO_HOME="$PWD/work/cargo-home" cargo test --offline --locked --workspace` passes, including all 583 UI tests and doctests; existing ignored tests remain ignored. New coverage checks both themes, full-width title separators, MIDI/audio switching, absence of audio scale controls, retained MIDI choices, and clean project state. Strict workspace Clippy, formatting, `git diff --check`, and the macOS debug bundle rebuild also pass. Logs are in ignored `work/editor-sections-*.log`. Native UI and Windows/Linux checks were not run for this refinement.
+
+## Persisted MIDI track options — 2026-10-23
+
+Root, Scale, and Snap to scale now belong to `Track::midi_options`, using core `MidiOptions`/`MidiScale` definitions and `Edit::SetMidiOptions`. This supersedes the earlier application-session storage. The editor reads the current track for controls, dimming, and note input. Option changes preserve track/clip selection and enter project history and save revisions without preparing audio or requesting a renderer update. Duplication copies options; older manifests default to Root Off, Major, and snapping off. Invalid roots and non-MIDI option targets reject atomically. Root Off retains the saved scale and snap preference.
+
+Completed checks:
+
+- `cargo test --offline --locked --workspace` passes, including doctests; existing ignored tests remain ignored. The final UI suite was also rerun after the selection-preservation correction.
+- All 584 UI tests pass, including per-track choice isolation, changed/clean history state, Undo/Redo, unchanged note content/selection, drawing with different track scales, and no audio preparation or playback synchronization on an option edit.
+- Three core persistence/transaction tests pass: all scale variants round-trip, missing fields default, audio defaults remain omitted, invalid roots/targets/batches reject without mutation, and track copies retain independent options.
+- The project workflow test passes for save/reopen, Save As, legacy loading, and rejection of an invalid saved root.
+- Strict workspace Clippy, formatting, and `git diff --check` pass.
+- The macOS debug bundle rebuild and CLI smoke checks pass.
+
+Logs are in ignored `work/midi-options-*.log`. Native UI, device playback, and Windows/Linux checks were not performed for this change.
