@@ -415,14 +415,18 @@ impl TrackAction {
     pub const ALL: [Self; 9] = [
         Self::Add,
         Self::AddMidi,
+        Self::Rename,
+        Self::Duplicate,
         Self::Group,
         Self::Ungroup,
         Self::Mute,
         Self::Solo,
-        Self::Rename,
-        Self::Duplicate,
         Self::Delete,
     ];
+
+    pub fn starts_menu_group(self) -> bool {
+        matches!(self, Self::Mute | Self::Rename | Self::Group | Self::Delete)
+    }
 
     pub fn label(self) -> &'static str {
         match self {

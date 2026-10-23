@@ -856,9 +856,9 @@ fn add_track_menu_item_is_first_and_works_without_a_selection() {
             .collect::<Vec<_>>(),
         [
             "Add audio track",
+            "Duplicate track",
             "Mute",
             "Solo",
-            "Duplicate track",
             "Delete track"
         ]
     );

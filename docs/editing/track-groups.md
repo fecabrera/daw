@@ -2,6 +2,18 @@
 
 A track group is a stereo processing bus. Its children send their output to the group instead of directly to Master. Groups can contain audio tracks, MIDI tracks, and other groups.
 
+## Track menus
+
+The Track menu separates its actions into five groups:
+
+- Add audio track, Add MIDI track.
+- Rename track, Duplicate track.
+- Group selected tracks, Ungroup tracks.
+- Mute, Solo.
+- Delete track.
+
+Right-click a track for three groups: Rename/Duplicate, Group/Ungroup, then Delete. A separator marks each group. These commands use the existing track selection and shortcuts.
+
 ## Create and arrange a group
 
 1. Select track headers. Shift-click or Command/Ctrl-click toggles selection.

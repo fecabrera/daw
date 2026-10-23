@@ -208,7 +208,7 @@ impl DawUi {
     pub(super) fn track_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);
         for action in TrackAction::ALL {
-            if matches!(action, TrackAction::Mute | TrackAction::Rename) {
+            if action.starts_menu_group() {
                 ui.separator();
             }
             let mut button = egui::Button::new(self.track_action_label(action));
@@ -359,13 +359,19 @@ impl DawUi {
     }
 
     pub(super) fn track_context_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
-        for action in [
+        for (index, action) in [
             TrackAction::Rename,
+            TrackAction::Duplicate,
             TrackAction::Group,
             TrackAction::Ungroup,
-            TrackAction::Duplicate,
             TrackAction::Delete,
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if index > 0 && action.starts_menu_group() {
+                ui.separator();
+            }
             let mut button = egui::Button::new(self.track_action_label(action));
             if let Some(shortcut) = action.shortcut() {
                 button = button.shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &shortcut));

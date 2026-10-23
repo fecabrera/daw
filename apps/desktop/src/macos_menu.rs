@@ -332,7 +332,7 @@ impl NativeMenu {
         let track_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Track"));
         track_menu.setAutoenablesItems(false);
         for (index, action) in TrackAction::ALL.into_iter().enumerate() {
-            if matches!(action, TrackAction::Mute | TrackAction::Rename) {
+            if action.starts_menu_group() {
                 track_menu.addItem(&NSMenuItem::separatorItem(mtm));
             }
             let key = action

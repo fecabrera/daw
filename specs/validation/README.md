@@ -4116,3 +4116,24 @@ Final repository checks with the pinned Rust toolchain on macOS arm64:
 - Changed documentation link targets and `git diff HEAD --check`: passed.
 
 Native Windows/Linux execution and manual menu/keyboard interaction were not performed. CLI smoke checks were not repeated because shared import/render/export behavior and CLI code are unchanged.
+
+## 2026-10-22 — Track menu action groups
+
+Reordered the native macOS and shared egui Track menus into Add audio track/Add MIDI track; Rename track/Duplicate track; Group selected tracks/Ungroup tracks; Mute/Solo; Delete track. Track context menus now use Rename/Duplicate; Group/Ungroup; Delete. Separators mark each group. Both menu adapters reuse the shared group boundaries. Existing action guards, shortcuts and dynamic selection labels remain in place. User guidance and the track-group specification describe the new order.
+
+Completed focused checks on macOS arm64:
+
+- `cargo test --offline --locked -p daw-ui --lib track`: all 112 selected tests passed, including track shortcuts, selection, context-menu dispatch and guards.
+- A temporary AppKit harness instantiated the production native menu and verified the exact Track action order, four separators and each native action tag against the shared dispatch order. Existing Clip/File order, shortcut and guarded selector-dispatch assertions also passed. This harness ran outside the sandbox with the application-menu initialization normally supplied by winit.
+- `cargo fmt --all --check` and `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- Changed documentation link targets: passed.
+
+The native menu harness passed with Mute/Solo after Group/Ungroup. The existing rendered-menu test initially failed on its old Duplicate/Mute ordering; its expectation now follows the new order. All 570 UI tests then passed with `cargo test --offline --locked -p daw-ui --lib`. Workspace Clippy with warnings denied and formatting checks also passed again after that correction.
+
+Final repository checks with the pinned Rust toolchain on macOS arm64:
+
+- `cargo test --offline --locked --workspace`: passed, including all 570 UI tests. Existing opt-in real-model and release acceptance tests remain ignored.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Changed documentation link targets and `git diff HEAD --check`: passed.
+
+Native Windows/Linux execution and manual menu/keyboard interaction were not performed. The AppKit harness checks native menu objects and action tags rather than human input. CLI smoke checks were not repeated because shared import/render/export behavior and CLI code are unchanged.
