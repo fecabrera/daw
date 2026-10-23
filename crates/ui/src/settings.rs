@@ -139,9 +139,10 @@ impl TitlebarStyle {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
+    pub separation_models: std::sync::Arc<daw_project::SeparationModels>,
     pub accent: AccentColor,
     pub theme: ColorTheme,
     pub titlebar: TitlebarStyle,
@@ -155,8 +156,8 @@ impl AppSettings {
         json.and_then(|json| serde_json::from_str(json).ok())
             .unwrap_or_default()
     }
-    pub fn to_json(self) -> String {
-        serde_json::to_string(&self).expect("Settings contain only serializable enum values")
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(&self).expect("Settings contain only serializable preferences")
     }
 }
 
@@ -173,7 +174,65 @@ fn swatch(ui: &egui::Ui, rect: Rect, color: Color32) {
     );
 }
 
-pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
+pub struct ModelAction {
+    pub kind: daw_project::SeparationModelKind,
+    pub path: Option<std::path::PathBuf>,
+}
+
+fn model_row(
+    ui: &mut egui::Ui,
+    width: f32,
+    kind: daw_project::SeparationModelKind,
+    path: Option<&std::path::Path>,
+    action: &mut Option<ModelAction>,
+) {
+    crate::rows::field(
+        ui,
+        width,
+        |ui| {
+            ui.label(kind.name());
+        },
+        |ui| {
+            ui.horizontal(|ui| {
+                ui.label(path.and_then(|p| p.file_name()).map_or_else(
+                    || "Not selected".into(),
+                    |n| n.to_string_lossy().into_owned(),
+                ))
+                .on_hover_text(path.map_or_else(
+                    || {
+                        "Choose a local HTDemucs ONNX model to validate. No models are downloaded."
+                            .into()
+                    },
+                    |p| format!("Validated model: {}", p.display()),
+                ));
+                if ui.button("Choose…").clicked()
+                    && let Some(selected) = rfd::FileDialog::new()
+                        .add_filter("ONNX model", &["onnx"])
+                        .pick_file()
+                {
+                    *action = Some(ModelAction {
+                        kind,
+                        path: Some(selected),
+                    });
+                }
+                if ui
+                    .add_enabled(path.is_some(), egui::Button::new("Clear"))
+                    .clicked()
+                {
+                    *action = Some(ModelAction { kind, path: None });
+                }
+            });
+        },
+    );
+}
+
+pub fn show(
+    ctx: &Context,
+    settings: &mut AppSettings,
+    models: &daw_project::SeparationModels,
+    models_enabled: bool,
+    model_action: &mut Option<ModelAction>,
+) -> bool {
     let popup_was_open = egui::Popup::is_any_open(ctx);
     let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
         .show_with_content(ctx, |ui| {
@@ -190,6 +249,7 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
             let label_width = label_text("Split MIDI notes").max(
                 label_text("Accent color") + ui.spacing().item_spacing.x + 14.0,
             );
+            ui.strong("Appearance");
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             crate::rows::field(
                 ui,
@@ -224,55 +284,10 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
                                     .selectable_value(&mut settings.theme, theme, theme.name())
                                     .changed()
                                 {
-                                    crate::theme::apply(ctx, *settings);
+                                    crate::theme::apply(ctx, settings.clone());
                                 }
                             }
                         });
-                },
-            );
-            crate::rows::field(
-                ui, label_width,
-                |ui| { ui.label("Seek cache"); },
-                |ui| {
-                    egui::ComboBox::from_id_salt("seek_cache")
-                        .selected_text(settings.seek_cache.name())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for profile in CacheProfile::ALL {
-                                let hint = match profile {
-                                    CacheProfile::Light => "32 MiB of checkpoints. Lower background load; builds while stopped or paused.",
-                                    CacheProfile::Balanced => "128 MiB of checkpoints. Moderate background work, including during playback.",
-                                    CacheProfile::Responsive => "256 MiB of checkpoints. More background work for faster cache coverage.",
-                                };
-                                ui.selectable_value(&mut settings.seek_cache, profile, profile.name())
-                                    .on_hover_text(hint);
-                            }
-                        })
-                        .response.on_hover_text("Prepares exact seek history. Profiles change CPU and memory use; sound stays the same.");
-                },
-            );
-            crate::rows::field(
-                ui,
-                label_width,
-                |ui| {
-                    ui.label("Split MIDI notes");
-                },
-                |ui| {
-                    egui::ComboBox::from_id_salt("midi_note_split")
-                        .selected_text(settings.midi_note_split.name())
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for mode in daw_core::MidiNoteSplit::ALL {
-                                let hint = match mode {
-                                    daw_core::MidiNoteSplit::Split => "A note that crosses the playhead becomes two notes.",
-                                    daw_core::MidiNoteSplit::PreserveFirst => "A note that crosses the playhead stays on the first clip.",
-                                };
-                                ui.selectable_value(&mut settings.midi_note_split, mode, mode.name())
-                                    .on_hover_text(hint);
-                            }
-                        })
-                        .response
-                        .on_hover_text("Applies when you split MIDI clips. Audio clips are unchanged. This choice stays on this computer.");
                 },
             );
             let swatch_color = settings.accent.color();
@@ -321,13 +336,72 @@ pub fn show(ctx: &Context, settings: &mut AppSettings) -> bool {
                                 });
                                 if response.clicked() {
                                     settings.accent = accent;
-                                    crate::theme::apply(ctx, *settings);
+                                    crate::theme::apply(ctx, settings.clone());
                                     ui.close();
                                 }
                             }
                         });
                 },
             );
+            ui.separator();
+            ui.strong("Playback");
+            crate::rows::field(
+                ui, label_width,
+                |ui| { ui.label("Seek cache"); },
+                |ui| {
+                    egui::ComboBox::from_id_salt("seek_cache")
+                        .selected_text(settings.seek_cache.name())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for profile in CacheProfile::ALL {
+                                let hint = match profile {
+                                    CacheProfile::Light => "32 MiB of checkpoints. Lower background load; builds while stopped or paused.",
+                                    CacheProfile::Balanced => "128 MiB of checkpoints. Moderate background work, including during playback.",
+                                    CacheProfile::Responsive => "256 MiB of checkpoints. More background work for faster cache coverage.",
+                                };
+                                ui.selectable_value(&mut settings.seek_cache, profile, profile.name())
+                                    .on_hover_text(hint);
+                            }
+                        })
+                        .response.on_hover_text("Prepares exact seek history. Profiles change CPU and memory use; sound stays the same.");
+                },
+            );
+            ui.separator();
+            ui.strong("MIDI");
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
+                    ui.label("Split MIDI notes");
+                },
+                |ui| {
+                    egui::ComboBox::from_id_salt("midi_note_split")
+                        .selected_text(settings.midi_note_split.name())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for mode in daw_core::MidiNoteSplit::ALL {
+                                let hint = match mode {
+                                    daw_core::MidiNoteSplit::Split => "A note that crosses the playhead becomes two notes.",
+                                    daw_core::MidiNoteSplit::PreserveFirst => "A note that crosses the playhead stays on the first clip.",
+                                };
+                                ui.selectable_value(&mut settings.midi_note_split, mode, mode.name())
+                                    .on_hover_text(hint);
+                            }
+                        })
+                        .response
+                        .on_hover_text("Applies when you split MIDI clips. Audio clips are unchanged. This choice stays on this computer.");
+                },
+            );
+            ui.separator();
+            ui.strong("Stem Separation");
+            ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE && models_enabled, |ui| {
+                model_row(ui, label_width, daw_project::SeparationModelKind::Cpu, models.cpu.as_deref(), model_action);
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                model_row(ui, label_width, daw_project::SeparationModelKind::CoreMl, models.coreml.as_deref(), model_action);
+            });
+            if !daw_project::SEPARATION_AVAILABLE {
+                ui.label(daw_project::SEPARATION_UNAVAILABLE_REASON);
+            }
         })
         .is_some();
     close || (!popup_was_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)))
@@ -349,7 +423,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| closed = show(ui.ctx(), settings),
+            |ui| closed = show(ui.ctx(), settings, &Default::default(), true, &mut None),
         );
         output.textures_delta.clear();
         (closed, output.shapes)
@@ -492,7 +566,7 @@ mod tests {
             titlebar: TitlebarStyle::Custom,
             ..Default::default()
         };
-        crate::theme::apply(&ctx, settings);
+        crate::theme::apply(&ctx, settings.clone());
         frame(&ctx, &mut settings, vec![]);
         click(&ctx, &mut settings, "Custom");
         click(&ctx, &mut settings, "Native");
@@ -520,7 +594,7 @@ mod tests {
                         theme,
                         ..Default::default()
                     };
-                    crate::theme::apply(&ctx, settings);
+                    crate::theme::apply(&ctx, settings.clone());
                     for _ in 0..12 {
                         frame(&ctx, &mut settings, vec![]);
                     }
@@ -583,7 +657,7 @@ mod tests {
             accent: AccentColor::Teal,
             ..Default::default()
         };
-        crate::theme::apply(&ctx, settings);
+        crate::theme::apply(&ctx, settings.clone());
         frame(&ctx, &mut settings, vec![]);
         let dark_style = ctx.global_style();
         click(&ctx, &mut settings, "Dark");

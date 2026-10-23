@@ -134,6 +134,21 @@ pub struct ClipColors {
     pub text: Color32,
 }
 
+impl ClipColors {
+    /// Match disabled units with a neutral header and secondary foregrounds.
+    /// Painter opacity would let the timeline grid show through the clip.
+    pub fn dimmed(self, ctx: &Context) -> Self {
+        let colors = palette(ctx);
+        Self {
+            body: colors.panel,
+            header: unit_header_fill(ctx, false),
+            channel: colors.panel,
+            waveform: colors.secondary,
+            text: colors.secondary,
+        }
+    }
+}
+
 impl Default for ClipColors {
     fn default() -> Self {
         Self {
@@ -155,7 +170,11 @@ pub fn clip_colors(
     if color == daw_core::LEGACY_CLIP_COLOR {
         return ClipColors::default();
     }
-    let body = display_color(color);
+    clip_palette(display_color(color))
+}
+
+/// Derive readable foregrounds and related surfaces from one clip body color.
+fn clip_palette(body: Color32) -> ClipColors {
     let header = blend(body, Color32::BLACK, 20);
     ClipColors {
         body,

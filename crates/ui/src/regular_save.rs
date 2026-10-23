@@ -2,10 +2,9 @@
 use super::*;
 
 pub(super) struct PendingSave {
-    pub receiver: mpsc::Receiver<Result<(), String>>,
+    pub receiver: mpsc::Receiver<Result<Session, String>>,
     pub project: Id,
     pub revision: u64,
-    pub snapshot: Session,
     pub navigation_revision: u64,
 }
 
@@ -23,11 +22,13 @@ impl DawUi {
             receiver,
             project: snapshot.project.project_id,
             revision: self.change_revision,
-            snapshot: snapshot.clone(),
             navigation_revision: self.navigation_revision,
         });
         std::thread::spawn(move || {
-            let result = snapshot.save(&folder).map_err(|e| e.to_string());
+            let result = snapshot
+                .save(&folder)
+                .map(|()| snapshot)
+                .map_err(|e| e.to_string());
             let _ = sender.send(result);
         });
     }
@@ -45,23 +46,25 @@ impl DawUi {
             });
         if let Some(result) = result {
             let saved = self.regular_save.take().unwrap();
-            if result.is_ok() && saved.project == self.session.project.project_id {
-                self.saved_navigation_revision = saved.navigation_revision;
-                self.history_saved(&saved.snapshot);
-                if let Some(history) = &self.history {
-                    self.dirty = !history.is_saved()
-                        || self.navigation_revision != self.saved_navigation_revision;
-                }
-            }
-            // A regular save never publishes its old snapshot over current edits or transport.
             match result {
-                Ok(())
-                    if saved.project == self.session.project.project_id
-                        && saved.revision == self.change_revision =>
-                {
-                    self.dirty = false
+                Ok(written) if saved.project == self.session.project.project_id => {
+                    // Merge only file locations. The written snapshot can be
+                    // older than the current edits, history gesture or transport.
+                    if let Err(error) = self.session.retarget_generated_sources(&written) {
+                        self.fail(error);
+                        return;
+                    }
+                    self.saved_navigation_revision = saved.navigation_revision;
+                    self.history_saved(&written);
+                    if let Some(history) = &self.history {
+                        self.dirty = !history.is_saved()
+                            || self.navigation_revision != self.saved_navigation_revision;
+                    }
+                    if saved.revision == self.change_revision {
+                        self.dirty = false;
+                    }
                 }
-                Ok(()) => {}
+                Ok(_) => {}
                 Err(error) => self.fail(error),
             }
         }

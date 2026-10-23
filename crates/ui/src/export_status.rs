@@ -7,12 +7,7 @@ use std::{
     },
 };
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum State {
-    Running,
-    Complete,
-    Failed(String),
-}
+pub use crate::job_report::State;
 
 pub struct ExportStatus {
     pub path: PathBuf,
@@ -45,81 +40,34 @@ impl ExportStatus {
 
     /// Returns true only when a finished report is dismissed.
     pub fn show(&self, ctx: &egui::Context) -> bool {
-        let running = self.state == State::Running;
         let frames = self.frames.load(Ordering::Relaxed).min(self.total);
-        let actions: &[(&str, ())] = if running { &[] } else { &[("Close", ())] };
-        let closed = crate::dialogs::Dialog::new("Export status", "", actions)
-            .show_with_content(ctx, |ui| {
-                match &self.state {
-                    State::Running => {
-                        crate::rows::centered(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                            ui.spinner();
-                            ui.label(if frames < self.total {
-                                "Rendering and encoding audio…"
-                            } else {
-                                "Finalizing audio file…"
-                            });
-                        });
-                    }
-                    State::Complete => {
-                        ui.label("Export complete");
-                    }
-                    State::Failed(_) => {
-                        ui.colored_label(crate::theme::palette(ui.ctx()).error, "Export failed");
-                    }
-                }
-                if !matches!(self.state, State::Failed(_)) {
-                    let progress = if running {
-                        (frames as f64 / self.total.max(1) as f64).min(0.99) as f32
-                    } else {
-                        1.0
-                    };
-                    ui.add(
-                        egui::ProgressBar::new(progress)
-                            .show_percentage()
-                            .desired_width(300.0),
-                    );
-                }
-                egui::ScrollArea::vertical()
-                    .id_salt("export_diagnostics")
-                    .max_height(300.0)
-                    .show(ui, |ui| {
-                        let codec = match self.settings.format {
-                            ExportFormat::Wav => self.settings.wav_codec.label().to_owned(),
-                            ExportFormat::Mp3 => format!(
-                                "MPEG Layer III · {} kbps CBR",
-                                self.settings.mp3_bitrate.kbps()
-                            ),
-                        };
-                        ui.add(
-                            egui::Label::new(format!(
-                                "{} · {codec} · Stereo · {} kHz",
-                                self.settings.format.label(),
-                                self.sample_rate_hz as f32 / 1000.0
-                            ))
-                            .wrap(),
-                        );
-                        ui.label("Destination");
-                        ui.add(egui::Label::new(self.path.display().to_string()).wrap());
-                        if let State::Failed(error) = &self.state {
-                            ui.colored_label(crate::theme::palette(ui.ctx()).error, "Error");
-                            ui.add(egui::Label::new(error).wrap());
-                        }
-                        if !self.warnings.is_empty() {
-                            ui.colored_label(crate::theme::palette(ui.ctx()).warning, "Warnings");
-                            for warning in &self.warnings {
-                                ui.add(egui::Label::new(warning).wrap());
-                            }
-                        }
-                    });
-            })
-            .is_some();
-        if running {
-            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        let codec = match self.settings.format {
+            ExportFormat::Wav => self.settings.wav_codec.label().to_owned(),
+            ExportFormat::Mp3 => format!(
+                "MPEG Layer III · {} kbps CBR",
+                self.settings.mp3_bitrate.kbps()
+            ),
+        };
+        crate::job_report::Report {
+            title: "Export status",
+            state: &self.state,
+            running_text: if frames < self.total {
+                "Rendering and encoding audio…"
+            } else {
+                "Finalizing audio file…"
+            },
+            complete_text: "Export complete",
+            failed_text: "Export failed",
+            detail: &format!(
+                "{} · {codec} · Stereo · {} kHz",
+                self.settings.format.label(),
+                self.sample_rate_hz as f32 / 1000.0
+            ),
+            path: &self.path,
+            progress: Some(frames as f32 / self.total.max(1) as f32),
+            warnings: &self.warnings,
+            cancel: None,
         }
-        closed
-            || (!running
-                && ctx
-                    .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)))
+        .show(ctx)
     }
 }

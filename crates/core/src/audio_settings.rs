@@ -122,6 +122,7 @@ mod tests {
             .unwrap()
             .clips
             .push(crate::Clip {
+                muted: false,
                 id: crate::Id::new_v4(),
                 asset_id: asset,
                 name: "source".into(),

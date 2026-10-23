@@ -1,0 +1,126 @@
+Stem-separation dependency source notice
+
+Charon source: https://github.com/Valkyra-Labs/charon-audio
+Pinned commit: bc045cd80f009ea863772c5afef15928101df66f
+Local compatibility patch: vendor/charon-audio/DAW-PATCH.md in the DAW source.
+The patch resets automatic device selection before explicit providers; inference and DSP are unchanged.
+
+ort-sys source patch: https://github.com/pykeio/ort/tree/f2a5f73c9dd9ff3682303481cc792bf4669e3e94
+The patch keeps binding version 2.0.0-rc.13 and selects checksum-pinned native 1.31.0 artifacts.
+Intel macOS omits the native separation backend.
+
+ONNX Runtime source and native third-party notices: https://github.com/microsoft/onnxruntime/tree/v1.31.0
+
+No pretrained model weights are included or downloaded by the application.
+
+New registry dependencies and source locations (Cargo.lock is authoritative):
+
+base64 0.23.1: https://github.com/marshallpierce/rust-base64 (MIT OR Apache-2.0)
+
+base64ct 1.8.3: https://github.com/RustCrypto/formats (Apache-2.0 OR MIT)
+
+built 0.7.7: https://github.com/lukaslueg/built (MIT)
+
+byteorder 1.5.0: https://github.com/BurntSushi/byteorder (Unlicense OR MIT)
+
+console 0.15.11: https://github.com/console-rs/console (MIT)
+
+core-foundation 0.10.1: https://github.com/servo/core-foundation-rs (MIT OR Apache-2.0)
+
+crc 3.4.0: https://github.com/mrhooray/crc-rs.git (MIT OR Apache-2.0)
+
+crc-catalog 2.5.0: https://github.com/akhilles/crc-catalog.git (MIT OR Apache-2.0)
+
+crossbeam-channel 0.5.17: https://github.com/crossbeam-rs/crossbeam (MIT OR Apache-2.0)
+
+crossbeam-deque 0.8.8: https://github.com/crossbeam-rs/crossbeam (MIT OR Apache-2.0)
+
+crossbeam-epoch 0.9.21: https://github.com/crossbeam-rs/crossbeam (MIT OR Apache-2.0)
+
+der 0.8.2: https://github.com/RustCrypto/formats (Apache-2.0 OR MIT)
+
+dirs 6.0.0: https://github.com/soc/dirs-rs (MIT OR Apache-2.0)
+
+dirs-sys 0.5.0: https://github.com/dirs-dev/dirs-sys-rs (MIT OR Apache-2.0)
+
+encode_unicode 1.0.0: https://github.com/tormol/encode_unicode (Apache-2.0 OR MIT)
+
+flacenc 0.5.1: https://github.com/yotarok/flacenc-rs/ (Apache-2.0)
+
+foreign-types 0.3.2: https://github.com/sfackler/foreign-types (MIT/Apache-2.0)
+
+foreign-types-shared 0.1.1: https://github.com/sfackler/foreign-types (MIT/Apache-2.0)
+
+hash32 0.3.1: https://github.com/japaric/hash32 (MIT OR Apache-2.0)
+
+heapless 0.8.0: https://github.com/rust-embedded/heapless (MIT OR Apache-2.0)
+
+hmac-sha256 1.1.15: https://github.com/jedisct1/rust-hmac-sha256 (ISC)
+
+http 1.5.0: https://github.com/hyperium/http (MIT OR Apache-2.0)
+
+httparse 1.10.1: https://github.com/seanmonstar/httparse (MIT OR Apache-2.0)
+
+indicatif 0.17.11: https://github.com/console-rs/indicatif (MIT)
+
+lzma-rust2 0.15.8: https://github.com/hasenbanck/lzma-rust2/ (Apache-2.0)
+
+matrixmultiply 0.3.11: https://github.com/bluss/matrixmultiply/ (MIT/Apache-2.0)
+
+md-5 0.10.6: https://github.com/RustCrypto/hashes (MIT OR Apache-2.0)
+
+native-tls 0.2.18: https://github.com/rust-native-tls/rust-native-tls (MIT OR Apache-2.0)
+
+ndarray 0.15.6: https://github.com/rust-ndarray/ndarray (MIT OR Apache-2.0)
+
+ndarray 0.17.2: https://github.com/rust-ndarray/ndarray (MIT OR Apache-2.0)
+
+number_prefix 0.4.0: https://github.com/ogham/rust-number-prefix (MIT)
+
+openssl 0.10.81: https://github.com/rust-openssl/rust-openssl (Apache-2.0)
+
+openssl-macros 0.1.1: https://crates.io/crates/openssl-macros (MIT/Apache-2.0)
+
+openssl-probe 0.2.1: https://github.com/rustls/openssl-probe (MIT OR Apache-2.0)
+
+openssl-sys 0.9.117: https://github.com/rust-openssl/rust-openssl (MIT)
+
+option-ext 0.2.0: https://github.com/soc/option-ext.git (MPL-2.0)
+
+ort 2.0.0-rc.13: https://github.com/pykeio/ort (MIT OR Apache-2.0)
+
+ort-sys 2.0.0-rc.13: https://github.com/pykeio/ort (MIT OR Apache-2.0)
+
+pem-rfc7468 1.0.0: https://github.com/RustCrypto/formats (Apache-2.0 OR MIT)
+
+rawpointer 0.2.1: https://github.com/bluss/rawpointer/ (MIT/Apache-2.0)
+
+rayon 1.12.0: https://github.com/rayon-rs/rayon (MIT OR Apache-2.0)
+
+rayon-core 1.13.0: https://github.com/rayon-rs/rayon (MIT OR Apache-2.0)
+
+redox_users 0.5.3: https://gitlab.redox-os.org/redox-os/users (MIT)
+
+rubato 0.15.0: https://github.com/HEnquist/rubato (MIT)
+
+rustls-pki-types 1.15.1: https://github.com/rustls/pki-types (MIT OR Apache-2.0)
+
+schannel 0.1.30: https://github.com/steffengy/schannel-rs (MIT)
+
+security-framework 3.7.0: https://github.com/kornelski/rust-security-framework (MIT OR Apache-2.0)
+
+security-framework-sys 2.17.0: https://github.com/kornelski/rust-security-framework (MIT OR Apache-2.0)
+
+seq-macro 0.3.6: https://github.com/dtolnay/seq-macro (MIT OR Apache-2.0)
+
+ureq 3.5.0: https://github.com/algesten/ureq (MIT OR Apache-2.0)
+
+ureq-proto 0.6.5: https://github.com/algesten/ureq-proto (MIT OR Apache-2.0)
+
+utf8-zero 0.8.1: https://github.com/algesten/utf8-zero (MIT OR Apache-2.0)
+
+vcpkg 0.2.15: https://github.com/mcgoo/vcpkg-rs (MIT/Apache-2.0)
+
+webpki-root-certs 1.0.10: https://github.com/rustls/webpki-roots (CDLA-Permissive-2.0)
+
+zeroize 1.9.1: https://github.com/RustCrypto/utils (Apache-2.0 OR MIT)

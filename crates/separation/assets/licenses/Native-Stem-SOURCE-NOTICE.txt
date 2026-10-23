@@ -1,0 +1,50 @@
+Native stem-separation source and distribution notice
+
+Selected native ONNX Runtime: 1.31.0, source commit 402979ac1bef89dcd55add41eaa7277c407599eb.
+Archive hashes and platform contents are recorded in specs/validation/stem-native-dependencies-2026-10-22.json.
+The source-derived inventory includes headers as well as static objects; optional CUDA/WebGPU/OpenVINO/telemetry distributions are not selected.
+
+Components (pinned source is authoritative):
+
+onnxruntime 1.31.0 (MIT): https://github.com/microsoft/onnxruntime/tree/402979ac1bef89dcd55add41eaa7277c407599eb
+abseil_cpp 20250814.0 (Apache-2.0): https://github.com/abseil/abseil-cpp/tree/987c57f325f7fa8472fa84e1f885f7534d391b0d
+onnx 1.22.0 (Apache-2.0): https://github.com/onnx/onnx/tree/2bb50465112feca9003e1ed654d77f01ff1415ca
+protobuf 33.6 (BSD-3-Clause): https://github.com/protocolbuffers/protobuf/tree/6e1998413a5bca7c058b85999667893f167434bc
+flatbuffers 23.5.26 (Apache-2.0): https://github.com/google/flatbuffers/tree/0100f6a5779831fa7a651e4b67ef389a8752bd9b
+re2 2024-07-02 (BSD-3-Clause): https://github.com/google/re2/tree/6dcd83d60f7944926bfd308cc13979fc53dd69ca
+eigen 3.4 branch 1d8b82b (MPL-2.0): https://github.com/eigen-mirror/eigen/tree/1d8b82b0740839c0de7f1242a3585e3390ff5f33
+json 3.11.3 (MIT): https://github.com/nlohmann/json/tree/9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03
+date 3.0.1 (MIT): https://github.com/HowardHinnant/date/tree/6e921e1b1d21e84a5c82416ba7ecd98e33a436d0
+microsoft_gsl 4.2.1 (MIT): https://github.com/microsoft/GSL/tree/249146590e322123cd0b378b1f364d6069717687
+mp11 1.82.0 (BSL-1.0): https://github.com/boostorg/mp11/tree/0a0b5fb001ce0233ae3a6f99d849c0649e5a7361
+safeint 3.0.28 (MIT): https://github.com/dcleblanc/SafeInt/tree/4cafc9196c4da9c817992b20f5253ef967685bf8
+dlpack 5c210da (Apache-2.0): https://github.com/dmlc/dlpack/tree/5c210da409e7f1e51ddf445134a4376fdbd70d7d
+pytorch_cpuinfo 66ee79c (BSD-2-Clause): https://github.com/pytorch/cpuinfo/tree/66ee79c038d70dad9f08705b2c9b3e58f6d8f512
+kleidiai 1.30.0 (Apache-2.0): https://github.com/ARM-software/kleidiai/tree/74b1a12d3620c89dae4766de640e064952000f4d
+coremltools 9.0 (BSD-3-Clause): https://github.com/apple/coremltools/tree/428d4b2658dfc44194f27f4f36870751be402ff7
+fp16 0a92994 (MIT): https://github.com/Maratyszcza/FP16/tree/0a92994d729ff76a58f692d3028ca1b64b145d91
+psimd 072586a (MIT): https://github.com/Maratyszcza/psimd/tree/072586a71b55b7f8c584153d223e95687148a900
+microsoft_wil 1.0.250325.1 (MIT): https://github.com/microsoft/wil/tree/b6ec76a2d9a609897f25a7fa0a0bdf4238e94e35
+directx_headers 1.613.1 (MIT): https://github.com/microsoft/DirectX-Headers/tree/de28d93dfa9ebf3e473127c1c657e1920a5345ee
+
+utf8_range (embedded in protobuf v33.6, MIT): https://github.com/protocolbuffers/protobuf/tree/6e1998413a5bca7c058b85999667893f167434bc/third_party/utf8_range
+
+Retain ONNX-Runtime-LICENSE.txt, ONNX-Runtime-ThirdPartyNotices.txt, and ONNX-Native-Additional-LICENSES.txt.
+Eigen is MPL-2.0 covered code. Its exact unmodified source is available at the pinned source URL above.
+Do not remove its source-availability notice. Modifications require the corresponding modified covered source.
+
+macOS arm64 links the Apple Clang compiler runtime selected by xcrun. Retain Apple-LLVM-ACKNOWLEDGMENT.txt,
+LLVM-CompilerRT-LICENSE.txt and LLVM-CompilerRT-Legacy-LICENSE.txt. Do not redistribute Apple SDKs/frameworks.
+The current upstream compiler-rt has LLVM runtime exceptions; legacy LLVM/MIT terms are included conservatively.
+
+Windows native archives contain Microsoft.AI.DirectML 1.15.4. DirectML.dll is not distributed in DAW ZIPs.
+The app imports the OS DirectML.dll (DMLCreateDevice1), Direct3D 12 and the separately installed Visual C++ v14 runtime.
+DirectML runtime DLL redistribution is governed by the Microsoft license in that exact NuGet package, not its MIT source-code license.
+Do not copy the DLL or treat it as MIT-licensed without checking those runtime distribution terms.
+
+The original DAW source remains BSD-2-Clause. The combined applications also statically link GPL-2.0-or-later Rubber Band.
+Distributors combining Apache-2.0 code with it must use the GPLv3-compatible option and provide the corresponding source,
+build scripts, dependency source/patches and license materials required for the exact distributed binaries.
+Retain all existing media, UI, font, icon, oscillator, equalizer and timestretch notices. This notice does not replace them.
+
+No model weights are bundled or licensed by these notices.

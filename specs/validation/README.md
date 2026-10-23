@@ -3802,3 +3802,280 @@ Regression coverage holds real Timeline and Instrument knobs, calls the public n
 - `CARGO_HOME="$PWD/work/cargo-home" sh tools/package_macos.sh release`: passed; rebuilt `target/release/DAW.app`.
 
 Native AppKit key/menu delivery, native pointer timing, live device playback and Windows/Linux execution were not checked. Automated egui input and public-dispatch tests do not establish native platform behavior.
+
+## Stem separation backend evaluation — 2026-10-21
+
+Evaluated pinned demucs-rs and Charon revisions for a possible offline clip operation. This adds research documentation and [machine-readable local measurements](stem-separation-2026-10-21.json), not an application feature or dependency. See the [evaluation and integration proposal](../audio/stem-separation-evaluation.md) for model hashes, method, licensing evidence and remaining gates.
+
+- Built both upstream release evaluators with locked dependencies in ignored scratch storage; also built the demucs-rs CPU feature. Two scratch-only changes isolate Charon's workspace and redirect demucs-rs model-cache reads. No inference math was changed.
+- Recorded 24 local invocations: five reference excerpts and three long-workload repeats for Metal/Charon CPU, first GPU setup, silence/rate probes, and three demucs-rs CPU controls. All five scored excerpts were finite on both primary paths. Current demucs-rs Metal returned non-finite audio in its first setup run, all three long-workload repeats and the 48 kHz probe despite successful exits. Charon CPU and the CPU controls returned finite audio.
+- For the 68.034-second concatenation, Charon CPU completed in 11.17/11.09/11.18 seconds; the single valid demucs-rs CPU control took 152.02 seconds. Failed Metal runs are not ranked as successful throughput. Memory evidence records RSS and physical footprint separately.
+- Checked exact frames/stereo, non-finite samples, reference-stem SDR, digital silence and rate behavior. demucs-rs returned one extra frame at 48 kHz; Charon returned model-rate audio. Local model permissions remain unresolved despite permissive library licenses and third-party model labels.
+- Documentation/data checks: JSON parsed with finite metric values; all 24 records have four stereo stems and consistent expected frame metadata; reported medians/timings checked against recorded values; local document links and `git diff --check` passed. No DAW source, dependency, audio fixture, project or model artifact changed.
+
+Limits: five AAC-derived research previews and an artificial concatenation, one Mac, no blind listening or local PyTorch parity check, no optimized Charon CoreML export, no Windows/Linux or live playback-contention tests, no complete transitive-license/security audit. Upstream measurements are attributed and kept separate from local runs. DAW workspace tests and packaging were not rerun for this documentation-only change.
+
+## Charon CoreML follow-up — 2026-10-21
+
+Completed the previously unmeasured CoreML path using the same hashed audio and pinned Charon revision. See the [CoreML benchmark](../audio/stem-separation-coreml-evaluation.md) and [follow-up measurements](stem-separation-coreml-2026-10-21.json). The original 24-run baseline JSON is unchanged.
+
+- Exported the official HTDemucs checkpoint through Charon's checked CoreML-target exporter. The split/PyTorch and ONNX-CPU/PyTorch maximum differences passed its 1e-3 gate. Recorded checkpoint/export hashes, structure and Python/native runtime versions. Built release `separate` and `profile` examples with `--features coreml` in scratch storage.
+- Completed five excerpt and three long one-shot runs each on CoreML and CPU using the same split export, plus three reused-model separations each for original CPU, same-export CPU and CoreML. All outputs passed finite/stereo/frame checks. Added separate empty-cache, silence, 48 kHz and provider-audit probes; timing tables exclude instrumentation/metric work.
+- Audited actual ORT assignment: one CoreML partition, all 1,982 optimized model nodes supported, no CPU-provider model-kernel events in the recorded profile. CoreML is configured CPUAndGPU; host transforms remain CPU work. This is not a hardware-level GPU execution trace.
+- Median 68.034-second process time: 2.82 s CoreML versus 11.17 s recorded original CPU and 6.85 s same-export CPU. Reused-model separation medians: 1.98 / 8.13 / 6.29 s respectively. Excerpt SDR changes stayed below 0.0005 dB. Peak RSS, physical footprint and disk cache usage are reported separately.
+- Retained startup evidence: first empty-cache model load/compile 25.26 s; another fresh process took 25.97 s despite cached files. Warm results do not establish universal startup latency. The CoreML cache occupied about 1.67 GiB locally; same-export CPU fallback used more memory than the original low-memory CPU path.
+- Documentation/data checks: original baseline hash retained; source/reference hashes and reconstructed long input checked; 18 new one-shot records and nine resident separations validated; per-stem comparisons, derived summary values, JSON, local links and whitespace checked. App source, dependencies, fixtures and models remain unchanged in tracked scope. DAW workspace tests and packaging were not rerun for this documentation-only follow-up.
+
+Remaining limits: one host, five AAC-derived excerpts, artificial long workload, no blind listening or live playback/UI contention, no broader device/platform or signed-package checks, no hardware-level GPU trace, no dedicated CPU-target split export measurement. Model-use/redistribution terms remain unresolved. This follow-up closes the earlier lack of local CoreML measurements; it does not grant release acceptance.
+
+## Stem separation — 2026-10-21
+
+Implemented [stem separation](../audio/stem-separation.md) with local model preferences, CoreML on macOS, a separate low-memory CPU fallback, streaming output through the shared WAV encoder, worker-side import, atomic group publication, and a disabled original clip. Added shared export/separation progress reporting and project-owned generated-source persistence.
+
+Completed checks:
+
+- `cargo test --workspace --locked`: passed, including documentation tests. The project, UI separation, and disabled-clip tests were also rerun after the final persistence/test changes. Existing opt-in acceptance tests remained ignored.
+
+- `cargo check --workspace --all-targets`: passed on macOS ARM64.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed.
+- Affected library tests: engine, project, separation, and UI passed. Project regressions cover loop input and gain, exact aligned durations, original-source preservation, grouping, unique folders, cancellation/failure/discard cleanup, Save As, and Undo/Redo after Save As. Additional focused tests cover disabled audio/MIDI scheduling and history invalidation, preference persistence, and guarded failure reports without a second error dialog.
+- `cargo test -p daw-project --locked`: passed, including storage, export, transpose, and Sampler preparation workflows after the generated-source/history changes.
+- `cargo build -p daw-cli --locked` and `python3 tools/check_cli.py`: passed. The smoke check covers codecs, deterministic export, missing sources, multi-track projects, group buses, overwrite protection, and exit codes without graphics/audio devices.
+- Opt-in release test `model_smoke::local_models_separate_and_import`: passed with the local CPU model, local CoreML split model, and an intentionally missing CoreML model to force CPU fallback. Each run used the same local stereo test WAV and verified four finite, duration-matched, aligned stems plus saved-project reopening. The fallback run retained the CoreML error as a warning. No weights or test recordings were added to the repository.
+- `sh tools/package_macos.sh release`: passed. `otool -L` reports system libraries/frameworks, including CoreML; no external ONNX Runtime dylib is required. Every separation notice is present in the bundle. Linux CI setup includes the OpenSSL headers needed for build-time native TLS downloads; Linux and Windows packaging includes the same notices.
+- Local Markdown link checks: passed for changed documents and new feature guides/specifications.
+
+Native checks: model controls and persisted filenames were inspected in the macOS Settings dialog. A generated test project then completed separation through Timeline’s clip context menu and status dialog. Its four tracks were visibly aligned with the dimmed original; the original menu offered Enable clip. Native Undo/Redo removed/restored the group. Regular Save persisted the disabled original, all four aligned frame ranges, retained clip gain, and project-relative stem files. The app was returned to an empty project afterward. The local CoreML model test exercised the actual native provider configuration. These checks do not establish Windows/Linux runtime behavior, Intel Mac support, device underrun rates during separation, or quality across arbitrary material. Cold model loading and inference calls remain non-interruptible; cancellation takes effect at the next shared checkpoint. A native out-of-memory process abort is outside the in-process recovery guarantee. Full model-dependent acceptance is opt-in; the normal test suite does not distribute or require weights.
+
+### Status report progress width — 2026-10-21
+
+The shared export/separation report progress bar now fills the available content width, keeping the dialog's existing horizontal padding. Focused export-status and separation UI tests passed, as did formatting, strict workspace Clippy, and whitespace checks. The macOS release bundle was rebuilt. This change does not alter audio processing; the full audio suite was not repeated for this layout adjustment.
+
+### Disabled clip palettes — 2026-10-21
+
+Disabled clips now use an opaque dimmed version of their resolved palette instead of reducing painter opacity. Track-color inheritance and clip overrides retain their hue; the header, channel fill, waveform/MIDI notes, and text share the dimmed palette. The selection outline keeps its normal color and width. Opaque fills prevent timeline grid lines from showing through disabled clips.
+
+The new painting regression passed for inherited and overridden colors in dark and light themes, including opaque fills, waveform/text colors, and full-strength selection outlines. All 557 UI library tests passed. Strict workspace Clippy, formatting, and whitespace checks passed. The macOS release bundle was rebuilt; no audio-processing behavior changed.
+
+### Greyed disabled clip palettes — 2026-10-21
+
+Supersedes the disabled-palette color treatment above. Disabled clips now desaturate their resolved body toward grey with a small retained color tint. They reuse the standard clip palette builder for readable text, waveforms, note colors, and related fills, instead of fading foregrounds toward the panel. Opaque fills and normal selection outlines remain.
+
+The painting regression now checks reduced color saturation and foreground contrast in both themes. All 557 UI tests, strict workspace Clippy, formatting, and whitespace checks passed. The macOS release app was rebuilt. No audio behavior changed.
+
+### F001: Generated stem paths in retained history — 2026-10-21
+
+Shared save completion now retargets generated asset paths by stable ID in every retained history snapshot, including pending grouped edits. Saving with separation undone no longer erases the destination paths needed by Redo. Snapshot memory accounting and the existing byte limit include the updated paths; the saved-state baseline remains independent.
+
+Completed automated checks:
+
+- `cargo test --offline --locked -p daw-project`: 79 passed, 0 failed, 1 local-model test ignored. The new synthetic regressions cover the UI's record-then-mark-saved sequence, Save As → undo separation → Save → redo, deletion of the first project folder before the final Save/reopen, and save completion with newer grouped edits. Existing history memory limits, dirty-state handling, storage, export, transpose, and Sampler tests passed.
+- `cargo clippy --offline --locked -p daw-project --all-targets -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+
+Tests used generated audio and the existing deterministic separation fixture. No model inference, native UI/device checks, release packaging, or Windows/Linux execution was repeated for this history-only fix.
+
+### PR #2 F001–F004: Stem backend and preparation fixes — 2026-10-22
+
+- F001: Intel macOS omits the unsupported Charon/ONNX backend. Shared target availability disables model controls and the clip action with an explanation, and the project API rejects unsupported requests before preparation. Added target-specific API/UI tests and an Intel cross-check to macOS ARM64 CI.
+- F002: Decoder admission, resampling and stem preparation share checked ceiling frame arithmetic. Preparation validates the exact model-to-project count and trims its known rounding surplus. Synthetic regressions cover all six project rates, five frame-count residues, exact durations/stereo, and truncated-output rejection.
+- F003: Both post-inference decode/resample/peak passes use the shared cancellable decoder. Deterministic tests cancel inside each decoder and verify unpublished-file cleanup and unchanged project state.
+- F004: Pin native runtime 1.31.0 through upstream `ort-sys` revision `f2a5f73c9dd9ff3682303481cc792bf4669e3e94`; its distribution table retains per-target SHA-256 hashes. Updated runtime notices. A separate-process synthetic Loop regression verifies the linked version and the exact `INVALID_GRAPH` rejection for upstream #32609.
+
+Native smoke testing caught a compatibility issue: ort's automatic efficiency policy selected CoreML even for a CPU-only model under runtime 1.31. The small [Charon source patch](../../vendor/charon-audio/DAW-PATCH.md) resets that policy before explicit providers are registered. The retained upstream processing and low-memory settings are unchanged. A weights-free native identity-model test covers stream stereo/duration and failed-CoreML-to-CPU fallback.
+
+Completed checks:
+
+- `cargo test --offline --locked --workspace`: 1,106 passed, 0 failed, 3 opt-in tests ignored before the final provider-policy patch. After that patch, affected media/project/separation suites passed; the final separation suite passed all three tests, including malformed-model rejection and native streaming/fallback.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed on final code.
+- Intel macOS desktop and CLI cross-builds passed. Final `cargo check --offline --locked --workspace --all-targets --target x86_64-apple-darwin` passed using the installed rustup target; the Intel dependency graph contains neither Charon nor ort-sys. No Intel hardware execution is claimed.
+- Opt-in project smoke tests passed with the existing local CPU model, the existing local split CoreML model, and an intentionally missing CoreML path. Each test used generated stereo WAV input, imported four aligned finite stems, saved, and reopened the project. The CoreML run had no fallback warning; the intentional failure retained the CoreML warning and completed through CPU.
+- Formatting, whitespace, and the headless CLI smoke check passed.
+
+The initial sandboxed model runs could not create native compiler working directories. Unrestricted generated-input checks then exposed the provider-policy issue above; the final CPU, CoreML and fallback runs passed after its correction. No private recording or pretrained weights were added to source. Windows/Linux runtime execution, Intel hardware execution, native UI/device checks, release packaging, broad separation quality measurements, and a complete native dependency audit were not repeated.
+
+### Static CoreML release linkage — 2026-10-22
+
+The native runtime update exposed a thin-LTO release link failure: CoreML availability checks referenced `__isPlatformVersionAtLeast`, but Rust's native link omitted Apple Clang's compiler runtime. `daw-separation/build.rs` now locates `libclang_rt.osx.a` through the selected Xcode/Command Line Tools `xcrun` and publishes its static linkage to consumers. Only Apple Silicon macOS runs this step; application crates do not duplicate it.
+
+The macOS release package rebuilt successfully through `sh tools/package_macos.sh release`. All three separation tests passed in release mode, including separate-process malformed-model rejection and native stream/fallback. Release CLI linking, focused Clippy, formatting and whitespace checks also passed. No native UI/device or older-macOS compatibility check is claimed.
+### Stem Save As path assertion on Windows — 2026-10-22
+
+The stem Save As/reopen regression now checks the `stems` directory with `Path::starts_with` instead of a literal `stems/` string prefix. Saved relative paths use native separators, including backslashes on Windows. Save and import behavior are unchanged.
+
+The focused `separation_preserves_original_aligns_group_and_reopens_after_save_as` test passed on macOS. `cargo fmt --all --check` and `git diff --check` passed. Native Windows execution remains for CI; it was not run locally.
+
+### PR #2 F001: Preserve Redo during stem Save As — 2026-10-22
+
+Blocking save completion now calls the existing shared `SessionHistory::mark_saved` through the UI history helper before recording the returned session. Generated source relocation is normalized before structural comparison, so a same-name Save As retains Redo and adds no Undo entry. A real project-name change still records an edit. Regular-save snapshot handling and bounded history retargeting remain shared and unchanged.
+
+Completed automated checks:
+
+- Added a UI regression using real generated WAV import, `save_named`, the save worker and `poll`. It failed before the fix at “relocation alone must preserve Redo” and passed afterward. Both same-name and renamed Save As cases verify history, saved-state tracking, destination retention and copied-source availability after removal of the original project folder.
+- `cargo test --offline --locked -p daw-project -p daw-ui`: 639 passed, 0 failed, 1 opt-in local-model test ignored. Existing generated-source Save As/Undo/Save/Redo, grouped newer-edit, memory-limit, save-failure and UI lifecycle coverage passed. Updated the existing project regression to use the corrected save-completion order.
+- `cargo clippy --offline --locked -p daw-ui -p daw-project --all-targets -- -D warnings`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+
+Tests used generated media in temporary directories. Native UI/device interactions, Windows/Linux execution and release packaging were not repeated. This correction supersedes the earlier record-before-mark-saved completion order recorded in the stem persistence validation.
+
+### Unsaved-project stem storage — 2026-10-22
+
+Stem separation now supports unsaved projects. The existing preparation pipeline reserves an exclusively created temporary root and retains private shared owners in session/worker/history clones. Unsaved generated assets keep absolute source paths without setting a project folder. First Save reuses generated-asset copying and shared history retargeting, then releases temporary owners only when their source references have moved or been discarded. Failed saves retain the original temporary sources. The menu and action share the model/idle/platform readiness check. The completed report displays the actual output directory.
+
+Completed automated checks:
+
+- `cargo test --offline --locked -p daw-project -p daw-ui`: 86 project and 558 UI tests passed; 1 opt-in local-model test ignored. New project regressions cover unsaved separation, session/worker ownership, Undo/Redo and history eviction, first-save relocation and reopen, save while separation is undone, failed first save and retry, cancellation, backend failure and discarded-result cleanup. Existing saved-project/history/rate/import behavior passed.
+- `cargo test --offline --locked -p daw-ui separation --lib`: 3 passed, including the additional shared readiness regression for saved/unsaved folders, missing models and blocking jobs. The failure/status guard test now starts from an unsaved project.
+- `cargo test --offline --locked -p daw-project --lib same_name_jobs_use_distinct_directories`: passed after extending the collision check to saved and unsaved projects.
+- `cargo clippy --offline --locked -p daw-project -p daw-ui --all-targets -- -D warnings`: passed.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+
+Tests used generated WAV fixtures and temporary directories. No user media or model weights were used. Native UI/device interaction, Windows/Linux execution, real-model separation and release packaging were not repeated. Temporary storage has no crash-recovery or stale-directory cleanup service. This behavior supersedes the earlier saved-project prerequisite.
+
+### Platform-neutral separation loading message — 2026-10-22
+
+Replaced the shared loading text with “Preparing audio and loading model…” so CPU jobs on Windows, Linux, and macOS do not show a CoreML compilation note. Backend selection is unchanged. Updated the user guide and separation specification.
+
+Completed automated checks on Windows:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo build --offline --locked --release -p daw-desktop`: passed; rebuilt `target/release/daw-desktop.exe`.
+- `cargo test --offline --locked --workspace`: failed in the unchanged project test `separation::tests::failed_first_save_retains_temporary_stems_and_the_unsaved_session`, at `assert!(next.save(&blocked).is_err())`. The test expected saving to fail with a directory at `project.json`, but the save succeeded on this Windows run. The suite stopped before UI tests; this run does not establish a passing workspace test suite.
+- `cargo test --offline --locked -p daw-ui separation --lib`: all 3 separation UI tests passed.
+- `git diff --check`: passed.
+
+Native UI/device interaction, real-model inference, macOS/Linux execution, and release packaging were not repeated for this text change.
+
+### Stem-separation native dependency and packaging audit — 2026-10-22
+
+Completed the native closure audit for the checksum-selected macOS arm64, Windows x64/arm64 and Linux x64/arm64 runtime distributions. Intel macOS omits this backend. See the [audit report](../audio/stem-native-dependencies.md) and [machine-readable inventory](stem-native-dependencies-2026-10-22.json). The scope covers the new stem-separation native graph and affected packaging obligations, not a fresh vulnerability audit of all pre-existing media/system libraries.
+
+Completed checks:
+
+- Downloaded all five selected archives and verified their SHA-256 against pinned `ort-sys` distribution entries. Embedded runtime build strings agree on source commit `402979ac1bef89dcd55add41eaa7277c407599eb`. Listed native archive members and reconciled the source-derived closure: 20 top-level C/C++ source projects plus protobuf’s embedded UTF-8 validator, platform DirectML and Apple compiler runtime, and external system runtime families. Both DirectML DLL hashes match the original Microsoft.AI.DirectML 1.15.4 NuGet payloads.
+- Queried OSV at 20 exact source commits and primary repository advisories for every source component. Recorded dispositions for 20 ONNX/protobuf advisories, plus NVD keyword and Apple security-content checks. Confirmed affected ONNX 1.22.0 under GHSA-xrch-8vh7-h656; native `MathOpTwoIntegers(..., int, int)` and ORT schema-inference calls corroborate the component exposure. This audit does not upgrade or patch the dependency, and does not establish memory corruption or execution of a malicious model.
+- Read pinned source licenses, exact DirectML runtime/source terms, installed Apple LLVM acknowledgment, current/legacy compiler-rt terms, MPL source-availability requirements and Apache/GPL compatibility guidance. Added missing native/source notices, compiler-runtime notices, immutable source locations and GPLv3 text beside existing media GPLv2 text. Existing notices and original-code BSD licensing remain intact. Distributors still must satisfy corresponding-source obligations for exact combined executables; no source-release offering was created or certified.
+- Downloaded and statically inspected completed Windows/Linux CI packages at `9fcbae5`; runtime/dependency inputs match audit revision `58a5d98`. Read PE imports and ELF dependencies/version requirements without running foreign executables. Inspected the local macOS release executable's system links and linked availability symbol. Verified macOS native archive `LC_BUILD_VERSION` 13.4 and Linux package symbol floors GLIBC_2.39/GLIBCXX_3.4.31.
+- `sh tools/package_macos.sh debug`: passed after notice additions. Compared every packaged separation/media notice byte-for-byte against source. All three packagers include those notice directories (static script check). Windows/Linux packagers were not executed locally.
+- Inventory JSON counts/source-commit/hash checks, Markdown local-link checks, `sh -n tools/package_macos.sh tools/package_linux.sh`, `cargo fmt --all --check`, and tracked/new-file whitespace checks passed.
+
+No DSP/application implementation or dependency version changed. No private media, weights, credentials, native binaries or caches were added to tracked files. No clean-machine Windows/Linux/Intel launch, arm64 foreign package execution, subjective separation test or new model inference was performed. An inventory and advisory audit does not certify an untested deployment: the ONNX advisory, matching-source release obligations and oldest-supported-OS smoke tests remain explicit release actions. The earlier review artifacts are retained unchanged; this audit is new evidence, not a rewritten PASS verdict.
+
+### PR #2 major save findings: ordinary Save and directory destinations — 2026-10-22
+
+Ordinary Save now returns the worker's successfully written session. Completion merges generated-source locations into the live session by stable asset ID and marks that exact written checkpoint saved. Live state and retained history use shared `Session::retarget_generated_sources`; newer edits, pending gestures, transport, prepared audio and revision guards stay intact. Temporary owners are pruned after their paths move. This prevents repeated stem copies and stale original-folder references after saving with separation undone and then redoing it.
+
+Shared file replacement now rejects an existing non-file destination before moving it to a Windows backup. A directory at `project.json` retains its name and contents. The failed-first-save regression checks preserved contents, unchanged session state, temporary-source retention, staged-copy and manifest-temp cleanup, and successful retry. This correction supersedes the failing Windows first-save result recorded under “Platform-neutral separation loading message”; that historical result remains unchanged above.
+
+Completed automated checks on Windows with the pinned toolchain:
+
+- The new UI regression failed before the implementation fix at the live/written generated-path comparison. It now covers unsaved first Save and same-name Save As with a generated clip undone, Redo, ordinary Save during a newer grouped edit and seek, shared prepared audio, Undo/Redo after removing original sources, repeated saves without extra stem directories, and successful reopen. All four regular-save UI tests passed.
+- The new project regression uses deterministic separation output and verifies live/current/pending/Undo/Redo source paths and temporary-directory release. All 13 focused separation tests passed, including the strengthened first-save failure regression.
+- `cargo test --offline --locked --workspace`: 1,121 passed, 0 failed, 3 opt-in acceptance/model tests ignored. This includes all 565 UI tests, the project save/history workflows, shared export checks and documentation tests.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo build --offline --locked -p daw-cli`: passed. `tools/check_cli.py` passed using Python 3.12, covering WAV/MP3 output, repeatability, missing sources, track/group rendering, overwrite protection and exit codes.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+
+Tests used generated media in temporary directories. Native UI/device interaction, real HTDemucs/CoreML inference, macOS/Linux execution and release packaging were not repeated. The two minor review findings and dependency coverage limits are outside these two major fixes; this record does not change the pinned review artifacts or certify a new review verdict.
+
+### PR #2 F003: failed Save As cleanup — 2026-10-22
+
+Failed `Session::save_new` now removes its empty `stems` root before removing the exclusively created project folder. Cleanup uses non-recursive directory removal, as with the existing `assets` cleanup, so unrelated contents remain intact. This releases the project name after a generated-source copy fails and permits retry after restoring the missing source.
+
+Completed automated checks on Windows with the pinned toolchain:
+
+- Added `failed_generated_save_as_releases_the_name_and_allows_retry` in the project workflow suite. It failed before the fix because the `Retry` project folder remained. It now passes after staging one stem and failing on a missing second stem. The test verifies unchanged live state, save destination and original manifest, retained source/sibling files, removal of the failed destination, successful same-name retry after source restoration, and reopen with matching prepared samples and no warnings.
+- `cargo test --offline --locked -p daw-project --test workflow`: all 64 tests passed.
+- `cargo test --offline --locked --workspace`: 1,122 passed, 0 failed, 3 opt-in acceptance/model tests ignored.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo build --offline --locked -p daw-cli` and `tools/check_cli.py` using Python 3.12: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+
+Tests used generated WAV fixtures in temporary directories. Native UI/device interaction, real HTDemucs/CoreML inference, macOS/Linux execution and release packaging were not repeated. No dependency version changed; the separate ONNX advisory and dependency coverage limits remain outside this fix. The pinned review artifacts remain unchanged.
+
+### PR #2 F001 and F004: cancellation and stem folder names — 2026-10-22
+
+These corrections address F001 and F004 from the five-reviewer run pinned to `6ac9634`.
+
+Status-bar Cancel now sets the separation cancellation flag and retains the job receiver. Both Cancel controls wait for the worker response before the report enters its cancelled state. Closing that report restores editing and file actions. Other preparation jobs retain their existing late-result rejection.
+
+Stem directory reservation now bounds the complete basename to 255 UTF-8 bytes, including a collision suffix. It truncates only at character boundaries and shares the folder-name byte limit with project-name validation. Separation and generated-source copies use the same reservation helper. The user guide and specification describe both corrections.
+
+Completed automated checks on macOS arm64 with the pinned 1.97.0 toolchain:
+
+- The new egui cancellation regression failed before the fix because status-bar Cancel removed the receiver. It now passes for both Cancel buttons, with an explicit cancellation response and with worker disconnection. It verifies that Escape cannot dismiss a running report, Close restores editing/file actions after acknowledgement, and project state remains unchanged.
+- The new folder-reservation regression failed before the fix because a 252-byte name grew beyond 255 bytes after numbering. It now passes for ordinary names, 252/255-byte multibyte names, longer four-byte-character names, and one- and two-digit collision suffixes. Existing files remain intact.
+- A second project regression passes for repeated separation followed by Save As into an existing stem-folder collision. It verifies bounded names, retained files, copied generated sources and successful reopen without warnings.
+- `cargo fmt --all --check` and `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --offline --locked --workspace`: passed, including all 561 UI tests. Opt-in real-model and release acceptance tests remained ignored.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: passed. CLI checks cover WAV/MP3 codecs and bitrates, repeatability, missing sources, track/group rendering, overwrite protection and exit codes.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- `git diff --check`: passed.
+
+The first workspace test build used `CARGO_NET_OFFLINE=true`, which made `ort-sys` skip native runtime linkage. Removing that environment flag and retaining Cargo's `--offline` option allowed the cached runtime to link; the complete workspace rerun passed. This required no dependency or implementation change.
+
+Tests used generated media and temporary directories. Native UI/device interaction, real HTDemucs/CoreML inference and Windows/Linux execution were not performed. The filename byte limit was checked on macOS; native Linux filesystem execution remains unverified. Scope is F001/F004; the pinned review artifacts remain unchanged.
+
+## 2026-10-22 — Validated model selection and optional CPU fallback
+
+Model selection now loads the requested CPU or CoreML backend and runs a short, nonzero stereo probe on the existing worker. The production output adapter checks the four ordered stem names, stereo channels, 44.1 kHz rate, finite samples and exact output duration without writing stem files. Either validated model enables separation on its supported platform. CoreML takes priority when both models pass; a separate CPU fallback is optional. Failure without a fallback retains the project and reports the error.
+
+A candidate path is accepted and persisted only after successful validation. Failed replacement retains a different accepted model; a failed recheck of the same path clears it. Cancellation retains the previous model, keeps the worker receiver until acknowledgement and rejects late success. Saved paths are revalidated at startup. Superseded workers cannot overwrite newer settings. Validation state is not serialized into settings or projects.
+
+Focused automated checks passed on macOS arm64:
+
+- Native CPU validation accepts the generated four-stem fixture and rejects missing paths and the split-model input contract. Native CoreML loading/inference with an isolated temporary compilation cache accepts the generated split fixture and rejects the CPU-model contract. These fixtures contain no pretrained weights.
+- Backend tests cover CoreML-only success, preference with both models, optional CPU retry, failure without fallback, cancellation without retry, and invalid output metadata, channels, lengths and non-finite samples.
+- UI tests cover delayed acceptance, rejected replacement, clearing each model independently, startup rejection, superseded results, and status-bar cancellation that retains the previous model and project.
+
+Completed repository checks with the pinned Rust 1.97.0 toolchain:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed, including a final rerun after the same-path rejection change.
+- `cargo test --offline --locked --workspace`: passed. The workspace build included 565 UI tests. After the final same-path rejection change, all nine focused separation UI tests and the complete 566-test UI suite passed.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- `git diff --check`: passed.
+
+The initial Clippy run identified an unnecessary unwrap in validation scheduling. It was removed before the successful reruns. Checks used the local Cargo cache and Cargo's `--offline` option. No dependency pins changed.
+
+Native UI/device gestures, production HTDemucs weights and Windows/Linux execution were not tested. Native CPU/CoreML checks used synthetic fixtures, so they establish loading and output-contract behavior rather than separation quality or GPU coverage. Existing opt-in real-model and release acceptance tests remain ignored. Startup and model-replacement behavior were checked through automated UI state and worker tests.
+
+## 2026-10-22 — Application Settings categories
+
+Application Settings now groups existing controls into expanded Appearance, Playback, MIDI and Stem Separation sections. Appearance contains Titlebar where supported, Theme and Accent color; Playback contains Seek cache; MIDI contains Split MIDI notes; Stem Separation contains the existing model controls and platform notice. Bold body-text headings and standard separators retain the shared dialog, common label column and Close action. No settings schema or control behavior changed. User-guide navigation and the implementation specification describe the categories.
+
+`cargo test --offline --locked -p daw-ui --lib` passed all 566 existing UI tests. Coverage includes theme/accent/titlebar controls, seek-cache and MIDI dropdowns, popup dismissal, settings guards, model validation and cancellation. No new layout-only tests were added.
+
+Repository checks on macOS arm64 with the pinned toolchain:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --offline --locked --workspace`: passed, including all 566 UI tests. Existing opt-in real-model and release acceptance tests remain ignored.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Documentation link targets and `git diff --check`: passed.
+
+The change only rearranges application UI controls, so CLI smoke checks were not repeated. Native UI interaction and Windows/Linux execution were not performed; automated egui tests do not establish native window behavior.
+
+## 2026-10-22 — Separation build warning on Windows and Linux
+
+Windows and Linux CI rejected `run_models` because its runner parameter was declared mutable while only the macOS CoreML branch borrowed it mutably. The function now takes an immutable parameter and creates its mutable binding only in the macOS configuration. CPU dispatch, CoreML preference, fallback and cancellation behavior are unchanged.
+
+A temporary host-side compile harness extracts the production function and substitutes a feature flag for its macOS predicate, with minimal backend stubs. With warnings denied, the original non-macOS branch reproduces the reported `unused_mut` error; the corrected non-macOS and macOS branches compile and pass dispatch assertions. This checks the conditional Rust function, not a native Windows/Linux dependency build.
+
+The seven native separation tests passed on macOS arm64, including CPU/CoreML inference fixtures, preference/fallback, cancellation and output-contract rejection. Native Windows/Linux builds remain to be verified by CI.
+
+Completed with the pinned Rust toolchain on macOS arm64:
+
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --offline --locked --workspace`: passed, including all 566 UI tests. Existing opt-in real-model and release acceptance tests remain ignored.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- `git diff --check`: passed.
+
+This correction changes conditional binding mutability only. Native UI/device checks and CLI smoke checks were not repeated.

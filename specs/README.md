@@ -8,6 +8,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Iteration 1 implementation specification](architecture/iteration-1.md).
 - [Modular audio units](architecture/modular-audio-units.md).
 - [Prepared rendering and performance](architecture/performance.md).
+- [Stem-separation native dependency audit](audio/stem-native-dependencies.md): pinned native components, advisories, licenses and platform packaging.
 - [Parallel cache preparation validation — 2026-10-19](validation/parallel-cache-preparation-2026-10-19.md).
 - [Architecture review — 2026-10-19](architecture/review-2026-10-19/README.md): current architecture, pipelines, workflow stages, cache ownership, findings and review decisions.
 
@@ -45,6 +46,9 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).
 - [Timestretch, offline pitch, and independent implementation rule](audio/timestretch.md).
 - [Timestretch acceptance plan](acceptance/timestretch.md).
+- [Stem separation implementation](audio/stem-separation.md): local models, CoreML/CPU fallback, atomic import, disabled originals, and persistence.
+- [Stem separation backend evaluation](audio/stem-separation-evaluation.md): local quality, speed, memory, model-license evidence and original integration proposal.
+- [Charon CoreML benchmark](audio/stem-separation-coreml-evaluation.md): same-audio GPU/CPU quality, startup, memory, same-export control and reused-model measurements.
 
 ## Evidence
 

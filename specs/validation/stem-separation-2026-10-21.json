@@ -1,0 +1,1753 @@
+{
+  "date": "2026-10-21",
+  "scope": "Local exploratory evaluation, not release acceptance",
+  "app_head": "57fc4ac445f94435100fdf0882f4700fae8f8b50",
+  "upstream_commits": {
+    "demucs-rs": "805d6f72ede20282832ac78c634e8767716c0b21",
+    "charon-audio": "bc045cd80f009ea863772c5afef15928101df66f"
+  },
+  "host": {
+    "chip": "Apple M4 Pro",
+    "cpu_cores": 14,
+    "unified_memory_gib": 48,
+    "os": "macOS 27.0.1",
+    "rust": "rustc 1.97.0 (2d8144b78 2026-07-07) (Homebrew)"
+  },
+  "method": {
+    "wall_s": "Fresh process including model load, decode, separation and float-WAV writes; downloads, compilation and metrics excluded",
+    "memory": "macOS /usr/bin/time -l; bytes; RSS and footprint are different accounting measures",
+    "sdr_db": "10 log10(sum(reference^2)/sum((estimate-reference)^2)); stereo whole-signal, no fitting; not BSSEval",
+    "precision": "demucs-rs converted F16 weights; Charon downloadable in-graph F32 ONNX",
+    "cpu_control": "demucs-cli --features cpu (Burn NdArray<f32>), one run per control",
+    "probe_limit": "Silence and rate48 correctness probes overlapped the CPU build and are not timing comparisons",
+    "analysis_frames": "input_frames and stems.frames count FFmpeg metric samples at 44.1 kHz; original file rate/frames are input_stream and stems.stream metadata",
+    "ffmpeg": "ffmpeg version 8.1.2 Copyright (c) 2000-2026 the FFmpeg developers"
+  },
+  "models": {
+    "htdemucs.onnx": {
+      "sha256": "68d0bf16428ef66e692cdff8a9ccf28f1ef3f69440d57e58605a4cc55fcc5e74",
+      "bytes": 316446953
+    },
+    "htdemucs.safetensors": {
+      "sha256": "8193504cdfb3943adaf039b8acb524a46e87ebf232c383ac7a32c80a6578423e",
+      "bytes": 84030696
+    }
+  },
+  "inputs": [
+    {
+      "archive_entry": "test/Cristina Vane - So Easy.stem.mp4",
+      "archive_crc32": "113a678d",
+      "mp4_sha256": "88fb67fce628c1146d7fb8873c147ac19c3a435f9fabd7c6fc26b8ae192eb65d",
+      "id": "01",
+      "decoded_sha256": {
+        "bass": "03b72faff9bf010e39369a7d93e481117ff1f7b12c37736751ae1f0fb794e499",
+        "drums": "71012c3adf32920b01e26b5d1febb62a27ca4a32b55e7d884756b642a207e527",
+        "mixture": "2495869fbc327493b232e942b798c061af573c925feedaed1e4d728fc51ed230",
+        "other": "f454be2d5b087cbcc41d5b4fbdf3ebd8ba30a8f00f22319a478b079d64f3ccce",
+        "vocals": "d15414b5f0b168c9dd701d63b595708c915a315a4c7893c7750cd7c61ac0fb8e"
+      }
+    },
+    {
+      "archive_entry": "test/Louis Cressy Band - Good Time.stem.mp4",
+      "archive_crc32": "2e6279f5",
+      "mp4_sha256": "0611a9d35d112f42c04b18d620f5e358363ffb03303dd5e64795617e43f24e6f",
+      "id": "02",
+      "decoded_sha256": {
+        "bass": "5e1383da6ebbf04823bbd07f8e4c34c41de479de3155529920d00f2a9b8092ac",
+        "drums": "ce443a504bc423a0d9a84f4a2bdfd7865dadad8ef0931fe06482fae18265f2ab",
+        "mixture": "58e8ed1e27bbcd269a81605ad635315ce1e837a3697ca82b699710820d413c9f",
+        "other": "4f91d6a00032313a0a614d499f54b01b188a0dcea177cdb6970930171c02e3f1",
+        "vocals": "d03145e06d0bd456cd1e14c900704bd700c4d543bbf46de287ef4f8b303fadcf"
+      }
+    },
+    {
+      "archive_entry": "test/Secretariat - Borderline.stem.mp4",
+      "archive_crc32": "8ab830a9",
+      "mp4_sha256": "bd797eb91e39bdb35e3110981d564d2174647c5345977d78fb1ebf533ad7b0eb",
+      "id": "03",
+      "decoded_sha256": {
+        "bass": "d9fe1941fbf2e82f764045024d232921b3fb1a941f490001b26e0b28ae02bb7b",
+        "drums": "a5e0af6a08679f169fe2f3da29f2afa0a5ea1115c1e219e564cf94b5be92ec3b",
+        "mixture": "fd6a89b44036d57f117288d2050d95c8e064fd4b9dc5135a7b85b4ac21d5e622",
+        "other": "3bf07d6ea00c2b62238eda7c9c8641256e59aa1b2b464c761dc3534b43918023",
+        "vocals": "efcf39622758d400132f7411ad3c6fa66f3a1727d35c293dcc82c018633675ee"
+      }
+    },
+    {
+      "archive_entry": "test/James Elder & Mark M Thompson - The English Actor.stem.mp4",
+      "archive_crc32": "876daf36",
+      "mp4_sha256": "b15e42ac3a7bcb58973754d323a83c55454de58d3870abac983401166e66108d",
+      "id": "04",
+      "decoded_sha256": {
+        "bass": "0b481185eb0f0103e1b2ae59ffa181ec408f4a25b0d231231654283c85159c46",
+        "drums": "55b6ffab44d9d48e6520370bf7f6f91e15b808288e5d219937c48e9b6e3c6e17",
+        "mixture": "1391930c9ca5dd3a1db9df7e3d2ab770af10362c8e768d358d2eccf96047c0a3",
+        "other": "6a439b66b41e06c7c9fc7adb9e78c7666f6ce76bace507db51ed3796b1b1cc41",
+        "vocals": "6d7023e321bb590ebb36601c23e2bbca800f50041c70b06a855c262e534fa507"
+      }
+    },
+    {
+      "archive_entry": "test/Georgia Wonder - Siren.stem.mp4",
+      "archive_crc32": "cae4c961",
+      "mp4_sha256": "982be83505619468c9b251d9616d77ed680fc23f5f591e18c682ead9bc1b233a",
+      "id": "05",
+      "decoded_sha256": {
+        "bass": "50744a8b0961f61197c22c5442d554e21bac017c8815a8b228cecd4b8988e24e",
+        "drums": "ac7b47cfae4c7e55b98279f4dea245f7ef5551f03be4d57b78c6e42d9c513cb3",
+        "mixture": "9a5e8618a00a9da2c8d174d51d460d36390ddc25e1913b99561571507044f5c4",
+        "other": "e031f370ee0dca9630a0c62f924f36f9716b5838b40ed9f628fa80a12314510f",
+        "vocals": "eb81c67bbd2cf3782dc0c0688f553f9c9becc4bc361f7bf67e0aa50c904d6c19"
+      }
+    }
+  ],
+  "runs": [
+    {
+      "backend": "charon-cpu",
+      "label": "playlist-1",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 11.168036374961957,
+      "peak_rss_bytes": 1897431040,
+      "peak_footprint_bytes": 1809287256,
+      "stems": {
+        "drums": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6407747268676758,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "bass": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.2861328423023224,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "other": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.43363437056541443,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "vocals": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6954423189163208,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        }
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004520817434054055,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "charon-cpu",
+      "label": "playlist-2",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 11.094910958025139,
+      "peak_rss_bytes": 1897201664,
+      "peak_footprint_bytes": 1809057880,
+      "stems": {
+        "drums": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6407747268676758,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "bass": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.2861328423023224,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "other": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.43363437056541443,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "vocals": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6954423189163208,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        }
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004520817434054055,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "charon-cpu",
+      "label": "playlist-3",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 11.176063833001535,
+      "peak_rss_bytes": 1918009344,
+      "peak_footprint_bytes": 1829865584,
+      "stems": {
+        "drums": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6407747268676758,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "bass": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.2861328423023224,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "other": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.43363437056541443,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "vocals": {
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6954423189163208,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        }
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004520817434054055,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "charon-cpu",
+      "label": "quality-01",
+      "input": "inputs/01/mixture.wav",
+      "exit": 0,
+      "wall_s": 4.327866208041087,
+      "peak_rss_bytes": 1795178496,
+      "peak_footprint_bytes": 1707034664,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.44207897782325745,
+          "sdr_db": 14.349232557189936,
+          "mixture_sdr_db": 0.5875073573928156,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.22564518451690674,
+          "sdr_db": 4.3739756886012575,
+          "mixture_sdr_db": -9.130866761249193,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.25428155064582825,
+          "sdr_db": 4.675734135683051,
+          "mixture_sdr_db": -8.249139328444752,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.21733061969280243,
+          "sdr_db": 15.425301355071447,
+          "mixture_sdr_db": -4.98953157930977,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.0026630302811251464,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "charon-cpu",
+      "label": "quality-02",
+      "input": "inputs/02/mixture.wav",
+      "exit": 0,
+      "wall_s": 4.2486028330167755,
+      "peak_rss_bytes": 1780334592,
+      "peak_footprint_bytes": 1691551736,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.5394084453582764,
+          "sdr_db": 8.246948699415718,
+          "mixture_sdr_db": -4.282583520445543,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.3240813910961151,
+          "sdr_db": 10.197772667838223,
+          "mixture_sdr_db": -7.747117991326809,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.3565320670604706,
+          "sdr_db": 7.76256368072038,
+          "mixture_sdr_db": -2.113236357354645,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.2755570709705353,
+          "sdr_db": 8.912676508883203,
+          "mixture_sdr_db": -6.002442535781908,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.005396019523327566,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "charon-cpu",
+      "label": "quality-03",
+      "input": "inputs/03/mixture.wav",
+      "exit": 0,
+      "wall_s": 4.140314417018089,
+      "peak_rss_bytes": 1775140864,
+      "peak_footprint_bytes": 1686997032,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.5073432326316833,
+          "sdr_db": 5.120484103801603,
+          "mixture_sdr_db": -10.044277284540028,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.09744171053171158,
+          "sdr_db": 5.835800259711563,
+          "mixture_sdr_db": -8.862725115023643,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.5482307076454163,
+          "sdr_db": 6.8136580398631,
+          "mixture_sdr_db": -0.9489510933089363,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.4475158751010895,
+          "sdr_db": 7.677997735688356,
+          "mixture_sdr_db": -2.5231096252585745,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.004819046043665195,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "charon-cpu",
+      "label": "quality-04",
+      "input": "inputs/04/mixture.wav",
+      "exit": 0,
+      "wall_s": 4.274459749984089,
+      "peak_rss_bytes": 1793671168,
+      "peak_footprint_bytes": 1705084944,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.46120864152908325,
+          "sdr_db": 7.025181792659616,
+          "mixture_sdr_db": -9.851106231395724,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.28039589524269104,
+          "sdr_db": 10.989460514030863,
+          "mixture_sdr_db": -7.107786413539467,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.46694216132164,
+          "sdr_db": 5.155917284385374,
+          "mixture_sdr_db": -1.9764055783649939,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.6742158532142639,
+          "sdr_db": 5.714054879314279,
+          "mixture_sdr_db": -2.387929575735327,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.00510742549584033,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "charon-cpu",
+      "label": "quality-05",
+      "input": "inputs/05/mixture.wav",
+      "exit": 0,
+      "wall_s": 4.168025249964558,
+      "peak_rss_bytes": 1775632384,
+      "peak_footprint_bytes": 1687455736,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.6268097758293152,
+          "sdr_db": 9.995439048582714,
+          "mixture_sdr_db": -4.234944604751002,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.21040360629558563,
+          "sdr_db": 10.216070679566826,
+          "mixture_sdr_db": -6.592864131045767,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.25157132744789124,
+          "sdr_db": 4.723579226084192,
+          "mixture_sdr_db": -4.884386622759967,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.3764437437057495,
+          "sdr_db": 6.0677231005860275,
+          "mixture_sdr_db": -3.381775107551893,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.004812470057061525,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "charon-cpu",
+      "label": "rate48",
+      "input": "inputs/input48.wav",
+      "exit": 0,
+      "wall_s": 4.452882207988296,
+      "peak_rss_bytes": 1793294336,
+      "peak_footprint_bytes": 1693222928,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300033
+          },
+          "frames": 300033,
+          "nonfinite_samples": 0,
+          "peak": 0.44287368655204773
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300033
+          },
+          "frames": 300033,
+          "nonfinite_samples": 0,
+          "peak": 0.22691242396831512
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300033
+          },
+          "frames": 300033,
+          "nonfinite_samples": 0,
+          "peak": 0.252851665019989
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300033
+          },
+          "frames": 300033,
+          "nonfinite_samples": 0,
+          "peak": 0.21752430498600006
+        }
+      },
+      "input_stream": {
+        "sample_rate": "48000",
+        "channels": 2,
+        "time_base": "1/48000",
+        "duration_ts": 326566
+      },
+      "input_frames": 300033,
+      "audio_s": 6.8034693877551025,
+      "sum_residual_rms": 0.0027444503865056173,
+      "measurement_role": "correctness_probe"
+    },
+    {
+      "backend": "charon-cpu",
+      "label": "silence",
+      "input": "inputs/silence.wav",
+      "exit": 0,
+      "wall_s": 3.8192233329755254,
+      "peak_rss_bytes": 1758265344,
+      "peak_footprint_bytes": 1670023184,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        }
+      },
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 44100
+      },
+      "input_frames": 44100,
+      "audio_s": 1.0,
+      "sum_residual_rms": 0.0,
+      "measurement_role": "correctness_probe"
+    },
+    {
+      "backend": "demucs-cpu",
+      "label": "control-long",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 152.02356487500947,
+      "peak_rss_bytes": 1583366144,
+      "peak_footprint_bytes": 1531545256,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6406779885292053
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.2861213684082031
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.4336162805557251
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          },
+          "frames": 3000320,
+          "nonfinite_samples": 0,
+          "peak": 0.6952929496765137
+        }
+      },
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "sum_residual_rms": 0.004516606618433918,
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-cpu",
+      "label": "control-rate48",
+      "input": "inputs/input48.wav",
+      "exit": 0,
+      "wall_s": 13.033830458007287,
+      "peak_rss_bytes": 1349861376,
+      "peak_footprint_bytes": 1331005024,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "48000",
+            "channels": 2,
+            "time_base": "1/48000",
+            "duration_ts": 326567
+          },
+          "frames": 300034,
+          "nonfinite_samples": 0,
+          "peak": 0.45447978377342224
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "48000",
+            "channels": 2,
+            "time_base": "1/48000",
+            "duration_ts": 326567
+          },
+          "frames": 300034,
+          "nonfinite_samples": 0,
+          "peak": 0.19347994029521942
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "48000",
+            "channels": 2,
+            "time_base": "1/48000",
+            "duration_ts": 326567
+          },
+          "frames": 300034,
+          "nonfinite_samples": 0,
+          "peak": 0.2608552873134613
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "48000",
+            "channels": 2,
+            "time_base": "1/48000",
+            "duration_ts": 326567
+          },
+          "frames": 300034,
+          "nonfinite_samples": 0,
+          "peak": 0.2185342013835907
+        }
+      },
+      "input_stream": {
+        "sample_rate": "48000",
+        "channels": 2,
+        "time_base": "1/48000",
+        "duration_ts": 326566
+      },
+      "input_frames": 300033,
+      "audio_s": 6.8034693877551025,
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-cpu",
+      "label": "control-short",
+      "input": "inputs/01/mixture.wav",
+      "exit": 0,
+      "wall_s": 11.413480959017761,
+      "peak_rss_bytes": 1396588544,
+      "peak_footprint_bytes": 1390577200,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.4541705250740051,
+          "sdr_db": 14.434344027717387,
+          "mixture_sdr_db": 0.5875073573928156
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.19327722489833832,
+          "sdr_db": 4.392434118248067,
+          "mixture_sdr_db": -9.130866761249193
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.26069188117980957,
+          "sdr_db": 4.777113019360687,
+          "mixture_sdr_db": -8.249139328444752
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          },
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.21839430928230286,
+          "sdr_db": 15.468851575551799,
+          "mixture_sdr_db": -4.98953157930977
+        }
+      },
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.002519908287867798,
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "playlist-1",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 5.731041666003875,
+      "peak_rss_bytes": 616300544,
+      "peak_footprint_bytes": 3027322128,
+      "stems": {
+        "drums": {
+          "frames": 3000320,
+          "nonfinite_samples": 4643730,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "bass": {
+          "frames": 3000320,
+          "nonfinite_samples": 4643730,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "other": {
+          "frames": 3000320,
+          "nonfinite_samples": 4643730,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "vocals": {
+          "frames": 3000320,
+          "nonfinite_samples": 4643730,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        }
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "playlist-2",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 5.59194195800228,
+      "peak_rss_bytes": 620380160,
+      "peak_footprint_bytes": 3098494200,
+      "stems": {
+        "drums": {
+          "frames": 3000320,
+          "nonfinite_samples": 3783780,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "bass": {
+          "frames": 3000320,
+          "nonfinite_samples": 3783780,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "other": {
+          "frames": 3000320,
+          "nonfinite_samples": 3783780,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "vocals": {
+          "frames": 3000320,
+          "nonfinite_samples": 3783780,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        }
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "playlist-3",
+      "input": "inputs/playlist70.wav",
+      "exit": 0,
+      "wall_s": 5.709709457994904,
+      "peak_rss_bytes": 619593728,
+      "peak_footprint_bytes": 3028468984,
+      "stems": {
+        "drums": {
+          "frames": 3000320,
+          "nonfinite_samples": 3439800,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "bass": {
+          "frames": 3000320,
+          "nonfinite_samples": 3439800,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "other": {
+          "frames": 3000320,
+          "nonfinite_samples": 3439800,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        },
+        "vocals": {
+          "frames": 3000320,
+          "nonfinite_samples": 3439800,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 3000320
+          }
+        }
+      },
+      "input_frames": 3000320,
+      "audio_s": 68.0344671201814,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 3000320
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "quality-01",
+      "input": "inputs/01/mixture.wav",
+      "exit": 0,
+      "wall_s": 3.0548524169716984,
+      "peak_rss_bytes": 512638976,
+      "peak_footprint_bytes": 2748367976,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.45416486263275146,
+          "sdr_db": 14.434270271048588,
+          "mixture_sdr_db": 0.5875073573928156,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.19326838850975037,
+          "sdr_db": 4.39235288373956,
+          "mixture_sdr_db": -9.130866761249193,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.2607034146785736,
+          "sdr_db": 4.776773997814253,
+          "mixture_sdr_db": -8.249139328444752,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.21839335560798645,
+          "sdr_db": 15.468808058749255,
+          "mixture_sdr_db": -4.98953157930977,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.002520201254241801,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "quality-02",
+      "input": "inputs/02/mixture.wav",
+      "exit": 0,
+      "wall_s": 2.6681558749987744,
+      "peak_rss_bytes": 522223616,
+      "peak_footprint_bytes": 2866398312,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.5404956936836243,
+          "sdr_db": 8.317178064201121,
+          "mixture_sdr_db": -4.282583520445543,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.24960194528102875,
+          "sdr_db": 10.144794463821768,
+          "mixture_sdr_db": -7.747117991326809,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.3415367603302002,
+          "sdr_db": 7.631875925122377,
+          "mixture_sdr_db": -2.113236357354645,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.27477502822875977,
+          "sdr_db": 8.720542277505984,
+          "mixture_sdr_db": -6.002442535781908,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.005474069752259186,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "quality-03",
+      "input": "inputs/03/mixture.wav",
+      "exit": 0,
+      "wall_s": 2.3055277499952354,
+      "peak_rss_bytes": 516685824,
+      "peak_footprint_bytes": 2771567648,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.5035724639892578,
+          "sdr_db": 5.08855597652685,
+          "mixture_sdr_db": -10.044277284540028,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.10083435475826263,
+          "sdr_db": 5.833948418202323,
+          "mixture_sdr_db": -8.862725115023643,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.553784966468811,
+          "sdr_db": 6.796764171471264,
+          "mixture_sdr_db": -0.9489510933089363,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.45055630803108215,
+          "sdr_db": 7.739856015180168,
+          "mixture_sdr_db": -2.5231096252585745,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.004731482451043822,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "quality-04",
+      "input": "inputs/04/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.9464524999493733,
+      "peak_rss_bytes": 512819200,
+      "peak_footprint_bytes": 2941502592,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.4655212163925171,
+          "sdr_db": 7.088531963910526,
+          "mixture_sdr_db": -9.851106231395724,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.2813751995563507,
+          "sdr_db": 11.140978346495531,
+          "mixture_sdr_db": -7.107786413539467,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.4464462995529175,
+          "sdr_db": 5.430108846985863,
+          "mixture_sdr_db": -1.9764055783649939,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.6658056974411011,
+          "sdr_db": 6.004017625669324,
+          "mixture_sdr_db": -2.387929575735327,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.005221496395743739,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "quality-05",
+      "input": "inputs/05/mixture.wav",
+      "exit": 0,
+      "wall_s": 1.815044625021983,
+      "peak_rss_bytes": 512704512,
+      "peak_footprint_bytes": 2853061760,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.6306931376457214,
+          "sdr_db": 10.074613360309844,
+          "mixture_sdr_db": -4.234944604751002,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.20942926406860352,
+          "sdr_db": 10.42539515212287,
+          "mixture_sdr_db": -6.592864131045767,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.24076905846595764,
+          "sdr_db": 4.712241279832003,
+          "mixture_sdr_db": -4.884386622759967,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 0,
+          "peak": 0.37877559661865234,
+          "sdr_db": 6.129279326000118,
+          "mixture_sdr_db": -3.381775107551893,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "sum_residual_rms": 0.004544110408595343,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "measurement_role": "timing_and_correctness"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "rate48",
+      "input": "inputs/input48.wav",
+      "exit": 0,
+      "wall_s": 2.2276237920159474,
+      "peak_rss_bytes": 521109504,
+      "peak_footprint_bytes": 2930934936,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "48000",
+            "channels": 2,
+            "time_base": "1/48000",
+            "duration_ts": 326567
+          },
+          "frames": 300034,
+          "nonfinite_samples": 600068,
+          "peak": null
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "48000",
+            "channels": 2,
+            "time_base": "1/48000",
+            "duration_ts": 326567
+          },
+          "frames": 300034,
+          "nonfinite_samples": 600068,
+          "peak": null
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "48000",
+            "channels": 2,
+            "time_base": "1/48000",
+            "duration_ts": 326567
+          },
+          "frames": 300034,
+          "nonfinite_samples": 600068,
+          "peak": null
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "48000",
+            "channels": 2,
+            "time_base": "1/48000",
+            "duration_ts": 326567
+          },
+          "frames": 300034,
+          "nonfinite_samples": 600068,
+          "peak": null
+        }
+      },
+      "input_stream": {
+        "sample_rate": "48000",
+        "channels": 2,
+        "time_base": "1/48000",
+        "duration_ts": 326566
+      },
+      "input_frames": 300033,
+      "audio_s": 6.8034693877551025,
+      "measurement_role": "correctness_probe"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "silence",
+      "input": "inputs/silence.wav",
+      "exit": 0,
+      "wall_s": 3.466760457959026,
+      "peak_rss_bytes": 527286272,
+      "peak_footprint_bytes": 2775549032,
+      "stems": {
+        "drums": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        },
+        "bass": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        },
+        "other": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        },
+        "vocals": {
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 44100
+          },
+          "frames": 44100,
+          "nonfinite_samples": 0,
+          "peak": 0.0
+        }
+      },
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 44100
+      },
+      "input_frames": 44100,
+      "audio_s": 1.0,
+      "sum_residual_rms": 0.0,
+      "measurement_role": "correctness_probe"
+    },
+    {
+      "backend": "demucs-metal",
+      "label": "warmup",
+      "input": "inputs/01/mixture.wav",
+      "exit": 0,
+      "wall_s": 30.253655584005173,
+      "peak_rss_bytes": 504184832,
+      "stems": {
+        "drums": {
+          "frames": 300032,
+          "nonfinite_samples": 600064,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "bass": {
+          "frames": 300032,
+          "nonfinite_samples": 600064,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "other": {
+          "frames": 300032,
+          "nonfinite_samples": 600064,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        },
+        "vocals": {
+          "frames": 300032,
+          "nonfinite_samples": 600064,
+          "peak": null,
+          "stream": {
+            "sample_rate": "44100",
+            "channels": 2,
+            "time_base": "1/44100",
+            "duration_ts": 300032
+          }
+        }
+      },
+      "input_frames": 300032,
+      "audio_s": 6.8034467120181406,
+      "input_stream": {
+        "sample_rate": "44100",
+        "channels": 2,
+        "time_base": "1/44100",
+        "duration_ts": 300032
+      },
+      "peak_footprint_bytes": 2892563608,
+      "measurement_role": "first_gpu_setup"
+    }
+  ],
+  "limits": [
+    "Five test excerpts only; AAC-derived references",
+    "No blind listening, full-song corpus or local PyTorch parity evaluation",
+    "No optimized Charon split/CoreML export, Windows/Linux execution or playback contention test",
+    "No complete transitive-license or vulnerability audit; model permission remains unresolved"
+  ]
+}

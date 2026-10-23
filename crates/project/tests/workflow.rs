@@ -375,6 +375,58 @@ fn named_saves_reject_invalid_names_collisions_and_fail_without_changing_session
 }
 
 #[test]
+fn failed_generated_save_as_releases_the_name_and_allows_retry() {
+    let fixture = Fixture::new();
+    let generated = fixture.0.join("generated");
+    fs::create_dir(&generated).unwrap();
+    let media = Fixture(generated);
+    let first = media.wav("first.wav", 48000, 2, 16, false);
+    let second = media.wav("second.wav", 48000, 2, 16, false);
+    let mut session = Session::default();
+    session.import(&first, None, 0).unwrap();
+    session.import(&second, None, 0).unwrap();
+    for asset in &mut session.project.assets {
+        asset.source.kind = "generated".into();
+    }
+    session.save_new(&fixture.0, "Original").unwrap();
+    let original = session.folder.clone().unwrap();
+    let manifest = fs::read(original.join("project.json")).unwrap();
+    let before = session.project.clone();
+    let copied_first = session.source_path(&session.project.assets[0]).unwrap();
+    let missing = session.source_path(&session.project.assets[1]).unwrap();
+    let missing_bytes = fs::read(&missing).unwrap();
+    fs::remove_file(&missing).unwrap();
+    let sibling = fixture.0.join("keep.txt");
+    fs::write(&sibling, b"unrelated contents").unwrap();
+
+    assert!(session.save_new(&fixture.0, "Retry").is_err());
+    assert_eq!(session.project, before);
+    assert_eq!(session.folder.as_ref(), Some(&original));
+    assert_eq!(fs::read(original.join("project.json")).unwrap(), manifest);
+    assert!(copied_first.is_file());
+    assert_eq!(fs::read(&sibling).unwrap(), b"unrelated contents");
+    assert!(!fixture.0.join("Retry").exists());
+
+    fs::write(&missing, missing_bytes).unwrap();
+    session.save_new(&fixture.0, "Retry").unwrap();
+    let destination = fixture.0.join("Retry");
+    assert_eq!(session.folder.as_ref(), Some(&destination));
+    let reopened = Session::open(&destination).unwrap();
+    assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
+    for asset in &reopened.project.assets {
+        let path = reopened.source_path(asset).unwrap();
+        assert!(path.starts_with(destination.join("stems")));
+        assert!(path.is_file());
+        assert_eq!(
+            reopened.audio[&asset.id].samples,
+            session.audio[&asset.id].samples
+        );
+    }
+    assert_eq!(fs::read(original.join("project.json")).unwrap(), manifest);
+    assert_eq!(fs::read(&sibling).unwrap(), b"unrelated contents");
+}
+
+#[test]
 fn export_progress_tracks_encoded_frames_without_changing_audio() {
     use daw_media::{ExportFormat, ExportSettings};
     let fixture = Fixture::new();

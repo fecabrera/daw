@@ -63,6 +63,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/timestretch-cli` | Independent WAV comparison/benchmark tool, optional R2/R3 reference adapters, reports, and portable scripts; no DAW dependency. |
 | `crates/media` | WAV decoding, sample-rate conversion, waveform peaks, WAV/MP3 encoding, and selected offline stretch adapters. |
 | `crates/engine` | Shared render plans, sample mixing, transport, gain/pan, fades, and meter calculations. No window, file-dialog, or device initialization. |
+| `crates/separation` | Offline Charon HTDemucs adapter, local models, CoreML/CPU fallback, cancellation and streaming output through shared media encoding. No UI or device dependencies. |
 | `crates/project` | Sessions, manifests, source paths, import orchestration, prepared audio caches, save/open, and export orchestration. |
 | `crates/output` | CPAL device output, device-rate conversion, preallocated command queues, atomic status, and renderer retirement. |
 | `crates/ui` | egui application state, interactions, previews, reusable controls, and presentation. |

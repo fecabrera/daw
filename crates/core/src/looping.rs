@@ -45,6 +45,7 @@ mod tests {
     #[test]
     fn looping_uses_each_trimmed_base_preserves_phase_and_restores_one_copy() {
         let original = Clip {
+            muted: false,
             id: Id::new_v4(),
             asset_id: Id::new_v4(),
             name: "Trimmed".into(),

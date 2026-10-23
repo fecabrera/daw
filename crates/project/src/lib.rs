@@ -1,3 +1,10 @@
+mod separation;
+pub use daw_separation::{
+    AVAILABLE as SEPARATION_AVAILABLE, ModelKind as SeparationModelKind,
+    UNAVAILABLE_REASON as SEPARATION_UNAVAILABLE_REASON,
+    validate_model as validate_separation_model,
+};
+pub use separation::{PreparedSeparation, SeparationModels, SeparationProgress};
 mod history;
 pub use history::{HistoryMemory, SessionHistory};
 mod clip_audio;
@@ -20,13 +27,15 @@ fn error(e: impl std::fmt::Display) -> Error {
     Error(e.to_string())
 }
 
+const MAX_FOLDER_NAME_BYTES: usize = 255;
+
 /// A portable folder name, shared by the naming dialog and project creation.
 pub fn project_folder_name(name: &str) -> Result<&str> {
     let name = name.trim();
     if name.is_empty() || name == "." || name == ".." {
         return Err(error("Enter a project name"));
     }
-    if name.len() > 255 {
+    if name.len() > MAX_FOLDER_NAME_BYTES {
         return Err(error("Project name is too long"));
     }
     if name.ends_with('.')
@@ -64,6 +73,8 @@ pub struct Session {
     pub stretched_audio: daw_media::ClipAudioCache,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
+    // Clones and history share ownership until generated sources are saved or released.
+    temporary_stems: Vec<std::sync::Arc<separation::TemporaryStems>>,
 }
 impl Session {
     /// Prepare an atomic project-rate change on a worker. Source files stay untouched.
@@ -172,6 +183,7 @@ impl Session {
             sampler_audio: Default::default(),
             stretched_audio: HashMap::new(),
             folder: Some(folder),
+            temporary_stems: Vec::new(),
             warnings: if upgraded_stretch {
                 vec![format!(
                     "Integrated time stretch upgraded from revision {previous_stretch_revision} to {}; prepared audio rebuilt. The sound can change. Save to retain the new revision.",
@@ -336,6 +348,7 @@ impl Session {
             None => next.add_track().map_err(error)?,
         };
         let clip = Clip {
+            muted: false,
             stretch: None,
             id: clip_id,
             asset_id,
@@ -391,6 +404,7 @@ impl Session {
         if let Err(e) = next.save(&folder) {
             // Only remove empty directories; retain any unrelated files that appeared meanwhile.
             let _ = fs::remove_dir(folder.join("assets"));
+            let _ = fs::remove_dir(folder.join("stems"));
             let _ = fs::remove_dir(&folder);
             return Err(e);
         }
@@ -401,6 +415,7 @@ impl Session {
         let folder = absolute(folder)?;
         fs::create_dir_all(folder.join("assets")).map_err(error)?;
         let mut next = self.project.clone();
+        let mut generated = separation::copy_generated(self, &mut next, &folder)?;
         for asset in &mut next.assets {
             if asset.midi_pattern.is_some() {
                 continue;
@@ -411,7 +426,11 @@ impl Session {
                 .iter()
                 .find(|a| a.id == asset.id)
                 .unwrap();
-            let path = self.source_path(original)?;
+            let path = if asset.source.kind == "generated" && asset.source.path_kind == "absolute" {
+                PathBuf::from(&asset.source.path)
+            } else {
+                self.source_path(original)?
+            };
             if let Some(relative) = relative_path(&folder, &path) {
                 asset.source.path = relative.to_string_lossy().into_owned();
                 asset.source.path_kind = "relative".into();
@@ -440,8 +459,10 @@ impl Session {
             let _ = fs::remove_file(&temp);
         }
         result?;
+        generated.0.clear();
         self.project = next;
         self.folder = Some(folder);
+        self.retain_temporary_stems();
         Ok(())
     }
     pub fn export(&self, path: &Path, overwrite: bool) -> Result<Vec<String>> {
@@ -581,6 +602,14 @@ fn same_file(a: &Path, b: &Path) -> bool {
             .is_some_and(|(a, b)| a == b)
 }
 fn replace_file(temp: &Path, target: &Path) -> Result<()> {
+    match fs::metadata(target) {
+        Ok(metadata) if !metadata.is_file() => {
+            return Err(error("Output destination is not a regular file"));
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(error(e)),
+    }
     #[cfg(not(target_os = "windows"))]
     {
         fs::rename(temp, target).map_err(error)

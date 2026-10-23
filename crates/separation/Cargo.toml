@@ -1,0 +1,21 @@
+[package]
+name = "daw-separation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(not(all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
+charon-audio = { git = "https://github.com/Valkyra-Labs/charon-audio", rev = "bc045cd80f009ea863772c5afef15928101df66f", default-features = false, features = ["ort-backend"] }
+ndarray = "0.15"
+daw-media.workspace = true
+
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+dirs = "6"
+charon-audio = { git = "https://github.com/Valkyra-Labs/charon-audio", rev = "bc045cd80f009ea863772c5afef15928101df66f", default-features = false, features = ["coreml"] }
+
+[target.'cfg(not(all(target_os = "macos", target_arch = "x86_64")))'.dev-dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false }

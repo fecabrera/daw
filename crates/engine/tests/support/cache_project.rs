@@ -104,6 +104,7 @@ pub fn add_audio(plan: &mut RenderPlan, count: usize, fx: usize, mono: bool) -> 
         track.gain_db = -12.0;
         track.pan = 0.15;
         track.clips.push(Clip {
+            muted: false,
             id: Id::new_v4(),
             asset_id: asset,
             name: "audio".into(),

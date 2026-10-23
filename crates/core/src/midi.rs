@@ -414,6 +414,7 @@ impl Project {
         let id = Id::new_v4();
         let asset = next.midi_asset("MIDI pattern".into(), MidiPattern::default())?;
         let clip = Clip {
+            muted: false,
             id,
             asset_id: asset.id,
             name: asset.name.clone(),

@@ -1,0 +1,1420 @@
+{
+  "date": "2026-10-22",
+  "scope": "Stem-separation native closure and distribution requirements; existing native/system libraries are recorded separately, not a new whole-repository vulnerability audit.",
+  "project_revision": "58a5d982cc48ffb662f3540518b5233c22f28cba",
+  "ort_sys_revision": "f2a5f73c9dd9ff3682303481cc792bf4669e3e94",
+  "native_ort_source": "402979ac1bef89dcd55add41eaa7277c407599eb",
+  "artifacts": [
+    {
+      "target": "aarch64-apple-darwin",
+      "archive_sha256": "4033efca0e6c1606bd2ec3870d4cb19d0dba0ad0160dbfb616e66cae969ed68c",
+      "files": [
+        {
+          "name": "libonnxruntime.a",
+          "size": 83546072,
+          "sha256": "8a9d7b9ce57feaa0456df9b5c158c4c0ff948925edb58f523126a3bf27136641"
+        }
+      ]
+    },
+    {
+      "target": "aarch64-pc-windows-msvc",
+      "archive_sha256": "f71671d263ce8ce7ed0d03c70a75cc1ac0e912d2df40b94844c22e6fcb7ad87f",
+      "files": [
+        {
+          "name": "DirectML.dll",
+          "size": 18444832,
+          "sha256": "77b0db83ff903f2323f5caf538499d75af6038bbea23b7959f7d232d9a4ab9d4"
+        },
+        {
+          "name": "onnxruntime.lib",
+          "size": 416480448,
+          "sha256": "27f259dd68a9d8cb2d47cbb9d297d09a40a979cab1c19d9a2fdaab8a992630ba"
+        }
+      ]
+    },
+    {
+      "target": "aarch64-unknown-linux-gnu",
+      "archive_sha256": "380c1b63eedf5671e7b39e4aa0f6c377ecc351c3a7b01ae708a707e73fb54709",
+      "files": [
+        {
+          "name": "libonnxruntime.a",
+          "size": 119075774,
+          "sha256": "bb55d2e48a6075e5541104c233ffb770a5b4c919ee89b6b7f4fe72dd27aecc97"
+        }
+      ]
+    },
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "archive_sha256": "f99aaef23f12986abb05924c944d8433521263ad756b462df762a5a982c98405",
+      "files": [
+        {
+          "name": "DirectML.dll",
+          "size": 18527776,
+          "sha256": "9c9e6d822561c6c41b90e6994b3e8857cf1d66dbfb1e0c4c799c7c89b4e92da1"
+        },
+        {
+          "name": "onnxruntime.lib",
+          "size": 359948106,
+          "sha256": "62264c006c6071c95d0a2a08e50082015f8da1dfa2de08a8909086c6f76d0a47"
+        }
+      ]
+    },
+    {
+      "target": "x86_64-unknown-linux-gnu",
+      "archive_sha256": "02aac0d3b4927026292088986d7a377c657c88761b1c068be217a67b35447678",
+      "files": [
+        {
+          "name": "libonnxruntime.a",
+          "size": 111701892,
+          "sha256": "184360cecb39400bc59f98269ed179f4925bf75dd11be084604f4070edbf1493"
+        }
+      ]
+    }
+  ],
+  "components": [
+    {
+      "name": "onnxruntime",
+      "repo": "microsoft/onnxruntime",
+      "version": "1.31.0",
+      "ref": "402979ac1bef89dcd55add41eaa7277c407599eb",
+      "commit": "402979ac1bef89dcd55add41eaa7277c407599eb",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/microsoft/onnxruntime/tree/402979ac1bef89dcd55add41eaa7277c407599eb",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "abseil_cpp",
+      "repo": "abseil/abseil-cpp",
+      "version": "20250814.0",
+      "ref": "20250814.0",
+      "commit": "987c57f325f7fa8472fa84e1f885f7534d391b0d",
+      "license": "Apache-2.0",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "c79a7fea0e3cac04cd43f20e7b648e5a0ff8fa5344e644b0ee09ca1162b62747"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/abseil/abseil-cpp/tree/987c57f325f7fa8472fa84e1f885f7534d391b0d",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "onnx",
+      "repo": "onnx/onnx",
+      "version": "1.22.0",
+      "ref": "v1.22.0",
+      "commit": "2bb50465112feca9003e1ed654d77f01ff1415ca",
+      "license": "Apache-2.0",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/onnx/onnx/tree/2bb50465112feca9003e1ed654d77f01ff1415ca",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "protobuf",
+      "repo": "protocolbuffers/protobuf",
+      "version": "33.6",
+      "ref": "v33.6",
+      "commit": "6e1998413a5bca7c058b85999667893f167434bc",
+      "license": "BSD-3-Clause",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/protocolbuffers/protobuf/tree/6e1998413a5bca7c058b85999667893f167434bc",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "utf8_range",
+      "repo": "protocolbuffers/protobuf",
+      "version": "embedded in protobuf v33.6",
+      "ref": "v33.6",
+      "commit": "6e1998413a5bca7c058b85999667893f167434bc",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "third_party/utf8_range/LICENSE",
+          "sha256": "02de69b64fc36d9e938f418e52723e42f0b2b226d58a9cb3c8dcbdf7059f5074"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/protocolbuffers/protobuf/tree/6e1998413a5bca7c058b85999667893f167434bc/third_party/utf8_range",
+      "evidence": "Native archives contain utf8_validity/utf8_range objects; exact source and MIT license are vendored in the pinned protobuf commit. Covered by the protobuf source-commit/repository advisory queries."
+    },
+    {
+      "name": "flatbuffers",
+      "repo": "google/flatbuffers",
+      "version": "23.5.26",
+      "ref": "v23.5.26",
+      "commit": "0100f6a5779831fa7a651e4b67ef389a8752bd9b",
+      "license": "Apache-2.0",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/google/flatbuffers/tree/0100f6a5779831fa7a651e4b67ef389a8752bd9b",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "re2",
+      "repo": "google/re2",
+      "version": "2024-07-02",
+      "ref": "2024-07-02",
+      "commit": "6dcd83d60f7944926bfd308cc13979fc53dd69ca",
+      "license": "BSD-3-Clause",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "6040cda75d90b1738292a631d89934c411ef7ffd543c4d6a1b7edfc8edf29449"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/google/re2/tree/6dcd83d60f7944926bfd308cc13979fc53dd69ca",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "eigen",
+      "repo": "eigen-mirror/eigen",
+      "version": "3.4 branch 1d8b82b",
+      "ref": "1d8b82b0740839c0de7f1242a3585e3390ff5f33",
+      "commit": "1d8b82b0740839c0de7f1242a3585e3390ff5f33",
+      "license": "MPL-2.0",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+        },
+        {
+          "file": "COPYING.BSD",
+          "sha256": "51928dce36213c5333ba3172e847d735d4c6e9b7ff2722a326c49067155b82eb"
+        },
+        {
+          "file": "COPYING.MPL2",
+          "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/eigen-mirror/eigen/tree/1d8b82b0740839c0de7f1242a3585e3390ff5f33",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "json",
+      "repo": "nlohmann/json",
+      "version": "3.11.3",
+      "ref": "v3.11.3",
+      "commit": "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "LICENSE.MIT",
+          "sha256": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/nlohmann/json/tree/9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "date",
+      "repo": "HowardHinnant/date",
+      "version": "3.0.1",
+      "ref": "v3.0.1",
+      "commit": "6e921e1b1d21e84a5c82416ba7ecd98e33a436d0",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "LICENSE.txt",
+          "sha256": "c90f6c00fb961170560299cbda28ca2d45804913aa8b2a9f36dbb8e0028d6930"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/HowardHinnant/date/tree/6e921e1b1d21e84a5c82416ba7ecd98e33a436d0",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "microsoft_gsl",
+      "repo": "microsoft/GSL",
+      "version": "4.2.1",
+      "ref": "v4.2.1",
+      "commit": "249146590e322123cd0b378b1f364d6069717687",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "4c21dc82a1c7186ea754fd59d504c00947953a3401fe8e24eaa44109ef8e2555"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/microsoft/GSL/tree/249146590e322123cd0b378b1f364d6069717687",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "mp11",
+      "repo": "boostorg/mp11",
+      "version": "1.82.0",
+      "ref": "boost-1.82.0",
+      "commit": "0a0b5fb001ce0233ae3a6f99d849c0649e5a7361",
+      "license": "BSL-1.0",
+      "license_files": [
+        {
+          "file": "Boost LICENSE_1_0.txt",
+          "url": "https://www.boost.org/LICENSE_1_0.txt",
+          "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/boostorg/mp11/tree/0a0b5fb001ce0233ae3a6f99d849c0649e5a7361",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "safeint",
+      "repo": "dcleblanc/SafeInt",
+      "version": "3.0.28",
+      "ref": "3.0.28",
+      "commit": "4cafc9196c4da9c817992b20f5253ef967685bf8",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "a46919cc8f01eb73f6e4b84af0d41b46b2a33b87c74e864279ef585079f82da4"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/dcleblanc/SafeInt/tree/4cafc9196c4da9c817992b20f5253ef967685bf8",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "dlpack",
+      "repo": "dmlc/dlpack",
+      "version": "5c210da",
+      "ref": "5c210da409e7f1e51ddf445134a4376fdbd70d7d",
+      "commit": "5c210da409e7f1e51ddf445134a4376fdbd70d7d",
+      "license": "Apache-2.0",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "3e8f6bc39276a586d60c8c5aaece2ff989262181cf2b3d2a128db58f97a9300c"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/dmlc/dlpack/tree/5c210da409e7f1e51ddf445134a4376fdbd70d7d",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "pytorch_cpuinfo",
+      "repo": "pytorch/cpuinfo",
+      "version": "66ee79c",
+      "ref": "66ee79c038d70dad9f08705b2c9b3e58f6d8f512",
+      "commit": "66ee79c038d70dad9f08705b2c9b3e58f6d8f512",
+      "license": "BSD-2-Clause",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "8e7e60636c3aa0cb03571a1a841ce5697f9551ff92b3c426c2561613d15ade70"
+        }
+      ],
+      "platforms": [
+        "macos-arm64",
+        "windows-x64",
+        "windows-arm64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/pytorch/cpuinfo/tree/66ee79c038d70dad9f08705b2c9b3e58f6d8f512",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "kleidiai",
+      "repo": "ARM-software/kleidiai",
+      "version": "1.30.0",
+      "ref": "v1.30.0",
+      "commit": "74b1a12d3620c89dae4766de640e064952000f4d",
+      "license": "Apache-2.0 OR BSD-3-Clause",
+      "license_files": [],
+      "platforms": [
+        "macos-arm64",
+        "windows-arm64",
+        "linux-arm64"
+      ],
+      "source_url": "https://github.com/ARM-software/kleidiai/tree/74b1a12d3620c89dae4766de640e064952000f4d",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "coremltools",
+      "repo": "apple/coremltools",
+      "version": "9.0",
+      "ref": "9.0",
+      "commit": "428d4b2658dfc44194f27f4f36870751be402ff7",
+      "license": "BSD-3-Clause",
+      "license_files": [
+        {
+          "file": "LICENSE.txt",
+          "sha256": "d467a35319f25bd5310100d06ac8be62f880d1cb425181f1ec2b8333a1000afa"
+        }
+      ],
+      "platforms": [
+        "macos-arm64"
+      ],
+      "source_url": "https://github.com/apple/coremltools/tree/428d4b2658dfc44194f27f4f36870751be402ff7",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "fp16",
+      "repo": "Maratyszcza/FP16",
+      "version": "0a92994",
+      "ref": "0a92994d729ff76a58f692d3028ca1b64b145d91",
+      "commit": "0a92994d729ff76a58f692d3028ca1b64b145d91",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "17e4f539024be2749ee729d1e2f01d24cef12ece8c9bf18e91a4349be29c80bf"
+        }
+      ],
+      "platforms": [
+        "macos-arm64"
+      ],
+      "source_url": "https://github.com/Maratyszcza/FP16/tree/0a92994d729ff76a58f692d3028ca1b64b145d91",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "psimd",
+      "repo": "Maratyszcza/psimd",
+      "version": "072586a",
+      "ref": "072586a71b55b7f8c584153d223e95687148a900",
+      "commit": "072586a71b55b7f8c584153d223e95687148a900",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "984ce1e0b8ee89d234e28b960381f240e03a07a8031f35012f9c3256f56964e2"
+        }
+      ],
+      "platforms": [
+        "macos-arm64"
+      ],
+      "source_url": "https://github.com/Maratyszcza/psimd/tree/072586a71b55b7f8c584153d223e95687148a900",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "microsoft_wil",
+      "repo": "microsoft/wil",
+      "version": "1.0.250325.1",
+      "ref": "v1.0.250325.1",
+      "commit": "b6ec76a2d9a609897f25a7fa0a0bdf4238e94e35",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "27ebda9d51f0a56b7e281ccd8230a27236dcb51c05f64b07869ecf6e965d68b0"
+        }
+      ],
+      "platforms": [
+        "windows-x64",
+        "windows-arm64"
+      ],
+      "source_url": "https://github.com/microsoft/wil/tree/b6ec76a2d9a609897f25a7fa0a0bdf4238e94e35",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    },
+    {
+      "name": "directx_headers",
+      "repo": "microsoft/DirectX-Headers",
+      "version": "1.613.1",
+      "ref": "v1.613.1",
+      "commit": "de28d93dfa9ebf3e473127c1c657e1920a5345ee",
+      "license": "MIT",
+      "license_files": [
+        {
+          "file": "LICENSE",
+          "sha256": "903df5512f7d02609fed0c780a9b704f5a3eeb6e4d84ebe42a29845c81899a3c"
+        }
+      ],
+      "platforms": [
+        "windows-x64",
+        "windows-arm64"
+      ],
+      "source_url": "https://github.com/microsoft/DirectX-Headers/tree/de28d93dfa9ebf3e473127c1c657e1920a5345ee",
+      "evidence": "Pinned ONNX Runtime deps.txt and CMake target closure; binary archive members corroborate compiled dependencies. Header dependencies are conservatively included."
+    }
+  ],
+  "advisories": [
+    {
+      "component": "onnx",
+      "id": "GHSA-xrch-8vh7-h656",
+      "cve": null,
+      "published_at": "2026-10-20T12:34:54Z",
+      "summary": "Integer Overflow in Shape Inference Data Propagation (MathOpTwoIntegers + Concat)",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-xrch-8vh7-h656",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": ">= 1.2.1, < 1.23.0",
+          "patched_versions": "1.23.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "affected",
+      "reason": "Bundled ONNX 1.22.0 is <1.23.0; ORT graph inference calls ONNX schema inference and data propagation. Upstream demonstrates incorrect dimensions, not memory corruption.",
+      "binary_evidence": "llvm-nm confirms MathOpTwoIntegers(string const&, int, int) in the selected macOS archive; ORT graph.cc executes schema inference and data propagation. Upstream fix changes arithmetic to checked 64-bit."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-48m4-24cq-37qf",
+      "cve": null,
+      "published_at": "2026-10-20T12:34:49Z",
+      "summary": "Out-of-Bounds Read in RNN/GRU/LSTM Shape Inference (Old Opsets, Missing Rank Check)",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-48m4-24cq-37qf",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": "<= 1.21.0",
+          "patched_versions": "1.22.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-hwpq-hmq9-wj77",
+      "cve": "CVE-2026-44512",
+      "published_at": "2026-07-03T04:58:10Z",
+      "summary": "Null Pointer Dereference in Multiple Version Converter Adapters Due to Missing Input Bounds Checks",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-hwpq-hmq9-wj77",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": "≥ 1.9.0, ≤ 1.21.0",
+          "patched_versions": "1.22",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-p893-rvq9-2xf9",
+      "cve": "CVE-2026-63632",
+      "published_at": "2026-07-01T18:27:23Z",
+      "summary": "Heap-Buffer-Overflow READ in Gemm Version Converter Adapter via Undersized Input Shape",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-p893-rvq9-2xf9",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": ">= 1.3.0, <= 1.21.0",
+          "patched_versions": "1.22",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-m4pr-6v3c-6fgr",
+      "cve": null,
+      "published_at": "2026-10-20T12:34:50Z",
+      "summary": "Null Pointer Dereference in ScanInferenceFunction Due to Missing Required Attribute",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-m4pr-6v3c-6fgr",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": ">= 1.4.0, <= 1.21.0",
+          "patched_versions": "1.22.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-6pwm-x34p-fvj2",
+      "cve": null,
+      "published_at": "2026-10-20T12:34:51Z",
+      "summary": "Out-of-bounds read in ConvTranspose shape inference via undersized weight rank",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-6pwm-x34p-fvj2",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": ">= 1.2.1, <= 1.21.0",
+          "patched_versions": "1.22.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-q69g-f4f5-v8m7",
+      "cve": null,
+      "published_at": "2026-10-20T12:34:53Z",
+      "summary": "Denial of service via unchecked expansion of packed sub-byte tensors in ONNX Python APIs",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-q69g-f4f5-v8m7",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": "<= 1.21.0",
+          "patched_versions": "1.22.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-hqmj-h5c6-369m",
+      "cve": "CVE-2026-28500",
+      "published_at": "2026-03-16T14:09:54Z",
+      "summary": "Trust Check Bypass in onnx.hub.load() via silent=True",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-hqmj-h5c6-369m",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": "<= 1.20.1",
+          "patched_versions": "1.21.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-538c-55jv-c5g9",
+      "cve": "CVE-2026-34445",
+      "published_at": "2026-03-31T15:54:31Z",
+      "summary": "Malicious ONNX models can crash servers by exploiting unprotected object settings.",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-538c-55jv-c5g9",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": "<= 1.20.1",
+          "patched_versions": "1.21.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-cmw6-hcpp-c6jp",
+      "cve": "CVE-2026-34446",
+      "published_at": "2026-03-31T15:55:04Z",
+      "summary": "Arbitrary File Read via ExternalData Hardlink Bypass in ONNX load",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-cmw6-hcpp-c6jp",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": "<= 1.20.1",
+          "patched_versions": "1.21.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-q56x-g2fj-4rj6",
+      "cve": null,
+      "published_at": "2026-03-31T16:00:00Z",
+      "summary": "TOCTOU arbitrary file read/write in save_external_dat ",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-q56x-g2fj-4rj6",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": "<= 1.20.1",
+          "patched_versions": "1.21.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-3r9x-f23j-gc73",
+      "cve": "CVE-2026-27489",
+      "published_at": "2026-03-31T15:56:11Z",
+      "summary": "Path Traversal via Symlink",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-3r9x-f23j-gc73",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": "< 1.20.0",
+          "patched_versions": "1.21.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "onnx",
+      "id": "GHSA-p433-9wv8-28xj",
+      "cve": "CVE-2026-34447",
+      "published_at": "2026-03-31T15:58:44Z",
+      "summary": "External Data Symlink Traversal",
+      "url": "https://github.com/onnx/onnx/security/advisories/GHSA-p433-9wv8-28xj",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "onnx"
+          },
+          "vulnerable_version_range": "1.19.1",
+          "patched_versions": "1.21.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "fixed",
+      "reason": "Pinned 1.22.0 meets the advisory fixed version (1.22.0 or earlier); Python hub/external-data advisories additionally concern APIs not used by this app."
+    },
+    {
+      "component": "protobuf",
+      "id": "GHSA-p2gh-cfq4-4wjc",
+      "cve": "CVE-2026-6409",
+      "published_at": "2026-03-23T15:39:50Z",
+      "summary": "A potential Denial of Service issue in protobuf-php",
+      "url": "https://github.com/protocolbuffers/protobuf/security/advisories/GHSA-p2gh-cfq4-4wjc",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pecl",
+            "name": "protobuf"
+          },
+          "vulnerable_version_range": "< 5.34.0-RC1",
+          "patched_versions": "5.34.0-RC1",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "pecl",
+            "name": "protobuf"
+          },
+          "vulnerable_version_range": "< 4.33.6",
+          "patched_versions": "4.33.6",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "not_affected",
+      "reason": "Other-language APIs (Java/PHP/Python) are not linked. C++ advisories are fixed before protobuf v33.6; native C++ binary/lite library is the selected runtime."
+    },
+    {
+      "component": "protobuf",
+      "id": "GHSA-8qvm-5x2c-j2w7",
+      "cve": "CVE-2025-4565",
+      "published_at": "2025-06-16T14:52:13Z",
+      "summary": "A potential Denial of Service issue in protobuf-python",
+      "url": "https://github.com/protocolbuffers/protobuf/security/advisories/GHSA-8qvm-5x2c-j2w7",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "protobuf"
+          },
+          "vulnerable_version_range": "<4.25.8, <5.29.5, <6.31.1",
+          "patched_versions": "4.25.8, 5.29.5, 6.31.1",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "not_affected",
+      "reason": "Other-language APIs (Java/PHP/Python) are not linked. C++ advisories are fixed before protobuf v33.6; native C++ binary/lite library is the selected runtime."
+    },
+    {
+      "component": "protobuf",
+      "id": "GHSA-735f-pc8j-v9w8",
+      "cve": "CVE-2024-7254",
+      "published_at": "2024-09-18T23:52:57Z",
+      "summary": "A potential Denial of Service issue in protobuf-java",
+      "url": "https://github.com/protocolbuffers/protobuf/security/advisories/GHSA-735f-pc8j-v9w8",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-java"
+          },
+          "vulnerable_version_range": "<4.28.2",
+          "patched_versions": "3.25.5, 4.27.5, 4.28.2",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-javalite"
+          },
+          "vulnerable_version_range": "<4.28.2",
+          "patched_versions": "3.25.5, 4.27.5, 4.28.2",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-javalite"
+          },
+          "vulnerable_version_range": "<4.28.2",
+          "patched_versions": "3.25.5, 4.27.5, 4.28.2",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-kotlin"
+          },
+          "vulnerable_version_range": "<4.28.2",
+          "patched_versions": "3.25.5, 4.27.5, 4.28.2",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-kotlin-lite"
+          },
+          "vulnerable_version_range": "<4.28.2",
+          "patched_versions": "3.25.5, 4.27.5, 4.28.2",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "rubygems",
+            "name": "com-protobuf"
+          },
+          "vulnerable_version_range": "<4.28.2",
+          "patched_versions": "3.25.5, 4.27.5, 4.28.2",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "not_affected",
+      "reason": "Other-language APIs (Java/PHP/Python) are not linked. C++ advisories are fixed before protobuf v33.6; native C++ binary/lite library is the selected runtime."
+    },
+    {
+      "component": "protobuf",
+      "id": "GHSA-h5g9-ghrj-76p5",
+      "cve": "CVE-2024-2410",
+      "published_at": "2024-05-03T20:31:09Z",
+      "summary": "Use-after-free issue in C++ JSON parser",
+      "url": "https://github.com/protocolbuffers/protobuf/security/advisories/GHSA-h5g9-ghrj-76p5",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "c++",
+            "name": "Protobuf"
+          },
+          "vulnerable_version_range": "< 4.25.0",
+          "patched_versions": "4.25.0",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "not_affected",
+      "reason": "Other-language APIs (Java/PHP/Python) are not linked. C++ advisories are fixed before protobuf v33.6; native C++ binary/lite library is the selected runtime."
+    },
+    {
+      "component": "protobuf",
+      "id": "GHSA-h4h5-3hr4-j3g2",
+      "cve": "CVE-2022-3171",
+      "published_at": "2022-10-04T19:35:06Z",
+      "summary": "A potential Denial of Service issue in protobuf-java",
+      "url": "https://github.com/protocolbuffers/protobuf/security/advisories/GHSA-h4h5-3hr4-j3g2",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-java"
+          },
+          "vulnerable_version_range": "< 3.21.7",
+          "patched_versions": "3.21.7, 3.20.3, 3.19.6, 3.16.3",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-kotlin"
+          },
+          "vulnerable_version_range": "< 3.21.7",
+          "patched_versions": "3.21.7, 3.20.3, 3.19.6, 3.16.3",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "rubygems",
+            "name": "google-protobuf"
+          },
+          "vulnerable_version_range": "< 3.21.7",
+          "patched_versions": "3.21.7, 3.20.3, 3.19.6, 3.16.3",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-javalite"
+          },
+          "vulnerable_version_range": "< 3.21.7",
+          "patched_versions": "3.21.7, 3.20.3, 3.19.6, 3.16.3",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-kotlin-lite"
+          },
+          "vulnerable_version_range": "< 3.21.7",
+          "patched_versions": "3.21.7, 3.20.3, 3.19.6, 3.16.3",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "not_affected",
+      "reason": "Other-language APIs (Java/PHP/Python) are not linked. C++ advisories are fixed before protobuf v33.6; native C++ binary/lite library is the selected runtime."
+    },
+    {
+      "component": "protobuf",
+      "id": "GHSA-8gq9-2x98-w8hf",
+      "cve": "CVE-2022-1941",
+      "published_at": "2022-09-22T15:07:17Z",
+      "summary": "A potential Denial of Service issue in protobuf-cpp and protobuf-python",
+      "url": "https://github.com/protocolbuffers/protobuf/security/advisories/GHSA-8gq9-2x98-w8hf",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "c++",
+            "name": "protobuf-cpp"
+          },
+          "vulnerable_version_range": "<=3.16.1, <=3.17.3, <=3.18.2, <=3.19.4, <=3.20.1, <=3.21.5",
+          "patched_versions": "3.18.3, 3.19.5, 3.20.2, 3.21.6",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "pip",
+            "name": "protobuf-python"
+          },
+          "vulnerable_version_range": "<=3.16.1, <=3.17.3, <=3.18.2, <=3.19.4, <=3.20.1, <=4.21.5",
+          "patched_versions": "3.18.3, 3.19.5, 3.20.2, 4.21.6",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "not_affected",
+      "reason": "Other-language APIs (Java/PHP/Python) are not linked. C++ advisories are fixed before protobuf v33.6; native C++ binary/lite library is the selected runtime."
+    },
+    {
+      "component": "protobuf",
+      "id": "GHSA-wrvw-hg22-4m67",
+      "cve": "CVE-2021-22569",
+      "published_at": "2022-01-06T17:04:12Z",
+      "summary": "A potential Denial of Service issue in protobuf-java",
+      "url": "https://github.com/protocolbuffers/protobuf/security/advisories/GHSA-wrvw-hg22-4m67",
+      "ranges": [
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-java"
+          },
+          "vulnerable_version_range": "< 3.19.2",
+          "patched_versions": "3.16.1, 3.18.2, 3.19.2",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "maven",
+            "name": "com.google.protobuf:protobuf-kotlin"
+          },
+          "vulnerable_version_range": "< 3.19.2",
+          "patched_versions": "3.18.2, 3.19.2",
+          "vulnerable_functions": []
+        },
+        {
+          "package": {
+            "ecosystem": "rubygems",
+            "name": "google-protobuf"
+          },
+          "vulnerable_version_range": "< 3.19.2",
+          "patched_versions": "3.19.2",
+          "vulnerable_functions": []
+        }
+      ],
+      "disposition": "not_affected",
+      "reason": "Other-language APIs (Java/PHP/Python) are not linked. C++ advisories are fixed before protobuf v33.6; native C++ binary/lite library is the selected runtime."
+    }
+  ],
+  "osv": {
+    "endpoint": "https://api.osv.dev/v1/querybatch",
+    "queries": [
+      {
+        "component": "onnxruntime",
+        "commit": "402979ac1bef89dcd55add41eaa7277c407599eb",
+        "result": {}
+      },
+      {
+        "component": "abseil_cpp",
+        "commit": "987c57f325f7fa8472fa84e1f885f7534d391b0d",
+        "result": {}
+      },
+      {
+        "component": "onnx",
+        "commit": "2bb50465112feca9003e1ed654d77f01ff1415ca",
+        "result": {}
+      },
+      {
+        "component": "protobuf",
+        "commit": "6e1998413a5bca7c058b85999667893f167434bc",
+        "result": {}
+      },
+      {
+        "component": "flatbuffers",
+        "commit": "0100f6a5779831fa7a651e4b67ef389a8752bd9b",
+        "result": {}
+      },
+      {
+        "component": "re2",
+        "commit": "6dcd83d60f7944926bfd308cc13979fc53dd69ca",
+        "result": {}
+      },
+      {
+        "component": "eigen",
+        "commit": "1d8b82b0740839c0de7f1242a3585e3390ff5f33",
+        "result": {}
+      },
+      {
+        "component": "json",
+        "commit": "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03",
+        "result": {}
+      },
+      {
+        "component": "date",
+        "commit": "6e921e1b1d21e84a5c82416ba7ecd98e33a436d0",
+        "result": {}
+      },
+      {
+        "component": "microsoft_gsl",
+        "commit": "249146590e322123cd0b378b1f364d6069717687",
+        "result": {}
+      },
+      {
+        "component": "mp11",
+        "commit": "0a0b5fb001ce0233ae3a6f99d849c0649e5a7361",
+        "result": {}
+      },
+      {
+        "component": "safeint",
+        "commit": "4cafc9196c4da9c817992b20f5253ef967685bf8",
+        "result": {}
+      },
+      {
+        "component": "dlpack",
+        "commit": "5c210da409e7f1e51ddf445134a4376fdbd70d7d",
+        "result": {}
+      },
+      {
+        "component": "pytorch_cpuinfo",
+        "commit": "66ee79c038d70dad9f08705b2c9b3e58f6d8f512",
+        "result": {}
+      },
+      {
+        "component": "kleidiai",
+        "commit": "74b1a12d3620c89dae4766de640e064952000f4d",
+        "result": {}
+      },
+      {
+        "component": "coremltools",
+        "commit": "428d4b2658dfc44194f27f4f36870751be402ff7",
+        "result": {}
+      },
+      {
+        "component": "fp16",
+        "commit": "0a92994d729ff76a58f692d3028ca1b64b145d91",
+        "result": {}
+      },
+      {
+        "component": "psimd",
+        "commit": "072586a71b55b7f8c584153d223e95687148a900",
+        "result": {}
+      },
+      {
+        "component": "microsoft_wil",
+        "commit": "b6ec76a2d9a609897f25a7fa0a0bdf4238e94e35",
+        "result": {}
+      },
+      {
+        "component": "directx_headers",
+        "commit": "de28d93dfa9ebf3e473127c1c657e1920a5345ee",
+        "result": {}
+      }
+    ],
+    "limitation": "No commit matches is not a security clearance; package/language-specific upstream advisories independently found affected ONNX 1.22.0."
+  },
+  "directml": {
+    "version": "1.15.4.0",
+    "source": "https://api.nuget.org/v3-flatcontainer/microsoft.ai.directml/1.15.4/microsoft.ai.directml.1.15.4.nupkg",
+    "dlls_match_original_nuget": true,
+    "distribution": "Not bundled in DAW ZIP; executable imports system DirectML.dll DMLCreateDevice1. NuGet runtime has Microsoft proprietary redistribution terms; source/import headers have MIT terms."
+  },
+  "apple_compiler_runtime": {
+    "vendor_version": "Apple clang 21.0.0 (clang-2100.3.34.2)",
+    "archive_sha256": "5f20304aa257ed57bcba9f64287497d0be09b8cc7a5a91479b6a274294a22dfe",
+    "linked_symbol": "___isPlatformVersionAtLeast",
+    "member": "os_version_check.c.o",
+    "acknowledgments_sha256": "08d855918383e2b661381a593c0a7d1f4760a19b393b982d5ba11f930e1a81f1",
+    "licenses": "Apple installed LLVM acknowledgment (NCSA) plus upstream current Apache-2.0 WITH LLVM-exception and legacy MIT/NCSA notices retained conservatively; no claim that Apple vendor source exactly matches an upstream tag."
+  },
+  "inspected_packages": {
+    "ci_run": "https://github.com/fecabrera/daw/actions/runs/39808533403",
+    "ci_revision": "9fcbae5ca2a4b3a1c03b87e32fdd2f09d951da83",
+    "native_inputs_unchanged_since_ci": true,
+    "windows_executable_sha256": "cb7907390736ac98ce9ce60d07c923500fd8ca9ad43295bbf608a06d6d7e9a41",
+    "linux_executable_sha256": "3ba6310a0ddb065d93ca012e2e42200292f1e5a50461730608cc5814f886caf6",
+    "local_macos_release_executable_sha256": "428c0ebd6a567c59f9deef8dac8d4a280ca2e6873ef1356f26a32edd57b848ef",
+    "execution": "Static inspection only; foreign-platform executables were not run."
+  },
+  "limitations": [
+    "System DLLs/frameworks/shared libraries are supplied and updated by the destination OS; their versions are not vendored or pinned by Cargo.",
+    "No fresh clean-machine Windows/Linux launch, runtime inference or ARM package execution; arm64 native archives were checksum/static inspected.",
+    "Artifact supplier does not ship a per-archive signed SBOM; source-derived closure is pinned to embedded ORT commit and corroborated by members, not a reproducible-build attestation."
+  ],
+  "advisory_sources": {
+    "upstream_repositories_checked": [
+      {
+        "component": "onnxruntime",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "abseil_cpp",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "onnx",
+        "published_records": 13,
+        "status": "checked"
+      },
+      {
+        "component": "protobuf",
+        "published_records": 7,
+        "status": "checked"
+      },
+      {
+        "component": "flatbuffers",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "re2",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "eigen",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "json",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "date",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "microsoft_gsl",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "mp11",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "safeint",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "dlpack",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "pytorch_cpuinfo",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "kleidiai",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "coremltools",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "fp16",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "psimd",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "microsoft_wil",
+        "published_records": 0,
+        "status": "checked"
+      },
+      {
+        "component": "directx_headers",
+        "published_records": 0,
+        "status": "checked"
+      }
+    ],
+    "nvd_keyword_queries": {
+      "DirectML": 0,
+      "ONNX-Runtime": 0,
+      "compiler-rt": 1
+    },
+    "nvd_disposition": "No DirectML or ONNX Runtime keyword records returned; compiler-rt keyword match CVE-2023-53182 concerns Linux ACPICA, not the linked Apple availability builtin. Keyword absence is not a security clearance.",
+    "apple_security": "https://support.apple.com/en-ca/149040"
+  },
+  "package_imports": {
+    "windows": [
+      "kernel32.dll",
+      "oleaut32.dll",
+      "user32.dll",
+      "uiautomationcore.dll",
+      "advapi32.dll",
+      "gdi32.dll",
+      "api-ms-win-core-synch-l1-2-0.dll",
+      "ole32.dll",
+      "combase.dll",
+      "opengl32.dll",
+      "ntdll.dll",
+      "dxgi.dll",
+      "setupapi.dll",
+      "comctl32.dll",
+      "shell32.dll",
+      "bcryptprimitives.dll",
+      "KERNEL32.dll",
+      "USER32.dll",
+      "ADVAPI32.dll",
+      "dwmapi.dll",
+      "imm32.dll",
+      "uxtheme.dll",
+      "d3d12.dll",
+      "directml.dll",
+      "dbghelp.dll",
+      "api-ms-win-core-path-l1-1-0.dll",
+      "MSVCP140.dll",
+      "MSVCP140_1.dll",
+      "VCRUNTIME140.dll",
+      "VCRUNTIME140_1.dll",
+      "api-ms-win-crt-string-l1-1-0.dll",
+      "api-ms-win-crt-math-l1-1-0.dll",
+      "api-ms-win-crt-runtime-l1-1-0.dll",
+      "api-ms-win-crt-heap-l1-1-0.dll",
+      "api-ms-win-crt-stdio-l1-1-0.dll",
+      "api-ms-win-crt-convert-l1-1-0.dll",
+      "api-ms-win-crt-filesystem-l1-1-0.dll",
+      "api-ms-win-crt-time-l1-1-0.dll",
+      "api-ms-win-crt-locale-l1-1-0.dll",
+      "api-ms-win-crt-utility-l1-1-0.dll"
+    ],
+    "linux": [
+      "ld-linux-x86-64.so.2",
+      "libasound.so.2",
+      "libc.so.6",
+      "libgcc_s.so.1",
+      "libm.so.6",
+      "libstdc++.so.6"
+    ],
+    "linux_symbol_floors": [
+      "GLIBC_2.39",
+      "GLIBCXX_3.4.31"
+    ],
+    "macos": "Only Apple system dylibs/frameworks; includes CoreML, Foundation, Accelerate and libc++. No @rpath ONNX library."
+  },
+  "packaged_notice_additions": [
+    {
+      "file": "crates/separation/assets/licenses/LLVM-CompilerRT-LICENSE.txt",
+      "sha256": "1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d"
+    },
+    {
+      "file": "crates/separation/assets/licenses/LLVM-CompilerRT-Legacy-LICENSE.txt",
+      "sha256": "09e65c6534e75ec49cdc74fa894bfe4287bfbb1002be41fcad90110e9acd0984"
+    },
+    {
+      "file": "crates/separation/assets/licenses/Apple-LLVM-ACKNOWLEDGMENT.txt",
+      "sha256": "4de69afe5dbe707d30eb5a05480def28ba9a7addeffac946a9f5df3b444b90c0"
+    },
+    {
+      "file": "crates/separation/assets/licenses/Native-Stem-SOURCE-NOTICE.txt",
+      "sha256": "8e4bddce7f1c104a04e9c7fe2dfcae736b6738d2cd8d8b7515b5aaff9a420d4b"
+    },
+    {
+      "file": "crates/separation/assets/licenses/ONNX-Native-Additional-LICENSES.txt",
+      "sha256": "07e474e853acaf56b1e302dcc8488752cc3ef07e8b21d39b43e1975f6c10ab81"
+    },
+    {
+      "file": "crates/media/assets/licenses/Combined-Application-GPL-3.0.txt",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    }
+  ],
+  "completed_checks": [
+    "Five archive SHA-256 matches",
+    "Twenty unique source commits plus embedded utf8_range license",
+    "Twenty primary advisory dispositions and OSV commit screening",
+    "Windows PE/Linux ELF/macOS Mach-O static inspection",
+    "macOS debug package rebuild and separation/media notice byte comparisons",
+    "Three packager notice input checks (Windows/Linux static only)",
+    "JSON/local Markdown links/shell syntax/rustfmt/whitespace checks"
+  ]
+}

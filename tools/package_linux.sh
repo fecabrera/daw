@@ -30,7 +30,7 @@ cp crates/ui/assets/fonts/Hack-LICENSE.txt "$package/licenses/Hack-LICENSE.txt"
 cp crates/ui/assets/icons/LUCIDE-LICENSE.txt "$package/licenses/LUCIDE-LICENSE.txt"
 cp crates/ui/assets/icons/EGUI-LUCIDE-LICENSE.txt "$package/licenses/EGUI-LUCIDE-LICENSE.txt"
 for directory in crates/ui/assets/licenses crates/media/assets/licenses \
-  crates/oscillator/assets/licenses crates/equalizer/assets/licenses crates/timestretch/licenses; do
+  crates/oscillator/assets/licenses crates/equalizer/assets/licenses crates/timestretch/licenses crates/separation/assets/licenses; do
   cp "$directory"/*.txt "$package/licenses/"
 done
 (cd "$staging_directory" && zip -qr "$staging_directory/DAW.zip" DAW)

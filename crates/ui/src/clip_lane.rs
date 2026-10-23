@@ -28,6 +28,38 @@ impl DawUi {
                 self.open_clip_editor(clip.id, track_id, ui.ctx());
                 ui.close();
             }
+            if self.view_mode == ViewMode::Timeline
+                && self
+                    .session
+                    .project
+                    .assets
+                    .iter()
+                    .any(|a| a.id == clip.asset_id && a.midi_pattern.is_none())
+                && ui
+                    .add_enabled(
+                        self.separation_enabled(),
+                        egui::Button::new("Stem-separation"),
+                    )
+                    .on_disabled_hover_text(self.separation_disabled_hint())
+                    .clicked()
+            {
+                self.separate_clip(clip.id);
+                ui.close();
+            }
+            if ui
+                .button(if clip.muted {
+                    "Enable clip"
+                } else {
+                    "Disable clip"
+                })
+                .clicked()
+            {
+                self.edit(Edit::SetClipMuted {
+                    clip_id: clip.id,
+                    muted: !clip.muted,
+                });
+                ui.close();
+            }
             let targets = if selected {
                 self.selected_clip_ids()
             } else {

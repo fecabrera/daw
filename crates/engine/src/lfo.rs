@@ -132,6 +132,7 @@ mod tests {
     use daw_core::{ClipLoop, ClipStretch, Id};
     fn clip(start_frame: u64, source_offset_frame: u64, length_frames: u64) -> Clip {
         Clip {
+            muted: false,
             id: Id::new_v4(),
             asset_id: Id::new_v4(),
             name: String::new(),

@@ -35,7 +35,7 @@ Copy with Command+C on macOS or Ctrl+C on Windows/Linux. Paste with Command+V or
 
 Split the selected clips at the playhead with Edit > Split at playhead, or with Command+T on macOS or Ctrl+T on Windows/Linux. The same command is available in Editor. It is disabled when no clip is selected, when the playhead is not inside a selected clip, and in Mixer and Instrument. If several clips are selected, every selected clip that crosses the playhead is split together. The original clip ends at the playhead and a new clip starts there. Audio keeps its recording, trim, loop, and stretch. Right-click a clip and choose Split at playhead to split that clip, or the whole selection when the clicked clip is selected.
 
-MIDI notes that cross the playhead follow Settings > Split MIDI notes. Split into two is the default: the note becomes two notes. Preserve first keeps the part before the playhead on the original clip and does not continue it. The choice is saved on this computer, not in the project. Undo restores both pieces in one step.
+MIDI notes that cross the playhead follow Settings > MIDI > Split MIDI notes. Split into two is the default: the note becomes two notes. Preserve first keeps the part before the playhead on the original clip and does not continue it. The choice is saved on this computer, not in the project. Undo restores both pieces in one step.
 
 Duplicating into new track space creates fresh track defaults. Group paste also creates fresh tracks when needed and preserves gaps between tracks. A new MIDI track starts with an empty instrument and needs a source before it makes sound. Existing destination tracks keep their settings. Moving MIDI clips to new track space retains their instrument.
 
@@ -82,3 +82,9 @@ Select a track, group, or Master, then use the [Effects catalog](instrument.md#e
 Drag an installed effect header from the effects lane onto another track’s header or clip lane to append it to that track’s effects. Audio tracks, MIDI tracks, and groups accept effects. Drop onto the fixed Master block to append effects to Master. Shift-click effects first to move a selected group in chain order. Hold Option on macOS or Ctrl on Windows/Linux to copy instead; the modifier at release determines the action. The target row has an outline during a valid drag. Release to apply the change, or press Escape to cancel.
 
 A drop selects the destination track or Master and the transferred effects. Effects that use modulation sources from another track show a forbidden cursor and reject the whole group without changing either chain. Master cannot use track modulation sources. Remove incompatible source assignments before transferring effects.
+
+## Stem separation
+
+Right-click an audio clip and choose **Stem-separation** to create a group with aligned Drums, Bass, Other, and Vocals tracks. The original stays in place, disabled. Select local models in Settings first. Unsaved projects use temporary stem storage until the first save. See [Stem separation](../audio/stem-separation.md) for setup, progress, cancellation, and file storage.
+
+Right-click a disabled clip and choose **Enable clip** to restore it. **Disable clip** silences only that clip and shows a greyed version of its color. These actions support Undo and Redo.

@@ -63,7 +63,13 @@ impl AudioTrack {
             audio: track
                 .clips
                 .iter()
-                .map(|c| plan.audio_for_clip(c).cloned())
+                .map(|c| {
+                    if c.muted {
+                        None
+                    } else {
+                        plan.audio_for_clip(c).cloned()
+                    }
+                })
                 .collect(),
             rate: plan.project.sample_rate_hz,
         }

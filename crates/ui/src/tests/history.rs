@@ -220,16 +220,16 @@ fn edit_menu_clicks_undo_and_redo_and_save_completion_keeps_the_right_checkpoint
         );
     }
     let (sender, receiver) = mpsc::channel();
+    let written = app.session.clone();
     app.regular_save = Some(regular_save::PendingSave {
         receiver,
         project: app.session.project.project_id,
         revision: app.change_revision,
-        snapshot: app.session.clone(),
         navigation_revision: app.navigation_revision,
     });
     app.perform_history_action(HistoryAction::Undo, &ctx);
     assert!(!app.dirty);
-    sender.send(Ok(())).unwrap();
+    sender.send(Ok(written)).unwrap();
     app.poll_regular_save();
     assert!(
         app.dirty,

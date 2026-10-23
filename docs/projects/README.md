@@ -4,9 +4,13 @@ Projects store the arrangement, instruments, effects, and settings. Audio record
 
 ## Save and open
 
-First Save and Save As ask for a project name and a parent folder. They create a new named project folder. Regular Save uses the current location. It writes the project state from when you pressed Save in the background. The workspace stays visible and editable, and the status bar shows Saving project. Changes made during the write remain marked as unsaved; save again to include them. File menu actions are unavailable until the write finishes. Save As preserves the references to the original recordings; it does not copy them into the new project.
+First Save and Save As ask for a project name and a parent folder. They create a new named project folder. Regular Save uses the current location. It writes the project state from when you pressed Save in the background. The workspace stays visible and editable, and the status bar shows Saving project. Changes made during the write remain marked as unsaved; save again to include them. File menu actions are unavailable until the write finishes. Save As preserves the references to the original recordings; it does not copy them into the new project. Generated [stems](../audio/stem-separation.md) are copied into the new project folder, including temporary stems created before the first save.
 
 When leaving a modified project, choose Save, Discard, or Cancel. A cancelled or failed operation retains the current project. Missing recordings remain visible and play as silence. Files that became shorter supply silence for unavailable sections.
+
+If Save As fails because a generated stem is missing, restore that file and retry the same project name and location. A failed Save As removes its empty new project folders and retains unrelated contents.
+
+Saving fails if a directory occupies the `project.json` destination. The directory and its contents remain intact. Move that directory out of the project folder or choose another save location, then retry.
 
 ## Project Settings
 
@@ -16,9 +20,22 @@ Processing rates are 44.1, 48, 88.2, 96, 176.4, and 192 kHz; the default is 48 k
 
 Audio settings changes prepare the required audio before replacing the session. Success stops playback so you can restart it with the new settings. Failure or cancellation retains the previous project and playback.
 
+## Application Settings
+
+Open Settings from the app-name menu on macOS or File on Windows/Linux. Use Command+, on macOS or Ctrl+, on Windows/Linux.
+
+Settings groups controls into four categories:
+
+- **Appearance**: titlebar style where supported, theme, and accent color.
+- **Playback**: seek cache profile.
+- **MIDI**: how notes are divided when splitting clips.
+- **Stem Separation**: local model selection and validation.
+
+Changes apply on this computer and are retained across restarts. Close retains your choices. These preferences are separate from Project Settings.
+
 ## Seek cache profiles
 
-Open application **Settings** and choose **Seek cache**. The choice applies on this computer and is retained across restarts. **Balanced** is the default. It is separate from Project Settings and is not saved in the project.
+Open application **Settings** and choose **Playback > Seek cache**. The choice applies on this computer and is retained across restarts. **Balanced** is the default. It is separate from Project Settings and is not saved in the project.
 
 | Profile | Checkpoint memory limit | Background behavior and tradeoff |
 | --- | --- | --- |
@@ -32,7 +49,7 @@ Changing profile keeps valid checkpoints where possible and does not stop playba
 
 ## Split MIDI notes
 
-Open application Settings and choose Split MIDI notes. Split into two is the default. A MIDI note that crosses the playhead becomes two notes. Preserve first keeps that note on the clip before the playhead and does not continue it on the new clip. The choice applies on this computer and is kept across restarts. It is not saved in the project. Audio clips are unaffected.
+Open application Settings and choose **MIDI > Split MIDI notes**. Split into two is the default. A MIDI note that crosses the playhead becomes two notes. Preserve first keeps that note on the clip before the playhead and does not continue it on the new clip. The choice applies on this computer and is kept across restarts. It is not saved in the project. Audio clips are unaffected.
 
 ## Memory and large projects
 
@@ -64,3 +81,7 @@ cargo run -p daw-cli -- render --project examples/demo --output /tmp/daw-export.
 ```
 
 Choose your own output path. An existing file needs the explicit `--overwrite` option. The CLI reports warnings and export errors in the terminal. See the main [README](../../README.md#build-and-run) for setup.
+
+## Stem-separation models
+
+Choose and validate local model files under **Settings > Stem Separation**. Apple Silicon macOS supports CoreML, CPU, or both; Windows and Linux use CPU. These paths apply on this computer and are not saved in projects. See [Stem separation](../audio/stem-separation.md) for supported models and the separation workflow.

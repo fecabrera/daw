@@ -10,6 +10,7 @@ mod placement;
 mod portion;
 mod range_selection;
 mod regular_save;
+mod separation_models;
 pub use history::HistoryAction;
 mod resize;
 mod sampler_panel;
@@ -59,6 +60,7 @@ mod instrument_component_drag;
 mod instrument_main;
 mod instrument_panel;
 mod instrument_selection;
+mod job_report;
 pub mod knobs;
 mod layer_effects;
 mod lfo_controls;
@@ -72,6 +74,7 @@ mod modulation_panel;
 mod ott_panel;
 mod parameter_knobs;
 mod saturator_panel;
+mod separation;
 mod stereo_spread_panel;
 mod strip_reorder;
 mod timeline_toolbar;
@@ -301,6 +304,8 @@ enum Job {
     Loaded(Session, bool),
     Saved(Session),
     Exported(Vec<String>),
+    Separated(daw_project::PreparedSeparation),
+    ModelValidated(Result<(), String>),
 }
 
 enum Action {
@@ -729,6 +734,7 @@ pub struct DawUi {
     mixer_faders: HashMap<Option<Id>, Rect>,
     settings: settings::AppSettings,
     settings_open: bool,
+    separation_models: separation_models::State,
     project_settings: Option<project_settings::ProjectSettings>,
     pub session: Session,
     history: Option<daw_project::SessionHistory>,
@@ -791,6 +797,7 @@ pub struct DawUi {
     export_settings: ExportSettings,
     export_dialog: Option<ExportSettings>,
     export_status: Option<export_status::ExportStatus>,
+    separation_status: Option<separation::Status>,
     overwrite_settings: ExportSettings,
     allow_close: bool,
     native_menu: bool,
@@ -833,6 +840,7 @@ impl Default for DawUi {
             mixer_faders: HashMap::new(),
             settings: settings::AppSettings::default(),
             settings_open: false,
+            separation_models: Default::default(),
             project_settings: None,
             session: Session::default(),
             history: None,
@@ -895,6 +903,7 @@ impl Default for DawUi {
             export_settings: ExportSettings::default(),
             export_dialog: None,
             export_status: None,
+            separation_status: None,
             overwrite_settings: ExportSettings::default(),
             allow_close: false,
             native_menu: false,
@@ -908,12 +917,16 @@ impl Default for DawUi {
 }
 impl DawUi {
     pub fn settings(&self) -> settings::AppSettings {
-        self.settings
+        self.settings.clone()
     }
 
     pub fn set_settings(&mut self, ctx: &egui::Context, settings: settings::AppSettings) {
+        let models_changed = self.settings.separation_models != settings.separation_models;
+        theme::apply(ctx, settings.clone());
         self.settings = settings;
-        theme::apply(ctx, settings);
+        if models_changed {
+            self.revalidate_separation_models();
+        }
         self.configure_audio_cache(false);
     }
 
@@ -1258,6 +1271,7 @@ impl DawUi {
             self.busy.clear();
             self.settings_cancel = None;
             match message {
+                Ok(Job::ModelValidated(result)) => self.finish_model_validation(result),
                 Ok(Job::AudioSettings(mut session)) => {
                     let old_rate = self.session.project.sample_rate_hz;
                     let playhead = self
@@ -1359,12 +1373,33 @@ impl DawUi {
                 Ok(Job::Saved(session)) => {
                     self.project_name_dialog = None;
                     self.session = session;
-                    self.record_history();
                     self.saved_navigation_revision = self.navigation_revision;
+                    // Relocation is not an edit. Retarget retained sources before
+                    // recording any real name change, so path-only saves keep Redo.
                     self.history_saved(&self.session.clone());
+                    self.record_history();
                     self.dirty = false;
                     self.unsaved_prompt = false;
                     self.perform_pending();
+                }
+                Ok(Job::Separated(prepared)) => {
+                    if let Some(status) = &mut self.separation_status {
+                        if status
+                            .progress
+                            .cancel
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            status.state = job_report::State::Cancelled;
+                        } else {
+                            status.path = prepared.directory().to_owned();
+                            status.warnings = prepared.warnings.clone();
+                            status.state = job_report::State::Complete;
+                            let mut session = prepared.publish();
+                            session.project.transport = self.session.project.transport.clone();
+                            self.session = session;
+                            self.changed();
+                        }
+                    }
                 }
                 Ok(Job::Exported(warnings)) => {
                     if let Some(status) = &mut self.export_status {
@@ -1373,7 +1408,19 @@ impl DawUi {
                     }
                 }
                 Err(e) => {
-                    if let Some(status) = &mut self.export_status {
+                    if self.separation_models.running() {
+                        self.finish_model_validation(Err(e));
+                    } else if let Some(status) = &mut self.separation_status {
+                        status.state = if status
+                            .progress
+                            .cancel
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            job_report::State::Cancelled
+                        } else {
+                            job_report::State::Failed(e)
+                        };
+                    } else if let Some(status) = &mut self.export_status {
                         status.state = export_status::State::Failed(e);
                     } else {
                         self.fail(e);
@@ -1383,6 +1430,7 @@ impl DawUi {
                 }
             }
         }
+        self.start_next_model_validation();
     }
     fn seek(&mut self, frame: u64) {
         self.session.project.transport.playhead_frame = frame;
@@ -1983,6 +2031,7 @@ impl DawUi {
                     self.export_dialog.is_none()
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
+                        && self.separation_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
                         && !self.settings_open,
@@ -1997,12 +2046,18 @@ impl DawUi {
                         ui.spinner();
                         ui.label(&self.busy);
                         if self.settings_cancel.is_some() && ui.button("Cancel").clicked() {
-                            if let Some(cancel) = self.settings_cancel.take() {
+                            if let Some(cancel) = &self.settings_cancel {
                                 cancel.store(true, Ordering::Relaxed);
                             }
-                            // Drop this receiver: a cancelled worker can never publish a late result.
-                            self.job = None;
-                            self.busy.clear();
+                            // Keep separation and model-check receivers until acknowledgement.
+                            // Both publication paths reject cancelled results.
+                            if self.separation_status.is_none() && !self.separation_models.running()
+                            {
+                                self.settings_cancel = None;
+                                // Other preparation jobs reject late publication.
+                                self.job = None;
+                                self.busy.clear();
+                            }
                         }
                     } else if self.regular_save.is_some() {
                         ui.spinner();
@@ -2031,6 +2086,7 @@ impl DawUi {
                                 && self.export_dialog.is_none()
                                 && self.overwrite.is_none()
                                 && self.export_status.is_none()
+                                && self.separation_status.is_none()
                                 && self.project_name_dialog.is_none()
                                 && self.project_settings.is_none()
                                 && !self.settings_open,
@@ -2054,6 +2110,7 @@ impl DawUi {
                         && self.export_dialog.is_none()
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
+                        && self.separation_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
                         && !self.settings_open,
@@ -2120,6 +2177,7 @@ impl DawUi {
         }
         if self.job.is_none()
             && self.export_status.is_none()
+            && self.separation_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
             && !self.settings_open
@@ -2290,6 +2348,7 @@ impl DawUi {
             && self.overwrite.is_none()
             && self.export_dialog.is_none()
             && self.export_status.is_none()
+            && self.separation_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
             && !self.settings_open
@@ -4574,6 +4633,7 @@ impl DawUi {
             target.snap_zoom,
         );
         let clip = Clip {
+            muted: false,
             stretch: None,
             id: Id::nil(),
             asset_id: Id::nil(),
@@ -4952,8 +5012,22 @@ impl DawUi {
                 None => self.project_settings = Some(draft),
             }
         }
-        if self.settings_open && settings::show(ctx, &mut self.settings) {
-            self.settings_open = false;
+        if self.settings_open {
+            let mut model_action = None;
+            let enabled =
+                self.job.is_none() && !self.separation_models.busy() && self.error.is_none();
+            if settings::show(
+                ctx,
+                &mut self.settings,
+                &self.separation_models.validated,
+                enabled,
+                &mut model_action,
+            ) {
+                self.settings_open = false;
+            }
+            if let Some(action) = model_action {
+                self.change_separation_model(action);
+            }
         }
         #[derive(Clone, Copy)]
         enum UnsavedChoice {
@@ -5039,6 +5113,11 @@ impl DawUi {
         {
             self.error = None;
         }
+        if let Some(status) = &self.separation_status
+            && status.show(ctx)
+        {
+            self.separation_status = None;
+        }
         if let Some(status) = &self.export_status
             && status.show(ctx)
         {
@@ -5071,6 +5150,7 @@ mod tests {
     mod resize_neighbors;
     mod sampler;
     mod saving;
+    mod separation;
     mod track_groups;
     mod track_header;
     mod track_shortcuts;
@@ -5106,6 +5186,7 @@ mod tests {
             decoded_frame_count: 480000,
         });
         app.session.project.tracks[0].clips.push(Clip {
+            muted: false,
             stretch: None,
             id: Id::new_v4(),
             asset_id: asset,
@@ -5181,7 +5262,7 @@ mod tests {
                 accent: settings::AccentColor::Teal,
                 ..Default::default()
             };
-            app.set_settings(&ctx, settings);
+            app.set_settings(&ctx, settings.clone());
             frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let palette = theme::palette(&ctx);
@@ -5253,7 +5334,7 @@ mod tests {
             accent: settings::AccentColor::Teal,
             ..Default::default()
         };
-        app.set_settings(&ctx, settings);
+        app.set_settings(&ctx, settings.clone());
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let color = settings.accent.color();
         let block = app.clip_block(
@@ -9060,6 +9141,68 @@ mod tests {
     }
 
     #[test]
+    fn save_as_retargets_stems_before_recording_history_and_preserves_name_edits() {
+        for rename in [false, true] {
+            let location = SaveLocation::new();
+            let wav = TestWav::new();
+            let mut app = DawUi::default();
+            app.session.import(&wav.0, None, 0).unwrap();
+            app.session.project.assets[0].source.kind = "generated".into();
+            let original = location.0.join("original");
+            app.session.save(&original).unwrap();
+            let original_name = app.session.project.name.clone();
+            app.ensure_history();
+            app.session.project.master.gain_db = -3.0;
+            app.mark_dirty();
+            app.session = app.history.as_mut().unwrap().undo(&app.session).unwrap();
+            assert!(app.history.as_ref().unwrap().can_redo());
+            assert!(!app.history.as_ref().unwrap().can_undo());
+
+            let name = if rename {
+                "Renamed mix".to_owned()
+            } else {
+                original_name.clone()
+            };
+            app.save_named(name.clone(), Some(location.0.clone()));
+            wait_for_save(&mut app);
+            assert!(app.error.is_none(), "{:?}", app.error);
+            assert!(!app.dirty);
+            let destination = location.0.join(&name);
+            assert_eq!(app.session.folder.as_ref(), Some(&destination));
+            // History must use the saved copies, even after the old folder is gone.
+            std::fs::remove_dir_all(original).unwrap();
+            let history = app.history.as_mut().unwrap();
+            assert!(history.is_saved());
+            if rename {
+                assert!(!history.can_redo(), "a real name edit clears Redo");
+                app.session = history.undo(&app.session).unwrap();
+                assert_eq!(app.session.project.name, original_name);
+                assert!(!history.is_saved());
+                assert!(!history.can_undo(), "no relocation-only Undo entry");
+                app.session = history.redo(&app.session).unwrap();
+                assert_eq!(app.session.project.name, name);
+                assert!(history.is_saved());
+            } else {
+                assert!(history.can_redo(), "relocation alone must preserve Redo");
+                assert!(!history.can_undo(), "no relocation-only Undo entry");
+                app.session = history.redo(&app.session).unwrap();
+                assert_eq!(app.session.project.master.gain_db, -3.0);
+                assert!(!history.is_saved());
+                app.session = history.undo(&app.session).unwrap();
+                assert_eq!(app.session.project.master.gain_db, 0.0);
+                assert!(history.is_saved());
+                assert!(!history.can_undo());
+            }
+            assert_eq!(app.session.folder.as_ref(), Some(&destination));
+            for asset in &app.session.project.assets {
+                let path = app.session.source_path(asset).unwrap();
+                assert!(path.starts_with(destination.join("stems")), "{path:?}");
+                assert!(path.is_file());
+            }
+        }
+    }
+
+    #[test]
     fn named_save_jobs_update_name_and_folder_only_after_success() {
         let location = SaveLocation::new();
         let wav = TestWav::new();
@@ -11399,6 +11542,66 @@ mod tests {
         );
         app.session.project.validate().unwrap();
     }
+    #[test]
+    fn disabled_clips_use_opaque_dimmed_palettes_and_keep_selection_visible() {
+        let source = TestWav::new();
+        let mut audio = daw_media::decode_wav(&source.0).unwrap();
+        audio.metadata.channels = 2;
+        for appearance in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+            for custom in [
+                None,
+                Some(daw_core::RgbColor {
+                    r: 210,
+                    g: 80,
+                    b: 35,
+                }),
+            ] {
+                let (mut app, track) = fixture();
+                let clip = &mut app.session.project.tracks[0].clips[0];
+                clip.muted = true;
+                clip.color = custom;
+                clip.length_frames = 48_000;
+                let id = clip.id;
+                app.session.audio.insert(clip.asset_id, audio.clone());
+                app.select_clip(id, track, false);
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: appearance,
+                        ..Default::default()
+                    },
+                );
+                let base = theme::clip_colors(app.session.project.tracks[0].color, custom);
+                let colors = base.dimmed(&ctx);
+                assert_ne!(base, colors);
+                let palette = theme::palette(&ctx);
+                assert_eq!(colors.header, theme::unit_header_fill(&ctx, false));
+                assert_eq!(colors.body, palette.panel);
+                assert_eq!(colors.channel, palette.panel);
+                assert_eq!(colors.text, palette.secondary);
+                assert_eq!(colors.waveform, palette.secondary);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                for fill in [colors.body, colors.header, colors.channel] {
+                    assert_eq!(fill.a(), 255);
+                    assert!(
+                        shapes
+                            .iter()
+                            .any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == fill))
+                    );
+                }
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == colors.waveform)));
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Test" && t.fallback_color == colors.text)));
+                let block = app.clip_block(
+                    app.lane_bounds[&track],
+                    &app.session.project.tracks[0].clips[0],
+                    0,
+                );
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == block && r.stroke == theme::selection_outline(&ctx))));
+            }
+        }
+    }
+
     #[test]
     fn saved_colors_render_on_clips_and_drag_previews_with_neutral_track_panels() {
         let source = TestWav::new();

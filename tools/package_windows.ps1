@@ -62,7 +62,8 @@ try {
         'crates/media/assets/licenses',
         'crates/oscillator/assets/licenses',
         'crates/equalizer/assets/licenses',
-        'crates/timestretch/licenses'
+        'crates/timestretch/licenses',
+        'crates/separation/assets/licenses'
     )) {
         $notices = @(Get-ChildItem -LiteralPath $directory -Filter '*.txt' -File)
         if ($notices.Count -eq 0) {

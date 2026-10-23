@@ -61,7 +61,7 @@ impl RenderPlan {
             if let Some(c) = t
                 .clips
                 .iter()
-                .find(|c| frame >= c.start_frame && frame < c.end())
+                .find(|c| !c.muted && frame >= c.start_frame && frame < c.end())
             {
                 let Some(audio) = self.audio_for_clip(c) else {
                     continue;
@@ -95,13 +95,21 @@ impl RenderPlan {
     }
 }
 fn sample_fade(clip: &daw_core::Clip, local: u64, source_frame: u64, sample_rate_hz: u32) -> f32 {
-    let outer = clip_fade_at_rate(local, clip.length_frames, sample_rate_hz);
-    clip.repeat.map_or(outer, |repeat| {
-        outer.min(clip_fade_at_rate(
+    clip_fade_at_rate(local, clip.length_frames, sample_rate_hz).min(clip_repeat_fade(
+        clip,
+        source_frame,
+        sample_rate_hz,
+    ))
+}
+/// Loop-seam fade for dry clip preparation. Outer boundaries remain the
+/// responsibility of playback so a baked clip does not receive two fades.
+pub fn clip_repeat_fade(clip: &daw_core::Clip, source_frame: u64, sample_rate_hz: u32) -> f32 {
+    clip.repeat.map_or(1.0, |repeat| {
+        clip_fade_at_rate(
             source_frame - clip.source_offset_frame,
             repeat.length_frames,
             sample_rate_hz,
-        ))
+        )
     })
 }
 
@@ -325,6 +333,7 @@ impl Renderer {
                 None::<u64>.hash(&mut hash);
                 format!("{:?}", track.clips).hash(&mut hash);
                 for clip in &track.clips {
+                    clip.muted.hash(&mut hash);
                     if let Some(audio) = plan.audio_for_clip(clip) {
                         std::sync::Arc::as_ptr(&audio.samples).hash(&mut hash);
                         audio.sample_rate_hz.hash(&mut hash);
@@ -992,6 +1001,31 @@ mod tests {
         plan.project.tracks[0].clips[0].gain_db = daw_core::SILENT_GAIN_DB;
         assert_eq!(plan.sample_at(1000), [0.0, 0.0]);
     }
+    #[test]
+    fn disabled_audio_clip_is_silent_in_random_and_scheduled_rendering() {
+        let mut plan = plan();
+        assert_ne!(plan.sample_at(1000), [0.0; 2]);
+        let id = plan.project.tracks[0].clips[0].id;
+        plan.project
+            .edit(daw_core::Edit::SetClipMuted {
+                clip_id: id,
+                muted: true,
+            })
+            .unwrap();
+        assert_eq!(plan.sample_at(1000), [0.0; 2]);
+        let mut track = schedule::AudioTrack::new(&plan, &plan.project.tracks[0]);
+        assert_eq!(
+            track.sample(&plan.project.tracks[0].clips, 1000).0,
+            [0.0; 2]
+        );
+        plan.project
+            .edit(daw_core::Edit::SetClipMuted {
+                clip_id: id,
+                muted: false,
+            })
+            .unwrap();
+        assert_ne!(plan.sample_at(1000), [0.0; 2]);
+    }
     fn plan() -> RenderPlan {
         use daw_core::{Asset, Clip, Source, SourceMetadata};
         use std::sync::Arc;
@@ -1017,6 +1051,7 @@ mod tests {
             decoded_frame_count: 2000,
         });
         project.tracks[0].clips.push(Clip {
+            muted: false,
             stretch: None,
             id: Id::new_v4(),
             asset_id: id,

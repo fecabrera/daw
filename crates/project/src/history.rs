@@ -174,8 +174,20 @@ impl SessionHistory {
     }
     /// Accept the exact snapshot written by a save worker, even if newer edits exist.
     pub fn mark_saved(&mut self, session: &Session) -> Result<()> {
-        self.saved = Some(snapshot(session)?.session.project);
-        self.memory.saved_model_bytes = self.saved.as_ref().map_or(0, Project::memory_bytes);
+        let saved = snapshot(session)?.session;
+        // Save As relocates project-owned files, not edits. Update every retained
+        // snapshot so a later save without these assets cannot erase their locations.
+        // Keep this state within bounded history rather than a separate path cache.
+        for entry in std::iter::once(&mut self.current)
+            .chain(self.pending.iter_mut())
+            .chain(self.undo.iter_mut())
+            .chain(self.redo.iter_mut())
+        {
+            entry.session.retarget_generated_sources(&saved)?;
+            entry.model_bytes = snapshot_model_bytes(&entry.session);
+        }
+        self.saved = Some(saved.project);
+        self.enforce_memory_limit();
         Ok(())
     }
 
@@ -221,22 +233,28 @@ fn snapshot(session: &Session) -> Result<Snapshot> {
             asset.source.path_kind = "absolute".into();
         }
     }
-    let model_bytes = daw_engine::prepared_model_bytes(
-        &next.project,
-        &next.audio,
-        &next.stretched_audio,
-        &next.sampler_audio,
-    ) + next.folder.as_ref().map_or(0, |p| p.capacity() as u64)
-        + (next.warnings.capacity() * std::mem::size_of::<String>()) as u64
-        + next
-            .warnings
-            .iter()
-            .map(|s| s.capacity() as u64)
-            .sum::<u64>();
+    next.retain_temporary_stems();
+    let model_bytes = snapshot_model_bytes(&next);
     Ok(Snapshot {
         session: next,
         model_bytes,
     })
+}
+
+fn snapshot_model_bytes(session: &Session) -> u64 {
+    daw_engine::prepared_model_bytes(
+        &session.project,
+        &session.audio,
+        &session.stretched_audio,
+        &session.sampler_audio,
+    ) + session.temporary_stems_memory_bytes()
+        + session.folder.as_ref().map_or(0, |p| p.capacity() as u64)
+        + (session.warnings.capacity() * std::mem::size_of::<String>()) as u64
+        + session
+            .warnings
+            .iter()
+            .map(|s| s.capacity() as u64)
+            .sum::<u64>()
 }
 
 #[cfg(test)]

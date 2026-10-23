@@ -188,6 +188,7 @@ mod tests {
         let ids = [Id::new_v4(), Id::new_v4()];
         for (id, start, offset) in [(ids[0], 100, 20), (ids[1], 150, 100)] {
             project.tracks[0].clips.push(Clip {
+                muted: false,
                 id,
                 asset_id: asset,
                 name: format!("Clip {start}"),

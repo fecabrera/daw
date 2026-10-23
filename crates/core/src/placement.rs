@@ -99,6 +99,7 @@ mod tests {
             },
         });
         let neighbor = Clip {
+            muted: false,
             id: Id::new_v4(),
             asset_id,
             name: "Neighbor".into(),

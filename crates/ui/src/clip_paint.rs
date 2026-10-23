@@ -39,6 +39,11 @@ impl DawUi {
         } else {
             theme::clip_colors(track_color, clip.color)
         };
+        let colors = if clip.muted {
+            colors.dimmed(painter.ctx())
+        } else {
+            colors
+        };
         painter.rect_filled(
             block,
             2.0,
