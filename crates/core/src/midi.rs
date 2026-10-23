@@ -411,11 +411,27 @@ impl Project {
     }
     pub fn add_midi_pattern(&mut self, track_id: Id, start_frame: u64) -> Result<Id> {
         let mut next = self.clone();
-        let id = Id::new_v4();
-        let asset = next.midi_asset("MIDI pattern".into(), MidiPattern::default())?;
+        let (asset, clip) =
+            next.midi_clip("MIDI pattern".into(), MidiPattern::default(), start_frame)?;
+        let id = clip.id;
+        next.assets.push(asset);
+        next.edit(Edit::OverwriteClips(vec![crate::ClipPlacement {
+            track_id,
+            clip,
+        }]))?;
+        *self = next;
+        Ok(id)
+    }
+    pub(crate) fn midi_clip(
+        &self,
+        name: String,
+        pattern: MidiPattern,
+        start_frame: u64,
+    ) -> Result<(Asset, Clip)> {
+        let asset = self.midi_asset(name, pattern)?;
         let clip = Clip {
             muted: false,
-            id,
+            id: Id::new_v4(),
             asset_id: asset.id,
             name: asset.name.clone(),
             color: None,
@@ -427,13 +443,7 @@ impl Project {
             gain_db: 0.0,
             transpose: 0,
         };
-        next.assets.push(asset);
-        next.edit(Edit::OverwriteClips(vec![crate::ClipPlacement {
-            track_id,
-            clip,
-        }]))?;
-        *self = next;
-        Ok(id)
+        Ok((asset, clip))
     }
     pub(crate) fn midi_asset(&self, name: String, pattern: MidiPattern) -> Result<Asset> {
         pattern.validate()?;

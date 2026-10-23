@@ -9,14 +9,20 @@ pub(super) struct Buttons {
     pub components: Option<egui::Response>,
     pub clip_settings: Option<egui::Response>,
     pub lane: egui::Response,
+    pub chords: Option<egui::Response>,
+}
+
+pub(super) struct Catalogs {
+    pub effects: bool,
+    pub components: Option<bool>,
+    pub clip_settings: Option<bool>,
+    pub chords: Option<bool>,
 }
 
 pub(super) fn show(
     ui: &mut Ui,
     bounds: Rect,
-    catalog_visible: bool,
-    components_visible: Option<bool>,
-    clip_settings_visible: Option<bool>,
+    catalogs: Catalogs,
     lane_visible: bool,
     enabled: bool,
 ) -> Buttons {
@@ -38,7 +44,7 @@ pub(super) fn show(
     let clip_settings_at = top
         + Vec2::new(
             0.0,
-            if components_visible.is_some() {
+            if catalogs.components.is_some() {
                 2.0 * step
             } else {
                 step
@@ -58,10 +64,10 @@ pub(super) fn show(
             "library",
             icons::Lucide::Library,
             "Show effects catalog",
-            catalog_visible,
+            catalogs.effects,
             enabled,
         ),
-        components: components_visible.map(|selected| {
+        components: catalogs.components.map(|selected| {
             toggle_at(
                 &mut rail,
                 top + Vec2::new(0.0, BUTTON_SIZE + padding),
@@ -72,13 +78,24 @@ pub(super) fn show(
                 enabled,
             )
         }),
-        clip_settings: clip_settings_visible.map(|selected| {
+        clip_settings: catalogs.clip_settings.map(|selected| {
             toggle_at(
                 &mut rail,
                 clip_settings_at,
                 "clip-settings",
                 icons::Lucide::FileHeadphone,
                 "Show clip settings",
+                selected,
+                enabled,
+            )
+        }),
+        chords: catalogs.chords.map(|selected| {
+            toggle_at(
+                &mut rail,
+                top + Vec2::new(0.0, 2.0 * step),
+                "chords",
+                icons::Lucide::Piano,
+                "Show chords catalog",
                 selected,
                 enabled,
             )

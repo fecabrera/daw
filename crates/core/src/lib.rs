@@ -8,7 +8,9 @@ pub use daw_unit_core::{
     SamplerMode, SamplerSettings, SamplerTrigger,
 };
 pub use daw_unit_core::{STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
+mod chords;
 mod midi;
+pub use chords::{CHORD_ROOTS, Chord, ChordKind};
 mod midi_options;
 pub use daw_unit_core::{
     AUTO_FILTER_TYPE_ID, AutoFilterSettings, COMPRESSOR_TYPE_ID, CompressorDetection,

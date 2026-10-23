@@ -150,6 +150,7 @@ impl DawUi {
         // Knob focus remains editable; text editors and other active gestures block changes.
         ui.is_enabled()
             && self.edit_environment_available()
+            && self.chords.drag.as_ref().is_none_or(|drag| !drag.active)
             && self.drag.is_none()
             && self.track_drag.is_none()
             && !self.midi_editor.dragging()
@@ -222,8 +223,11 @@ impl DawUi {
         let components_visible = self.view_mode == ViewMode::Instrument
             && self.instrument_catalog_visible
             && !clip_settings_visible;
-        let catalog_visible =
-            clip_settings_visible || self.timeline_catalog_visible || components_visible;
+        let chords_visible = self.view_mode == ViewMode::Timeline && self.chords.visible;
+        let catalog_visible = clip_settings_visible
+            || self.timeline_catalog_visible
+            || components_visible
+            || chords_visible;
         if !clip_settings_visible {
             self.clear_clip_settings_edits();
         }
@@ -259,7 +263,9 @@ impl DawUi {
                         ui.set_min_height(upper.height());
                         let catalog_rect =
                             Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, upper.height()));
-                        if clip_settings_visible {
+                        if chords_visible {
+                            self.chords_catalog_panel(ui, library, catalog_rect);
+                        } else if clip_settings_visible {
                             self.clip_settings_panel(ui, library, catalog_rect, allowed);
                         } else if components_visible {
                             self.instrument_catalog_panel(
@@ -385,7 +391,8 @@ impl DawUi {
                     );
                     content_ui.set_clip_rect(content_bounds.intersect(ui.clip_rect()));
                     content_ui.add_enabled_ui(
-                        self.effects_drag.is_none() || self.view_mode == ViewMode::Instrument,
+                        (self.effects_drag.is_none() && self.chords.drag.is_none())
+                            || self.view_mode == ViewMode::Instrument,
                         |ui| {
                             if self.view_mode == ViewMode::Instrument {
                                 self.timeline_bounds = Rect::NOTHING;
@@ -408,6 +415,7 @@ impl DawUi {
                 },
             );
         });
+        self.finish_chord_drag(ui);
         if let Some(library) = library {
             library.finish(ui);
         }

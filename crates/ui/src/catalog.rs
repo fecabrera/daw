@@ -8,6 +8,7 @@ pub(super) struct Catalog {
     entries: Vec<(&'static str, &'static str)>,
     pub selection: HashSet<&'static str>,
     folders: Vec<Folder>,
+    folder_filter: Option<usize>,
     cursor: Row,
     anchor: Row,
     range_base: Option<HashSet<&'static str>>,
@@ -124,6 +125,21 @@ impl Catalog {
         }
     }
 
+    /// A filter keeps entry identities and folder expansion independent of selection.
+    pub fn filter_folder(&mut self, folder: Option<usize>) {
+        if self.folder_filter == folder {
+            return;
+        }
+        self.clear();
+        self.folder_filter = folder;
+        let index = folder.unwrap_or(0);
+        if let Some(folder) = folder.and_then(|index| self.folders.get_mut(index)) {
+            folder.open = true;
+        }
+        self.cursor = Row::Folder(index);
+        self.anchor = self.cursor;
+    }
+
     fn visible_rows(&self) -> Vec<Row> {
         if self.folders.is_empty() {
             return (0..self.entries.len()).map(Row::Entry).collect();
@@ -131,6 +147,7 @@ impl Catalog {
         self.folders
             .iter()
             .enumerate()
+            .filter(|(index, _)| self.folder_filter.is_none_or(|filter| filter == *index))
             .flat_map(|(index, folder)| {
                 std::iter::once(Row::Folder(index)).chain(
                     folder
@@ -178,12 +195,34 @@ impl Catalog {
         noun: &str,
         interaction: Interaction,
     ) -> Output {
+        self.show_with_header(ui, panel, bounds, (title, noun), interaction, |_| {
+            egui::Rect::NOTHING
+        })
+    }
+
+    pub fn show_with_header(
+        &mut self,
+        ui: &mut Ui,
+        panel: &crate::panels::ControlPanel,
+        bounds: egui::Rect,
+        labels: (&str, &str),
+        interaction: Interaction,
+        actions: impl FnOnce(&mut Ui) -> egui::Rect,
+    ) -> Output {
+        let (title, noun) = labels;
         self.begin_frame(ui, bounds);
-        let header = panel.header(ui, title, |_| {});
+        let header = panel.header(ui, title, actions);
         crate::panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
         self.empty_region(
             ui,
-            header.response.rect.intersect(bounds),
+            egui::Rect::from_min_max(
+                header.response.rect.min,
+                egui::pos2(
+                    header.inner.left().min(header.response.rect.right()),
+                    header.response.rect.bottom(),
+                ),
+            )
+            .intersect(bounds),
             0,
             interaction.empty_enabled,
         );

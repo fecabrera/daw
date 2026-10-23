@@ -46,6 +46,7 @@ mod application_menu;
 mod auto_filter_panel;
 mod bitcrusher_panel;
 mod catalog;
+mod chords_catalog;
 mod compressor_panel;
 pub mod dialogs;
 mod direction_mixer_panel;
@@ -720,6 +721,7 @@ pub struct DawUi {
     midi_editor: midi_editor::MidiEditor,
     instrument_ui: instrument_panel::InstrumentUi,
     effects_catalog: catalog::Catalog,
+    chords: chords_catalog::Chords,
     instrument_catalog: catalog::Catalog,
     instrument_catalog_visible: bool,
     component_drag: Option<instrument_component_drag::ComponentDrag>,
@@ -827,6 +829,7 @@ impl Default for DawUi {
     fn default() -> Self {
         Self {
             view_mode: mixer::ViewMode::default(),
+            chords: Default::default(),
             effects_catalog: effects_catalog::catalog(),
             instrument_catalog: instrument_catalog::catalog(),
             instrument_catalog_visible: false,
@@ -1082,6 +1085,8 @@ impl DawUi {
                 self.instrument_catalog.clear();
                 self.component_drag = None;
                 self.effects_drag = None;
+                self.chords.drag = None;
+                self.chords.catalog.clear();
                 self.selected_effects.clear();
                 self.dirty = false;
                 self.inputs.clear();
@@ -1943,6 +1948,7 @@ impl DawUi {
             self.edit_environment_available(),
         );
         self.strip_dragging = strip_reorder::dragging(ui.ctx());
+        self.update_chord_drag(ui);
         self.cancel_unavailable_effect_drag(ui);
         self.cancel_unavailable_component_drag(ui);
         if self.view_mode != mixer::ViewMode::Instrument
@@ -2171,6 +2177,14 @@ impl DawUi {
                 .as_ref()
                 .is_some_and(|drag| drag.is_library()),
         );
+        self.chords.catalog.clear_if_unfocused(
+            &ctx,
+            self.view_mode == ViewMode::Timeline
+                && self.chords.visible
+                && ui.is_enabled()
+                && self.edit_environment_available(),
+            self.chords.drag.is_some(),
+        );
         self.instrument_catalog.clear_if_unfocused(
             &ctx,
             self.view_mode == ViewMode::Instrument
@@ -2359,6 +2373,7 @@ impl DawUi {
 
     fn editing_enabled(&self) -> bool {
         !self.strip_dragging
+            && self.chords.drag.is_none()
             && self.effects_drag.is_none()
             && self.component_drag.is_none()
             && self.drag.is_none()
@@ -2832,16 +2847,33 @@ impl DawUi {
         let toggles = timeline_toolbar::show(
             ui,
             rail,
-            self.timeline_catalog_visible,
-            (self.view_mode == ViewMode::Instrument).then_some(self.instrument_catalog_visible),
-            (self.view_mode == ViewMode::Timeline).then_some(self.clip_settings_visible),
+            timeline_toolbar::Catalogs {
+                effects: self.timeline_catalog_visible,
+                components: (self.view_mode == ViewMode::Instrument)
+                    .then_some(self.instrument_catalog_visible),
+                clip_settings: (self.view_mode == ViewMode::Timeline)
+                    .then_some(self.clip_settings_visible),
+                chords: (self.view_mode == ViewMode::Timeline).then_some(self.chords.visible),
+            },
             self.timeline_effects_visible,
             enabled,
         );
+        if toggles.chords.as_ref().is_some_and(|r| r.clicked()) {
+            self.chords.visible = !self.chords.visible;
+            self.chords.catalog.clear();
+            if self.chords.visible {
+                self.timeline_catalog_visible = false;
+                self.clip_settings_visible = false;
+                self.effects_catalog.clear();
+            }
+            ui.ctx().request_repaint();
+        }
         if toggles.library.clicked() {
             self.timeline_catalog_visible = !self.timeline_catalog_visible;
             self.effects_catalog.clear();
             if self.timeline_catalog_visible {
+                self.chords.visible = false;
+                self.chords.catalog.clear();
                 self.instrument_catalog_visible = false;
                 self.instrument_catalog.clear();
                 self.clip_settings_visible = false;
@@ -2869,6 +2901,8 @@ impl DawUi {
         {
             self.clip_settings_visible = !self.clip_settings_visible;
             if self.clip_settings_visible {
+                self.chords.visible = false;
+                self.chords.catalog.clear();
                 self.timeline_catalog_visible = false;
                 self.instrument_catalog_visible = false;
                 self.effects_catalog.clear();
@@ -2884,6 +2918,7 @@ impl DawUi {
         }
         #[cfg(test)]
         {
+            self.chords.bounds.toggle = toggles.chords.as_ref().map_or(Rect::NOTHING, |r| r.rect);
             self.instrument_catalog_bounds = Default::default();
             if let Some(response) = &toggles.components {
                 self.instrument_catalog_bounds.toggle = response.rect;
@@ -5195,6 +5230,7 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     mod audio_editor;
+    mod chords;
     mod clip_duplication;
     mod clip_menu;
     mod clip_portion;

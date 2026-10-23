@@ -4978,3 +4978,61 @@ fn per_track_midi_options_survive_save_reopen_save_as_and_legacy_loading() {
     fs::write(&manifest, serde_json::to_vec(&corrupt).unwrap()).unwrap();
     assert!(Session::open(&destination).is_err());
 }
+
+#[test]
+fn catalog_chords_save_reopen_and_export_with_their_embedded_notes() {
+    use daw_core::{Chord, ChordKind};
+    let fixture = Fixture::new();
+    let mut session = Session::default();
+    session.project.tempo_bpm = 123.45;
+    let (track, clips) = session
+        .project
+        .add_midi_chords(
+            None,
+            1234,
+            &[
+                Chord {
+                    root: 0,
+                    kind: ChordKind::MajorSeventh,
+                },
+                Chord {
+                    root: 9,
+                    kind: ChordKind::Minor,
+                },
+            ],
+        )
+        .unwrap();
+    session.project.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
+    let folder = fixture.0.join("chords");
+    session.save(&folder).unwrap();
+    let reopened = Session::open(&folder).unwrap();
+    assert!(reopened.warnings.is_empty());
+    assert_eq!(reopened.project.tracks[0].id, track);
+    assert_eq!(
+        reopened.project.tracks[0]
+            .clips
+            .iter()
+            .map(|c| c.id)
+            .collect::<Vec<_>>(),
+        clips
+    );
+    for (original, restored) in session.project.assets.iter().zip(&reopened.project.assets) {
+        assert_eq!(original.midi_pattern, restored.midi_pattern);
+        assert_eq!(original.id, restored.id);
+    }
+    let settings = daw_media::ExportSettings {
+        wav_codec: daw_media::WavCodec::Float32,
+        ..Default::default()
+    };
+    let first = fixture.0.join("original.wav");
+    let second = fixture.0.join("reopened.wav");
+    session
+        .export_with_settings(&first, false, settings)
+        .unwrap();
+    reopened
+        .export_with_settings(&second, false, settings)
+        .unwrap();
+    assert_eq!(fs::read(&first).unwrap(), fs::read(&second).unwrap());
+    let audio = daw_media::decode_wav(&second).unwrap();
+    assert!(audio.samples.iter().any(|frame| frame[0].abs() > 0.01));
+}

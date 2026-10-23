@@ -26,6 +26,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Project undo and redo](editing/undo-redo.md).
 - [Component editing and registration](editing/components.md).
 - [Clip settings](editing/clip-settings.md).
+- [Chord catalog](editing/chords.md).
 - [Beat editor design](views/beat-editor.md), pending implementation.
 
 ## Effects

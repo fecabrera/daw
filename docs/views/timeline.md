@@ -8,6 +8,21 @@ Press M to toggle Mute and S to toggle Solo on each selected track. These shortc
 
 Press Escape to clear selected clips or a selected clip time range first. Tracks and Master stay selected. If no clips or clip time range are selected, Escape clears track or Master selection. Text entry, open menus and active gestures take precedence. Holding Escape does not advance through these steps.
 
+## Add chords
+
+1. Open **Chords** with the piano button in the left toolbar.
+2. Expand a note folder, or choose a root note in the header to show only that note’s chords. **All notes** restores all 12 roots. Sharp names also cover their flat equivalents.
+3. Drag a chord onto a MIDI track. Drop below the tracks to create a new MIDI track. A drop on a track header starts at frame zero.
+4. Follow the preview of the chord’s name, notes, and one-bar bounds. Covered clips preview their remaining ranges. Release to apply the placement. Hold Shift to bypass grid snapping; Escape or loss of window focus cancels.
+
+Each chord is one 4/4 bar at the project tempo. Its notes sound together for the full bar, with roots from C4 through B4 and velocity 100. The catalog includes major, minor, diminished, augmented, sus2, sus4, major sixth, minor sixth, dominant seventh, major seventh, minor seventh, and half-diminished seventh chords. Edit the resulting notes in Editor.
+
+Double-click a chord to insert it at the playhead on the selected MIDI track. Enter inserts the selected chords there in catalog order, one after another. These actions require a selected MIDI track and keep the playhead in place. Shift-click selects several chords; dragging one selected chord places the whole selection in order.
+
+With catalog focus, Up/Down navigates visible rows. Shift+Up/Down extends or reduces the chord selection. Enter opens or closes a focused note folder, or inserts selected chords when a chord row has focus. Escape clears catalog selection and follows Timeline’s normal track/clip selection behavior.
+
+Chords use the normal clip overwrite rules and Undo/Redo. Audio and group tracks reject chord drops. Catalog browsing and filtering do not change the project; inserted chords save as ordinary MIDI patterns. A new MIDI track starts with an empty instrument, so add a sound in Instrument before playback.
+
 ## Import and arrange
 
 1. Add an audio or MIDI track from the Track menu or the Tracks header.
