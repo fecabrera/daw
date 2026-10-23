@@ -4079,3 +4079,40 @@ Completed with the pinned Rust toolchain on macOS arm64:
 - `git diff --check`: passed.
 
 This correction changes conditional binding mutability only. Native UI/device checks and CLI smoke checks were not repeated.
+
+## 2026-10-22 — Clip menu and grouped context actions
+
+The native macOS menu bar and Windows/Linux application menus now place Clip between Edit and Track. Shared `ClipMenuAction` groups define Import clip/Add MIDI pattern; Split at playhead/Stem-separation; Edit clip/Disable clip/Delete clip, with separators. Edit retains Copy/Paste and no longer lists Split. File retains its existing Import WAV alias. The shared clip context menu reuses the last two groups and retains selected-note Velocity/Delete note controls in a separate MIDI-only group, as confirmed by the user.
+
+Creation reuses the existing import flow and transactional MIDI pattern insertion on the selected MIDI track at the playhead. Menu-bar edit/mute/separation target the primary selected clip; context actions target the clicked clip. Context split/delete retain selected-group behavior when the clicked clip belongs to the selection. Native and egui dispatch share readiness, view/kind, focus/text, gesture and job/dialog checks. Enable/Disable and singular/group deletion labels follow current state. Model validation and separation publication retain their existing worker guards. Specifications, contributor guidance and user guides now use Clip > Split at playhead.
+
+Completed focused checks on macOS arm64:
+
+- Five focused clip-menu tests passed: the four new menu tests plus the updated MIDI split menu regression. Coverage includes ordered groups and separators, removal of Split from Edit, primary/clicked targets, selected-group deletion, pattern creation at the playhead, validated-model availability, view restrictions and blocked dispatch.
+- `cargo test --offline --locked -p daw-ui --lib`: all 570 UI tests passed. Existing tests cover actual right-click actions in Timeline/Editor, retained MIDI note controls, Copy/Paste, native-action guards and simulated macOS/Windows/Linux shortcut labels. Application-menu tests now include Clip.
+- `cargo check --offline --locked -p daw-desktop` and `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- A temporary main-thread AppKit harness instantiated the production native menu and verified menu order, separators, the split key equivalent and consumption of its forwarded event, dynamic labels, selector dispatch for pattern creation/mute/split/group deletion, and rejection while Settings is open. It passed outside the sandbox after matching the application-menu initialization normally supplied by winit. The first harness setup omitted that prerequisite; it was corrected without a production-code change.
+
+Final repository checks with the pinned Rust toolchain:
+
+- `cargo fmt --all --check`: passed.
+- `cargo test --offline --locked --workspace`: passed, including all 570 UI tests. Existing opt-in real-model and release acceptance tests remain ignored.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Changed documentation link targets and `git diff --check`: passed.
+
+Native Windows/Linux execution and manual menu/keyboard interaction were not performed. The native macOS harness checked AppKit objects and selector dispatch rather than human input. CLI smoke checks were not repeated because shared import/render/export behavior and CLI code are unchanged.
+
+## 2026-10-22 — Import clip owns the import menu entry
+
+Removed Import WAV from the native macOS and shared egui File menus. Clip > Import clip retains the existing Command+Shift+I/Ctrl+Shift+I shortcut and shared import dispatch. Removed the obsolete import-group separator and updated the current specifications and user guide. Internal `FileAction::Import` remains available to the shared import flow and shortcut handling. Native File items keep their original action tags by filtering after enumeration.
+
+The 30 focused menu tests passed. Existing shortcut expectations now place import only in Clip; the grouped-menu regression also checks that File omits the import label. The temporary AppKit harness passed additional assertions for File import-item/key removal, Clip import key/modifiers, and Save's unchanged action tag. Its existing native menu dispatch and guard checks also passed. `cargo fmt --all --check` and workspace Clippy with warnings denied passed.
+
+Final repository checks with the pinned Rust toolchain on macOS arm64:
+
+- `cargo fmt --all --check` and `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`: passed.
+- `cargo test --offline --locked --workspace`: passed, including all 570 UI tests. Existing opt-in real-model and release acceptance tests remain ignored.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- Changed documentation link targets and `git diff HEAD --check`: passed.
+
+Native Windows/Linux execution and manual menu/keyboard interaction were not performed. CLI smoke checks were not repeated because shared import/render/export behavior and CLI code are unchanged.

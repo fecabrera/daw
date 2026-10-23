@@ -101,7 +101,7 @@ fn native_toolbar_burger_opens_menus_and_settings_without_project_changes() {
         let burger = Pos2::new(f32::from(theme::TOOLBAR_PADDING) + 14.0, timeline.y);
         click(&mut app, &ctx, burger);
         assert!(egui::Popup::is_any_open(&ctx));
-        for label in ["File", "Edit", "Track", "View"] {
+        for label in ["File", "Edit", "Clip", "Track", "View"] {
             label_point(&mut app, &ctx, label, None);
         }
         let file = label_point(&mut app, &ctx, "File", None);

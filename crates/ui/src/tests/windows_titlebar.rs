@@ -124,7 +124,7 @@ fn burger_menu_contains_the_existing_menus_and_settings_action() {
         let shapes = frame_shapes(&mut app, &ctx, vec![], size);
         assert!(egui::Popup::is_any_open(&ctx));
         assert!(!app.header_layout(&ctx).can_drag(Pos2::new(200.0, 20.0)));
-        for label in ["File", "Edit", "Track", "View"] {
+        for label in ["File", "Edit", "Clip", "Track", "View"] {
             text_rect(&shapes, label);
         }
         let file = text_rect(&shapes, "File").center();

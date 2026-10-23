@@ -1,4 +1,4 @@
-use daw_ui::{ClipAction, DawUi, FileAction, HistoryAction, TrackAction, ViewMode};
+use daw_ui::{ClipAction, ClipMenuAction, DawUi, FileAction, HistoryAction, TrackAction, ViewMode};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, rc::Retained, sel};
 use objc2_app_kit::{
     NSApplication, NSControlStateValueOff, NSControlStateValueOn, NSEventModifierFlags,
@@ -18,6 +18,7 @@ enum MenuAction {
     ProjectSettings,
     File(FileAction),
     Clip(ClipAction),
+    ClipMenu(ClipMenuAction),
     History(HistoryAction),
     Track(TrackAction),
     View(ViewMode),
@@ -82,6 +83,24 @@ define_class!(
                 && let Some(action) = ClipAction::ALL.get(index)
             {
                 let _ = self.ivars().sender.send(MenuAction::Clip(*action));
+                self.ivars().context.request_repaint();
+            }
+        }
+
+        // SAFETY: The selector takes an NSMenuItem sender and returns void.
+        #[unsafe(method(performClipMenuAction:))]
+        fn perform_clip_menu_action(&self, item: &NSMenuItem) {
+            let mtm = MainThreadMarker::from(self);
+            if NSApplication::sharedApplication(mtm).currentEvent().is_some_and(|event| {
+                event.r#type() == NSEventType::KeyDown
+                    && (event.isARepeat() || self.ivars().context.input(|input| !input.focused || input.pointer.any_down()))
+            }) {
+                return;
+            }
+            if let Ok(index) = usize::try_from(item.tag())
+                && let Some(action) = ClipMenuAction::ALL.get(index)
+            {
+                let _ = self.ivars().sender.send(MenuAction::ClipMenu(*action));
                 self.ivars().context.request_repaint();
             }
         }
@@ -164,7 +183,11 @@ impl NativeMenu {
             app_menu.insertItem_atIndex(&NSMenuItem::separatorItem(mtm), 3);
             items.push((MenuAction::Settings, item));
         }
-        for (index, action) in FileAction::ALL.into_iter().enumerate() {
+        for (index, action) in FileAction::ALL
+            .into_iter()
+            .enumerate()
+            .filter(|(_, action)| *action != FileAction::Import)
+        {
             if action == FileAction::CloseProject {
                 file_menu.addItem(&NSMenuItem::separatorItem(mtm));
                 // SAFETY: The selector is defined above, with an NSMenuItem argument.
@@ -183,10 +206,7 @@ impl NativeMenu {
             }
             if matches!(
                 action,
-                FileAction::Import
-                    | FileAction::Save
-                    | FileAction::Export
-                    | FileAction::CloseProject
+                FileAction::Save | FileAction::Export | FileAction::CloseProject
             ) {
                 file_menu.addItem(&NSMenuItem::separatorItem(mtm));
             }
@@ -240,7 +260,11 @@ impl NativeMenu {
             items.push((MenuAction::History(action), item));
         }
         edit_menu.addItem(&NSMenuItem::separatorItem(mtm));
-        for (index, action) in ClipAction::ALL.into_iter().enumerate() {
+        for (index, action) in ClipAction::ALL
+            .into_iter()
+            .enumerate()
+            .filter(|(_, action)| *action != ClipAction::Split)
+        {
             let key = action.shortcut().logical_key.name().to_lowercase();
             // SAFETY: The selector is defined above, with an NSMenuItem argument.
             let item = unsafe {
@@ -262,6 +286,49 @@ impl NativeMenu {
         edit_item.setTitle(ns_string!("Edit"));
         edit_item.setSubmenu(Some(&edit_menu));
         menubar.addItem(&edit_item);
+        let clip_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Clip"));
+        clip_menu.setAutoenablesItems(false);
+        for (group_index, group) in ClipMenuAction::GROUPS.iter().enumerate() {
+            if group_index > 0 {
+                clip_menu.addItem(&NSMenuItem::separatorItem(mtm));
+            }
+            for &action in *group {
+                let index = ClipMenuAction::ALL
+                    .iter()
+                    .position(|candidate| *candidate == action)
+                    .expect("registered clip action");
+                let shortcut = action.shortcut();
+                let key = shortcut
+                    .map(|s| s.logical_key.name().to_lowercase())
+                    .unwrap_or_default();
+                // SAFETY: The selector is defined above with an NSMenuItem argument.
+                let item = unsafe {
+                    NSMenuItem::initWithTitle_action_keyEquivalent(
+                        NSMenuItem::alloc(mtm),
+                        &NSString::from_str(action.label()),
+                        Some(sel!(performClipMenuAction:)),
+                        &NSString::from_str(&key),
+                    )
+                };
+                let mut mask = NSEventModifierFlags::empty();
+                if let Some(shortcut) = shortcut {
+                    mask |= NSEventModifierFlags::Command;
+                    if shortcut.modifiers.shift {
+                        mask |= NSEventModifierFlags::Shift;
+                    }
+                }
+                item.setKeyEquivalentModifierMask(mask);
+                item.setTag(index as isize);
+                // SAFETY: NativeMenu retains the target and detaches it before dropping.
+                unsafe { item.setTarget(Some(&target)) };
+                clip_menu.addItem(&item);
+                items.push((MenuAction::ClipMenu(action), item));
+            }
+        }
+        let clip_item = NSMenuItem::new(mtm);
+        clip_item.setTitle(ns_string!("Clip"));
+        clip_item.setSubmenu(Some(&clip_menu));
+        menubar.addItem(&clip_item);
         let track_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Track"));
         track_menu.setAutoenablesItems(false);
         for (index, action) in TrackAction::ALL.into_iter().enumerate() {
@@ -345,6 +412,15 @@ impl NativeMenu {
                 MenuAction::ProjectSettings => ui.open_project_settings(),
                 MenuAction::File(action) => ui.perform_file_action(action),
                 MenuAction::Clip(action) => ui.perform_clip_action(action, ctx),
+                MenuAction::ClipMenu(action) => {
+                    ui.perform_clip_menu_action(action, ctx);
+                    if let Some(shortcut) = action.shortcut() {
+                        ctx.input_mut(|input| input.events.retain(|event| {
+                            !matches!(event, egui::Event::Key { key, pressed: true, modifiers, .. }
+                                if *key == shortcut.logical_key && modifiers.matches_exact(shortcut.modifiers))
+                        }));
+                    }
+                }
                 MenuAction::History(action) => {
                     ui.perform_history_action(action, ctx);
                     let shortcut = action.shortcut();
@@ -383,6 +459,9 @@ impl NativeMenu {
 
     pub fn update_enabled(&self, ui: &DawUi, ctx: &egui::Context) {
         for (action, item) in &self.items {
+            if let MenuAction::ClipMenu(action) = action {
+                item.setTitle(&NSString::from_str(ui.clip_menu_action_label(*action)));
+            }
             if let MenuAction::Track(action) = action {
                 item.setTitle(&NSString::from_str(ui.track_action_label(*action)));
             }
@@ -398,6 +477,7 @@ impl NativeMenu {
                 MenuAction::ProjectSettings => ui.project_settings_enabled(),
                 MenuAction::File(action) => ui.file_action_enabled(*action),
                 MenuAction::Clip(action) => ui.clip_action_enabled(*action, ctx),
+                MenuAction::ClipMenu(action) => ui.clip_menu_action_enabled(*action, ctx),
                 MenuAction::History(action) => ui.history_action_enabled(*action, ctx),
                 MenuAction::Track(action) => ui.track_action_enabled(*action, ctx),
                 MenuAction::View(_) => ui.view_switch_enabled(),

@@ -30,6 +30,7 @@ impl DawUi {
         egui::Popup::menu(&menu).show(|ui| {
             ui.menu_button("File", |ui| self.file_menu(ui));
             ui.menu_button("Edit", |ui| self.edit_menu(ui));
+            ui.menu_button("Clip", |ui| self.clip_menu(ui));
             ui.menu_button("Track", |ui| self.track_menu(ui));
             ui.menu_button("View", |ui| self.view_menu(ui));
         });

@@ -1,6 +1,8 @@
 mod audio_edits;
 mod audio_preparation;
 mod clip_lane;
+mod clip_menu;
+pub use clip_menu::ClipMenuAction;
 mod clip_paint;
 mod clip_settings;
 mod history;
@@ -2266,7 +2268,10 @@ impl DawUi {
     }
     fn file_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);
-        for action in FileAction::ALL {
+        for action in FileAction::ALL
+            .into_iter()
+            .filter(|action| *action != FileAction::Import)
+        {
             if action == FileAction::CloseProject {
                 ui.separator();
                 if ui
@@ -2290,10 +2295,7 @@ impl DawUi {
             }
             if matches!(
                 action,
-                FileAction::Import
-                    | FileAction::Save
-                    | FileAction::Export
-                    | FileAction::CloseProject
+                FileAction::Save | FileAction::Export | FileAction::CloseProject
             ) {
                 ui.separator();
             }
@@ -2312,7 +2314,7 @@ impl DawUi {
     fn edit_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);
         self.history_menu(ui);
-        for action in ClipAction::ALL {
+        for action in [ClipAction::Copy, ClipAction::Paste] {
             let button = egui::Button::new(action.label())
                 .shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &action.shortcut()));
             if ui
@@ -2662,6 +2664,7 @@ impl DawUi {
                     if !self.native_menu {
                         ui.menu_button("File", |ui| self.file_menu(ui));
                         ui.menu_button("Edit", |ui| self.edit_menu(ui));
+                        ui.menu_button("Clip", |ui| self.clip_menu(ui));
                         ui.menu_button("Track", |ui| self.track_menu(ui));
                         ui.menu_button("View", |ui| self.view_menu(ui));
                         #[cfg(not(any(target_os = "windows", target_os = "linux")))]
@@ -5129,6 +5132,7 @@ impl DawUi {
 #[cfg(test)]
 mod tests {
     mod clip_duplication;
+    mod clip_menu;
     mod clip_portion;
     mod clip_settings;
     mod clip_split;
@@ -8673,7 +8677,7 @@ mod tests {
         app.selected_clip = Some(app.session.project.tracks[0].clips[0].id);
         app.selected_track = Some(first);
         assert!(app.clip_action_enabled(ClipAction::Copy, &ctx));
-        for action in ClipAction::ALL {
+        for action in [ClipAction::Copy, ClipAction::Paste] {
             if action == ClipAction::Paste {
                 app.selected_track = Some(second);
                 app.session.project.transport.playhead_frame = frames(2.0);

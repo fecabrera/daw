@@ -22,84 +22,8 @@ impl DawUi {
                 Sense::click_and_drag()
             },
         );
-        let selected = self.clip_selected(clip.id);
         response.context_menu(|ui| {
-            if ui.button("Edit clip").clicked() {
-                self.open_clip_editor(clip.id, track_id, ui.ctx());
-                ui.close();
-            }
-            if self.view_mode == ViewMode::Timeline
-                && self
-                    .session
-                    .project
-                    .assets
-                    .iter()
-                    .any(|a| a.id == clip.asset_id && a.midi_pattern.is_none())
-                && ui
-                    .add_enabled(
-                        self.separation_enabled(),
-                        egui::Button::new("Stem-separation"),
-                    )
-                    .on_disabled_hover_text(self.separation_disabled_hint())
-                    .clicked()
-            {
-                self.separate_clip(clip.id);
-                ui.close();
-            }
-            if ui
-                .button(if clip.muted {
-                    "Enable clip"
-                } else {
-                    "Disable clip"
-                })
-                .clicked()
-            {
-                self.edit(Edit::SetClipMuted {
-                    clip_id: clip.id,
-                    muted: !clip.muted,
-                });
-                ui.close();
-            }
-            let targets = if selected {
-                self.selected_clip_ids()
-            } else {
-                vec![clip.id]
-            };
-            let split_enabled = self.clip_actions_available(ui.ctx())
-                && !self.clips_crossed_by_playhead(&targets).is_empty();
-            if ui
-                .add_enabled(
-                    split_enabled,
-                    egui::Button::new("Split at playhead").shortcut_text(
-                        toolbars::menu_shortcut_text(ui.ctx(), &ClipAction::Split.shortcut()),
-                    ),
-                )
-                .clicked()
-            {
-                self.split_at(&targets);
-                ui.close();
-            }
-            let group = self.selected_clip_snapshots();
-            if ui
-                .button(if selected && group.len() > 1 {
-                    "Delete selected clips"
-                } else {
-                    "Delete clip"
-                })
-                .clicked()
-            {
-                if selected {
-                    self.edit(Edit::Batch(
-                        group
-                            .into_iter()
-                            .map(|entry| Edit::DeleteClip(entry.clip.id))
-                            .collect(),
-                    ));
-                } else {
-                    self.edit(Edit::DeleteClip(clip.id));
-                }
-                ui.close();
-            }
+            self.clip_context_menu(ui, clip.id);
             self.midi_clip_note_menu(ui, clip);
         });
         if response.double_clicked() {

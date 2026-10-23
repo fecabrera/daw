@@ -23,7 +23,7 @@ fn all_menus_show_command_symbol_on_mac_and_ctrl_on_windows_and_linux() {
                 if selected {
                     app.select_clip(app.session.project.tracks[0].clips[0].id, track, false);
                 }
-                for menu in ["File", "Edit", "Track", "Context", "View"] {
+                for menu in ["File", "Edit", "Clip", "Track", "Context", "View"] {
                     let mut output = ctx.run_ui(
                         egui::RawInput {
                             screen_rect: Some(Rect::from_min_size(
@@ -35,6 +35,7 @@ fn all_menus_show_command_symbol_on_mac_and_ctrl_on_windows_and_linux() {
                         |ui| match menu {
                             "File" => app.file_menu(ui),
                             "Edit" => app.edit_menu(ui),
+                            "Clip" => app.clip_menu(ui),
                             "Track" => app.track_menu(ui),
                             "View" => app.view_menu(ui),
                             _ => {
@@ -72,17 +73,9 @@ fn all_menus_show_command_symbol_on_mac_and_ctrl_on_windows_and_linux() {
                     }
                     if os == OperatingSystem::Mac {
                         let expected: &[&str] = match menu {
-                            "File" => &[
-                                "⌘N",
-                                "⌘O",
-                                "Shift+⌘I",
-                                "⌘S",
-                                "Shift+⌘S",
-                                "Shift+⌘E",
-                                "⌘W",
-                                "⌘,",
-                            ],
-                            "Edit" => &["⌘Z", "Shift+⌘Z", "⌘C", "⌘V", "⌘T"],
+                            "File" => &["⌘N", "⌘O", "⌘S", "Shift+⌘S", "Shift+⌘E", "⌘W", "⌘,"],
+                            "Edit" => &["⌘Z", "Shift+⌘Z", "⌘C", "⌘V"],
+                            "Clip" => &["Shift+⌘I", "⌘T"],
                             "View" => &["⌘1", "⌘2", "⌘3", "⌘4"],
                             _ => &["⌘R"],
                         };
@@ -93,7 +86,8 @@ fn all_menus_show_command_symbol_on_mac_and_ctrl_on_windows_and_linux() {
                     } else {
                         let expected: &[&str] = match menu {
                             "File" => &["Ctrl+N", "Ctrl+Shift+S"],
-                            "Edit" => &["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+C", "Ctrl+V", "Ctrl+T"],
+                            "Edit" => &["Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+C", "Ctrl+V"],
+                            "Clip" => &["Ctrl+Shift+I", "Ctrl+T"],
                             "View" => &["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4"],
                             _ => &["Ctrl+R"],
                         };

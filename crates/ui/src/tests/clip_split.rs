@@ -66,7 +66,7 @@ fn split_command_follows_the_playhead_selection_and_clip_views() {
 }
 
 #[test]
-fn split_uses_the_midi_note_setting_and_the_edit_menu() {
+fn split_uses_the_midi_note_setting_and_the_clip_menu() {
     let mut app = DawUi::default();
     let ctx = context();
     let track = app.session.project.add_midi_track().unwrap();
@@ -99,7 +99,7 @@ fn split_uses_the_midi_note_setting_and_the_edit_menu() {
                 events,
                 ..Default::default()
             },
-            |ui| app.edit_menu(ui),
+            |ui| app.clip_menu(ui),
         );
         output.textures_delta.clear();
         output
@@ -115,7 +115,7 @@ fn split_uses_the_midi_note_setting_and_the_edit_menu() {
             }
             _ => None,
         })
-        .expect("edit menu split command");
+        .expect("clip menu split command");
     menu(
         &mut app,
         vec![egui::Event::PointerMoved(point), button(point, true)],

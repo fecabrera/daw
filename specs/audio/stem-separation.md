@@ -2,7 +2,7 @@
 
 ## Accepted behavior
 
-Timeline's audio-clip context menu contains **Stem-separation**. It acts on the clicked clip, independently of a multi-clip selection. Require at least one validated local model supported by the platform; saved and unsaved projects are supported. The menu and action share one readiness guard without a save-folder prerequisite. Do not bundle, fetch, or redistribute weights. Store machine-local model paths in application Settings, outside the project manifest.
+The Clip menu and shared clip context menu contain **Stem-separation** beside Split at playhead, before a separator and Edit/Disable/Delete. Require Timeline and an audio clip; retain a disabled item for other clip kinds or views. The menu-bar action uses the primary selected clip. The context action uses the clicked clip, independently of a multi-clip selection. Require at least one validated local model supported by the platform; saved and unsaved projects are supported. The menu and action share one readiness guard without a save-folder prerequisite. Do not bundle, fetch, or redistribute weights. Store machine-local model paths in application Settings, outside the project manifest.
 
 The arranged clip is the input: resolve the shared prepared buffer for the saved stretch engine/revision and transpose, then map trim and repeat coordinates through `Clip::source_frame`. Apply the shared loop-seam fade. Exclude outer fades from the input because normal stem playback supplies them. Do not bake clip gain, track/group/Master mix settings, effects, or modulation. Copy clip gain to each resulting stem.
 

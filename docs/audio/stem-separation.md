@@ -18,7 +18,7 @@ Model loading needs substantial memory. CoreML can take tens of seconds to compi
 
 ## Separate a clip
 
-1. In Timeline, right-click an audio clip and choose **Stem-separation**.
+1. In Timeline, select an audio clip and choose **Clip > Stem-separation**, or right-click the clip and choose **Stem-separation**.
 2. Keep the status dialog open while the job runs. It shows progress, errors, and warnings. Choose **Cancel** in the dialog or status bar to stop the job.
 3. Close the finished report.
 

@@ -63,9 +63,9 @@ Timeline MIDI lanes and the Editor track strip are views of the same project cli
 | Clip header edge drag | Loop the visible base range without changing source notes. |
 | Modifier edge drag | Stretch the selected group through the shared stretch transaction. |
 | Copy / Paste | Share one project clipboard. Copies receive new clip IDs and initially retain the source asset. Subsequent source edits isolate the edited clip. |
-| Split at playhead | Use `Project::split_clips` from the Edit menu, Command+T on macOS or Ctrl+T on Windows/Linux, and the clip context menu. Disable the menu command unless Timeline or Editor is active and the playhead is strictly inside a selected clip. |
+| Split at playhead | Use `Project::split_clips` from the Clip menu, Command+T on macOS or Ctrl+T on Windows/Linux, and the clip context menu. Disable the menu command unless Timeline or Editor is active and the playhead is strictly inside a selected clip. |
 | Time range | Command-drag on macOS or Ctrl-drag on Windows/Linux selects one time span across the lanes it touches. Partial clips, several clips, and silence stay in that span. Move, Option/Ctrl-drag duplicate, copy, and delete use the shared range edit. |
-| Clip context menu | Share Edit clip, Split at playhead, and Delete clip/selected clips. Selected MIDI notes also offer velocity and deletion actions. When the clicked clip is selected, split the selected clips that contain the playhead; otherwise split that clip. |
+| Clip context menu | Share Split at playhead/Stem-separation, then a separator and Edit clip/Enable or Disable clip/Delete clip or selected clips. Stem-separation is disabled for MIDI clips. Selected MIDI notes also offer velocity and deletion actions. When the clicked clip is selected, split the selected clips that contain the playhead; otherwise split that clip. |
 | Track actions | Share guarded MIDI creation, mute/solo, rename, duplicate, and delete. Track duplication copies settings into new, empty tracks; it does not duplicate clips. |
 
 ### Split at the playhead

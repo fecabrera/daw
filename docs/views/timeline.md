@@ -11,7 +11,7 @@ Press Escape to clear selected clips or a selected clip time range first. Tracks
 ## Import and arrange
 
 1. Add an audio or MIDI track from the Track menu or the Tracks header.
-2. Use File > Import for WAV audio, or drop a supported WAV file on an audio track. Dropping into empty Timeline space creates a new audio track.
+2. Use Clip > Import clip for WAV audio, or drop a supported WAV file on an audio track. Dropping into empty Timeline space creates a new audio track.
 3. Drag a clip header to move it. Hold Option on macOS or Ctrl on Windows/Linux to copy it.
 4. Release to apply the change. Escape or focus loss cancels an active gesture.
 
@@ -23,6 +23,20 @@ Group buses cannot hold clips: dragging onto a bus shows an invalid-action curso
 
 Audio file drags over MIDI tracks or group buses show the invalid-action cursor. Drops there are ignored without an error dialog. Drop audio files onto audio tracks or empty Timeline space instead.
 
+## Clip menu
+
+Open **Clip** in the macOS menu bar or the Windows/Linux application menu. Its actions have three groups, separated by lines:
+
+- **Import clip**, **Add MIDI pattern**.
+- **Split at playhead**, **Stem-separation**.
+- **Edit clip**, **Disable clip**, **Delete clip**.
+
+Choose **Add MIDI pattern** with a MIDI track selected to place a new pattern at the playhead. It follows the same placement rules as other new clips: covered clips are trimmed, split, or removed. Undo restores the previous arrangement. Import clip uses the existing WAV import flow. Use Command+Shift+I on macOS or Ctrl+Shift+I on Windows/Linux to import a clip.
+
+Edit, Disable and Stem-separation use the primary selected clip. Disable changes to **Enable clip** for a disabled clip. Delete removes all selected clips. Split acts on selected clips that cross the playhead. Unavailable actions are disabled; Stem-separation requires an audio clip in Timeline and a validated model.
+
+Right-click a clip for the same last two groups: Split/Stem-separation, then Edit/Disable/Delete. Edit, Disable and Stem-separation use the clicked clip. Split and Delete use the selected group when the clicked clip belongs to it; otherwise they use that clip. MIDI headers retain the separate selected-note Velocity and Delete note controls.
+
 ## Select and edit clips
 
 Click a clip to select it. Shift-click toggles group membership. Drag a rectangle in empty space to select intersecting clips; Shift-drag toggles them against the starting selection.
@@ -33,7 +47,7 @@ Drag a waveform edge to trim. Drag a header edge to repeat the current range. Ho
 
 Copy with Command+C on macOS or Ctrl+C on Windows/Linux. Paste with Command+V or Ctrl+V at the playhead on the selected track. Copies keep their source content, trim, repeats, stretch, and color override.
 
-Split the selected clips at the playhead with Edit > Split at playhead, or with Command+T on macOS or Ctrl+T on Windows/Linux. The same command is available in Editor. It is disabled when no clip is selected, when the playhead is not inside a selected clip, and in Mixer and Instrument. If several clips are selected, every selected clip that crosses the playhead is split together. The original clip ends at the playhead and a new clip starts there. Audio keeps its recording, trim, loop, and stretch. Right-click a clip and choose Split at playhead to split that clip, or the whole selection when the clicked clip is selected.
+Split the selected clips at the playhead with Clip > Split at playhead, or with Command+T on macOS or Ctrl+T on Windows/Linux. The same command is available in Editor. It is disabled when no clip is selected, when the playhead is not inside a selected clip, and in Mixer and Instrument. If several clips are selected, every selected clip that crosses the playhead is split together. The original clip ends at the playhead and a new clip starts there. Audio keeps its recording, trim, loop, and stretch. Right-click a clip and choose Split at playhead to split that clip, or the whole selection when the clicked clip is selected.
 
 MIDI notes that cross the playhead follow Settings > MIDI > Split MIDI notes. Split into two is the default: the note becomes two notes. Preserve first keeps the part before the playhead on the original clip and does not continue it. The choice is saved on this computer, not in the project. Undo restores both pieces in one step.
 
