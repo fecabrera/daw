@@ -3968,7 +3968,7 @@ fn edit_shows_only_selected_tracks_patterns_with_shared_geometry_and_contiguous_
         assert!(note_a.top() >= lane.bottom());
         assert!((note_a.left() - a.left() - 120.0).abs() < 0.1);
         assert!((note_b.left() - b.left() - 120.0).abs() < 0.1);
-        for (block, selected) in [(a, true), (b, false)] {
+        for (block, clip, selected) in [(a, first, true), (b, second.id, false)] {
             let stroke = if selected {
                 theme::selection_outline(&ctx)
             } else {
@@ -3980,7 +3980,8 @@ fn edit_shows_only_selected_tracks_patterns_with_shared_geometry_and_contiguous_
                     .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
                 if r.rect.height() > 56.0 && (r.rect.left() - block.left()).abs() < 0.1
                     && (r.rect.right() - block.right()).abs() < 0.1
-                    && r.rect.top() >= app.midi_editor.content.bounds.top()
+                    && (r.rect.top() - app.midi_editor.pattern_header_bounds[&clip].top()).abs() < 0.1
+                    && (r.rect.bottom() - app.midi_editor.content.bounds.bottom()).abs() < 0.1
                     && r.stroke == stroke))
             );
         }

@@ -4568,3 +4568,16 @@ Completed automated checks on macOS:
 - Cancellation tests restore the original project and dirty state on Escape, lost focus, disabled UI and settings dialogs.
 
 Logs: `work/editor-loop-{focused-final,ui-final,clippy,workspace,package}.log`. Native pointer/device checks and Windows/Linux tests were not run. The loop retains its existing shared transport data, preview/sync behavior and navigation history; no audio-processing or project-format changes were made.
+
+## Continuous lower MIDI clip outline — 2026-10-24
+
+Each lower-editor MIDI clip now has one outline around its fixed header and visible piano roll. This replaces the separate header/body outlines and removes the horizontal stroke at their join. The outline retains the shared selection and theme colors.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- All 636 UI tests passed. Dark/light coverage verifies selected and unselected outlines, contiguous patterns, no separate outline at the header/body join, fixed header placement during vertical scrolling, and selection without changing zoom or scroll.
+- Locked, offline workspace tests passed: 1,262 passed and three configured tests ignored.
+- The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+
+Logs: `work/midi-outline-{focused,ui,clippy,workspace,package}.log`. Native visual checks and Windows/Linux tests were not run. Clip gestures, audio processing and project storage are unchanged.

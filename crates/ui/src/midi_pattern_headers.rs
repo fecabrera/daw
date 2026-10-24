@@ -7,7 +7,11 @@ pub(super) fn edge_width(block: Rect) -> f32 {
 }
 
 impl DawUi {
-    pub(super) fn midi_pattern_headers(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
+    pub(super) fn midi_pattern_headers(
+        &mut self,
+        ui: &mut egui::Ui,
+        track: &daw_core::Track,
+    ) -> Rect {
         let (row, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 22.0), Sense::hover());
         let lane = Rect::from_min_max(
@@ -47,8 +51,8 @@ impl DawUi {
                 colors
             };
             clip_paint::paint_header(&painter, header, &clip.name, colors, false);
-            self.paint_midi_pattern_outline(&painter, header, clip.id);
         }
+        lane
     }
 
     pub(super) fn midi_pattern_edges(

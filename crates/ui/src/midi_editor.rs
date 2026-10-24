@@ -408,12 +408,12 @@ impl DawUi {
             .and_then(|p| p.tracks.iter().find(|t| t.id == track.id))
             .unwrap_or(track);
         let assets = preview.as_ref().map_or(assets, |p| p.assets.as_slice());
-        self.midi_pattern_headers(ui, track);
+        let headers = self.midi_pattern_headers(ui, track);
         let mut scroll = egui::ScrollArea::vertical().id_salt(("piano-roll", track.id));
         if previous_track != Some(track.id) {
             scroll = scroll.vertical_scroll_offset(55.0 * NOTE_HEIGHT);
         }
-        scroll
+        let scrolled = scroll
             .auto_shrink([false, false])
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
             .max_height(ui.available_height().max(0.0))
@@ -489,7 +489,6 @@ impl DawUi {
                 self.midi_pattern_edges(ui, track, note_viewport);
                 self.update_midi_notes(ui);
                 self.editor_note_selection(ui, note_viewport);
-                self.midi_pattern_outlines(&ui.painter_at(note_viewport), track, note_viewport);
                 let x = grid_left
                     + (self
                         .session
@@ -504,6 +503,12 @@ impl DawUi {
                     );
                 }
             });
+        // Paint one shell after both panes, independent of the vertically scrolled canvas.
+        let outline = Rect::from_min_max(
+            headers.min,
+            Pos2::new(headers.right(), scrolled.inner_rect.bottom()),
+        );
+        self.midi_pattern_outlines(&ui.painter_at(outline), track, outline);
         self.editor_scrollbar(ui, ui.max_rect().bottom(), "editor_content_scrollbar");
         if self.drag.is_some() && self.content_clip_drag {
             self.finish_clip_drag(ui);

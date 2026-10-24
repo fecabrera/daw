@@ -10,7 +10,7 @@ MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Sev
 4. Hold Command on macOS or Ctrl on Windows/Linux and drag in the piano roll to draw a note.
 5. Drag a note body to move it or an edge to change its length. Double-click a note to delete it.
 
-Each pattern has a named header below the lower ruler and an outline around its visible note area. Click a header to select that pattern without changing zoom or scroll. Headers stay visible when you scroll the piano keys vertically.
+Each pattern has a named header below the lower ruler and one continuous outline around its header and visible note area. Click a header to select that pattern without changing zoom or scroll. Headers stay visible when you scroll the piano keys vertically.
 
 Drag a header to move the selected patterns. Drag a header edge to loop them, or an edge beside the notes to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Changes preview during the drag and apply on release; Escape cancels. These gestures keep the lower editor’s zoom and scroll.
 

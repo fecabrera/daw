@@ -488,9 +488,17 @@ fn midi_pattern_headers_stay_visible_and_select_without_refitting() {
                     .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
                 if (r.rect.left() - header.left()).abs() < 0.1
                 && (r.rect.right() - header.right()).abs() < 0.1
+                && (r.rect.top() - header.top()).abs() < 0.1
+                && (r.rect.bottom() - app.midi_editor.content.bounds.bottom()).abs() < 0.1
                 && r.rect.height() > 100.0 && r.stroke == stroke))
             );
         }
+        // The header/body join must not have its own outlined rectangle or horizontal edge.
+        let join = app.midi_editor.content.bounds.top();
+        assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+            if [theme::selection_outline(&ctx), Stroke::new(1.0, theme::palette(&ctx).divider)].contains(&r.stroke)
+                && r.rect.width() > 20.0
+                && ((r.rect.top() - join).abs() < 0.1 || (r.rect.bottom() - join).abs() < 0.1))));
         // Scroll the piano keys vertically; headers remain pinned below the ruler.
         let point = app.midi_editor.content.bounds.center();
         frame(
@@ -508,6 +516,15 @@ fn midi_pattern_headers_stay_visible_and_select_without_refitting() {
         );
         assert_eq!(app.midi_editor.pattern_header_bounds[&first], a);
         assert_eq!(app.midi_editor.pattern_header_bounds[&second], b);
+        let scrolled = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        assert!(
+            scrolled
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Rect(r)
+            if (r.rect.top() - a.top()).abs() < 0.1
+                && (r.rect.bottom() - app.midi_editor.content.bounds.bottom()).abs() < 0.1
+                && r.stroke == theme::selection_outline(&ctx)))
+        );
         let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
         let content = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
         click(&mut app, &ctx, b.center());
