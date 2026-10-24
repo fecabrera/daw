@@ -465,6 +465,16 @@ fn chord_audition_prepares_sampler_pitches_without_publishing_them() {
         )
         .unwrap();
     assert!(samples.iter().flatten().any(|s| s.abs() > 0.001));
+    let note = app.session.audition_note(midi, 67, &|| false).unwrap();
+    assert!(note.iter().flatten().any(|s| s.abs() > 0.001));
+    let mut held = app.session.held_note_audition(midi, 67, &|| false).unwrap();
+    assert!(
+        held.next_chunk(false)
+            .unwrap()
+            .iter()
+            .flatten()
+            .any(|s| s.abs() > 0.001)
+    );
     assert_eq!(
         serde_json::to_string(&app.session.project).unwrap(),
         project

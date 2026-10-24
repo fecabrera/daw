@@ -78,6 +78,9 @@ pub(super) struct MidiEditor {
     note_regions: Vec<((Id, Id), Rect)>,
     drag: Option<NoteDrag>,
     draw: Option<NoteDraw>,
+    pub(super) audition_enabled: bool,
+    #[cfg(test)]
+    pub(super) audition_bounds: Rect,
     pub(super) zoom: f32,
     pub(super) scroll: f64,
     pub(super) source_origin: f64,
@@ -153,6 +156,9 @@ impl Default for MidiEditor {
             note_regions: Vec::new(),
             drag: None,
             draw: None,
+            audition_enabled: false,
+            #[cfg(test)]
+            audition_bounds: Rect::NOTHING,
             zoom: 240.0,
             scroll: 0.0,
             source_origin: 0.0,
@@ -202,6 +208,9 @@ impl Default for MidiEditor {
     }
 }
 impl MidiEditor {
+    pub(super) fn drawing(&self) -> bool {
+        self.draw.is_some()
+    }
     pub fn dragging(&self) -> bool {
         self.drag.is_some() || self.draw.is_some() || self.selection.is_some()
     }
@@ -448,6 +457,24 @@ impl DawUi {
                         Vec2::new(canvas.width(), NOTE_HEIGHT),
                     );
                     if row.intersects(ui.clip_rect()) {
+                        let key = Rect::from_min_max(row.min, Pos2::new(grid_left, row.bottom()))
+                            .intersect(ui.clip_rect());
+                        let key_response =
+                            ui.interact(key, ui.id().with(("audition-key", pitch)), Sense::click());
+                        key_response.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::Button,
+                                ui.is_enabled(),
+                                note_name(pitch),
+                            )
+                        });
+                        if ui.input(|i| i.pointer.primary_pressed())
+                            && (key_response.is_pointer_button_down_on() || key_response.clicked())
+                            && self.edit_shortcuts_available(ui.ctx())
+                            && !egui::Popup::is_any_open(ui.ctx())
+                        {
+                            self.audition_editor_note(pitch);
+                        }
                         p.rect_filled(
                             row,
                             0.0,
@@ -948,6 +975,12 @@ impl DawUi {
                         },
                     );
                 }
+                if ui.input(|i| i.pointer.primary_pressed())
+                    && (response.is_pointer_button_down_on() || response.clicked())
+                    && self.edit_shortcuts_available(ui.ctx())
+                {
+                    self.audition_clip_note(clip.id, note.pitch);
+                }
                 if response.clicked() && !self.midi_editor.dragging() {
                     if ui.input(|i| i.modifiers.shift) {
                         // Selecting a different pattern must retain the other selected notes.
@@ -1089,6 +1122,10 @@ impl DawUi {
                     max_tick,
                 });
                 self.midi_editor.select_note(clip.id, note);
+                self.audition_clip_note(clip.id, pitch);
+                if self.midi_editor.audition_enabled {
+                    self.chords.audition.allow_note_commit = true;
+                }
             }
         }
     }

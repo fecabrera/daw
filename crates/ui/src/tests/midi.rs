@@ -3872,6 +3872,150 @@ fn drawing_backwards_keeps_pitch_and_focus_loss_discards_the_preview() {
 }
 
 #[test]
+fn pressed_sampler_note_keeps_its_preview_scope_through_insertion_preparation() {
+    let (mut app, track, clip, _) = fixture();
+    let file = TestWav::new();
+    let layer = &mut app.session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    layer.oscillators.clear();
+    layer.sampler = Some(Default::default());
+    let layer_id = layer.id;
+    app.session = app
+        .session
+        .with_sampler_file(track, layer_id, &file.0)
+        .unwrap();
+    let ctx = context();
+    app.open_clip_editor(clip, track, &ctx);
+    app.midi_editor.audition_enabled = true;
+    frame(&mut app, &ctx, vec![]);
+    let grid = app.midi_editor.grid_bounds;
+    let point = Pos2::new(
+        grid.left() + 60.0,
+        grid.top() + f32::from(127 - 65u8) * 18.0 + 9.0,
+    );
+    draw_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    assert_eq!(app.chords.audition.note_requests.last(), Some(&(track, 65)));
+    frame(&mut app, &ctx, vec![button(point, false)]);
+    assert!(app.job.is_some());
+    assert!(app.chords.audition.allow_note_commit);
+    assert!(app.chords.audition.scoped());
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while app.job.is_some() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "sampler preparation timed out"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+        frame(&mut app, &ctx, vec![]);
+    }
+    assert!(app.error.is_none(), "{:?}", app.error);
+    assert!(pattern(&app).notes.iter().any(|note| note.pitch == 65));
+    assert!(app.chords.audition.scoped());
+    assert!(!app.chords.audition.allow_note_commit);
+    assert_eq!(app.chords.audition.note_requests.len(), 1);
+    app.stop();
+}
+
+#[test]
+fn audition_starts_on_press_and_releases_outside_the_editor_without_retriggering() {
+    let (mut app, track, clip, _) = fixture();
+    let ctx = context();
+    app.open_clip_editor(clip, track, &ctx);
+    app.midi_editor.audition_enabled = true;
+    frame(&mut app, &ctx, vec![]);
+    let grid = app.midi_editor.grid_bounds;
+    let key = Pos2::new(
+        grid.left() - 20.0,
+        grid.top() + f32::from(127 - 65u8) * 18.0 + 9.0,
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(key), button(key, true)],
+    );
+    assert_eq!(app.chords.audition.note_requests.last(), Some(&(track, 65)));
+    assert!(!app.chords.audition.note_released());
+    let count = app.chords.audition.note_requests.len();
+    for _ in 0..40 {
+        frame(&mut app, &ctx, vec![]);
+    }
+    assert_eq!(app.chords.audition.note_requests.len(), count);
+    assert!(!app.chords.audition.note_released());
+    frame(&mut app, &ctx, vec![button(Pos2::ZERO, false)]);
+    assert!(app.chords.audition.note_released());
+    let point = Pos2::new(grid.left() + 60.0, key.y);
+    draw_frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(point), button(point, true)],
+    );
+    assert_eq!(app.chords.audition.note_requests.len(), count + 1);
+    assert!(!app.chords.audition.note_released());
+    assert!(!pattern(&app).notes.iter().any(|note| note.pitch == 65));
+    frame(&mut app, &ctx, vec![button(point, false)]);
+    assert!(app.chords.audition.note_released());
+    assert!(pattern(&app).notes.iter().any(|note| note.pitch == 65));
+    assert_eq!(app.chords.audition.note_requests.len(), count + 1);
+    app.stop();
+}
+
+#[test]
+fn editor_headphones_toggle_auditions_keys_existing_notes_and_insertions() {
+    for theme in settings::ColorTheme::ALL {
+        let (mut app, track, clip, note) = fixture();
+        let ctx = context();
+        app.set_settings(
+            &ctx,
+            settings::AppSettings {
+                theme,
+                ..Default::default()
+            },
+        );
+        app.open_clip_editor(clip, track, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        let dirty = app.dirty;
+        let toggle = app.midi_editor.audition_bounds;
+        assert_eq!(toggle.size(), Vec2::splat(16.0));
+        assert!(toggle.right() < app.midi_editor.content.fit_bounds.left());
+        assert!(!app.midi_editor.audition_enabled);
+        let note_pos = app.midi_editor.note_bounds[&note].center();
+        click_note_or_lane(&mut app, &ctx, note_pos);
+        assert!(app.chords.audition.note_requests.is_empty());
+        click_note_or_lane(&mut app, &ctx, toggle.center());
+        assert!(app.midi_editor.audition_enabled);
+        let grid = app.midi_editor.grid_bounds;
+        let key = Pos2::new(
+            grid.left() - 20.0,
+            grid.top() + f32::from(127 - 65u8) * 18.0 + 9.0,
+        );
+        click_note_or_lane(&mut app, &ctx, key);
+        assert_eq!(app.chords.audition.note_requests.last(), Some(&(track, 65)));
+        click_note_or_lane(&mut app, &ctx, note_pos);
+        assert_eq!(app.chords.audition.note_requests.last(), Some(&(track, 60)));
+        assert_eq!(app.session.project, before);
+        assert_eq!(app.dirty, dirty);
+        let new_note = Pos2::new(grid.left() + 60.0, key.y);
+        draw_click(&mut app, &ctx, new_note);
+        assert!(pattern(&app).notes.iter().any(|n| n.pitch == 65));
+        assert_eq!(app.chords.audition.note_requests.last(), Some(&(track, 65)));
+        let count = app.chords.audition.note_requests.len();
+        click_note_or_lane(&mut app, &ctx, toggle.center());
+        assert!(!app.midi_editor.audition_enabled);
+        click_note_or_lane(&mut app, &ctx, key);
+        assert_eq!(app.chords.audition.note_requests.len(), count);
+        assert!(!app.chords.audition.preparing());
+    }
+}
+
+#[test]
 fn fast_note_clicks_and_draws_capture_the_press_even_when_release_is_in_the_same_frame() {
     for (delta, expected_length) in [(0.0, 120), (120.0, 960), (999.0, 3360)] {
         let (mut app, track, clip, _) = fixture();

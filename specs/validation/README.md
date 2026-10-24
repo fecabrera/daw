@@ -4635,3 +4635,32 @@ Completed automated checks on macOS:
 - The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
 
 Logs: `work/lower-header-fit-{focused,ui,clippy,workspace,package}.log`. Native pointer checks and Windows/Linux tests were not run. This supersedes viewport retention for lower clip-header double-clicks only.
+
+## MIDI editor note audition — 2026-10-24
+
+The lower MIDI toolbar has a shared circular 24×24 Headphones toggle at its top-left. It starts off. Enabled piano-key clicks, existing-note clicks and successful note insertions request isolated previews through the selected instrument and buses. Insertions wait for preparation/publication; missing or cancelled notes are discarded. Note and chord previews share the existing latest-request worker and prepared-buffer output path.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- All 642 UI tests passed. New coverage checks all three themes, dimensions and placement, default-off and toggled input behavior, key/note/insert pitch requests, unchanged project state on audition, publication waiting, missing-note rejection and enabled-scope delivery. Existing stale worker/track-change checks and note/clip gestures passed.
+- Shared project tests cover note preview duration, finite/nonzero output, boundary fades, invalid pitch, cancellation and unchanged project data at all six processing rates. Chord mix, mute, group and timing regressions passed. Sampler chord and note previews prepare pitches without publishing temporary buffers or project edits.
+- Locked, offline workspace tests passed: 1,269 passed and three configured tests ignored.
+- CLI build and `python3 tools/check_cli.py` passed. The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+
+Logs: `work/note-audition-{project,ui-focused,affected,ui,clippy,workspace,cli-build,cli-smoke,package}.log`. The initial affected run exposed missing texture cleanup in a new test harness; the final UI/workspace runs include the correction. Native pointer/audio listening checks and Windows/Linux tests were not run. The toggle remains UI state; previews do not move the playhead or add history entries.
+
+## Press-and-hold note audition — 2026-10-24
+
+The Headphones toggle is now 16×16. Keys, existing notes and newly drawn notes start audition on press. Holding sustains the normal instrument graph without repeating PCM or restarting phase. Release anywhere sends note-off; quick clicks retain the previous one-beat minimum gate capped at 500 ms, followed by the existing release/effect tail. Note edits still commit on release, and their preview survives the insertion’s own preparation/publication without retriggering.
+
+Completed automated checks on macOS:
+
+- Formatting and final strict workspace Clippy passed.
+- All 643 final UI tests passed, including press/release timing, release outside the editor, no retrigger during a hold or insertion, 16×16 geometry in all themes, and sampler insertion scope across its preparation job.
+- All 37 output tests passed. New coverage verifies stream start and variable batch hints across all project rates and three device rates, converter input-batch coverage, chunk continuity, completion, cancellation, abandoned consumers and callback allocation/owner-retirement guards. Separate sizing tests cover five device rates and three buffer sizes with bounded arithmetic.
+- Project tests verify held and quick-click gates, variable chunk sizes, continued output beyond the old fixed duration, exact release-tail bounds and unchanged live project data at all six processing rates. Existing chord and sampler preview regressions passed.
+- The final locked, offline workspace run passed: 1,274 passed and three configured tests ignored.
+- CLI build and smoke checks passed. The final macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+
+Logs: `work/held-audition-{project-final,output-all-final,ui-final,clippy-final,workspace-final,cli-build,cli-smoke,package-final}.log`. The new callback fixture initially omitted required meter handles; the final checks include the corrected fixture. Native pointer/audio listening and Windows/Linux checks were not run. This supersedes the 24×24 button, fixed-duration editor previews and post-publication audition described in the preceding record; chord audition and live project storage are unchanged.

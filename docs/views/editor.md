@@ -30,6 +30,12 @@ Each MIDI track keeps its own Root, Scale, and Snap to scale settings. Save the 
 
 Changing the root, scale, or snapping option leaves existing notes unchanged. Drawing snaps to the nearest scale note; equal distances use the lower note. Moving a group snaps the dragged note and keeps the intervals between selected notes. Timing-only moves and edge resizes keep the original pitches. Hold Shift to bypass both grid and scale snapping.
 
+## Note audition
+
+The 16×16 circular **Headphones** button at the top-left of the lower MIDI editor toolbar turns note audition on or off. It starts off. When on, press a piano key or an existing note to hear it through the selected track’s instrument and effects. Drawing a new note starts its preview on press; the note edit still commits on release. Drawing uses the snapped pitch; clip-note previews include clip transpose. Piano keys play their displayed pitch.
+
+Previews use velocity 100 and sustain while the mouse button is held. Releasing sends note-off, even outside the editor. A quick click keeps the previous minimum gate of one beat, capped at half a second. The instrument’s release and effect tails can continue for up to one second. A new preview replaces the previous one. Stop, Escape, turning audition off, leaving Editor, changing tracks, losing window focus, or blocked editing cancels it. Sample-based instruments can need preparation time. Empty instruments and muted tracks remain silent. Audition itself does not change the project or move the playhead. The toggle is temporary UI state.
+
 ## Editor zoom and scroll
 
 The track overview and lower editor have independent horizontal viewports. The playback toolbar’s zoom control and the scrollbar below the overview control the overview. **Fit all clips**, immediately left of that zoom control, shows all clips on the displayed track, including gaps between them. It leaves the lower editor’s view unchanged and is disabled when the track has no clips. The **Fit clip** button (outward arrows between two vertical edges), the zoom control immediately to its right above the lower ruler, and the bottom scrollbar control the waveform or piano roll. Pinch or scroll horizontally over the pane you want to change. The selected clip initially fills the lower editor width. Fit clip restores that view; while fitted, resizing the window keeps the clip fitted.

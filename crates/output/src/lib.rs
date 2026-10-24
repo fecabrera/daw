@@ -1,4 +1,6 @@
 mod audition;
+mod audition_stream;
+pub use audition_stream::{AuditionStream, AuditionStreamWriter, audition_stream};
 mod cache_schedule;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use daw_core::Id;
@@ -417,6 +419,12 @@ impl AudioOutput {
         }
         self.audition.play(samples)
     }
+    pub fn audition_stream(&mut self, rate: u32, stream: AuditionStream) -> Result<(), String> {
+        if rate != self.project_rate_hz {
+            return Err("Audition sample rate differs from output".into());
+        }
+        self.audition.play_stream(stream)
+    }
     pub fn auditioning(&self) -> bool {
         self.audition.playing()
     }
@@ -771,6 +779,7 @@ impl AudioOutput {
     }
 }
 struct Callback {
+    project_rate_hz: u32,
     audition: audition::Player,
     audition_sender: Option<audition::Sender>,
     renderer: Box<PreparedRenderer>,
@@ -788,6 +797,12 @@ struct Callback {
     rendered_input: bool,
 }
 impl Callback {
+    fn audition_chunk_frames(&self, device_frames: usize, device_rate: u32) -> usize {
+        audition_stream::source_chunk_frames(self.project_rate_hz, device_rate, device_frames)
+            .unwrap_or(1)
+            .max(self.input.first().map_or(0, Vec::len))
+            .max((self.project_rate_hz as usize / 200).max(1))
+    }
     fn new(
         plan: RenderPlan,
         meters: &HashMap<Id, Arc<StereoMeter>>,
@@ -822,6 +837,7 @@ impl Callback {
             .unwrap_or_default();
         let (sender, audition) = audition::channel(project_rate_hz);
         Ok(Self {
+            project_rate_hz,
             audition,
             audition_sender: Some(sender),
             renderer: Box::new(PreparedRenderer::try_new(plan, meters)?),
@@ -1056,6 +1072,9 @@ where
             config,
             move |data: &mut [T], _| {
                 let started = std::time::Instant::now();
+                // Cover both device demand and the converter's full input batch.
+                let frames = callback.audition_chunk_frames(data.len() / channels, device_rate);
+                callback.audition.set_stream_chunk_frames(frames);
                 callback.update();
                 callback.renderer.reset_track_peaks();
                 callback.rendered_input = false;

@@ -2396,7 +2396,10 @@ impl DawUi {
 
     // Active gestures must check the environment without rejecting their own drag.
     fn edit_environment_available(&self) -> bool {
-        self.job.is_none()
+        self.edit_environment_available_with_job(false)
+    }
+    fn edit_environment_available_with_job(&self, allow_job: bool) -> bool {
+        (self.job.is_none() || allow_job)
             && !self.unsaved_prompt
             && self.overwrite.is_none()
             && self.export_dialog.is_none()

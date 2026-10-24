@@ -77,6 +77,15 @@ struct OscillatorVoice {
 }
 impl Voice {
     fn note_on(&mut self, id: Id, pitch: u8, velocity: u8, duration_frames: u64) {
+        self.note_on_with_duration(id, pitch, velocity, Some(duration_frames.max(1)));
+    }
+    fn note_on_with_duration(
+        &mut self,
+        id: Id,
+        pitch: u8,
+        velocity: u8,
+        duration_frames: Option<u64>,
+    ) {
         self.sleeping = false;
         let idle = self.transition == 0
             && self.layers.iter().all(LayerVoice::is_idle)
@@ -96,7 +105,7 @@ impl Voice {
         self.transition = self.fade_frames;
         self.current = Some(id);
         self.held_frames = 0;
-        self.note_duration_frames = Some(duration_frames.max(1));
+        self.note_duration_frames = duration_frames;
         self.release_frames = 0;
         for e in &mut self.controls {
             e.note_on(self.note_duration_frames);
@@ -1344,6 +1353,18 @@ impl MidiTrackRuntime {
         self.last_clip = None;
         self.last_source = None;
     }
+    pub fn begin_note_audition(&mut self, pitch: u8) {
+        // The isolated preview keeps prepared voices/banks but bypasses clip scheduling.
+        self.clips.clear();
+        self.clip_ranges = super::schedule::Ranges::new(std::iter::empty());
+        self.last_clip = None;
+        self.last_source = None;
+        self.shared.event(true, None);
+        if let Some(voice) = self.voices.first_mut() {
+            voice.note_on_with_duration(Id::new_v4(), pitch, 100, None);
+        }
+    }
+
     pub fn end_notes(&mut self) {
         self.shared.end();
         for voice in &mut self.voices {

@@ -20,6 +20,9 @@ use daw_media::AudioData;
 use std::collections::HashMap;
 pub use transport_cache::{TransportCache, TransportCacheMemory};
 
+/// Maximum bounded PCM chunk accepted by note-audition hosts.
+pub const NOTE_AUDITION_MAX_CHUNK_FRAMES: usize = 1 << 20;
+
 #[derive(Clone)]
 pub struct RenderPlan {
     pub project: Project,
@@ -781,6 +784,25 @@ impl Renderer {
             self.prime_latency(self.playing || self.paused);
         }
     }
+    /// Start a held note on a fresh, isolated offline audition renderer.
+    /// Preparation and UUID creation belong on the worker, never the callback.
+    pub fn begin_note_audition(&mut self, track: daw_core::Id, pitch: u8) {
+        self.reset_processing();
+        if let Some(&index) = self.track_index.get(&track)
+            && let Some(runtime) = &mut self.midi[index]
+        {
+            runtime.begin_note_audition(pitch);
+        }
+        self.prime_latency(false);
+    }
+
+    /// Send note-off through normal per-note and shared release stages.
+    pub fn release_note_audition(&mut self) {
+        for runtime in self.midi.iter_mut().flatten() {
+            runtime.end_notes();
+        }
+    }
+
     pub fn latency_frames(&self) -> u64 {
         self.alignment.total
     }

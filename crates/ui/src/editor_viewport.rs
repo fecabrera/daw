@@ -139,6 +139,34 @@ impl DawUi {
         );
         let toolbar = rows::fixed(ui, toolbars::HEIGHT, |ui| {
             toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
+                if midi {
+                    ui.add_enabled_ui(
+                        self.editing_enabled() && !self.midi_editor.dragging(),
+                        |ui| {
+                            let response = icons::circular_button(
+                                ui,
+                                icons::Lucide::Headphones,
+                                "Audition notes",
+                                Some(self.midi_editor.audition_enabled),
+                                16.0,
+                            );
+                            #[cfg(test)]
+                            {
+                                self.midi_editor.audition_bounds = response.rect;
+                            }
+                            if response.clicked() {
+                                self.midi_editor.audition_enabled =
+                                    !self.midi_editor.audition_enabled;
+                                if !self.midi_editor.audition_enabled {
+                                    self.chords.audition.cancel();
+                                    if let Some(output) = &self.output {
+                                        output.stop_audition();
+                                    }
+                                }
+                            }
+                        },
+                    );
+                }
                 let enabled =
                     clip.is_some() && self.editing_enabled() && !self.midi_editor.dragging();
                 ui.add_enabled_ui(enabled, |ui| {
