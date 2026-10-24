@@ -14,6 +14,7 @@ pub struct Oscillator {
     target: Option<ModulationTargetId>,
     offsets: ModulationSmoother<2>,
     effective_offset: f32,
+    output_pitch_ratio: f32,
     base_gain: f32,
     effective_gain: f32,
 }
@@ -41,6 +42,7 @@ impl Oscillator {
             target: None,
             offsets: ModulationSmoother::new(context),
             effective_offset: 0.0,
+            output_pitch_ratio: 1.0,
             base_gain: 1.0,
             effective_gain: 1.0,
         }
@@ -54,6 +56,15 @@ impl Oscillator {
     /// Applied, smoothed modulation offset in semitones; excludes MIDI pitch and base transpose.
     pub fn pitch_offset(&self) -> f32 {
         self.effective_offset
+    }
+    /// Common unit tuning, prepared once per note by OscillatorOutput.
+    /// Keep source Pitch modulation independent of this ratio.
+    pub fn set_output_pitch_ratio(&mut self, ratio: f32) {
+        self.output_pitch_ratio = if ratio.is_finite() && ratio > 0.0 {
+            ratio.clamp(1.0 / 4096.0, 4096.0)
+        } else {
+            1.0
+        };
     }
     /// Supply the host-smoothed linear base gain, including source mute.
     /// Modulation cannot raise an exactly silent base gain.
@@ -105,6 +116,11 @@ impl ModulationDestination for Oscillator {
             self.frequency
         } else {
             self.frequency * 2.0_f32.powf(self.effective_offset / 12.0)
+        };
+        let frequency = if self.output_pitch_ratio == 1.0 {
+            frequency
+        } else {
+            frequency * self.output_pitch_ratio
         };
         self.sample_at(frequency) * self.effective_gain
     }
@@ -369,3 +385,6 @@ mod tests {
 
 mod level;
 pub use level::OscillatorLevel;
+
+/// Shared output Pitch and Level controls; retains the original Level API.
+pub use level::OscillatorLevel as OscillatorOutput;

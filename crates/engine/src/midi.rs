@@ -28,7 +28,7 @@ struct LayerVoice {
     transition_from: [f32; 2],
     output: [f32; 2],
     sources: Vec<OscillatorVoice>,
-    oscillator_level: daw_oscillator::OscillatorLevel,
+    oscillator_level: daw_oscillator::OscillatorOutput,
     oscillator_level_routes: Vec<Route>,
     sampler: Option<daw_sampler::Sampler>,
     sampler_routes: Vec<Route>,
@@ -308,6 +308,15 @@ impl LayerVoice {
             release_age,
             ..Default::default()
         };
+        let output_gain = process_modulation(
+            &mut self.oscillator_level,
+            &mut self.oscillator_level_routes,
+            1.0,
+            local,
+            shared,
+            context,
+        );
+        let output_pitch_ratio = self.oscillator_level.pitch_ratio();
         let sources = self
             .sources
             .iter_mut()
@@ -323,17 +332,11 @@ impl LayerVoice {
                     s.gain_remaining -= 1;
                 }
                 s.source.set_base_gain(s.gain);
+                s.source.set_output_pitch_ratio(output_pitch_ratio);
                 process_modulation(&mut s.source, &mut s.routes, 0.0, local, shared, context)
             })
             .sum::<f32>();
-        let sources = process_modulation(
-            &mut self.oscillator_level,
-            &mut self.oscillator_level_routes,
-            sources,
-            local,
-            shared,
-            context,
-        );
+        let sources = sources * output_gain;
         let mut stereo = self.sampler.as_mut().map_or([sources; 2], |s| {
             process_modulation(
                 s,
@@ -800,13 +803,14 @@ impl MidiTrackRuntime {
                                 .sampler
                                 .as_ref()
                                 .is_some_and(|s| s.trigger == daw_core::SamplerTrigger::OneShot),
-                            oscillator_level: daw_oscillator::OscillatorLevel::new(
+                            oscillator_level: daw_oscillator::OscillatorOutput::new(
                                 layer.oscillator_level_db,
                                 ProcessingContext {
                                     sample_rate_hz: project.sample_rate_hz,
                                     max_block_frames: project.buffer_size_frames,
                                 },
-                            ),
+                            )
+                            .with_pitch(layer.oscillator_pitch_semitones),
                             oscillator_level_routes: layer
                                 .oscillator_modulations
                                 .iter()
@@ -1361,9 +1365,14 @@ impl MidiTrackRuntime {
             .map(|l| l.amplitude.effective_gain())
             .fold(0.0, f32::max)
     }
-    /// Active-voice Oscillator unit output gain extrema in dB.
-    pub fn oscillator_level_values(&self, layer: Id) -> [f32; 2] {
-        let mut range = [f32::INFINITY, f32::NEG_INFINITY];
+    /// Active-voice output Level dB and common Pitch semitone extrema.
+    pub fn oscillator_level_values(&self, layer: Id) -> [f32; 4] {
+        let mut range = [
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+        ];
         for voice in self.voices.iter().filter(|v| v.active_last_sample) {
             if let Some(l) = self
                 .layer_index
@@ -1378,6 +1387,9 @@ impl MidiTrackRuntime {
                 };
                 range[0] = range[0].min(db);
                 range[1] = range[1].max(db);
+                let pitch = l.oscillator_level.effective_pitch();
+                range[2] = range[2].min(pitch);
+                range[3] = range[3].max(pitch);
             }
         }
         range.map(|v| if v.is_finite() { v } else { f32::NAN })

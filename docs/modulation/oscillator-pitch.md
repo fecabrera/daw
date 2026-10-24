@@ -37,3 +37,9 @@ Assigned Gain knobs show the shared marker and possible-range arc. Click the mar
 Select **Level** as Destination to change the sum of all oscillator sources. Set Amount from −24 to +24 dB. Per note and shared sources are supported. Level runs after the individual oscillator gains and before velocity, Amplitude, and layer mixing. It retains the base setting, smooths movement, limits processed gain to +12 dB, and preserves exact silence at −∞.
 
 Its marker opens the same connections. Live dots show the lowest and highest active note Level in dB. Connections save with the layer. Moving or copying a complete Oscillator unit into an empty destination carries its Level connections. Merging into an existing unit retains the destination's Level connections; transferring an individual source leaves the unit Level connections in place.
+
+## Connect output Pitch modulation
+
+Select **Pitch** as Destination to transpose all oscillator sources together. Use **Osc N · Pitch** for one source. Output Pitch adds to each source's tuning and modulation, preserving their intervals. Set Amount from −48 to +48 semitones. Per note and shared sources are supported, including sources in Output. The knob's live dots show the common transpose, excluding the MIDI note and individual source Pitch.
+
+Output Pitch and its connections save with the layer. Moving or copying the complete Oscillator unit into an empty destination carries the connections. A merge retains the destination's output controls and connections; an individual source transfer leaves the output connections in place.

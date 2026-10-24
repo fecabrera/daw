@@ -117,6 +117,8 @@ pub struct InstrumentLayerSettings {
     pub oscillator_enabled: bool,
     /// Gain after summing oscillator sources, before per-note Amplitude.
     pub oscillator_level_db: f32,
+    /// Common transpose for all oscillator sources, in semitones.
+    pub oscillator_pitch_semitones: f32,
     pub oscillator_collapsed: bool,
     pub oscillator_modulation_open: bool,
     pub oscillator_modulations: Vec<Modulation>,
@@ -141,6 +143,7 @@ impl Default for InstrumentLayerSettings {
             sampler: None,
             oscillator_enabled: true,
             oscillator_level_db: 0.0,
+            oscillator_pitch_semitones: 0.0,
             oscillator_collapsed: false,
             oscillator_modulation_open: false,
             oscillator_modulations: Vec::new(),
@@ -168,6 +171,8 @@ impl InstrumentLayerSettings {
                 .sampler
                 .as_ref()
                 .is_none_or(|s| s.valid() && self.oscillators.is_empty())
+            && self.oscillator_pitch_semitones.is_finite()
+            && (-48.0..=48.0).contains(&self.oscillator_pitch_semitones)
             && self.oscillator_level_db.is_finite()
             && (SILENT_GAIN_DB..=12.0).contains(&self.oscillator_level_db)
             && self.oscillators.iter().all(OscillatorSettings::valid)
@@ -245,6 +250,8 @@ struct SavedLayer {
     oscillator_enabled: bool,
     #[serde(default)]
     oscillator_level_db: f32,
+    #[serde(default)]
+    oscillator_pitch_semitones: f32,
     #[serde(default = "default_unit_enabled")]
     envelope_enabled: bool,
     #[serde(default)]
@@ -309,6 +316,7 @@ impl SavedLayer {
             sampler: self.sampler,
             oscillator_enabled: self.oscillator_enabled,
             oscillator_level_db: self.oscillator_level_db,
+            oscillator_pitch_semitones: self.oscillator_pitch_semitones,
             oscillator_collapsed: self.oscillator_collapsed,
             oscillator_modulation_open: self.oscillator_modulation_open,
             oscillator_modulations: self.oscillator_modulations,
@@ -738,7 +746,7 @@ mod oscillator_level_modulation_tests {
         layer.oscillator_modulations[0].target = Some(layer.oscillators[0].id);
         assert!(!layer.valid_modulations());
         layer.oscillator_modulations[0].target = None;
-        layer.oscillator_modulations[0].parameter = ModulationParameter::Pitch;
+        layer.oscillator_modulations[0].parameter = ModulationParameter::OscillatorGain;
         assert!(!layer.valid_modulations());
         layer.oscillator_modulations[0] = level;
         layer.oscillator_modulations.push(level);
@@ -749,5 +757,56 @@ mod oscillator_level_modulation_tests {
         layer.oscillator_modulations[0] = level;
         layer.remove_oscillator(layer.oscillators[0].id);
         assert_eq!(layer.oscillator_modulations, vec![level]);
+    }
+}
+
+#[cfg(test)]
+mod oscillator_output_pitch_tests {
+    use super::*;
+    #[test]
+    fn output_pitch_roundtrips_defaults_and_coexists_with_source_pitch() {
+        let mut layer = InstrumentLayerSettings::default();
+        layer.oscillators.push(OscillatorSettings::default());
+        for pitch in [-48.0, -0.25, 0.0, 12.0, 48.0] {
+            layer.oscillator_pitch_semitones = pitch;
+            assert!(layer.valid());
+            let saved = serde_json::to_value(&layer).unwrap();
+            assert_eq!(
+                serde_json::from_value::<InstrumentLayerSettings>(saved).unwrap(),
+                layer
+            );
+        }
+        let mut saved = serde_json::to_value(&layer).unwrap();
+        saved
+            .as_object_mut()
+            .unwrap()
+            .remove("oscillator_pitch_semitones");
+        assert_eq!(
+            serde_json::from_value::<InstrumentLayerSettings>(saved)
+                .unwrap()
+                .oscillator_pitch_semitones,
+            0.0
+        );
+        for pitch in [f32::NAN, f32::INFINITY, -48.1, 48.1] {
+            layer.oscillator_pitch_semitones = pitch;
+            assert!(!layer.valid());
+        }
+        layer.oscillator_pitch_semitones = 12.0;
+        let unit = Modulation::new(ModulationParameter::Pitch);
+        let mut source = Modulation::new(ModulationParameter::Pitch);
+        source.target = Some(layer.oscillators[0].id);
+        layer.oscillator_modulations = vec![unit, source];
+        assert!(layer.valid());
+        let copy = layer.duplicate();
+        assert_eq!(copy.oscillator_pitch_semitones, 12.0);
+        assert!(copy.valid());
+        assert_ne!(copy.oscillator_modulations[0].id, unit.id);
+        assert_eq!(copy.oscillator_modulations[0].target, None);
+        assert_eq!(
+            copy.oscillator_modulations[1].target,
+            Some(copy.oscillators[0].id)
+        );
+        layer.remove_oscillator(layer.oscillators[0].id);
+        assert_eq!(layer.oscillator_modulations, vec![unit]);
     }
 }

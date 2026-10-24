@@ -144,7 +144,7 @@ mod tests {
         );
         let l = &mut i.layers[0];
         l.oscillator_modulations[0].target = None;
-        assert!(!l.valid_modulations());
+        assert!(l.valid_modulations());
         l.oscillator_modulations[0].target = Some(uuid::Uuid::new_v4());
         assert!(!l.valid_modulations());
         l.oscillator_modulations[0].target = Some(l.oscillators[0].id);

@@ -627,15 +627,16 @@ fn drive_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() 
 
 #[test]
 fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_saved_expansion() {
-    for (theme, parameter) in [settings::ColorTheme::Dark, settings::ColorTheme::Light]
+    for (theme, parameter, whole_unit) in [settings::ColorTheme::Dark, settings::ColorTheme::Light]
         .into_iter()
         .flat_map(|theme| {
             [
-                daw_core::ModulationParameter::Pitch,
-                daw_core::ModulationParameter::OscillatorGain,
-                daw_core::ModulationParameter::Level,
+                (daw_core::ModulationParameter::Pitch, false),
+                (daw_core::ModulationParameter::OscillatorGain, false),
+                (daw_core::ModulationParameter::Level, true),
+                (daw_core::ModulationParameter::Pitch, true),
             ]
-            .map(|parameter| (theme, parameter))
+            .map(|(parameter, whole_unit)| (theme, parameter, whole_unit))
         })
     {
         let (mut app, ctx, layer) = fixture(theme);
@@ -699,11 +700,10 @@ fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_sa
             false,
         );
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let whole_unit = parameter == daw_core::ModulationParameter::Level;
         let second = label(
             &shapes,
             &if whole_unit {
-                "Level".into()
+                parameter.label().into()
             } else {
                 format!("Osc 2 · {}", parameter.label())
             },

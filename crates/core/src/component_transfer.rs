@@ -386,6 +386,7 @@ fn transfer_oscillators(
     let shell = (
         source.oscillator_enabled,
         source.oscillator_level_db,
+        source.oscillator_pitch_semitones,
         source.oscillator_collapsed,
         source.oscillator_modulation_open,
     );
@@ -405,6 +406,7 @@ fn transfer_oscillators(
         (
             destination.oscillator_enabled,
             destination.oscillator_level_db,
+            destination.oscillator_pitch_semitones,
             destination.oscillator_collapsed,
             destination.oscillator_modulation_open,
         ) = shell;

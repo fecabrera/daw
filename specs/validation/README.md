@@ -4506,3 +4506,19 @@ Completed automated checks on macOS:
 - CLI build and smoke check passed. The macOS debug app was rebuilt through `tools/package_macos.sh debug` with the final layout.
 
 Logs: `work/drive-v2-{portable,settings,focused,ui-all,clippy,workspace,cli-build,cli-smoke,package}.log`. Native UI/device listening and Windows/Linux checks were not run. Drive v2 retains Drive's project-rate clipping without oversampling; Clip selects the distortion curve rather than a final output limiter.
+
+## Oscillator output Pitch — 2026-10-23
+
+Added a common Pitch knob below Level in the Oscillator Out strip. It transposes all sources together, retains source phase and tuning intervals, and accepts untargeted Pitch routes through the shared modulation contract. The saved layer setting defaults to zero for older projects.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- Locked, offline workspace tests passed: 1247 passed and 3 configured tests ignored, including all 629 UI tests.
+- Portable tests cover local/shared routes, base/offset smoothing, compatible retargeting, reset, wrong targets, invalid bounds, and all six processing rates.
+- Renderer tests cover two-source transpose equivalence, neutral output, compatible live edits, callback allocation checks, local Envelope/shared Output Macro sources alongside source Pitch routes, processed telemetry, live/export parity, random-access export, live seeking, and route disabling.
+- Settings/core tests cover save/reopen, missing-field defaults, bounds, duplication with fresh route/source IDs, source removal, and whole-unit versus individual-source transfers.
+- All nine focused Oscillator UI tests passed. They cover the Out strip geometry, independent Pitch editing, Undo/Redo, save/reopen, modulation destination selection, markers, and compact presentation in dark/light themes.
+- CLI build and smoke check passed. The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+
+Logs: `work/oscillator-output-pitch-{check,engine,ui,clippy,workspace,cli-build,cli-smoke,package}.log`. Native UI/device listening and Windows/Linux checks were not run. Live seeks retain the existing fresh-oscillator-phase behavior. Output Pitch applies a common source-frequency ratio; it does not resample the summed PCM signal.

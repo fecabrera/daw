@@ -783,6 +783,7 @@ fn oscillator_unit_level_follows_moves_and_copies_into_empty_units() {
         let (mut p, track, from, to) = fixture();
         let i = p.tracks[0].instrument.as_mut().unwrap();
         i.layers[0].oscillator_level_db = -9.0;
+        i.layers[0].oscillator_pitch_semitones = 12.0;
         i.layers[1].oscillators.clear();
         p.edit(Edit::TransferInstrumentComponent {
             track_id: track,
@@ -795,6 +796,7 @@ fn oscillator_unit_level_follows_moves_and_copies_into_empty_units() {
         .unwrap();
         let i = p.tracks[0].instrument.as_ref().unwrap();
         assert_eq!(i.layers[1].oscillator_level_db, -9.0);
+        assert_eq!(i.layers[1].oscillator_pitch_semitones, 12.0);
         if copy {
             assert_eq!(i.layers[0].oscillator_level_db, -9.0);
         }
@@ -813,6 +815,11 @@ fn oscillator_level_routes_follow_the_whole_unit_shell_only() {
                 let route =
                     daw_unit_core::Modulation::new(daw_unit_core::ModulationParameter::Level);
                 i.layers[0].oscillator_modulations.push(route);
+                i.layers[0]
+                    .oscillator_modulations
+                    .push(daw_unit_core::Modulation::new(
+                        daw_unit_core::ModulationParameter::Pitch,
+                    ));
                 if empty {
                     i.layers[1].oscillators.clear();
                 } else {
@@ -838,7 +845,7 @@ fn oscillator_level_routes_follow_the_whole_unit_shell_only() {
                         .iter()
                         .filter(|r| r.target.is_none())
                         .count(),
-                    usize::from(whole && empty)
+                    2 * usize::from(whole && empty)
                 );
                 assert_eq!(
                     i.layers[0].oscillator_modulations.contains(&route),

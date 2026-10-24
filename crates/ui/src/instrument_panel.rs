@@ -1080,6 +1080,11 @@ impl DawUi {
             id: None,
             label: "Level".into(),
         });
+        targets.push(crate::modulation_panel::Target {
+            parameter: daw_core::ModulationParameter::Pitch,
+            id: None,
+            label: "Pitch".into(),
+        });
         let unit_enabled = layer.oscillator_enabled;
         let InstrumentLayerSettings {
             oscillators,
@@ -1087,6 +1092,7 @@ impl DawUi {
             oscillator_modulation_open: modulation_open,
             oscillator_enabled: enabled,
             oscillator_level_db: level,
+            oscillator_pitch_semitones: output_pitch,
             oscillator_collapsed: collapsed,
             ..
         } = layer;
@@ -1102,6 +1108,7 @@ impl DawUi {
             self.midi_editor.oscillator_strip_bounds.clear();
             self.midi_editor.oscillator_power_bounds.clear();
             self.midi_editor.oscillator_level_bounds = Rect::NOTHING;
+            self.midi_editor.oscillator_pitch_bounds = Rect::NOTHING;
             self.midi_editor.oscillator_output_bounds = Rect::NOTHING;
             self.midi_editor.add_oscillator_bounds = Rect::NOTHING;
             self.midi_editor.add_oscillator_strip_bounds = Rect::NOTHING;
@@ -1272,9 +1279,11 @@ impl DawUi {
                     add = add_strip.inner.clicked();
                     let level_routes: Vec<_> = routes.iter().filter(|r| r.target.is_none()).copied().collect();
                     let live = self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::OscillatorLevel { track, layer: layer_id }))
-                        .map_or([None; 2], |v| [v[0], v[1]].map(|v| v.is_finite().then_some(v)));
-                    let level_marker = crate::modulation_panel::marker(&level_routes, sources, daw_core::ModulationParameter::Level, *level, unit_enabled, None, live);
+                        .map_or([None; 4], |v| [v[0], v[1], v[2], v[3]].map(|v| v.is_finite().then_some(v)));
+                    let level_marker = crate::modulation_panel::marker(&level_routes, sources, daw_core::ModulationParameter::Level, *level, unit_enabled, None, [live[0],live[1]]);
+                    let pitch_marker = crate::modulation_panel::marker(&level_routes,sources,daw_core::ModulationParameter::Pitch,*output_pitch,unit_enabled,None,[live[2],live[3]]);
                     let mut level_rect = Rect::NOTHING;
+                    let mut pitch_rect = Rect::NOTHING;
                     let output_strip = ui.scope_builder(egui::UiBuilder::new()
                         .id_salt(("oscillator-output", track, layer_id))
                         .sense(Sense::click_and_drag()), |ui| {
@@ -1289,6 +1298,9 @@ impl DawUi {
                                                 let response = ui.add(knobs::Knob::new(value, knobs::marked_gain_spec().named("Oscillator level")).modulated(level_marker.as_ref(), modulation_open));
                                                 level_rect = response.rect;
                                                 response
+                                            } else if row == 1 {
+                                                let response = ui.add(knobs::Knob::new(output_pitch,knobs::pitch_spec().named("Oscillator output pitch")).modulated(pitch_marker.as_ref(),modulation_open));
+                                                pitch_rect = response.rect; response
                                             } else { ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), Sense::hover()) }
                                         });
                                     }
@@ -1298,9 +1310,10 @@ impl DawUi {
                         });
                     });
                     panels::unit_divider(ui, output_strip.response.rect.left(), output_strip.response.rect.y_range().into());
-                    self.start_installed_component_drag(ui, &output_strip.response, &[level_rect], track, layer_id, daw_core::InstrumentComponent::Oscillators);
+                    self.start_installed_component_drag(ui, &output_strip.response, &[level_rect,pitch_rect], track, layer_id, daw_core::InstrumentComponent::Oscillators);
                     #[cfg(test)] {
                         self.midi_editor.oscillator_level_bounds = level_rect;
+                        self.midi_editor.oscillator_pitch_bounds = pitch_rect;
                         self.midi_editor.oscillator_output_bounds = output_strip.response.rect;
                     }
                     if open {

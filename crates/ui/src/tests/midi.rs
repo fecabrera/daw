@@ -7290,6 +7290,36 @@ fn oscillator_unit_level_occupies_the_last_column_and_edits_only_the_unit_output
             reopened.tracks[0].instrument.as_ref().unwrap().layers[0].oscillator_level_db,
             level
         );
+        let pitch_knob = app.midi_editor.oscillator_pitch_bounds;
+        assert!(output.contains_rect(pitch_knob));
+        assert!(pitch_knob.top() > knob.bottom());
+        super::instrument_catalog::click(&mut app, &ctx, pitch_knob.center(), false);
+        super::instrument_catalog::key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+        let layer = &app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0];
+        assert_eq!(layer.oscillator_pitch_semitones, 1.0);
+        assert_eq!(layer.oscillators, original);
+        assert_eq!(layer.oscillator_level_db, level);
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .oscillator_pitch_semitones,
+            0.0
+        );
+        app.perform_history_action(HistoryAction::Redo, &ctx);
+        let reopened: daw_core::Project =
+            serde_json::from_value(serde_json::to_value(&app.session.project).unwrap()).unwrap();
+        assert_eq!(
+            reopened.tracks[0].instrument.as_ref().unwrap().layers[0].oscillator_pitch_semitones,
+            1.0
+        );
         app.session.project.tracks[0]
             .instrument
             .as_mut()

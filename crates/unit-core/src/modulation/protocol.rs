@@ -317,7 +317,7 @@ impl ModulationDestinationSettings for crate::InstrumentLayerSettings {
             self.modulations(),
             &ModulationParameter::OSCILLATOR,
             &self.oscillators.iter().map(|s| s.id).collect::<Vec<_>>(),
-            &[ModulationParameter::Level],
+            &[ModulationParameter::Level, ModulationParameter::Pitch],
         )
     }
 }
