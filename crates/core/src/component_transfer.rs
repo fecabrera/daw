@@ -374,6 +374,7 @@ fn transfer_oscillators(
         .collect();
     let shell = (
         source.oscillator_enabled,
+        source.oscillator_level_db,
         source.oscillator_collapsed,
         source.oscillator_modulation_open,
     );
@@ -387,6 +388,7 @@ fn transfer_oscillators(
     if destination.oscillators.is_empty() {
         (
             destination.oscillator_enabled,
+            destination.oscillator_level_db,
             destination.oscillator_collapsed,
             destination.oscillator_modulation_open,
         ) = shell;

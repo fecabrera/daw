@@ -5799,10 +5799,7 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
             .filter_map(|shape| match &shape.shape {
                 egui::Shape::Circle(circle)
                     if (circle.radius - (knobs::SIZE / 2.0 - 5.0)).abs() < 0.01
-                        && app
-                            .midi_editor
-                            .oscillator_panel_bounds
-                            .contains(circle.center)
+                        && app.midi_editor.oscillator_strip_bounds[0].contains(circle.center)
                         && !app
                             .midi_editor
                             .oscillator_power_bounds
@@ -7225,6 +7222,87 @@ fn drawing_uses_each_selected_tracks_saved_scale_constraints() {
                 .notes
                 .iter()
                 .any(|note| !before.contains(note) && note.pitch == expected)
+        );
+    }
+}
+
+#[test]
+fn oscillator_unit_level_occupies_the_last_column_and_edits_only_the_unit_output() {
+    for dark in [false, true] {
+        let (mut app, _, _, _) = fixture();
+        let ctx = context();
+        if dark {
+            ctx.set_visuals(egui::Visuals::dark());
+        } else {
+            ctx.set_visuals(egui::Visuals::light());
+        }
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let output = app.midi_editor.oscillator_output_bounds;
+        let knob = app.midi_editor.oscillator_level_bounds;
+        let add = app.midi_editor.add_oscillator_strip_bounds;
+        let source = app.midi_editor.oscillator_strip_bounds[0];
+        assert!((output.width() - midi_editor::OSCILLATOR_STRIP_WIDTH).abs() < 0.1);
+        assert!((output.left() - add.right()).abs() < 0.1);
+        assert!((output.top() - source.top()).abs() < 0.1);
+        assert!((output.bottom() - source.bottom()).abs() < 0.1);
+        assert!((output.right() - app.midi_editor.oscillator_panel_bounds.right()).abs() < 1.1);
+        assert!(output.contains_rect(knob));
+        let original = app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .oscillators
+            .clone();
+        super::instrument_catalog::click(&mut app, &ctx, knob.center(), false);
+        super::instrument_catalog::key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+        let level = app.session.project.tracks[0]
+            .instrument
+            .as_ref()
+            .unwrap()
+            .layers[0]
+            .oscillator_level_db;
+        assert!(level > 0.0);
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .oscillators,
+            original
+        );
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert_eq!(
+            app.session.project.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .oscillator_level_db,
+            0.0
+        );
+        app.perform_history_action(HistoryAction::Redo, &ctx);
+        let reopened: daw_core::Project =
+            serde_json::from_value(serde_json::to_value(&app.session.project).unwrap()).unwrap();
+        assert_eq!(
+            reopened.tracks[0].instrument.as_ref().unwrap().layers[0].oscillator_level_db,
+            level
+        );
+        app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .collapsed = true;
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.midi_editor.oscillator_level_bounds, Rect::NOTHING);
+        assert!(
+            (app.midi_editor.oscillator_output_bounds.width()
+                - midi_editor::OSCILLATOR_STRIP_WIDTH)
+                .abs()
+                < 0.1
         );
     }
 }

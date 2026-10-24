@@ -111,6 +111,8 @@ pub struct InstrumentLayerSettings {
     pub sampler: Option<SamplerSettings>,
     /// Unit enable states retain individual source switches and envelope settings.
     pub oscillator_enabled: bool,
+    /// Gain after summing oscillator sources, before per-note Amplitude.
+    pub oscillator_level_db: f32,
     pub oscillator_collapsed: bool,
     pub oscillator_modulation_open: bool,
     pub oscillator_modulations: Vec<Modulation>,
@@ -134,6 +136,7 @@ impl Default for InstrumentLayerSettings {
             oscillators: Vec::new(),
             sampler: None,
             oscillator_enabled: true,
+            oscillator_level_db: 0.0,
             oscillator_collapsed: false,
             oscillator_modulation_open: false,
             oscillator_modulations: Vec::new(),
@@ -161,6 +164,8 @@ impl InstrumentLayerSettings {
                 .sampler
                 .as_ref()
                 .is_none_or(|s| s.valid() && self.oscillators.is_empty())
+            && self.oscillator_level_db.is_finite()
+            && (SILENT_GAIN_DB..=12.0).contains(&self.oscillator_level_db)
             && self.oscillators.iter().all(OscillatorSettings::valid)
             && self.effects.iter().all(|e| e.unit.valid())
             && self.amplitude.valid()
@@ -234,6 +239,8 @@ struct SavedLayer {
     sampler: Option<SamplerSettings>,
     #[serde(default = "default_unit_enabled")]
     oscillator_enabled: bool,
+    #[serde(default)]
+    oscillator_level_db: f32,
     #[serde(default = "default_unit_enabled")]
     envelope_enabled: bool,
     #[serde(default)]
@@ -297,6 +304,7 @@ impl SavedLayer {
             oscillators: self.oscillators,
             sampler: self.sampler,
             oscillator_enabled: self.oscillator_enabled,
+            oscillator_level_db: self.oscillator_level_db,
             oscillator_collapsed: self.oscillator_collapsed,
             oscillator_modulation_open: self.oscillator_modulation_open,
             oscillator_modulations: self.oscillator_modulations,
@@ -672,6 +680,34 @@ mod tests {
                 }
                 .valid()
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod oscillator_level_tests {
+    use super::*;
+    #[test]
+    fn oscillator_level_round_trips_defaults_legacy_layers_to_unity_and_validates_bounds() {
+        let mut layer = InstrumentLayerSettings::default();
+        layer.oscillators.push(OscillatorSettings::default());
+        for level in [SILENT_GAIN_DB, -12.0, 0.0, 12.0] {
+            layer.oscillator_level_db = level;
+            assert!(layer.valid());
+            let saved = serde_json::to_value(&layer).unwrap();
+            let reopened: InstrumentLayerSettings = serde_json::from_value(saved).unwrap();
+            assert_eq!(reopened, layer);
+        }
+        let mut legacy = serde_json::to_value(&layer).unwrap();
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("oscillator_level_db");
+        let reopened: InstrumentLayerSettings = serde_json::from_value(legacy).unwrap();
+        assert_eq!(reopened.oscillator_level_db, 0.0);
+        for level in [f32::NAN, f32::INFINITY, SILENT_GAIN_DB - 1.0, 12.1] {
+            layer.oscillator_level_db = level;
+            assert!(!layer.valid());
         }
     }
 }

@@ -114,6 +114,10 @@ pub(super) struct MidiEditor {
     #[cfg(test)]
     pub(crate) oscillator_panel_bounds: Rect,
     #[cfg(test)]
+    pub(crate) oscillator_level_bounds: Rect,
+    #[cfg(test)]
+    pub(crate) oscillator_output_bounds: Rect,
+    #[cfg(test)]
     pub(crate) envelope_panel_bounds: Rect,
     #[cfg(test)]
     pub(crate) envelope_stage_bounds: [Rect; 4],
@@ -182,6 +186,10 @@ impl Default for MidiEditor {
             add_oscillator_strip_bounds: Rect::NOTHING,
             #[cfg(test)]
             oscillator_panel_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            oscillator_level_bounds: Rect::NOTHING,
+            #[cfg(test)]
+            oscillator_output_bounds: Rect::NOTHING,
             #[cfg(test)]
             envelope_panel_bounds: Rect::NOTHING,
             #[cfg(test)]

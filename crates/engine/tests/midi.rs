@@ -4515,3 +4515,73 @@ fn granulizer_live_offline_and_gate_one_shot_paths_agree_at_every_processing_rat
         }
     }
 }
+
+#[test]
+fn oscillator_unit_level_scales_all_sources_and_retargets_without_phase_resets_or_allocation() {
+    for rate in SAMPLE_RATES {
+        let mut original = plan(Waveform::Sine, rate);
+        original.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .oscillators
+            .push(OscillatorSettings {
+                transpose: 7,
+                ..Default::default()
+            });
+        let mut reference = Renderer::new(original.clone());
+        let mut current = Renderer::new(original.clone());
+        reference.play();
+        current.play();
+        for _ in 0..rate / 20 {
+            assert_eq!(current.next_sample(), reference.next_sample());
+        }
+        for db in [-12.0, SILENT_GAIN_DB, 0.0] {
+            let mut changed = original.clone();
+            changed.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0]
+                .oscillator_level_db = db;
+            let mut next = Renderer::new(changed.clone());
+            assert!(next.can_inherit_without_preroll(&current));
+            let gain = if db == SILENT_GAIN_DB {
+                0.0
+            } else {
+                linear_gain(db)
+            };
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            next.inherit(&mut current);
+            for n in 0..(rate / 200 + 512) {
+                let actual = next.next_sample();
+                let expected = reference.next_sample();
+                if n >= rate / 200 {
+                    for ch in 0..2 {
+                        assert!(
+                            (actual[ch] - expected[ch] * gain).abs() < 0.000002,
+                            "{rate}, {db}, {n}: {actual:?} vs {expected:?}"
+                        );
+                    }
+                    if gain == 0.0 {
+                        assert_eq!(actual, [0.0; 2]);
+                    }
+                }
+            }
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            current = next;
+            let mut offline = vec![[0.0; 2]; 2048];
+            Renderer::new(changed).render_offline(&mut offline);
+            let mut unscaled = vec![[0.0; 2]; 2048];
+            Renderer::new(original.clone()).render_offline(&mut unscaled);
+            for (a, b) in offline.iter().zip(unscaled) {
+                for ch in 0..2 {
+                    assert!((a[ch] - b[ch] * gain).abs() < 0.000002);
+                }
+            }
+        }
+    }
+}

@@ -1081,6 +1081,7 @@ impl DawUi {
             oscillator_modulations: routes,
             oscillator_modulation_open: modulation_open,
             oscillator_enabled: enabled,
+            oscillator_level_db: level,
             oscillator_collapsed: collapsed,
             ..
         } = layer;
@@ -1095,6 +1096,8 @@ impl DawUi {
             self.midi_editor.oscillator_bounds.clear();
             self.midi_editor.oscillator_strip_bounds.clear();
             self.midi_editor.oscillator_power_bounds.clear();
+            self.midi_editor.oscillator_level_bounds = Rect::NOTHING;
+            self.midi_editor.oscillator_output_bounds = Rect::NOTHING;
             self.midi_editor.add_oscillator_bounds = Rect::NOTHING;
             self.midi_editor.add_oscillator_strip_bounds = Rect::NOTHING;
         }
@@ -1262,8 +1265,37 @@ impl DawUi {
                         self.midi_editor.add_oscillator_strip_bounds = add_strip.response.rect;
                     }
                     add = add_strip.inner.clicked();
+                    let mut level_rect = Rect::NOTHING;
+                    let output_strip = ui.scope_builder(egui::UiBuilder::new()
+                        .id_salt(("oscillator-output", track, layer_id))
+                        .sense(Sense::click_and_drag()), |ui| {
+                        egui::Frame::new().inner_margin(strip_margin).show(ui, |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                ui.set_width(strip_width);
+                                ui.set_min_height(strip_height);
+                                if !compact {
+                                    for row in 0..3 {
+                                        knobs::row(ui, level, knobs::CHOICE_SIZE, |ui, value| {
+                                            if row == 0 {
+                                                let response = knobs::gain_with_markers_named(ui, value, "Oscillator level");
+                                                level_rect = response.rect;
+                                                response
+                                            } else { ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), Sense::hover()) }
+                                        });
+                                    }
+                                }
+                                rows::centered(ui, if compact { strip_height } else { icons::COMPACT_BUTTON_SIZE }, |ui| rows::unit_label(ui, "Out"));
+                            });
+                        });
+                    });
+                    panels::unit_divider(ui, output_strip.response.rect.left(), output_strip.response.rect.y_range().into());
+                    self.start_installed_component_drag(ui, &output_strip.response, &[level_rect], track, layer_id, daw_core::InstrumentComponent::Oscillators);
+                    #[cfg(test)] {
+                        self.midi_editor.oscillator_level_bounds = level_rect;
+                        self.midi_editor.oscillator_output_bounds = output_strip.response.rect;
+                    }
                     if open {
-                        panels::unit_divider(ui, add_strip.response.rect.right(), add_strip.response.rect.y_range().into());
+                        panels::unit_divider(ui, output_strip.response.rect.right(), output_strip.response.rect.y_range().into());
                         crate::modulation_panel::targeted_body(ui, routes, sources, &targets, daw_unit_core::ModulationScope::PerNote, compact);
                     }
                 });

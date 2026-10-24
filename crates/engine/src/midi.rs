@@ -28,6 +28,7 @@ struct LayerVoice {
     transition_from: [f32; 2],
     output: [f32; 2],
     sources: Vec<OscillatorVoice>,
+    oscillator_level: daw_unit_core::ModulationRamp,
     sampler: Option<daw_sampler::Sampler>,
     sampler_routes: Vec<Route>,
     one_shot: bool,
@@ -83,6 +84,7 @@ impl Voice {
             for layer in &mut self.layers {
                 layer.gain = layer.gain_target;
                 layer.gain_remaining = 0;
+                layer.oscillator_level.reset();
                 layer.amplitude.reset();
             }
         }
@@ -314,7 +316,8 @@ impl LayerVoice {
                 s.source.set_base_gain(s.gain);
                 process_modulation(&mut s.source, &mut s.routes, 0.0, local, shared, context)
             })
-            .sum::<f32>();
+            .sum::<f32>()
+            * self.oscillator_level.next_value();
         let mut stereo = self.sampler.as_mut().map_or([sources; 2], |s| {
             process_modulation(
                 s,
@@ -780,6 +783,9 @@ impl MidiTrackRuntime {
                                 .sampler
                                 .as_ref()
                                 .is_some_and(|s| s.trigger == daw_core::SamplerTrigger::OneShot),
+                            oscillator_level: daw_unit_core::ModulationRamp::new(linear_gain(
+                                layer.oscillator_level_db,
+                            )),
                             sources: layer
                                 .oscillators
                                 .iter()
@@ -1084,6 +1090,12 @@ impl MidiTrackRuntime {
                     &mut next_layer.sampler_routes,
                 );
                 layer.amplitude.retarget(&next_layer.amplitude);
+                layer
+                    .oscillator_level
+                    .set(next_layer.oscillator_level.target(), fade_frames);
+                if idle {
+                    layer.oscillator_level.reset();
+                }
                 // Trigger edits apply to new notes; held/released notes keep their gate behavior.
                 layer.one_shot_target = next_layer.one_shot_target;
                 if let (Some(s), Some(next)) = (&mut layer.sampler, &next_layer.sampler) {

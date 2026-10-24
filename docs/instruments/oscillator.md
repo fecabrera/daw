@@ -8,9 +8,12 @@ Oscillator generates tones for MIDI notes. Add it from Sources in the Instrument
 | --- | --- | --- |
 | Waveform | Sine, Saw, Square, Triangle | Sine |
 | Pitch | −48 to +48 semitones | 0 |
-| Gain | Silence through +12 dB | −12 dB |
+| Gain (each source) | Silence through +12 dB | −12 dB |
+| Level (whole unit) | Silence through +12 dB | 0 dB |
 
-Use Plus inside the unit to add another oscillator. Each source has independent controls and power. Drag unused strip space to reorder sources. Right-click a source or its knob to remove it. Removing the last source leaves the layer silent.
+The last column, **Out**, contains Level. It controls the combined output of all oscillator sources before Amplitude and layer effects. Sources still sum independently without automatic normalization; adjust Level to balance their combined volume. Each layer saves its own Level.
+
+Use Plus inside the unit, before Out, to add another oscillator. Each source has independent controls and power. Drag unused strip space to reorder sources. Right-click a source or its knob to remove it. Removing the last source leaves the layer silent.
 
 Drag knobs to adjust them, hold Shift for finer movement, or use arrow keys. Double-click restores a default. Waveform diagrams show the available shapes.
 

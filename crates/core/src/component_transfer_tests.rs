@@ -776,3 +776,28 @@ fn envelope_input_routes_follow_copies_and_provider_moves() {
         }
     }
 }
+
+#[test]
+fn oscillator_unit_level_follows_moves_and_copies_into_empty_units() {
+    for copy in [false, true] {
+        let (mut p, track, from, to) = fixture();
+        let i = p.tracks[0].instrument.as_mut().unwrap();
+        i.layers[0].oscillator_level_db = -9.0;
+        i.layers[1].oscillators.clear();
+        p.edit(Edit::TransferInstrumentComponent {
+            track_id: track,
+            source: from,
+            destination: to,
+            component: Oscillators,
+            duplicate: copy,
+            destination_index: None,
+        })
+        .unwrap();
+        let i = p.tracks[0].instrument.as_ref().unwrap();
+        assert_eq!(i.layers[1].oscillator_level_db, -9.0);
+        if copy {
+            assert_eq!(i.layers[0].oscillator_level_db, -9.0);
+        }
+        p.validate().unwrap();
+    }
+}
