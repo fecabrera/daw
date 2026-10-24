@@ -12,6 +12,7 @@ pub(super) struct InstrumentUi {
     pub(super) selected_layers: HashSet<Id>,
     pub(super) track_effects_target: bool,
     pub(super) effects_layer: Option<Id>,
+    pub(super) inline_effect_removals: Vec<(Id, Id)>,
     pub(super) pending_effect_transfer: Option<(daw_core::EffectTransfer, Id, Rect, egui::Id)>,
     pub(super) effect_slots: Vec<(Id, Id, Rect)>,
     pub(super) selected_components: HashSet<(Id, daw_core::InstrumentComponent)>,
@@ -132,6 +133,7 @@ impl DawUi {
         self.instrument_ui.samplers.clear();
         self.instrument_ui.component_slots.clear();
         self.instrument_ui.effect_slots.clear();
+        self.instrument_ui.inline_effect_removals.clear();
         self.instrument_ui.component_viewports.clear();
         #[cfg(test)]
         self.instrument_ui.component_bounds.clear();
@@ -468,7 +470,7 @@ impl DawUi {
                                             Rect::NOTHING,
                                             [Rect::NOTHING; 4],
                                         );
-                                        let mut effects_left = None;
+
                                         let components = egui::ScrollArea::horizontal()
                                             .id_salt("layer-units")
                                             .auto_shrink([false, true])
@@ -487,8 +489,12 @@ impl DawUi {
                                                             }
                                                         }
                                                         let mut previous: Option<Rect> = None;
-                                                        for component in layer.visible_components() {
+                                                        for component in layer.visible_units() {
                                                             let rect = ui.push_id(component, |ui| match component {
+                                                                daw_core::InstrumentComponent::Effect(id) => {
+                                                                    let effect=layer.effects.iter_mut().find(|e|e.id==id).unwrap();
+                                                                    Some(self.inline_layer_effect(ui,track.id,layer.id,effect,(height,compact),&modulation_sources))
+                                                                }
                                                                 daw_core::InstrumentComponent::Sampler => Some(self.sampler_unit(ui, track.id, layer, &modulation_sources, height, compact)),
                                                                 daw_core::InstrumentComponent::Oscillators => {
                                                                     let (rect, header, power) = self.oscillator_unit(ui, track.id, layer, height, compact, &modulation_sources);
@@ -550,7 +556,7 @@ impl DawUi {
                                                                 daw_core::InstrumentComponent::Oscillator(_) => None,
                                                             }).inner;
                                                             if let Some(rect) = rect {
-                                                                self.instrument_ui.component_slots.push((layer.id, component, rect));
+                                                                if !matches!(component,daw_core::InstrumentComponent::Effect(_)) {self.instrument_ui.component_slots.push((layer.id, component, rect));}
                                                                 if let Some(previous) = previous {
                                                                     if matches!(component, daw_core::InstrumentComponent::Envelope(_)) {
                                                                         ui.painter().vline(previous.right() - 0.5, previous.top()..=rect.bottom(), Stroke::new(1.0, theme::palette(ui.ctx()).border));
@@ -561,17 +567,13 @@ impl DawUi {
                                                                 previous = Some(rect);
                                                             }
                                                         }
-                                                        let start = ui.cursor().min.x;
-                                                        if !layer.effects.is_empty() || self.instrument_ui.effects_layer == Some(layer.id) || self.effects_drag.is_some() {
-                                                            effects_left = Some(start);
-                                                        }
-                                                        self.inline_layer_effects(ui, track.id, crate::layer_effects::InlineEffects { id: layer.id, effects: &mut layer.effects }, height, compact, &modulation_sources);
+                                                        if self.effects_drag.is_some() {ui.allocate_exact_size(Vec2::new(midi_editor::UNIT_STRIP_WIDTH,height),Sense::hover());}
+
                                                     });
                                             });
                                         let viewport = Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect());
-                                        self.finish_inline_layer_effects(ui, track.id, crate::layer_effects::InlineEffects { id: layer.id, effects: &mut layer.effects }, viewport, effects_left);
-                                        let component_right = effects_left.unwrap_or(viewport.right()).clamp(viewport.left(), viewport.right());
-                                        self.instrument_ui.component_viewports.push((layer.id, Rect::from_min_size(components.inner_rect.min, Vec2::new((component_right - components.inner_rect.left()).max(0.0), height)).intersect(components.inner_rect).intersect(ui.clip_rect())));
+                                        self.finish_inline_layer_effects(ui, track.id, crate::layer_effects::InlineEffects { id: layer.id, effects: &mut layer.effects }, viewport);
+                                        self.instrument_ui.component_viewports.push((layer.id,viewport));
                                         #[cfg(test)]
                                         {
                                             self.midi_editor.envelope_panel_bounds = envelope_rect;

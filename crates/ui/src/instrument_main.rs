@@ -157,7 +157,7 @@ impl DawUi {
                     bounds.collapse = collapse.rect;
                     bounds.mix = mixing.bounds;
                 }
-                let mut effects_left = None;
+
                 let components = egui::ScrollArea::horizontal()
                     .id_salt("main-units")
                     .auto_shrink([false, true])
@@ -171,8 +171,12 @@ impl DawUi {
                             if self.effects_drag.as_ref().is_some_and(|d| d.active) {
                                 drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range()));
                             }
-                            for component in bus.visible_components() {
+                            for component in bus.visible_units() {
                                 let rect = ui.push_id(component, |ui| match component {
+                                    daw_core::InstrumentComponent::Effect(id) => {
+                                        let effect=bus.effects.iter_mut().find(|e|e.id==id).unwrap();
+                                        Some(self.inline_layer_effect(ui,track,bus.id,effect,(height,compact),sources))
+                                    }
                                     daw_core::InstrumentComponent::Envelope(id) => {
                                         let index = bus.envelopes.iter().position(|e| e.id == id).unwrap();
                                         {
@@ -210,21 +214,18 @@ impl DawUi {
                                     _ => None,
                                 }).inner;
                                 if let Some(rect) = rect {
-                                    self.instrument_ui.component_slots.push((bus.id, component, rect));
+                                    if !matches!(component,daw_core::InstrumentComponent::Effect(_)) {self.instrument_ui.component_slots.push((bus.id, component, rect));}
                                     if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }
                                     previous = Some(rect);
                                 }
                             }
-                            if !bus.effects.is_empty() || self.instrument_ui.effects_layer == Some(bus.id) || self.effects_drag.is_some() {
-                                effects_left = Some(ui.cursor().min.x);
-                            }
-                            self.inline_layer_effects(ui, track, crate::layer_effects::InlineEffects { id: bus.id, effects: &mut bus.effects }, height, compact, sources);
+                            if self.effects_drag.is_some() {ui.allocate_exact_size(Vec2::new(crate::midi_editor::UNIT_STRIP_WIDTH,height),Sense::hover());}
+
                         });
                     });
                 let viewport = Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect());
-                self.finish_inline_layer_effects(ui, track, crate::layer_effects::InlineEffects { id: bus.id, effects: &mut bus.effects }, viewport, effects_left);
-                let right = effects_left.unwrap_or(viewport.right()).clamp(viewport.left(), viewport.right());
-                self.instrument_ui.component_viewports.push((bus.id, Rect::from_min_max(viewport.min, Pos2::new(right, viewport.bottom()))));
+                self.finish_inline_layer_effects(ui, track, crate::layer_effects::InlineEffects { id: bus.id, effects: &mut bus.effects }, viewport);
+                self.instrument_ui.component_viewports.push((bus.id,viewport));
             });
         });
         panels::ControlPanel::pinned_row_divider(ui, rect);

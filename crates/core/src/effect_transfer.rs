@@ -69,6 +69,99 @@ impl Project {
             }
         }
     }
+    /// Add a saved mixed-unit position to an already validated effect transaction.
+    /// `before` refers to a surviving destination unit; sources remain pinned first.
+    pub fn position_inline_effects(
+        &self,
+        mut transfer: EffectTransfer,
+        destination: EffectChainTarget,
+        before: Option<InstrumentComponent>,
+    ) -> Result<EffectTransfer> {
+        let EffectChainTarget::Layer { track, layer } = destination else {
+            return Ok(transfer);
+        };
+        let original = self
+            .tracks
+            .iter()
+            .find(|t| t.id == track)
+            .and_then(|t| t.instrument.as_ref())
+            .ok_or_else(|| Error("Instrument not found".into()))?;
+        let (mut order, visible) = if layer == original.main.id {
+            (
+                original.main.retained_units(),
+                original.main.visible_units(),
+            )
+        } else {
+            let l = original
+                .layers
+                .iter()
+                .find(|l| l.id == layer)
+                .ok_or_else(|| Error("Layer not found".into()))?;
+            (l.retained_units(), l.visible_units())
+        };
+        let selected: Vec<_> = transfer
+            .selected
+            .iter()
+            .copied()
+            .map(InstrumentComponent::Effect)
+            .collect();
+        order.retain(|u| !selected.contains(u));
+        let at = match before {
+            Some(unit) if !unit.is_source() => order
+                .iter()
+                .position(|u| *u == unit)
+                .ok_or_else(|| Error("Invalid inline effect anchor".into()))?,
+            Some(_) => return Err(Error("Audio sources must remain first".into())),
+            None => order.len(),
+        };
+        order.splice(at..at, selected);
+        let mut next = self.clone();
+        next.edit(transfer.edit.clone())?;
+        let instrument = next
+            .tracks
+            .iter_mut()
+            .find(|t| t.id == track)
+            .and_then(|t| t.instrument.as_mut())
+            .ok_or_else(|| Error("Inline effect destination was removed".into()))?;
+        if layer == instrument.main.id {
+            order.retain(|u| !matches!(u,InstrumentComponent::Effect(id) if !instrument.main.effects.iter().any(|e|e.id==*id)));
+            let desired: Vec<_> = order
+                .iter()
+                .copied()
+                .filter(|u| {
+                    matches!(u, InstrumentComponent::Effect(_)) || instrument.main.has_component(*u)
+                })
+                .collect();
+            if desired != visible {
+                instrument.main.component_order = order;
+            }
+        } else {
+            let l = instrument
+                .layers
+                .iter_mut()
+                .find(|l| l.id == layer)
+                .unwrap();
+            order.retain(|u| !matches!(u,InstrumentComponent::Effect(id) if !l.effects.iter().any(|e|e.id==*id)));
+            let desired: Vec<_> = order
+                .iter()
+                .copied()
+                .filter(|u| matches!(u, InstrumentComponent::Effect(_)) || l.has_component(*u))
+                .collect();
+            if desired != visible {
+                l.component_order = order;
+            }
+        }
+        let instrument = instrument.clone();
+        next.validate()?;
+        transfer.edit = Edit::Batch(vec![
+            transfer.edit,
+            Edit::SetInstrument {
+                track_id: track,
+                instrument: Some(instrument),
+            },
+        ]);
+        Ok(transfer)
+    }
     /// Read-only transfer eligibility. Does not clone the project or create copy IDs.
     pub fn can_transfer_effects(
         &self,
@@ -347,5 +440,152 @@ mod tests {
                 .is_err()
         );
         assert_eq!(serde_json::to_value(&p).unwrap(), before);
+    }
+}
+
+#[cfg(test)]
+mod inline_order_tests {
+    use super::*;
+    use InstrumentComponent::*;
+    #[test]
+    fn effects_and_controls_interleave_but_sources_stay_first_and_copies_retarget_layout() {
+        let mut p = Project::default();
+        let track = p.add_midi_track().unwrap();
+        let i = p.tracks[0].instrument.as_mut().unwrap();
+        let l = &mut i.layers[0];
+        l.oscillators.push(Default::default());
+        l.macro_module.add();
+        l.amplitude.present = true;
+        l.effects = vec![EffectInstance::auto_filter(), EffectInstance::drive()];
+        let owner = l.id;
+        let a = l.effects[0].id;
+        let b = l.effects[1].id;
+        let target = EffectChainTarget::Layer {
+            track,
+            layer: owner,
+        };
+        let transfer = p.transfer_effects(target, target, &[a], 0, false).unwrap();
+        let transfer = p
+            .position_inline_effects(transfer, target, Some(Macros))
+            .unwrap();
+        p.edit(transfer.edit).unwrap();
+        let l = &p.tracks[0].instrument.as_ref().unwrap().layers[0];
+        assert_eq!(
+            l.visible_units(),
+            vec![Oscillators, Effect(a), Macros, Amplitude, Effect(b)]
+        );
+        assert_eq!(
+            l.effects.iter().map(|e| e.id).collect::<Vec<_>>(),
+            vec![a, b]
+        );
+        let saved = serde_json::to_value(&p).unwrap();
+        assert_eq!(serde_json::from_value::<Project>(saved).unwrap(), p);
+        let copy = l.duplicate();
+        assert_eq!(copy.visible_units()[1], Effect(copy.effects[0].id));
+        assert_ne!(copy.effects[0].id, a);
+        assert!(copy.valid());
+        let transfer = p.transfer_effects(target, target, &[b], 0, false).unwrap();
+        assert!(
+            p.position_inline_effects(transfer, target, Some(Oscillators))
+                .is_err()
+        );
+        let transfer = p.transfer_effects(target, target, &[b], 1, false).unwrap();
+        let transfer = p
+            .position_inline_effects(transfer, target, Some(Macros))
+            .unwrap();
+        p.edit(transfer.edit).unwrap();
+        let l = &p.tracks[0].instrument.as_ref().unwrap().layers[0];
+        assert_eq!(
+            l.visible_units(),
+            vec![Oscillators, Effect(a), Effect(b), Macros, Amplitude]
+        );
+        let mut instrument = p.tracks[0].instrument.clone().unwrap();
+        assert_eq!(instrument.layers[0].move_component(Macros, 1), Some(true));
+        p.edit(Edit::SetInstrument {
+            track_id: track,
+            instrument: Some(instrument),
+        })
+        .unwrap();
+        assert_eq!(
+            p.tracks[0].instrument.as_ref().unwrap().layers[0].visible_units(),
+            vec![Oscillators, Macros, Effect(a), Effect(b), Amplitude]
+        );
+        let i = p.tracks[0].instrument.as_mut().unwrap();
+        i.main.macro_module.add();
+        let main = EffectChainTarget::Layer {
+            track,
+            layer: i.main.id,
+        };
+        let transfer = p.transfer_effects(target, main, &[a], 0, true).unwrap();
+        let copied = transfer.selected[0];
+        let transfer = p
+            .position_inline_effects(transfer, main, Some(Macros))
+            .unwrap();
+        p.edit(transfer.edit).unwrap();
+        assert_eq!(
+            p.tracks[0]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .main
+                .visible_units(),
+            vec![Effect(copied), Macros]
+        );
+        let before = p.clone();
+        p.edit(Edit::SetLayerEffects {
+            track_id: track,
+            layer_id: owner,
+            effects: vec![],
+            compact: false,
+        })
+        .unwrap();
+        assert!(
+            !p.tracks[0].instrument.as_ref().unwrap().layers[0]
+                .component_order
+                .iter()
+                .any(|u| matches!(u, Effect(_)))
+        );
+        p = before;
+        p.edit(Edit::DuplicateTrack {
+            track_id: track,
+            new_track_id: Id::new_v4(),
+        })
+        .unwrap();
+        p.validate().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod inline_invalid_order_tests {
+    use super::*;
+    #[test]
+    fn duplicate_saved_effect_references_reject_the_batch_without_changing_the_project() {
+        let mut p = Project::default();
+        let track = p.add_midi_track().unwrap();
+        p.tracks[0].instrument.as_mut().unwrap().layers[0]
+            .effects
+            .push(EffectInstance::auto_filter());
+        let before = p.clone();
+        let mut instrument = p.tracks[0].instrument.clone().unwrap();
+        let l = &mut instrument.layers[0];
+        let owner = l.id;
+        let effects = l.effects.clone();
+        l.component_order = vec![InstrumentComponent::Effect(effects[0].id); 2];
+        assert!(
+            p.edit(Edit::Batch(vec![
+                Edit::SetInstrument {
+                    track_id: track,
+                    instrument: Some(instrument)
+                },
+                Edit::SetLayerEffects {
+                    track_id: track,
+                    layer_id: owner,
+                    effects,
+                    compact: false
+                }
+            ]))
+            .is_err()
+        );
+        assert_eq!(p, before);
     }
 }

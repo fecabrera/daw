@@ -76,6 +76,13 @@ impl InstrumentLayerSettings {
             .iter()
             .map(crate::EffectInstance::duplicate)
             .collect();
+        for unit in &mut copy.component_order {
+            if let InstrumentComponent::Effect(id) = unit
+                && let Some(index) = self.effects.iter().position(|e| e.id == *id)
+            {
+                *id = copy.effects[index].id;
+            }
+        }
         for route in routes(&mut copy, false) {
             route.id = Uuid::new_v4();
         }

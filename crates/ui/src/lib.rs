@@ -2164,6 +2164,7 @@ impl DawUi {
                     },
                 );
             });
+        self.cancel_released_effect_drag(ui);
         strip_reorder::end_frame(&ctx);
         self.strip_dragging = strip_reorder::dragging(&ctx);
         if self.sync_needed {

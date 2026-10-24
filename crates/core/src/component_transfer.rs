@@ -68,6 +68,9 @@ impl Project {
         }
         let mut placed = component;
         match component {
+            InstrumentComponent::Effect(_) => {
+                return Err(Error("Effects use the effect-chain transfer API".into()));
+            }
             InstrumentComponent::Sampler => {
                 let from = instrument
                     .layers
@@ -230,6 +233,7 @@ pub(super) fn eligible(
         return false;
     }
     match c {
+        InstrumentComponent::Effect(_) => false,
         InstrumentComponent::Sampler => {
             source.is_some_and(|l| l.sampler.is_some())
                 && destination.is_some_and(|l| l.sampler.is_none() && l.oscillators.is_empty())

@@ -313,6 +313,117 @@ impl DawUi {
         }
     }
 
+    /// Inline effect insertion shares the complete row geometry with component moves.
+    pub(super) fn finish_inline_effect_drag(
+        &mut self,
+        ui: &egui::Ui,
+        destination: EffectTarget,
+        slots: &[(daw_core::InstrumentComponent, Rect)],
+        viewport: Rect,
+        allowed: bool,
+    ) -> Option<daw_core::EffectTransfer> {
+        if !allowed || ui.input(|i| !i.focused || i.key_pressed(egui::Key::Escape)) {
+            self.effects_drag = None;
+            return None;
+        }
+        if !self.activate_effect_drag(ui) {
+            return None;
+        }
+        let pointer = ui
+            .input(|i| i.pointer.latest_pos())
+            .filter(|p| viewport.contains(*p))?;
+        let drag = self.effects_drag.as_ref()?;
+        let duplicate = ui.input(|i| clip_copy_modifier(i.modifiers));
+        let moving: Vec<_> = match &drag.source {
+            DragSource::Chain { units, .. } if drag.target == destination && !duplicate => units
+                .iter()
+                .copied()
+                .map(daw_core::InstrumentComponent::Effect)
+                .collect(),
+            _ => Vec::new(),
+        };
+        let slot = drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r))
+            .max(slots.iter().take_while(|(u, _)| u.is_source()).count());
+        let before = slots[slot..]
+            .iter()
+            .map(|(u, _)| *u)
+            .find(|u| !moving.contains(u));
+        let index = slots[..slot]
+            .iter()
+            .filter(|(u, _)| matches!(u, daw_core::InstrumentComponent::Effect(_)))
+            .count();
+        let valid = match &drag.source {
+            DragSource::Chain { units, .. } => {
+                self.session
+                    .project
+                    .can_transfer_effects(drag.target, destination, units)
+            }
+            _ => true,
+        };
+        ui.ctx().set_cursor_icon(if !valid {
+            egui::CursorIcon::NotAllowed
+        } else if duplicate && !drag.is_library() {
+            egui::CursorIcon::Copy
+        } else {
+            egui::CursorIcon::Grabbing
+        });
+        let changed = drag.target != destination
+            || duplicate
+            || drag.is_library()
+            || drag::group_insertion(
+                &slots.iter().map(|(u, _)| *u).collect::<Vec<_>>(),
+                &moving,
+                slot,
+            )
+            .1;
+        if valid && changed {
+            drag::insertion_line(
+                ui,
+                &slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
+                slot,
+                viewport,
+            );
+        }
+        if !ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+            return None;
+        }
+        let drag = self.effects_drag.take()?;
+        drag::restore_focus(ui.ctx(), drag.focus);
+        if !valid || !changed {
+            return None;
+        }
+        let transfer = match drag.source {
+            DragSource::Chain { units, .. } => self.session.project.transfer_effects(
+                drag.target,
+                destination,
+                &units,
+                index,
+                duplicate,
+            ),
+            DragSource::Library { types, .. } => {
+                let mut effects = self.effect_chain(destination)?.0.to_vec();
+                let added: Vec<_> = effects_catalog::instantiate(&types).collect();
+                let selected = added.iter().map(|e| e.id).collect();
+                effects.splice(index..index, added);
+                Ok(daw_core::EffectTransfer {
+                    edit: destination.edit(effects, self.effect_chain(destination)?.1),
+                    selected,
+                })
+            }
+        }
+        .and_then(|transfer| {
+            self.session
+                .project
+                .position_inline_effects(transfer, destination, before)
+        });
+        match transfer {
+            Ok(transfer) => Some(transfer),
+            Err(error) => {
+                self.fail(error);
+                None
+            }
+        }
+    }
     pub(super) fn finish_effect_drag(
         &mut self,
         ui: &egui::Ui,
@@ -377,7 +488,7 @@ impl DawUi {
             if let Some((_, index, true)) = target {
                 match drag.source {
                     DragSource::Library { types, .. } => {
-                        let added = effects_catalog::instantiate(&types);
+                        let added: Vec<_> = effects_catalog::instantiate(&types).collect();
                         effects.splice(index..index, added);
                     }
                     DragSource::Chain { units, .. } if duplicate => {
@@ -405,6 +516,13 @@ impl DawUi {
             }
         } else if !ui.input(|input| input.pointer.primary_down()) {
             self.effects_drag = None;
+        }
+    }
+    pub(super) fn cancel_released_effect_drag(&mut self, ui: &egui::Ui) {
+        if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
+            && let Some(drag) = self.effects_drag.take()
+        {
+            drag::restore_focus(ui.ctx(), drag.focus);
         }
     }
     pub(super) fn scroll_effect_drag(&self, ui: &egui::Ui) {

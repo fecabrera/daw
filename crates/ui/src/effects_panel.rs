@@ -705,7 +705,14 @@ impl DawUi {
         } = controls;
         let mut slots = Vec::with_capacity(effects.len());
         let mut remove = None;
-        let order: Vec<_> = effects.iter().map(|e| e.id).collect();
+        let order: Vec<_> = if let Some(target @ EffectTarget::Layer { .. }) = target {
+            self.effect_chain(target).map_or_else(
+                || effects.iter().map(|e| e.id).collect(),
+                |(effects, _)| effects.iter().map(|e| e.id).collect(),
+            )
+        } else {
+            effects.iter().map(|e| e.id).collect()
+        };
         ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing.x = -1.0;
             for effect in effects.iter_mut() {

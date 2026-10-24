@@ -4539,3 +4539,18 @@ Completed automated checks on macOS:
 - CLI build and smoke check passed. The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
 
 Logs: `work/auto-filter-lfo-mod-{portable,focused,clippy,workspace,cli-build,cli-smoke,package}.log`. Native UI/device listening and Windows/Linux checks were not run. Phase offsets retain the control's bounded −180°..+180° behavior; they do not change the transport clock.
+
+## Mixed instrument component/effect order — 2026-10-24
+
+Only audio sources remain pinned first. Regular layers and Output can place inline effects before or between Macro, LFO, Envelope and Amplitude controls. The existing saved component order includes effect references, while the serial effect vector remains the processing order. Legacy empty ordering retains the previous layout.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- Locked, offline workspace run passed: 1,257 tests passed and three configured tests were ignored. The final no-op and malformed-batch guards were also covered by the affected suites below.
+- Final affected checks passed: 110 core tests, 46 unit-core tests and all 633 UI tests. Core coverage includes mixed placement, the source boundary, component moves across effects, project round trips, layer/track copied effect references, cross-owner effect copies, removal of stale positions, and transactional rejection of duplicate saved effect references.
+- All 633 final UI tests passed. Coverage includes Auto-filter before Macro in regular layers and Output, inverse component moves, Undo/Redo, save/reopen, Escape and outside-release cancellation, unchanged revision on no-op drops, plus existing group moves/copies and separate component/effect focus.
+- Renderer tests preserve exact offline output and live phase during compatible presentation changes at all six rates, with callback allocation checks.
+- CLI build and smoke check passed. The macOS debug app was rebuilt through the existing packaging script.
+
+Logs: `work/inline-order-{core,mixed,verified,clippy-verified,workspace,cli-build,cli-smoke,package}.log`. Native UI/device checks and Windows/Linux tests were not run. Control placement remains presentation-only; Amplitude and modulation timing keep their existing processing stages.

@@ -49,86 +49,82 @@ impl DawUi {
             track_effects.extend(added);
         }
     }
-    pub(super) fn inline_layer_effects(
+    pub(super) fn inline_layer_effect(
         &mut self,
         ui: &mut egui::Ui,
         track: Id,
-        layer: InlineEffects<'_>,
-        height: f32,
-        compact: bool,
+        owner: Id,
+        effect: &mut daw_core::EffectInstance,
+        dimensions: (f32, bool),
         sources: &[crate::modulation_panel::Source],
-    ) {
+    ) -> Rect {
+        let (height, compact) = dimensions;
         let allowed = self.effects_editing_enabled(ui) && self.component_drag.is_none();
-        let sources: Vec<_> = sources
-            .iter()
-            .filter(|s| daw_unit_core::ModulationScope::Shared.accepts(s.scope))
-            .cloned()
-            .collect();
         let pane = Rect::from_min_max(
             ui.cursor().min,
             Pos2::new(ui.clip_rect().right(), ui.cursor().min.y + height),
         )
         .intersect(ui.clip_rect());
-        if !layer.effects.is_empty()
-            && ui.input(|i| {
-                i.pointer.button_pressed(egui::PointerButton::Primary)
-                    && i.pointer.press_origin().is_some_and(|p| pane.contains(p))
-            })
-        {
-            if self.instrument_ui.effects_layer != Some(layer.id) {
+        if ui.input(|i| {
+            i.pointer.button_pressed(egui::PointerButton::Primary)
+                && i.pointer.press_origin().is_some_and(|p| pane.contains(p))
+        }) {
+            if self.instrument_ui.effects_layer != Some(owner) {
                 self.selected_effects.clear();
             }
-            self.instrument_ui.effects_layer = Some(layer.id);
+            self.instrument_ui.effects_layer = Some(owner);
             self.effects_lane_focus.set(ui, pane, true);
         }
-        if !layer.effects.is_empty() {
-            let (slots, remove) = self.effect_units(
-                ui,
-                layer.effects,
-                crate::effects_panel::UnitLane {
-                    compact,
-                    height,
-                    target: Some(EffectTarget::Layer {
-                        track,
-                        layer: layer.id,
-                    }),
-                    allowed,
-                    sources: &sources,
-                },
-            );
-            // Inline shells share their left edge. Paint separators after all fills,
-            // including the boundary from the final component to the first effect.
-            let mut previous = self
-                .instrument_ui
-                .component_slots
-                .iter()
-                .rev()
-                .find(|(owner, _, _)| *owner == layer.id)
-                .map(|(_, _, rect)| *rect);
-            for (_, rect) in &slots {
-                if let Some(previous) = previous {
-                    panels::unit_divider(
-                        ui,
-                        previous.right() - 0.5,
-                        previous.top()..=rect.bottom(),
-                    );
-                }
-                previous = Some(*rect);
-            }
+        let sources: Vec<_> = sources
+            .iter()
+            .filter(|s| daw_unit_core::ModulationScope::Shared.accepts(s.scope))
+            .cloned()
+            .collect();
+        let (slots, remove) = self.effect_units(
+            ui,
+            std::slice::from_mut(effect),
+            crate::effects_panel::UnitLane {
+                compact,
+                height,
+                target: Some(EffectTarget::Layer {
+                    track,
+                    layer: owner,
+                }),
+                allowed,
+                sources: &sources,
+            },
+        );
+        let rect = slots[0].1;
+        self.instrument_ui
+            .effect_slots
+            .extend(slots.into_iter().map(|(id, r)| (owner, id, r)));
+        if remove.is_some() {
             self.instrument_ui
-                .effect_slots
-                .extend(slots.into_iter().map(|(id, r)| (layer.id, id, r)));
-            if let Some(id) = remove {
-                layer.effects.retain(|e| e.id != id);
-            }
+                .inline_effect_removals
+                .push((owner, effect.id));
         }
-        // Keep an empty insertion destination scrollable after the final component.
-        if self.effects_drag.is_some() {
-            ui.allocate_exact_size(
-                Vec2::new(crate::midi_editor::UNIT_STRIP_WIDTH, height),
-                Sense::hover(),
-            );
-        }
+        rect
+    }
+    pub(super) fn inline_unit_slots(
+        &self,
+        owner: Id,
+    ) -> Vec<(daw_core::InstrumentComponent, Rect)> {
+        let mut slots: Vec<_> = self
+            .instrument_ui
+            .component_slots
+            .iter()
+            .filter(|(id, _, _)| *id == owner)
+            .map(|(_, u, r)| (*u, *r))
+            .chain(
+                self.instrument_ui
+                    .effect_slots
+                    .iter()
+                    .filter(|(id, _, _)| *id == owner)
+                    .map(|(_, id, r)| (daw_core::InstrumentComponent::Effect(*id), *r)),
+            )
+            .collect();
+        slots.sort_by(|a, b| a.1.left().total_cmp(&b.1.left()));
+        slots
     }
     pub(super) fn finish_inline_layer_effects(
         &mut self,
@@ -136,7 +132,6 @@ impl DawUi {
         track: Id,
         layer: InlineEffects<'_>,
         viewport: Rect,
-        left: Option<f32>,
     ) {
         let allowed = self.effects_editing_enabled(ui) && self.component_drag.is_none();
         let target = EffectTarget::Layer {
@@ -150,16 +145,30 @@ impl DawUi {
             .filter(|(owner, _, _)| *owner == layer.id)
             .map(|(_, id, r)| (*id, *r))
             .collect();
+        let source_right = self
+            .instrument_ui
+            .component_slots
+            .iter()
+            .find(|(id, u, _)| *id == layer.id && u.is_source())
+            .map_or(viewport.left(), |(_, _, r)| r.right());
         let effects_bounds = Rect::from_min_max(
-            Pos2::new(
-                left.unwrap_or(viewport.right())
-                    .clamp(viewport.left(), viewport.right()),
-                viewport.top(),
-            ),
+            Pos2::new(source_right.max(viewport.left()), viewport.top()),
             viewport.max,
         );
-        let clicked = crate::unit_selection::clicked(ui, effects_bounds, allowed);
+        let over_component =
+            self.instrument_ui.component_slots.iter().any(|(id, _, r)| {
+                *id == layer.id && ui.rect_contains_pointer(r.intersect(viewport))
+            });
+        if over_component && crate::unit_selection::clicked(ui, viewport, allowed) {
+            self.instrument_ui.effects_layer = None;
+            self.selected_effects.clear();
+        }
+        let clicked = !layer.effects.is_empty()
+            && !over_component
+            && crate::unit_selection::clicked(ui, effects_bounds, allowed);
         if clicked {
+            self.instrument_ui.selected_components.clear();
+            self.instrument_ui.component_focus = Default::default();
             if self.instrument_ui.effects_layer != Some(layer.id) {
                 self.selected_effects.clear();
             }
@@ -187,30 +196,23 @@ impl DawUi {
         if ui.input(|i| i.pointer.latest_pos().is_some_and(|p| viewport.contains(p))) {
             self.retarget_library_effect_drag(target, layer.effects);
         }
+        let units = self.inline_unit_slots(layer.id);
         if let Some(transfer) =
-            self.finish_cross_effect_drag(ui, target, &slots, effects_bounds, allowed)
+            self.finish_inline_effect_drag(ui, target, &units, effects_bounds, allowed)
         {
-            self.effects_lane_focus.set(ui, effects_bounds, true);
             let keyboard = crate::unit_selection::keyboard_focus(
                 ui,
                 effects_bounds,
                 ui.id().with((layer.id, "inline-effect-focus")),
             );
-            keyboard.request_focus();
             self.instrument_ui.pending_effect_transfer =
                 Some((transfer, layer.id, effects_bounds, keyboard.id));
         }
-        if self
-            .effects_drag
-            .as_ref()
-            .is_some_and(|d| d.target == target)
-            && ui.input(|i| {
-                i.pointer
-                    .latest_pos()
-                    .is_some_and(|p| effects_bounds.contains(p))
-            })
-        {
-            self.finish_effect_drag(ui, layer.effects, &slots, effects_bounds, allowed);
-        }
+        layer.effects.retain(|e| {
+            !self
+                .instrument_ui
+                .inline_effect_removals
+                .contains(&(layer.id, e.id))
+        });
     }
 }

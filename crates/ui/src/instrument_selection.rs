@@ -63,6 +63,9 @@ impl DawUi {
         let allowed = available && !dragging && !self.instrument_ui.dragging();
         let mut focused_owner = None;
         for (owner, viewport) in &self.instrument_ui.component_viewports {
+            if self.instrument_ui.effects_layer == Some(*owner) {
+                continue;
+            }
             let keyboard = crate::unit_selection::keyboard_focus(
                 ui,
                 *viewport,

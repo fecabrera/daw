@@ -14,6 +14,8 @@ pub enum InstrumentComponent {
     Lfo(Uuid),
     Amplitude,
     Macros,
+    /// Saved inline effect position; transfers use the effect-chain API.
+    Effect(Uuid),
 }
 impl InstrumentComponent {
     pub fn is_source(self) -> bool {
@@ -39,11 +41,19 @@ fn ordered(
     order
 }
 fn valid(saved: &[InstrumentComponent], inventory: &[InstrumentComponent]) -> bool {
-    saved.iter().enumerate().all(|(index, unit)| {
-        inventory.contains(unit)
-            && !saved[..index].contains(unit)
-            && (!unit.is_source() || index == 0)
-    })
+    // Missing effect positions append, so saved positions must be a chain prefix.
+    let effect_order = saved
+        .iter()
+        .filter(|c| matches!(c, InstrumentComponent::Effect(_)));
+    let chain_order = inventory
+        .iter()
+        .filter(|c| matches!(c, InstrumentComponent::Effect(_)));
+    effect_order.zip(chain_order).all(|(a, b)| a == b)
+        && saved.iter().enumerate().all(|(index, unit)| {
+            inventory.contains(unit)
+                && !saved[..index].contains(unit)
+                && (!unit.is_source() || index == 0)
+        })
 }
 fn move_unit(
     saved: &mut Vec<InstrumentComponent>,
@@ -52,7 +62,8 @@ fn move_unit(
     unit: InstrumentComponent,
     index: usize,
 ) -> Option<bool> {
-    if unit.is_source() || index >= visible.len() {
+    if unit.is_source() || matches!(unit, InstrumentComponent::Effect(_)) || index >= visible.len()
+    {
         return None;
     }
     place_units(saved, inventory, visible, &[unit], index)
@@ -66,10 +77,11 @@ fn place_units(
     index: usize,
 ) -> Option<bool> {
     if units.is_empty()
-        || units
-            .iter()
-            .enumerate()
-            .any(|(n, c)| !visible.contains(c) || units[..n].contains(c))
+        || units.iter().enumerate().any(|(n, c)| {
+            matches!(c, InstrumentComponent::Effect(_))
+                || !visible.contains(c)
+                || units[..n].contains(c)
+        })
     {
         return None;
     }
@@ -117,7 +129,8 @@ fn remove_providers(
             InstrumentComponent::Sampler
             | InstrumentComponent::Oscillators
             | InstrumentComponent::Oscillator(_)
-            | InstrumentComponent::Amplitude => {}
+            | InstrumentComponent::Amplitude
+            | InstrumentComponent::Effect(_) => {}
         }
     }
 }
@@ -133,6 +146,11 @@ impl InstrumentLayerSettings {
             )
             .chain(self.lfos.iter().map(|l| InstrumentComponent::Lfo(l.id)))
             .chain([InstrumentComponent::Macros, InstrumentComponent::Amplitude])
+            .chain(
+                self.effects
+                    .iter()
+                    .map(|e| InstrumentComponent::Effect(e.id)),
+            )
             .collect()
     }
     pub fn has_component(&self, unit: InstrumentComponent) -> bool {
@@ -145,13 +163,27 @@ impl InstrumentLayerSettings {
             InstrumentComponent::Lfo(id) => self.lfos.iter().any(|l| l.id == id && l.present),
             InstrumentComponent::Macros => self.macro_module.present,
             InstrumentComponent::Amplitude => self.amplitude.present,
-            InstrumentComponent::Oscillator(_) => false,
+            InstrumentComponent::Oscillator(_) | InstrumentComponent::Effect(_) => false,
         }
     }
     pub fn visible_components(&self) -> Vec<InstrumentComponent> {
+        self.visible_units()
+            .into_iter()
+            .filter(|c| !matches!(c, InstrumentComponent::Effect(_)))
+            .collect()
+    }
+    /// Shared display order. Effect subsequences follow the serial processing chain.
+    pub fn visible_units(&self) -> Vec<InstrumentComponent> {
+        self.retained_units()
+            .into_iter()
+            .filter(|c| matches!(c, InstrumentComponent::Effect(_)) || self.has_component(*c))
+            .collect()
+    }
+    /// Includes hidden retained controls, but only installed audio sources.
+    pub fn retained_units(&self) -> Vec<InstrumentComponent> {
         ordered(&self.component_order, &self.component_inventory())
             .into_iter()
-            .filter(|c| self.has_component(*c))
+            .filter(|c| !c.is_source() || self.has_component(*c))
             .collect()
     }
     /// Remove installed units together. Retained providers/stages keep their IDs and settings.
@@ -188,8 +220,8 @@ impl InstrumentLayerSettings {
     }
     /// Final visible index; source units cannot move or be preceded by another unit.
     pub fn move_component(&mut self, unit: InstrumentComponent, index: usize) -> Option<bool> {
-        let inventory = self.component_inventory();
-        let visible = self.visible_components();
+        let inventory = self.retained_units();
+        let visible = self.visible_units();
         move_unit(&mut self.component_order, &inventory, &visible, unit, index)
     }
     /// Place a complete group at a final visible index after removing its movable units.
@@ -199,8 +231,8 @@ impl InstrumentLayerSettings {
         units: &[InstrumentComponent],
         index: usize,
     ) -> Option<bool> {
-        let inventory = self.component_inventory();
-        let visible = self.visible_components();
+        let inventory = self.retained_units();
+        let visible = self.visible_units();
         place_units(
             &mut self.component_order,
             &inventory,
@@ -222,6 +254,11 @@ impl InstrumentBusSettings {
             .map(|e| InstrumentComponent::Envelope(e.id))
             .chain(self.lfos.iter().map(|l| InstrumentComponent::Lfo(l.id)))
             .chain([InstrumentComponent::Macros])
+            .chain(
+                self.effects
+                    .iter()
+                    .map(|e| InstrumentComponent::Effect(e.id)),
+            )
             .collect()
     }
     pub fn has_component(&self, unit: InstrumentComponent) -> bool {
@@ -235,9 +272,23 @@ impl InstrumentBusSettings {
         }
     }
     pub fn visible_components(&self) -> Vec<InstrumentComponent> {
+        self.visible_units()
+            .into_iter()
+            .filter(|c| !matches!(c, InstrumentComponent::Effect(_)))
+            .collect()
+    }
+    /// Shared display order. Effect subsequences follow the serial processing chain.
+    pub fn visible_units(&self) -> Vec<InstrumentComponent> {
+        self.retained_units()
+            .into_iter()
+            .filter(|c| matches!(c, InstrumentComponent::Effect(_)) || self.has_component(*c))
+            .collect()
+    }
+    /// Includes hidden retained controls, but only installed audio sources.
+    pub fn retained_units(&self) -> Vec<InstrumentComponent> {
         ordered(&self.component_order, &self.component_inventory())
             .into_iter()
-            .filter(|c| self.has_component(*c))
+            .filter(|c| !c.is_source() || self.has_component(*c))
             .collect()
     }
     /// Main retains removed provider settings and identities for catalog restoration.
@@ -261,8 +312,8 @@ impl InstrumentBusSettings {
         valid(&self.component_order, &self.component_inventory())
     }
     pub fn move_component(&mut self, unit: InstrumentComponent, index: usize) -> Option<bool> {
-        let inventory = self.component_inventory();
-        let visible = self.visible_components();
+        let inventory = self.retained_units();
+        let visible = self.visible_units();
         move_unit(&mut self.component_order, &inventory, &visible, unit, index)
     }
     /// Place a complete group at a final visible index after removing its movable units.
@@ -272,8 +323,8 @@ impl InstrumentBusSettings {
         units: &[InstrumentComponent],
         index: usize,
     ) -> Option<bool> {
-        let inventory = self.component_inventory();
-        let visible = self.visible_components();
+        let inventory = self.retained_units();
+        let visible = self.visible_units();
         place_units(
             &mut self.component_order,
             &inventory,

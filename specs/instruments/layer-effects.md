@@ -30,7 +30,7 @@ Compatible layer-chain edits retain voices, oscillator phases, route smoothers, 
 
 ## UI
 
-Regular layers and pinned Main paint their effects directly after all component units in the same horizontal scroll area. Sources remain first; presentation-only component reorder does not change the serial effect order. The existing layer collapse control changes the height of components and effects together. The bottom effects lane continues to show track effects.
+Regular layers and pinned Main share one saved display order for effects and component units in the same horizontal scroll area. Only audio sources remain first. Effects can precede or sit between Macro, LFO, Envelope and Amplitude. Effects process in their relative left-to-right order; moving control components across effects changes presentation only. The existing layer collapse control changes the height of components and effects together. The bottom effects lane continues to show track effects.
 
 The Effects catalog adds to the selected regular layer or Main in Instrument. Clicking the bottom effects lane targets track effects until a layer or Main is selected. Library drag targets resolve from layer geometry and reuse the common insertion preview, release-only commit, and cancellation. Empty layers and a hidden bottom lane remain valid destinations. Previewing does not construct effect instances.
 
@@ -43,3 +43,11 @@ Drag activation, insertion previews, edge scrolling, copy modifiers, selection c
 ## Verification
 
 Core checks cover migration defaults, round-trip settings, transactional validation, source scope, discovery, and duplication. Engine checks compare layer and track placement for every processor, check parallel isolation and limiter alignment, seek reconstruction, telemetry, and allocation-free live updates. UI checks exercise inline placement, catalog addition, power, drag duplication, deletion, and layer targeting in both themes. Project checks cover Save As/reopen, preserved routes and missing units, rendered audio, and WAV export. See [validation](../validation/README.md) for executed results and native limits.
+
+## Mixed inline order — 2026-10-24
+
+`InstrumentComponent::Effect(id)` records inline effect positions in the existing `component_order` field. `visible_units` combines installed components and effects; `visible_components` retains its component-only contract for selection, transfer eligibility and removal. Hidden providers retain their saved slots. Missing legacy order retains components followed by effects. Validation rejects duplicate/stale entries, any source after another unit, and effect entries that do not match a prefix of the serial chain. Effect transfers continue through `Project::transfer_effects`; `position_inline_effects` adds mixed display placement to the same atomic transaction. `SetLayerEffects` prunes removed positions and retargets surviving effect slots to the updated serial order. Layer and track copies remap saved effect identities.
+
+Regular layers and Output paint effects individually through `effects_panel::effect_units`, retaining full-chain group capture, shared unit shells and selection controls. Component and effect drags use the complete ordered row geometry for insertion. Effect drops exclude the source area; component moves clamp after the source. Catalog construction, copies and edits occur on valid release only. Cross-bus transfers retain existing source-scope checks. End-of-frame release cleanup cancels outside drops after every destination has had a chance to consume the gesture. Pane focus distinguishes control selection from effect selection in the same row. Saved order and effect-chain changes remain one history entry; no-op and cancelled drops stay clean.
+
+The renderer keeps its existing source, Amplitude, bus effect and gain/pan stages. Presentation changes alone retain compatible histories and do not change output or allocate on the callback.

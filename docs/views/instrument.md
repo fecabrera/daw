@@ -55,12 +55,12 @@ Folders start collapsed. Click a folder to hide or show its effects. Use Up/Down
 
 Select the destination track or Master before adding an effect. Double-click an effect to add it. Shift-click selects effects across open folders; Enter on an effect adds the selection in folder order. Drag selected effects into the lane to choose their insertion point, then release to add them. Escape or an invalid drop cancels. Scroll when the catalog does not fit.
 
-In Instrument, click a layer or Output to select it, then add effects from the Effects catalog. They appear after the components in that same layer lane. You can also drag catalog effects to the space after a layer's components, including an empty layer. Collapse or expand the layer to change the size of the whole row. Drag effect headers between regular layers, Output, and the track effects lane to move them; hold Option on macOS or Ctrl on Windows/Linux to duplicate them. Selected effects transfer together. Layer effect settings save with the project.
+In Instrument, click a layer or Output to select it, then add effects from the Effects catalog. New effects append to that same layer lane. Drag effect headers or catalog effects between control components, including into an empty layer. Only audio sources stay pinned first. Collapse or expand the layer to change the size of the whole row. Drag effect headers between regular layers, Output, and the track effects lane to move them; hold Option on macOS or Ctrl on Windows/Linux to duplicate them. Selected effects transfer together. Layer effect settings save with the project.
 
-Output effects appear after its shared components in the pinned Output lane. Click the separate bottom effects lane to target track effects, or edit track effects in Timeline.
+Output effects share the pinned Output lane with its control components. You can place an effect before Macro, LFO, or Envelope. Click the separate bottom effects lane to target track effects, or edit track effects in Timeline.
 
 Layer effects process that layer's notes together, after Amplitude and before layer gain/pan. Output effects process the combined layer sum before Output gain/pan. Track output effects process the instrument after Output. This lets you distort one layer while keeping another layer clean.
 
-Effects run in lane order. Master effects process the combined track mix.
+Effects run in their left-to-right order. Moving a control component across an effect changes its display position; it does not change modulation timing or the fixed Amplitude processing stage. Master effects process the combined track mix.
 
 The header power control turns a unit on or off. Double-click its header to collapse or expand it. Off units keep their settings and remain editable. See [moving and copying units](../editing/units.md) and [modulation](../modulation/README.md).

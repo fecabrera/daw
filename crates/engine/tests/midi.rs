@@ -4948,3 +4948,50 @@ fn auto_filter_lfo_targets_share_live_export_seek_and_allocation_free_retargetin
         );
     }
 }
+
+#[test]
+fn mixed_inline_presentation_order_keeps_audio_and_live_phase_unchanged() {
+    use daw_core::InstrumentComponent as C;
+    for rate in SAMPLE_RATES {
+        let mut original = plan(Waveform::Saw, rate);
+        let l = &mut original.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        l.macro_module.add();
+        l.effects = vec![EffectInstance::auto_filter(), EffectInstance::drive()];
+        let a = l.effects[0].id;
+        let b = l.effects[1].id;
+        let mut reordered = original.clone();
+        reordered.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0]
+            .component_order = vec![C::Oscillators, C::Effect(a), C::Macros, C::Effect(b)];
+        reordered.project.validate().unwrap();
+        let mut expected = vec![[0.0; 2]; 1024];
+        let mut actual = expected.clone();
+        Renderer::new(original.clone()).render_offline(&mut expected);
+        Renderer::new(reordered.clone()).render_offline(&mut actual);
+        assert_eq!(actual, expected);
+        let mut current = Renderer::new(original.clone());
+        let mut reference = Renderer::new(original);
+        current.play();
+        reference.play();
+        for _ in 0..1024 {
+            assert_eq!(current.next_sample(), reference.next_sample());
+        }
+        let mut next = Renderer::new(reordered);
+        assert!(next.can_inherit_without_preroll(&current));
+        ALLOCATIONS.with(|n| n.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        next.inherit(&mut current);
+        for _ in 0..1024 {
+            assert_eq!(next.next_sample(), reference.next_sample());
+        }
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    }
+}

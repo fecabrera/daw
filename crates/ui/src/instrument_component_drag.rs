@@ -169,13 +169,7 @@ impl DawUi {
             if same_move && pointer.x < row.left() + TRACK_WIDTH {
                 return false;
             }
-            let slots: Vec<_> = self
-                .instrument_ui
-                .component_slots
-                .iter()
-                .filter(|(layer, _, _)| layer == owner)
-                .map(|(_, unit, rect)| (*unit, *rect))
-                .collect();
+            let slots = self.inline_unit_slots(*owner);
             let first = slots
                 .iter()
                 .take_while(|(unit, _)| unit.is_source())

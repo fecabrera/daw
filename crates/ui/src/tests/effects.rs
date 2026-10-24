@@ -6383,3 +6383,220 @@ fn drive_v2_catalog_three_strip_layout_color_power_and_gain_edits_use_shared_his
         );
     }
 }
+
+#[test]
+fn inline_effects_move_before_macro_and_components_move_across_effects() {
+    use daw_core::InstrumentComponent as C;
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for main in [false, true] {
+            let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
+            let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+            let effect = daw_core::EffectInstance::auto_filter();
+            let id = effect.id;
+            let owner = if main {
+                instrument.main.macro_module.add();
+                instrument.main.collapsed = false;
+                instrument.main.effects.push(effect);
+                instrument.main.id
+            } else {
+                let l = &mut instrument.layers[0];
+                l.macro_module.add();
+                l.collapsed = false;
+                l.effects.push(effect);
+                l.id
+            };
+            app.history = None;
+            frame(&mut app, &ctx, vec![]);
+            let macro_rect = app
+                .instrument_ui
+                .component_slots
+                .iter()
+                .find(|(o, u, _)| *o == owner && *u == C::Macros)
+                .unwrap()
+                .2;
+            let rect = app
+                .instrument_ui
+                .effect_slots
+                .iter()
+                .find(|(o, e, _)| *o == owner && *e == id)
+                .unwrap()
+                .2;
+            let start = Pos2::new(rect.center().x, rect.top() + 8.0);
+            let end = Pos2::new(macro_rect.left() + 2.0, start.y);
+            end_click_sequence(&mut app, &ctx);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            frame(&mut app, &ctx, vec![]);
+            let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
+            let order = if main {
+                i.main.visible_units()
+            } else {
+                i.layers[0].visible_units()
+            };
+            assert_eq!(
+                order,
+                vec![C::Effect(id), C::Macros],
+                "{theme:?} main={main}"
+            );
+            let macro_rect = app
+                .instrument_ui
+                .component_slots
+                .iter()
+                .find(|(o, u, _)| *o == owner && *u == C::Macros)
+                .unwrap()
+                .2;
+            let rect = app
+                .instrument_ui
+                .effect_slots
+                .iter()
+                .find(|(o, e, _)| *o == owner && *e == id)
+                .unwrap()
+                .2;
+            assert!(rect.right() <= macro_rect.left() + 1.0);
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
+            assert_eq!(
+                if main {
+                    i.main.visible_units()
+                } else {
+                    i.layers[0].visible_units()
+                },
+                vec![C::Macros, C::Effect(id)]
+            );
+            app.perform_history_action(HistoryAction::Redo, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            let macro_rect = app
+                .instrument_ui
+                .component_slots
+                .iter()
+                .find(|(o, u, _)| *o == owner && *u == C::Macros)
+                .unwrap()
+                .2;
+            let rect = app
+                .instrument_ui
+                .effect_slots
+                .iter()
+                .find(|(o, e, _)| *o == owner && *e == id)
+                .unwrap()
+                .2;
+            let start = Pos2::new(macro_rect.center().x, macro_rect.top() + 8.0);
+            let end = Pos2::new(rect.left() + 2.0, start.y);
+            end_click_sequence(&mut app, &ctx);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            frame(&mut app, &ctx, vec![button(end, false)]);
+            let i = app.session.project.tracks[0].instrument.as_ref().unwrap();
+            assert_eq!(
+                if main {
+                    i.main.visible_units()
+                } else {
+                    i.layers[0].visible_units()
+                },
+                vec![C::Macros, C::Effect(id)]
+            );
+            let saved = serde_json::to_value(&app.session.project).unwrap();
+            let reopened: daw_core::Project = serde_json::from_value(saved).unwrap();
+            reopened.validate().unwrap();
+        }
+    }
+}
+
+#[test]
+fn mixed_inline_effect_drops_cancel_on_escape_and_outside_release() {
+    for escape in [false, true] {
+        let (mut app, ctx) = categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");
+        let l = &mut app.session.project.tracks[0]
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        l.collapsed = false;
+        l.macro_module.add();
+        l.effects.push(daw_core::EffectInstance::auto_filter());
+        let owner = l.id;
+        app.history = None;
+        frame(&mut app, &ctx, vec![]);
+        app.dirty = false;
+        let before = app.session.project.clone();
+        let rect = app
+            .instrument_ui
+            .effect_slots
+            .iter()
+            .find(|(o, _, _)| *o == owner)
+            .unwrap()
+            .2;
+        let macro_rect = app
+            .instrument_ui
+            .component_slots
+            .iter()
+            .find(|(o, u, _)| *o == owner && *u == daw_core::InstrumentComponent::Macros)
+            .unwrap()
+            .2;
+        let start = rect.center_top() + Vec2::new(0.0, 8.0);
+        let end = macro_rect.left_top() + Vec2::new(2.0, 8.0);
+        end_click_sequence(&mut app, &ctx);
+        begin_effect_drag(&mut app, &ctx, start, end);
+        assert!(app.effects_drag.as_ref().is_some_and(|d| d.active));
+        let point = if escape { end } else { Pos2::new(5.0, 5.0) };
+        let mut events = vec![egui::Event::PointerMoved(point)];
+        if escape {
+            events.push(egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            });
+        }
+        events.push(button(point, false));
+        frame(&mut app, &ctx, events);
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+        assert!(app.effects_drag.is_none());
+        assert!(app.error.is_none());
+    }
+}
+
+#[test]
+fn mixed_inline_same_position_drop_keeps_the_revision_and_project_clean() {
+    let (mut app, ctx) = categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");
+    let l = &mut app.session.project.tracks[0]
+        .instrument
+        .as_mut()
+        .unwrap()
+        .layers[0];
+    l.collapsed = false;
+    l.macro_module.add();
+    l.effects.push(daw_core::EffectInstance::auto_filter());
+    let owner = l.id;
+    app.history = None;
+    frame(&mut app, &ctx, vec![]);
+    app.dirty = false;
+    let before = app.session.project.clone();
+    let revision = app.change_revision;
+    let rect = app
+        .instrument_ui
+        .effect_slots
+        .iter()
+        .find(|(o, _, _)| *o == owner)
+        .unwrap()
+        .2;
+    let start = rect.center_top() + Vec2::new(0.0, 8.0);
+    let end = rect.right_top() + Vec2::new(-4.0, 8.0);
+    end_click_sequence(&mut app, &ctx);
+    begin_effect_drag(&mut app, &ctx, start, end);
+    frame(&mut app, &ctx, vec![button(end, false)]);
+    assert_eq!(app.session.project, before);
+    assert_eq!(app.change_revision, revision);
+    assert!(!app.dirty);
+    assert!(app.effects_drag.is_none());
+}

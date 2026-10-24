@@ -353,6 +353,7 @@ pub(crate) fn duplicate_track_settings(track: &Track, id: Id) -> Track {
     {
         s.id = Id::new_v4();
     }
+    let mut effect_ids = HashMap::new();
     for effect in copy
         .effects
         .iter_mut()
@@ -364,7 +365,23 @@ pub(crate) fn duplicate_track_settings(track: &Track, id: Id) -> Track {
         }))
     {
         // Route IDs are scoped to their copied owner, as in ordinary track copies.
+        let old = effect.id;
         effect.id = Id::new_v4();
+        effect_ids.insert(old, effect.id);
+    }
+    if let Some(i) = &mut copy.instrument {
+        for unit in i
+            .layers
+            .iter_mut()
+            .flat_map(|l| &mut l.component_order)
+            .chain(&mut i.main.component_order)
+        {
+            if let InstrumentComponent::Effect(id) = unit
+                && let Some(new) = effect_ids.get(id)
+            {
+                *id = *new;
+            }
+        }
     }
     copy
 }
