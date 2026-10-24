@@ -4522,3 +4522,20 @@ Completed automated checks on macOS:
 - CLI build and smoke check passed. The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
 
 Logs: `work/oscillator-output-pitch-{check,engine,ui,clippy,workspace,cli-build,cli-smoke,package}.log`. Native UI/device listening and Windows/Linux checks were not run. Live seeks retain the existing fresh-oscillator-phase behavior. Output Pitch applies a common source-frequency ratio; it does not resample the summed PCM signal.
+
+## Auto-filter LFO modulation targets — 2026-10-24
+
+Added Shared LFO strength, LFO sync phase and LFO stereo phase destinations to Auto-filter. They reuse typed routing, cached source resolution, smoothing, amount controls, markers and saved routes. Static Filter retains its original four destinations.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- Locked, offline workspace tests passed: 1,253 passed and three configured tests ignored.
+- Portable tests compare the three modulated controls with equivalent static settings at all six processing rates and five LFO waveforms. They cover bounds, nonfinite offsets, exact cancellation of opposite routes, reset, local-source rejection, LFO-off static behavior, and existing filter/LFO timing regressions.
+- Settings tests cover signed limits, invalid amounts, save/reopen, fresh copied route IDs and rejection of LFO targets by static Filter.
+- Renderer integration covers shared Output Macro routes, playback/export parity, random-access export, live seeking, processed readings and compatible route disabling without callback allocation.
+- All 630 UI tests passed. New coverage selects and saves each destination in dark/light themes. Existing marker tests also cover all three LFO knobs, including their inactive state with LFO power off.
+
+- CLI build and smoke check passed. The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+
+Logs: `work/auto-filter-lfo-mod-{portable,focused,clippy,workspace,cli-build,cli-smoke,package}.log`. Native UI/device listening and Windows/Linux checks were not run. Phase offsets retain the control's bounded −180°..+180° behavior; they do not change the transport clock.

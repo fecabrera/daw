@@ -784,7 +784,7 @@ impl DawUi {
                                     height,
                                     modulation_sources,
                                     self.output.as_ref().and_then(|o| {
-                                        o.modulation_values(daw_engine::ModulationTarget::Effect(
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
                                             effect.id,
                                         ))
                                     }),

@@ -1,4 +1,4 @@
-use crate::lfo_controls::{choice as float_choice, phase_spec as phase};
+use crate::lfo_controls::choice as float_choice;
 use crate::parameter_knobs;
 use crate::{
     icons,
@@ -39,7 +39,7 @@ fn row(
     settings: &mut AutoFilterSettings,
     strip: usize,
     index: usize,
-    markers: &[Option<knobs::ModulationMarker>; 4],
+    markers: &[Option<knobs::ModulationMarker>; 7],
 ) -> Rect {
     knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
         match (strip, index) {
@@ -67,22 +67,27 @@ fn row(
             (1, 0) => crate::lfo_controls::wave(ui, &mut s.wave),
             (1, 1) => crate::lfo_controls::mode(ui, &mut s.rate_mode),
             (1, 2) => crate::lfo_controls::rate(ui, s.rate_mode, &mut s.rate_hz, &mut s.note_rate),
-            (2, 0) => ui.add(Knob::new(
-                &mut s.strength_octaves,
-                KnobSpec::new("LFO strength", 0.0..=6.0, 1.0, 0.1)
-                    .reference_step(1.0)
-                    .value_label(|v| format!("{v:.1} oct"))
-                    .format(|v| format!("{v:.1} oct"))
-                    .endpoint_labels("0", "6"),
-            )),
-            (2, 1) => ui.add(Knob::new(
-                &mut s.sync_phase_degrees,
-                phase("LFO sync phase"),
-            )),
-            (2, 2) => ui.add(Knob::new(
-                &mut s.stereo_phase_degrees,
-                phase("LFO stereo phase"),
-            )),
+            (2, 0) => ui.add(
+                Knob::new(
+                    &mut s.strength_octaves,
+                    parameter_knobs::destination(Parameter::AutoFilterStrength),
+                )
+                .modulated(markers[4].as_ref(), &mut s.modulation_open),
+            ),
+            (2, 1) => ui.add(
+                Knob::new(
+                    &mut s.sync_phase_degrees,
+                    parameter_knobs::destination(Parameter::AutoFilterSyncPhase),
+                )
+                .modulated(markers[5].as_ref(), &mut s.modulation_open),
+            ),
+            (2, 2) => ui.add(
+                Knob::new(
+                    &mut s.stereo_phase_degrees,
+                    parameter_knobs::destination(Parameter::AutoFilterStereoPhase),
+                )
+                .modulated(markers[6].as_ref(), &mut s.modulation_open),
+            ),
             (3, 0) => ui.add(
                 Knob::new(
                     &mut s.level_db,
@@ -107,7 +112,7 @@ fn controls(
     settings: &mut AutoFilterSettings,
     strip: usize,
     bounds: &mut Bounds,
-    markers: &[Option<knobs::ModulationMarker>; 4],
+    markers: &[Option<knobs::ModulationMarker>; 7],
 ) {
     for index in 0..3 {
         bounds.knobs[strip][index] = row(ui, settings, strip, index, markers);
@@ -131,17 +136,20 @@ fn show_panel(
     settings: &mut AutoFilterSettings,
     dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
-    live: Option<[f32; 5]>,
+    live: Option<[f32; 8]>,
     sample_rate_hz: u32,
     internal_lfo: bool,
 ) -> (Bounds, egui::Response) {
     let (compact, height) = dimensions;
     ui.scope_builder(egui::UiBuilder::new().ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),|ui| {
     let modulation_open=settings.modulation_open;
-    let bases = [settings.frequency_hz, settings.q, settings.level_db, settings.dry_wet];
-    let mut markers: [Option<knobs::ModulationMarker>; 4] = std::array::from_fn(|i| crate::modulation_panel::marker(
-        &settings.modulations, sources, daw_core::ModulationParameter::FILTER[i], bases[i], settings.enabled,
-        (i==0 && internal_lfo).then_some((settings.lfo_enabled, settings.strength_octaves)),
+    let bases = [settings.frequency_hz, settings.q, settings.level_db, settings.dry_wet, settings.strength_octaves, settings.sync_phase_degrees, settings.stereo_phase_degrees];
+    let lfo_enabled = settings.enabled && settings.lfo_enabled;
+    let strength_marker = crate::modulation_panel::marker(&settings.modulations, sources, Parameter::AutoFilterStrength, settings.strength_octaves, lfo_enabled, None, [live.map(|v|v[5]), None]);
+    let sweep_depth = strength_marker.as_ref().map_or(settings.strength_octaves, |m| m.range[1]);
+    let mut markers: [Option<knobs::ModulationMarker>; 7] = std::array::from_fn(|i| crate::modulation_panel::marker(
+        &settings.modulations, sources, daw_core::ModulationParameter::AUTO_FILTER[i], bases[i], if i < 4 { settings.enabled } else { lfo_enabled },
+        (i==0 && internal_lfo).then_some((settings.lfo_enabled, sweep_depth)),
         [live.map(|v| v[if i==0 {0}else{i+1}]), if i==0 && internal_lfo {live.map(|v|v[1])}else{None}],
     ));
     if let Some(marker) = &mut markers[0] { marker.range = marker.range.map(|v| v.min(sample_rate_hz as f32 * 0.45)); }
@@ -200,7 +208,7 @@ fn show_panel(
             if modulation_open {
                 let rect = bounds.sections[2];
                 panels::unit_divider(ui, rect.right(), rect.y_range().into());
-                crate::modulation_panel::body(ui, &mut settings.modulations, sources, <daw_unit_core::AutoFilterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS, <daw_unit_core::AutoFilterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
+                crate::modulation_panel::body(ui, &mut settings.modulations, sources, if internal_lfo { &Parameter::AUTO_FILTER } else { &Parameter::FILTER }, <daw_unit_core::AutoFilterSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
             }
         });
     });
@@ -220,7 +228,7 @@ pub(super) fn show(
     compact: bool,
     height: f32,
     sources: &[crate::modulation_panel::Source],
-    live: Option<[f32; 5]>,
+    live: Option<daw_engine::ModulationSnapshot>,
     sample_rate_hz: u32,
 ) -> (Bounds, egui::Response) {
     show_panel(
@@ -228,7 +236,7 @@ pub(super) fn show(
         settings,
         (compact, height),
         sources,
-        live,
+        live.map(|v| std::array::from_fn(|i| v[i])),
         sample_rate_hz,
         true,
     )
@@ -263,7 +271,7 @@ pub(super) fn show_static(
         &mut view,
         (compact, height),
         sources,
-        live,
+        live.map(|v| std::array::from_fn(|i| if i < 5 { v[i] } else { f32::NAN })),
         sample_rate_hz,
         false,
     );

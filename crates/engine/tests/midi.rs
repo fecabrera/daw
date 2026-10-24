@@ -4853,3 +4853,98 @@ fn oscillator_output_pitch_modulation_has_live_export_seek_and_telemetry_parity(
         }
     }
 }
+
+#[test]
+fn auto_filter_lfo_targets_share_live_export_seek_and_allocation_free_retargeting() {
+    for rate in SAMPLE_RATES {
+        let mut plan = plan(Waveform::Saw, rate);
+        let instrument = plan.project.tracks[0].instrument.as_mut().unwrap();
+        instrument.main.macro_module.add();
+        instrument.main.macro_module.controls[0].settings.value = 1.0;
+        let source = ModulationSourceId {
+            layer: instrument.main.id,
+            unit: instrument.main.macro_module.controls[0].id,
+        };
+        let mut effect = EffectInstance::auto_filter();
+        let target = daw_engine::ModulationTarget::Effect(effect.id);
+        let EffectSettings::AutoFilter(settings) = &mut effect.unit else {
+            panic!()
+        };
+        settings.modulations = [
+            (ModulationParameter::AutoFilterStrength, 2.0),
+            (ModulationParameter::AutoFilterSyncPhase, 90.0),
+            (ModulationParameter::AutoFilterStereoPhase, -90.0),
+        ]
+        .into_iter()
+        .map(|(parameter, amount)| {
+            let mut route = Modulation::new(parameter);
+            route.source = Some(source);
+            route.amount = amount;
+            route
+        })
+        .collect();
+        plan.project.tracks[0].effects.push(effect);
+        plan.project.validate().unwrap();
+        let reopened: daw_core::Project =
+            serde_json::from_value(serde_json::to_value(&plan.project).unwrap()).unwrap();
+        assert_eq!(reopened, plan.project);
+        let mut offline = vec![[0.0; 2]; (rate / 10) as usize];
+        Renderer::new(plan.clone()).render_offline(&mut offline);
+        let mut live = Renderer::new(plan.clone());
+        live.play();
+        ALLOCATIONS.with(|n| n.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        for (frame, sample) in offline.iter().enumerate() {
+            let actual = live.next_sample();
+            if frame > (rate / 200) as usize {
+                assert!((0..2).all(|ch| (actual[ch] - sample[ch]).abs() < 0.000002));
+            }
+        }
+        let values = live.modulation_snapshot(target).unwrap();
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert!(
+            (values[5] - 3.0).abs() < 0.001
+                && (values[6] - 90.0).abs() < 0.001
+                && (values[7] + 90.0).abs() < 0.001
+        );
+        let mut random = [[0.0; 2]; 64];
+        plan.render(u64::from(rate / 20), &mut random);
+        assert_eq!(
+            &random[..],
+            &offline[(rate / 20) as usize..(rate / 20) as usize + 64]
+        );
+        let mut second = Renderer::new(plan.clone());
+        second.play();
+        live.seek(u64::from(rate / 20));
+        second.seek(u64::from(rate / 20));
+        for frame in 0..rate / 20 {
+            let actual = live.next_sample();
+            let expected = second.next_sample();
+            if frame > rate / 50 {
+                assert_eq!(actual, expected);
+            }
+        }
+        let EffectSettings::AutoFilter(settings) = &mut plan.project.tracks[0].effects[0].unit
+        else {
+            panic!()
+        };
+        for route in &mut settings.modulations {
+            route.enabled = false;
+        }
+        let mut next = Renderer::new(plan);
+        assert!(next.can_inherit_without_preroll(&live));
+        ALLOCATIONS.with(|n| n.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        next.inherit(&mut live);
+        for _ in 0..rate / 20 {
+            next.next_sample();
+        }
+        let values = next.modulation_snapshot(target).unwrap();
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert!(
+            (values[5] - 1.0).abs() < 0.001 && values[6].abs() < 0.001 && values[7].abs() < 0.001
+        );
+    }
+}

@@ -460,7 +460,7 @@ fn parameter_markers_open_their_own_modulation_controls_without_editing_base_val
             panic!()
         };
         f.lfo_enabled = false;
-        for parameter in daw_core::ModulationParameter::FILTER {
+        for parameter in daw_core::ModulationParameter::AUTO_FILTER {
             let mut connection = daw_core::Modulation::new(parameter);
             connection.source = Some(source);
             connection.amount = 0.5;
@@ -493,7 +493,7 @@ fn parameter_markers_open_their_own_modulation_controls_without_editing_base_val
         assert!(amp.modulation_open && !amp.collapsed && amp.enabled);
         assert_eq!(amp.level_db, -6.0);
         assert!(app.dirty);
-        for (strip, row) in [(0, 1), (0, 2), (3, 0), (3, 1)] {
+        for (strip, row) in [(0, 1), (0, 2), (3, 0), (3, 1), (2, 0), (2, 1), (2, 2)] {
             let daw_core::EffectSettings::AutoFilter(f) =
                 &mut app.session.project.tracks[0].effects[0].unit
             else {
@@ -1612,6 +1612,63 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
             .center();
             click(&mut app, &ctx, marker, false);
             assert!(get(&app).modulation_open);
+        }
+    }
+}
+
+#[test]
+fn auto_filter_lfo_targets_are_selectable_and_saved_in_both_themes() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        for parameter in [
+            daw_core::ModulationParameter::AutoFilterStrength,
+            daw_core::ModulationParameter::AutoFilterSyncPhase,
+            daw_core::ModulationParameter::AutoFilterStereoPhase,
+        ] {
+            let (mut app, ctx, _) = fixture(theme);
+            app.session.project.tracks[0]
+                .effects
+                .push(daw_core::EffectInstance::auto_filter());
+            frame(&mut app, &ctx, vec![]);
+            let header = app.effects_bounds.auto_filter_units[0].header;
+            let daw_core::EffectSettings::AutoFilter(settings) =
+                &mut app.session.project.tracks[0].effects[0].unit
+            else {
+                panic!()
+            };
+            settings.modulation_open = true;
+            settings.modulations.push(daw_core::Modulation::new(
+                daw_core::ModulationParameter::Frequency,
+            ));
+            frame(&mut app, &ctx, vec![]);
+            click(
+                &mut app,
+                &ctx,
+                Pos2::new(
+                    header.right() + 45.0,
+                    header.bottom()
+                        + 10.0
+                        + knobs::CHOICE_SIZE * 1.5
+                        + f32::from(theme::TOOLBAR_PADDING),
+                ),
+                false,
+            );
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let choice = label(&shapes, parameter.label());
+            click(&mut app, &ctx, choice, false);
+            let daw_core::EffectSettings::AutoFilter(settings) =
+                &app.session.project.tracks[0].effects[0].unit
+            else {
+                panic!()
+            };
+            assert_eq!(settings.modulations[0].parameter, parameter);
+            let reopened: daw_core::Project =
+                serde_json::from_value(serde_json::to_value(&app.session.project).unwrap())
+                    .unwrap();
+            reopened.validate().unwrap();
+            assert_eq!(
+                reopened.tracks[0].effects,
+                app.session.project.tracks[0].effects
+            );
         }
     }
 }

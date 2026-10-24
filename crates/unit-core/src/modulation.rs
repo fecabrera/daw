@@ -110,6 +110,9 @@ pub enum ModulationParameter {
     Tone,
     ColorStrength,
     ColorFrequency,
+    AutoFilterStrength,
+    AutoFilterSyncPhase,
+    AutoFilterStereoPhase,
     LfoDepth,
     LfoRate,
     MacroValue,
@@ -258,6 +261,15 @@ impl ModulationParameter {
         Self::ColorStrength,
         Self::ColorFrequency,
     ];
+    pub const AUTO_FILTER: [Self; 7] = [
+        Self::Frequency,
+        Self::Resonance,
+        Self::Level,
+        Self::DryWet,
+        Self::AutoFilterStrength,
+        Self::AutoFilterSyncPhase,
+        Self::AutoFilterStereoPhase,
+    ];
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
@@ -323,6 +335,9 @@ impl ModulationParameter {
             Self::EqHighFrequency => "High · Frequency",
             Self::EqHighQ => "High · Q",
             Self::MacroValue => "Value",
+            Self::AutoFilterStrength => "LFO strength",
+            Self::AutoFilterSyncPhase => "LFO sync phase",
+            Self::AutoFilterStereoPhase => "LFO stereo phase",
             Self::LfoDepth => "Depth",
             Self::LfoRate => "Rate",
             Self::Amplitude => "Amplitude",
@@ -368,7 +383,10 @@ impl ModulationParameter {
             Self::BitcrusherDrive => 24.0,
             Self::BitcrusherResolution => 23.0,
             Self::BitcrusherDownsampling => 39.0,
-            Self::DirectionMixerDirection => 180.0,
+            Self::DirectionMixerDirection
+            | Self::AutoFilterSyncPhase
+            | Self::AutoFilterStereoPhase => 180.0,
+            Self::AutoFilterStrength => 6.0,
             Self::DirectionMixerSpread => 2.0,
             Self::StereoSpreadLowerFrequency | Self::StereoSpreadUpperFrequency => 6.0,
             Self::CompressorThreshold => 60.0,
@@ -417,7 +435,10 @@ impl ModulationParameter {
             Self::SaturatorDrive | Self::BitcrusherDrive => "dB",
             Self::BitcrusherResolution => "bits",
             Self::BitcrusherDownsampling => "×",
-            Self::DirectionMixerDirection => "°",
+            Self::DirectionMixerDirection
+            | Self::AutoFilterSyncPhase
+            | Self::AutoFilterStereoPhase => "°",
+            Self::AutoFilterStrength => "oct",
             Self::DirectionMixerSpread => "",
             Self::StereoSpreadLowerFrequency | Self::StereoSpreadUpperFrequency => "oct",
             Self::CompressorThreshold | Self::CompressorKnee => "dB",

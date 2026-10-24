@@ -30,7 +30,9 @@ The LFO footer switch stops the internal sweep while keeping the static filter a
 
 ## External modulation
 
-Frequency, Resonance, Level, and Dry/Wet accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Per note Envelopes are unavailable for this track effect. Use the secondary-color header dot to open [connections](../modulation/README.md).
+Frequency, Resonance, Level, Dry/Wet, LFO strength, LFO sync phase, and LFO stereo phase accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Per note Envelopes are unavailable for this track effect. Use the secondary-color header dot to open [connections](../modulation/README.md).
+
+LFO strength accepts signed amounts from −6 to +6 octaves. Both phase targets accept −180° to +180°. Offsets add to the base controls, then stay within their control limits. Sync phase moves both channels; Stereo phase moves the right channel relative to the left. The LFO switch stops the sweep while retaining these connections. Their markers appear inactive while the LFO is off.
 
 External Frequency modulation combines with the internal sweep. The range arc shows possible movement, and two live Frequency dots show the stereo values. The base pointer stays unchanged. Audio tracks and Master can use the internal LFO without an external source.
 

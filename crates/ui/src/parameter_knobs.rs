@@ -236,6 +236,14 @@ pub(super) fn destination(parameter: Parameter) -> KnobSpec {
             .format(|v| format!("{v:.1} dB"))
             .endpoint_labels("0", "24"),
         Parameter::MacroValue => percent("Macro value", 0.0),
+        Parameter::AutoFilterStrength => KnobSpec::new("LFO strength", 0.0..=6.0, 1.0, 0.1)
+            .reference_step(1.0)
+            .value_label(|v| format!("{v:.1} oct"))
+            .format(|v| format!("{v:.1} oct"))
+            .endpoint_labels("0", "6"),
+        Parameter::AutoFilterSyncPhase | Parameter::AutoFilterStereoPhase => {
+            crate::lfo_controls::phase_spec(parameter.label())
+        }
         Parameter::LfoDepth => percent("LFO depth", 1.0),
         Parameter::LfoRate => KnobSpec::new("LFO rate", 0.01..=20.0, 2.0, 0.01)
             .scale(
@@ -481,6 +489,22 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 },
                 signed_pitch,
                 ["−48", "+48"],
+            ),
+            Parameter::AutoFilterStrength => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_octaves,
+                ["−6", "+6"],
+            ),
+            Parameter::AutoFilterSyncPhase | Parameter::AutoFilterStereoPhase => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.0}°"),
+                ["−180", "+180"],
             ),
             Parameter::Amplitude => (AmountMapping::Depth, signed_depth, ["−100", "+100"]),
             Parameter::DriveInput

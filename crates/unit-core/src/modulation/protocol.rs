@@ -286,7 +286,7 @@ destination_settings!(
 );
 destination_settings!(
     crate::AutoFilterSettings,
-    &ModulationParameter::FILTER,
+    &ModulationParameter::AUTO_FILTER,
     Shared
 );
 destination_settings!(crate::FilterSettings, &ModulationParameter::FILTER, Shared);

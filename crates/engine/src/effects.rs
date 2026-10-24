@@ -618,7 +618,7 @@ impl EffectChain {
     pub fn modulation_values(&self, id: Id) -> Option<super::ModulationSnapshot> {
         match self.index.get(&id).and_then(|&i| self.units.get(i)) {
             Some((_, Some(RuntimeEffect::AutoFilter(unit, _)))) => {
-                Some(super::parameter_snapshot(unit.effective_parameters()))
+                Some(super::parameter_snapshot(unit.modulation_parameters()))
             }
             Some((_, Some(RuntimeEffect::Filter(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))

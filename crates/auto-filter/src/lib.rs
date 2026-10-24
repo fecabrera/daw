@@ -58,6 +58,8 @@ pub struct AutoFilter {
     modulation: [f64; 2],
     modulation_initialized: bool,
     modulation_alpha: f64,
+    lfo_offsets: daw_unit_core::ModulationSmoother<3>,
+    effective_lfo: [f32; 3],
     standalone_frame: u64,
     clock: daw_lfo::LfoClock,
 }
@@ -78,6 +80,12 @@ impl AutoFilter {
             modulation: [0.0; 2],
             modulation_initialized: false,
             modulation_alpha: 1.0 - (-1.0 / (0.001 * sample_rate)).exp(),
+            lfo_offsets: daw_unit_core::ModulationSmoother::new(context),
+            effective_lfo: [
+                settings.strength_octaves,
+                settings.sync_phase_degrees,
+                settings.stereo_phase_degrees,
+            ],
             standalone_frame: 0,
             clock: daw_lfo::LfoClock::new(context),
         }
@@ -86,6 +94,17 @@ impl AutoFilter {
     /// These include parameter ramps, external smoothing, bounds, and the stereo LFO.
     pub fn effective_parameters(&self) -> [f32; 5] {
         self.filter.effective_parameters()
+    }
+    /// Existing filter readings followed by processed Strength (oct), Sync and Stereo phase (degrees).
+    pub fn modulation_parameters(&self) -> [f32; 8] {
+        let filter = self.effective_parameters();
+        std::array::from_fn(|i| {
+            if i < 5 {
+                filter[i]
+            } else {
+                self.effective_lfo[i - 5]
+            }
+        })
     }
     /// Called on compatible state publication; histories and unrelated ramps remain intact.
     pub fn retarget(&mut self, settings: &AutoFilterSettings) {
@@ -121,10 +140,35 @@ impl AutoFilter {
         tempo_bpm: f32,
         offsets: [f32; 4],
     ) -> [f32; 2] {
+        self.process_offsets_at(
+            input,
+            frame,
+            tempo_bpm,
+            [
+                offsets[0], offsets[1], offsets[2], offsets[3], 0.0, 0.0, 0.0,
+            ],
+        )
+    }
+    fn process_offsets_at(
+        &mut self,
+        input: [f32; 2],
+        frame: u64,
+        tempo_bpm: f32,
+        offsets: [f32; 7],
+    ) -> [f32; 2] {
+        let [strength, sync, stereo] = self
+            .lfo_offsets
+            .process([offsets[4], offsets[5], offsets[6]]);
+        let strength = (self.depth.next() + strength).clamp(0.0, 6.0);
+        let sync = (self.sync_phase.next() + sync / 360.0).clamp(-0.5, 0.5);
+        let stereo = (self.stereo_phase.next() + stereo / 360.0).clamp(-0.5, 0.5);
+        self.effective_lfo = [
+            strength as f32,
+            (sync * 360.0) as f32,
+            (stereo * 360.0) as f32,
+        ];
         let phase = self.phase(frame, tempo_bpm);
-        let depth = self.depth.next() * self.lfo_mix.next();
-        let sync = self.sync_phase.next();
-        let stereo = self.stereo_phase.next();
+        let depth = strength * self.lfo_mix.next();
         let waves: [f64; 5] = std::array::from_fn(|i| self.waves[i].next());
         let mut cutoff_offsets = [0.0; 2];
         for (ch, cutoff_offset) in cutoff_offsets.iter_mut().enumerate() {
@@ -142,8 +186,11 @@ impl AutoFilter {
             *cutoff_offset = depth * self.modulation[ch];
         }
         self.modulation_initialized = true;
-        self.filter
-            .process_with_cutoff_offsets(input, offsets, cutoff_offsets)
+        self.filter.process_with_cutoff_offsets(
+            input,
+            [offsets[0], offsets[1], offsets[2], offsets[3]],
+            cutoff_offsets,
+        )
     }
 }
 impl EffectUnit for AutoFilter {
@@ -168,6 +215,12 @@ impl EffectUnit for AutoFilter {
         for ramp in &mut self.waves {
             ramp.reset();
         }
+        self.lfo_offsets.reset();
+        self.effective_lfo = [
+            self.depth.target as f32,
+            (self.sync_phase.target * 360.0) as f32,
+            (self.stereo_phase.target * 360.0) as f32,
+        ];
         self.filter.reset();
         self.clock.reset();
         self.modulation_initialized = false;
@@ -191,11 +244,11 @@ impl daw_unit_core::ModulationDestination for AutoFilter {
         modulation: &daw_unit_core::ModulationInputs,
         context: daw_unit_core::ModulationContext,
     ) -> Self::Audio {
-        self.process_modulated_at(
+        self.process_offsets_at(
             input,
             context.frame,
             context.tempo_bpm,
-            modulation.offsets(daw_unit_core::ModulationParameter::FILTER),
+            modulation.offsets(daw_unit_core::ModulationParameter::AUTO_FILTER),
         )
     }
 }
@@ -688,3 +741,6 @@ mod static_filter_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod lfo_modulation_tests;

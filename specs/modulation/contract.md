@@ -98,6 +98,8 @@ Amounts retain their existing stored units, bounds, and routing meaning. Zero re
 | EQ Low/High Frequency / Q | ±6 octaves / ±10 Q | Reuse the native logarithmic frequency/Q definitions and shared octave/signed-Q amount adapters. |
 | Pitch | ±48 semitones | Same one-semitone steps and octave marks as Pitch. Existing fractional values remain visible until edited. |
 | Frequency / Color frequency | ±6 / ±3 octaves | Derive the octave coordinate from the native logarithmic frequency scale. The native frequency keyboard operation becomes 1/24 octave per key press. |
+| Auto-filter LFO strength | ±6 octaves | Reuse the native linear octave scale, 0.1-octave keyboard steps and whole-octave marks. |
+| Auto-filter LFO sync/stereo phase | ±180° | Reuse the shared centered phase scale and one-degree keyboard steps. |
 | Resonance | ±10 Q | Mirror the native logarithmic Q curve around neutral; zero magnitude starts at the native 0.1 Q minimum. Reuse the native multiplicative keyboard operation. |
 | Oscillator Gain / Sampler Gain / Level / Volume | ±24 dB | Mirror the native gain attenuation curve and gain reference marks, retaining 0.1 dB keyboard steps. Bounds stay finite rather than adding an infinity amount. |
 | Amplitude | ±1 envelope depth | Reuse the gain curve in depth coordinates, displayed as ±100%. A magnitude `d` maps to native attenuation `20 × log10(1 − d)`; full depth maps to exact silence on that control scale. This is a UI mapping, not a change to envelope routing. |
@@ -196,3 +198,7 @@ Oscillator Level reuses the typed Level slot and PerNote scope after summing sou
 ## Drive v2 destination
 
 [Drive v2](../effects/drive-v2.md) declares seven Shared inputs through the common settings/runtime contract. DriveInput appends additive slot 75; six other inputs reuse existing typed identities. Input/output offsets use the shared Gain amount profile, final +12 dB bound, and exact base silence. The processor composes the original Color/clipping/Tone kernel with input gain, dry/wet, output level and unit bypass. Reuse cached publication, source scope checks, typed resolution, one-millisecond offset smoothing, route-history matching and prepared seven-value snapshots. Discrete Color power, Shape and Clip have no routes.
+
+## Auto-filter LFO destinations
+
+Auto-filter adds Strength, Sync phase and Stereo phase to its Shared destination declaration. They use the shared typed slots 76–78, source scope checks, cached resolution, signed amount ramps, additive smoothing, validation and route-history matching. Static Filter retains its existing four destinations. See [Auto-filter LFO modulation](../effects/auto-filter.md#internal-lfo-modulation-destinations--2026-10-24) for bounds, units and telemetry.

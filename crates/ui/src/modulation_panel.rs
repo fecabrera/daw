@@ -451,9 +451,12 @@ pub(super) fn marker(
         | ModulationParameter::EnvelopeReleaseCurve
         | ModulationParameter::EnvelopeAttackNote
         | ModulationParameter::EnvelopeDecayNote => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
-        ModulationParameter::DirectionMixerDirection => {
+        ModulationParameter::DirectionMixerDirection
+        | ModulationParameter::AutoFilterSyncPhase
+        | ModulationParameter::AutoFilterStereoPhase => {
             offsets.map(|o| (base + o).clamp(-180.0, 180.0))
         }
+        ModulationParameter::AutoFilterStrength => offsets.map(|o| (base + o).clamp(0.0, 6.0)),
         ModulationParameter::DirectionMixerSpread => offsets.map(|o| (base + o).clamp(0.0, 2.0)),
         ModulationParameter::OttLowFrequency => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(20.0, 2000.0))
@@ -617,7 +620,10 @@ pub(super) fn marker(
         }
         ModulationParameter::BitcrusherResolution => format!("{value:.0} bit"),
         ModulationParameter::BitcrusherDownsampling => format!("{value:.0}×"),
-        ModulationParameter::DirectionMixerDirection => format!("{value:.0}°"),
+        ModulationParameter::AutoFilterStrength => format!("{value:.1} oct"),
+        ModulationParameter::AutoFilterSyncPhase
+        | ModulationParameter::AutoFilterStereoPhase
+        | ModulationParameter::DirectionMixerDirection => format!("{value:.0}°"),
         ModulationParameter::DirectionMixerSpread => format!("{value:.2}"),
         ModulationParameter::OttLowRelease
         | ModulationParameter::OttMidRelease

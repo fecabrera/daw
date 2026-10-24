@@ -124,3 +124,50 @@ impl AutoFilterSettings {
             && crate::ModulationDestinationSettings::valid_modulations(self)
     }
 }
+
+#[cfg(test)]
+mod modulation_tests {
+    use super::*;
+    use crate::{Modulation, ModulationDestinationSettings, ModulationParameter};
+    #[test]
+    fn lfo_routes_roundtrip_copy_and_validate_without_extending_static_filter() {
+        let mut settings = AutoFilterSettings::default();
+        for (parameter, limit) in [
+            (ModulationParameter::AutoFilterStrength, 6.0),
+            (ModulationParameter::AutoFilterSyncPhase, 180.0),
+            (ModulationParameter::AutoFilterStereoPhase, 180.0),
+        ] {
+            for amount in [-limit, 0.0, limit] {
+                let mut route = Modulation::new(parameter);
+                route.amount = amount;
+                settings.modulations = vec![route];
+                assert!(settings.valid());
+                assert!(
+                    !crate::FilterSettings {
+                        modulations: vec![route],
+                        ..Default::default()
+                    }
+                    .valid()
+                );
+                let saved = serde_json::to_value(&settings).unwrap();
+                assert_eq!(
+                    serde_json::from_value::<AutoFilterSettings>(saved).unwrap(),
+                    settings
+                );
+                settings.modulations[0].amount = limit + 0.1;
+                assert!(!settings.valid());
+                settings.modulations[0].amount = f32::NAN;
+                assert!(!settings.valid_modulations());
+                settings.modulations[0] = route;
+                let mut effect = crate::EffectInstance::auto_filter();
+                effect.unit = crate::EffectSettings::AutoFilter(settings.clone());
+                let copy = effect.duplicate();
+                let crate::EffectSettings::AutoFilter(copy) = copy.unit else {
+                    panic!()
+                };
+                assert_eq!(copy.modulations[0].parameter, parameter);
+                assert_ne!(copy.modulations[0].id, route.id);
+            }
+        }
+    }
+}
