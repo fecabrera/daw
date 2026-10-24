@@ -4554,3 +4554,17 @@ Completed automated checks on macOS:
 - CLI build and smoke check passed. The macOS debug app was rebuilt through the existing packaging script.
 
 Logs: `work/inline-order-{core,mixed,verified,clippy-verified,workspace,cli-build,cli-smoke,package}.log`. Native UI/device checks and Windows/Linux tests were not run. Control placement remains presentation-only; Amplitude and modulation timing keep their existing processing stages.
+
+## Lower-editor loop ruler — 2026-10-24
+
+The lower audio and MIDI rulers reuse the Timeline/overview painter and interaction handler. The upper band moves, resizes, creates and toggles the shared project loop; the lower band positions the playhead. Each ruler keeps its own response IDs and viewport clock.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- Locked, offline workspace run passed: 1,262 passed and 3 configured tests ignored. The final clipping adjustment was also checked by the complete UI suite below.
+- The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+- All 636 final UI tests passed, including the existing Timeline/overview, clip and note gestures. Three new focused tests passed across audio/MIDI, both themes, and different content zoom/scroll transforms. They cover loop movement, both resize edges, range creation, on/off clicks, Shift bypass, independent lower-band seeking, unchanged selection/playhead during loop edits, Undo/Redo, save/reopen, and unchanged overview/content transforms.
+- Cancellation tests restore the original project and dirty state on Escape, lost focus, disabled UI and settings dialogs.
+
+Logs: `work/editor-loop-{focused-final,ui-final,clippy,workspace,package}.log`. Native pointer/device checks and Windows/Linux tests were not run. The loop retains its existing shared transport data, preview/sync behavior and navigation history; no audio-processing or project-format changes were made.

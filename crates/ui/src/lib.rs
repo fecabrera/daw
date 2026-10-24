@@ -3452,7 +3452,11 @@ impl DawUi {
         selection: &egui::Response,
         playhead: &egui::Response,
     ) {
-        if !ui.is_enabled() || !ui.input(|input| input.focused) {
+        if !ui.is_enabled()
+            || !self.editing_enabled()
+            || !ui.input(|input| input.focused)
+            || ui.input(|input| input.key_pressed(egui::Key::Escape))
+        {
             if let Some(drag) = self.loop_drag.take() {
                 self.session.project.transport.r#loop = drag.original;
                 self.dirty = drag.dirty;
@@ -3561,25 +3565,30 @@ impl DawUi {
         });
     }
     fn time_ruler(&mut self, ui: &mut egui::Ui) -> Rect {
-        let zoom = self.view_zoom();
-        let scroll = self.view_scroll();
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), RULER_HEIGHT),
             Sense::hover(),
         );
+        self.time_ruler_at(ui, rect, response.id);
+        rect
+    }
+    /// Share loop gestures and painting while each pane supplies its own coordinates and ID.
+    fn time_ruler_at(&mut self, ui: &egui::Ui, rect: Rect, id: egui::Id) {
+        let zoom = self.view_zoom();
+        let scroll = self.view_scroll();
         let labels = Rect::from_min_max(rect.min, Pos2::new(rect.right(), rect.bottom() - 20.0));
         let ticks = Rect::from_min_max(labels.left_bottom(), rect.max);
         let selection_response = ui.interact(
-        labels, response.id.with("selection"), Sense::click_and_drag(),
+        labels, id.with("selection"), Sense::click_and_drag(),
     ).on_hover_text("Click the loop range to toggle looping. Drag empty space to select a loop range. Drag its edges to resize or its body to move. Hold Shift to bypass snapping.");
         let playhead_response = ui
-            .interact(ticks, response.id.with("playhead"), Sense::click_and_drag())
+            .interact(ticks, id.with("playhead"), Sense::click_and_drag())
             .on_hover_cursor(egui::CursorIcon::PointingHand)
             .on_hover_text(
                 "Click or drag to position the playhead. Hold Shift to bypass snapping.",
             );
         self.ruler_interaction(ui, rect, &selection_response, &playhead_response);
-        let painter = ui.painter().with_clip_rect(rect);
+        let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, theme::palette(ui.ctx()).background);
         painter.rect_filled(labels, 0.0, theme::palette(ui.ctx()).panel);
         let l = &self.session.project.transport.r#loop;
@@ -3615,7 +3624,6 @@ impl DawUi {
                 - scroll) as f32)
                 * zoom;
         if (rect.left()..=rect.right()).contains(&playhead_x) {
-            let painter = painter.with_clip_rect(rect);
             painter.line_segment(
                 [
                     Pos2::new(playhead_x, ticks.top()),
@@ -3635,7 +3643,6 @@ impl DawUi {
                 Stroke::NONE,
             ));
         }
-        rect
     }
     fn master_name(&self, ui: &mut egui::Ui) {
         let font_size = if self.view_mode == mixer::ViewMode::Mixer {

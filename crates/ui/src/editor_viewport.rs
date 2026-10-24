@@ -192,41 +192,8 @@ impl DawUi {
             row.min + Vec2::new(track_overview::LABEL_WIDTH, 0.0),
             row.max - Vec2::new(scrollbar, 0.0),
         );
-        let labels = Rect::from_min_max(rect.min, Pos2::new(rect.right(), rect.bottom() - 20.0));
-        let response = ui.interact(
-            rect,
-            ui.id().with("content-ruler-seek"),
-            Sense::click_and_drag(),
-        );
-        if ui.is_enabled()
-            && !self.midi_editor.dragging()
-            && ui.input(|i| i.focused)
-            && (response.clicked() || response.dragged())
-            && let Some(pointer) = response.interact_pointer_pos()
-        {
-            let frame = self.selection_frame(
-                i128::from(self.ruler_frame(rect, pointer)),
-                0..=u64::MAX,
-                musical_time::snap_bypassed(ui),
-            );
-            self.seek(frame);
-        }
-        let painter = ui.painter_at(rect);
+        self.time_ruler_at(ui, rect, ui.id().with("editor-content-ruler"));
         let palette = theme::palette(ui.ctx());
-        painter.rect_filled(rect, 0.0, palette.background);
-        painter.rect_filled(labels, 0.0, palette.panel);
-        let region = &self.session.project.transport.r#loop;
-        let (left, right) = self.loop_pixels(rect);
-        if region.end_frame > region.start_frame {
-            range_selection::paint(ui, labels, left, right, region.enabled);
-        }
-        self.musical_timeline().paint_ruler_ticks(
-            &painter,
-            rect,
-            labels,
-            [region.start_frame, region.end_frame],
-            region.enabled,
-        );
         ui.painter().hline(
             row.x_range(),
             row.bottom() - 0.5,

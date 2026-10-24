@@ -552,3 +552,272 @@ fn midi_pattern_header_selection_respects_settings_and_window_focus() {
     click(&mut app, &ctx, point);
     assert_eq!(app.selected_clip, Some(first));
 }
+
+fn loop_fixture(midi: bool) -> (DawUi, egui::Context, Id, Id, Id) {
+    let (mut app, ctx, track, first, second) = fixture(midi);
+    if midi {
+        // The viewport fixture extends its clip to two seconds; match the saved pattern bounds.
+        let ticks = 4 * daw_core::MIDI_TICKS_PER_BEAT;
+        let frames = app.session.project.midi_frame(ticks);
+        for asset in &mut app.session.project.assets {
+            if let Some(pattern) = &mut asset.midi_pattern {
+                pattern.length_ticks = ticks;
+                asset.decoded_frame_count = frames;
+            }
+        }
+    }
+    (app, ctx, track, first, second)
+}
+
+fn loop_pointer(app: &DawUi, seconds: f64, upper: bool) -> Pos2 {
+    let view = &app.midi_editor.content;
+    Pos2::new(
+        view.ruler.left() + ((seconds - view.scroll) * f64::from(view.zoom)) as f32,
+        if upper {
+            view.ruler.top() + 7.0
+        } else {
+            view.ruler.bottom() - 7.0
+        },
+    )
+}
+fn loop_drag(app: &mut DawUi, ctx: &egui::Context, from: f64, to: f64, shift: bool) {
+    let start = loop_pointer(app, from, true);
+    let end = loop_pointer(app, to, true);
+    let modifiers = egui::Modifiers {
+        shift,
+        ..Default::default()
+    };
+    frame(
+        app,
+        ctx,
+        vec![
+            egui::Event::ModifiersChanged(modifiers),
+            egui::Event::PointerMoved(start),
+            egui::Event::PointerButton {
+                pos: start,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers,
+            },
+        ],
+    );
+    frame(app, ctx, vec![egui::Event::PointerMoved(end)]);
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::PointerButton {
+            pos: end,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers,
+        }],
+    );
+}
+
+#[test]
+fn lower_ruler_moves_resizes_creates_and_toggles_the_shared_loop_in_both_editors() {
+    for midi in [false, true] {
+        for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+            for (zoom, scroll) in [(150.0, 0.5), (180.0, 1.0)] {
+                let (mut app, ctx, _, selected, _) = loop_fixture(midi);
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme,
+                        ..Default::default()
+                    },
+                );
+                app.midi_editor.content.fitted = false;
+                app.midi_editor.content.zoom = zoom;
+                app.midi_editor.content.scroll = scroll;
+                app.midi_editor.zoom = 70.0;
+                app.midi_editor.scroll = 0.25;
+                app.session.project.transport.playhead_frame = 180000;
+                app.session.project.transport.r#loop = daw_core::Loop {
+                    start_frame: 72000,
+                    end_frame: 144000,
+                    enabled: true,
+                };
+                app.history = None;
+                app.dirty = false;
+                frame(&mut app, &ctx, vec![]);
+                let original = app.session.project.transport.r#loop.clone();
+                let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
+                let content = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+                loop_drag(&mut app, &ctx, 2.0, 2.5, false);
+                assert_eq!(
+                    (
+                        app.session.project.transport.r#loop.start_frame,
+                        app.session.project.transport.r#loop.end_frame
+                    ),
+                    (96000, 168000)
+                );
+                assert!(app.dirty);
+                app.perform_history_action(HistoryAction::Undo, &ctx);
+                assert_eq!(app.session.project.transport.r#loop, original);
+                app.perform_history_action(HistoryAction::Redo, &ctx);
+                loop_drag(&mut app, &ctx, 2.0, 2.5, false);
+                assert_eq!(
+                    (
+                        app.session.project.transport.r#loop.start_frame,
+                        app.session.project.transport.r#loop.end_frame
+                    ),
+                    (120000, 168000)
+                );
+                loop_drag(&mut app, &ctx, 3.5, 4.0, false);
+                assert_eq!(
+                    (
+                        app.session.project.transport.r#loop.start_frame,
+                        app.session.project.transport.r#loop.end_frame
+                    ),
+                    (120000, 192000)
+                );
+                let point = loop_pointer(&app, 3.0, true);
+                click(&mut app, &ctx, point);
+                assert!(!app.session.project.transport.r#loop.enabled);
+                click(&mut app, &ctx, point);
+                assert!(app.session.project.transport.r#loop.enabled);
+                loop_drag(&mut app, &ctx, 4.5, 5.0, false);
+                assert_eq!(
+                    (
+                        app.session.project.transport.r#loop.start_frame,
+                        app.session.project.transport.r#loop.end_frame
+                    ),
+                    (216000, 240000)
+                );
+                assert_eq!(app.session.project.transport.playhead_frame, 180000);
+                assert_eq!(app.selected_clip, Some(selected));
+                assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), overview);
+                assert_eq!(
+                    (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+                    content
+                );
+                let restored: daw_core::Project =
+                    serde_json::from_value(serde_json::to_value(&app.session.project).unwrap())
+                        .unwrap();
+                assert_eq!(
+                    restored.transport.r#loop,
+                    app.session.project.transport.r#loop
+                );
+                app.session.project.validate().unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn lower_ruler_loop_shift_bypasses_snapping_and_tick_seeking_does_not_edit_the_loop() {
+    for midi in [false, true] {
+        let (mut app, ctx, _, _, _) = loop_fixture(midi);
+        app.midi_editor.content.fitted = false;
+        app.midi_editor.content.zoom = 200.0;
+        app.midi_editor.content.scroll = 0.5;
+        app.session.project.transport.r#loop = daw_core::Loop {
+            start_frame: 48000,
+            end_frame: 96000,
+            enabled: true,
+        };
+        frame(&mut app, &ctx, vec![]);
+        loop_drag(&mut app, &ctx, 1.5, 1.625, true);
+        assert_eq!(
+            (
+                app.session.project.transport.r#loop.start_frame,
+                app.session.project.transport.r#loop.end_frame
+            ),
+            (54000, 102000)
+        );
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::ModifiersChanged(Default::default())],
+        );
+        let region = app.session.project.transport.r#loop.clone();
+        let point = loop_pointer(&app, 2.5, false);
+        click(&mut app, &ctx, point);
+        assert_eq!(app.session.project.transport.playhead_frame, 120000);
+        assert_eq!(app.session.project.transport.r#loop, region);
+    }
+}
+
+#[test]
+fn lower_ruler_loop_cancel_and_guards_preserve_the_project_and_viewports() {
+    for midi in [false, true] {
+        for guard in ["escape", "focus", "settings", "disabled"] {
+            let (mut app, ctx, _, _, _) = loop_fixture(midi);
+            app.midi_editor.content.fitted = false;
+            app.midi_editor.content.zoom = 200.0;
+            app.midi_editor.content.scroll = 0.5;
+            app.session.project.transport.r#loop = daw_core::Loop {
+                start_frame: 48000,
+                end_frame: 96000,
+                enabled: true,
+            };
+            app.history = None;
+            app.dirty = false;
+            frame(&mut app, &ctx, vec![]);
+            let before = app.session.project.clone();
+            let view = (
+                app.midi_editor.content.zoom,
+                app.midi_editor.content.scroll,
+                app.midi_editor.zoom,
+                app.midi_editor.scroll,
+            );
+            let start = loop_pointer(&app, 1.5, true);
+            let end = loop_pointer(&app, 2.0, true);
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+            assert_ne!(
+                app.session.project.transport.r#loop,
+                before.transport.r#loop
+            );
+            assert!(!app.dirty);
+            let mut focused = true;
+            let mut enabled = true;
+            let mut events = vec![];
+            match guard {
+                "escape" => events.push(egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                }),
+                "focus" => {
+                    focused = false;
+                    events.push(egui::Event::WindowFocused(false));
+                }
+                "settings" => app.settings_open = true,
+                "disabled" => enabled = false,
+                _ => unreachable!(),
+            }
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    focused,
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.add_enabled_ui(enabled, |ui| app.show(ui));
+                },
+            );
+            output.textures_delta.clear();
+            assert_eq!(app.session.project, before, "{midi} {guard}");
+            assert!(app.loop_drag.is_none());
+            assert!(!app.dirty);
+            assert_eq!(
+                (
+                    app.midi_editor.content.zoom,
+                    app.midi_editor.content.scroll,
+                    app.midi_editor.zoom,
+                    app.midi_editor.scroll
+                ),
+                view
+            );
+        }
+    }
+}
