@@ -60,7 +60,7 @@ impl EditorViewport {
     ) {
         let Some(clip) = clip else {
             // A lower-editor edit can remove its primary clip. Keep a manually
-            // retained view through empty selection; a later overview selection fits anew.
+            // retained view through empty selection; an explicit fit restores fitted mode.
             if self.retain_on_selection || !self.fitted {
                 self.clip = None;
                 self.fitted = false;

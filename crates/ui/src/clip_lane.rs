@@ -48,13 +48,19 @@ impl DawUi {
         });
         if response.double_clicked() && !self.midi_editor.content_active {
             self.open_clip_editor(clip.id, track_id, ui.ctx());
-        }
-        if response.clicked() {
+            self.midi_editor.content.fitted = true;
+            self.midi_editor.content.retain_on_selection = false;
+        } else if response.clicked() {
             self.select_clip(
                 clip.id,
                 track_id,
                 ui.input(|input| input.modifiers.shift || input.modifiers.command),
             );
+            if self.view_mode.has_track_overview() && !self.midi_editor.content_active {
+                self.retain_content_view();
+                self.midi_editor.content.scroll =
+                    clip.start_frame as f64 / f64::from(self.session.project.sample_rate_hz);
+            }
         }
         if self.midi_editor.content_active && (response.clicked() || response.context_menu_opened())
         {

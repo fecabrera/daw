@@ -4609,3 +4609,16 @@ Completed automated checks on macOS:
 - The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
 
 Logs: `work/mist-{settings,ui,clippy,workspace,package}.log`. Native visual checks and Windows/Linux tests were not run. Dark remains the default; audio processing and project storage are unchanged.
+
+## Overview clip click navigation — 2026-10-24
+
+A single overview clip click selects the clip and scrolls the lower editor to its start without changing zoom. A double-click explicitly fits the selected clip, including an already-selected clip. Lower-editor clicks keep their existing viewport-preservation behavior.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- All 638 UI tests passed. The focused input test covers audio and MIDI clips in all three themes, existing and changed selection, single-click zoom retention, double-click fitting, and unchanged overview transform, playhead, project data and dirty state.
+- Locked, offline workspace tests passed: 1,264 passed and three configured tests ignored.
+- The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+
+Logs: `work/overview-click-{focused,ui,clippy,workspace,package}.log`. Native pointer checks and Windows/Linux tests were not run. This supersedes automatic fitting on a single overview clip click; initial opening and the Fit clip button retain fitting.

@@ -103,6 +103,55 @@ fn editor_and_timeline_scrollbars_use_standard_theme_handles_without_clipping() 
 }
 
 #[test]
+fn overview_click_scrolls_without_zooming_and_double_click_fits_audio_and_midi() {
+    for midi in [false, true] {
+        for theme in settings::ColorTheme::ALL {
+            let (mut app, ctx, _, first, second) = fixture(midi);
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme,
+                    ..Default::default()
+                },
+            );
+            app.midi_editor.zoom = 100.0;
+            app.midi_editor.scroll = 0.0;
+            let project = app.session.project.clone();
+            let playhead = app.session.project.transport.playhead_frame;
+            for (clip, start, length) in [(first, 1.0, 2.0), (second, 4.0, 0.5)] {
+                app.midi_editor.content.fitted = false;
+                app.midi_editor.content.zoom = 300.0;
+                app.midi_editor.content.scroll = 0.0;
+                // Separate each single click from preceding pointer gestures.
+                for _ in 0..40 {
+                    frame(&mut app, &ctx, vec![]);
+                }
+                let point = app.midi_editor.clip_bounds[&clip].center();
+                click(&mut app, &ctx, point);
+                assert_eq!(app.selected_clip, Some(clip));
+                assert_eq!(app.midi_editor.content.zoom, 300.0);
+                assert_eq!(app.midi_editor.content.scroll, start);
+                assert!(!app.midi_editor.content.fitted);
+                super::midi::double_click_unit_header(&mut app, &ctx, point);
+                assert_eq!(app.selected_clip, Some(clip));
+                assert!(app.midi_editor.content.fitted);
+                assert_eq!(app.midi_editor.content.scroll, start);
+                assert!(
+                    (app.midi_editor.content.zoom * length
+                        - app.midi_editor.content.bounds.width())
+                    .abs()
+                        < 0.1
+                );
+                assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), (100.0, 0.0));
+            }
+            assert_eq!(app.session.project, project);
+            assert_eq!(app.session.project.transport.playhead_frame, playhead);
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
 fn selected_clip_fits_content_width_on_open_selection_and_resize_for_audio_and_midi() {
     for midi in [false, true] {
         let (mut app, ctx, track, first, second) = fixture(midi);
