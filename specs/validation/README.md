@@ -4,6 +4,21 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Windows custom titlebar divider — 2026-10-24
+
+The DWM frame now extends through the header divider into the opaque playback row. This removes the extra dark row under native caption buttons and prevents the frame boundary from darkening the divider. Header geometry and native caption ownership are unchanged.
+
+Completed checks on Windows:
+
+- `cargo fmt --all --check`: passed.
+- `cargo test -p daw-desktop --offline`: passed. The new regression test compares the native frame boundary with the actual laid-out divider in restored and maximized states at 100%, 125%, 150%, 200%, 300%, and 400% UI zoom. The existing native frame, hit-testing, and subclass-lifetime test also passes.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo test --workspace --offline`: passed. The desktop tests were also rerun after the final frame-boundary change.
+- `cargo build -p daw-desktop --offline`: passed; rebuilt the debug executable.
+- Native GPU preview using the current UI and Windows adapter: passed at 144 DPI (150% display scale), with Dark, Light, and Mist in both restored and maximized windows. Captured pixels below the native buttons matched the divider in the center of the window within one RGB level. Native Minimize, Maximize/Restore, and Close hit tests returned their expected values in all six cases.
+
+The native preview used isolated application state and no project or audio device. Other monitor scales, cross-monitor DPI transitions, and native pointer gestures were not checked for this change.
+
 ## Test environment
 
 | Item | Observed value |

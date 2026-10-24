@@ -130,8 +130,10 @@ impl Titlebar {
                     cxLeftWidth: 0,
                     cxRightWidth: 0,
                     cyTopHeight: if self.state.custom.get() {
-                        (daw_ui::toolbars::HEIGHT * ctx.pixels_per_point()).ceil() as i32
+                        // Initial estimate; finish uses the laid-out header bounds.
+                        ((daw_ui::toolbars::HEIGHT + 1.0) * ctx.pixels_per_point()).ceil() as i32
                             + top_inset
+                            + 1
                     } else {
                         0
                     },
@@ -180,7 +182,25 @@ impl Titlebar {
         ui.set_caption_metrics(metrics);
     }
     pub fn finish(&mut self, ui: &daw_ui::DawUi, ctx: &egui::Context) {
-        *self.state.layout.borrow_mut() = ui.header_layout(ctx);
+        let layout = ui.header_layout(ctx);
+        if self.state.alive.get() && self.state.custom.get() && layout.bounds.is_positive() {
+            // Keep the frame boundary inside the opaque playback row. Include the
+            // 1-point divider and one physical pixel beyond it. Measured bounds
+            // include the maximized inset and egui's layout rounding at this scale.
+            let height =
+                ((layout.bounds.bottom() + 1.0) * ctx.pixels_per_point()).ceil() as i32 + 1;
+            if self.state.frame_height.replace(height) != height {
+                let margins = MARGINS {
+                    cxLeftWidth: 0,
+                    cxRightWidth: 0,
+                    cyTopHeight: height,
+                    cyBottomHeight: 0,
+                };
+                // SAFETY: live HWND on its owning thread and initialized margins.
+                unsafe { DwmExtendFrameIntoClientArea(self.window, &margins) };
+            }
+        }
+        *self.state.layout.borrow_mut() = layout;
     }
 
     pub fn pointer_input(&self, input: &mut egui::RawInput) {
@@ -307,8 +327,7 @@ fn frame_inset(window: HWND) -> i32 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn native_frame_round_trip_retains_styles_hit_testing_and_subclass_lifetime() {
+    fn test_window() -> HWND {
         // This hidden test window belongs only to this thread. It does not touch the
         // running desktop app, application storage, user projects or display focus.
         let class: Vec<u16> = "STATIC\0".encode_utf16().collect();
@@ -330,6 +349,69 @@ mod tests {
             )
         };
         assert_ne!(window, 0);
+        window
+    }
+
+    #[test]
+    fn custom_frame_boundary_stays_below_the_laid_out_header_divider() {
+        let window = test_window();
+        let ctx = egui::Context::default();
+        daw_ui::theme::configure(&ctx);
+        daw_ui::fonts::configure(&ctx);
+        daw_ui::icons::configure(&ctx);
+        let mut adapter = Titlebar::attach(window, ctx.clone()).expect("Window subclass");
+        let mut ui = daw_ui::DawUi::default();
+        let mut settings = ui.settings();
+        settings.titlebar = TitlebarStyle::Custom;
+        ui.set_settings(&ctx, settings);
+        // A hidden window lets this test exercise native metrics and egui geometry
+        // without changing display focus or requiring a composed GPU surface.
+        for maximized in [false, true] {
+            // SAFETY: this thread owns the live hidden window and changes only its style.
+            unsafe {
+                SetWindowLongPtrW(
+                    window,
+                    GWL_STYLE,
+                    (WS_OVERLAPPEDWINDOW | if maximized { WS_MAXIMIZE } else { 0 }) as isize,
+                );
+            }
+            for zoom in [1.0, 1.25, 1.5, 2.0, 3.0, 4.0] {
+                ctx.set_zoom_factor(zoom);
+                for _ in 0..2 {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(900.0, 600.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |root| {
+                            adapter.prepare(&mut ui, root.ctx());
+                            ui.show(root);
+                            adapter.finish(&ui, root.ctx());
+                        },
+                    );
+                    output.textures_delta.clear();
+                }
+                let header = ui.header_layout(&ctx).bounds;
+                assert!(header.is_positive());
+                let divider_bottom = (header.bottom() + 1.0) * ctx.pixels_per_point();
+                assert!(
+                    adapter.state.frame_height.get() as f32 > divider_bottom,
+                    "maximized={maximized}, zoom={zoom}, frame={}, divider bottom={divider_bottom}",
+                    adapter.state.frame_height.get(),
+                );
+            }
+        }
+        // SAFETY: the test owns this hidden HWND; destruction removes the subclass.
+        unsafe { DestroyWindow(window) };
+        assert!(!adapter.state.alive.get());
+    }
+
+    #[test]
+    fn native_frame_round_trip_retains_styles_hit_testing_and_subclass_lifetime() {
+        let window = test_window();
         let mut adapter =
             Titlebar::attach(window, egui::Context::default()).expect("Window subclass");
         let ctx = egui::Context::default();
