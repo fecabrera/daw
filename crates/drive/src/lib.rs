@@ -5,6 +5,9 @@ use daw_unit_core::{
 };
 use fundsp::{audionode::AudioNode, svf::*};
 
+mod v2;
+pub use v2::DriveV2;
+
 #[derive(Clone)]
 struct Ramp {
     value: f32,
@@ -225,6 +228,24 @@ impl Drive {
     /// Offsets in the same order: dB, normalized fractions, and octaves for Frequency.
     /// Sources and route amounts belong to the host; this portable stage smooths offsets by 1 ms.
     pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 5]) -> [f32; 2] {
+        self.process_kernel(input, offsets, 0.0, false)
+    }
+    /// Color/clipping/Tone output before the legacy Volume and power blend.
+    pub(crate) fn process_tone(
+        &mut self,
+        input: [f32; 2],
+        offsets: [f32; 5],
+        hard: f32,
+    ) -> [f32; 2] {
+        self.process_kernel(input, offsets, hard, true)
+    }
+    fn process_kernel(
+        &mut self,
+        input: [f32; 2],
+        offsets: [f32; 5],
+        hard: f32,
+        pre_level: bool,
+    ) -> [f32; 2] {
         let offsets = self.external.process(offsets);
         for ramp in self.ramps() {
             ramp.advance();
@@ -261,10 +282,22 @@ impl Drive {
             let clipped = if self.clipping < 1e-4 {
                 color
             } else {
-                (color * self.clipping).tanh() * self.normalization
+                let soft = (color * self.clipping).tanh() * self.normalization;
+                if hard <= 0.0 {
+                    soft
+                } else {
+                    let hard_sample =
+                        (color * self.clipping).clamp(-1.0, 1.0) / self.clipping.min(1.0);
+                    soft + (hard_sample - soft) * hard
+                }
             };
-            let wet = self.tone_filter[channel].filter_mono(clipped) * volume;
-            dry + (wet - dry) * self.mix.value
+            let tone = self.tone_filter[channel].filter_mono(clipped);
+            if pre_level {
+                tone
+            } else {
+                let wet = tone * volume;
+                dry + (wet - dry) * self.mix.value
+            }
         })
     }
 }

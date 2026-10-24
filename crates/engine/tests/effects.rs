@@ -1775,3 +1775,75 @@ fn filter_live_inheritance_preserves_state_and_processing_reset_and_retarget_do_
     TRACK_ALLOCATIONS.with(|enabled| enabled.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn drive_v2_live_export_seek_block_processing_and_retarget_share_the_portable_path() {
+    for rate in SAMPLE_RATES {
+        for master in [false, true] {
+            let mut p = plan(rate, false);
+            let mut effect = EffectInstance::drive_v2();
+            let key = daw_engine::ModulationTarget::Effect(effect.id);
+            let EffectSettings::DriveV2(s) = &mut effect.unit else {
+                panic!()
+            };
+            s.input_gain_db = 6.0;
+            s.color_enabled = true;
+            s.gain = 0.6;
+            s.tone = 0.7;
+            s.level_db = -6.0;
+            s.dry_wet = 0.7;
+            s.clip = DriveV2Clip::Hard;
+            if master {
+                p.project.master.effects.push(effect);
+            } else {
+                p.project.tracks[0].effects.push(effect);
+            }
+            p.project.validate().unwrap();
+            let mut expected = vec![[0.0; 2]; 4096];
+            Renderer::new(p.clone()).render_offline(&mut expected);
+            let mut blocks = vec![[0.0; 2]; 4096];
+            let mut r = Renderer::new(p.clone());
+            for block in blocks.chunks_mut(37) {
+                r.render_offline(block);
+            }
+            assert_eq!(blocks, expected);
+            let mut random = [[0.0; 2]; 128];
+            p.render(2000, &mut random);
+            assert_eq!(&random[..], &expected[2000..2128]);
+            let mut live = Renderer::new(p.clone());
+            live.play();
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            for (frame, sample) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if frame > rate as usize / 200 {
+                    assert_eq!(*sample, actual);
+                }
+            }
+            let values = live.modulation_snapshot(key).unwrap();
+            assert!(values[..7].iter().all(|v| v.is_finite()));
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            let effects = if master {
+                &mut p.project.master.effects
+            } else {
+                &mut p.project.tracks[0].effects
+            };
+            let EffectSettings::DriveV2(s) = &mut effects[0].unit else {
+                panic!()
+            };
+            s.color_enabled = false;
+            s.clip = DriveV2Clip::Soft;
+            s.dry_wet = 0.0;
+            let mut next = Renderer::new(p);
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            next.inherit(&mut live);
+            for _ in 0..512 {
+                assert!(next.next_sample().iter().all(|v| v.is_finite()));
+            }
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        }
+    }
+}

@@ -381,3 +381,9 @@ destination_settings!(
     &ModulationParameter::SATURATOR,
     Shared
 );
+
+destination_settings!(
+    crate::DriveV2Settings,
+    &ModulationParameter::DRIVE_V2,
+    Shared
+);

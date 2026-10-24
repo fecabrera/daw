@@ -1,3 +1,22 @@
+fn scroll_effects_catalog(app: &mut DawUi, ctx: &egui::Context, delta: f32) {
+    let pointer = app.effects_bounds.library.center();
+    for _ in 0..8 {
+        frame(
+            app,
+            ctx,
+            vec![
+                egui::Event::PointerMoved(pointer),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    phase: egui::TouchPhase::Move,
+                    delta: Vec2::new(0.0, delta),
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+    }
+}
+
 use super::*;
 
 fn categorized_catalog_fixture(
@@ -125,11 +144,14 @@ fn effect_category_group_additions_and_drops_follow_display_order_for_every_targ
                     b.auto_filter_entry.center(),
                     b.entry.center(),
                     b.filter_entry.center(),
-                    b.direction_mixer_entry.center(),
                 ];
                 for (index, point) in points.into_iter().enumerate() {
                     click_effect_with_shift(&mut app, &ctx, point, index != 0);
                 }
+                scroll_effects_catalog(&mut app, &ctx, -80.0);
+                let direction = app.effects_bounds.direction_mixer_entry.center();
+                click_effect_with_shift(&mut app, &ctx, direction, true);
+                scroll_effects_catalog(&mut app, &ctx, 80.0);
                 let original = serde_json::to_value(&app.session.project).unwrap();
                 assert!(!app.dirty);
                 if drop {
@@ -379,6 +401,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                     entries[1],
                     entries[9],
                     entries[10],
+                    entries[11],
                 ],
             ),
             (
@@ -391,6 +414,20 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                     entries[1],
                     entries[9],
                     entries[10],
+                    entries[11],
+                ],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                    entries[11],
                     entries[7],
                 ],
             ),
@@ -404,6 +441,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                     entries[1],
                     entries[9],
                     entries[10],
+                    entries[11],
                     entries[7],
                     entries[8],
                 ],
@@ -418,6 +456,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                     entries[1],
                     entries[9],
                     entries[10],
+                    entries[11],
                     entries[7],
                     entries[8],
                 ],
@@ -432,6 +471,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                     entries[1],
                     entries[9],
                     entries[10],
+                    entries[11],
                     entries[7],
                 ],
             ),
@@ -445,6 +485,20 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                     entries[1],
                     entries[9],
                     entries[10],
+                    entries[11],
+                ],
+            ),
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                    entries[11],
                 ],
             ),
             (
@@ -493,6 +547,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             );
         }
         end_click_sequence(&mut app, &ctx);
+        scroll_effects_catalog(&mut app, &ctx, 80.0);
         let point = app.effects_bounds.compressor_entry.center();
         click_effect_with_shift(&mut app, &ctx, point, true);
         assert_eq!(
@@ -525,6 +580,9 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         (0.99, 0.99),
     ] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
+        let distortion = app.effects_bounds.folders[2].center();
+        click(&mut app, &ctx, distortion);
+        frame(&mut app, &ctx, vec![]);
         let folder = app.effects_bounds.folders[3].center();
         click(&mut app, &ctx, folder);
         frame(&mut app, &ctx, vec![]);
@@ -571,6 +629,9 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
 fn effects_library_empty_click_respects_input_guards_and_other_catalog_controls() {
     for guard in ["header", "secondary", "modal", "focus", "drag"] {
         let (mut app, _, ctx, _) = chain_fixture(false, false);
+        let distortion = app.effects_bounds.folders[2].center();
+        click(&mut app, &ctx, distortion);
+        frame(&mut app, &ctx, vec![]);
         let folder = app.effects_bounds.folders[3].center();
         click(&mut app, &ctx, folder);
         frame(&mut app, &ctx, vec![]);
@@ -4634,6 +4695,13 @@ fn direction_mixer_controls_and_catalog_use_shared_track_master_and_instrument_a
                 &shape.shape,
                 egui::Shape::Text(text) if text.galley.text() == "Imaging"
             )));
+            if !app
+                .effects_bounds
+                .library
+                .contains_rect(app.effects_bounds.direction_mixer_entry)
+            {
+                scroll_effects_catalog(&mut app, &ctx, -80.0);
+            }
             let point = app.effects_bounds.direction_mixer_entry.center();
             assert!(app.effects_bounds.direction_mixer_entry.is_positive());
             click(&mut app, &ctx, point);
@@ -6240,6 +6308,78 @@ fn timeline_effect_drops_resolve_child_rows_and_scroll_to_visible_tracks() {
                 .unwrap()
                 .0
                 .is_empty()
+        );
+    }
+}
+
+#[test]
+fn drive_v2_catalog_three_strip_layout_color_power_and_gain_edits_use_shared_history() {
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx) = categorized_catalog_fixture(theme, "track");
+        let entry = app.effects_bounds.drive_v2_entry;
+        assert!(entry.is_positive());
+        click(&mut app, &ctx, entry.center());
+        click(&mut app, &ctx, entry.center());
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.effects_bounds.drive_v2_units.len(), 1);
+        let b = &app.effects_bounds.drive_v2_units[0];
+        assert!(b.sections.iter().all(|r| (r.width() - 90.0).abs() < 1.0));
+        for row in 0..3 {
+            for col in 1..3 {
+                assert!(
+                    (b.knobs[col][row].center().y - b.knobs[0][row].center().y).abs() < 1.0,
+                    "col {col} row {row}: {:?} vs {:?}",
+                    b.knobs[col][row],
+                    b.knobs[0][row]
+                );
+            }
+        }
+        assert!((b.knobs[1][0].center().x - b.knobs[0][0].center().x - 90.0).abs() < 1.0);
+        assert!((b.knobs[2][0].center().x - b.knobs[1][0].center().x - 90.0).abs() < 1.0);
+        assert_eq!(b.clip, b.knobs[0][0]);
+        assert!(b.knobs[2][0].left() > b.clip.right());
+        let color = b.color_power.center();
+        click(&mut app, &ctx, color);
+        frame(&mut app, &ctx, vec![]);
+        let settings = |app: &DawUi| {
+            let daw_core::EffectSettings::DriveV2(s) =
+                &app.session.project.tracks[0].effects[0].unit
+            else {
+                panic!()
+            };
+            s.clone()
+        };
+        assert!(settings(&app).color_enabled);
+        app.perform_history_action(crate::HistoryAction::Undo, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert!(!settings(&app).color_enabled);
+        app.perform_history_action(crate::HistoryAction::Redo, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert!(settings(&app).color_enabled);
+        end_click_sequence(&mut app, &ctx);
+        let gain = app.effects_bounds.drive_v2_units[0].knobs[2][0].center();
+        click(&mut app, &ctx, gain);
+        super::instrument_catalog::key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
+        assert!(settings(&app).input_gain_db > 0.0);
+        end_click_sequence(&mut app, &ctx);
+        let mode = app.effects_bounds.drive_v2_units[0].clip.center();
+        click(&mut app, &ctx, mode);
+        for _ in 0..2 {
+            super::instrument_catalog::key(&mut app, &ctx, egui::Key::ArrowRight, false, false);
+        }
+        assert_eq!(settings(&app).clip, daw_core::DriveV2Clip::Hard);
+        app.perform_history_action(crate::HistoryAction::Undo, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(settings(&app).clip, daw_core::DriveV2Clip::Soft);
+        app.perform_history_action(crate::HistoryAction::Redo, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(settings(&app).clip, daw_core::DriveV2Clip::Hard);
+        let saved = serde_json::to_value(&app.session.project).unwrap();
+        let restored: daw_core::Project = serde_json::from_value(saved).unwrap();
+        restored.validate().unwrap();
+        assert_eq!(
+            restored.tracks[0].effects,
+            app.session.project.tracks[0].effects
         );
     }
 }

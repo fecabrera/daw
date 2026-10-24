@@ -50,6 +50,10 @@ pub use compressor::{
     COMPRESSOR_STATE_VERSION, COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings,
 };
 pub use ott::{OTT_STATE_VERSION, OTT_TYPE_ID, OttBandSettings, OttSettings};
+mod drive_v2;
+pub use drive_v2::{
+    DRIVE_V2_STATE_VERSION, DRIVE_V2_TYPE_ID, DriveV2Clip, DriveV2ColorShape, DriveV2Settings,
+};
 mod drive;
 pub use drive::{DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveColorShape, DriveSettings};
 mod effects;

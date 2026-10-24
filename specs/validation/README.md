@@ -4491,3 +4491,18 @@ Completed automated checks on macOS:
 - CLI build and smoke check passed. The macOS debug app was rebuilt through the native packaging script.
 
 Logs: `work/oscillator-level-mod-{clippy,workspace,engine,ui,portable,cli-build,cli-smoke,package}.log`. Native UI listening/device tests and Windows/Linux checks were not run. Live seeks retain the existing fresh-oscillator-phase behavior; random-access export retains sequential render parity.
+
+## Drive v2 — 2026-10-23
+
+Added a separate `daw.drive-v2` effect while retaining Drive and its saved settings. The final layout is Drive: Soft/Hard two-way Clip mode, Gain, Tone; Color: three-way Shape, Strength, Frequency plus shared Power footer; Output: Input Gain, Output Level, Dry/Wet. Input Gain feeds both paths; Color precedes distortion; Output Level follows the mix. The portable processor composes the existing Drive kernel and uses the shared modulation contract for seven continuous controls.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- Locked, offline workspace tests passed: 1,243 passed and three configured tests ignored. The complete 629-test UI suite also passed after the final control reorder.
+- All 12 portable Drive tests passed. New cases cover exact Soft parity against Drive at all six rates, all three Color shapes with Color on/off, silence/−12/0/+12 dB output levels, dry input-gain retention, output gain after blending, whole-unit bypass, hard clipping, mode transitions/reset, shared-source scope, all modulation inputs, bounds and base silence.
+- Renderer integration covers track/Master placement, playback/export/block/random-access parity, processed snapshots and compatible retargeting without callback allocation. Settings tests cover distinct type identity, save/reopen, copied route IDs, invalid controls/routes and opaque future versions.
+- UI tests cover catalog addition, three 90-point strips, aligned controls, Color power, gain editing, bounded Soft/Hard keyboard selection, Undo/Redo and project round trips in dark/light themes. Existing catalog tests now include the new row and scroll before offscreen clicks.
+- CLI build and smoke check passed. The macOS debug app was rebuilt through `tools/package_macos.sh debug` with the final layout.
+
+Logs: `work/drive-v2-{portable,settings,focused,ui-all,clippy,workspace,cli-build,cli-smoke,package}.log`. Native UI/device listening and Windows/Linux checks were not run. Drive v2 retains Drive's project-rate clipping without oversampling; Clip selects the distortion curve rather than a final output limiter.

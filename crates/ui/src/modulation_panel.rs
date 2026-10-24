@@ -522,7 +522,8 @@ pub(super) fn marker(
         ModulationParameter::Resonance
         | ModulationParameter::EqLowQ
         | ModulationParameter::EqHighQ => offsets.map(|o| (base + o).clamp(0.1, 10.0)),
-        ModulationParameter::OscillatorGain
+        ModulationParameter::DriveInput
+        | ModulationParameter::OscillatorGain
         | ModulationParameter::SamplerGain
         | ModulationParameter::Level
         | ModulationParameter::Volume => {
@@ -660,6 +661,7 @@ pub(super) fn marker(
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => format!("{value:.1} dB"),
         ModulationParameter::Amplitude
+        | ModulationParameter::DriveInput
         | ModulationParameter::OscillatorGain
         | ModulationParameter::SamplerGain
         | ModulationParameter::Level

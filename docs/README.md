@@ -25,6 +25,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 
 - [3-band EQ](effects/equalizer.md)
 - [Drive](effects/drive.md)
+- [Drive v2](effects/drive-v2.md)
 - [Bitcrusher](effects/bitcrusher.md)
 - [Saturator](effects/saturator.md)
 - [Filter](effects/filter.md)

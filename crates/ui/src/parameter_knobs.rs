@@ -252,6 +252,7 @@ pub(super) fn destination(parameter: Parameter) -> KnobSpec {
         Parameter::SamplerGain => knobs::marked_gain_spec().named("Gain"),
         Parameter::Level => knobs::marked_gain_spec().named("Filter output level"),
         Parameter::Volume => knobs::marked_gain_spec().named("Drive volume"),
+        Parameter::DriveInput => knobs::marked_gain_spec().named("Input gain"),
         Parameter::Frequency => frequency("Filter frequency", 1000.0),
         Parameter::EqLowFrequency => frequency(parameter.label(), 250.0),
         Parameter::EqHighFrequency => frequency(parameter.label(), 2500.0),
@@ -482,7 +483,8 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
                 ["−48", "+48"],
             ),
             Parameter::Amplitude => (AmountMapping::Depth, signed_depth, ["−100", "+100"]),
-            Parameter::OscillatorGain
+            Parameter::DriveInput
+            | Parameter::OscillatorGain
             | Parameter::SamplerGain
             | Parameter::Level
             | Parameter::Volume => (

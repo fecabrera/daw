@@ -373,6 +373,9 @@ impl Renderer {
                 effect.id.hash(&mut hash);
                 match &effect.unit {
                     daw_core::EffectSettings::Eq3(_) => daw_unit_core::EQ_TYPE_ID.hash(&mut hash),
+                    daw_core::EffectSettings::DriveV2(_) => {
+                        daw_unit_core::DRIVE_V2_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::Drive(_) => {
                         daw_unit_core::DRIVE_TYPE_ID.hash(&mut hash)
                     }

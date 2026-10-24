@@ -33,6 +33,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 - [3-band EQ](effects/equalizer.md)
 - [Drive](effects/drive.md)
+- [Drive v2](effects/drive-v2.md)
 - [Saturator](effects/saturator.md)
 - [Bitcrusher](effects/bitcrusher.md)
 - [Filter](effects/filter.md)

@@ -192,3 +192,7 @@ Filter uses the existing Frequency/Resonance/Level/Dry-Wet destination list and 
 ## Oscillator unit Level destination
 
 Oscillator Level reuses the typed Level slot and PerNote scope after summing sources. Its untargeted routes share the layer-owned vector with instance-targeted Pitch/Gain routes. `valid_mixed_modulations` checks parameter/target ownership and unique route IDs across both groups. Prepared route vectors keep one advancement per destination/sample. The portable output stage owns final gain bounds and uses the same offset smoother; the host retains prepared routing, compatible history, and processed extrema. See [Oscillator Level](../instruments/midi-patterns.md#oscillator-level-modulation--2026-10-23).
+
+## Drive v2 destination
+
+[Drive v2](../effects/drive-v2.md) declares seven Shared inputs through the common settings/runtime contract. DriveInput appends additive slot 75; six other inputs reuse existing typed identities. Input/output offsets use the shared Gain amount profile, final +12 dB bound, and exact base silence. The processor composes the original Color/clipping/Tone kernel with input gain, dry/wet, output level and unit bypass. Reuse cached publication, source scope checks, typed resolution, one-millisecond offset smoothing, route-history matching and prepared seven-value snapshots. Discrete Color power, Shape and Clip have no routes.

@@ -123,6 +123,7 @@ pub enum ModulationParameter {
     DirectionMixerDirection,
     DirectionMixerSpread,
     SaturatorDrive,
+    DriveInput,
     BitcrusherDrive,
     BitcrusherResolution,
     BitcrusherDownsampling,
@@ -162,6 +163,15 @@ impl ModulationParameter {
         Self::GrainPositionJitter,
         Self::GrainPitchJitter,
         Self::GrainPan,
+    ];
+    pub const DRIVE_V2: [Self; 7] = [
+        Self::DriveInput,
+        Self::DriveGain,
+        Self::Tone,
+        Self::ColorStrength,
+        Self::ColorFrequency,
+        Self::Level,
+        Self::DryWet,
     ];
     pub const SATURATOR: [Self; 3] = [Self::SaturatorDrive, Self::Level, Self::DryWet];
     pub const OSCILLATOR: [Self; 2] = [Self::Pitch, Self::OscillatorGain];
@@ -279,6 +289,7 @@ impl ModulationParameter {
             Self::OttHighRelease => "High · Release",
             Self::DirectionMixerDirection => "Direction",
             Self::DirectionMixerSpread => "Spread",
+            Self::DriveInput => "Input gain",
             Self::SaturatorDrive | Self::BitcrusherDrive => "Drive",
             Self::BitcrusherResolution => "Resolution",
             Self::BitcrusherDownsampling => "Downsampling",
@@ -368,7 +379,8 @@ impl ModulationParameter {
             Self::Frequency | Self::LfoRate | Self::EqLowFrequency | Self::EqHighFrequency => 6.0,
             Self::ColorFrequency => 3.0,
             Self::Resonance | Self::EqLowQ | Self::EqHighQ => 10.0,
-            Self::OscillatorGain
+            Self::DriveInput
+            | Self::OscillatorGain
             | Self::SamplerGain
             | Self::Level
             | Self::Volume
@@ -418,7 +430,8 @@ impl ModulationParameter {
             | Self::EqLowFrequency
             | Self::EqHighFrequency => "oct",
             Self::Resonance | Self::EqLowQ | Self::EqHighQ => "Q",
-            Self::OscillatorGain
+            Self::DriveInput
+            | Self::OscillatorGain
             | Self::SamplerGain
             | Self::Level
             | Self::Volume

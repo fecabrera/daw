@@ -226,6 +226,7 @@ fn modulation_meters(
                 e.unit,
                 daw_core::EffectSettings::AutoFilter(_)
                     | daw_core::EffectSettings::Drive(_)
+                    | daw_core::EffectSettings::DriveV2(_)
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::Compressor(_)
                     | daw_core::EffectSettings::Limiter(_)

@@ -53,6 +53,7 @@ pub mod dialogs;
 mod direction_mixer_panel;
 mod drag;
 mod drive_panel;
+mod drive_v2_panel;
 mod effects_catalog;
 mod effects_panel;
 mod effects_reorder;

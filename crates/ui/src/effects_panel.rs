@@ -33,6 +33,7 @@ pub(crate) struct EffectsUiBounds {
     pub scrollbar: Rect,
     pub entry: Rect,
     pub drive_entry: Rect,
+    pub drive_v2_entry: Rect,
     pub auto_filter_entry: Rect,
     pub filter_entry: Rect,
     pub compressor_entry: Rect,
@@ -49,6 +50,7 @@ pub(crate) struct EffectsUiBounds {
     pub lane_scroll: f32,
     pub units: Vec<crate::equalizer_panel::Bounds>,
     pub drive_units: Vec<crate::drive_panel::Bounds>,
+    pub drive_v2_units: Vec<crate::drive_v2_panel::Bounds>,
     pub auto_filter_units: Vec<crate::auto_filter_panel::Bounds>,
     pub filter_units: Vec<crate::auto_filter_panel::Bounds>,
     pub compressor_units: Vec<crate::compressor_panel::Bounds>,
@@ -80,6 +82,7 @@ impl Default for EffectsUiBounds {
             scrollbar: Rect::NOTHING,
             entry: Rect::NOTHING,
             drive_entry: Rect::NOTHING,
+            drive_v2_entry: Rect::NOTHING,
             auto_filter_entry: Rect::NOTHING,
             filter_entry: Rect::NOTHING,
             compressor_entry: Rect::NOTHING,
@@ -96,6 +99,7 @@ impl Default for EffectsUiBounds {
             lane_scroll: 0.0,
             units: vec![],
             drive_units: vec![],
+            drive_v2_units: vec![],
             auto_filter_units: vec![],
             filter_units: vec![],
             compressor_units: vec![],
@@ -186,6 +190,7 @@ impl DawUi {
         {
             self.effects_bounds.units.clear();
             self.effects_bounds.drive_units.clear();
+            self.effects_bounds.drive_v2_units.clear();
             self.effects_bounds.auto_filter_units.clear();
             self.effects_bounds.filter_units.clear();
             self.effects_bounds.compressor_units.clear();
@@ -327,6 +332,9 @@ impl DawUi {
                                 match effects_catalog::ENTRIES[index].type_id {
                                     daw_core::EQ_TYPE_ID => {
                                         self.effects_bounds.entry = response.rect
+                                    }
+                                    daw_core::DRIVE_V2_TYPE_ID => {
+                                        self.effects_bounds.drive_v2_entry = response.rect;
                                     }
                                     daw_core::DRIVE_TYPE_ID => {
                                         self.effects_bounds.drive_entry = response.rect
@@ -730,6 +738,24 @@ impl DawUi {
                                 let power = _bounds.power;
                                 #[cfg(test)]
                                 self.effects_bounds.units.push(_bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::DriveV2(settings) => {
+                                let (bounds, header) = crate::drive_v2_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                );
+                                let power = bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.drive_v2_units.push(bounds);
                                 (header, power)
                             }
                             daw_core::EffectSettings::Drive(settings) => {

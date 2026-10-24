@@ -3,7 +3,7 @@ use daw_bitcrusher::Bitcrusher;
 use daw_compressor::Compressor;
 use daw_core::{EffectInstance, EffectSettings, Id, Track};
 use daw_direction_mixer::DirectionMixer;
-use daw_drive::Drive;
+use daw_drive::{Drive, DriveV2};
 use daw_equalizer::Equalizer;
 use daw_filter::Filter;
 use daw_limiter::Limiter;
@@ -17,6 +17,7 @@ use std::sync::Arc;
 enum RuntimeEffect {
     Eq3(Box<Equalizer>, Vec<super::modulation::Route>),
     Drive(Box<Drive>, Vec<super::modulation::Route>),
+    DriveV2(Box<DriveV2>, Vec<super::modulation::Route>),
     AutoFilter(Box<AutoFilter>, Vec<super::modulation::Route>),
     Filter(Box<Filter>, Vec<super::modulation::Route>),
     Compressor(Box<Compressor>, Vec<super::modulation::Route>),
@@ -37,6 +38,11 @@ impl RuntimeEffect {
                     + daw_unit_core::memory::vec_bytes(routes)
             }
             Self::Drive(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
+            Self::DriveV2(unit, routes) => {
                 std::mem::size_of_val(unit.as_ref()) as u64
                     + unit.heap_bytes()
                     + daw_unit_core::memory::vec_bytes(routes)
@@ -95,6 +101,7 @@ impl RuntimeEffect {
         match self {
             Self::Eq3(unit, _) => unit.latency_frames(),
             Self::Drive(unit, _) => unit.latency_frames(),
+            Self::DriveV2(unit, _) => unit.latency_frames(),
             Self::AutoFilter(unit, _) => unit.latency_frames(),
             Self::Filter(unit, _) => unit.latency_frames(),
             Self::Compressor(unit, _) => unit.latency_frames(),
@@ -132,6 +139,19 @@ impl RuntimeEffect {
                 },
             ),
             Self::Drive(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
+            Self::DriveV2(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
                 input,
@@ -278,6 +298,12 @@ impl RuntimeEffect {
                     r.reset();
                 }
             }
+            Self::DriveV2(unit, routes) => {
+                unit.reset();
+                for r in routes {
+                    r.reset();
+                }
+            }
             Self::AutoFilter(unit, routes) => {
                 unit.reset();
                 for r in routes {
@@ -352,6 +378,7 @@ impl RuntimeEffect {
                 unit.retarget(settings)
             }
             (Self::Drive(unit, _), EffectSettings::Drive(settings)) => unit.retarget(settings),
+            (Self::DriveV2(unit, _), EffectSettings::DriveV2(settings)) => unit.retarget(settings),
             (Self::Compressor(unit, _), EffectSettings::Compressor(settings)) => {
                 unit.retarget(settings)
             }
@@ -421,6 +448,14 @@ impl EffectChain {
                             )),
                             EffectSettings::Drive(settings) => Some(RuntimeEffect::Drive(
                                 Box::new(Drive::new(context, settings)),
+                                settings
+                                    .modulations
+                                    .iter()
+                                    .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                    .collect(),
+                            )),
+                            EffectSettings::DriveV2(settings) => Some(RuntimeEffect::DriveV2(
+                                Box::new(DriveV2::new(context, settings)),
                                 settings
                                     .modulations
                                     .iter()
@@ -541,6 +576,10 @@ impl EffectChain {
                     RuntimeEffect::Filter(_, new_routes),
                 )
                 | (RuntimeEffect::Drive(_, old_routes), RuntimeEffect::Drive(_, new_routes))
+                | (
+                    RuntimeEffect::DriveV2(_, old_routes),
+                    RuntimeEffect::DriveV2(_, new_routes),
+                )
                 | (RuntimeEffect::Eq3(_, old_routes), RuntimeEffect::Eq3(_, new_routes))
                 | (
                     RuntimeEffect::Compressor(_, old_routes),
@@ -585,6 +624,9 @@ impl EffectChain {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Drive(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::DriveV2(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
             Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => {

@@ -4,6 +4,7 @@ use crate::{
 };
 use crate::{BITCRUSHER_STATE_VERSION, BITCRUSHER_TYPE_ID, BitcrusherSettings};
 use crate::{DIRECTION_MIXER_STATE_VERSION, DIRECTION_MIXER_TYPE_ID, DirectionMixerSettings};
+use crate::{DRIVE_V2_STATE_VERSION, DRIVE_V2_TYPE_ID, DriveV2Settings};
 use crate::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
 use crate::{LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterSettings};
 use crate::{OTT_STATE_VERSION, OTT_TYPE_ID, OttSettings};
@@ -75,6 +76,7 @@ impl EqSettings {
 pub enum EffectSettings {
     Eq3(EqSettings),
     Drive(DriveSettings),
+    DriveV2(DriveV2Settings),
     AutoFilter(AutoFilterSettings),
     Filter(FilterSettings),
     Compressor(CompressorSettings),
@@ -135,6 +137,10 @@ impl Serialize for EffectSettings {
             },
             Self::Filter(settings) => StoredEffect {
                 type_id: FILTER_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::DriveV2(settings) => StoredEffect {
+                type_id: DRIVE_V2_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
             },
             Self::Drive(drive) => StoredEffect {
@@ -222,6 +228,16 @@ impl<'de> Deserialize<'de> for EffectSettings {
             serde_json::from_value(stored.state)
                 .map(Self::Eq3)
                 .map_err(serde::de::Error::custom)
+        } else if stored.type_id == DRIVE_V2_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|v| v <= u64::from(DRIVE_V2_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::DriveV2)
+                .map_err(serde::de::Error::custom)
         } else if stored.type_id == DRIVE_TYPE_ID
             && stored
                 .state
@@ -277,6 +293,7 @@ impl EffectSettings {
             Self::AutoFilter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Filter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::DriveV2(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Eq3(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Compressor(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Limiter(s) => crate::ModulationDestinationSettings::modulations(s),
@@ -295,6 +312,7 @@ impl EffectSettings {
             Self::AutoFilter(s) => &mut s.modulations,
             Self::Filter(s) => &mut s.modulations,
             Self::Drive(s) => &mut s.modulations,
+            Self::DriveV2(s) => &mut s.modulations,
             Self::Eq3(s) => &mut s.modulations,
             Self::Compressor(s) => &mut s.modulations,
             Self::Limiter(s) => &mut s.modulations,
@@ -311,6 +329,7 @@ impl EffectSettings {
         match self {
             Self::Eq3(eq) => eq.valid(),
             Self::Drive(drive) => drive.valid(),
+            Self::DriveV2(s) => s.valid(),
             Self::AutoFilter(settings) => settings.valid(),
             Self::Filter(settings) => settings.valid(),
             Self::Compressor(settings) => settings.valid(),
@@ -324,6 +343,7 @@ impl EffectSettings {
                 let known_version = match type_id.as_str() {
                     EQ_TYPE_ID => Some(EQ_STATE_VERSION),
                     DRIVE_TYPE_ID => Some(DRIVE_STATE_VERSION),
+                    DRIVE_V2_TYPE_ID => Some(DRIVE_V2_STATE_VERSION),
                     AUTO_FILTER_TYPE_ID => Some(AUTO_FILTER_STATE_VERSION),
                     FILTER_TYPE_ID => Some(FILTER_STATE_VERSION),
                     COMPRESSOR_TYPE_ID => Some(COMPRESSOR_STATE_VERSION),
@@ -413,6 +433,12 @@ impl EffectInstance {
         Self {
             id: uuid::Uuid::new_v4(),
             unit: EffectSettings::Filter(FilterSettings::default()),
+        }
+    }
+    pub fn drive_v2() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::DriveV2(DriveV2Settings::default()),
         }
     }
     pub fn drive() -> Self {
