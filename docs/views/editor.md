@@ -10,7 +10,7 @@ MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Sev
 4. Hold Command on macOS or Ctrl on Windows/Linux and drag in the piano roll to draw a note.
 5. Drag a note body to move it or an edge to change its length. Double-click a note to delete it.
 
-Each pattern has a named header below the lower ruler and one continuous outline around its header and visible note area. Click a header to select that pattern without changing zoom or scroll. Headers stay visible when you scroll the piano keys vertically.
+Each pattern has a named header below the lower ruler and one continuous outline around its header and visible note area. Click a header to select that pattern without changing zoom or scroll. Double-click a header to select and fit that clip to the lower editor width. Headers stay visible when you scroll the piano keys vertically.
 
 Drag a header to move the selected patterns. Drag a header edge to loop them, or an edge beside the notes to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Changes preview during the drag and apply on release; Escape cancels. These gestures keep the lower editor’s zoom and scroll.
 
@@ -39,6 +39,8 @@ Zoom out in either audio or MIDI content to see other clips on that track. MIDI 
 ## Audio clips
 
 Select an audio clip in the overview strip to see its enlarged waveform below. The lower editor has its own ruler, horizontal zoom, and scroll. Single-click an overview clip to select it and scroll the lower editor to its start without changing zoom. Double-click to fit it to the editor width. Zoom out to see other clips on the same track. Both rulers follow the project playhead. Mono uses one waveform lane; stereo shows both channels. Trim offsets, loop phases, and prepared stretch or transpose audio match Timeline. Overview clip clicks keep the overview viewport unchanged. Click a waveform in the lower editor to select its clip and update Clip options without changing either viewport’s zoom or scroll. Right-click a waveform to open the same clip context menu as Timeline. Opening the menu keeps the current selection, zoom, and scroll; actions use the clicked clip or its selected group. Missing recordings show “Missing source”.
+
+Double-click a lower waveform clip header to select and fit that clip. Double-clicking the waveform body keeps the current zoom and scroll.
 
 The lower waveform editor supports the same clip gestures as the overview. Drag a clip header to move the selected clips. Drag a header edge to loop them, or a waveform edge to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Drag the dividing line between adjacent waveforms to move their shared boundary while keeping their outer endpoints fixed. These gestures preview changes and apply them on release; Escape or focus loss cancels. Zoom and scroll stay unchanged. A failed stretch keeps the original clips and audio. Dragging inside a waveform body does not move or select clips. If a shared-boundary trim removes the selected clip, the editor shows Select a clip and keeps its zoom and scroll.
 

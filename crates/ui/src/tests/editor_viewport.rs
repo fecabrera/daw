@@ -103,6 +103,59 @@ fn editor_and_timeline_scrollbars_use_standard_theme_handles_without_clipping() 
 }
 
 #[test]
+fn lower_clip_header_double_click_selects_and_fits_audio_and_midi() {
+    for midi in [false, true] {
+        for theme in settings::ColorTheme::ALL {
+            let (mut app, ctx, _, first, second) = fixture(midi);
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme,
+                    ..Default::default()
+                },
+            );
+            let project = app.session.project.clone();
+            let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
+            if !midi {
+                app.midi_editor.content.fitted = false;
+                app.midi_editor.content.zoom = 100.0;
+                app.midi_editor.content.scroll = 0.0;
+                frame(&mut app, &ctx, vec![]);
+                let body = app.midi_editor.content.bounds.min + Vec2::new(200.0, 50.0);
+                super::midi::double_click_unit_header(&mut app, &ctx, body);
+                assert_eq!(
+                    (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+                    (100.0, 0.0)
+                );
+                assert!(!app.midi_editor.content.fitted);
+            }
+            for (clip, start, duration) in [(first, 1.0, 2.0), (second, 4.0, 0.5)] {
+                app.midi_editor.content.fitted = false;
+                app.midi_editor.content.zoom = 100.0;
+                app.midi_editor.content.scroll = 0.0;
+                frame(&mut app, &ctx, vec![]);
+                let bounds = app.midi_editor.content.bounds;
+                let top = if midi {
+                    app.midi_editor.pattern_header_bounds[&clip].top()
+                } else {
+                    bounds.top()
+                };
+                let header =
+                    Pos2::new(bounds.left() + (start + duration * 0.5) * 100.0, top + 11.0);
+                super::midi::double_click_unit_header(&mut app, &ctx, header);
+                assert_eq!(app.selected_clip, Some(clip));
+                assert!(app.midi_editor.content.fitted);
+                assert_eq!(app.midi_editor.content.scroll, f64::from(start));
+                assert!((app.midi_editor.content.zoom * duration - bounds.width()).abs() < 0.1);
+                assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), overview);
+            }
+            assert_eq!(app.session.project, project);
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
 fn overview_click_scrolls_without_zooming_and_double_click_fits_audio_and_midi() {
     for midi in [false, true] {
         for theme in settings::ColorTheme::ALL {

@@ -4622,3 +4622,16 @@ Completed automated checks on macOS:
 - The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
 
 Logs: `work/overview-click-{focused,ui,clippy,workspace,package}.log`. Native pointer checks and Windows/Linux tests were not run. This supersedes automatic fitting on a single overview clip click; initial opening and the Fit clip button retain fitting.
+
+## Lower-editor header double-click fitting — 2026-10-24
+
+Double-clicking a lower audio or MIDI clip header selects and fits that clip, including an already-selected clip. The shared clip handler excludes this action from ordinary lower-click viewport retention and requests a repaint so the next layout applies fitting. Single-click selection, waveform-body double-clicks and note-body editing retain their existing behavior.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- All 639 UI tests passed. Focused input coverage checks both clip types in all three themes, fitting the current or another visible clip, unchanged overview transforms and project data, and no fitting on waveform-body double-clicks. Existing note editing and clip gesture tests passed.
+- Locked, offline workspace tests passed: 1,265 passed and three configured tests ignored.
+- The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+
+Logs: `work/lower-header-fit-{focused,ui,clippy,workspace,package}.log`. Native pointer checks and Windows/Linux tests were not run. This supersedes viewport retention for lower clip-header double-clicks only.

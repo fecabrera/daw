@@ -46,10 +46,19 @@ impl DawUi {
             self.clip_context_menu(ui, clip.id);
             self.midi_clip_note_menu(ui, clip);
         });
-        if response.double_clicked() && !self.midi_editor.content_active {
+        let fit_clip = response.double_clicked()
+            && (!self.midi_editor.content_active
+                || response
+                    .interact_pointer_pos()
+                    .is_some_and(|pos| pos.y < block.top() + 22.0));
+        if fit_clip {
             self.open_clip_editor(clip.id, track_id, ui.ctx());
+            if self.midi_editor.content_active {
+                self.retain_content_view();
+            }
             self.midi_editor.content.fitted = true;
             self.midi_editor.content.retain_on_selection = false;
+            ui.ctx().request_repaint();
         } else if response.clicked() {
             self.select_clip(
                 clip.id,
@@ -62,7 +71,9 @@ impl DawUi {
                     clip.start_frame as f64 / f64::from(self.session.project.sample_rate_hz);
             }
         }
-        if self.midi_editor.content_active && (response.clicked() || response.context_menu_opened())
+        if self.midi_editor.content_active
+            && !fit_clip
+            && (response.clicked() || response.context_menu_opened())
         {
             self.retain_content_view();
         }
