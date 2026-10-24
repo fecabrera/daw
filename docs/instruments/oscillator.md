@@ -17,4 +17,6 @@ Use Plus inside the unit, before Out, to add another oscillator. Each source has
 
 Drag knobs to adjust them, hold Shift for finer movement, or use arrow keys. Double-click restores a default. Waveform diagrams show the available shapes.
 
-Use [pitch and gain modulation](../modulation/oscillator-pitch.md) for vibrato, pitch contours, or independent oscillator level movement. Use Amplitude with an [Envelope](envelope.md) for level shaping. Turning the Oscillator header off silences all its sources while retaining individual settings.
+Use [pitch, gain, and Level modulation](../modulation/oscillator-pitch.md) for vibrato, pitch contours, or independent oscillator level movement. Use Amplitude with an [Envelope](envelope.md) for level shaping. Turning the Oscillator header off silences all its sources while retaining individual settings.
+
+Select **Level** in the Oscillator connections to modulate the combined output. Amount spans −24 to +24 dB. Envelope, LFO, and Macro sources can control it, including sources in Output. Each note has its own processed Level, limited to +12 dB; a base Level of −∞ stays silent. The knob shows the standard assignment marker, range arc, and live voice extrema. Level modulation does not extend a note; use Amplitude for note release.

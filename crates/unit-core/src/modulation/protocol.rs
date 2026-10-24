@@ -303,16 +303,21 @@ impl UnitDescriptor {
 }
 
 impl ModulationDestinationSettings for crate::InstrumentLayerSettings {
-    const MODULATION_PARAMETERS: &'static [ModulationParameter] = &ModulationParameter::OSCILLATOR;
+    const MODULATION_PARAMETERS: &'static [ModulationParameter] = &[
+        ModulationParameter::Pitch,
+        ModulationParameter::OscillatorGain,
+        ModulationParameter::Level,
+    ];
     const MODULATION_SCOPE: ModulationScope = ModulationScope::PerNote;
     fn modulations(&self) -> &[Modulation] {
         &self.oscillator_modulations
     }
     fn valid_modulations(&self) -> bool {
-        valid_targeted_modulations(
+        valid_mixed_modulations(
             self.modulations(),
-            Self::MODULATION_PARAMETERS,
+            &ModulationParameter::OSCILLATOR,
             &self.oscillators.iter().map(|s| s.id).collect::<Vec<_>>(),
+            &[ModulationParameter::Level],
         )
     }
 }

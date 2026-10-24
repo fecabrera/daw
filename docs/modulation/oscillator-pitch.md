@@ -31,3 +31,9 @@ A Per note Envelope shapes each note independently. LFO and Macro sources, inclu
 Gain modulation retains the base Gain setting. The processed gain is limited to +12 dB. A Gain setting of −∞ and a muted oscillator remain silent. Disabling a connection returns smoothly to the base gain. Gain modulation does not change note length; use Amplitude to control note release.
 
 Assigned Gain knobs show the shared marker and possible-range arc. Click the marker to open connections. Live dots show the lowest and highest active voice gain, including gain/mute smoothing, before velocity, Amplitude, and layer mixing. Connections and their open state are saved with the project and follow oscillators when reordered, moved, or duplicated.
+
+## Connect unit Level modulation
+
+Select **Level** as Destination to change the sum of all oscillator sources. Set Amount from −24 to +24 dB. Per note and shared sources are supported. Level runs after the individual oscillator gains and before velocity, Amplitude, and layer mixing. It retains the base setting, smooths movement, limits processed gain to +12 dB, and preserves exact silence at −∞.
+
+Its marker opens the same connections. Live dots show the lowest and highest active note Level in dB. Connections save with the layer. Moving or copying a complete Oscillator unit into an empty destination carries its Level connections. Merging into an existing unit retains the destination's Level connections; transferring an individual source leaves the unit Level connections in place.

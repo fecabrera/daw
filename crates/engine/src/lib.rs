@@ -166,6 +166,10 @@ pub enum ModulationTarget {
         layer: Id,
         unit: Id,
     },
+    OscillatorLevel {
+        track: Id,
+        layer: Id,
+    },
     Oscillator {
         track: Id,
         layer: Id,
@@ -495,6 +499,21 @@ impl Renderer {
                     .as_ref()?
                     .provider_values(daw_core::ModulationSourceId { layer, unit })?;
                 Some(parameter_snapshot([depth, hz]))
+            }
+            ModulationTarget::OscillatorLevel { track, layer } => {
+                let index = *self.track_index.get(&track)?;
+                if !self.plan.project.tracks[index]
+                    .instrument
+                    .as_ref()?
+                    .layers
+                    .iter()
+                    .any(|l| l.id == layer && !l.oscillators.is_empty())
+                {
+                    return None;
+                }
+                Some(parameter_snapshot(
+                    self.midi[index].as_ref()?.oscillator_level_values(layer),
+                ))
             }
             ModulationTarget::Oscillator {
                 track,

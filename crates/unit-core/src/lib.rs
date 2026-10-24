@@ -711,3 +711,39 @@ mod oscillator_level_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod oscillator_level_modulation_tests {
+    use super::*;
+    use crate::ModulationDestinationSettings;
+    #[test]
+    fn level_routes_validate_roundtrip_copy_and_survive_source_removal() {
+        let mut layer = InstrumentLayerSettings::default();
+        layer.oscillators.push(OscillatorSettings::default());
+        let mut level = Modulation::new(ModulationParameter::Level);
+        level.amount = -24.0;
+        layer.oscillator_modulations.push(level);
+        assert!(layer.valid_modulations());
+        let saved = serde_json::to_string(&layer).unwrap();
+        let loaded: InstrumentLayerSettings = serde_json::from_str(&saved).unwrap();
+        assert_eq!(layer, loaded);
+        let copied = layer.duplicate();
+        assert_ne!(copied.oscillator_modulations[0].id, level.id);
+        assert_eq!(copied.oscillator_modulations[0].target, None);
+        assert!(copied.valid_modulations());
+        layer.oscillator_modulations[0].target = Some(layer.oscillators[0].id);
+        assert!(!layer.valid_modulations());
+        layer.oscillator_modulations[0].target = None;
+        layer.oscillator_modulations[0].parameter = ModulationParameter::Pitch;
+        assert!(!layer.valid_modulations());
+        layer.oscillator_modulations[0] = level;
+        layer.oscillator_modulations.push(level);
+        assert!(!layer.valid_modulations());
+        layer.oscillator_modulations.pop();
+        layer.oscillator_modulations[0].amount = 24.1;
+        assert!(!layer.valid_modulations());
+        layer.oscillator_modulations[0] = level;
+        layer.remove_oscillator(layer.oscillators[0].id);
+        assert_eq!(layer.oscillator_modulations, vec![level]);
+    }
+}

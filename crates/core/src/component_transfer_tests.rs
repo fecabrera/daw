@@ -801,3 +801,54 @@ fn oscillator_unit_level_follows_moves_and_copies_into_empty_units() {
         p.validate().unwrap();
     }
 }
+
+#[test]
+fn oscillator_level_routes_follow_the_whole_unit_shell_only() {
+    for duplicate in [false, true] {
+        for empty in [false, true] {
+            for whole in [false, true] {
+                let (mut p, track, from, to) = fixture();
+                let i = p.tracks[0].instrument.as_mut().unwrap();
+                let source = i.layers[0].oscillators[0].id;
+                let route =
+                    daw_unit_core::Modulation::new(daw_unit_core::ModulationParameter::Level);
+                i.layers[0].oscillator_modulations.push(route);
+                if empty {
+                    i.layers[1].oscillators.clear();
+                } else {
+                    i.layers[1].oscillators.push(Default::default());
+                }
+                p.edit(Edit::TransferInstrumentComponent {
+                    track_id: track,
+                    source: from,
+                    destination: to,
+                    component: if whole {
+                        Oscillators
+                    } else {
+                        Oscillator(source)
+                    },
+                    duplicate,
+                    destination_index: None,
+                })
+                .unwrap();
+                let i = p.tracks[0].instrument.as_ref().unwrap();
+                assert_eq!(
+                    i.layers[1]
+                        .oscillator_modulations
+                        .iter()
+                        .filter(|r| r.target.is_none())
+                        .count(),
+                    usize::from(whole && empty)
+                );
+                assert_eq!(
+                    i.layers[0].oscillator_modulations.contains(&route),
+                    duplicate || !whole
+                );
+                if whole && empty && duplicate {
+                    assert_ne!(i.layers[1].oscillator_modulations[0].id, route.id);
+                }
+                p.validate().unwrap();
+            }
+        }
+    }
+}

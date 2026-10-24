@@ -260,6 +260,17 @@ fn modulation_meters(
                 })
         })
     });
+    let oscillator_levels = plan.project.tracks.iter().flat_map(|track| {
+        track.instrument.iter().flat_map(move |i| {
+            i.layers
+                .iter()
+                .filter(|l| !l.oscillators.is_empty())
+                .map(move |l| ModulationTarget::OscillatorLevel {
+                    track: track.id,
+                    layer: l.id,
+                })
+        })
+    });
     let oscillators = plan.project.tracks.iter().flat_map(|track| {
         track.instrument.iter().flat_map(move |i| {
             i.layers.iter().flat_map(move |l| {
@@ -318,6 +329,7 @@ fn modulation_meters(
         .chain(amplitudes)
         .chain(samplers)
         .chain(oscillators)
+        .chain(oscillator_levels)
         .map(|key| {
             let handle = previous.get(&key).cloned().unwrap_or_else(|| {
                 Arc::new(std::array::from_fn(|_| AtomicU32::new(f32::NAN.to_bits())))
@@ -1899,6 +1911,10 @@ mod modulation_meter_tests {
             layer: layer.id,
         };
         layer.oscillators.push(Default::default());
+        let oscillator_level = ModulationTarget::OscillatorLevel {
+            track,
+            layer: layer.id,
+        };
         let oscillator = ModulationTarget::Oscillator {
             track,
             layer: layer.id,
@@ -1945,7 +1961,8 @@ mod modulation_meter_tests {
         }
         plan.project.tracks[0].effects.push(crusher);
         let handles = modulation_meters(&plan, &HashMap::new());
-        assert_eq!(handles.len(), 12);
+        assert_eq!(handles.len(), 13);
+        assert!(handles.contains_key(&oscillator_level));
         assert!(f32::from_bits(handles[&key][0].load(Ordering::Relaxed)).is_nan());
         let tracks = track_meters(&plan, &HashMap::new());
         let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
@@ -1990,6 +2007,12 @@ mod modulation_meter_tests {
             std::array::from_fn(|i| f32::from_bits(handles[&drive_key][i].load(Ordering::Relaxed)))
         );
         assert!(f32::from_bits(handles[&oscillator][0].load(Ordering::Relaxed)).is_nan());
+        assert!(f32::from_bits(handles[&oscillator_level][0].load(Ordering::Relaxed)).is_nan());
+        let retained = modulation_meters(&plan, &handles);
+        assert!(Arc::ptr_eq(
+            &retained[&oscillator_level],
+            &handles[&oscillator_level]
+        ));
         let eq = renderer.modulation_snapshot(eq_key).unwrap();
         assert!(eq[..7].iter().all(|v| v.is_finite()));
         assert!(eq[7..].iter().all(|v| v.is_nan()));

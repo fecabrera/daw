@@ -474,11 +474,22 @@ pub fn valid_targeted_modulations(
     parameters: &[ModulationParameter],
     targets: &[ModulationTargetId],
 ) -> bool {
+    valid_mixed_modulations(routes, parameters, targets, &[])
+}
+/// Validate repeated instance inputs alongside untargeted unit inputs in one route namespace.
+pub fn valid_mixed_modulations(
+    routes: &[Modulation],
+    parameters: &[ModulationParameter],
+    targets: &[ModulationTargetId],
+    unit_parameters: &[ModulationParameter],
+) -> bool {
     let mut ids = std::collections::HashSet::new();
     routes.iter().all(|r| {
         r.valid()
-            && parameters.contains(&r.parameter)
-            && r.target.is_some_and(|id| targets.contains(&id))
+            && match r.target {
+                Some(id) => parameters.contains(&r.parameter) && targets.contains(&id),
+                None => unit_parameters.contains(&r.parameter),
+            }
             && ids.insert(r.id)
     })
 }

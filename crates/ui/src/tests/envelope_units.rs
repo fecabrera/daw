@@ -626,11 +626,16 @@ fn drive_modulation_reuses_strips_markers_and_saved_visibility_in_both_themes() 
 }
 
 #[test]
-fn oscillator_pitch_and_gain_uses_shared_modulation_controls_markers_and_saved_expansion() {
+fn oscillator_pitch_gain_and_level_use_shared_modulation_controls_markers_and_saved_expansion() {
     for (theme, parameter) in [settings::ColorTheme::Dark, settings::ColorTheme::Light]
         .into_iter()
         .flat_map(|theme| {
-            daw_core::ModulationParameter::OSCILLATOR.map(|parameter| (theme, parameter))
+            [
+                daw_core::ModulationParameter::Pitch,
+                daw_core::ModulationParameter::OscillatorGain,
+                daw_core::ModulationParameter::Level,
+            ]
+            .map(|parameter| (theme, parameter))
         })
     {
         let (mut app, ctx, layer) = fixture(theme);
@@ -694,7 +699,15 @@ fn oscillator_pitch_and_gain_uses_shared_modulation_controls_markers_and_saved_e
             false,
         );
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let second = label(&shapes, &format!("Osc 2 · {}", parameter.label()));
+        let whole_unit = parameter == daw_core::ModulationParameter::Level;
+        let second = label(
+            &shapes,
+            &if whole_unit {
+                "Level".into()
+            } else {
+                format!("Osc 2 · {}", parameter.label())
+            },
+        );
         click(&mut app, &ctx, second, false);
         let l = &mut app.session.project.tracks[0]
             .instrument
@@ -703,7 +716,11 @@ fn oscillator_pitch_and_gain_uses_shared_modulation_controls_markers_and_saved_e
             .layers[0];
         assert_eq!(
             l.oscillator_modulations[0].target,
-            Some(l.oscillators[1].id)
+            if whole_unit {
+                None
+            } else {
+                Some(l.oscillators[1].id)
+            }
         );
         assert_eq!(l.oscillator_modulations[0].parameter, parameter);
         l.oscillator_modulations[0].source = Some(daw_core::ModulationSourceId {
@@ -714,7 +731,11 @@ fn oscillator_pitch_and_gain_uses_shared_modulation_controls_markers_and_saved_e
         l.oscillator_modulation_open = false;
         let original = l.clone();
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let second = app.midi_editor.oscillator_strip_bounds[1];
+        let second = if whole_unit {
+            app.midi_editor.oscillator_output_bounds
+        } else {
+            app.midi_editor.oscillator_strip_bounds[1]
+        };
         let marker = shapes
             .iter()
             .find_map(|s| match &s.shape {

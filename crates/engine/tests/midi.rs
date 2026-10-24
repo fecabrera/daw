@@ -4585,3 +4585,121 @@ fn oscillator_unit_level_scales_all_sources_and_retargets_without_phase_resets_o
         }
     }
 }
+
+#[test]
+fn oscillator_level_modulation_scales_the_sum_with_live_export_seek_and_allocation_parity() {
+    use daw_engine::ModulationTarget;
+    for rate in SAMPLE_RATES {
+        for shared in [false, true] {
+            let mut modulated = plan(Waveform::Sine, rate);
+            let track = modulated.project.tracks[0].id;
+            let instrument = modulated.project.tracks[0].instrument.as_mut().unwrap();
+            let layer = &mut instrument.layers[0];
+            layer.oscillators.push(OscillatorSettings {
+                transpose: 7,
+                ..Default::default()
+            });
+            layer.oscillator_level_db = -9.0;
+            let source = if shared {
+                instrument.main.macro_module.add();
+                instrument.main.macro_module.controls[0].settings.value = 1.0;
+                ModulationSourceId {
+                    layer: instrument.main.id,
+                    unit: instrument.main.macro_module.controls[0].id,
+                }
+            } else {
+                let envelope = &mut layer.envelopes[0];
+                envelope.settings.attack.time_ms = 0.0;
+                envelope.settings.decay.time_ms = 0.0;
+                envelope.settings.sustain = 1.0;
+                ModulationSourceId {
+                    layer: layer.id,
+                    unit: envelope.id,
+                }
+            };
+            let layer = &mut instrument.layers[0];
+            let target = ModulationTarget::OscillatorLevel {
+                track,
+                layer: layer.id,
+            };
+            let mut route = Modulation::new(ModulationParameter::Level);
+            route.source = Some(source);
+            route.amount = 6.0;
+            layer.oscillator_modulations.push(route);
+            modulated.project.validate().unwrap();
+            let mut reference_plan = modulated.clone();
+            let layer = &mut reference_plan.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0];
+            layer.oscillator_modulations.clear();
+            layer.oscillator_level_db = -3.0;
+            let mut renderer = Renderer::new(modulated.clone());
+            let mut reference = Renderer::new(reference_plan);
+            renderer.play();
+            reference.play();
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            for frame in 0..rate / 10 {
+                let actual = renderer.next_sample();
+                let expected = reference.next_sample();
+                if frame > rate / 20 {
+                    assert!((actual[0] - expected[0]).abs() < 0.000002);
+                }
+            }
+            let values = renderer.modulation_values(target).unwrap();
+            assert!((values[0] + 3.0).abs() < 0.001 && (values[1] + 3.0).abs() < 0.001);
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            let mut offline = vec![[0.0; 2]; (rate / 10) as usize];
+            Renderer::new(modulated.clone()).render_offline(&mut offline);
+            let mut playback = Renderer::new(modulated.clone());
+            playback.play();
+            for (frame, sample) in offline.iter().enumerate() {
+                let actual = playback.next_sample();
+                // Live transport applies a 5 ms start/seek transition; export does not.
+                if frame > (rate / 200) as usize {
+                    assert!((sample[0] - actual[0]).abs() < 0.000002);
+                }
+            }
+            playback.seek(u64::from(rate / 20));
+            reference.seek(u64::from(rate / 20));
+            // Live seeks reconstruct notes with fresh oscillator phase. Compare the same seek
+            // against the equivalent base Level, then test export random access separately.
+            for frame in 0..rate / 20 {
+                let actual = playback.next_sample();
+                let expected = reference.next_sample();
+                if frame > rate / 50 {
+                    assert!((expected[0] - actual[0]).abs() < 0.000002);
+                }
+            }
+            let mut random = [[0.0; 2]; 64];
+            modulated.render(u64::from(rate / 20), &mut random);
+            assert_eq!(
+                &random[..],
+                &offline[(rate / 20) as usize..(rate / 20) as usize + 64]
+            );
+            // Disable the route through compatible publication: retain phase and offset history.
+            modulated.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[0]
+                .oscillator_modulations[0]
+                .enabled = false;
+            let mut next = Renderer::new(modulated);
+            assert!(next.can_inherit_without_preroll(&renderer));
+            ALLOCATIONS.with(|n| n.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            next.inherit(&mut renderer);
+            for _ in 0..rate / 20 {
+                next.next_sample();
+            }
+            let values = next.modulation_values(target).unwrap();
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            assert!((values[0] + 9.0).abs() < 0.001 && (values[1] + 9.0).abs() < 0.001);
+        }
+    }
+}

@@ -356,6 +356,14 @@ fn transfer_oscillators(
         layer.oscillators.insert(index, oscillator);
         return Ok(());
     }
+    let destination_empty = i
+        .layers
+        .iter()
+        .find(|l| l.id == to)
+        .unwrap()
+        .oscillators
+        .is_empty();
+    let whole_unit = c == InstrumentComponent::Oscillators;
     let source = i.layers.iter_mut().find(|l| l.id == from).unwrap();
     let mut oscillators: Vec<_> = source
         .oscillators
@@ -369,7 +377,10 @@ fn transfer_oscillators(
     let mut routes: Vec<_> = source
         .oscillator_modulations
         .iter()
-        .filter(|r| r.target.is_some_and(|id| ids.contains(&id)))
+        .filter(|r| {
+            r.target.is_some_and(|id| ids.contains(&id))
+                || (whole_unit && destination_empty && r.target.is_none())
+        })
         .copied()
         .collect();
     let shell = (
@@ -380,12 +391,17 @@ fn transfer_oscillators(
     );
     if !copy {
         source.oscillators.retain(|s| !ids.contains(&s.id));
-        source
-            .oscillator_modulations
-            .retain(|r| !r.target.is_some_and(|id| ids.contains(&id)));
+        source.oscillator_modulations.retain(|r| {
+            !(r.target.is_some_and(|id| ids.contains(&id)) || (whole_unit && r.target.is_none()))
+        });
     }
     let destination = i.layers.iter_mut().find(|l| l.id == to).unwrap();
     if destination.oscillators.is_empty() {
+        if whole_unit {
+            destination
+                .oscillator_modulations
+                .retain(|r| r.target.is_some());
+        }
         (
             destination.oscillator_enabled,
             destination.oscillator_level_db,

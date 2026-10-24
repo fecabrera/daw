@@ -1061,7 +1061,7 @@ impl DawUi {
         sources: &[crate::modulation_panel::Source],
     ) -> (Rect, Rect, Rect) {
         let layer_id = layer.id;
-        let targets: Vec<_> = layer
+        let mut targets: Vec<_> = layer
             .oscillators
             .iter()
             .enumerate()
@@ -1075,6 +1075,11 @@ impl DawUi {
                 })
             })
             .collect();
+        targets.push(crate::modulation_panel::Target {
+            parameter: daw_core::ModulationParameter::Level,
+            id: None,
+            label: "Level".into(),
+        });
         let unit_enabled = layer.oscillator_enabled;
         let InstrumentLayerSettings {
             oscillators,
@@ -1265,6 +1270,10 @@ impl DawUi {
                         self.midi_editor.add_oscillator_strip_bounds = add_strip.response.rect;
                     }
                     add = add_strip.inner.clicked();
+                    let level_routes: Vec<_> = routes.iter().filter(|r| r.target.is_none()).copied().collect();
+                    let live = self.output.as_ref().and_then(|o| o.modulation_values(daw_engine::ModulationTarget::OscillatorLevel { track, layer: layer_id }))
+                        .map_or([None; 2], |v| [v[0], v[1]].map(|v| v.is_finite().then_some(v)));
+                    let level_marker = crate::modulation_panel::marker(&level_routes, sources, daw_core::ModulationParameter::Level, *level, unit_enabled, None, live);
                     let mut level_rect = Rect::NOTHING;
                     let output_strip = ui.scope_builder(egui::UiBuilder::new()
                         .id_salt(("oscillator-output", track, layer_id))
@@ -1277,7 +1286,7 @@ impl DawUi {
                                     for row in 0..3 {
                                         knobs::row(ui, level, knobs::CHOICE_SIZE, |ui, value| {
                                             if row == 0 {
-                                                let response = knobs::gain_with_markers_named(ui, value, "Oscillator level");
+                                                let response = ui.add(knobs::Knob::new(value, knobs::marked_gain_spec().named("Oscillator level")).modulated(level_marker.as_ref(), modulation_open));
                                                 level_rect = response.rect;
                                                 response
                                             } else { ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), Sense::hover()) }

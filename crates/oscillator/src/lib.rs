@@ -1,9 +1,8 @@
 //! FunDSP adapter. No backend types appear in the unit API or persisted settings.
 use daw_unit_core::{
-    ModulationContext, ModulationDestination, ModulationDestinationSettings, ModulationInputs,
-    ModulationParameter, ModulationScope, ModulationSmoother, ModulationTargetId,
-    OSCILLATOR_TYPE_ID, OscillatorSettings, PortKind, ProcessingContext, SourceUnit,
-    UnitDescriptor, Waveform,
+    ModulationContext, ModulationDestination, ModulationInputs, ModulationParameter,
+    ModulationScope, ModulationSmoother, ModulationTargetId, OSCILLATOR_TYPE_ID,
+    OscillatorSettings, PortKind, ProcessingContext, SourceUnit, UnitDescriptor, Waveform,
 };
 use fundsp::prelude32::*;
 
@@ -77,8 +76,7 @@ impl Oscillator {
 }
 impl ModulationDestination for Oscillator {
     type Audio = f32;
-    const MODULATION_PARAMETERS: &'static [ModulationParameter] =
-        <daw_unit_core::InstrumentLayerSettings as ModulationDestinationSettings>::MODULATION_PARAMETERS;
+    const MODULATION_PARAMETERS: &'static [ModulationParameter] = &ModulationParameter::OSCILLATOR;
     const MODULATION_SCOPE: ModulationScope = ModulationScope::PerNote;
     fn modulation_target(&self) -> Option<ModulationTargetId> {
         self.target
@@ -368,3 +366,6 @@ mod tests {
         }
     }
 }
+
+mod level;
+pub use level::OscillatorLevel;

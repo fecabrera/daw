@@ -28,7 +28,8 @@ struct LayerVoice {
     transition_from: [f32; 2],
     output: [f32; 2],
     sources: Vec<OscillatorVoice>,
-    oscillator_level: daw_unit_core::ModulationRamp,
+    oscillator_level: daw_oscillator::OscillatorLevel,
+    oscillator_level_routes: Vec<Route>,
     sampler: Option<daw_sampler::Sampler>,
     sampler_routes: Vec<Route>,
     one_shot: bool,
@@ -102,6 +103,10 @@ impl Voice {
         }
         for layer in &mut self.layers {
             layer.one_shot = layer.one_shot_target;
+            layer.oscillator_level.note_on();
+            for route in &mut layer.oscillator_level_routes {
+                route.reset();
+            }
             layer.gate.note_on();
             if let Some(s) = &mut layer.sampler {
                 s.note_on_at(pitch);
@@ -148,6 +153,10 @@ impl Voice {
                 s.reset();
             }
             for route in &mut layer.sampler_routes {
+                route.reset();
+            }
+            layer.oscillator_level.reset();
+            for route in &mut layer.oscillator_level_routes {
                 route.reset();
             }
             layer.amplitude.reset();
@@ -316,8 +325,15 @@ impl LayerVoice {
                 s.source.set_base_gain(s.gain);
                 process_modulation(&mut s.source, &mut s.routes, 0.0, local, shared, context)
             })
-            .sum::<f32>()
-            * self.oscillator_level.next_value();
+            .sum::<f32>();
+        let sources = process_modulation(
+            &mut self.oscillator_level,
+            &mut self.oscillator_level_routes,
+            sources,
+            local,
+            shared,
+            context,
+        );
         let mut stereo = self.sampler.as_mut().map_or([sources; 2], |s| {
             process_modulation(
                 s,
@@ -448,6 +464,7 @@ impl MidiTrackRuntime {
                             .map(|l| {
                                 vec_bytes(&l.routes)
                                     + vec_bytes(&l.sampler_routes)
+                                    + vec_bytes(&l.oscillator_level_routes)
                                     + l.sampler.as_ref().map_or(0, |s| s.heap_bytes())
                                     + vec_bytes(&l.sources)
                                     + l.sources
@@ -783,9 +800,19 @@ impl MidiTrackRuntime {
                                 .sampler
                                 .as_ref()
                                 .is_some_and(|s| s.trigger == daw_core::SamplerTrigger::OneShot),
-                            oscillator_level: daw_unit_core::ModulationRamp::new(linear_gain(
+                            oscillator_level: daw_oscillator::OscillatorLevel::new(
                                 layer.oscillator_level_db,
-                            )),
+                                ProcessingContext {
+                                    sample_rate_hz: project.sample_rate_hz,
+                                    max_block_frames: project.buffer_size_frames,
+                                },
+                            ),
+                            oscillator_level_routes: layer
+                                .oscillator_modulations
+                                .iter()
+                                .filter(|r| r.target.is_none())
+                                .map(|r| Route::new(*r, project.sample_rate_hz))
+                                .collect(),
                             sources: layer
                                 .oscillators
                                 .iter()
@@ -1092,7 +1119,11 @@ impl MidiTrackRuntime {
                 layer.amplitude.retarget(&next_layer.amplitude);
                 layer
                     .oscillator_level
-                    .set(next_layer.oscillator_level.target(), fade_frames);
+                    .retarget(&next_layer.oscillator_level);
+                daw_unit_core::retarget_modulation_routes(
+                    &mut layer.oscillator_level_routes,
+                    &mut next_layer.oscillator_level_routes,
+                );
                 if idle {
                     layer.oscillator_level.reset();
                 }
@@ -1329,6 +1360,27 @@ impl MidiTrackRuntime {
             })
             .map(|l| l.amplitude.effective_gain())
             .fold(0.0, f32::max)
+    }
+    /// Active-voice Oscillator unit output gain extrema in dB.
+    pub fn oscillator_level_values(&self, layer: Id) -> [f32; 2] {
+        let mut range = [f32::INFINITY, f32::NEG_INFINITY];
+        for voice in self.voices.iter().filter(|v| v.active_last_sample) {
+            if let Some(l) = self
+                .layer_index
+                .get(&layer)
+                .and_then(|&i| voice.layers.get(i))
+            {
+                let gain = l.oscillator_level.effective_gain();
+                let db = if gain > 0.0 {
+                    20.0 * gain.log10()
+                } else {
+                    daw_core::SILENT_GAIN_DB
+                };
+                range[0] = range[0].min(db);
+                range[1] = range[1].max(db);
+            }
+        }
+        range.map(|v| if v.is_finite() { v } else { f32::NAN })
     }
     /// Active-voice transpose and gain (dB) extrema. Exclude MIDI pitch, velocity and layer mixing.
     pub fn oscillator_values(&self, layer: Id, oscillator: Id) -> [f32; 4] {

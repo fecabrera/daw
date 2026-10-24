@@ -4477,3 +4477,17 @@ Oscillator now ends its control body with a standard 90-point Out column after A
 Focused model checks passed for serialization, missing-field migration, finite/range validation, and core component moves/copies. The new engine regression passed all six processing rates, checking multiple summed sources, offline scaling, compatible live changes, phase continuity across attenuation/silence/unmute, exact silence, and zero callback allocations. The UI regression checks last-column geometry, equal strip dimensions, editing without changing individual sources, Undo/Redo, project serialization, and compact presentation in both themes. All 628 UI tests passed; the existing per-source knob-layout assertion now scopes its checks to the source strip. Formatting, strict workspace/all-target Clippy, documentation links, CLI build/smoke checks, whitespace checks, and the debug macOS bundle rebuild passed. Logs use ignored `work/oscillator-level-*.log`.
 
 The complete workspace suite and doctests passed, including all 628 UI tests and the new model, transfer, and engine regressions. Existing opt-in acceptance/performance tests remain ignored. Cargo used the local offline cache and locked dependencies. Native UI, audio-device playback, and Windows/Linux checks were not performed.
+
+## Oscillator Level modulation — 2026-10-23
+
+Added the unit Level destination after the per-note oscillator sum, using shared typed routing, scope checks, offset smoothing, amount controls, markers, and prepared telemetry. Unit routes omit the oscillator target UUID; shared mixed-target validation rejects invalid ownership and duplicate route IDs. Whole-unit shell transfers and layer duplication preserve the appropriate Level connections.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- Locked, offline workspace tests passed: 1,236 passed and three configured tests ignored, including all 628 UI tests.
+- Portable Level tests cover exact silence, +12 dB bounds, cancellation, wrong targets, invalid base controls, and all six processing rates. Engine tests cover per-note Envelope/shared Output Macro sources, two-source sums, telemetry, playback/export, random-access export, live seeking against an equivalent base Level, compatible route disabling, and callback allocation checks.
+- Settings/core/UI tests cover mixed-target validation, save/reopen, fresh copied route IDs, individual-source removal, whole-unit versus source transfers, Level destination selection and marker click-to-open in dark/light themes. Output tests cover prepared telemetry handles and identity retention.
+- CLI build and smoke check passed. The macOS debug app was rebuilt through the native packaging script.
+
+Logs: `work/oscillator-level-mod-{clippy,workspace,engine,ui,portable,cli-build,cli-smoke,package}.log`. Native UI listening/device tests and Windows/Linux checks were not run. Live seeks retain the existing fresh-oscillator-phase behavior; random-access export retains sequential render parity.
