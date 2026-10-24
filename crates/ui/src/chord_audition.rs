@@ -236,7 +236,7 @@ impl DawUi {
             if let Some(queued) = &mut self.chords.audition.queued {
                 queued.revision = self.change_revision;
             }
-            if !self.midi_editor.drawing() {
+            if !self.midi_editor.editing_note() {
                 self.chords.audition.allow_note_commit = false;
             }
         }

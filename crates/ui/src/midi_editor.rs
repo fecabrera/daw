@@ -28,6 +28,7 @@ struct NoteDrag {
     mode: NoteDragMode,
     origin: Pos2,
     anchor_frame: i128,
+    audition_pitch: Option<u8>,
     previous_selection: HashSet<(Id, Id)>,
     previous_note: Option<Id>,
 }
@@ -208,8 +209,8 @@ impl Default for MidiEditor {
     }
 }
 impl MidiEditor {
-    pub(super) fn drawing(&self) -> bool {
-        self.draw.is_some()
+    pub(super) fn editing_note(&self) -> bool {
+        self.draw.is_some() || self.drag.is_some()
     }
     pub fn dragging(&self) -> bool {
         self.drag.is_some() || self.draw.is_some() || self.selection.is_some()
@@ -1149,7 +1150,7 @@ impl DawUi {
         } else {
             HashSet::from([(clip, note)])
         };
-        let patterns = track
+        let patterns: Vec<NoteDragPattern> = track
             .clips
             .iter()
             .filter_map(|c| {
@@ -1185,12 +1186,26 @@ impl DawUi {
         self.midi_editor.content.retain_on_selection = true;
         self.midi_editor.selected_note = Some(note);
         self.midi_editor.selected_notes = selected;
+        let audition_pitch = patterns
+            .iter()
+            .find(|pattern| pattern.clip == clip)
+            .and_then(|pattern| {
+                pattern
+                    .notes
+                    .iter()
+                    .find(|candidate| candidate.original.id == note)
+            })
+            .map(|candidate| candidate.original.pitch);
+        if self.midi_editor.audition_enabled {
+            self.chords.audition.allow_note_commit = true;
+        }
         self.midi_editor.drag = Some(NoteDrag {
             anchor: (clip, note),
             patterns,
             mode,
             origin,
             anchor_frame,
+            audition_pitch,
             previous_selection,
             previous_note,
         });
@@ -1200,6 +1215,7 @@ impl DawUi {
         let timeline_left = self.midi_editor.content.left;
         let bypass = musical_time::snap_bypassed(ui);
         let scale = self.editor_midi_options();
+        let mut audition = None;
         if let Some(drag) = &mut self.midi_editor.drag
             && ui.input(|i| {
                 i.pointer.primary_down() || i.pointer.button_released(egui::PointerButton::Primary)
@@ -1321,6 +1337,12 @@ impl DawUi {
                     selected.insert((pattern.clip, next.id));
                     if drag.anchor == (pattern.clip, note.original.id) {
                         anchor = Some(next.id);
+                        if matches!(drag.mode, NoteDragMode::Move)
+                            && drag.audition_pitch != Some(next.pitch)
+                        {
+                            drag.audition_pitch = Some(next.pitch);
+                            audition = Some((pattern.clip, next.pitch));
+                        }
                     }
                 }
             }
@@ -1332,6 +1354,12 @@ impl DawUi {
                 NoteDragMode::Start | NoteDragMode::End => egui::CursorIcon::ResizeHorizontal,
             });
             ui.ctx().request_repaint();
+        }
+        if let Some((clip, pitch)) = audition {
+            self.audition_clip_note(clip, pitch);
+            if self.midi_editor.audition_enabled {
+                self.chords.audition.allow_note_commit = true;
+            }
         }
         if let Some(draw) = &mut self.midi_editor.draw
             && let Some(pointer) = ui.input(|i| i.pointer.latest_pos())

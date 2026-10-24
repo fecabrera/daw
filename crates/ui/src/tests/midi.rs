@@ -3924,6 +3924,123 @@ fn pressed_sampler_note_keeps_its_preview_scope_through_insertion_preparation() 
 }
 
 #[test]
+fn dragged_note_audition_follows_snapped_pitch_without_repeating_same_pitch() {
+    for theme in settings::ColorTheme::ALL {
+        for enabled in [false, true] {
+            let (mut app, track, clip, note) = fixture();
+            app.session.project.tracks[0].midi_options.root = Some(0);
+            app.session.project.tracks[0].midi_options.snap = true;
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme,
+                    ..Default::default()
+                },
+            );
+            app.open_clip_editor(clip, track, &ctx);
+            app.midi_editor.audition_enabled = enabled;
+            frame(&mut app, &ctx, vec![]);
+            let original = app.session.project.clone();
+            let view = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+            let start = app.midi_editor.note_bounds[&note].center();
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+            );
+            for (dy, shift, expected) in [
+                (-18.0, false, 60),
+                (-36.0, false, 62),
+                (-38.0, false, 62),
+                (18.0, false, 59),
+                (-18.0, true, 61),
+            ] {
+                let point = start + Vec2::new(60.0, dy);
+                shift_frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point)],
+                    shift,
+                );
+                if enabled {
+                    assert_eq!(
+                        app.chords.audition.note_requests.last(),
+                        Some(&(track, expected))
+                    );
+                }
+                assert_eq!(app.session.project, original);
+            }
+            let pitches: Vec<_> = app
+                .chords
+                .audition
+                .note_requests
+                .iter()
+                .map(|(_, p)| *p)
+                .collect();
+            assert_eq!(
+                pitches,
+                if enabled {
+                    vec![60, 62, 59, 61]
+                } else {
+                    vec![]
+                }
+            );
+            let end = start + Vec2::new(60.0, -18.0);
+            shift_frame(&mut app, &ctx, vec![button(end, false)], true);
+            assert_eq!(
+                pattern(&app)
+                    .notes
+                    .iter()
+                    .find(|n| n.id == note)
+                    .unwrap()
+                    .pitch,
+                61
+            );
+            assert_eq!(
+                (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+                view
+            );
+            if enabled {
+                assert!(app.chords.audition.scoped());
+                assert!(app.chords.audition.note_released());
+            }
+            assert_eq!(app.chords.audition.note_requests.len(), pitches.len());
+            app.stop();
+        }
+    }
+}
+
+#[test]
+fn timing_drags_and_edge_resizes_do_not_retrigger_note_audition() {
+    for resize in [false, true] {
+        let (mut app, track, clip, note) = fixture();
+        let ctx = context();
+        app.open_clip_editor(clip, track, &ctx);
+        app.midi_editor.audition_enabled = true;
+        frame(&mut app, &ctx, vec![]);
+        let rect = app.midi_editor.note_bounds[&note];
+        let start = if resize {
+            rect.right_center() - Vec2::new(1.0, 0.0)
+        } else {
+            rect.center()
+        };
+        let end = start + Vec2::new(60.0, if resize { -54.0 } else { 0.0 });
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert_eq!(app.chords.audition.note_requests, vec![(track, 60)]);
+        assert_eq!(pattern(&app).notes[0].pitch, 60);
+        assert!(app.chords.audition.scoped());
+        app.stop();
+    }
+}
+
+#[test]
 fn audition_starts_on_press_and_releases_outside_the_editor_without_retriggering() {
     let (mut app, track, clip, _) = fixture();
     let ctx = context();

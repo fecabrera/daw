@@ -4664,3 +4664,16 @@ Completed automated checks on macOS:
 - CLI build and smoke checks passed. The final macOS debug app was rebuilt through `tools/package_macos.sh debug`.
 
 Logs: `work/held-audition-{project-final,output-all-final,ui-final,clippy-final,workspace-final,cli-build,cli-smoke,package-final}.log`. The new callback fixture initially omitted required meter handles; the final checks include the corrected fixture. Native pointer/audio listening and Windows/Linux checks were not run. This supersedes the 24×24 button, fixed-duration editor previews and post-publication audition described in the preceding record; chord audition and live project storage are unchanged.
+
+## Note-drag pitch audition — 2026-10-24
+
+Enabled audition follows the dragged anchor note’s final preview pitch after scale snapping and group bounds. A changed pitch replaces the previous preview through the existing worker. Repeated frames, timing-only movement and edge resizing do not restart it. Note-drag commits retain the preview scope and existing release/minimum-gate behavior.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- All 645 UI tests passed. New input coverage checks upward/downward movement, scale snapping, Shift bypass, repeated-pitch suppression, disabled audition in all three themes, timing-only moves, edge resizes, release scope, unchanged working viewport and unchanged project data before commit. Existing note-group, copying, cancellation and sampler tests passed.
+- Locked, offline workspace tests passed: 1,276 passed and three configured tests ignored.
+- The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+
+Logs: `work/drag-audition-{focused,ui,clippy,workspace,package}.log`. Native pointer/audio listening and Windows/Linux tests were not run. This extends the preceding audition contract to pitch changes during note-body drags; project format and rendering APIs are unchanged.
