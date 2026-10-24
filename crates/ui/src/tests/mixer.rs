@@ -729,7 +729,9 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                             let expected = if label == selected_label || hovered == Some(label) {
                                 match color_theme {
                                     settings::ColorTheme::Dark => egui::Color32::WHITE,
-                                    settings::ColorTheme::Light => egui::Color32::BLACK,
+                                    settings::ColorTheme::Light | settings::ColorTheme::Mist => {
+                                        egui::Color32::BLACK
+                                    }
                                 }
                             } else {
                                 theme::palette(&ctx).secondary

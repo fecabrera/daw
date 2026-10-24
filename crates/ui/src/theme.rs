@@ -86,11 +86,28 @@ pub const LIGHT: Palette = Palette {
     meter: Color32::from_rgb(56, 142, 60),
 };
 
+/// Cool grey surfaces sampled from the supplied Mist reference.
+pub const MIST: Palette = Palette {
+    background: Color32::from_rgb(230, 233, 238),
+    panel: Color32::from_rgb(239, 241, 245),
+    input: Color32::from_rgb(216, 218, 224),
+    border: Color32::from_rgb(221, 224, 231),
+    divider: Color32::from_rgb(221, 224, 231),
+    grid: Color32::from_rgb(216, 218, 224),
+    grid_subdivision: Color32::from_rgb(221, 224, 231),
+    missing: Color32::from_rgb(216, 218, 224),
+    ..LIGHT
+};
+
+fn light_palette_id() -> egui::Id {
+    egui::Id::new("application-light-palette")
+}
+
 pub fn palette(ctx: &Context) -> Palette {
     if ctx.global_style().visuals.dark_mode {
         DARK
     } else {
-        LIGHT
+        ctx.data(|data| data.get_temp(light_palette_id()).unwrap_or(LIGHT))
     }
 }
 
@@ -266,8 +283,20 @@ const fn blend(surface: Color32, color: Color32, percent: u8) -> Color32 {
 pub fn apply(ctx: &Context, settings: crate::settings::AppSettings) {
     let theme = match settings.theme {
         crate::settings::ColorTheme::Dark => egui::Theme::Dark,
-        crate::settings::ColorTheme::Light => egui::Theme::Light,
+        crate::settings::ColorTheme::Light | crate::settings::ColorTheme::Mist => {
+            egui::Theme::Light
+        }
     };
+    let light_colors = if settings.theme == crate::settings::ColorTheme::Mist {
+        MIST
+    } else {
+        LIGHT
+    };
+    // Egui has two base themes; replace its light style when selecting a light variant.
+    if ctx.style_of(egui::Theme::Light).visuals.panel_fill != light_colors.panel {
+        configure_style(ctx, egui::Theme::Light, light_colors);
+    }
+    ctx.data_mut(|data| data.insert_temp(light_palette_id(), light_colors));
     ctx.set_theme(theme);
     ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(match theme {
         egui::Theme::Dark => egui::SystemTheme::Dark,
@@ -313,6 +342,7 @@ fn configure_style(ctx: &Context, theme: egui::Theme, colors: Palette) {
     visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, colors.text);
     visuals.widgets.inactive.bg_fill = match theme {
         egui::Theme::Dark => Color32::from_rgb(42, 42, 42),
+        egui::Theme::Light if colors == MIST => colors.input,
         egui::Theme::Light => Color32::from_rgb(238, 239, 240),
     };
     visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
@@ -320,6 +350,7 @@ fn configure_style(ctx: &Context, theme: egui::Theme, colors: Palette) {
     visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, colors.text);
     visuals.widgets.hovered.bg_fill = match theme {
         egui::Theme::Dark => Color32::from_rgb(49, 49, 49),
+        egui::Theme::Light if colors == MIST => blend(colors.input, colors.text, 4),
         egui::Theme::Light => Color32::from_rgb(225, 227, 230),
     };
     visuals.widgets.hovered.weak_bg_fill = visuals.widgets.inactive.bg_fill;

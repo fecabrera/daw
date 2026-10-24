@@ -109,13 +109,17 @@ pub enum ColorTheme {
     #[default]
     Dark,
     Light,
+    Mist,
 }
 
 impl ColorTheme {
+    pub const ALL: [Self; 3] = [Self::Dark, Self::Light, Self::Mist];
+
     pub fn name(self) -> &'static str {
         match self {
             Self::Dark => "Dark",
             Self::Light => "Light",
+            Self::Mist => "Mist",
         }
     }
 }
@@ -279,7 +283,7 @@ pub fn show(
                         .selected_text(settings.theme.name())
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
-                            for theme in [ColorTheme::Dark, ColorTheme::Light] {
+                            for theme in ColorTheme::ALL {
                                 if ui
                                     .selectable_value(&mut settings.theme, theme, theme.name())
                                     .changed()
@@ -458,7 +462,7 @@ mod tests {
     #[test]
     fn preferences_round_trip_all_colors_and_recover_from_missing_or_invalid_data() {
         for accent in AccentColor::ALL {
-            for theme in [ColorTheme::Dark, ColorTheme::Light] {
+            for theme in ColorTheme::ALL {
                 for titlebar in [TitlebarStyle::Custom, TitlebarStyle::Native] {
                     let settings = AppSettings {
                         accent,
@@ -584,7 +588,7 @@ mod tests {
 
     #[test]
     fn dropdown_foregrounds_keep_the_selected_accent_after_release_and_pointer_exit() {
-        for theme in [ColorTheme::Dark, ColorTheme::Light] {
+        for theme in ColorTheme::ALL {
             for accent in [AccentColor::DeepOrange, AccentColor::Teal] {
                 for label in [theme.name(), accent.name()] {
                     let ctx = Context::default();
@@ -647,6 +651,42 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn mist_dropdown_applies_reference_surfaces_and_switches_back_without_leaking() {
+        let ctx = Context::default();
+        crate::theme::configure(&ctx);
+        let mut settings = AppSettings {
+            accent: AccentColor::Teal,
+            ..Default::default()
+        };
+        crate::theme::apply(&ctx, settings.clone());
+        frame(&ctx, &mut settings, vec![]);
+        let original = ctx.global_style();
+        for (name, colors) in [
+            ("Mist", crate::theme::MIST),
+            ("Light", crate::theme::LIGHT),
+            ("Mist", crate::theme::MIST),
+            ("Dark", crate::theme::DARK),
+        ] {
+            let current = settings.theme.name();
+            click(&ctx, &mut settings, current);
+            click(&ctx, &mut settings, name);
+            frame(&ctx, &mut settings, vec![]);
+            let style = ctx.global_style();
+            assert_eq!(crate::theme::palette(&ctx), colors);
+            assert_eq!(style.visuals.panel_fill, colors.panel);
+            assert_eq!(style.visuals.text_edit_bg_color, Some(colors.input));
+            assert_eq!(style.visuals.window_stroke.color, colors.border);
+            assert_eq!(style.spacing, original.spacing);
+            assert_eq!(style.text_styles, original.text_styles);
+            assert_eq!(crate::theme::accent(&ctx), AccentColor::Teal.color());
+            assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
+        }
+        let other = Context::default();
+        crate::theme::configure(&other);
+        assert_eq!(crate::theme::palette(&other), crate::theme::DARK);
     }
 
     #[test]

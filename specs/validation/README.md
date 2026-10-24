@@ -4581,3 +4581,16 @@ Completed automated checks on macOS:
 - The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
 
 Logs: `work/midi-outline-{focused,ui,clippy,workspace,package}.log`. Native visual checks and Windows/Linux tests were not run. Clip gestures, audio processing and project storage are unchanged.
+
+## Mist appearance theme — 2026-10-24
+
+Settings offers Mist beside Dark and Light. Its shared palette uses the supplied reference's `#E6E9EE` workspace, `#EFF1F5` panels, `#D8DAE0` controls and `#DDE0E7` borders/dividers. It retains light-mode text and semantic colors, the selected accent and independent clip colors. The application stores `mist` outside project manifests.
+
+Completed automated checks on macOS:
+
+- Formatting and strict workspace Clippy passed.
+- All 637 UI tests passed. Settings coverage includes all theme/accent persistence combinations, Mist dropdown selection, immediate palette/style updates, layout retention, accent retention, restoring Light/Dark and isolation between contexts.
+- Locked, offline workspace tests passed: 1,263 passed and three configured tests ignored.
+- The macOS debug app was rebuilt through `tools/package_macos.sh debug`.
+
+Logs: `work/mist-{settings,ui,clippy,workspace,package}.log`. Native visual checks and Windows/Linux tests were not run. Dark remains the default; audio processing and project storage are unchanged.

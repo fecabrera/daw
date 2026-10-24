@@ -13,7 +13,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Playback:** tempo controls, loop playback, and stereo level meters.
 - **Editing history:** [undo and redo](docs/editing/undo-redo.md) for project edits.
 - **Projects:** save and open projects, with configurable audio processing settings.
-- **Appearance:** dark and light themes, accent colors, and colored clips.
+- **Appearance:** Dark, Light, and Mist themes, accent colors, and colored clips.
 - **Export and CLI:** export stereo WAV, MP3, or AAC files; validate projects and render audio from the command line.
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 

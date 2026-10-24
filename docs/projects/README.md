@@ -31,6 +31,8 @@ Settings groups controls into four categories:
 - **MIDI**: how notes are divided when splitting clips.
 - **Stem Separation**: local model selection and validation.
 
+Choose **Dark**, **Light**, or **Mist** under **Appearance > Theme**. Mist uses cool grey backgrounds and pale panels. All themes keep your selected accent and clip colors.
+
 Changes apply on this computer and are retained across restarts. Close retains your choices. These preferences are separate from Project Settings.
 
 ## Seek cache profiles
