@@ -4457,3 +4457,14 @@ Timeline now orders its catalog buttons as Clip settings, Effects, and Chords. I
 Updated existing layout assertions cover the new spacing and order in Timeline and Instrument, including both themes. All 627 UI tests pass with the final icon and button order. Final formatting, strict workspace/all-target Clippy, and the debug macOS bundle rebuild pass.
 
 The complete workspace suite and doctests passed, with existing opt-in acceptance/performance tests ignored. Changed-document links and staged/unstaged whitespace checks passed. Cargo used the local offline cache and locked dependencies. Final UI results are in ignored `work/catalog-order-ui-final.log`; workspace, Clippy, test-build, and packaging logs use the `work/catalog-order-` prefix. Native UI and Windows/Linux checks were not performed.
+
+
+## Saturator curve separation — 2026-10-23
+
+Soft Sine now uses a wider sine arc, Bass Shaper a broader rational knee, Medium Curve an earlier cubic plateau, and Hard Curve an actual hard knee at ±1.2. Analog Clip retains its default response. All controls, setting identities/version, oversampling, fixed latency, dry/bypass alignment, modulation, and selector crossfades remain unchanged. Existing non-default modes use the new tuning and can change sound/level.
+
+All 10 Saturator tests pass, including new gain-matched processed-triad separation checks at all six project rates and harmonic checks for Soft Sine/Medium Curve and Hard Curve. Existing symmetry, continuity, unity small-signal gain, Bass Shaper upper-bass harmonics, alias suppression, latency, channel isolation, clipping, routing, modulation, and rapid-retarget checks pass. Formatting, strict workspace/all-target Clippy, the CLI build and smoke check, changed-document links, whitespace checks, and the debug macOS bundle rebuild pass.
+
+An ignored CLI probe uses the supplied clean chord at +10 dB Drive, No Clip, 100% wet, and −10 dB Level before encoding. It accounts for the original mono center-pan gain, compares the stationary middle region with a least-squares gain match, and creates a separate −18 dBFS RMS comparison. All processed exports retain headroom. Soft Sine versus Medium Curve differs by approximately 11.5% RMS after gain matching, versus 0.4% in the supplied original recordings; all retuned pairs differ by at least 3.9%. These are waveform measurements, not perceptual listening results. Private media and probe manifests/outputs remain in ignored `work/`; no recordings or machine-specific source paths enter tracked files. Logs use the ignored `work/saturator-retune-` prefix.
+
+The complete workspace suite and doctests passed, including shared Saturator live/export, compatible-update, modulation, latency, and callback-allocation coverage. Existing opt-in acceptance/performance tests remain ignored. Cargo used the local offline cache and locked dependencies. Native listening/UI, audio-device playback, and Windows/Linux checks were not performed.

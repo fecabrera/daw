@@ -25,17 +25,22 @@ fn shape(shape: SaturatorShape, x: f64) -> f64 {
     match shape {
         SaturatorShape::AnalogClip => knee(x, 0.75, 1.5),
         SaturatorShape::SoftSine => {
-            1.5 * (x / 1.5)
+            // Wide sine arc: gentle compression, separated from the firmer cubic mode.
+            3.0 * (x / 3.0)
                 .clamp(-std::f64::consts::FRAC_PI_2, std::f64::consts::FRAC_PI_2)
                 .sin()
         }
         // Broad rational knee with unity small-signal gain and no frequency-dependent gain boost.
-        SaturatorShape::BassShaper => x / (1.0 + (x / 1.5).powi(2)).sqrt(),
+        SaturatorShape::BassShaper => x / (1.0 + (x / 1.8).powi(2)).sqrt(),
         SaturatorShape::MediumCurve => {
-            let y = x.clamp(-2.25, 2.25);
-            y - y.powi(3) / 15.1875
+            // Zero slope at the plateau joins the cubic continuously to its ceiling.
+            const THRESHOLD: f64 = 1.65;
+            let y = x.clamp(-THRESHOLD, THRESHOLD);
+            y - y.powi(3) / (3.0 * THRESHOLD * THRESHOLD)
         }
-        SaturatorShape::HardCurve => knee(x, 0.95, 1.2),
+        // A real hard knee adds upper odd harmonics. Its 1.2 ceiling remains
+        // distinct from the optional final Hard Clip stage at unity.
+        SaturatorShape::HardCurve => x.clamp(-1.2, 1.2),
     }
 }
 fn clip(mode: SaturatorClipMode, x: f64) -> f64 {

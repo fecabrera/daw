@@ -12,7 +12,9 @@ Saturator changes the shape of a signal to add harmonics and control peaks. Add 
 | Level | Exact silence to +12 dB | 0 dB | Adjust the processed level after clipping. |
 | Dry/Wet | 0–100% | 100% | Blend the original and processed signals. |
 
-Analog Clip has a linear center and rounded clipping knee. Soft Sine compresses peaks with a smooth sine curve. Bass Shaper has a broad, fixed knee for smoother bass harmonics. Medium Curve gives progressive saturation; Hard Curve has a sharper knee. Bass Shaper has no separate threshold control.
+Analog Clip has a linear center and rounded clipping knee. Soft Sine uses a wider sine curve for gentle compression and light coloration. Bass Shaper uses a broad, fixed knee for smooth compression and fewer upper bass harmonics. Medium Curve compresses earlier than Soft Sine, with a firmer cubic response that emphasizes the third harmonic. Hard Curve uses an abrupt clipping knee for stronger upper harmonics. Bass Shaper has no separate threshold control.
+
+The retuned modes apply to existing projects with their saved settings; Analog Clip retains its original curve. Other modes can sound different or change level. Lower Level as needed to avoid output clipping, and match loudness when comparing shapes.
 
 ## Set the saturation
 

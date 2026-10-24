@@ -31,10 +31,10 @@ input ──┬── Drive → Shape → Clip Mode → Level ──┬── Dr
 ```
 
 - Analog Clip: linear center with a rounded transition into clipping.
-- Soft Sine: smooth sine-derived saturation, without wavefolding.
+- Soft Sine: a wide sine-derived arc for gentle compression, without wavefolding.
 - Bass Shaper: a broader, smoother knee tuned for low-frequency material. Use fixed tuning for this control set.
-- Medium Curve: progressive saturation with a firmer knee than Soft Sine.
-- Hard Curve: an abrupt knee for stronger distortion; distinct from the final Hard Clip stage.
+- Medium Curve: earlier cubic compression and stronger third-harmonic content than Soft Sine.
+- Hard Curve: actual hard clipping at ±1.2 for stronger upper odd harmonics; distinct from the final Hard Clip stage at ±1.
 
 The independent curves have unity small-signal gain, symmetric positive/negative response, and output headroom above ±1 so post-clipping has a distinct effect. Listening and native-device validation remain separate from the automated harmonic checks.
 
@@ -73,13 +73,19 @@ For signed input `x`, the rounded-knee function is linear to magnitude `k`, then
 | Shape | Independent transfer function |
 | --- | --- |
 | Analog Clip | Rounded knee with `k=0.75`, `c=1.5`. |
-| Soft Sine | `1.5 × sin(clamp(x/1.5, −π/2, π/2))`; no folding. |
-| Bass Shaper | `x / sqrt(1 + (x/1.5)^2)`; fixed broad knee. |
-| Medium Curve | `y − y^3/15.1875`, with `y=clamp(x, −2.25, 2.25)`. |
-| Hard Curve | Rounded knee with `k=0.95`, `c=1.2`. |
+| Soft Sine | `3 × sin(clamp(x/3, −π/2, π/2))`; no folding. |
+| Bass Shaper | `x / sqrt(1 + (x/1.8)^2)`; fixed broad knee. |
+| Medium Curve | `y − y^3/(3 × 1.65^2)`, with `y=clamp(x, −1.65, 1.65)`; ceiling ±1.1 and zero slope at the plateau. |
+| Hard Curve | `clamp(x, −1.2, 1.2)`; linear center and abrupt knee. |
 
 Soft Clip applies a rounded knee with `k=0.5`, `c=1`. Hard Clip clamps to ±1. After decimation, apply a sample-peak guard at ±1 once the No Clip transition weight reaches zero, preventing reconstruction overshoot from violating the post-clip sample ceiling. Output Level follows this guard; dry/bypass remain independent of that ceiling. During selector transitions, crossfade the old/new nonlinear contributions with shared ramps. Normalize their weights each frame to avoid gain dips after rapid retargets with different remaining ramp lengths. All branches share the same FIR clock/history.
 
 Drive dB, output amplitude, blend, bypass, and selector weights use the existing 5 ms `ModulationRamp`; offset resolution uses the shared 1 ms `ModulationSmoother<3>`. Compatible retargeting preserves FIR history, delay cursors, route ramps, and in-flight transitions. Presentation-only edits do not restart ramps. Nonfinite input samples become zero. Use f64 internal sums and clamp the final finite conversion to f32 range. No callback allocation or final-owner retirement is introduced.
 
 Version-1 `daw.saturator` settings retain all controls, routes, enable/collapse/open state. `ModulationParameter::SATURATOR` declares shared Drive/Level/DryWet. The distinct Drive slot appends index 66; existing indices remain unchanged. Level and Dry/Wet reuse their existing typed identities. Engine snapshots expose Drive dB, Level dB, and mix in slots 0–2. Registration appends the new type to the Effects catalog without changing existing entry indices. No drag allowlist or Saturator-specific transfer code is added.
+
+## Curve separation retune — 2026-10-23
+
+The previous Soft Sine and Medium Curve were close approximations over modest instrument levels. Level-matched user probes at +10 dB Drive differed by only about 0.4% RMS. Retain Analog Clip as the default reference; widen Soft Sine, widen Bass Shaper's rational knee while retaining its low-frequency harmonic advantage, lower Medium Curve's cubic knee, and replace Hard Curve's rounded knee with actual clipping. All five remain odd, monotonic, continuous, bounded, and unity gain for small signals. Keep No Clip headroom, fixed latency, oversampling, modulation, crossfades, and routing unchanged. Settings remain version 1 with the same identities and controls; existing non-default shapes use the retuned algorithms and can change sound/level. There is no automatic gain compensation.
+
+A processed coherent sine-triad regression at +10 dB Drive requires more than 2.5% gain-matched RMS residual between every pair at all six project rates, with more than 8% between Soft Sine and Medium Curve. This is a waveform-separation guard, not a claim of perceptual loudness matching or a substitute for listening. Separate harmonic checks require Medium Curve's third harmonic to exceed Soft Sine's by four times and Hard Curve to retain upper odd harmonics. Retain continuity, symmetry, small-signal gain, Bass Shaper bass-harmonic, alias suppression, timing, transition, and live/export parity checks.

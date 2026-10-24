@@ -253,3 +253,86 @@ fn rapid_selector_retargets_preserve_small_signal_level() {
         assert!((y[0] - 0.0001).abs() < 1e-7, "{n} {y:?}");
     }
 }
+
+/// Ignore level differences: a mode must change the waveform, not just its gain.
+fn matched_residual(a: &[f64], b: &[f64]) -> f64 {
+    let energy = |v: &[f64]| v.iter().map(|x| x * x).sum::<f64>();
+    let gain = a.iter().zip(b).map(|(a, b)| a * b).sum::<f64>() / energy(b);
+    (a.iter()
+        .zip(b)
+        .map(|(a, b)| (a - gain * b).powi(2))
+        .sum::<f64>()
+        / energy(a))
+    .sqrt()
+}
+
+#[test]
+fn driven_chord_modes_remain_distinct_after_level_matching_at_every_rate() {
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        let outputs = SaturatorShape::ALL.map(|shape| {
+            let mut unit = Saturator::new(
+                context(rate),
+                &SaturatorSettings {
+                    shape,
+                    drive_db: 10.0,
+                    ..Default::default()
+                },
+            );
+            // A summed sine triad probes the same peak/rms range as a modest-level
+            // polyphonic instrument. Coherent periods avoid analysis leakage.
+            (0..9216)
+                .filter_map(|n| {
+                    let phase = 2.0 * std::f64::consts::PI * n as f64 / 1024.0;
+                    let input = [4.0, 5.0, 6.0]
+                        .into_iter()
+                        .map(|f| (phase * f).sin())
+                        .sum::<f64>()
+                        * 0.2;
+                    let y = unit.process_sample([input as f32; 2]);
+                    assert!(y.iter().all(|v| v.is_finite()));
+                    (n >= 1024).then_some(f64::from(y[0]))
+                })
+                .collect::<Vec<_>>()
+        });
+        for (i, a) in outputs.iter().enumerate() {
+            for (j, b) in outputs.iter().enumerate().skip(i + 1) {
+                let difference = matched_residual(a, b);
+                assert!(
+                    difference > 0.025,
+                    "{rate}: {:?}/{:?}: {difference}",
+                    SaturatorShape::ALL[i],
+                    SaturatorShape::ALL[j]
+                );
+                if SaturatorShape::ALL[i] == SaturatorShape::SoftSine
+                    && SaturatorShape::ALL[j] == SaturatorShape::MediumCurve
+                {
+                    assert!(
+                        difference > 0.08,
+                        "Soft Sine/Medium Curve overlap at {rate}: {difference}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sine_and_medium_separate_low_order_color_while_hard_curve_adds_upper_harmonics() {
+    let harmonics = |s| {
+        let mut sums = [0.0; 5];
+        for n in 0..8192 {
+            let phase = 2.0 * std::f64::consts::PI * n as f64 / 8192.0;
+            let y = shape(s, phase.sin() * 0.5 * 10_f64.powf(10.0 / 20.0));
+            for (sum, h) in sums.iter_mut().zip([1.0, 3.0, 5.0, 7.0, 9.0]) {
+                *sum += y * (phase * h).sin();
+            }
+        }
+        sums.map(|s| s.abs() / sums[0].abs())
+    };
+    let sine = harmonics(SaturatorShape::SoftSine);
+    let medium = harmonics(SaturatorShape::MediumCurve);
+    let hard = harmonics(SaturatorShape::HardCurve);
+    assert!(medium[1] > 4.0 * sine[1]);
+    assert!(hard[2..].iter().map(|x| x * x).sum::<f64>() > 0.0001);
+    assert!(medium[2..].iter().all(|x| *x < 0.00001));
+}
