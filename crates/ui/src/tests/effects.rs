@@ -356,6 +356,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
         let point = app.effects_bounds.auto_filter_entry.center();
         click(&mut app, &ctx, point);
         for (key, shift, expected) in [
+            (egui::Key::ArrowDown, false, vec![entries[12]]),
             (egui::Key::ArrowDown, false, vec![]),
             (egui::Key::ArrowDown, false, vec![entries[4]]),
             (egui::Key::ArrowDown, true, vec![entries[4], entries[5]]),
@@ -536,6 +537,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             (egui::Key::ArrowUp, true, vec![entries[4], entries[5]]),
             (egui::Key::ArrowUp, true, vec![entries[4]]),
             (egui::Key::ArrowUp, false, vec![]),
+            (egui::Key::ArrowUp, false, vec![entries[12]]),
             (egui::Key::ArrowUp, false, vec![entries[3]]),
             (egui::Key::ArrowUp, false, vec![entries[2]]),
             (egui::Key::ArrowUp, false, vec![entries[0]]),

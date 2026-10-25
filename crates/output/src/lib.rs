@@ -190,30 +190,36 @@ fn bind_effect_meters(
 }
 fn band_meters(
     plan: &RenderPlan,
-    previous: &HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
-) -> HashMap<Id, Arc<daw_unit_core::BandMeter<3>>> {
+    previous: &HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
+) -> HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>> {
     plan.project
         .all_effects()
-        .filter(|effect| {
-            matches!(
+        .flat_map(|effect| {
+            let group = matches!(
                 effect.unit,
                 daw_core::EffectSettings::Ott(_) | daw_core::EffectSettings::Eq3(_)
             )
+            .then_some(ModulationTarget::Effect(effect.id));
+            let bands = match &effect.unit {
+                daw_core::EffectSettings::MultibandEq(s) => s.bands.as_slice(),
+                _ => &[],
+            };
+            group
+                .into_iter()
+                .chain(bands.iter().map(move |b| ModulationTarget::EffectBand {
+                    effect: effect.id,
+                    band: b.id,
+                }))
         })
-        .map(|effect| {
-            (
-                effect.id,
-                previous.get(&effect.id).cloned().unwrap_or_default(),
-            )
-        })
+        .map(|key| (key, previous.get(&key).cloned().unwrap_or_default()))
         .collect()
 }
 fn bind_band_meters(
     renderer: &mut Renderer,
-    meters: &HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
+    meters: &HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
 ) {
     for (id, meter) in meters {
-        renderer.set_band_peak_meter(*id, meter.clone());
+        renderer.set_target_band_peak_meter(*id, meter.clone());
     }
 }
 fn modulation_meters(
@@ -230,6 +236,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::Drive(_)
                     | daw_core::EffectSettings::DriveV2(_)
                     | daw_core::EffectSettings::Eq3(_)
+                    | daw_core::EffectSettings::MultibandEq(_)
                     | daw_core::EffectSettings::Compressor(_)
                     | daw_core::EffectSettings::Limiter(_)
                     | daw_core::EffectSettings::DirectionMixer(_)
@@ -240,6 +247,16 @@ fn modulation_meters(
             )
         })
         .map(|e| ModulationTarget::Effect(e.id));
+    let bands = plan.project.all_effects().flat_map(|e| {
+        let bands = match &e.unit {
+            daw_core::EffectSettings::MultibandEq(s) => s.bands.as_slice(),
+            _ => &[],
+        };
+        bands.iter().map(move |b| ModulationTarget::EffectBand {
+            effect: e.id,
+            band: b.id,
+        })
+    });
     let samplers = plan.project.tracks.iter().flat_map(|track| {
         track.instrument.iter().flat_map(move |i| {
             i.layers
@@ -326,6 +343,7 @@ fn modulation_meters(
         })
     });
     effects
+        .chain(bands)
         .chain(macros)
         .chain(lfos)
         .chain(envelopes)
@@ -378,7 +396,7 @@ pub struct AudioOutput {
     pub description: String,
     track_meters: HashMap<Id, Arc<StereoMeter>>,
     effect_meters: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
-    band_meters: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
+    band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
 }
 /// Device-independent, worker-owned seek preparation. It can start after project
@@ -655,18 +673,28 @@ impl AudioOutput {
     }
     /// Independent OTT band holds, also available while paused/stopped.
     pub fn ott_gain_change_meter(&self, id: Id) -> Option<&daw_unit_core::BandMeter<3>> {
-        self.band_meters.get(&id).map(AsRef::as_ref)
+        self.band_meters
+            .get(&ModulationTarget::Effect(id))
+            .map(AsRef::as_ref)
     }
     /// Linear Low/Mid/High output peaks. Stopped or absent outputs show silence.
     pub fn eq_band_levels(&self, id: Id) -> [f32; 3] {
         self.band_monitor_values(id)
+    }
+    pub fn eq_individual_band_level(&self, effect: Id, band: Id) -> f32 {
+        if !self.status.playing.load(Ordering::Relaxed) {
+            return 0.0;
+        }
+        self.band_meters
+            .get(&ModulationTarget::EffectBand { effect, band })
+            .map_or(0.0, |m| m.readings()[0])
     }
     fn band_monitor_values(&self, id: Id) -> [f32; 3] {
         if !self.status.playing.load(Ordering::Relaxed) {
             return [0.0; 3];
         }
         self.band_meters
-            .get(&id)
+            .get(&ModulationTarget::Effect(id))
             .map_or([0.0; 3], |meter| meter.readings())
     }
     pub fn play(&mut self) -> Result<(), String> {
@@ -1583,7 +1611,7 @@ mod gain_reduction_meter_tests {
             });
             let peak = |id| {
                 if kind == 2 {
-                    bands[&id]
+                    bands[&ModulationTarget::Effect(id)]
                         .reduction_peaks()
                         .iter()
                         .map(|p| p.peak())
@@ -1596,7 +1624,7 @@ mod gain_reduction_meter_tests {
                 assert!(peak(id) > 0.0);
             }
             if kind == 2 {
-                for peak in bands[&layer].reduction_peaks() {
+                for peak in bands[&ModulationTarget::Effect(layer)].reduction_peaks() {
                     peak.reset_peak();
                 }
             } else {
@@ -1605,7 +1633,10 @@ mod gain_reduction_meter_tests {
             assert_eq!(peak(layer), 0.0);
             assert!(peak(main) > 0.0);
             assert!(if kind == 2 {
-                Arc::ptr_eq(&band_meters(&plan, &bands)[&main], &bands[&main])
+                Arc::ptr_eq(
+                    &band_meters(&plan, &bands)[&ModulationTarget::Effect(main)],
+                    &bands[&ModulationTarget::Effect(main)],
+                )
             } else {
                 Arc::ptr_eq(&effect_meters(&plan, &meters)[&main], &meters[&main])
             });
@@ -1715,6 +1746,7 @@ mod band_meter_tests {
                 assert!(cells.iter().any(|cell| cell.load(Ordering::Relaxed) != 0));
                 for enabled in [false, true, false, true] {
                     match &mut effect_test_chain(&mut plan, master)[0].unit {
+                        daw_core::EffectSettings::MultibandEq(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Eq3(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Compressor(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Limiter(s) => s.enabled = enabled,
@@ -1803,40 +1835,52 @@ mod band_meter_tests {
                 }
             });
             assert!(
-                meters[&id]
+                meters[&ModulationTarget::Effect(id)]
                     .current()
                     .iter()
                     .any(|m| f32::from_bits(m.load(Ordering::Relaxed)).abs()
                         > if eq { 0.01 } else { 1.0 })
             );
             if !eq {
-                let peak = &meters[&id].reduction_peaks()[0];
+                let peak = &meters[&ModulationTarget::Effect(id)].reduction_peaks()[0];
                 assert!(peak.peak() > 0.0);
-                let current = meters[&id].readings();
-                let other_peaks = meters[&id].reduction_peaks().each_ref().map(|p| p.peak());
+                let current = meters[&ModulationTarget::Effect(id)].readings();
+                let other_peaks = meters[&ModulationTarget::Effect(id)]
+                    .reduction_peaks()
+                    .each_ref()
+                    .map(|p| p.peak());
                 peak.reset_peak();
                 assert_eq!(peak.peak(), 0.0);
-                assert_eq!(meters[&id].readings(), current);
+                assert_eq!(meters[&ModulationTarget::Effect(id)].readings(), current);
                 for (i, expected) in other_peaks.into_iter().enumerate().skip(1) {
-                    assert_eq!(meters[&id].reduction_peaks()[i].peak(), expected);
+                    assert_eq!(
+                        meters[&ModulationTarget::Effect(id)].reduction_peaks()[i].peak(),
+                        expected
+                    );
                 }
                 crate::preparation_tests::realtime(|| {
                     callback.next();
                 });
                 assert!(peak.peak() > 0.0);
-                let boosts = meters[&id].boost_peaks();
+                let boosts = meters[&ModulationTarget::Effect(id)].boost_peaks();
                 let held = boosts.each_ref().map(|p| p.peak());
                 let band = held
                     .iter()
                     .position(|value| *value > 0.0)
                     .expect("callback captures boost");
-                let reductions = meters[&id].reduction_peaks().each_ref().map(|p| p.peak());
-                let current = meters[&id].readings();
+                let reductions = meters[&ModulationTarget::Effect(id)]
+                    .reduction_peaks()
+                    .each_ref()
+                    .map(|p| p.peak());
+                let current = meters[&ModulationTarget::Effect(id)].readings();
                 boosts[band].reset_peak();
                 assert_eq!(boosts[band].peak(), 0.0);
-                assert_eq!(meters[&id].readings(), current);
+                assert_eq!(meters[&ModulationTarget::Effect(id)].readings(), current);
                 assert_eq!(
-                    meters[&id].reduction_peaks().each_ref().map(|p| p.peak()),
+                    meters[&ModulationTarget::Effect(id)]
+                        .reduction_peaks()
+                        .each_ref()
+                        .map(|p| p.peak()),
                     reductions
                 );
                 for (i, expected) in held.into_iter().enumerate() {
@@ -1850,28 +1894,43 @@ mod band_meter_tests {
             let second = other.id;
             effect_test_chain(&mut plan, master).insert(0, other);
             let updated = band_meters(&plan, &meters);
-            assert!(Arc::ptr_eq(&updated[&id], &meters[&id]));
-            assert!(!Arc::ptr_eq(&updated[&second], &meters[&id]));
+            assert!(Arc::ptr_eq(
+                &updated[&ModulationTarget::Effect(id)],
+                &meters[&ModulationTarget::Effect(id)]
+            ));
+            assert!(!Arc::ptr_eq(
+                &updated[&ModulationTarget::Effect(second)],
+                &meters[&ModulationTarget::Effect(id)]
+            ));
             effect_test_chain(&mut plan, master).retain(|effect| effect.id != id);
             let removed = band_meters(&plan, &updated);
-            assert!(!removed.contains_key(&id));
-            assert!(Arc::ptr_eq(&removed[&second], &updated[&second]));
-            let held_boosts = meters[&id].boost_peaks().each_ref().map(|p| p.peak());
+            assert!(!removed.contains_key(&ModulationTarget::Effect(id)));
+            assert!(Arc::ptr_eq(
+                &removed[&ModulationTarget::Effect(second)],
+                &updated[&ModulationTarget::Effect(second)]
+            ));
+            let held_boosts = meters[&ModulationTarget::Effect(id)]
+                .boost_peaks()
+                .each_ref()
+                .map(|p| p.peak());
             producer
                 .push(Command::Stop)
                 .unwrap_or_else(|_| panic!("queue"));
             callback.update();
             assert!(
-                meters[&id]
+                meters[&ModulationTarget::Effect(id)]
                     .current()
                     .iter()
                     .all(|m| f32::from_bits(m.load(Ordering::Relaxed)) == 0.0)
             );
             if !eq {
-                assert!(meters[&id].reduction_peaks()[0].peak() > 0.0);
+                assert!(meters[&ModulationTarget::Effect(id)].reduction_peaks()[0].peak() > 0.0);
             }
             assert_eq!(
-                meters[&id].boost_peaks().each_ref().map(|p| p.peak()),
+                meters[&ModulationTarget::Effect(id)]
+                    .boost_peaks()
+                    .each_ref()
+                    .map(|p| p.peak()),
                 held_boosts
             );
         }
@@ -2102,5 +2161,60 @@ mod modulation_meter_tests {
         assert!(!modulation_meters(&plan, &handles).contains_key(&oscillator));
         plan.project.tracks[0].instrument.as_mut().unwrap().layers[1].sampler = None;
         assert!(!modulation_meters(&plan, &handles).contains_key(&sampler));
+    }
+}
+
+#[cfg(test)]
+mod multiband_meter_tests {
+    use super::*;
+    #[test]
+    fn individual_band_handles_are_scoped_retained_pruned_and_bound_through_the_shared_path() {
+        let mut plan = crate::tests::transport_plan();
+        let mut first = daw_core::EffectInstance::multiband_equalizer();
+        let daw_core::EffectSettings::MultibandEq(s) = &mut first.unit else {
+            unreachable!()
+        };
+        s.bands.extend((0..40).map(|_| Default::default()));
+        let band = s.bands[0].id;
+        let other_band = s.bands[40].id;
+        let mut second = first.clone();
+        second.id = Id::new_v4();
+        // Even manifests with equal local band IDs must keep different effect meters independent.
+        let first_key = ModulationTarget::EffectBand {
+            effect: first.id,
+            band,
+        };
+        let last_key = ModulationTarget::EffectBand {
+            effect: first.id,
+            band: other_band,
+        };
+        let second_key = ModulationTarget::EffectBand {
+            effect: second.id,
+            band,
+        };
+        plan.project.tracks[0].effects.push(first);
+        plan.project.master.effects.push(second);
+        let meters = band_meters(&plan, &HashMap::new());
+        assert_eq!(meters.len(), 82);
+        assert!(!Arc::ptr_eq(&meters[&first_key], &meters[&second_key]));
+        let mut renderer = Renderer::new(plan.clone());
+        bind_band_meters(&mut renderer, &meters);
+        renderer.play();
+        for _ in 0..1000 {
+            renderer.next_sample();
+        }
+        assert!(meters[&first_key].readings()[0] > 0.0);
+        assert!(meters[&last_key].readings()[0] > 0.0);
+        let retained = band_meters(&plan, &meters);
+        assert!(Arc::ptr_eq(&retained[&first_key], &meters[&first_key]));
+        let daw_core::EffectSettings::MultibandEq(s) = &mut plan.project.tracks[0].effects[0].unit
+        else {
+            unreachable!()
+        };
+        s.remove_band(band);
+        let pruned = band_meters(&plan, &retained);
+        assert!(!pruned.contains_key(&first_key));
+        assert!(pruned.contains_key(&second_key));
+        assert!(pruned.contains_key(&last_key));
     }
 }

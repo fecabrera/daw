@@ -726,6 +726,36 @@ impl DawUi {
                     let interactive = self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
                     let (header, power) = ui
                         .add_enabled_ui(interactive, |ui| match &mut effect.unit {
+                            daw_core::EffectSettings::MultibandEq(settings) => {
+                                let (bounds, header) = crate::multiband_eq_panel::show(
+                                    ui,
+                                    settings,
+                                    compact,
+                                    height,
+                                    modulation_sources,
+                                    |band| {
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(match band {
+                                                Some(band) => {
+                                                    daw_engine::ModulationTarget::EffectBand {
+                                                        effect: effect.id,
+                                                        band,
+                                                    }
+                                                }
+                                                None => {
+                                                    daw_engine::ModulationTarget::Effect(effect.id)
+                                                }
+                                            })
+                                        })
+                                    },
+                                    |band| {
+                                        self.output.as_ref().map_or(0.0, |o| {
+                                            o.eq_individual_band_level(effect.id, band)
+                                        })
+                                    },
+                                );
+                                (header, bounds.power)
+                            }
                             daw_core::EffectSettings::Eq3(settings) => {
                                 let (_bounds, header) = crate::equalizer_panel::show(
                                     ui,

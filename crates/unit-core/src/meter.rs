@@ -221,6 +221,57 @@ impl<T: MeterStorage> UnitMeter<T> {
     }
 }
 
+/// Shared instant-attack, 300 ms-release level publication and bypass lifecycle.
+/// Values are nonnegative linear amplitudes. Prepare and attach handles off the callback.
+#[derive(Clone)]
+pub struct LevelMonitor<const N: usize> {
+    peaks: [f32; N],
+    release: f32,
+    meter: UnitMeter<[AtomicU32; N]>,
+}
+impl<const N: usize> LevelMonitor<N> {
+    pub fn new(sample_rate_hz: u32, enabled: bool) -> Self {
+        Self {
+            peaks: [0.0; N],
+            release: (-1.0 / (0.3 * sample_rate_hz as f32)).exp(),
+            meter: UnitMeter::new(enabled),
+        }
+    }
+    pub fn attach(&mut self, handle: Arc<[AtomicU32; N]>) {
+        self.meter.attach(handle, self.peaks);
+    }
+    pub fn is_connected(&self) -> bool {
+        self.meter.is_connected()
+    }
+    pub fn is_enabled(&self) -> bool {
+        self.meter.enabled
+    }
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.meter.set_enabled(enabled);
+        if !enabled {
+            self.reset();
+        }
+    }
+    pub fn sample(&mut self, levels: [f32; N]) {
+        if !self.is_connected() {
+            return;
+        }
+        for (held, level) in self.peaks.iter_mut().zip(levels) {
+            let level = if level.is_finite() {
+                level.max(0.0)
+            } else {
+                0.0
+            };
+            *held = level.max(*held * self.release);
+        }
+        self.meter.publish(self.peaks);
+    }
+    pub fn reset(&mut self) {
+        self.peaks = [0.0; N];
+        self.meter.publish(self.peaks);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,5 +410,37 @@ mod tests {
         check(scalar.clone(), 3.0, &[scalar.as_ref()]);
         let bands = Arc::new(std::array::from_fn::<_, 3, _>(|_| AtomicU32::new(42)));
         check(bands.clone(), [1.0, -2.0, 3.0], &bands.each_ref());
+    }
+}
+
+#[cfg(test)]
+mod level_monitor_tests {
+    use super::*;
+    #[test]
+    fn shared_levels_use_rate_independent_decay_clear_bypass_and_detach_clones() {
+        for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {
+            let handle = Arc::new([AtomicU32::new(0)]);
+            let read = || f32::from_bits(handle[0].load(Ordering::Relaxed));
+            let mut monitor = LevelMonitor::<1>::new(rate, true);
+            monitor.attach(handle.clone());
+            monitor.sample([2.0]);
+            assert_eq!(read(), 2.0);
+            monitor.clone().sample([8.0]);
+            assert_eq!(read(), 2.0);
+            for _ in 0..rate * 3 / 10 {
+                monitor.sample([0.0]);
+            }
+            assert!((read() - 2.0 / std::f32::consts::E).abs() < 0.001);
+            monitor.set_enabled(false);
+            assert_eq!(read(), 0.0);
+            monitor.sample([2.0]);
+            assert_eq!(read(), 0.0);
+            monitor.set_enabled(true);
+            monitor.sample([0.5]);
+            assert_eq!(read(), 0.5);
+            monitor.reset();
+            monitor.sample([f32::NAN]);
+            assert_eq!(read(), 0.0);
+        }
     }
 }

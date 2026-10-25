@@ -4,7 +4,7 @@ use daw_compressor::Compressor;
 use daw_core::{EffectInstance, EffectSettings, Id, Track};
 use daw_direction_mixer::DirectionMixer;
 use daw_drive::{Drive, DriveV2};
-use daw_equalizer::Equalizer;
+use daw_equalizer::{Equalizer, MultibandEq};
 use daw_filter::Filter;
 use daw_limiter::Limiter;
 use daw_ott::Ott;
@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 enum RuntimeEffect {
+    MultibandEq(Box<MultibandEq>),
     Eq3(Box<Equalizer>, Vec<super::modulation::Route>),
     Drive(Box<Drive>, Vec<super::modulation::Route>),
     DriveV2(Box<DriveV2>, Vec<super::modulation::Route>),
@@ -32,6 +33,9 @@ enum RuntimeEffect {
 impl RuntimeEffect {
     fn heap_bytes(&self) -> u64 {
         match self {
+            Self::MultibandEq(unit) => {
+                std::mem::size_of_val(unit.as_ref()) as u64 + unit.heap_bytes()
+            }
             Self::Eq3(unit, routes) => {
                 std::mem::size_of_val(unit.as_ref()) as u64
                     + unit.heap_bytes()
@@ -99,6 +103,7 @@ impl RuntimeEffect {
     // retain their fixed delay, and each downstream clock must follow it.
     fn latency_frames(&self) -> u32 {
         match self {
+            Self::MultibandEq(unit) => unit.latency_frames(),
             Self::Eq3(unit, _) => unit.latency_frames(),
             Self::Drive(unit, _) => unit.latency_frames(),
             Self::DriveV2(unit, _) => unit.latency_frames(),
@@ -125,6 +130,16 @@ impl RuntimeEffect {
         ),
     ) -> [f32; 2] {
         match self {
+            Self::MultibandEq(unit) => unit.process_at(
+                input,
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::Eq3(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -285,6 +300,7 @@ impl RuntimeEffect {
     }
     fn reset(&mut self) {
         match self {
+            Self::MultibandEq(unit) => unit.reset(),
             Self::Eq3(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -438,6 +454,11 @@ impl EffectChain {
                     (
                         effect.id,
                         match &effect.unit {
+                            EffectSettings::MultibandEq(settings) => {
+                                Some(RuntimeEffect::MultibandEq(Box::new(MultibandEq::new(
+                                    context, settings,
+                                ))))
+                            }
                             EffectSettings::Eq3(settings) => Some(RuntimeEffect::Eq3(
                                 Box::new(Equalizer::new(context, settings)),
                                 settings
@@ -567,6 +588,12 @@ impl EffectChain {
                 .and_then(|&i| previous.units.get_mut(i))
                 && let Some(next) = next
             {
+                if let (RuntimeEffect::MultibandEq(next), RuntimeEffect::MultibandEq(previous)) =
+                    (&mut *next, &mut *previous)
+                {
+                    next.inherit(previous);
+                    continue;
+                }
                 if let (
                     RuntimeEffect::AutoFilter(_, old_routes),
                     RuntimeEffect::AutoFilter(_, new_routes),
@@ -615,6 +642,13 @@ impl EffectChain {
             }
         }
     }
+    pub fn band_modulation_values(&self, id: Id, band: Id) -> Option<super::ModulationSnapshot> {
+        let (_, Some(RuntimeEffect::MultibandEq(unit))) = self.units.get(*self.index.get(&id)?)?
+        else {
+            return None;
+        };
+        unit.band_parameters(band).map(super::parameter_snapshot)
+    }
     pub fn modulation_values(&self, id: Id) -> Option<super::ModulationSnapshot> {
         match self.index.get(&id).and_then(|&i| self.units.get(i)) {
             Some((_, Some(RuntimeEffect::AutoFilter(unit, _)))) => {
@@ -628,6 +662,9 @@ impl EffectChain {
             }
             Some((_, Some(RuntimeEffect::DriveV2(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
+            Some((_, Some(RuntimeEffect::MultibandEq(unit)))) => {
+                Some(super::parameter_snapshot([unit.output_gain_db()]))
             }
             Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
@@ -665,6 +702,18 @@ impl EffectChain {
                 unit.set_gain_reduction_peak_meter(meter.clone())
             }
             _ => {}
+        }
+    }
+    pub fn set_band_level_meter(
+        &mut self,
+        effect: Id,
+        band: Id,
+        meter: &Arc<daw_unit_core::BandMeter<3>>,
+    ) {
+        if let Some((_, Some(RuntimeEffect::MultibandEq(unit)))) =
+            self.index.get(&effect).and_then(|&i| self.units.get_mut(i))
+        {
+            unit.set_band_level_meter(band, meter.current().clone());
         }
     }
     pub fn set_band_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::BandMeter<3>>) {

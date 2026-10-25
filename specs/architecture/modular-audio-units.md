@@ -570,3 +570,7 @@ Tracks can route through nested stereo group buses before Master. Groups reuse t
 ## Granulizer source — 2026-10-23
 
 The [Granulizer contract](../instruments/granulizer.md) adds a third source choice per regular layer. Its portable DSP crate composes the shared sample-source loading, routing and lifecycle rather than duplicating them. It retains source exclusion and Main restrictions, worker preparation and transport history, and the common source/destination modulation contract.
+
+## Multiband EQ — 2026-10-24
+
+Multiband EQ uses the existing portable `equalizer` crate, with variable stable-ID bands and shared repeated-destination routing. See [Multiband EQ](../effects/multiband-eq.md).

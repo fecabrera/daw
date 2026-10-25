@@ -116,6 +116,9 @@ pub enum ModulationParameter {
     LfoDepth,
     LfoRate,
     MacroValue,
+    EqBandGain,
+    EqBandFrequency,
+    EqBandQ,
     EqLowGain,
     EqLowFrequency,
     EqLowQ,
@@ -156,6 +159,7 @@ pub enum ModulationParameter {
     CompressorKnee,
 }
 impl ModulationParameter {
+    pub const EQ_BAND: [Self; 3] = [Self::EqBandGain, Self::EqBandFrequency, Self::EqBandQ];
     pub const GRANULIZER: [Self; 9] = [
         Self::SamplerGain,
         Self::GrainSize,
@@ -327,6 +331,9 @@ impl ModulationParameter {
             Self::CompressorAttack => "Attack",
             Self::CompressorRelease => "Release",
             Self::CompressorKnee => "Knee",
+            Self::EqBandGain => "Gain",
+            Self::EqBandFrequency => "Frequency",
+            Self::EqBandQ => "Q",
             Self::EqLowGain => "Low · Gain",
             Self::EqLowFrequency => "Low · Frequency",
             Self::EqLowQ => "Low · Q",
@@ -394,14 +401,19 @@ impl ModulationParameter {
             Self::CompressorKnee => 24.0,
             Self::CompressorAttack | Self::CompressorRelease => 6.0,
             Self::Pitch => 48.0,
-            Self::Frequency | Self::LfoRate | Self::EqLowFrequency | Self::EqHighFrequency => 6.0,
+            Self::Frequency
+            | Self::LfoRate
+            | Self::EqBandFrequency
+            | Self::EqLowFrequency
+            | Self::EqHighFrequency => 6.0,
             Self::ColorFrequency => 3.0,
-            Self::Resonance | Self::EqLowQ | Self::EqHighQ => 10.0,
+            Self::Resonance | Self::EqBandQ | Self::EqLowQ | Self::EqHighQ => 10.0,
             Self::DriveInput
             | Self::OscillatorGain
             | Self::SamplerGain
             | Self::Level
             | Self::Volume
+            | Self::EqBandGain
             | Self::EqLowGain
             | Self::EqMidGain
             | Self::EqHighGain => 24.0,
@@ -448,14 +460,16 @@ impl ModulationParameter {
             Self::Frequency
             | Self::ColorFrequency
             | Self::LfoRate
+            | Self::EqBandFrequency
             | Self::EqLowFrequency
             | Self::EqHighFrequency => "oct",
-            Self::Resonance | Self::EqLowQ | Self::EqHighQ => "Q",
+            Self::Resonance | Self::EqBandQ | Self::EqLowQ | Self::EqHighQ => "Q",
             Self::DriveInput
             | Self::OscillatorGain
             | Self::SamplerGain
             | Self::Level
             | Self::Volume
+            | Self::EqBandGain
             | Self::EqLowGain
             | Self::EqMidGain
             | Self::EqHighGain => "dB",

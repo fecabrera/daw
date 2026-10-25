@@ -854,3 +854,6 @@ mod transition_tests {
         }
     }
 }
+
+mod multiband;
+pub use multiband::MultibandEq;

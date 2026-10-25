@@ -1310,12 +1310,27 @@ impl MidiTrackRuntime {
         }
         found.then_some(range)
     }
+    pub fn effect_band_snapshot(&self, id: Id, band: Id) -> Option<super::ModulationSnapshot> {
+        self.layer_effects
+            .iter()
+            .find_map(|bus| bus.chain.band_modulation_values(id, band))
+    }
     pub fn effect_snapshot(&self, id: Id) -> Option<super::ModulationSnapshot> {
         super::layer_effects::find(&self.layer_effects, id)
     }
     pub fn set_effect_meter(&mut self, id: Id, meter: &std::sync::Arc<daw_unit_core::PeakMeter>) {
         for bus in &mut self.layer_effects {
             bus.chain.set_meter(id, meter);
+        }
+    }
+    pub fn set_individual_band_meter(
+        &mut self,
+        effect: Id,
+        band: Id,
+        meter: &std::sync::Arc<daw_unit_core::BandMeter<3>>,
+    ) {
+        for bus in &mut self.layer_effects {
+            bus.chain.set_band_level_meter(effect, band, meter);
         }
     }
     pub fn set_effect_band_meter(

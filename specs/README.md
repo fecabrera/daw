@@ -32,6 +32,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 ## Effects
 
 - [3-band EQ](effects/equalizer.md)
+- [Multiband EQ](effects/multiband-eq.md)
 - [Drive](effects/drive.md)
 - [Drive v2](effects/drive-v2.md)
 - [Saturator](effects/saturator.md)

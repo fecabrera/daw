@@ -1,7 +1,6 @@
 use super::*;
 use crate::envelope_panel;
 use daw_core::{InstrumentLayerSettings, TrackKind};
-use midi_editor::OSCILLATOR_STRIP_WIDTH;
 
 const LAYER_HEADER_WIDTH: f32 = TRACK_WIDTH;
 
@@ -1099,9 +1098,7 @@ impl DawUi {
             ..
         } = layer;
         let panel = panels::PanelStyle::default();
-        let strip_margin = panel.margin;
         let strip_height = crate::envelope_panel::body_height(compact);
-        let strip_width = OSCILLATOR_STRIP_WIDTH - 2.0 * f32::from(strip_margin);
         let mut remove = None;
         let mut add = false;
         #[cfg(test)]
@@ -1138,16 +1135,11 @@ impl DawUi {
                                 .id_salt(("oscillator-strip", track, oscillator.id))
                                 .sense(Sense::click_and_drag()),
                             |ui| {
-                                egui::Frame::new()
-                                    .inner_margin(strip_margin)
-                                    .show(ui, |ui| {
-                                        ui.scope_builder(
+                                panels::unit_strip(ui, strip_height,
                                             egui::UiBuilder::new()
                                                 .id_salt(("oscillator-settings", track, oscillator.id))
-                                                .layout(egui::Layout::top_down(egui::Align::Min))
                                                 .sense(Sense::click_and_drag()),
                                             |ui| {
-                                                ui.set_width(strip_width);
                                                 let mut responses = Vec::with_capacity(4);
                                                 if !compact {
                                                     responses.extend([
@@ -1210,8 +1202,7 @@ impl DawUi {
                                                 );
                                                 responses
                                             },
-                                        )
-                                    })
+                                )
                             },
                         );
                         self.instrument_ui.oscillator_slots.push((layer_id, oscillator.id, strip.response.rect));
@@ -1256,16 +1247,7 @@ impl DawUi {
                             });
                         }
                     }
-                    let add_strip = ui.scope(|ui| {
-                        icons::circular_strip_button(
-                            ui,
-                            icons::Lucide::Plus,
-                            "Add oscillator",
-                            Vec2::new(icons::COMPACT_BUTTON_SIZE, strip_height)
-                                + Vec2::splat(2.0 * f32::from(strip_margin)),
-                            icons::COMPACT_BUTTON_SIZE,
-                        )
-                    });
+                    let add_strip = panels::unit_add_strip(ui, strip_height, "Add oscillator");
                     if let Some(previous) = previous_column {
                         panels::unit_divider(
                             ui,
@@ -1289,10 +1271,7 @@ impl DawUi {
                     let output_strip = ui.scope_builder(egui::UiBuilder::new()
                         .id_salt(("oscillator-output", track, layer_id))
                         .sense(Sense::click_and_drag()), |ui| {
-                        egui::Frame::new().inner_margin(strip_margin).show(ui, |ui| {
-                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                                ui.set_width(strip_width);
-                                ui.set_min_height(strip_height);
+                        panels::unit_strip(ui, strip_height, egui::UiBuilder::new(), |ui| {
                                 if !compact {
                                     for row in 0..3 {
                                         knobs::row(ui, level, knobs::CHOICE_SIZE, |ui, value| {
@@ -1308,7 +1287,6 @@ impl DawUi {
                                     }
                                 }
                                 rows::centered(ui, if compact { strip_height } else { icons::COMPACT_BUTTON_SIZE }, |ui| rows::unit_label(ui, "Out"));
-                            });
                         });
                     });
                     panels::unit_divider(ui, output_strip.response.rect.left(), output_strip.response.rect.y_range().into());

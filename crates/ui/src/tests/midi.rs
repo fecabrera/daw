@@ -2498,7 +2498,7 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
         for count in 1..=2 {
             for strip in &app.midi_editor.oscillator_strip_bounds {
                 assert!(
-                    (strip.width() - midi_editor::OSCILLATOR_STRIP_WIDTH).abs() < 0.1,
+                    (strip.width() - midi_editor::UNIT_STRIP_WIDTH).abs() < 0.1,
                     "strip width must not change when the source count changes"
                 );
             }
@@ -2573,7 +2573,7 @@ fn oscillator_module_adds_sources_on_the_right_and_removes_the_target_through_it
         );
         for index in [1, 0, 0] {
             for strip in &app.midi_editor.oscillator_strip_bounds {
-                assert!((strip.width() - midi_editor::OSCILLATOR_STRIP_WIDTH).abs() < 0.1);
+                assert!((strip.width() - midi_editor::UNIT_STRIP_WIDTH).abs() < 0.1);
             }
             let bounds = app.midi_editor.oscillator_bounds[index];
             // Cover strip padding as well as interactive knob faces.
@@ -7504,7 +7504,7 @@ fn oscillator_unit_level_occupies_the_last_column_and_edits_only_the_unit_output
         let knob = app.midi_editor.oscillator_level_bounds;
         let add = app.midi_editor.add_oscillator_strip_bounds;
         let source = app.midi_editor.oscillator_strip_bounds[0];
-        assert!((output.width() - midi_editor::OSCILLATOR_STRIP_WIDTH).abs() < 0.1);
+        assert!((output.width() - midi_editor::UNIT_STRIP_WIDTH).abs() < 0.1);
         assert!((output.left() - add.right()).abs() < 0.1);
         assert!((output.top() - source.top()).abs() < 0.1);
         assert!((output.bottom() - source.bottom()).abs() < 0.1);
@@ -7591,8 +7591,7 @@ fn oscillator_unit_level_occupies_the_last_column_and_edits_only_the_unit_output
         frame(&mut app, &ctx, vec![]);
         assert_eq!(app.midi_editor.oscillator_level_bounds, Rect::NOTHING);
         assert!(
-            (app.midi_editor.oscillator_output_bounds.width()
-                - midi_editor::OSCILLATOR_STRIP_WIDTH)
+            (app.midi_editor.oscillator_output_bounds.width() - midi_editor::UNIT_STRIP_WIDTH)
                 .abs()
                 < 0.1
         );

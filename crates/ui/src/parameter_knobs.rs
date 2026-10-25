@@ -262,12 +262,14 @@ pub(super) fn destination(parameter: Parameter) -> KnobSpec {
         Parameter::Volume => knobs::marked_gain_spec().named("Drive volume"),
         Parameter::DriveInput => knobs::marked_gain_spec().named("Input gain"),
         Parameter::Frequency => frequency("Filter frequency", 1000.0),
+        Parameter::EqBandFrequency => frequency(parameter.label(), 1000.0),
         Parameter::EqLowFrequency => frequency(parameter.label(), 250.0),
         Parameter::EqHighFrequency => frequency(parameter.label(), 2500.0),
-        Parameter::EqLowGain | Parameter::EqMidGain | Parameter::EqHighGain => {
-            eq_gain().named(parameter.label())
-        }
-        Parameter::EqLowQ | Parameter::EqHighQ => {
+        Parameter::EqBandGain
+        | Parameter::EqLowGain
+        | Parameter::EqMidGain
+        | Parameter::EqHighGain => eq_gain().named(parameter.label()),
+        Parameter::EqBandQ | Parameter::EqLowQ | Parameter::EqHighQ => {
             destination(Parameter::Resonance).named(parameter.label())
         }
         Parameter::ColorFrequency => KnobSpec::new("Color frequency", 250.0..=2000.0, 750.0, 1.0)
@@ -400,6 +402,7 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
             | Parameter::OttMidOutput
             | Parameter::OttHighOutput
             | Parameter::LimiterInput
+            | Parameter::EqBandGain
             | Parameter::EqLowGain
             | Parameter::EqMidGain
             | Parameter::EqHighGain => (
@@ -537,10 +540,11 @@ pub(super) fn amount(parameter: Parameter) -> KnobSpec {
             | Parameter::CompressorRelease
             | Parameter::Frequency
             | Parameter::LfoRate
+            | Parameter::EqBandFrequency
             | Parameter::EqLowFrequency
             | Parameter::EqHighFrequency => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
             Parameter::ColorFrequency => (AmountMapping::Octaves, signed_octaves, ["−3", "+3"]),
-            Parameter::Resonance | Parameter::EqLowQ | Parameter::EqHighQ => (
+            Parameter::Resonance | Parameter::EqBandQ | Parameter::EqLowQ | Parameter::EqHighQ => (
                 AmountMapping::Offset {
                     origin: 0.1,
                     direction: 1.0,

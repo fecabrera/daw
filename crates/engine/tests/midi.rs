@@ -4995,3 +4995,83 @@ fn mixed_inline_presentation_order_keeps_audio_and_live_phase_unchanged() {
         assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     }
 }
+
+#[test]
+fn multiband_shared_modulation_reaches_track_layer_and_main_bands() {
+    for owner in ["track", "layer", "main"] {
+        let mut plan = plan(Waveform::Saw, 48_000);
+        let instrument = plan.project.tracks[0].instrument.as_mut().unwrap();
+        let layer = &mut instrument.layers[0];
+        layer.envelopes[1].present = true;
+        layer.envelopes[1].mode = EnvelopeMode::Retrigger;
+        layer.envelopes[1].settings.attack.time_ms = 5.0;
+        let source = ModulationSourceId {
+            layer: layer.id,
+            unit: layer.envelopes[1].id,
+        };
+        let mut effect = EffectInstance::multiband_equalizer();
+        let effect_id = effect.id;
+        let EffectSettings::MultibandEq(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.bands[0].frequency_hz = 440.0;
+        s.bands[0].gain_db = 3.0;
+        s.bands.push(Default::default());
+        let band = s.bands[0].id;
+        let neutral = s.bands[1].id;
+        s.modulations.push(Modulation {
+            target: Some(band),
+            source: Some(source),
+            amount: 12.0,
+            ..Modulation::new(ModulationParameter::EqBandGain)
+        });
+        s.modulations.push(Modulation {
+            source: Some(source),
+            amount: -6.0,
+            ..Modulation::new(ModulationParameter::Level)
+        });
+        match owner {
+            "track" => plan.project.tracks[0].effects.push(effect),
+            "layer" => layer.effects.push(effect),
+            _ => instrument.main.effects.push(effect),
+        };
+        plan.project.validate().unwrap();
+        let mut expected = vec![[0.0; 2]; 2000];
+        Renderer::new(plan.clone()).render_offline(&mut expected);
+        let mut live = Renderer::new(plan.clone());
+        live.play();
+        ALLOCATIONS.with(|c| c.set(0));
+        TRACK_ALLOCATIONS.with(|e| e.set(true));
+        for (i, want) in expected.iter().enumerate() {
+            let actual = live.next_sample();
+            if i > 240 {
+                for ch in 0..2 {
+                    assert!((actual[ch] - want[ch]).abs() < 1e-6);
+                }
+            }
+        }
+        let a = live
+            .modulation_snapshot(daw_engine::ModulationTarget::EffectBand {
+                effect: effect_id,
+                band,
+            })
+            .unwrap();
+        let b = live
+            .modulation_snapshot(daw_engine::ModulationTarget::EffectBand {
+                effect: effect_id,
+                band: neutral,
+            })
+            .unwrap();
+        let output = live
+            .modulation_snapshot(daw_engine::ModulationTarget::Effect(effect_id))
+            .unwrap();
+        TRACK_ALLOCATIONS.with(|e| e.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        assert!(a[0] > 3.1, "{owner}: {a:?}");
+        assert_eq!(b[0], 0.0);
+        assert!(output[0] < -0.1);
+        let mut range = [[0.0; 2]; 64];
+        plan.render(1000, &mut range);
+        assert_eq!(range.as_slice(), &expected[1000..1064]);
+    }
+}

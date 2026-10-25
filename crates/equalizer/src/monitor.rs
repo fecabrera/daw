@@ -1,6 +1,6 @@
 //! Read-only analysis of the EQ output. These filters never enter the audio path.
 use super::Filter;
-use daw_unit_core::UnitMeter;
+use daw_unit_core::LevelMonitor;
 use fundsp::svf::SvfParams;
 use std::sync::{Arc, atomic::AtomicU32};
 
@@ -9,9 +9,7 @@ pub(super) struct Monitor {
     // Low LP, Mid HP/LP, High HP, with independent stereo histories.
     filters: [[Filter; 2]; 4],
     boundaries: [f32; 2],
-    peaks: [f32; 3],
-    release: f32,
-    meter: UnitMeter<[AtomicU32; 3]>,
+    meter: LevelMonitor<3>,
 }
 
 impl Monitor {
@@ -29,14 +27,12 @@ impl Monitor {
                 })
             }),
             boundaries: [f32::NAN; 2],
-            peaks: [0.0; 3],
-            release: (-1.0 / (0.3 * sample_rate_hz as f32)).exp(),
-            meter: UnitMeter::new(enabled),
+            meter: LevelMonitor::new(sample_rate_hz, enabled),
         }
     }
 
     pub fn attach(&mut self, meter: Arc<[AtomicU32; 3]>) {
-        self.meter.attach(meter, self.peaks);
+        self.meter.attach(meter);
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -44,10 +40,6 @@ impl Monitor {
         if !enabled {
             self.reset();
         }
-    }
-
-    fn publish(&self) {
-        self.meter.publish(self.peaks);
     }
 
     pub fn sample(&mut self, output: [f32; 2], low: f32, high: f32) {
@@ -80,17 +72,13 @@ impl Monitor {
         if boundaries[0] == boundaries[1] {
             peaks[1] = 0.0;
         }
-        for (held, peak) in self.peaks.iter_mut().zip(peaks) {
-            *held = peak.max(*held * self.release);
-        }
-        self.publish();
+        self.meter.sample(peaks);
     }
 
     pub fn reset(&mut self) {
         for filter in self.filters.iter_mut().flatten() {
             filter.reset();
         }
-        self.peaks = [0.0; 3];
-        self.publish();
+        self.meter.reset();
     }
 }

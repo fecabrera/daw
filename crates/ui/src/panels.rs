@@ -1,5 +1,6 @@
 use egui::{Color32, Frame, Rect, Response, Stroke, Ui, Vec2};
 
+pub(super) const UNIT_STRIP_WIDTH: f32 = 90.0;
 pub(super) const HEADER_HEIGHT: f32 = crate::toolbars::CONTROL_HEIGHT + 2.0;
 pub(super) const HEADER_FONT_SIZE: f32 = 11.0;
 pub(super) const UNIT_POWER_SIZE: f32 = 10.0;
@@ -23,6 +24,44 @@ pub(super) fn unit_height(compact: bool) -> f32 {
     } else {
         unit_control_height() + 2.0 * f32::from(PanelStyle::default().margin) + HEADER_HEIGHT + 2.0
     }
+}
+
+/// Standard internally padded control strip, shared by repeated sources and EQ bands.
+pub(super) fn unit_strip<R>(
+    ui: &mut Ui,
+    height: f32,
+    builder: egui::UiBuilder,
+    body: impl FnOnce(&mut Ui) -> R,
+) -> egui::InnerResponse<egui::InnerResponse<R>> {
+    let margin = PanelStyle::default().margin;
+    Frame::new().inner_margin(margin).show(ui, |ui| {
+        ui.scope_builder(
+            builder.layout(egui::Layout::top_down(egui::Align::Min)),
+            |ui| {
+                ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
+                ui.set_min_height(height);
+                body(ui)
+            },
+        )
+    })
+}
+
+/// Full-height add strip: one shared circular button plus standard panel padding.
+pub(super) fn unit_add_strip(
+    ui: &mut Ui,
+    height: f32,
+    name: &str,
+) -> egui::InnerResponse<Response> {
+    let margin = f32::from(PanelStyle::default().margin);
+    ui.scope(|ui| {
+        crate::icons::circular_strip_button(
+            ui,
+            crate::icons::Lucide::Plus,
+            name,
+            Vec2::new(crate::icons::COMPACT_BUTTON_SIZE, height) + Vec2::splat(2.0 * margin),
+            crate::icons::COMPACT_BUTTON_SIZE,
+        )
+    })
 }
 
 /// Shared muted full-height separator for internally padded unit strips.

@@ -154,6 +154,10 @@ pub enum ModulationTarget {
         unit: Id,
     },
     Effect(Id),
+    EffectBand {
+        effect: Id,
+        band: Id,
+    },
     /// Playback position in prepared sample frames; shares the atomic telemetry transport.
     Sampler {
         track: Id,
@@ -375,6 +379,9 @@ impl Renderer {
             for effect in effects {
                 effect.id.hash(&mut hash);
                 match &effect.unit {
+                    daw_core::EffectSettings::MultibandEq(_) => {
+                        daw_unit_core::MULTIBAND_EQ_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::Eq3(_) => daw_unit_core::EQ_TYPE_ID.hash(&mut hash),
                     daw_core::EffectSettings::DriveV2(_) => {
                         daw_unit_core::DRIVE_V2_TYPE_ID.hash(&mut hash)
@@ -485,6 +492,18 @@ impl Renderer {
                     gain[0],
                     gain[1],
                 ]))
+            }
+            ModulationTarget::EffectBand { effect, band } => {
+                match self.effect_tracks.get(&effect)? {
+                    Some(index) => self.effects[*index]
+                        .band_modulation_values(effect, band)
+                        .or_else(|| {
+                            self.midi[*index]
+                                .as_ref()?
+                                .effect_band_snapshot(effect, band)
+                        }),
+                    None => self.master_effects.band_modulation_values(effect, band),
+                }
             }
             ModulationTarget::Effect(id) => match self.effect_tracks.get(&id)? {
                 Some(index) => self.effects[*index]
@@ -610,6 +629,27 @@ impl Renderer {
             id,
             std::sync::Arc::new(daw_unit_core::BandMeter::new(meter)),
         );
+    }
+    /// Bind a fixed band group or an individual stable EQ band on the control thread.
+    pub fn set_target_band_peak_meter(
+        &mut self,
+        target: ModulationTarget,
+        meter: std::sync::Arc<daw_unit_core::BandMeter<3>>,
+    ) {
+        match target {
+            ModulationTarget::Effect(id) => self.set_band_peak_meter(id, meter),
+            ModulationTarget::EffectBand { effect, band } => {
+                self.master_effects
+                    .set_band_level_meter(effect, band, &meter);
+                for midi in self.midi.iter_mut().flatten() {
+                    midi.set_individual_band_meter(effect, band, &meter);
+                }
+                for chain in &mut self.effects {
+                    chain.set_band_level_meter(effect, band, &meter);
+                }
+            }
+            _ => {}
+        }
     }
     /// Attach signed band readings and reduction/boost holds through the shared traversal.
     pub fn set_band_peak_meter(

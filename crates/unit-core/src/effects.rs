@@ -7,6 +7,7 @@ use crate::{DIRECTION_MIXER_STATE_VERSION, DIRECTION_MIXER_TYPE_ID, DirectionMix
 use crate::{DRIVE_V2_STATE_VERSION, DRIVE_V2_TYPE_ID, DriveV2Settings};
 use crate::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
 use crate::{LIMITER_STATE_VERSION, LIMITER_TYPE_ID, LimiterSettings};
+use crate::{MULTIBAND_EQ_STATE_VERSION, MULTIBAND_EQ_TYPE_ID, MultibandEqSettings};
 use crate::{OTT_STATE_VERSION, OTT_TYPE_ID, OttSettings};
 use crate::{SATURATOR_STATE_VERSION, SATURATOR_TYPE_ID, SaturatorSettings};
 use crate::{STEREO_SPREAD_STATE_VERSION, STEREO_SPREAD_TYPE_ID, StereoSpreadSettings};
@@ -75,6 +76,7 @@ impl EqSettings {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectSettings {
     Eq3(EqSettings),
+    MultibandEq(MultibandEqSettings),
     Drive(DriveSettings),
     DriveV2(DriveV2Settings),
     AutoFilter(AutoFilterSettings),
@@ -125,6 +127,10 @@ impl Serialize for EffectSettings {
             },
             Self::Compressor(settings) => StoredEffect {
                 type_id: COMPRESSOR_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::MultibandEq(settings) => StoredEffect {
+                type_id: MULTIBAND_EQ_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
             },
             Self::Eq3(eq) => StoredEffect {
@@ -218,6 +224,16 @@ impl<'de> Deserialize<'de> for EffectSettings {
             serde_json::from_value(stored.state)
                 .map(Self::Ott)
                 .map_err(serde::de::Error::custom)
+        } else if stored.type_id == MULTIBAND_EQ_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|v| v <= u64::from(MULTIBAND_EQ_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::MultibandEq)
+                .map_err(serde::de::Error::custom)
         } else if stored.type_id == EQ_TYPE_ID
             && stored
                 .state
@@ -294,6 +310,7 @@ impl EffectSettings {
             Self::Filter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Drive(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::DriveV2(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::MultibandEq(s) => &s.modulations,
             Self::Eq3(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Compressor(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Limiter(s) => crate::ModulationDestinationSettings::modulations(s),
@@ -313,6 +330,7 @@ impl EffectSettings {
             Self::Filter(s) => &mut s.modulations,
             Self::Drive(s) => &mut s.modulations,
             Self::DriveV2(s) => &mut s.modulations,
+            Self::MultibandEq(s) => &mut s.modulations,
             Self::Eq3(s) => &mut s.modulations,
             Self::Compressor(s) => &mut s.modulations,
             Self::Limiter(s) => &mut s.modulations,
@@ -327,6 +345,7 @@ impl EffectSettings {
 
     pub fn valid(&self) -> bool {
         match self {
+            Self::MultibandEq(eq) => eq.valid(),
             Self::Eq3(eq) => eq.valid(),
             Self::Drive(drive) => drive.valid(),
             Self::DriveV2(s) => s.valid(),
@@ -341,6 +360,7 @@ impl EffectSettings {
             Self::Bitcrusher(settings) => settings.valid(),
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
+                    MULTIBAND_EQ_TYPE_ID => Some(MULTIBAND_EQ_STATE_VERSION),
                     EQ_TYPE_ID => Some(EQ_STATE_VERSION),
                     DRIVE_TYPE_ID => Some(DRIVE_STATE_VERSION),
                     DRIVE_V2_TYPE_ID => Some(DRIVE_V2_STATE_VERSION),
@@ -378,7 +398,24 @@ impl EffectInstance {
         for route in copy.unit.modulations_mut() {
             route.id = uuid::Uuid::new_v4();
         }
+        if let EffectSettings::MultibandEq(s) = &mut copy.unit {
+            for band in &mut s.bands {
+                let old = band.id;
+                band.id = uuid::Uuid::new_v4();
+                for route in &mut s.modulations {
+                    if route.target == Some(old) {
+                        route.target = Some(band.id);
+                    }
+                }
+            }
+        }
         copy
+    }
+    pub fn multiband_equalizer() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::MultibandEq(MultibandEqSettings::default()),
+        }
     }
 
     pub fn stereo_spread() -> Self {

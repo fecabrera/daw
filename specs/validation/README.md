@@ -4,6 +4,59 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Multiband EQ band meters — 2026-10-24
+
+Added the shared four-point top rail to every expanded band, preserving the smaller knobs and shared strip layout. Factored the 3-band EQ's level follower into `unit-core::LevelMonitor`; both EQs share peak decay and `UnitMeter` bypass/clone/reset behavior. Individual meter keys include effect and band IDs and reuse the existing native band-meter preparation, bindings and retirement path.
+
+Completed focused checks:
+
+- Unit-core library tests: 48 passed, including six-rate release, bypass, reset and detached-clone checks.
+- Equalizer library tests: 17 passed. Legacy analysis checks pass; new meters retain bit-identical audio, capture the louder stereo channel, decay, clear on bypass/reset, and retain handles through compatible updates at all six project rates.
+- UI library tests: 649 passed. Rails use the shared geometry/colors without moving knobs; disabled overload fills are grey, stale bypass readings are masked, and compact units hide meters. Oscillator and EQ strip interaction/layout checks pass.
+- Focused output test: passed with 82 individual handles, parent-scoped IDs, stable retention, removal and shared renderer binding.
+- Focused engine tests: passed for track/layer/Main playback/export/seek parity and allocation-free structural updates with a live band meter attached.
+- Formatting, strict workspace Clippy, and `git diff --check`: passed.
+
+- `cargo build -p daw-cli --offline --locked` and `python3 tools/check_cli.py`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt the app with band meters.
+- Changed guide/spec links: passed.
+
+- `cargo test --workspace --offline --locked`: passed on the final sources; 1290 tests passed, 3 ignored. All doctests passed.
+
+Native device/pointer checks and Windows/Linux builds remain untested.
+
+## Shared Oscillator and Multiband EQ strips — 2026-10-24
+
+Oscillator source/Out strips and Multiband EQ band/Out strips now use `panels::unit_strip`. Both Plus strips use `panels::unit_add_strip`: the 18-point circle and shared panel padding, for a 34-point full-height strip at the current margin. This replaces the EQ's earlier 90-point add strip. Band footers use the same `rows::power_label` as Oscillator. Four smaller EQ knobs, saved settings, DSP, and modulation behavior remain unchanged. The common strip width now belongs to `panels`.
+
+Completed checks:
+
+- `cargo test -p daw-ui --lib --offline --locked`: passed; 648 tests. Includes Oscillator strip interactions, compact/collapsed layouts, source add/remove and drag actions, and EQ band geometry/power/add interactions. EQ layout checks cover the narrow Plus width and full height, band/Out footer alignment, and four-knob fit.
+- `cargo fmt --all --check`, strict workspace Clippy, `git diff --check`, and changed guide/spec links: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+
+The workspace run reached doctests while meter work changed shared exports, leaving rustdoc with an old dependency build. The final meter workspace run recorded above rebuilt a consistent source state and passed. Native pointer/keyboard checks and Windows/Linux builds were not performed for this layout change.
+
+## Multiband EQ — 2026-10-24
+
+Added a separate variable-band EQ with Bell, Low/High shelf, Low/High pass, and Notch modes; per-band Frequency/Gain/Q and bypass; and final Output Gain. Stable band IDs own shared modulation routes and independent processed-value snapshots. Existing 3-band EQ behavior is unchanged.
+
+Completed focused checks:
+
+- `cargo test -p daw-unit-core -p daw-equalizer multiband --offline --locked`: passed. Covers all six project rates, mode responses, independent stereo state, empty/disabled bands, unit bypass, output gain, modulation bounds and target isolation, persistence, duplicate/removal IDs, and invalid/future state handling.
+- `cargo test -p daw-equalizer -p daw-engine multiband --offline --locked`: passed after the final routing correction. Covers prepared route addition, amount changes, removal and destination changes; live/export/block/seek parity; track/layer/Main band snapshots; and allocation-free playback and structural updates. The wrapper retains the prepared destination after the shared route-history helper publishes into its current owner, so it explicitly exchanges the route storage back to that destination.
+- `cargo test -p daw-ui multiband --offline --locked`: passed. Covers distinct response diagrams, standard expanded/compact lane geometry, band power, and adding bands with fresh IDs. Catalog keyboard expectations include the new entry.
+- `cargo fmt --all --check`, strict workspace Clippy, and `git diff --check`: passed.
+- `cargo build -p daw-cli --offline --locked` and `python3 tools/check_cli.py`: passed. The smoke script checks WAV/MP3/AAC codecs and bitrates, repeatability, missing-source handling, eight-track projects, group buses, replacement protection, and exit codes.
+- Changed documentation links resolve locally.
+- `cargo test --workspace --offline --locked`: passed. This run began before the final routing-wrapper correction and compact strip revision. The focused DSP/engine regression run above covers the routing correction; the complete UI suite below covers the final strip revision.
+- `cargo test -p daw-ui --lib --offline --locked`: passed after the final strip revision; 648 tests passed.
+- `sh tools/package_macos.sh debug`: passed after the final strip revision; rebuilt `target/debug/DAW.app`.
+
+The revised panel uses one 90-point band strip with four scaled shared knobs, the standard Plus strip, and a final Out strip. Layout checks verify knob ordering, strip width, common footer height, and the existing lane height. A base-widget regression verifies the smaller face retains the same drag behavior.
+
+Native listening, native pointer/keyboard use, device timing, and Windows/Linux builds were not checked for this change. Band count has no fixed cap; this work does not establish a maximum practical band count or callback-time budget.
+
 ## Windows custom titlebar divider — 2026-10-24
 
 The DWM frame now extends through the header divider into the opaque playback row. This removes the extra dark row under native caption buttons and prevents the frame boundary from darkening the divider. Header geometry and native caption ownership are unchanged.

@@ -1847,3 +1847,108 @@ fn drive_v2_live_export_seek_block_processing_and_retarget_share_the_portable_pa
         }
     }
 }
+
+#[test]
+fn multiband_eq_live_export_seek_and_structural_updates_preserve_history_without_allocations() {
+    for rate in [44_100, 48_000, 96_000, 192_000] {
+        let mut plan = plan(rate, false);
+        let mut effect = EffectInstance::multiband_equalizer();
+        let EffectSettings::MultibandEq(s) = &mut effect.unit else {
+            unreachable!()
+        };
+        s.bands[0].gain_db = 9.0;
+        s.bands.push(MultibandEqBand {
+            mode: EqBandMode::LowShelf,
+            frequency_hz: 100.0,
+            gain_db: -6.0,
+            ..Default::default()
+        });
+        s.output_gain_db = -3.0;
+        let band = s.bands[0].id;
+        let effect_id = effect.id;
+        plan.project.tracks[0].effects.push(effect);
+        let mut expected = vec![[0.0; 2]; 4096];
+        Renderer::new(plan.clone()).render_offline(&mut expected);
+        let mut current = Renderer::new(plan.clone());
+        let meter = Arc::new(daw_unit_core::BandMeter::<3>::default());
+        current.set_target_band_peak_meter(
+            daw_engine::ModulationTarget::EffectBand {
+                effect: effect_id,
+                band,
+            },
+            meter.clone(),
+        );
+        current.play();
+        for (frame, want) in expected.iter().enumerate() {
+            let actual = current.next_sample();
+            if frame >= rate as usize / 200 {
+                for ch in 0..2 {
+                    assert!((actual[ch] - want[ch]).abs() < 1e-6);
+                }
+            }
+        }
+        assert!(meter.readings()[0] > 0.0);
+        let snapshot = current
+            .modulation_snapshot(daw_engine::ModulationTarget::EffectBand {
+                effect: effect_id,
+                band,
+            })
+            .unwrap();
+        assert_eq!(
+            &snapshot[..3],
+            &[9.0, 1000.0, std::f32::consts::FRAC_1_SQRT_2]
+        );
+        for block in [32, 512, 4096] {
+            let mut output = vec![[0.0; 2]; 4096];
+            let mut renderer = Renderer::new(plan.clone());
+            for buffer in output.chunks_mut(block) {
+                renderer.render_offline(buffer);
+            }
+            assert_eq!(output, expected);
+        }
+        let mut range = [[0.0; 2]; 64];
+        plan.render(1000, &mut range);
+        assert_eq!(range.as_slice(), &expected[1000..1064]);
+        let mut reference = Renderer::new(plan.clone());
+        reference.play();
+        for _ in 0..4096 {
+            reference.next_sample();
+        }
+        let EffectSettings::MultibandEq(s) = &mut plan.project.tracks[0].effects[0].unit else {
+            unreachable!()
+        };
+        s.collapsed = true;
+        s.bands.push(Default::default());
+        s.bands.rotate_right(1);
+        // Added neutral bands and visual edits must retain the active filters' exact histories.
+        let mut next = Renderer::new(plan.clone());
+        ALLOCATIONS.with(|count| count.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        next.inherit(&mut current);
+        for _ in 0..512 {
+            let a = next.next_sample();
+            let b = reference.next_sample();
+            for ch in 0..2 {
+                assert!((a[ch] - b[ch]).abs() < 1e-6);
+            }
+        }
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+        let EffectSettings::MultibandEq(s) = &mut plan.project.tracks[0].effects[0].unit else {
+            unreachable!()
+        };
+        s.remove_band(band);
+        s.bands[0].mode = EqBandMode::Notch;
+        s.bands[0].q = 10.0;
+        s.output_gain_db = 12.0;
+        let mut updated = Renderer::new(plan);
+        ALLOCATIONS.with(|count| count.set(0));
+        TRACK_ALLOCATIONS.with(|v| v.set(true));
+        updated.inherit(&mut next);
+        for _ in 0..512 {
+            assert!(updated.next_sample().iter().all(|v| v.is_finite()));
+        }
+        TRACK_ALLOCATIONS.with(|v| v.set(false));
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    }
+}

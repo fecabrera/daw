@@ -21,6 +21,7 @@ struct ParameterScale {
 #[derive(Clone, Copy)]
 pub struct KnobSpec {
     name: &'static str,
+    display_scale: f32,
     min: f32,
     max: f32,
     reset: f32,
@@ -51,6 +52,7 @@ impl KnobSpec {
     ) -> Self {
         Self {
             name,
+            display_scale: 1.0,
             min: *range.start(),
             max: *range.end(),
             reset,
@@ -72,6 +74,12 @@ impl KnobSpec {
         }
     }
 
+    /// Scale the face, diagrams and labels while keeping the shared input behavior.
+    pub(super) fn display_scale(mut self, scale: f32) -> Self {
+        assert!(scale.is_finite() && scale > 0.0);
+        self.display_scale = scale;
+        self
+    }
     /// Put this value at twelve o'clock, with a linear scale on each side.
     pub fn centered(mut self, center: f32) -> Self {
         self.center = Some(center);
@@ -582,7 +590,7 @@ fn base_knob(
     spec: KnobSpec,
     mut modulation: Option<(&ModulationMarker, &mut bool)>,
 ) -> Response {
-    let size = if spec.diagram.is_some()
+    let natural_size = if spec.diagram.is_some()
         || spec.value_label.is_some()
         || spec.endpoint_labels.is_some()
         || spec.mode_labels().is_some()
@@ -591,8 +599,15 @@ fn base_knob(
     } else {
         SIZE
     };
+    let scale = spec.display_scale;
+    let size = natural_size * scale;
     let (rect, mut response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
-    let marker_rect = modulation_marker_rect(rect);
+    let paint_rect = Rect::from_center_size(rect.center(), Vec2::splat(natural_size));
+    let transform = egui::emath::TSTransform {
+        translation: rect.center().to_vec2() * (1.0 - scale),
+        scaling: scale,
+    };
+    let marker_rect = transform * modulation_marker_rect(paint_rect);
     let marker_response = modulation.as_ref().map(|(marker, _)| {
         let response = ui.interact(
             marker_rect,
@@ -701,209 +716,234 @@ fn base_knob(
         .widget_info(|| egui::WidgetInfo::slider(ui.is_enabled(), f64::from(*value), spec.name));
 
     if ui.is_rect_visible(rect) {
-        let painter = ui.painter();
-        let center = rect.center();
-        let radius = SIZE / 2.0 - 2.0;
-        let (start, sweep) = if spec.mode_labels().is_some() {
-            (-0.75 * PI, 0.5 * PI)
-        } else if spec.cyclic {
-            (-0.5 * PI, 2.0 * PI)
-        } else {
-            (0.75 * PI, 1.5 * PI)
-        };
-        let normalized = spec.normalized(*value);
-        let point = |fraction: f32, radius: f32| {
-            let angle = start + fraction * sweep;
-            center + Vec2::angled(angle) * radius
-        };
-        let arc = |from: f32, to: f32, color| {
-            let points: Vec<Pos2> = (0..=32)
-                .map(|i| point(from + (to - from) * i as f32 / 32.0, radius))
-                .collect();
-            painter.add(Shape::line(points, Stroke::new(2.0, color)));
-        };
-        if let Some((marker, _)) = &modulation {
-            let color = theme::palette(ui.ctx()).secondary;
-            if marker.active {
-                let [from, to] = marker.range.map(|v| spec.normalized(v));
-                let points = (0..=48)
-                    .map(|i| point(from + (to - from) * i as f32 / 48.0, radius + 4.0))
+        // Transform only paint commands. A child UI scope would change subsequent widget IDs
+        // when this knob enters or leaves the visible rectangle.
+        let paint_start =
+            (scale != 1.0).then(|| ui.ctx().graphics_mut(|g| g.entry(ui.layer_id()).next_idx()));
+        {
+            let rect = paint_rect;
+            let painter = ui.painter();
+            let center = rect.center();
+            let radius = SIZE / 2.0 - 2.0;
+            let (start, sweep) = if spec.mode_labels().is_some() {
+                (-0.75 * PI, 0.5 * PI)
+            } else if spec.cyclic {
+                (-0.5 * PI, 2.0 * PI)
+            } else {
+                (0.75 * PI, 1.5 * PI)
+            };
+            let normalized = spec.normalized(*value);
+            let point = |fraction: f32, radius: f32| {
+                let angle = start + fraction * sweep;
+                center + Vec2::angled(angle) * radius
+            };
+            let arc = |from: f32, to: f32, color| {
+                let points: Vec<Pos2> = (0..=32)
+                    .map(|i| point(from + (to - from) * i as f32 / 32.0, radius))
                     .collect();
-                painter.add(Shape::line(
-                    points,
-                    Stroke::new(1.0, color.gamma_multiply(0.7)),
-                ));
-                for value in marker.live.into_iter().flatten().filter(|v| v.is_finite()) {
-                    painter.circle_filled(point(spec.normalized(value), radius + 4.0), 2.0, color);
-                }
-            }
-            let hit = marker_response.as_ref().unwrap();
-            crate::icons::paint_dot_toggle(ui, hit, 4.0, marker.active, color);
-        }
-        let origin = if spec.bipolar {
-            spec.normalized(spec.reset)
-        } else {
-            0.0
-        };
-        arc(0.0, 1.0, theme::palette(ui.ctx()).border);
-        if spec.mode_labels().is_none() && !spec.cyclic && normalized != origin {
-            arc(origin, normalized, theme::accent(ui.ctx()));
-        }
-        painter.circle(
-            center,
-            radius - 3.0,
-            ui.visuals().widgets.inactive.bg_fill,
-            Stroke::new(
-                1.0,
-                if response.hovered() || response.has_focus() {
-                    theme::palette(ui.ctx()).secondary
-                } else {
-                    theme::palette(ui.ctx()).border
-                },
-            ),
-        );
-        let mark = |fraction, subdued| {
-            painter.line_segment(
-                [
-                    point(fraction, if subdued { radius } else { radius - 1.0 }),
-                    point(fraction, radius + 2.0),
-                ],
-                Stroke::new(
-                    if subdued { 1.0 } else { 1.5 },
-                    if subdued {
-                        theme::palette(ui.ctx()).secondary
-                    } else {
-                        theme::palette(ui.ctx()).text
-                    },
-                ),
-            )
-        };
-        if spec.mode_labels().is_none() {
-            if let Some(diagram) = spec.diagram {
-                let step = spec.discrete_step.unwrap();
-                for index in 0..=((spec.max - spec.min) / step).round() as u32 {
-                    let choice = spec.min + index as f32 * step;
-                    let center = point(spec.normalized(choice), 20.0);
-                    let points = diagram(choice)
-                        .into_iter()
-                        .map(|p| center + p * DIAGRAM_SIZE)
+                painter.add(Shape::line(points, Stroke::new(2.0, color)));
+            };
+            if let Some((marker, _)) = &modulation {
+                let color = theme::palette(ui.ctx()).secondary;
+                if marker.active {
+                    let [from, to] = marker.range.map(|v| spec.normalized(v));
+                    let points = (0..=48)
+                        .map(|i| point(from + (to - from) * i as f32 / 48.0, radius + 4.0))
                         .collect();
-                    let color = if choice == *value {
-                        theme::accent(ui.ctx())
-                    } else {
-                        theme::palette(ui.ctx()).secondary
-                    };
-                    painter.add(Shape::line(points, Stroke::new(1.25, color)));
-                }
-            } else if let Some(values) = spec.reference_values {
-                for (index, &value) in values.iter().enumerate() {
-                    if let Some(scale) = spec.amount_scale {
-                        if let Some(magnitude) = scale.reference_amount(value) {
-                            if values[..index]
-                                .iter()
-                                .any(|v| scale.reference_amount(*v) == Some(magnitude))
-                            {
-                                continue;
-                            }
-                            mark(spec.normalized(magnitude), magnitude != 0.0);
-                            if magnitude > 0.0 {
-                                mark(spec.normalized(-magnitude), true);
-                            }
-                        }
-                    } else if value.is_finite() && (spec.min..=spec.max).contains(&value) {
-                        mark(spec.normalized(value), value != spec.reset);
+                    painter.add(Shape::line(
+                        points,
+                        Stroke::new(1.0, color.gamma_multiply(0.7)),
+                    ));
+                    for value in marker.live.into_iter().flatten().filter(|v| v.is_finite()) {
+                        painter.circle_filled(
+                            point(spec.normalized(value), radius + 4.0),
+                            2.0,
+                            color,
+                        );
                     }
                 }
-            } else if let Some(step) = spec.reference_step.or_else(|| {
-                spec.discrete_step
-                    .filter(|step| (spec.max - spec.min) / step <= 15.0)
-            }) {
-                for index in 0..=((spec.max - spec.min) / step).round() as u32 {
-                    let value = spec.min + index as f32 * step;
-                    mark(
-                        spec.normalized(value),
-                        spec.reference_step.is_some() && value != spec.reset,
-                    );
-                }
-            } else {
-                mark(spec.normalized(spec.reset), false);
             }
-        }
-        if let Some(format) = spec.value_label {
-            painter.text(
-                center - Vec2::new(0.0, radius + 3.0),
-                egui::Align2::CENTER_BOTTOM,
-                format(*value),
-                crate::fonts::numeric(9.0),
-                theme::palette(ui.ctx()).text,
+            let origin = if spec.bipolar {
+                spec.normalized(spec.reset)
+            } else {
+                0.0
+            };
+            arc(0.0, 1.0, theme::palette(ui.ctx()).border);
+            if spec.mode_labels().is_none() && !spec.cyclic && normalized != origin {
+                arc(origin, normalized, theme::accent(ui.ctx()));
+            }
+            painter.circle(
+                center,
+                radius - 3.0,
+                ui.visuals().widgets.inactive.bg_fill,
+                Stroke::new(
+                    1.0,
+                    if response.hovered() || response.has_focus() {
+                        theme::palette(ui.ctx()).secondary
+                    } else {
+                        theme::palette(ui.ctx()).border
+                    },
+                ),
             );
-        }
-        if let Some(labels) = spec.endpoint_labels {
-            for (value, label) in [(spec.min, labels[0]), (spec.max, labels[1])] {
+            let mark = |fraction, subdued| {
+                painter.line_segment(
+                    [
+                        point(fraction, if subdued { radius } else { radius - 1.0 }),
+                        point(fraction, radius + 2.0),
+                    ],
+                    Stroke::new(
+                        if subdued { 1.0 } else { 1.5 },
+                        if subdued {
+                            theme::palette(ui.ctx()).secondary
+                        } else {
+                            theme::palette(ui.ctx()).text
+                        },
+                    ),
+                )
+            };
+            if spec.mode_labels().is_none() {
+                if let Some(diagram) = spec.diagram {
+                    let step = spec.discrete_step.unwrap();
+                    for index in 0..=((spec.max - spec.min) / step).round() as u32 {
+                        let choice = spec.min + index as f32 * step;
+                        let center = point(spec.normalized(choice), 20.0);
+                        let points = diagram(choice)
+                            .into_iter()
+                            .map(|p| center + p * DIAGRAM_SIZE)
+                            .collect();
+                        let color = if choice == *value {
+                            theme::accent(ui.ctx())
+                        } else {
+                            theme::palette(ui.ctx()).secondary
+                        };
+                        painter.add(Shape::line(points, Stroke::new(1.25, color)));
+                    }
+                } else if let Some(values) = spec.reference_values {
+                    for (index, &value) in values.iter().enumerate() {
+                        if let Some(scale) = spec.amount_scale {
+                            if let Some(magnitude) = scale.reference_amount(value) {
+                                if values[..index]
+                                    .iter()
+                                    .any(|v| scale.reference_amount(*v) == Some(magnitude))
+                                {
+                                    continue;
+                                }
+                                mark(spec.normalized(magnitude), magnitude != 0.0);
+                                if magnitude > 0.0 {
+                                    mark(spec.normalized(-magnitude), true);
+                                }
+                            }
+                        } else if value.is_finite() && (spec.min..=spec.max).contains(&value) {
+                            mark(spec.normalized(value), value != spec.reset);
+                        }
+                    }
+                } else if let Some(step) = spec.reference_step.or_else(|| {
+                    spec.discrete_step
+                        .filter(|step| (spec.max - spec.min) / step <= 15.0)
+                }) {
+                    for index in 0..=((spec.max - spec.min) / step).round() as u32 {
+                        let value = spec.min + index as f32 * step;
+                        mark(
+                            spec.normalized(value),
+                            spec.reference_step.is_some() && value != spec.reset,
+                        );
+                    }
+                } else {
+                    mark(spec.normalized(spec.reset), false);
+                }
+            }
+            if let Some(format) = spec.value_label {
                 painter.text(
-                    point(spec.normalized(value), radius + 5.0),
-                    egui::Align2::CENTER_TOP,
-                    label,
+                    center - Vec2::new(0.0, radius + 3.0),
+                    egui::Align2::CENTER_BOTTOM,
+                    format(*value),
                     crate::fonts::numeric(9.0),
                     theme::palette(ui.ctx()).text,
                 );
             }
-        }
-        if let Some(labels) = spec.mode_labels() {
-            let font = crate::fonts::numeric(9.0);
-            let widths: Vec<_> = labels
-                .iter()
-                .map(|label| {
-                    painter
-                        .layout_no_wrap(
-                            (*label).into(),
-                            font.clone(),
-                            theme::palette(ui.ctx()).text,
-                        )
-                        .size()
-                        .x
-                })
-                .collect();
-            // Long captions can extend within the row padding, without changing the knob center.
-            let span = if labels.len() == 2 {
-                widths[0] + widths[1] + 6.0
-            } else {
-                2.0 * (widths[0].max(widths[2]) + widths[1] * 0.5 + 4.0)
+            if let Some(labels) = spec.endpoint_labels {
+                for (value, label) in [(spec.min, labels[0]), (spec.max, labels[1])] {
+                    painter.text(
+                        point(spec.normalized(value), radius + 5.0),
+                        egui::Align2::CENTER_TOP,
+                        label,
+                        crate::fonts::numeric(9.0),
+                        theme::palette(ui.ctx()).text,
+                    );
+                }
             }
-            .max(rect.width());
-            for (index, label) in labels.iter().enumerate() {
-                let (position, align) = if index == 0 {
-                    (
-                        Pos2::new(rect.center().x - span * 0.5, rect.top()),
-                        egui::Align2::LEFT_TOP,
-                    )
-                } else if index == labels.len() - 1 {
-                    (
-                        Pos2::new(rect.center().x + span * 0.5, rect.top()),
-                        egui::Align2::RIGHT_TOP,
-                    )
+            if let Some(labels) = spec.mode_labels() {
+                let font = crate::fonts::numeric(9.0);
+                let widths: Vec<_> = labels
+                    .iter()
+                    .map(|label| {
+                        painter
+                            .layout_no_wrap(
+                                (*label).into(),
+                                font.clone(),
+                                theme::palette(ui.ctx()).text,
+                            )
+                            .size()
+                            .x
+                    })
+                    .collect();
+                // Long captions can extend within the row padding, without changing the knob center.
+                let span = if labels.len() == 2 {
+                    widths[0] + widths[1] + 6.0
                 } else {
-                    (rect.center_top(), egui::Align2::CENTER_TOP)
-                };
-                let choice =
-                    spec.min + (spec.max - spec.min) * index as f32 / (labels.len() - 1) as f32;
-                painter.text(
-                    position,
-                    align,
-                    *label,
-                    font.clone(),
-                    if choice == *value {
-                        theme::accent(ui.ctx())
+                    2.0 * (widths[0].max(widths[2]) + widths[1] * 0.5 + 4.0)
+                }
+                .max(rect.width());
+                for (index, label) in labels.iter().enumerate() {
+                    let (position, align) = if index == 0 {
+                        (
+                            Pos2::new(rect.center().x - span * 0.5, rect.top()),
+                            egui::Align2::LEFT_TOP,
+                        )
+                    } else if index == labels.len() - 1 {
+                        (
+                            Pos2::new(rect.center().x + span * 0.5, rect.top()),
+                            egui::Align2::RIGHT_TOP,
+                        )
                     } else {
-                        theme::palette(ui.ctx()).secondary
-                    },
-                );
+                        (rect.center_top(), egui::Align2::CENTER_TOP)
+                    };
+                    let choice =
+                        spec.min + (spec.max - spec.min) * index as f32 / (labels.len() - 1) as f32;
+                    painter.text(
+                        position,
+                        align,
+                        *label,
+                        font.clone(),
+                        if choice == *value {
+                            theme::accent(ui.ctx())
+                        } else {
+                            theme::palette(ui.ctx()).secondary
+                        },
+                    );
+                }
             }
+            painter.line_segment(
+                [point(normalized, 2.0), point(normalized, radius - 5.0)],
+                Stroke::new(1.5, theme::palette(ui.ctx()).text),
+            );
         }
-        painter.line_segment(
-            [point(normalized, 2.0), point(normalized, radius - 5.0)],
-            Stroke::new(1.5, theme::palette(ui.ctx()).text),
-        );
+        if let Some(start) = paint_start {
+            ui.ctx().graphics_mut(|g| {
+                let list = g.entry(ui.layer_id());
+                let end = list.next_idx();
+                list.transform_range(start, end, transform);
+            });
+        }
+        if let Some((marker, _)) = &modulation {
+            crate::icons::paint_dot_toggle(
+                ui,
+                marker_response.as_ref().unwrap(),
+                4.0 * scale,
+                marker.active,
+                theme::palette(ui.ctx()).secondary,
+            );
+        }
     }
     let mut tooltip = format!(
         "{}: {}. Drag up or right to increase. Hold Shift for fine adjustment. Use arrow keys for small steps. Double-click to reset.",
@@ -959,6 +999,30 @@ mod tests {
             pressed,
             modifiers: Default::default(),
         }
+    }
+
+    #[test]
+    fn scaled_knobs_keep_shared_drag_behavior_and_allocate_the_scaled_face() {
+        let mut results = Vec::new();
+        for scale in [1.0, 42.0 / CHOICE_SIZE] {
+            let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
+            let spec = marked_gain_spec().display_scale(scale);
+            let mut value = -12.0;
+            let rect = spec_frame(&ctx, &mut value, vec![], Default::default(), spec, true);
+            assert!((rect.width() - CHOICE_SIZE * scale).abs() < 0.001);
+            let point = rect.center();
+            for events in [
+                vec![egui::Event::PointerMoved(point), pointer(point, true)],
+                vec![egui::Event::PointerMoved(point - Vec2::new(0.0, 10.0))],
+                vec![pointer(point - Vec2::new(0.0, 10.0), false)],
+            ] {
+                spec_frame(&ctx, &mut value, events, Default::default(), spec, true);
+            }
+            assert!(value > -12.0);
+            results.push(value);
+        }
+        assert_eq!(results[0], results[1]);
     }
 
     #[test]

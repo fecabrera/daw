@@ -622,6 +622,7 @@ mod effect_modulation_tests {
             EffectInstance::saturator,
         ][kind]();
         let (open, routes) = match &mut effect.unit {
+            EffectSettings::MultibandEq(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Eq3(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Compressor(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Limiter(s) => (&mut s.modulation_open, &mut s.modulations),

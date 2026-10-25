@@ -3,8 +3,7 @@ use daw_core::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, TrackKind};
 
 use crate::track_overview::LABEL_WIDTH as KEY_WIDTH;
 const NOTE_HEIGHT: f32 = 18.0;
-pub(super) const UNIT_STRIP_WIDTH: f32 = 90.0;
-pub(super) const OSCILLATOR_STRIP_WIDTH: f32 = UNIT_STRIP_WIDTH;
+pub(super) use crate::panels::UNIT_STRIP_WIDTH;
 #[derive(Clone, Copy)]
 enum NoteDragMode {
     Move,

@@ -194,14 +194,14 @@ impl ModulationRoute {
 /// Amplitude uses the note gate with no routes. Resolve once for each destination sample.
 #[derive(Clone, Copy, Debug)]
 pub struct ModulationInputs {
-    offsets: [f32; 79],
+    offsets: [f32; 82],
     amplitude: f32,
 }
 impl ModulationInputs {
     #[inline]
     pub fn neutral(note_gate: f32) -> Self {
         Self {
-            offsets: [0.0; 79],
+            offsets: [0.0; 82],
             amplitude: note_gate,
         }
     }
@@ -359,6 +359,9 @@ impl ModulationParameter {
             Self::CompressorAttack => Some(22),
             Self::CompressorRelease => Some(23),
             Self::CompressorKnee => Some(24),
+            Self::EqBandGain => Some(79),
+            Self::EqBandFrequency => Some(80),
+            Self::EqBandQ => Some(81),
             Self::EqLowGain => Some(13),
             Self::EqLowFrequency => Some(14),
             Self::EqLowQ => Some(15),
@@ -559,4 +562,65 @@ mod matching_tests {
         }
         assert_eq!(current.last().unwrap().settings.id, missing.id);
     }
+}
+
+/// Prepared routing for one destination. Construction and storage changes belong off the callback.
+#[derive(Clone)]
+pub struct RoutedDestination<D> {
+    pub destination: D,
+    routes: Vec<ModulationRoute>,
+}
+impl<D: ModulationDestination> RoutedDestination<D> {
+    pub fn new(destination: D, settings: &[Modulation], rate: u32) -> Self {
+        let target = destination.modulation_target();
+        let routes = settings
+            .iter()
+            .filter(|r| r.target == target && D::MODULATION_PARAMETERS.contains(&r.parameter))
+            .map(|r| ModulationRoute::new(*r, rate))
+            .collect();
+        Self {
+            destination,
+            routes,
+        }
+    }
+    pub fn process(
+        &mut self,
+        input: D::Audio,
+        shared: &[ModulationValue],
+        context: ModulationContext,
+    ) -> D::Audio {
+        process_modulation(
+            &mut self.destination,
+            &mut self.routes,
+            input,
+            &[],
+            shared,
+            context,
+        )
+    }
+    pub fn reset_routes(&mut self) {
+        for route in &mut self.routes {
+            route.reset();
+        }
+    }
+    pub fn heap_bytes(&self) -> u64 {
+        crate::memory::vec_bytes(&self.routes)
+    }
+    pub fn inherit_routes(&mut self, previous: &mut Self) {
+        retarget_modulation_routes(&mut previous.routes, &mut self.routes);
+        // The helper publishes into its current owner; this wrapper keeps the prepared destination.
+        std::mem::swap(&mut self.routes, &mut previous.routes);
+    }
+}
+/// Process a serial group of repeated destinations through the common typed resolver.
+pub fn process_modulation_chain<D: ModulationDestination>(
+    destinations: &mut [RoutedDestination<D>],
+    mut input: D::Audio,
+    shared: &[ModulationValue],
+    context: ModulationContext,
+) -> D::Audio {
+    for destination in destinations {
+        input = destination.process(input, shared, context);
+    }
+    input
 }

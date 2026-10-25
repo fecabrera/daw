@@ -42,6 +42,7 @@ fn json_bytes(value: &serde_json::Value) -> u64 {
 impl EffectSettings {
     pub fn heap_bytes(&self) -> u64 {
         match self {
+            Self::MultibandEq(s) => vec_bytes(&s.bands) + vec_bytes(&s.modulations),
             Self::Eq3(s) => vec_bytes(&s.modulations),
             Self::Drive(s) => vec_bytes(&s.modulations),
             Self::DriveV2(s) => vec_bytes(&s.modulations),

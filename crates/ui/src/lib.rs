@@ -12781,3 +12781,5 @@ mod tests {
         assert_eq!(app.session.project.assets[0].decoded_frame_count, 480000);
     }
 }
+
+mod multiband_eq_panel;

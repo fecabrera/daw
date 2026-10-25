@@ -1,7 +1,7 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
 pub mod memory;
 mod meter;
-pub use meter::{BandMeter, MeterStorage, PeakHold, PeakMeter, UnitMeter};
+pub use meter::{BandMeter, LevelMonitor, MeterStorage, PeakHold, PeakMeter, UnitMeter};
 mod note_name;
 pub use note_name::{natural_note, note_name};
 mod audio_range;
@@ -810,3 +810,6 @@ mod oscillator_output_pitch_tests {
         assert_eq!(layer.oscillator_modulations, vec![unit]);
     }
 }
+
+mod multiband_eq;
+pub use multiband_eq::*;

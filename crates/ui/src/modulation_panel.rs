@@ -499,6 +499,7 @@ pub(super) fn marker(
         | ModulationParameter::OttLowOutput
         | ModulationParameter::OttMidOutput
         | ModulationParameter::OttHighOutput
+        | ModulationParameter::EqBandGain
         | ModulationParameter::EqLowGain
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
@@ -515,6 +516,7 @@ pub(super) fn marker(
         ModulationParameter::StereoSpreadLowerFrequency
         | ModulationParameter::StereoSpreadUpperFrequency
         | ModulationParameter::Frequency
+        | ModulationParameter::EqBandFrequency
         | ModulationParameter::EqLowFrequency
         | ModulationParameter::EqHighFrequency => {
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(20.0, 20_000.0))
@@ -523,6 +525,7 @@ pub(super) fn marker(
             offsets.map(|o| (base * 2.0_f32.powf(o)).clamp(250.0, 2000.0))
         }
         ModulationParameter::Resonance
+        | ModulationParameter::EqBandQ
         | ModulationParameter::EqLowQ
         | ModulationParameter::EqHighQ => offsets.map(|o| (base + o).clamp(0.1, 10.0)),
         ModulationParameter::DriveInput
@@ -651,10 +654,12 @@ pub(super) fn marker(
         | ModulationParameter::OttHighFrequency
         | ModulationParameter::Frequency
         | ModulationParameter::ColorFrequency
+        | ModulationParameter::EqBandFrequency
         | ModulationParameter::EqLowFrequency
         | ModulationParameter::EqHighFrequency => knobs::format_frequency(value),
         ModulationParameter::LfoRate => format!("{value:.2} Hz"),
         ModulationParameter::Resonance
+        | ModulationParameter::EqBandQ
         | ModulationParameter::EqLowQ
         | ModulationParameter::EqHighQ => format!("Q {value:.2}"),
         ModulationParameter::OttLowInput
@@ -663,6 +668,7 @@ pub(super) fn marker(
         | ModulationParameter::OttLowOutput
         | ModulationParameter::OttMidOutput
         | ModulationParameter::OttHighOutput
+        | ModulationParameter::EqBandGain
         | ModulationParameter::EqLowGain
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => format!("{value:.1} dB"),
