@@ -21,7 +21,9 @@ pub(super) struct AmountScale {
     limit: f32,
 }
 impl KnobSpec {
-    pub(crate) fn modulation_amount(self, limit: f32, mapping: AmountMapping) -> Self {
+    pub(crate) fn modulation_amount(mut self, limit: f32, mapping: AmountMapping) -> Self {
+        // Amounts retain the shared fine mode independently of native control calibration.
+        self.fine_drag_sensitivity = super::DEFAULT_FINE_DRAG_SENSITIVITY;
         // Symmetric destinations already have the signed domain and quantization.
         if self.min == -limit && self.max == limit {
             return self.named("Modulation amount").centered(0.0).bipolar();

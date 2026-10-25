@@ -8,6 +8,8 @@ Attack raises the value, Decay moves it toward Sustain, Sustain holds it while t
 
 Time timing sets Attack and Decay in milliseconds. Note timing sets them as percentages of the triggering note's complete duration. Release remains in milliseconds. A 100% note-relative Attack rises across the full note duration; 0% Decay reaches Sustain immediately after Attack.
 
+Hold Shift while dragging an Attack, Decay, or Release millisecond knob for fine adjustment at 100× lower sensitivity. You can press or release Shift during a drag without a jump.
+
 ## Voice behavior
 
 | Mode | Behavior |

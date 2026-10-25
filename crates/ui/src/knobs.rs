@@ -17,6 +17,8 @@ struct ParameterScale {
     step: fn(f32, f32) -> f32,
 }
 
+const DEFAULT_FINE_DRAG_SENSITIVITY: f32 = 0.1;
+
 /// A parameter supplies its scale and steps; the base knob owns all interaction and painting.
 #[derive(Clone, Copy)]
 pub struct KnobSpec {
@@ -26,6 +28,7 @@ pub struct KnobSpec {
     max: f32,
     reset: f32,
     keyboard_step: f32,
+    fine_drag_sensitivity: f32,
     discrete_step: Option<f32>,
     reference_step: Option<f32>,
     reference_values: Option<&'static [f32]>,
@@ -57,6 +60,7 @@ impl KnobSpec {
             max: *range.end(),
             reset,
             keyboard_step,
+            fine_drag_sensitivity: DEFAULT_FINE_DRAG_SENSITIVITY,
             discrete_step: None,
             reference_step: None,
             reference_values: None,
@@ -98,6 +102,12 @@ impl KnobSpec {
             value,
             step,
         });
+        self
+    }
+    /// Set Shift-drag sensitivity relative to normal dragging; other input stays unchanged.
+    pub fn fine_drag_sensitivity(mut self, sensitivity: f32) -> Self {
+        assert!(sensitivity.is_finite() && sensitivity > 0.0 && sensitivity <= 1.0);
+        self.fine_drag_sensitivity = sensitivity;
         self
     }
     /// Quantize values while retaining fractional pointer movement during a drag.
@@ -479,6 +489,7 @@ pub fn envelope_time(ui: &mut Ui, value: &mut f32, name: &'static str, reset: f3
 }
 pub(super) fn envelope_time_spec(name: &'static str, reset: f32) -> KnobSpec {
     KnobSpec::new(name, 0.0..=daw_core::MAX_ENVELOPE_TIME_MS, reset, 1.0)
+        .fine_drag_sensitivity(0.01)
         .scale(time_position, time_at_position, |value, delta| {
             value + delta
         })
@@ -657,7 +668,13 @@ fn base_knob(
                 .data_mut(|data| data.insert_temp(drag_id, spec.normalized(*value)));
         }
         if response.dragged() {
-            let fine = ui.input(|input| if input.modifiers.shift { 0.1 } else { 1.0 });
+            let fine = ui.input(|input| {
+                if input.modifiers.shift {
+                    spec.fine_drag_sensitivity
+                } else {
+                    1.0
+                }
+            });
             let delta = response.drag_delta();
             let normalized = ui.ctx().data_mut(|data| {
                 let current = data
@@ -1211,6 +1228,85 @@ mod tests {
             results.push(value);
         }
         assert!(results[1] < results[0]);
+    }
+
+    #[test]
+    fn envelope_time_shift_drags_are_continuous_and_hundred_times_finer() {
+        use daw_core::ModulationParameter as Parameter;
+        for parameter in [
+            Parameter::EnvelopeAttack,
+            Parameter::EnvelopeDecay,
+            Parameter::EnvelopeRelease,
+        ] {
+            let spec = crate::parameter_knobs::destination(parameter);
+            assert_eq!(
+                crate::parameter_knobs::amount(parameter).fine_drag_sensitivity,
+                DEFAULT_FINE_DRAG_SENSITIVITY
+            );
+            for initial in [0.0, 100.0, 209.5, 5000.0] {
+                let ctx = egui::Context::default();
+                crate::fonts::configure(&ctx);
+                let mut value = initial;
+                let normal = egui::Modifiers::default();
+                let fine = egui::Modifiers::SHIFT;
+                let start = spec_frame(&ctx, &mut value, vec![], normal, spec, true).center();
+                spec_frame(
+                    &ctx,
+                    &mut value,
+                    vec![egui::Event::PointerMoved(start), pointer(start, true)],
+                    normal,
+                    spec,
+                    true,
+                );
+                let point = start - Vec2::new(0.0, 8.0);
+                spec_frame(
+                    &ctx,
+                    &mut value,
+                    vec![egui::Event::PointerMoved(point)],
+                    normal,
+                    spec,
+                    true,
+                );
+                let before = value;
+                spec_frame(&ctx, &mut value, vec![], fine, spec, true);
+                assert_eq!(value, before, "pressing Shift must not jump");
+                let point = point - Vec2::new(0.0, 1.0);
+                spec_frame(
+                    &ctx,
+                    &mut value,
+                    vec![egui::Event::PointerMoved(point)],
+                    fine,
+                    spec,
+                    true,
+                );
+                let fine_delta = spec.normalized(value) - spec.normalized(before);
+                assert!(value > before);
+                let before = value;
+                spec_frame(&ctx, &mut value, vec![], fine, spec, true);
+                assert_eq!(value, before, "idle frames must not repeat movement");
+                spec_frame(&ctx, &mut value, vec![], normal, spec, true);
+                assert_eq!(value, before, "releasing Shift must not jump");
+                let point = point - Vec2::new(0.0, 1.0);
+                spec_frame(
+                    &ctx,
+                    &mut value,
+                    vec![egui::Event::PointerMoved(point)],
+                    normal,
+                    spec,
+                    true,
+                );
+                let normal_delta = spec.normalized(value) - spec.normalized(before);
+                assert!((fine_delta / normal_delta - 0.01).abs() < 0.0001);
+                spec_frame(
+                    &ctx,
+                    &mut value,
+                    vec![pointer(point, false)],
+                    normal,
+                    spec,
+                    true,
+                );
+            }
+        }
     }
 
     #[test]

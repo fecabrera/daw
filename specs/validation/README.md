@@ -4,6 +4,17 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Envelope time knob fine adjustment — 2026-10-25
+
+Attack, Decay and Release millisecond base knobs now use a 0.01 Shift-drag factor (100× finer than ordinary dragging, 10× finer than before). The shared `KnobSpec` supplies the calibration; shared interaction retains continuous drag accumulation. Other controls and modulation amounts retain the 0.1 fine factor. Saved times, keyboard steps, normal dragging, logarithmic scaling, reset and DSP remain unchanged.
+
+- `cargo test -p daw-ui --lib knobs:: --offline --locked`: passed, 16 tests. The new regression covers all three time destinations at zero, short and long times; Shift press/release continuity, incremental motion and idle frames. Existing amount, keyboard, bounds, reset, disabled-input and scaled-knob checks pass.
+- Formatting and strict workspace Clippy: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt the macOS app.
+- `cargo test --workspace --offline --locked`: passed; 1299 tests passed, 3 ignored. All doctests passed.
+
+Native pointer checks and Windows/Linux builds remain untested.
+
 ## MIDI audition button placement — 2026-10-25
 
 Moved the shared 16×16 Headphones toggle from the lower editor toolbar into the blank gutter left of the lower MIDI ruler, centered on both axes. Audio editors omit the button. Audition behavior and toolbar/ruler geometry remain unchanged.
