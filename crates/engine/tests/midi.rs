@@ -5075,3 +5075,127 @@ fn multiband_shared_modulation_reaches_track_layer_and_main_bands() {
         assert_eq!(range.as_slice(), &expected[1000..1064]);
     }
 }
+
+#[test]
+fn live_note_pitch_preview_commit_and_undo_do_not_allocate_on_the_callback() {
+    let original = plan(Waveform::Sine, 48_000);
+    let track = original.project.tracks[0].id;
+    let clip = original.project.tracks[0].clips[0].id;
+    let note = Id::from_u128(1);
+    let inputs = daw_engine::LiveMidiPitches::prepare(&original.project, &Default::default());
+    let mut renderer = Renderer::new(original.clone());
+    renderer.bind_live_midi_pitches(&inputs);
+    renderer.play();
+    for _ in 0..1000 {
+        renderer.next_sample();
+    }
+    let mut changed = original.clone();
+    let asset = changed.project.tracks[0].clips[0].asset_id;
+    changed
+        .project
+        .assets
+        .iter_mut()
+        .find(|a| a.id == asset)
+        .unwrap()
+        .midi_pattern
+        .as_mut()
+        .unwrap()
+        .notes
+        .iter_mut()
+        .find(|n| n.id == note)
+        .unwrap()
+        .pitch = 81;
+    let committed = daw_engine::LiveMidiPitches::prepare(&changed.project, &inputs);
+    let mut next = Renderer::new(changed);
+    next.bind_live_midi_pitches(&committed);
+    let mut undo = Renderer::new(original);
+    undo.bind_live_midi_pitches(&inputs);
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACK_ALLOCATIONS.with(|e| e.set(true));
+    inputs.set(track, clip, note, 81, true);
+    for _ in 0..512 {
+        renderer.next_sample();
+    }
+    inputs.set(track, clip, note, 81, false);
+    next.inherit(&mut renderer);
+    for _ in 0..512 {
+        next.next_sample();
+    }
+    inputs.set(track, clip, note, 69, false);
+    undo.inherit(&mut next);
+    for _ in 0..512 {
+        undo.next_sample();
+    }
+    TRACK_ALLOCATIONS.with(|e| e.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}
+
+#[test]
+fn live_sampler_pitch_commit_keeps_cursor_and_is_allocation_free() {
+    let mut p = sampler_plan(48_000, SamplerTrigger::OneShot);
+    p.project.stretch_engine = StretchEngine::INTEGRATED;
+    let track = p.project.tracks[0].id;
+    let clip = p.project.tracks[0].clips[0].id;
+    let note = Id::from_u128(1);
+    let layer = p.project.tracks[0].instrument.as_ref().unwrap().layers[0].id;
+    let target = daw_engine::ModulationTarget::Sampler { track, layer };
+    let inputs = daw_engine::LiveMidiPitches::prepare(&p.project, &Default::default());
+    let mut live = Renderer::new(p.clone());
+    live.bind_live_midi_pitches(&inputs);
+    live.play();
+    for _ in 0..1000 {
+        live.next_sample();
+    }
+    inputs.set(track, clip, note, 32, true);
+    for _ in 0..512 {
+        live.next_sample();
+    }
+    let before = live.modulation_snapshot(target).unwrap()[0];
+    assert!(before > 1700.0);
+    let asset = p.project.tracks[0].clips[0].asset_id;
+    let mut pattern = p
+        .project
+        .assets
+        .iter()
+        .find(|a| a.id == asset)
+        .unwrap()
+        .midi_pattern
+        .clone()
+        .unwrap();
+    pattern.notes[0].pitch = 32;
+    p.project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern,
+        })
+        .unwrap();
+    let sampler = p.project.samplers().next().unwrap();
+    let prepared = daw_media::PreparedSampler::new_cancellable(
+        &p.audio[&sampler.input.as_ref().unwrap().asset_id],
+        sampler,
+        9600,
+        p.project.stretch_engine,
+        &[32],
+        None,
+        &|| false,
+    )
+    .unwrap();
+    p.sampler_audio.insert(sampler.id, prepared);
+    inputs.set(track, clip, note, 32, false);
+    let committed = daw_engine::LiveMidiPitches::prepare(&p.project, &inputs);
+    let mut next = Renderer::new(p);
+    next.bind_live_midi_pitches(&committed);
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACK_ALLOCATIONS.with(|e| e.set(true));
+    next.inherit(&mut live);
+    for _ in 0..512 {
+        assert!(next.next_sample().iter().all(|v| v.is_finite()));
+    }
+    let after = next.modulation_snapshot(target).unwrap()[0];
+    TRACK_ALLOCATIONS.with(|e| e.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(
+        after > before && after < before + 800.0,
+        "{before} -> {after}"
+    );
+}

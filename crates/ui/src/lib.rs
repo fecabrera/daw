@@ -2164,6 +2164,7 @@ impl DawUi {
                     },
                 );
             });
+        self.sync_live_note_pitches(&ctx, self.is_playing());
         self.cancel_released_effect_drag(ui);
         strip_reorder::end_frame(&ctx);
         self.strip_dragging = strip_reorder::dragging(&ctx);

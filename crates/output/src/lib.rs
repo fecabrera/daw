@@ -398,6 +398,7 @@ pub struct AudioOutput {
     effect_meters: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
     band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
+    live_pitches: daw_engine::LiveMidiPitches,
 }
 /// Device-independent, worker-owned seek preparation. It can start after project
 /// load and transfer to device output without discarding completed checkpoints.
@@ -490,6 +491,7 @@ impl AudioOutput {
         let reductions = effect_meters(&plan, &HashMap::new());
         let changes = band_meters(&plan, &HashMap::new());
         let modulation = modulation_meters(&plan, &HashMap::new());
+        let live_pitches = daw_engine::LiveMidiPitches::prepare(&plan.project, &Default::default());
         // Retried stream construction happens before playback; each attempt receives fresh queues.
         let build = |cfg: &cpal::StreamConfig| -> Result<BuiltStream, String> {
             let (commands, consumer) = RingBuffer::new(32);
@@ -506,6 +508,7 @@ impl AudioOutput {
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_band_meters(&mut state.renderer, &changes);
             state.renderer.bind_modulation(&modulation);
+            state.renderer.bind_live_midi_pitches(&live_pitches);
             macro_rules! stream {
                 ($t:ty) => {
                     build_stream::<$t>(&device, cfg, state, status.clone())
@@ -565,6 +568,7 @@ impl AudioOutput {
             effect_meters: reductions,
             band_meters: changes,
             modulation_meters: modulation,
+            live_pitches,
         })
     }
     fn send(&mut self, command: Command) -> Result<(), String> {
@@ -579,7 +583,19 @@ impl AudioOutput {
             effects: self.effect_meters.clone(),
             bands: self.band_meters.clone(),
             modulation: self.modulation_meters.clone(),
+            live_pitches: self.live_pitches.clone(),
         }
+    }
+    /// Coalesced live input: no command allocation, queue growth, preparation or voice restart.
+    pub fn set_live_midi_pitch(
+        &self,
+        track: Id,
+        clip: Id,
+        note: Id,
+        pitch: u8,
+        active: bool,
+    ) -> bool {
+        self.live_pitches.set(track, clip, note, pitch, active)
     }
     pub fn configure_cache(&self, profile: daw_engine::CacheProfile, editing: bool) {
         self.preparation.configure_cache(profile, editing);
@@ -796,6 +812,7 @@ impl AudioOutput {
                     self.effect_meters = ready.bindings.effects;
                     self.band_meters = ready.bindings.bands;
                     self.modulation_meters = ready.bindings.modulation;
+                    self.live_pitches = ready.bindings.live_pitches;
                 }
                 Err(rtrb::PushError::Full(Command::Plan(renderer))) => {
                     ready.renderer = renderer;

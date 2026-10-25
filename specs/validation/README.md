@@ -4,6 +4,21 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Live MIDI note pitch editing — 2026-10-25
+
+Vertical note drags during playback retune existing voices by stable track/clip/note identity. Pitch-only commits retain schedule slots and modulation history. Sampler uses immediate variable-rate playback during a preview and transfers prepared pitch banks without restarting its cursor; Granulizer retains active grains and scan/random state. Stopped Headphones audition remains separate.
+
+Completed focused checks cover mailbox coalescing, stale generations, commit/undo and project isolation; oscillator voice age and sample-exact continuity through publication; Sampler cursor/bank-owner retention and callback allocation checks; Granulizer grain/scan/random retention; and egui drag previews/cancellation without project or viewport changes.
+
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --offline --locked -- -D warnings`, changed-document link targets and `git diff --check`: passed.
+- `cargo build -p daw-cli --offline --locked`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- `python3 tools/check_cli.py`: passed for WAV/MP3/AAC, repeatability, missing sources, group buses, overwrite and exit codes.
+- `cargo test --workspace --offline --locked`: passed on the final sources; 1298 tests passed, 3 ignored. All doctests passed.
+- Retuning/commit tests cover all six project rates. Sampler checks also cover output-time boundary fades and crossfades when prepared PCM changes at the same pitch index.
+
+Native listening/device/pointer checks and Windows/Linux builds remain untested. Timing, duration and structural note edits retain their existing publication behavior; this change preserves active voices for pitch-only edits.
+
 ## Multiband EQ band meters — 2026-10-24
 
 Added the shared four-point top rail to every expanded band, preserving the smaller knobs and shared strip layout. Factored the 3-band EQ's level follower into `unit-core::LevelMonitor`; both EQs share peak decay and `UnitMeter` bypass/clone/reset behavior. Individual meter keys include effect and band IDs and reuse the existing native band-meter preparation, bindings and retirement path.

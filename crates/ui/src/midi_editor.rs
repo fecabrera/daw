@@ -31,6 +31,14 @@ struct NoteDrag {
     previous_selection: HashSet<(Id, Id)>,
     previous_note: Option<Id>,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct LivePitchPreview {
+    track: Id,
+    clip: Id,
+    note: Id,
+    original: u8,
+    pitch: u8,
+}
 struct NoteDraw {
     clip: Id,
     origin: Pos2,
@@ -77,6 +85,8 @@ pub(super) struct MidiEditor {
     selection: Option<NoteSelection>,
     note_regions: Vec<((Id, Id), Rect)>,
     drag: Option<NoteDrag>,
+    live_pitches: Vec<LivePitchPreview>,
+    pending_pitches: Vec<LivePitchPreview>,
     draw: Option<NoteDraw>,
     pub(super) audition_enabled: bool,
     #[cfg(test)]
@@ -155,6 +165,8 @@ impl Default for MidiEditor {
             selection: None,
             note_regions: Vec::new(),
             drag: None,
+            live_pitches: Vec::new(),
+            pending_pitches: Vec::new(),
             draw: None,
             audition_enabled: false,
             #[cfg(test)]
@@ -208,6 +220,13 @@ impl Default for MidiEditor {
     }
 }
 impl MidiEditor {
+    #[cfg(test)]
+    pub(super) fn live_pitch_preview(&self) -> Vec<(Id, Id, u8)> {
+        self.live_pitches
+            .iter()
+            .map(|p| (p.clip, p.note, p.pitch))
+            .collect()
+    }
     pub(super) fn editing_note(&self) -> bool {
         self.draw.is_some() || self.drag.is_some()
     }
@@ -549,6 +568,10 @@ impl DawUi {
                 pattern: draw.pattern,
             });
         }
+        if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
+            self.sync_live_note_pitches(ui.ctx(), self.is_playing());
+            self.finish_live_note_pitches(true);
+        }
         if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))
             && let Some(drag) = self.midi_editor.drag.take()
         {
@@ -564,6 +587,112 @@ impl DawUi {
             if !commands.is_empty() {
                 self.edit(Edit::Batch(commands));
             }
+        }
+    }
+    pub(super) fn sync_live_note_pitches(&mut self, ctx: &egui::Context, playing: bool) {
+        if self.job.is_none() {
+            for pending in std::mem::take(&mut self.midi_editor.pending_pitches) {
+                let written = self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .find(|t| t.id == pending.track)
+                    .and_then(|t| t.clips.iter().find(|c| c.id == pending.clip))
+                    .and_then(|c| {
+                        self.session
+                            .project
+                            .assets
+                            .iter()
+                            .find(|a| a.id == c.asset_id)
+                    })
+                    .and_then(|a| a.midi_pattern.as_ref())
+                    .and_then(|p| p.notes.iter().find(|n| n.id == pending.note))
+                    .map(|n| n.pitch);
+                if written != Some(pending.pitch)
+                    && let Some(output) = &self.output
+                {
+                    output.set_live_midi_pitch(
+                        pending.track,
+                        pending.clip,
+                        pending.note,
+                        written.unwrap_or(pending.original),
+                        false,
+                    );
+                }
+            }
+        }
+        let allowed = playing
+            && self.view_mode == ViewMode::Edit
+            && self.job.is_none()
+            && ctx.input(|i| i.focused);
+        let mut next = Vec::new();
+        if allowed
+            && let Some(track) = self.selected_track
+            && let Some(drag) = &self.midi_editor.drag
+            && matches!(drag.mode, NoteDragMode::Move)
+        {
+            for pattern in &drag.patterns {
+                for note in &pattern.notes {
+                    if let Some(preview) = pattern
+                        .preview
+                        .notes
+                        .iter()
+                        .find(|n| n.id == note.original.id)
+                        && preview.pitch != note.original.pitch
+                    {
+                        next.push(LivePitchPreview {
+                            track,
+                            clip: pattern.clip,
+                            note: note.original.id,
+                            original: note.original.pitch,
+                            pitch: preview.pitch,
+                        });
+                    }
+                }
+            }
+        }
+        if let Some(output) = &self.output {
+            for old in &self.midi_editor.live_pitches {
+                if !next
+                    .iter()
+                    .any(|n| (n.track, n.clip, n.note) == (old.track, old.clip, old.note))
+                {
+                    output.set_live_midi_pitch(old.track, old.clip, old.note, old.original, false);
+                }
+            }
+            for pitch in &next {
+                if !self.midi_editor.live_pitches.contains(pitch) {
+                    output.set_live_midi_pitch(
+                        pitch.track,
+                        pitch.clip,
+                        pitch.note,
+                        pitch.pitch,
+                        true,
+                    );
+                }
+            }
+        }
+        self.midi_editor.live_pitches = next;
+    }
+    fn finish_live_note_pitches(&mut self, commit: bool) {
+        if let Some(output) = &self.output {
+            for pitch in &self.midi_editor.live_pitches {
+                output.set_live_midi_pitch(
+                    pitch.track,
+                    pitch.clip,
+                    pitch.note,
+                    if commit { pitch.pitch } else { pitch.original },
+                    false,
+                );
+            }
+        }
+        if commit {
+            self.midi_editor
+                .pending_pitches
+                .append(&mut self.midi_editor.live_pitches);
+        } else {
+            self.midi_editor.live_pitches.clear();
         }
     }
     fn editor_note_selection(&mut self, ui: &egui::Ui, viewport: Rect) {
@@ -978,6 +1107,7 @@ impl DawUi {
                 if ui.input(|i| i.pointer.primary_pressed())
                     && (response.is_pointer_button_down_on() || response.clicked())
                     && self.edit_shortcuts_available(ui.ctx())
+                    && !self.is_playing()
                 {
                     self.audition_clip_note(clip.id, note.pitch);
                 }
@@ -1354,7 +1484,9 @@ impl DawUi {
             });
             ui.ctx().request_repaint();
         }
-        if let Some((clip, pitch)) = audition {
+        if let Some((clip, pitch)) = audition
+            && !self.is_playing()
+        {
             self.audition_clip_note(clip, pitch);
             if self.midi_editor.audition_enabled {
                 self.chords.audition.allow_note_commit = true;

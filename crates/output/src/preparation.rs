@@ -9,6 +9,7 @@ pub(super) struct Bindings {
     pub effects: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
     pub bands: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     pub modulation: HashMap<ModulationTarget, ModulationMeter>,
+    pub live_pitches: daw_engine::LiveMidiPitches,
 }
 pub(super) struct Ready {
     pub revision: u64,
@@ -165,6 +166,10 @@ impl Worker {
                                 effects: effect_meters(&plan, &previous.effects),
                                 bands: band_meters(&plan, &previous.bands),
                                 modulation: modulation_meters(&plan, &previous.modulation),
+                                live_pitches: daw_engine::LiveMidiPitches::prepare(
+                                    &plan.project,
+                                    &previous.live_pitches,
+                                ),
                             };
                             let renderer = match PreparedRenderer::try_new(
                                 (*plan).clone(),
@@ -274,6 +279,7 @@ impl Worker {
                     bind_effect_meters(&mut renderer, &bindings.effects);
                     bind_band_meters(&mut renderer, &bindings.bands);
                     renderer.bind_modulation(&bindings.modulation);
+                    renderer.bind_live_midi_pitches(&bindings.live_pitches);
                     renderer.ready_at = Some(std::time::Instant::now());
                     let ready = Ready {
                         revision,

@@ -824,6 +824,17 @@ impl Renderer {
             self.prime_latency(self.playing || self.paused);
         }
     }
+    /// Bind transient editor inputs after worker preparation, never during offline rendering.
+    pub fn bind_live_midi_pitches(&mut self, inputs: &LiveMidiPitches) {
+        if !inputs.matches_project(self.plan.project.project_id) {
+            return;
+        }
+        for (track, runtime) in self.plan.project.tracks.iter().zip(&mut self.midi) {
+            if let Some(runtime) = runtime {
+                runtime.bind_live_pitches(track.id, inputs);
+            }
+        }
+    }
     /// Start a held note on a fresh, isolated offline audition renderer.
     /// Preparation and UUID creation belong on the worker, never the callback.
     pub fn begin_note_audition(&mut self, track: daw_core::Id, pitch: u8) {
@@ -1400,3 +1411,6 @@ mod tests {
         assert_eq!(next.next_sample(), previous);
     }
 }
+
+mod live_midi_pitch;
+pub use live_midi_pitch::LiveMidiPitches;

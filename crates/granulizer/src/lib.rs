@@ -23,6 +23,9 @@ pub struct Granulizer {
     source_length: usize,
     root: u8,
     note: u8,
+    live_ratio: f64,
+    live_target: f64,
+    live_remaining: u32,
     grains: [Grain; MAX_GRAINS],
     scan: f64,
     last_position: f64,
@@ -51,6 +54,9 @@ impl Granulizer {
             source_length: 0,
             root,
             note: root,
+            live_ratio: 1.0,
+            live_target: 1.0,
+            live_remaining: 0,
             grains: [Grain::default(); MAX_GRAINS],
             scan: 0.0,
             last_position: f64::from(settings.position),
@@ -73,12 +79,24 @@ impl Granulizer {
         // Root changes reconstruct voices in the host. Trigger edits apply at the next note-on.
     }
     pub fn reset(&mut self) {
+        self.live_ratio = 1.0;
+        self.live_target = 1.0;
+        self.live_remaining = 0;
         self.grains.fill(Grain::default());
         self.active = false;
         self.scanning = false;
         self.base = self.settings.values().map(f64::from);
         self.base_remaining = 0;
         self.external.reset();
+    }
+    /// Preserve grain ages, positions, scan and randomness while retuning the played note.
+    pub fn set_live_pitch(&mut self, note: u8) {
+        let note = note.min(127);
+        let target = 2_f64.powf(f64::from(i16::from(note) - i16::from(self.note)) / 12.0);
+        if target != self.live_target {
+            self.live_target = target;
+            self.live_remaining = (self.rate / 200).max(1);
+        }
     }
     pub fn note_on(&mut self, note: u8, length: usize) {
         self.reset();
@@ -275,6 +293,11 @@ impl Granulizer {
             self.until_grain += f64::from(frames) / f64::from(overlap);
         }
         self.until_grain -= 1.0;
+        if self.live_remaining > 0 {
+            self.live_ratio +=
+                (self.live_target - self.live_ratio) / f64::from(self.live_remaining);
+            self.live_remaining -= 1;
+        }
         let mut output = [0.0_f64; 2];
         let mut weights = 0.0_f64;
         let mut live = false;
@@ -304,7 +327,7 @@ impl Granulizer {
                     1.0
                 } else {
                     (grain.position.min(length - 1.0 - grain.position).max(0.0)
-                        / grain.step
+                        / (grain.step * self.live_ratio)
                         / f64::from((self.rate / 200).max(1)))
                     .min(1.0)
                 };
@@ -318,7 +341,7 @@ impl Granulizer {
                 }
             }
             grain.age += 1;
-            grain.position += grain.step;
+            grain.position += grain.step * self.live_ratio;
         }
         if self.scanning {
             self.scan += f64::from(speed);
@@ -343,6 +366,41 @@ mod tests {
         ProcessingContext {
             sample_rate_hz: rate,
             max_block_frames: 512,
+        }
+    }
+    #[test]
+    fn live_pitch_preserves_running_grains_scan_randomness_and_modulation() {
+        for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {
+            let samples = vec![[0.25, -0.125]; rate as usize];
+            let mut unit = Granulizer::new(context(rate), GranulizerSettings::default(), 60, false);
+            unit.note_on(60, samples.len());
+            for _ in 0..1000 {
+                unit.process(&samples, [0.0; 8]);
+            }
+            let before = unit.clone();
+            unit.set_live_pitch(72);
+            assert_eq!(unit.elapsed, before.elapsed);
+            assert_eq!(unit.scan, before.scan);
+            assert_eq!(unit.random, before.random);
+            for (a, b) in unit.grains.iter().zip(&before.grains) {
+                assert_eq!(
+                    (a.age, a.frames, a.position, a.step),
+                    (b.age, b.frames, b.position, b.step)
+                );
+            }
+            let mut reference = before;
+            for _ in 0..rate / 200 {
+                assert!(
+                    unit.process(&samples, [0.0; 8])
+                        .iter()
+                        .all(|v| v.is_finite())
+                );
+                reference.process(&samples, [0.0; 8]);
+            }
+            assert_eq!(unit.elapsed, reference.elapsed);
+            assert_eq!(unit.scan, reference.scan);
+            assert_eq!(unit.random, reference.random);
+            assert!((unit.live_ratio - 2.0).abs() < 1e-12);
         }
     }
     #[test]

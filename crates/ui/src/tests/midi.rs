@@ -7597,3 +7597,33 @@ fn oscillator_unit_level_occupies_the_last_column_and_edits_only_the_unit_output
         );
     }
 }
+
+#[test]
+fn live_note_pitch_preview_uses_stable_note_ids_and_cancels_without_an_edit() {
+    let (mut app, track, clip, note) = fixture();
+    let ctx = context();
+    app.open_clip_editor(clip, track, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    let original = app.session.project.clone();
+    let view = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+    let start = app.midi_editor.note_bounds[&note].center();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+    );
+    let end = start + Vec2::new(0.0, -36.0);
+    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+    app.sync_live_note_pitches(&ctx, true);
+    assert_eq!(app.midi_editor.live_pitch_preview(), vec![(clip, note, 62)]);
+    assert_eq!(app.session.project, original);
+    assert_eq!(
+        (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+        view
+    );
+    app.midi_editor.cancel();
+    app.sync_live_note_pitches(&ctx, true);
+    assert!(app.midi_editor.live_pitch_preview().is_empty());
+    assert_eq!(app.session.project, original);
+    assert!(app.chords.audition.note_requests.is_empty());
+}

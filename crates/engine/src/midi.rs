@@ -14,6 +14,7 @@ struct NoteEvent {
     slot: usize,
     on: Option<(u8, u8)>,
     duration_frames: u64,
+    pitch_index: usize,
 }
 #[derive(Clone)]
 struct PatternClip {
@@ -21,6 +22,13 @@ struct PatternClip {
     events: Vec<NoteEvent>,
     note_states: Vec<super::modulation::NoteState>,
     slot_starts: Vec<Vec<usize>>,
+    pitches: Vec<NotePitch>,
+}
+#[derive(Clone)]
+struct NotePitch {
+    note: Id,
+    base: u8,
+    input: super::live_midi_pitch::PitchInput,
 }
 #[derive(Clone)]
 struct LayerVoice {
@@ -51,6 +59,7 @@ struct Voice {
     values: Vec<ModulationValue>,
     local_sources: daw_unit_core::ModulationSourceIndex,
     current: Option<Id>,
+    pitch_index: Option<usize>,
     velocity: f32,
     pitch: u8,
     reconstructed_at: u64,
@@ -137,6 +146,18 @@ impl Voice {
             oscillator.source.set_frequency(oscillator.frequency);
         }
     }
+    fn retune_pitch(&mut self, pitch: u8, preview: bool) {
+        if self.pitch != pitch {
+            self.pitch = pitch;
+            for source in self.layers.iter_mut().flat_map(|l| &mut l.sources) {
+                source.frequency_target = note_frequency(pitch, source.transpose);
+                source.frequency_remaining = self.fade_frames;
+            }
+        }
+        for sampler in self.layers.iter_mut().filter_map(|l| l.sampler.as_mut()) {
+            sampler.set_live_pitch(pitch, preview);
+        }
+    }
     fn end_note(&mut self) {
         self.current = None;
         self.release_frames = 0;
@@ -150,6 +171,7 @@ impl Voice {
     fn reset(&mut self) {
         self.active_last_sample = false;
         self.sleeping = true;
+        self.pitch_index = None;
         self.end_note();
         for e in &mut self.controls {
             e.reset();
@@ -442,6 +464,7 @@ impl MidiTrackRuntime {
                 .iter()
                 .map(|c| {
                     c.clip.name.capacity() as u64
+                        + vec_bytes(&c.pitches)
                         + vec_bytes(&c.events)
                         + vec_bytes(&c.note_states)
                         + vec_bytes(&c.slot_starts)
@@ -552,7 +575,15 @@ impl MidiTrackRuntime {
                 let mut ordered: Vec<_> = pattern.notes.iter().collect();
                 ordered.sort_by_key(|note| (note.start_tick, note.id));
                 let mut free_at = Vec::new();
-                for note in ordered {
+                let pitches = ordered
+                    .iter()
+                    .map(|n| NotePitch {
+                        note: n.id,
+                        base: n.pitch,
+                        input: Default::default(),
+                    })
+                    .collect();
+                for (pitch_index, note) in ordered.into_iter().enumerate() {
                     let start = project.midi_frame(note.start_tick);
                     let end = project
                         .midi_frame(note.start_tick + note.length_ticks)
@@ -603,6 +634,7 @@ impl MidiTrackRuntime {
                         output_frame(end).saturating_sub(output_frame(start)).max(1);
                     events.push(NoteEvent {
                         duration_frames,
+                        pitch_index,
                         slot,
                         frame: start,
                         note: note.id,
@@ -610,6 +642,7 @@ impl MidiTrackRuntime {
                     });
                     events.push(NoteEvent {
                         duration_frames: 0,
+                        pitch_index,
                         slot,
                         frame: end,
                         note: note.id,
@@ -635,6 +668,7 @@ impl MidiTrackRuntime {
                     .collect();
                 Some(PatternClip {
                     clip: clip.clone(),
+                    pitches,
                     events,
                     note_states,
                     slot_starts,
@@ -643,7 +677,11 @@ impl MidiTrackRuntime {
             .collect();
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
-        format!("{:?}", track.clips).hash(&mut hash);
+        for clip in &track.clips {
+            let mut shape = clip.clone();
+            shape.asset_id = Id::nil();
+            format!("{shape:?}").hash(&mut hash);
+        }
         instrument.version.hash(&mut hash);
         instrument.layers.len().hash(&mut hash);
         // Stable layer IDs preserve independent controls and identify topology changes.
@@ -653,12 +691,6 @@ impl MidiTrackRuntime {
                 s.id.hash(&mut hash);
                 s.root_note.hash(&mut hash);
                 s.granulizer.is_some().hash(&mut hash);
-                if let Some(prepared) = sampler_audio.get(&s.id) {
-                    for (offset, audio) in prepared.variants() {
-                        offset.hash(&mut hash);
-                        (std::sync::Arc::as_ptr(&audio.samples) as usize).hash(&mut hash);
-                    }
-                }
                 format!("{:?}", s.input).hash(&mut hash);
                 s.start_frame.hash(&mut hash);
                 s.end_frame.hash(&mut hash);
@@ -680,8 +712,15 @@ impl MidiTrackRuntime {
         project.sample_rate_hz.hash(&mut hash);
         for clip in &track.clips {
             clip.muted.hash(&mut hash);
-            if let Some(asset) = project.assets.iter().find(|a| a.id == clip.asset_id) {
-                format!("{:?}", asset.midi_pattern).hash(&mut hash);
+            if let Some(asset) = project.assets.iter().find(|a| a.id == clip.asset_id)
+                && let Some(pattern) = &asset.midi_pattern
+            {
+                pattern.length_ticks.hash(&mut hash);
+                let mut notes: Vec<_> = pattern.notes.iter().collect();
+                notes.sort_by_key(|n| (n.start_tick, n.id));
+                for n in notes {
+                    (n.id, n.start_tick, n.length_ticks, n.velocity).hash(&mut hash);
+                }
             }
         }
         let lfo_notes = if instrument.main.lfos.is_empty()
@@ -939,6 +978,7 @@ impl MidiTrackRuntime {
                         }),
                     ),
                     current: None,
+                    pitch_index: None,
                     velocity: 0.0,
                     pitch: 69,
                     reconstructed_at: 0,
@@ -1037,6 +1077,13 @@ impl MidiTrackRuntime {
             ),
         })
     }
+    pub fn bind_live_pitches(&mut self, track: Id, inputs: &super::LiveMidiPitches) {
+        for clip in &mut self.clips {
+            for pitch in &mut clip.pitches {
+                pitch.input = inputs.bind(track, clip.clip.id, pitch.note);
+            }
+        }
+    }
     pub fn compatible(&self, other: &Self) -> bool {
         self.fingerprint == other.fingerprint
             && self.effect_latency == other.effect_latency
@@ -1068,6 +1115,21 @@ impl MidiTrackRuntime {
     /// All storage stays owned by the two prepared renderers; no DSP state is dropped here.
     pub fn retarget_controls(&mut self, prepared: &mut Self) {
         let fade_frames = (self.sample_rate_hz / 200).max(1);
+        // Pitch-only edits retain the schedule shape and voice slots. Transfer the newly
+        // prepared pitches/mailboxes while leaving envelopes, clocks and source phase alive.
+        std::mem::swap(&mut self.clips, &mut prepared.clips);
+        if let Some(clip) = self
+            .clips
+            .iter()
+            .find(|c| Some(c.clip.id) == self.last_clip)
+        {
+            for voice in &mut self.voices {
+                if let Some(pitch) = voice.pitch_index.and_then(|i| clip.pitches.get(i)) {
+                    let (pitch, preview) = pitch.input.read(pitch.base);
+                    voice.retune_pitch(clip_pitch(pitch, clip.clip.transpose), preview);
+                }
+            }
+        }
         for next in &mut prepared.layer_effects {
             for old in &mut self.layer_effects {
                 next.chain.inherit_chain(&mut old.chain, &next.settings);
@@ -1142,8 +1204,9 @@ impl MidiTrackRuntime {
                 }
                 // Trigger edits apply to new notes; held/released notes keep their gate behavior.
                 layer.one_shot_target = next_layer.one_shot_target;
-                if let (Some(s), Some(next)) = (&mut layer.sampler, &next_layer.sampler) {
+                if let (Some(s), Some(next)) = (&mut layer.sampler, &mut next_layer.sampler) {
                     s.retarget(next);
+                    s.inherit_bank(next);
                 }
                 if idle {
                     layer.amplitude.reset();
@@ -1548,6 +1611,7 @@ impl MidiTrackRuntime {
                         let start = output_frame(clip, event.frame);
                         let end = start.saturating_add(event.duration_frames);
                         voice.note_on(event.note, pitch, velocity, event.duration_frames);
+                        voice.pitch_index = Some(event.pitch_index);
                         voice.advance_envelopes(position.min(end).saturating_sub(start));
                         voice.reconstructed_at = start;
                         if position >= end {
@@ -1575,10 +1639,19 @@ impl MidiTrackRuntime {
                             velocity,
                             event.duration_frames,
                         );
+                        voice.pitch_index = Some(event.pitch_index);
                     } else if voice.current == Some(event.note) {
                         voice.end_note();
                     }
                     self.next_event += 1;
+                }
+            }
+            for voice in &mut self.voices {
+                if (voice.current.is_some() || voice.active_last_sample)
+                    && let Some(pitch) = voice.pitch_index.and_then(|i| prepared.pitches.get(i))
+                {
+                    let (pitch, preview) = pitch.input.read(pitch.base);
+                    voice.retune_pitch(clip_pitch(pitch, clip.transpose), preview);
                 }
             }
             self.last_clip = Some(clip.id);
@@ -2024,6 +2097,98 @@ mod restart_index_tests {
                     assert_eq!(indexed.sample(at), reference.sample(at));
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod live_pitch_tests {
+    use super::*;
+    use daw_core::{Edit, MidiNote, MidiPattern};
+    #[test]
+    fn live_pitch_keeps_voice_age_contours_modulation_and_source_phase_through_commit() {
+        for rate in [44_100, 48_000, 88_200, 96_000, 176_400, 192_000] {
+            let mut p = Project {
+                sample_rate_hz: rate,
+                ..Default::default()
+            };
+            let track = p.add_midi_track().unwrap();
+            p.tracks[0].instrument = Some(daw_core::OscillatorSettings::default().into());
+            let layer = &mut p.tracks[0].instrument.as_mut().unwrap().layers[0];
+            layer.envelopes[0].present = true;
+            layer.envelopes[0].settings.attack.time_ms = 500.0;
+            let clip = p.add_midi_pattern(track, 0).unwrap();
+            let note = Id::new_v4();
+            let pattern = |pitch| MidiPattern {
+                length_ticks: 3840,
+                notes: vec![MidiNote {
+                    id: note,
+                    start_tick: 0,
+                    length_ticks: 3840,
+                    pitch,
+                    velocity: 100,
+                }],
+            };
+            p.edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: pattern(60),
+            })
+            .unwrap();
+            p.tracks[0].clips[0].length_frames = u64::from(rate) * 2;
+            let inputs = super::super::LiveMidiPitches::prepare(&p, &Default::default());
+            let mut runtime = MidiTrackRuntime::new(&p, &p.tracks[0]).unwrap();
+            runtime.bind_live_pitches(track, &inputs);
+            for frame in 0..1000 {
+                runtime.sample(frame);
+            }
+            let held = runtime.voices[0].held_frames;
+            let gate = runtime.voices[0].current;
+            inputs.set(track, clip, note, 72, true);
+            runtime.sample(1000);
+            assert_eq!(runtime.voices[0].held_frames, held + 1);
+            assert_eq!(runtime.voices[0].current, gate);
+            assert_eq!(runtime.voices[0].pitch, 72);
+            assert_eq!(
+                runtime.voices[0].layers[0].sources[0].frequency_target,
+                note_frequency(72, 0)
+            );
+            for frame in 1001..2000 {
+                runtime.sample(frame);
+            }
+            let mut reference = runtime.clone();
+            inputs.set(track, clip, note, 72, false);
+            p.edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: pattern(72),
+            })
+            .unwrap();
+            let committed = super::super::LiveMidiPitches::prepare(&p, &inputs);
+            let mut prepared = MidiTrackRuntime::new(&p, &p.tracks[0]).unwrap();
+            prepared.bind_live_pitches(track, &committed);
+            assert!(runtime.compatible(&prepared));
+            let age = runtime.voices[0].held_frames;
+            runtime.retarget_controls(&mut prepared);
+            assert_eq!(runtime.voices[0].held_frames, age);
+            // Bind the same committed schedule to the uninterrupted reference. Source phase
+            // and contour timing must match the compatible publication sample for sample.
+            reference.clips = runtime.clips.clone();
+            reference.bind_live_pitches(track, &committed);
+            for frame in 2000..2500 {
+                assert_eq!(runtime.sample(frame), reference.sample(frame));
+            }
+            let mut undo = p.clone();
+            undo.edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: pattern(60),
+            })
+            .unwrap();
+            let undo_inputs = super::super::LiveMidiPitches::prepare(&undo, &committed);
+            let mut next = MidiTrackRuntime::new(&undo, &undo.tracks[0]).unwrap();
+            next.bind_live_pitches(track, &undo_inputs);
+            runtime.retarget_controls(&mut next);
+            runtime.sample(2500);
+            assert_eq!(runtime.voices[0].pitch, 60);
+            assert!(runtime.voices[0].held_frames > age);
         }
     }
 }
