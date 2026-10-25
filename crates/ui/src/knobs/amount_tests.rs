@@ -3,7 +3,13 @@ use super::*;
 use crate::parameter_knobs;
 use daw_core::ModulationParameter as P;
 
-const PARAMETERS: [P; 57] = [
+const PARAMETERS: [P; 63] = [
+    P::ChorusDelay,
+    P::ChorusDepth,
+    P::ChorusFeedback,
+    P::ChorusRate,
+    P::ChorusPhase,
+    P::ChorusWidth,
     P::OttLowFrequency,
     P::OttHighFrequency,
     P::OttLowDepth,
@@ -65,6 +71,8 @@ const PARAMETERS: [P; 57] = [
 
 fn native_value(parameter: P, amount: f32) -> f32 {
     match parameter {
+        P::ChorusDelay => 5.0 + amount.abs(),
+        P::ChorusFeedback | P::ChorusPhase => amount,
         P::DirectionMixerDirection
         | P::OttLowInput
         | P::OttLowOutput
@@ -94,6 +102,7 @@ fn native_value(parameter: P, amount: f32) -> f32 {
         | P::LimiterRelease
         | P::Frequency
         | P::ColorFrequency
+        | P::ChorusRate
         | P::LfoRate
         | P::EqLowFrequency
         | P::EqHighFrequency
@@ -111,6 +120,7 @@ fn native_value(parameter: P, amount: f32) -> f32 {
 }
 fn direction(parameter: P, amount: f32) -> f32 {
     match parameter {
+        P::ChorusFeedback | P::ChorusPhase | P::ChorusRate => 1.0,
         P::DirectionMixerDirection
         | P::OttLowInput
         | P::OttLowOutput

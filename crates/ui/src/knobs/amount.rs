@@ -26,6 +26,8 @@ impl KnobSpec {
         self.fine_drag_sensitivity = super::DEFAULT_FINE_DRAG_SENSITIVITY;
         // Symmetric destinations already have the signed domain and quantization.
         if self.min == -limit && self.max == limit {
+            // A signed amount always resets to neutral, even when the native default is offset.
+            self.reset = 0.0;
             return self.named("Modulation amount").centered(0.0).bipolar();
         }
         Self {

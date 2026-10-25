@@ -5,6 +5,7 @@ pub use daw_unit_core::{SATURATOR_TYPE_ID, SaturatorClipMode, SaturatorSettings,
 mod memory;
 mod sampler;
 pub use daw_unit_core::{BITCRUSHER_TYPE_ID, BitcrusherSettings};
+pub use daw_unit_core::{CHORUS_TYPE_ID, ChorusSettings};
 pub use daw_unit_core::{
     DIRECTION_MIXER_TYPE_ID, DirectionMixerInput, DirectionMixerSettings, SamplerInput,
     SamplerMode, SamplerSettings, SamplerTrigger,

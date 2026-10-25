@@ -130,6 +130,12 @@ pub enum ModulationParameter {
     DirectionMixerSpread,
     SaturatorDrive,
     DriveInput,
+    ChorusDelay,
+    ChorusDepth,
+    ChorusFeedback,
+    ChorusRate,
+    ChorusPhase,
+    ChorusWidth,
     BitcrusherDrive,
     BitcrusherResolution,
     BitcrusherDownsampling,
@@ -192,6 +198,16 @@ impl ModulationParameter {
         Self::EnvelopeReleaseCurve,
         Self::EnvelopeAttackNote,
         Self::EnvelopeDecayNote,
+    ];
+    pub const CHORUS: [Self; 8] = [
+        Self::ChorusDelay,
+        Self::ChorusDepth,
+        Self::ChorusFeedback,
+        Self::ChorusRate,
+        Self::ChorusPhase,
+        Self::ChorusWidth,
+        Self::Level,
+        Self::DryWet,
     ];
     pub const BITCRUSHER: [Self; 5] = [
         Self::BitcrusherDrive,
@@ -277,6 +293,13 @@ impl ModulationParameter {
     pub const FILTER: [Self; 4] = [Self::Frequency, Self::Resonance, Self::Level, Self::DryWet];
     pub fn label(self) -> &'static str {
         match self {
+            Self::ChorusDelay => "Delay",
+            Self::ChorusDepth => "Depth",
+            Self::ChorusFeedback => "Feedback",
+            Self::ChorusRate => "Rate",
+            Self::ChorusPhase => "Stereo phase",
+            Self::ChorusWidth => "Width",
+
             Self::EnvelopeAttack => "Attack time",
             Self::EnvelopeDecay => "Decay time",
             Self::EnvelopeSustain => "Sustain",
@@ -362,6 +385,13 @@ impl ModulationParameter {
     }
     pub fn limit(self) -> f32 {
         match self {
+            Self::ChorusDelay => 25.0,
+            Self::ChorusDepth => 1.0,
+            Self::ChorusFeedback => 1.6,
+            Self::ChorusRate => 6.0,
+            Self::ChorusPhase => 180.0,
+            Self::ChorusWidth => 2.0,
+
             Self::GrainSize => 490.0,
             Self::GrainOverlap => 7.75,
             Self::GrainSpeed => 4.0,
@@ -422,6 +452,13 @@ impl ModulationParameter {
     }
     pub fn unit(self) -> &'static str {
         match self {
+            Self::ChorusDelay => "ms",
+            Self::ChorusDepth => "%",
+            Self::ChorusFeedback => "%",
+            Self::ChorusRate => "oct",
+            Self::ChorusPhase => "°",
+            Self::ChorusWidth => "%",
+
             Self::GrainSize => "ms",
             Self::GrainOverlap | Self::GrainSpeed => "×",
             Self::GrainPitch | Self::GrainPitchJitter => "semitones",

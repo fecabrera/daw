@@ -2,7 +2,7 @@
 
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/modulation/README.md).
 
-Implemented on 2026-10-15. The portable contract and runtime code live in `crates/unit-core/src/modulation`. They have no DAW, UI, device, or backend dependencies. Envelope, LFO, and Macro provide control outputs. Oscillator, Sampler, Amplitude, Auto-filter, Drive, Saturator, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, Envelope, LFO, and Macro consume parameter inputs through this contract.
+Implemented on 2026-10-15. The portable contract and runtime code live in `crates/unit-core/src/modulation`. They have no DAW, UI, device, or backend dependencies. Envelope, LFO, and Macro provide control outputs. Oscillator, Sampler, Amplitude, Auto-filter, Drive, Saturator, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, Chorus, Envelope, LFO, and Macro consume parameter inputs through this contract.
 
 A modulation output carries a normalized control value. A modulation input is a destination parameter that receives that value through a signed amount. Audio ports remain separate. A unit can declare both kinds of modulation port.
 
@@ -20,10 +20,10 @@ A modulation output carries a normalized control value. A modulation input is a 
 | `ModulationRoute` | Resolves a cached source and smooths route amount/power changes. |
 | `ModulationTargetId` | Identifies a repeated destination instance independently of its display position. |
 | `ModulationInputs` | Filters the optional instance identity and sums supported routes by parameter identity and resolves the amplitude gate/release rules. Declaration order does not determine a parameter's meaning. |
-| `ModulationSmoother` | Applies the same 1 ms smoothing to Oscillator, Sampler, Auto-filter, Drive, Saturator, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, Envelope, LFO, and Macro offsets, with common nonfinite-input handling. |
+| `ModulationSmoother` | Applies the same 1 ms smoothing to Oscillator, Sampler, Auto-filter, Drive, Saturator, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, Chorus, Envelope, LFO, and Macro offsets, with common nonfinite-input handling. |
 | `process_modulation` | Standard destination entry point: checks source scope, resolves routes, then invokes the unit. Playback and export use it for all destinations. |
 
-`UnitDescriptor::provides_modulation()` and `consumes_modulation()` inspect the declared modulation ports. These capabilities are independent of `is_source`, which identifies audio generators. Envelope, LFO, and Macro declare modulation outputs. Oscillator, Sampler, Amplitude, Auto-filter, Drive, Saturator, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, Envelope, LFO, and Macro declare modulation inputs. Envelope, LFO, and Macro declare both input and output ports.
+`UnitDescriptor::provides_modulation()` and `consumes_modulation()` inspect the declared modulation ports. These capabilities are independent of `is_source`, which identifies audio generators. Envelope, LFO, and Macro declare modulation outputs. Oscillator, Sampler, Amplitude, Auto-filter, Drive, Saturator, 3-band EQ, Compressor, Limiter, OTT, Direction Mixer, Stereo Spread, Bitcrusher, Chorus, Envelope, LFO, and Macro declare modulation inputs. Envelope, LFO, and Macro declare both input and output ports.
 
 `InstrumentSettings::modulation_sources()` enumerates providers through their settings contract. The source selector, labels, range indicators, and core reference validation use this metadata instead of assuming that every provider is an Envelope. Retained removed providers remain available to reference validation; the picker lists only present providers. Disabled providers remain listed and produce a neutral contribution after their enable ramp.
 
@@ -202,3 +202,5 @@ Oscillator Level reuses the typed Level slot and PerNote scope after summing sou
 ## Auto-filter LFO destinations
 
 Auto-filter adds Strength, Sync phase and Stereo phase to its Shared destination declaration. They use the shared typed slots 76–78, source scope checks, cached resolution, signed amount ramps, additive smoothing, validation and route-history matching. Static Filter retains its existing four destinations. See [Auto-filter LFO modulation](../effects/auto-filter.md#internal-lfo-modulation-destinations--2026-10-24) for bounds, units and telemetry.
+
+Chorus adds six destination slots at 82–87 and reuses Level/DryWet. Its eight Shared controls use the same resolver and smoother. See [Chorus](../effects/chorus.md) for units and bounds. Symmetric native controls with nonzero defaults still use a neutral-zero modulation amount reset.

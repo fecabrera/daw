@@ -28,6 +28,8 @@ pub use modulation::*;
 mod saturator;
 pub use saturator::*;
 mod bitcrusher;
+mod chorus;
+pub use chorus::*;
 mod compressor;
 pub use bitcrusher::{BITCRUSHER_STATE_VERSION, BITCRUSHER_TYPE_ID, BitcrusherSettings};
 mod stereo_spread;

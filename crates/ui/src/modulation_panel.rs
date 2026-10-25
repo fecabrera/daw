@@ -504,6 +504,12 @@ pub(super) fn marker(
         | ModulationParameter::EqMidGain
         | ModulationParameter::EqHighGain => offsets.map(|o| (base + o).clamp(-24.0, 24.0)),
         ModulationParameter::SaturatorDrive => offsets.map(|o| (base + o).clamp(-36.0, 36.0)),
+        ModulationParameter::ChorusDelay => offsets.map(|o| (base + o).clamp(5.0, 30.0)),
+        ModulationParameter::ChorusDepth => offsets.map(|o| (base + o).clamp(0.0, 1.0)),
+        ModulationParameter::ChorusFeedback => offsets.map(|o| (base + o).clamp(-0.8, 0.8)),
+        ModulationParameter::ChorusRate => offsets.map(|o| (base * 2.0_f32.powf(o)).max(0.0)),
+        ModulationParameter::ChorusPhase => offsets.map(|o| (base + o).clamp(-180.0, 180.0)),
+        ModulationParameter::ChorusWidth => offsets.map(|o| (base + o).clamp(0.0, 2.0)),
         ModulationParameter::BitcrusherDrive => offsets.map(|o| (base + o).clamp(0.0, 24.0)),
         ModulationParameter::BitcrusherResolution => {
             offsets.map(|o| (base + o).round().clamp(1.0, 24.0))
@@ -621,6 +627,12 @@ pub(super) fn marker(
         ModulationParameter::SaturatorDrive | ModulationParameter::BitcrusherDrive => {
             format!("{value:.1} dB")
         }
+        ModulationParameter::ChorusDelay => format!("{value:.1} ms"),
+        ModulationParameter::ChorusRate => format!("{value:.2} Hz"),
+        ModulationParameter::ChorusPhase => format!("{value:.0}°"),
+        ModulationParameter::ChorusDepth
+        | ModulationParameter::ChorusFeedback
+        | ModulationParameter::ChorusWidth => format!("{:.0}%", value * 100.0),
         ModulationParameter::BitcrusherResolution => format!("{value:.0} bit"),
         ModulationParameter::BitcrusherDownsampling => format!("{value:.0}×"),
         ModulationParameter::AutoFilterStrength => format!("{value:.1} oct"),

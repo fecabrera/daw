@@ -44,6 +44,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Limiter](effects/limiter.md)
 - [Direction Mixer](effects/direction-mixer.md)
 - [Stereo Spread](effects/stereo-spread.md)
+- [Chorus](effects/chorus.md)
 
 ## Modulation and audio
 

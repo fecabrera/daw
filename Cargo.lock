@@ -1164,6 +1164,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-chorus"
+version = "0.1.0"
+dependencies = [
+ "daw-lfo",
+ "daw-unit-core",
+]
+
+[[package]]
 name = "daw-cli"
 version = "0.1.0"
 dependencies = [
@@ -1234,6 +1242,7 @@ dependencies = [
  "daw-amplitude",
  "daw-auto-filter",
  "daw-bitcrusher",
+ "daw-chorus",
  "daw-compressor",
  "daw-core",
  "daw-direction-mixer",

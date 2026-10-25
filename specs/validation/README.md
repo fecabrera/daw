@@ -4,6 +4,58 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Two-column strip spacing — 2026-10-25
+
+Chorus Motion now matches OTT: one equal gap between full-size columns and at each outer edge. The 52-point controls use 19-point gaps and a 161-point strip, with one centered footer and no internal divider. `panels` owns shared column geometry/layout; Chorus, OTT and Auto-filter reuse it. The architecture specification and repository UI instructions document this standard for current and future double-width strips.
+
+- Updated the Chorus all-theme interaction test to check actual equal left/inner/right gaps, width, column alignment, retained Hz/Note editing and bypass.
+- All 652 UI library tests, final strict workspace Clippy and macOS debug packaging: passed.
+
+Native pointer/visual checks and Windows/Linux builds remain untested.
+
+## Chorus rate-compensated depth — 2026-10-25
+
+The portable Chorus now reduces delay excursion inversely with final effective Rate above a fixed 0.8 Hz reference. This retains the existing default-rate sound while keeping settled sine-delay detuning approximately constant at faster Hz and Note rates, including tempo and shared rate offsets. Slower rates retain the original bounded excursion. Compensation initializes at the first host rate, uses the shared 5 ms ramp on subsequent changes, survives compatible retarget/clone and reinitializes on reset. No new saved controls, routing, UI or callback allocation are required.
+
+- Portable Chorus tests: 8 passed. A fully wet 1 kHz tone test measures frequency from zero crossings at six project rates. Fast Hz settings, note/tempo settings through 120 Hz, and octave rate offsets stay within 5% of the measured default-rate detuning. Startup at the actual host tempo, smooth retargeting, reset and slow-rate bounds also pass.
+- Formatting and strict workspace Clippy: passed.
+- CLI build/smoke checks and macOS debug packaging: passed.
+- `cargo test --workspace --offline --locked`: passed; 1312 tests passed, 3 ignored. All doctests passed. After the final shared-spacing change, all 652 UI library tests, strict workspace Clippy and macOS debug packaging passed again.
+
+Native listening/device/pointer checks and Windows/Linux builds remain untested. Rate/depth/tempo transitions can still produce temporary pitch movement; compensation controls settled detuning.
+
+## Chorus tempo sync — 2026-10-25
+
+Added the shared Hz/Note selector and straight/dotted/triplet duration knob to Motion. Motion spans two standard strip widths with two full-size controls in each column; its footer aligns with Chorus and Out. Both rate settings persist; older Chorus states default missing timing fields to Hz and quarter note. All eight continuous modulation targets remain available. Note-rate modulation uses tempo-relative bounds and marker positions. The processor uses the shared LFO clock and host transport/tempo, with separately integrated octave offsets.
+
+- Portable Chorus tests: 6 passed, including all 27 note durations at 30/120/300 BPM across six project rates, discontinuous positions/loop wraps, tempo transitions and octave modulation outside the Hz control range.
+- Unit-core tests: 50 passed, including legacy Hz migration, Note-rate validation and round trips.
+- UI Chorus tests pass in all themes: shared strip geometry, contained two-column Motion controls, keyboard mode/duration changes, retained Hz value and bypass.
+- Track/Master engine tests pass for both modes at six rates, including upstream latency, playback/export/prepared-seek parity and allocation-free compatible edits.
+- Project save/open/Save As, duplication and six-rate changes pass with synced Chorus settings and all modulation routes.
+- Formatting, strict workspace Clippy, CLI build/smoke checks and macOS debug packaging: passed.
+- `cargo test --workspace --offline --locked`: passed; 1310 tests passed, 3 ignored. All doctests passed. After the final double-width layout change, all 652 UI library tests and strict workspace Clippy passed again; the macOS app was rebuilt again.
+
+Native listening/device/pointer checks and Windows/Linux builds remain untested.
+
+## Chorus — 2026-10-25
+
+Implemented the agreed Chorus/Motion/Out layout and nine controls, including 1–4 voices per channel. Portable stereo delay processing reuses the LFO sine primitive, shared base/offset ramps, typed modulation and level monitoring. The UI reuses unit shells, padded strips, knobs, dividers, connection controls, catalog registration and meter rails. The dry path remains immediate; export keeps the arranged-duration policy.
+
+Completed focused checks:
+
+- Portable Chorus tests: 5 passed across all six project rates, covering delay interpolation, signed feedback, dry/bypass/Level behavior, stereo/Width, finite limits, modulation bounds, retargeting, reset and detached meter clones.
+- Unit-core library tests: 49 passed, including settings bounds, integer voices, persistence and future-version payload retention.
+- Core library tests: 82 passed, including all Chorus routes, source-scope/provider changes and atomic invalid-edit rollback.
+- Engine Chorus tests: passed for track/Master playback/export/prepared seeks, upstream fixed latency, state retention and allocation-free updates; shared modulation reached all eight targets on track/layer/Main at six rates.
+- Output meter bypass/re-enable checks passed with Chorus in the shared meter matrix.
+- Project workflow passed for save/open/Save As, duplication and six-rate changes with nondefault Chorus settings and all eight routes.
+- UI Chorus geometry/power/catalog checks passed in all themes. Shared amount tests cover the six new controls; the common adapter now retains neutral-zero reset for a symmetric control with a nonzero native default. Updated catalog navigation retains existing entry indices and covers the new final row.
+- Formatting, strict workspace Clippy, CLI build/smoke checks and macOS debug packaging: passed.
+- `cargo test --workspace --offline --locked`: passed; 1308 tests passed, 3 ignored. All doctests passed.
+
+Native listening/device/pointer checks and Windows/Linux builds remain untested. Automatic export-tail extension is not included.
+
 ## Envelope time knob fine adjustment — 2026-10-25
 
 Attack, Decay and Release millisecond base knobs now use a 0.01 Shift-drag factor (100× finer than ordinary dragging, 10× finer than before). The shared `KnobSpec` supplies the calibration; shared interaction retains continuous drag accumulation. Other controls and modulation amounts retain the 0.1 fine factor. Saved times, keyboard steps, normal dragging, logarithmic scaling, reset and DSP remain unchanged.

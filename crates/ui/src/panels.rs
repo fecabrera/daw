@@ -33,12 +33,53 @@ pub(super) fn unit_strip<R>(
     builder: egui::UiBuilder,
     body: impl FnOnce(&mut Ui) -> R,
 ) -> egui::InnerResponse<egui::InnerResponse<R>> {
+    unit_strip_with_width(ui, height, UNIT_STRIP_WIDTH, builder, body)
+}
+
+/// One shared gap between full-size control columns and at either outer edge.
+pub(super) fn unit_column_gap() -> f32 {
+    (UNIT_STRIP_WIDTH - crate::knobs::CHOICE_SIZE) * 0.5
+}
+
+pub(super) fn unit_columns_width(columns: usize) -> f32 {
+    columns as f32 * crate::knobs::CHOICE_SIZE + (columns + 1) as f32 * unit_column_gap()
+}
+
+/// Equal inner/outer gaps, one footer supplied by the owning strip, no divider.
+pub(super) fn unit_columns(ui: &mut Ui, columns: usize, mut body: impl FnMut(&mut Ui, usize)) {
+    ui.horizontal_top(|ui| {
+        let gap = unit_column_gap();
+        ui.spacing_mut().item_spacing.x = gap;
+        ui.add_space(gap - f32::from(PanelStyle::default().margin));
+        for column in 0..columns {
+            ui.push_id(column, |ui| {
+                ui.allocate_ui_with_layout(
+                    Vec2::new(crate::knobs::CHOICE_SIZE, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(crate::knobs::CHOICE_SIZE);
+                        body(ui, column);
+                    },
+                );
+            });
+        }
+    });
+}
+
+/// Padded strip for a section that owns multiple control columns and one footer.
+pub(super) fn unit_strip_with_width<R>(
+    ui: &mut Ui,
+    height: f32,
+    width: f32,
+    builder: egui::UiBuilder,
+    body: impl FnOnce(&mut Ui) -> R,
+) -> egui::InnerResponse<egui::InnerResponse<R>> {
     let margin = PanelStyle::default().margin;
     Frame::new().inner_margin(margin).show(ui, |ui| {
         ui.scope_builder(
             builder.layout(egui::Layout::top_down(egui::Align::Min)),
             |ui| {
-                ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
+                ui.set_width(width - 2.0 * f32::from(margin));
                 ui.set_min_height(height);
                 body(ui)
             },

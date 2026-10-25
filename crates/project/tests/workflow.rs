@@ -3849,7 +3849,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
         EffectInstance, EffectSettings, LfoInstance, Modulation, ModulationParameter,
         ModulationSourceId,
     };
-    for kind in 0..8 {
+    for kind in 0..9 {
         let fixture = Fixture::new();
         let mut session = Session::default();
         let track = session.project.add_midi_track().unwrap();
@@ -3869,6 +3869,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             EffectInstance::stereo_spread,
             EffectInstance::bitcrusher,
             EffectInstance::saturator,
+            EffectInstance::chorus,
         ][kind]();
         let (open, collapsed, routes) = match &mut effect.unit {
             EffectSettings::Eq3(s) => {
@@ -3889,6 +3890,20 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
                 s.downsampling = 9;
                 s.level_db = -6.0;
                 s.dry_wet = 0.7;
+                (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
+            }
+            EffectSettings::Chorus(s) => {
+                s.delay_ms = 27.0;
+                s.depth = 0.75;
+                s.feedback = -0.2;
+                s.rate_hz = 1.2;
+                s.rate_mode = daw_core::LfoRateMode::Note;
+                s.note_rate = daw_core::NoteRate(7);
+                s.stereo_phase_degrees = -90.0;
+                s.voices = 4;
+                s.width = 1.5;
+                s.level_db = -4.0;
+                s.dry_wet = 0.6;
                 (&mut s.modulation_open, &mut s.collapsed, &mut s.modulations)
             }
             EffectSettings::StereoSpread(s) => {
@@ -3921,6 +3936,7 @@ fn effect_modulation_survives_save_as_duplication_and_processing_rate_changes() 
             &ModulationParameter::STEREO_SPREAD[..],
             &ModulationParameter::BITCRUSHER[..],
             &ModulationParameter::SATURATOR[..],
+            &ModulationParameter::CHORUS[..],
         ][kind]
             .iter()
             .copied()

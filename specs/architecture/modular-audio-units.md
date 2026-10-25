@@ -574,3 +574,14 @@ The [Granulizer contract](../instruments/granulizer.md) adds a third source choi
 ## Multiband EQ — 2026-10-24
 
 Multiband EQ uses the existing portable `equalizer` crate, with variable stable-ID bands and shared repeated-destination routing. See [Multiband EQ](../effects/multiband-eq.md).
+
+## Chorus — 2026-10-25
+
+[Chorus](../effects/chorus.md) adds a portable stereo modulated-delay effect under Imaging, using the shared unit shell/strips, typed modulation, smoothing, monitoring and effect-chain lifecycle. History-aware seek preparation retains its delay/feedback/LFO state. Wet delays add no dry-path alignment latency; export keeps the arranged-duration policy.
+
+
+## Two-column unit strip spacing — 2026-10-25
+
+A two-column (double-width) unit strip uses one horizontal gap between its control columns and the same gap at each outer edge. Match OTT. Do not concatenate the inner padding of two independent strips. Keep one centered footer, shared outer frame padding and outer dividers, and no internal divider.
+
+For control width `C` and single-strip width `W`, the shared gap is `(W - C) / 2`. A two-column strip has width `2 × C + 3 × gap`. With current 52-point controls and 90-point single strips, this gives 19-point gaps and a 161-point strip. Reuse `panels::unit_column_gap`, `unit_columns_width` and `unit_columns` for geometry and layout. Chorus Motion, OTT bands and Auto-filter LFO share this implementation. Compact mode retains the same strip width and one centered footer.

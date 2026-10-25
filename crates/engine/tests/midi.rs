@@ -5199,3 +5199,67 @@ fn live_sampler_pitch_commit_keeps_cursor_and_is_allocation_free() {
         "{before} -> {after}"
     );
 }
+
+#[test]
+fn chorus_shared_modulation_reaches_track_layer_and_main_and_roundtrips() {
+    for rate in SAMPLE_RATES {
+        for owner in ["track", "layer", "main"] {
+            let mut p = plan(Waveform::Saw, rate);
+            let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
+            instrument.main.macro_module.add();
+            instrument.main.macro_module.controls[0].settings.value = 1.0;
+            let source = ModulationSourceId {
+                layer: instrument.main.id,
+                unit: instrument.main.macro_module.controls[0].id,
+            };
+            let mut effect = EffectInstance::chorus();
+            let target = daw_engine::ModulationTarget::Effect(effect.id);
+            let EffectSettings::Chorus(settings) = &mut effect.unit else {
+                panic!()
+            };
+            settings.modulations = ModulationParameter::CHORUS
+                .into_iter()
+                .zip([2.0, 0.1, 0.2, 1.0, -45.0, 0.25, -3.0, 0.1])
+                .map(|(parameter, amount)| {
+                    let mut r = Modulation::new(parameter);
+                    r.source = Some(source);
+                    r.amount = amount;
+                    r
+                })
+                .collect();
+            match owner {
+                "layer" => instrument.layers[0].effects.push(effect),
+                "main" => instrument.main.effects.push(effect),
+                _ => p.project.tracks[0].effects.push(effect),
+            }
+            p.project.validate().unwrap();
+            let reopened: Project =
+                serde_json::from_value(serde_json::to_value(&p.project).unwrap()).unwrap();
+            assert_eq!(reopened, p.project);
+            let mut expected = vec![[0.0; 2]; (rate / 10) as usize];
+            Renderer::new(p.clone()).render_offline(&mut expected);
+            let mut live = Renderer::new(p);
+            live.play();
+            ALLOCATIONS.with(|v| v.set(0));
+            TRACK_ALLOCATIONS.with(|v| v.set(true));
+            for (frame, sample) in expected.iter().enumerate() {
+                let actual = live.next_sample();
+                if frame > rate as usize / 200 {
+                    assert!((0..2).all(|ch| (actual[ch] - sample[ch]).abs() < 2e-6));
+                }
+            }
+            let values = live.modulation_snapshot(target).unwrap();
+            TRACK_ALLOCATIONS.with(|v| v.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            for (actual, expected) in values
+                .iter()
+                .zip([17.0, 0.35, 0.2, 1.6, 45.0, 1.25, -3.0, 0.45])
+            {
+                assert!(
+                    (actual - expected).abs() < 0.001,
+                    "{owner}: {actual} != {expected}"
+                );
+            }
+        }
+    }
+}

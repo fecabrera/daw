@@ -130,14 +130,25 @@ pub(super) fn modulated_rate(
     note: &mut NoteRate,
     modulation: RateModulation<'_>,
 ) -> egui::Response {
+    modulated_rate_with_spec(
+        ui,
+        mode,
+        hz,
+        note,
+        modulation,
+        crate::parameter_knobs::destination(daw_core::ModulationParameter::LfoRate),
+    )
+}
+pub(super) fn modulated_rate_with_spec(
+    ui: &mut Ui,
+    mode: LfoRateMode,
+    hz: &mut f32,
+    note: &mut NoteRate,
+    modulation: RateModulation<'_>,
+    spec: KnobSpec,
+) -> egui::Response {
     if mode == LfoRateMode::Hz {
-        ui.add(
-            Knob::new(
-                hz,
-                crate::parameter_knobs::destination(daw_core::ModulationParameter::LfoRate),
-            )
-            .modulated(modulation.marker, modulation.open),
-        )
+        ui.add(Knob::new(hz, spec).modulated(modulation.marker, modulation.open))
     } else {
         let mut position = NOTE_RATES
             .iter()
@@ -164,7 +175,7 @@ pub(super) fn modulated_rate(
             &mut position,
             KnobSpec::new("LFO note duration", 0.0..=f32::from(NoteRate::COUNT - 1), 13.0, 1.0)
                 .stepped(1.0)
-                .reference_values(&[1.0,4.0,7.0,10.0,13.0,16.0,19.0,22.0,25.0])
+                    .reference_values(&[1.0,4.0,7.0,10.0,13.0,16.0,19.0,22.0,25.0])
                 .value_label(note_label)
                 .format(note_label)
                 .endpoint_labels("4b D", "1/64 T"),

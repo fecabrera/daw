@@ -43,6 +43,7 @@ pub(crate) struct EffectsUiBounds {
     pub stereo_spread_entry: Rect,
     pub saturator_entry: Rect,
     pub bitcrusher_entry: Rect,
+    pub chorus_entry: Rect,
     pub lane_toolbar: Rect,
     pub lane_compact: Rect,
     pub chain: Vec<(Id, Rect)>,
@@ -60,6 +61,7 @@ pub(crate) struct EffectsUiBounds {
     pub stereo_spread_units: Vec<crate::stereo_spread_panel::Bounds>,
     pub saturator_units: Vec<crate::saturator_panel::Bounds>,
     pub bitcrusher_units: Vec<crate::bitcrusher_panel::Bounds>,
+    pub chorus_units: Vec<crate::chorus_panel::Bounds>,
 }
 
 #[cfg(test)]
@@ -92,6 +94,7 @@ impl Default for EffectsUiBounds {
             stereo_spread_entry: Rect::NOTHING,
             saturator_entry: Rect::NOTHING,
             bitcrusher_entry: Rect::NOTHING,
+            chorus_entry: Rect::NOTHING,
             lane_toolbar: Rect::NOTHING,
             lane_compact: Rect::NOTHING,
             chain: vec![],
@@ -109,6 +112,7 @@ impl Default for EffectsUiBounds {
             stereo_spread_units: vec![],
             saturator_units: vec![],
             bitcrusher_units: vec![],
+            chorus_units: vec![],
         }
     }
 }
@@ -200,6 +204,7 @@ impl DawUi {
             self.effects_bounds.stereo_spread_units.clear();
             self.effects_bounds.saturator_units.clear();
             self.effects_bounds.bitcrusher_units.clear();
+            self.effects_bounds.chorus_units.clear();
         }
         let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
         ui.painter()
@@ -257,6 +262,7 @@ impl DawUi {
             self.effects_bounds.stereo_spread_entry = Rect::NOTHING;
             self.effects_bounds.saturator_entry = Rect::NOTHING;
             self.effects_bounds.bitcrusher_entry = Rect::NOTHING;
+            self.effects_bounds.chorus_entry = Rect::NOTHING;
         }
         ui.horizontal_top(|ui| {
             if let Some(library) = library.as_ref() {
@@ -359,6 +365,9 @@ impl DawUi {
                                     }
                                     daw_core::BITCRUSHER_TYPE_ID => {
                                         self.effects_bounds.bitcrusher_entry = response.rect;
+                                    }
+                                    daw_core::CHORUS_TYPE_ID => {
+                                        self.effects_bounds.chorus_entry = response.rect;
                                     }
                                     daw_core::DIRECTION_MIXER_TYPE_ID => {
                                         self.effects_bounds.direction_mixer_entry = response.rect;
@@ -960,6 +969,27 @@ impl DawUi {
                                 let power = bounds.power;
                                 #[cfg(test)]
                                 self.effects_bounds.bitcrusher_units.push(bounds);
+                                (header, power)
+                            }
+                            daw_core::EffectSettings::Chorus(settings) => {
+                                let (bounds, header) = crate::chorus_panel::show(
+                                    ui,
+                                    settings,
+                                    (compact, height),
+                                    modulation_sources,
+                                    self.output.as_ref().and_then(|o| {
+                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
+                                            effect.id,
+                                        ))
+                                    }),
+                                    self.output
+                                        .as_ref()
+                                        .map_or(0.0, |o| o.effect_output_level(effect.id)),
+                                    self.session.project.tempo_bpm,
+                                );
+                                let power = bounds.power;
+                                #[cfg(test)]
+                                self.effects_bounds.chorus_units.push(bounds);
                                 (header, power)
                             }
                             daw_core::EffectSettings::DirectionMixer(settings) => {

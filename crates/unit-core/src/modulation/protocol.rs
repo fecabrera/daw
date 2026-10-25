@@ -387,3 +387,5 @@ destination_settings!(
     &ModulationParameter::DRIVE_V2,
     Shared
 );
+
+destination_settings!(crate::ChorusSettings, &ModulationParameter::CHORUS, Shared);

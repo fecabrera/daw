@@ -411,6 +411,9 @@ impl Renderer {
                     daw_core::EffectSettings::Bitcrusher(_) => {
                         daw_unit_core::BITCRUSHER_TYPE_ID.hash(&mut hash)
                     }
+                    daw_core::EffectSettings::Chorus(_) => {
+                        daw_unit_core::CHORUS_TYPE_ID.hash(&mut hash)
+                    }
                     daw_core::EffectSettings::DirectionMixer(_) => {
                         daw_unit_core::DIRECTION_MIXER_TYPE_ID.hash(&mut hash)
                     }
@@ -698,10 +701,15 @@ impl Renderer {
     /// Shared preparation admission for cache workers and direct reconstruction.
     /// A bus chain must retain the history of its complete child mix.
     fn needs_processing_history(&self) -> bool {
-        self.midi
-            .iter()
-            .flatten()
-            .any(|m| m.needs_envelope_history())
+        self.plan
+            .project
+            .all_effects()
+            .any(|e| matches!(e.unit, daw_core::EffectSettings::Chorus(_)))
+            || self
+                .midi
+                .iter()
+                .flatten()
+                .any(|m| m.needs_envelope_history())
             || (self
                 .plan
                 .project

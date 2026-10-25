@@ -94,6 +94,35 @@ fn ott_frequency(low: bool) -> KnobSpec {
 }
 pub(super) fn destination(parameter: Parameter) -> KnobSpec {
     match parameter {
+        Parameter::ChorusDelay => KnobSpec::new("Delay", 5.0..=30.0, 15.0, 0.1)
+            .value_label(|v| format!("{v:.1} ms"))
+            .format(|v| format!("{v:.1} ms"))
+            .endpoint_labels("5", "30"),
+        Parameter::ChorusDepth => percent("Depth", 0.25),
+        Parameter::ChorusFeedback => KnobSpec::new("Feedback", -0.8..=0.8, 0.0, 0.01)
+            .centered(0.0)
+            .value_label(|v| format!("{:.0}%", v * 100.0))
+            .format(|v| format!("{:.0}%", v * 100.0))
+            .endpoint_labels("−80", "+80"),
+        Parameter::ChorusRate => KnobSpec::new("Rate", 0.05..=10.0, 0.8, 1.0 / 24.0)
+            .scale(
+                |v| (v / 0.05).ln() / (200.0_f32).ln(),
+                |p| 0.05 * 200.0_f32.powf(p),
+                |v, d| v * 2.0_f32.powf(d),
+            )
+            .value_label(|v| format!("{v:.2} Hz"))
+            .format(|v| format!("{v:.2} Hz"))
+            .endpoint_labels("0.05", "10"),
+        Parameter::ChorusPhase => KnobSpec::new("Stereo phase", -180.0..=180.0, 90.0, 1.0)
+            .centered(0.0)
+            .value_label(|v| format!("{v:.0}°"))
+            .format(|v| format!("{v:.0}°"))
+            .endpoint_labels("−180", "+180"),
+        Parameter::ChorusWidth => KnobSpec::new("Width", 0.0..=2.0, 1.0, 0.01)
+            .value_label(|v| format!("{:.0}%", v * 100.0))
+            .format(|v| format!("{:.0}%", v * 100.0))
+            .endpoint_labels("0", "200"),
+
         Parameter::GrainSize => KnobSpec::new("Grain size", 10.0..=500.0, 80.0, 1.0)
             .value_label(time)
             .format(time)
@@ -347,6 +376,48 @@ fn signed_pitch(value: f32) -> String {
 pub(super) fn amount(parameter: Parameter) -> KnobSpec {
     let (mapping, format, endpoints): (AmountMapping, fn(f32) -> String, [&str; 2]) =
         match parameter {
+            Parameter::ChorusDelay => (
+                AmountMapping::Offset {
+                    origin: 5.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.1} ms"),
+                ["−25", "+25"],
+            ),
+            Parameter::ChorusRate => (AmountMapping::Octaves, signed_octaves, ["−6", "+6"]),
+            Parameter::ChorusPhase => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                |v| format!("{v:+.0}°"),
+                ["−180", "+180"],
+            ),
+            Parameter::ChorusDepth => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_percent,
+                ["−100", "+100"],
+            ),
+            Parameter::ChorusFeedback => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_percent,
+                ["−160", "+160"],
+            ),
+            Parameter::ChorusWidth => (
+                AmountMapping::Offset {
+                    origin: 0.0,
+                    direction: 1.0,
+                },
+                signed_percent,
+                ["−200", "+200"],
+            ),
+
             Parameter::SaturatorDrive => (
                 AmountMapping::Offset {
                     origin: 0.0,

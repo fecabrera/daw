@@ -620,6 +620,7 @@ mod effect_modulation_tests {
             EffectInstance::stereo_spread,
             EffectInstance::bitcrusher,
             EffectInstance::saturator,
+            EffectInstance::chorus,
         ][kind]();
         let (open, routes) = match &mut effect.unit {
             EffectSettings::MultibandEq(s) => (&mut s.modulation_open, &mut s.modulations),
@@ -630,6 +631,7 @@ mod effect_modulation_tests {
             EffectSettings::DirectionMixer(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::StereoSpread(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Bitcrusher(s) => (&mut s.modulation_open, &mut s.modulations),
+            EffectSettings::Chorus(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Saturator(s) => (&mut s.modulation_open, &mut s.modulations),
             _ => unreachable!(),
         };
@@ -643,6 +645,7 @@ mod effect_modulation_tests {
             &ModulationParameter::STEREO_SPREAD[..],
             &ModulationParameter::BITCRUSHER[..],
             &ModulationParameter::SATURATOR[..],
+            &ModulationParameter::CHORUS[..],
         ][kind]
             .iter()
             .copied()
@@ -670,7 +673,7 @@ mod effect_modulation_tests {
     }
     #[test]
     fn effect_modulation_defaults_roundtrip_and_invalid_edits_are_atomic() {
-        for kind in 0..8 {
+        for kind in 0..9 {
             let (mut p, track, effect) = fixture(kind);
             p.edit(Edit::SetEffects {
                 track_id: track,
@@ -715,6 +718,7 @@ mod effect_modulation_tests {
                 EffectInstance::stereo_spread,
                 EffectInstance::bitcrusher,
                 EffectInstance::saturator,
+                EffectInstance::chorus,
             ][kind]()
             .unit;
             let mut legacy = serde_json::to_value(&expected).unwrap();
@@ -740,7 +744,7 @@ mod effect_modulation_tests {
 
     #[test]
     fn effect_modulation_uses_same_instrument_shared_sources_and_follows_provider_moves() {
-        for kind in 0..8 {
+        for kind in 0..9 {
             let (mut p, track, effect) = fixture(kind);
             let source = effect.unit.modulations()[0].source.unwrap();
             let mut instrument = p.tracks[0].instrument.clone().unwrap();

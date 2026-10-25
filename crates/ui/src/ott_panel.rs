@@ -1,9 +1,7 @@
 use crate::{
     icons,
     knobs::{self, Knob, KnobSpec},
-    meters,
-    midi_editor::UNIT_STRIP_WIDTH,
-    panels, parameter_knobs, rows, theme,
+    meters, panels, parameter_knobs, rows, theme,
 };
 use daw_core::{CompressorDetection, ModulationParameter as Parameter, OttSettings};
 use egui::{Rect, Ui, Vec2};
@@ -174,21 +172,12 @@ fn show_inner(
             for (section, name) in ["Low", "Mid", "High", "Out"].into_iter().enumerate() {
                 let rect = ui.push_id(section, |ui| egui::Frame::new().inner_margin(panel.margin).show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        let column_width = knobs::CHOICE_SIZE;
-                        let padding = (UNIT_STRIP_WIDTH - column_width) * 0.5;
-                        let width = if section < 3 { 2.0 * column_width + 3.0 * padding } else { UNIT_STRIP_WIDTH };
+                        let width = panels::unit_columns_width(if section < 3 { 2 } else { 1 });
                         ui.set_width(width - 2.0 * f32::from(panel.margin));
                         ui.set_min_height(crate::envelope_panel::body_height(compact));
                         if !compact {
-                            ui.horizontal_top(|ui| {
-                                ui.spacing_mut().item_spacing.x = padding;
-                                ui.add_space(padding - f32::from(panel.margin));
-                                for column in 0..if section < 3 { 2 } else { 1 } {
-                                    ui.push_id(column, |ui| ui.allocate_ui_with_layout(Vec2::new(column_width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
-                                        ui.set_width(column_width);
-                                        for index in 0..3 { bounds.controls[section][column][index] = row(ui, settings, section, column, index, &markers); }
-                                    }));
-                                }
+                            panels::unit_columns(ui, if section < 3 { 2 } else { 1 }, |ui, column| {
+                                for index in 0..3 { bounds.controls[section][column][index] = row(ui, settings, section, column, index, &markers); }
                             });
                         }
                         rows::centered(ui, if compact { crate::envelope_panel::body_height(true) } else { icons::COMPACT_BUTTON_SIZE }, |ui| {

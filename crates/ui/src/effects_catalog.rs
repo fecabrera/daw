@@ -50,7 +50,7 @@ impl Entry {
     }
 }
 
-pub(super) const ENTRIES: [Entry; 13] = [
+pub(super) const ENTRIES: [Entry; 14] = [
     Entry::new(
         daw_core::EQ_TYPE_ID,
         "3-band EQ",
@@ -128,6 +128,12 @@ pub(super) const ENTRIES: [Entry; 13] = [
         "Multiband EQ",
         Category::EqAndFilters,
         daw_core::EffectInstance::multiband_equalizer,
+    ),
+    Entry::new(
+        daw_core::CHORUS_TYPE_ID,
+        "Chorus",
+        Category::Imaging,
+        daw_core::EffectInstance::chorus,
     ),
 ];
 

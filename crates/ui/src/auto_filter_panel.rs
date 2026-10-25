@@ -3,7 +3,6 @@ use crate::parameter_knobs;
 use crate::{
     icons,
     knobs::{self, Knob, KnobSpec},
-    midi_editor::UNIT_STRIP_WIDTH,
     panels, rows, theme,
 };
 use daw_core::{AutoFilterSettings, FilterShape, ModulationParameter as Parameter};
@@ -169,27 +168,14 @@ fn show_panel(
             for section in (0..3).filter(|section| internal_lfo || *section != 1) {
                 let rect = ui.push_id(section, |ui| egui::Frame::new().inner_margin(panel.margin).show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        // One LFO strip owns two knob columns and three equal horizontal gaps.
-                        // Match the control inset in the single-column Cutoff and Out strips.
-                        let column_width = knobs::CHOICE_SIZE;
-                        let column_padding = (UNIT_STRIP_WIDTH - column_width) * 0.5;
-                        let section_width = if section == 1 {
-                            2.0 * column_width + 3.0 * column_padding
-                        } else {
-                            UNIT_STRIP_WIDTH
-                        };
+                        let section_width = panels::unit_columns_width(if section == 1 { 2 } else { 1 });
                         let width = section_width - 2.0 * f32::from(panel.margin);
                         ui.set_width(width);
                         ui.set_min_height(crate::envelope_panel::body_height(compact));
                         if !compact {
                             if section == 1 {
-                                ui.horizontal_top(|ui| {
-                                    ui.spacing_mut().item_spacing.x = column_padding;
-                                    ui.add_space(column_padding - f32::from(panel.margin));
-                                    for strip in 1..=2 { ui.push_id(strip, |ui| ui.allocate_ui_with_layout(Vec2::new(column_width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
-                                        ui.set_width(column_width);
-                                        controls(ui, settings, strip, &mut bounds, &markers);
-                                    })); }
+                                panels::unit_columns(ui, 2, |ui, column| {
+                                    controls(ui, settings, column + 1, &mut bounds, &markers);
                                 });
                             } else { controls(ui, settings, if section == 0 { 0 } else { 3 }, &mut bounds, &markers); }
                         }

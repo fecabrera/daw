@@ -1,5 +1,6 @@
 use daw_auto_filter::AutoFilter;
 use daw_bitcrusher::Bitcrusher;
+use daw_chorus::Chorus;
 use daw_compressor::Compressor;
 use daw_core::{EffectInstance, EffectSettings, Id, Track};
 use daw_direction_mixer::DirectionMixer;
@@ -28,6 +29,7 @@ enum RuntimeEffect {
     StereoSpread(Box<StereoSpread>, Vec<super::modulation::Route>),
     Saturator(Box<Saturator>, Vec<super::modulation::Route>),
     Bitcrusher(Box<Bitcrusher>, Vec<super::modulation::Route>),
+    Chorus(Box<Chorus>, Vec<super::modulation::Route>),
 }
 
 impl RuntimeEffect {
@@ -96,6 +98,11 @@ impl RuntimeEffect {
                     + unit.heap_bytes()
                     + daw_unit_core::memory::vec_bytes(routes)
             }
+            Self::Chorus(unit, routes) => {
+                std::mem::size_of_val(unit.as_ref()) as u64
+                    + unit.heap_bytes()
+                    + daw_unit_core::memory::vec_bytes(routes)
+            }
         }
     }
 
@@ -116,6 +123,7 @@ impl RuntimeEffect {
             Self::StereoSpread(unit, _) => unit.latency_frames(),
             Self::Saturator(unit, _) => unit.latency_frames(),
             Self::Bitcrusher(unit, _) => unit.latency_frames(),
+            Self::Chorus(unit, _) => unit.latency_frames(),
         }
     }
 
@@ -283,6 +291,19 @@ impl RuntimeEffect {
                     ..Default::default()
                 },
             ),
+            Self::Chorus(unit, routes) => process_modulation(
+                unit.as_mut(),
+                routes,
+                input,
+                &[],
+                values,
+                ModulationContext {
+                    shared_sources: sources,
+                    frame,
+                    tempo_bpm: tempo,
+                    ..Default::default()
+                },
+            ),
             Self::DirectionMixer(unit, routes) => process_modulation(
                 unit.as_mut(),
                 routes,
@@ -368,6 +389,12 @@ impl RuntimeEffect {
                     route.reset();
                 }
             }
+            Self::Chorus(unit, routes) => {
+                unit.reset();
+                for route in routes {
+                    route.reset();
+                }
+            }
             Self::DirectionMixer(unit, routes) => {
                 unit.reset();
                 for route in routes {
@@ -390,6 +417,7 @@ impl RuntimeEffect {
             (Self::Bitcrusher(unit, _), EffectSettings::Bitcrusher(settings)) => {
                 unit.retarget(settings)
             }
+            (Self::Chorus(unit, _), EffectSettings::Chorus(settings)) => unit.retarget(settings),
             (Self::DirectionMixer(unit, _), EffectSettings::DirectionMixer(settings)) => {
                 unit.retarget(settings)
             }
@@ -552,6 +580,14 @@ impl EffectChain {
                                         .collect(),
                                 ))
                             }
+                            EffectSettings::Chorus(settings) => Some(RuntimeEffect::Chorus(
+                                Box::new(Chorus::new(context, settings)),
+                                settings
+                                    .modulations
+                                    .iter()
+                                    .map(|r| super::modulation::Route::new(*r, sample_rate_hz))
+                                    .collect(),
+                            )),
                             EffectSettings::DirectionMixer(settings) => {
                                 Some(RuntimeEffect::DirectionMixer(
                                     Box::new(DirectionMixer::new(context, settings)),
@@ -632,6 +668,10 @@ impl EffectChain {
                 | (
                     RuntimeEffect::Bitcrusher(_, old_routes),
                     RuntimeEffect::Bitcrusher(_, new_routes),
+                )
+                | (
+                    RuntimeEffect::Chorus(_, old_routes),
+                    RuntimeEffect::Chorus(_, new_routes),
                 ) = (&mut *previous, &mut *next)
                 {
                     daw_unit_core::retarget_modulation_routes(old_routes, new_routes);
@@ -684,6 +724,9 @@ impl EffectChain {
             Some((_, Some(RuntimeEffect::Bitcrusher(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
+            Some((_, Some(RuntimeEffect::Chorus(unit, _)))) => {
+                Some(super::parameter_snapshot(unit.effective_parameters()))
+            }
             Some((_, Some(RuntimeEffect::DirectionMixer(unit, _)))) => {
                 Some(super::parameter_snapshot(unit.effective_parameters()))
             }
@@ -723,6 +766,9 @@ impl EffectChain {
             }
             Some((_, Some(RuntimeEffect::Eq3(unit, _)))) => {
                 unit.set_band_level_meter(meter.current().clone())
+            }
+            Some((_, Some(RuntimeEffect::Chorus(unit, _)))) => {
+                unit.set_meter(meter.current().clone());
             }
             _ => {}
         }

@@ -36,6 +36,7 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 - [Limiter](effects/limiter.md)
 - [Direction Mixer](effects/direction-mixer.md)
 - [Stereo Spread](effects/stereo-spread.md)
+- [Chorus](effects/chorus.md)
 
 ## Workflows and limits
 

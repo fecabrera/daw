@@ -460,6 +460,38 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
                     entries[11],
                     entries[7],
                     entries[8],
+                    entries[13],
+                ],
+            ),
+            (
+                egui::Key::ArrowDown,
+                true,
+                vec![
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                    entries[11],
+                    entries[7],
+                    entries[8],
+                    entries[13],
+                ],
+            ),
+            (
+                egui::Key::ArrowUp,
+                true,
+                vec![
+                    entries[4],
+                    entries[5],
+                    entries[6],
+                    entries[1],
+                    entries[9],
+                    entries[10],
+                    entries[11],
+                    entries[7],
+                    entries[8],
                 ],
             ),
             (
@@ -6601,4 +6633,130 @@ fn mixed_inline_same_position_drop_keeps_the_revision_and_project_clean() {
     assert_eq!(app.change_revision, revision);
     assert!(!app.dirty);
     assert!(app.effects_drag.is_none());
+}
+
+#[test]
+fn chorus_reuses_three_strips_catalog_modulation_and_power_in_all_themes() {
+    for theme in settings::ColorTheme::ALL {
+        let (mut app, ctx) = categorized_catalog_fixture(theme, "track");
+        scroll_effects_catalog(&mut app, &ctx, -300.0);
+        let entry = app.effects_bounds.chorus_entry;
+        assert!(entry.is_positive());
+        click(&mut app, &ctx, entry.center());
+        library_key(&mut app, &ctx, egui::Key::Enter, false);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.session.project.tracks[0].effects.len(), 1);
+        let effect = &app.session.project.tracks[0].effects[0];
+        let daw_core::EffectSettings::Chorus(s) = &effect.unit else {
+            panic!()
+        };
+        assert_eq!(*s, daw_core::ChorusSettings::default());
+        let b = &app.effects_bounds.chorus_units[0];
+        for (index, strip) in b.sections.into_iter().enumerate() {
+            let columns = if index == 1 { 2 } else { 1 };
+            assert!((strip.width() - panels::unit_columns_width(columns)).abs() < 0.1);
+        }
+        for pair in b.sections.windows(2) {
+            assert!((pair[0].right() - pair[1].left()).abs() < 0.1);
+        }
+        for row in 0..3 {
+            assert!((b.controls[0][row].top() - b.controls[2][row].top()).abs() < 0.1);
+        }
+        assert!(b.sections[2].contains_rect(b.meter));
+        assert!((b.rate_mode.center().x - b.controls[1][0].center().x).abs() < 0.1);
+        assert!((b.controls[1][1].center().x - b.controls[1][2].center().x).abs() < 0.1);
+        assert!(
+            (b.controls[1][1].center().x
+                - b.rate_mode.center().x
+                - knobs::CHOICE_SIZE
+                - panels::unit_column_gap())
+            .abs()
+                < 0.1
+        );
+        let gaps = [
+            b.rate_mode.left() - b.sections[1].left(),
+            b.controls[1][1].left() - b.rate_mode.right(),
+            b.sections[1].right() - b.controls[1][1].right(),
+        ];
+        for gap in gaps {
+            assert!((gap - panels::unit_column_gap()).abs() < 0.1, "gap {gap}");
+        }
+        assert!((b.rate_mode.top() - b.controls[1][1].top()).abs() < 0.1);
+        assert!((b.controls[1][0].top() - b.controls[1][2].top()).abs() < 0.1);
+        assert!((b.controls[1][1].height() - b.controls[0][0].height()).abs() < 0.1);
+        assert!(b.sections[1].contains_rect(b.rate_mode));
+        for rect in b.controls[1] {
+            assert!(b.sections[1].contains_rect(rect));
+        }
+        let mode = b.rate_mode.center();
+        click(&mut app, &ctx, mode);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowUp,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        let daw_core::EffectSettings::Chorus(s) = &app.session.project.tracks[0].effects[0].unit
+        else {
+            panic!()
+        };
+        assert_eq!(s.rate_mode, daw_core::LfoRateMode::Note);
+        assert_eq!(s.rate_hz, 0.8);
+        let note = s.note_rate;
+        let rate = app.effects_bounds.chorus_units[0].controls[1][0].center();
+        end_click_sequence(&mut app, &ctx);
+        click(&mut app, &ctx, rate);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowUp,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        let daw_core::EffectSettings::Chorus(s) = &app.session.project.tracks[0].effects[0].unit
+        else {
+            panic!()
+        };
+        assert!(s.note_rate.beats() < note.beats());
+        assert_eq!(s.rate_hz, 0.8);
+        end_click_sequence(&mut app, &ctx);
+        let mode = app.effects_bounds.chorus_units[0].rate_mode.center();
+        click(&mut app, &ctx, mode);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowDown,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        let daw_core::EffectSettings::Chorus(s) = &app.session.project.tracks[0].effects[0].unit
+        else {
+            panic!()
+        };
+        assert_eq!(s.rate_mode, daw_core::LfoRateMode::Hz);
+        assert_eq!(s.rate_hz, 0.8);
+        let power = app.effects_bounds.chorus_units[0].power.center();
+        end_click_sequence(&mut app, &ctx);
+        click(&mut app, &ctx, power);
+        frame(&mut app, &ctx, vec![]);
+        let daw_core::EffectSettings::Chorus(s) = &app.session.project.tracks[0].effects[0].unit
+        else {
+            panic!()
+        };
+        assert!(!s.enabled);
+        assert_eq!(daw_core::ModulationParameter::CHORUS.len(), 8);
+    }
 }

@@ -3,6 +3,7 @@ use crate::{
     COMPRESSOR_TYPE_ID, CompressorSettings, DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveSettings,
 };
 use crate::{BITCRUSHER_STATE_VERSION, BITCRUSHER_TYPE_ID, BitcrusherSettings};
+use crate::{CHORUS_STATE_VERSION, CHORUS_TYPE_ID, ChorusSettings};
 use crate::{DIRECTION_MIXER_STATE_VERSION, DIRECTION_MIXER_TYPE_ID, DirectionMixerSettings};
 use crate::{DRIVE_V2_STATE_VERSION, DRIVE_V2_TYPE_ID, DriveV2Settings};
 use crate::{FILTER_STATE_VERSION, FILTER_TYPE_ID, FilterSettings};
@@ -88,6 +89,7 @@ pub enum EffectSettings {
     StereoSpread(StereoSpreadSettings),
     Saturator(SaturatorSettings),
     Bitcrusher(BitcrusherSettings),
+    Chorus(ChorusSettings),
     Missing {
         type_id: String,
         state: serde_json::Value,
@@ -111,6 +113,10 @@ impl Serialize for EffectSettings {
             },
             Self::Bitcrusher(settings) => StoredEffect {
                 type_id: BITCRUSHER_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::Chorus(settings) => StoredEffect {
+                type_id: CHORUS_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
             },
             Self::DirectionMixer(settings) => StoredEffect {
@@ -183,6 +189,16 @@ impl<'de> Deserialize<'de> for EffectSettings {
         {
             serde_json::from_value(stored.state)
                 .map(Self::Bitcrusher)
+                .map_err(serde::de::Error::custom)
+        } else if stored.type_id == CHORUS_TYPE_ID
+            && stored
+                .state
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .is_none_or(|version| version <= u64::from(CHORUS_STATE_VERSION))
+        {
+            serde_json::from_value(stored.state)
+                .map(Self::Chorus)
                 .map_err(serde::de::Error::custom)
         } else if stored.type_id == STEREO_SPREAD_TYPE_ID
             && stored
@@ -318,6 +334,7 @@ impl EffectSettings {
             Self::StereoSpread(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Saturator(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Bitcrusher(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::Chorus(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::Ott(s) => crate::ModulationDestinationSettings::modulations(s),
             _ => &[],
         }
@@ -338,6 +355,7 @@ impl EffectSettings {
             Self::StereoSpread(s) => &mut s.modulations,
             Self::Saturator(s) => &mut s.modulations,
             Self::Bitcrusher(s) => &mut s.modulations,
+            Self::Chorus(s) => &mut s.modulations,
             Self::Ott(s) => &mut s.modulations,
             _ => &mut [],
         }
@@ -358,6 +376,7 @@ impl EffectSettings {
             Self::StereoSpread(settings) => settings.valid(),
             Self::Saturator(settings) => settings.valid(),
             Self::Bitcrusher(settings) => settings.valid(),
+            Self::Chorus(settings) => settings.valid(),
             Self::Missing { type_id, state } => {
                 let known_version = match type_id.as_str() {
                     MULTIBAND_EQ_TYPE_ID => Some(MULTIBAND_EQ_STATE_VERSION),
@@ -373,6 +392,7 @@ impl EffectSettings {
                     STEREO_SPREAD_TYPE_ID => Some(STEREO_SPREAD_STATE_VERSION),
                     SATURATOR_TYPE_ID => Some(SATURATOR_STATE_VERSION),
                     BITCRUSHER_TYPE_ID => Some(BITCRUSHER_STATE_VERSION),
+                    CHORUS_TYPE_ID => Some(CHORUS_STATE_VERSION),
                     _ => None,
                 };
                 !type_id.trim().is_empty()
@@ -434,6 +454,12 @@ impl EffectInstance {
         Self {
             id: uuid::Uuid::new_v4(),
             unit: EffectSettings::Bitcrusher(BitcrusherSettings::default()),
+        }
+    }
+    pub fn chorus() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::Chorus(ChorusSettings::default()),
         }
     }
     pub fn direction_mixer() -> Self {

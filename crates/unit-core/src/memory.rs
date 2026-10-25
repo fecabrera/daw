@@ -55,6 +55,7 @@ impl EffectSettings {
             Self::StereoSpread(s) => vec_bytes(&s.modulations),
             Self::Saturator(s) => vec_bytes(&s.modulations),
             Self::Bitcrusher(s) => vec_bytes(&s.modulations),
+            Self::Chorus(s) => vec_bytes(&s.modulations),
             Self::Missing { type_id, state } => type_id.capacity() as u64 + json_bytes(state),
         }
     }

@@ -48,6 +48,7 @@ mod bitcrusher_panel;
 mod catalog;
 mod chord_audition;
 mod chords_catalog;
+mod chorus_panel;
 mod compressor_panel;
 pub mod dialogs;
 mod direction_mixer_panel;

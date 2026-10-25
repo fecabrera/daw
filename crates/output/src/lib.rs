@@ -197,7 +197,9 @@ fn band_meters(
         .flat_map(|effect| {
             let group = matches!(
                 effect.unit,
-                daw_core::EffectSettings::Ott(_) | daw_core::EffectSettings::Eq3(_)
+                daw_core::EffectSettings::Ott(_)
+                    | daw_core::EffectSettings::Eq3(_)
+                    | daw_core::EffectSettings::Chorus(_)
             )
             .then_some(ModulationTarget::Effect(effect.id));
             let bands = match &effect.unit {
@@ -243,6 +245,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::StereoSpread(_)
                     | daw_core::EffectSettings::Saturator(_)
                     | daw_core::EffectSettings::Bitcrusher(_)
+                    | daw_core::EffectSettings::Chorus(_)
                     | daw_core::EffectSettings::Ott(_)
             )
         })
@@ -692,6 +695,10 @@ impl AudioOutput {
         self.band_meters
             .get(&ModulationTarget::Effect(id))
             .map(AsRef::as_ref)
+    }
+    /// Linear output peak for an effect's single level rail; stopped/absent outputs show silence.
+    pub fn effect_output_level(&self, id: Id) -> f32 {
+        self.band_monitor_values(id)[0]
     }
     /// Linear Low/Mid/High output peaks. Stopped or absent outputs show silence.
     pub fn eq_band_levels(&self, id: Id) -> [f32; 3] {
@@ -1730,6 +1737,7 @@ mod band_meter_tests {
         for master in [false, true] {
             for make in [
                 daw_core::EffectInstance::equalizer,
+                daw_core::EffectInstance::chorus,
                 daw_core::EffectInstance::compressor,
                 daw_core::EffectInstance::limiter,
                 daw_core::EffectInstance::ott,
@@ -1765,6 +1773,7 @@ mod band_meter_tests {
                     match &mut effect_test_chain(&mut plan, master)[0].unit {
                         daw_core::EffectSettings::MultibandEq(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Eq3(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Chorus(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Compressor(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Limiter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Ott(s) => s.enabled = enabled,
