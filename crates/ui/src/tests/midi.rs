@@ -4101,7 +4101,13 @@ fn editor_headphones_toggle_auditions_keys_existing_notes_and_insertions() {
         let dirty = app.dirty;
         let toggle = app.midi_editor.audition_bounds;
         assert_eq!(toggle.size(), Vec2::splat(16.0));
-        assert!(toggle.right() < app.midi_editor.content.fit_bounds.left());
+        let ruler = app.midi_editor.content.ruler;
+        let center = Pos2::new(
+            ruler.left() - track_overview::LABEL_WIDTH / 2.0,
+            ruler.center().y,
+        );
+        assert!(toggle.center().distance(center) < 0.1);
+        assert!(toggle.right() < ruler.left());
         assert!(!app.midi_editor.audition_enabled);
         let note_pos = app.midi_editor.note_bounds[&note].center();
         click_note_or_lane(&mut app, &ctx, note_pos);

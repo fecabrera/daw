@@ -139,34 +139,6 @@ impl DawUi {
         );
         let toolbar = rows::fixed(ui, toolbars::HEIGHT, |ui| {
             toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
-                if midi {
-                    ui.add_enabled_ui(
-                        self.editing_enabled() && !self.midi_editor.dragging(),
-                        |ui| {
-                            let response = icons::circular_button(
-                                ui,
-                                icons::Lucide::Headphones,
-                                "Audition notes",
-                                Some(self.midi_editor.audition_enabled),
-                                16.0,
-                            );
-                            #[cfg(test)]
-                            {
-                                self.midi_editor.audition_bounds = response.rect;
-                            }
-                            if response.clicked() {
-                                self.midi_editor.audition_enabled =
-                                    !self.midi_editor.audition_enabled;
-                                if !self.midi_editor.audition_enabled {
-                                    self.chords.audition.cancel();
-                                    if let Some(output) = &self.output {
-                                        output.stop_audition();
-                                    }
-                                }
-                            }
-                        },
-                    );
-                }
                 let enabled =
                     clip.is_some() && self.editing_enabled() && !self.midi_editor.dragging();
                 ui.add_enabled_ui(enabled, |ui| {
@@ -208,10 +180,10 @@ impl DawUi {
         );
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
-        self.editor_content_ruler(ui, scrollbar);
+        self.editor_content_ruler(ui, scrollbar, midi);
     }
 
-    fn editor_content_ruler(&mut self, ui: &mut egui::Ui, scrollbar: f32) {
+    fn editor_content_ruler(&mut self, ui: &mut egui::Ui, scrollbar: f32, midi: bool) {
         let (row, _) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), RULER_HEIGHT),
             Sense::hover(),
@@ -220,6 +192,40 @@ impl DawUi {
             row.min + Vec2::new(track_overview::LABEL_WIDTH, 0.0),
             row.max - Vec2::new(scrollbar, 0.0),
         );
+        if midi {
+            let gutter = Rect::from_min_max(row.min, Pos2::new(rect.left(), row.bottom()));
+            let mut button_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("editor-note-audition")
+                    .max_rect(Rect::from_center_size(gutter.center(), Vec2::splat(16.0)))
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            button_ui.add_enabled_ui(
+                self.editing_enabled() && !self.midi_editor.dragging(),
+                |ui| {
+                    let response = icons::circular_button(
+                        ui,
+                        icons::Lucide::Headphones,
+                        "Audition notes",
+                        Some(self.midi_editor.audition_enabled),
+                        16.0,
+                    );
+                    #[cfg(test)]
+                    {
+                        self.midi_editor.audition_bounds = response.rect;
+                    }
+                    if response.clicked() {
+                        self.midi_editor.audition_enabled = !self.midi_editor.audition_enabled;
+                        if !self.midi_editor.audition_enabled {
+                            self.chords.audition.cancel();
+                            if let Some(output) = &self.output {
+                                output.stop_audition();
+                            }
+                        }
+                    }
+                },
+            );
+        }
         self.time_ruler_at(ui, rect, ui.id().with("editor-content-ruler"));
         let palette = theme::palette(ui.ctx());
         ui.painter().hline(

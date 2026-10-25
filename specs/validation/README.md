@@ -4,6 +4,17 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## MIDI audition button placement — 2026-10-25
+
+Moved the shared 16×16 Headphones toggle from the lower editor toolbar into the blank gutter left of the lower MIDI ruler, centered on both axes. Audio editors omit the button. Audition behavior and toolbar/ruler geometry remain unchanged.
+
+- The existing egui audition interaction test passes in all themes. It checks the button's size and gutter centering, note/key/drawing audition, toggle cancellation and unchanged project state.
+- `cargo fmt --all --check`, strict workspace Clippy and `git diff --check`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt the macOS app.
+- `cargo test --workspace --offline --locked`: passed; 1298 tests passed, 3 ignored. All doctests passed.
+
+Native pointer checks and Windows/Linux builds remain untested. This placement supersedes the earlier toolbar location recorded below.
+
 ## Live MIDI note pitch editing — 2026-10-25
 
 Vertical note drags during playback retune existing voices by stable track/clip/note identity. Pitch-only commits retain schedule slots and modulation history. Sampler uses immediate variable-rate playback during a preview and transfers prepared pitch banks without restarting its cursor; Granulizer retains active grains and scan/random state. Stopped Headphones audition remains separate.
