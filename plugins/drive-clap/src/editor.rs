@@ -39,7 +39,7 @@ pub(crate) struct Bridge {
     sent: Cell<u64>,
     applied: AtomicU64,
     consumed: UnsafeCell<u64>,
-    pending_values: Cell<[u64; 7]>,
+    pending_values: Cell<[u64; daw_drive_plugin::Parameter::COUNT]>,
     main_pending: AtomicBool,
     retry: UnsafeCell<bool>,
 }
@@ -55,7 +55,7 @@ impl Default for Bridge {
             sent: Cell::new(0),
             applied: AtomicU64::new(0),
             consumed: UnsafeCell::new(0),
-            pending_values: Cell::new([0; 7]),
+            pending_values: Cell::new([0; daw_drive_plugin::Parameter::COUNT]),
             main_pending: AtomicBool::new(false),
             retry: UnsafeCell::new(false),
         }

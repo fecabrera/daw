@@ -49,14 +49,12 @@ impl IPluginFactoryTrait for Factory {
                 },
                 &mut info.category,
             );
-            write_text(
-                if index == 0 {
-                    IDENTITY.product
-                } else {
-                    "Drive Controller"
-                },
-                &mut info.name,
-            );
+            let name = if index == 0 {
+                IDENTITY.product.to_owned()
+            } else {
+                format!("{} Controller", IDENTITY.product)
+            };
+            write_text(&name, &mut info.name);
             unsafe {
                 output.write(info);
             }

@@ -6,7 +6,7 @@ Date: 2026-10-25.
 
 ## Decision and first delivery
 
-Keep units built into the DAW through their existing portable Rust crates. Add separate CLAP and VST3 builds that reuse those processors. Start with the catalog's original **Drive**, type `daw.drive`, implemented by `daw-drive::Drive` with `DriveSettings` state version 1. [Drive v2](../effects/drive-v2.md), type `daw.drive-v2`, is a separate effect and is outside the first delivery.
+Keep units built into the DAW through their existing portable Rust crates. Add separate CLAP and VST3 builds that reuse those processors. Start with the catalog's original **Drive**, type `daw.drive`, implemented by `daw-drive::Drive` with `DriveSettings` state version 1. [Drive v2](../effects/drive-v2.md), type `daw.drive-v2`, is a separate effect and is outside the first delivery. Its subsequent independent targets are documented in [Drive v2 plugin builds](drive-v2-plugin-builds.md).
 
 The first release must include both formats and the custom two-strip Drive editor described below. An editor-free adapter is an intermediate development milestone only.
 

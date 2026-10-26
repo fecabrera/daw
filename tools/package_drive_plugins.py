@@ -1,4 +1,4 @@
-"""Package already-built native Drive plugins. Does not install or sign them."""
+"""Package already-built native Drive plugins. Does not install them; signs macOS bundles ad hoc."""
 
 import argparse
 import hashlib
@@ -32,14 +32,19 @@ def finalize_macos_bundle(bundle, binary):
     subprocess.run(["codesign", "--verify", "--strict", str(bundle)], check=True)
 
 
-def package(target, target_dir, output_dir, root=ROOT):
+def package(target, target_dir, output_dir, root=ROOT, unit="drive"):
     """Read release libraries and publish one ZIP per format after staging succeeds."""
     # The checkers import finalization on Python 3.10; only packaging needs 3.11.
     import tomllib
 
+    if unit not in ("drive", "drive-v2"):
+        raise ValueError("unknown Drive product")
     system, architecture, library_pattern = TARGETS[target]
-    manifest = tomllib.loads((root / "plugins/drive/unit.toml").read_text(encoding="utf-8"))
+    manifest = tomllib.loads((root / f"plugins/{unit}/unit.toml").read_text(encoding="utf-8"))
     version = manifest["version"]
+    product = manifest["product"]
+    archive_name = product.replace(" ", "-")
+    library_name = "daw_" + unit.replace("-", "_")
     output_dir.mkdir(parents=True, exist_ok=True)
     # Stage next to the destination so completed archives can replace it atomically.
     with tempfile.TemporaryDirectory(prefix=".drive-", dir=output_dir) as temporary:
@@ -48,24 +53,24 @@ def package(target, target_dir, output_dir, root=ROOT):
         for format_name in ("clap", "vst3"):
             content = staging / format_name
             content.mkdir()
-            bundle = content / f"Drive.{format_name}"
+            bundle = content / f"{product}.{format_name}"
             if system == "macos":
-                binary = bundle / "Contents/MacOS/Drive"
+                binary = bundle / "Contents/MacOS" / product
             elif format_name == "clap":
                 binary = bundle
             else:
-                folder, filename = (("x86_64-win", "Drive.vst3") if system == "windows"
-                                    else ("x86_64-linux", "Drive.so"))
+                folder, filename = (("x86_64-win", f"{product}.vst3") if system == "windows"
+                                    else ("x86_64-linux", f"{product}.so"))
                 binary = bundle / "Contents" / folder / filename
             binary.parent.mkdir(parents=True, exist_ok=True)
-            source = target_dir / target / "release" / library_pattern.format(f"daw_drive_{format_name}")
+            source = target_dir / target / "release" / library_pattern.format(f"{library_name}_{format_name}")
             shutil.copy2(source, binary)
             # Preserve executable permissions in ZIPs, including when staged on Windows.
             binary.chmod(0o755)
             if system == "macos":
                 identifier = manifest["clap_id"] + (".vst3" if format_name == "vst3" else "")
                 (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps({
-                    "CFBundleExecutable": "Drive", "CFBundleIdentifier": identifier,
+                    "CFBundleExecutable": product, "CFBundleIdentifier": identifier,
                     "CFBundleName": manifest["product"], "CFBundlePackageType": "BNDL",
                     "CFBundleVersion": version, "CFBundleShortVersionString": version,
                 }))
@@ -89,16 +94,16 @@ def package(target, target_dir, output_dir, root=ROOT):
                         "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
             (content / "build.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
             (content / "README.txt").write_text(
-                "Drive development preview. macOS bundles are ad-hoc signed, not notarized.\n"
+                f"{product} development preview. macOS bundles are ad-hoc signed, not notarized.\n"
                 "Windows/Linux binaries have no distribution signature.\n"
-                "Extract the ZIP before use. Copy Drive." + format_name + " to a plugin search\n"
+                f"Extract the ZIP before use. Copy {product}." + format_name + " to a plugin search\n"
                 "folder supported by your DAW, then rescan. Keep the licenses with it.\n"
                 "To remove, close the DAW and remove that file or bundle.\n"
                 "Logic Pro requires Audio Units; these CLAP/VST3 builds do not support it.\n"
                 "Native accessibility, external-host/platform checks and a complete release\n"
                 "dependency/notice audit remain open. This is not a release package.\n",
                 encoding="utf-8")
-            archive = staging / f"Drive-{version}-{system}-{architecture}-{format_name}.zip"
+            archive = staging / f"{archive_name}-{version}-{system}-{architecture}-{format_name}.zip"
             with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as output:
                 for path in sorted(content.rglob("*")):
                     if path.is_file():
@@ -110,7 +115,7 @@ def package(target, target_dir, output_dir, root=ROOT):
                         entry.compress_type = zipfile.ZIP_DEFLATED
                         output.writestr(entry, path.read_bytes())
             archives.append(archive)
-        checksums = staging / f"Drive-{version}-{system}-{architecture}-SHA256SUMS.txt"
+        checksums = staging / f"{archive_name}-{version}-{system}-{architecture}-SHA256SUMS.txt"
         checksums.write_text("".join(
             f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in archives
         ), encoding="utf-8")
@@ -122,11 +127,12 @@ def package(target, target_dir, output_dir, root=ROOT):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--unit", choices=("drive", "drive-v2"), default="drive")
     parser.add_argument("--target", required=True, choices=TARGETS)
     parser.add_argument("--target-dir", type=Path, default=ROOT / "target")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "target/plugin-artifacts")
     args = parser.parse_args()
-    package(args.target, args.target_dir, args.output_dir)
+    package(args.target, args.target_dir, args.output_dir, unit=args.unit)
 
 
 if __name__ == "__main__":

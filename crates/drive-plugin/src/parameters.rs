@@ -44,6 +44,7 @@ impl fmt::Display for ParameterError {
 impl std::error::Error for ParameterError {}
 
 impl Parameter {
+    pub const COUNT: usize = 7;
     pub const ALL: [Self; 7] = [
         Self::Bypass,
         Self::Volume,
@@ -59,6 +60,7 @@ impl Parameter {
             .find(|p| *p as u32 == id)
             .ok_or(ParameterError)
     }
+    #[allow(dead_code)]
     pub(crate) fn index(self) -> usize {
         self as usize - 100
     }
@@ -227,4 +229,44 @@ impl Parameter {
         };
         self.validate(value)
     }
+}
+
+#[allow(dead_code)]
+pub(crate) const MANIFEST_TYPE_ID: &str = daw_unit_core::DRIVE_TYPE_ID;
+#[allow(dead_code)]
+pub(crate) const SETTINGS_VERSION: u32 = daw_unit_core::DRIVE_STATE_VERSION;
+#[allow(dead_code)]
+type StripBinding = (&'static str, [(Parameter, &'static str, &'static str); 3]);
+#[allow(dead_code)]
+pub(crate) const STRIP_BINDINGS: [StripBinding; 2] = [
+    (
+        "Drive",
+        [
+            (Parameter::Volume, "gain", "Gain"),
+            (Parameter::Gain, "percent", "Percent"),
+            (Parameter::Tone, "percent", "Percent"),
+        ],
+    ),
+    (
+        "Color",
+        [
+            (Parameter::ColorShape, "shape", "Shape"),
+            (Parameter::ColorStrength, "percent", "Percent"),
+            (Parameter::ColorFrequency, "frequency", "Frequency"),
+        ],
+    ),
+];
+#[allow(dead_code)]
+pub(crate) fn enable_binding(p: Parameter) -> Option<Parameter> {
+    matches!(p, Parameter::ColorStrength | Parameter::ColorFrequency)
+        .then_some(Parameter::ColorShape)
+}
+#[allow(dead_code)]
+pub(crate) fn diagram_binding(p: Parameter) -> Option<&'static str> {
+    (p == Parameter::ColorShape).then_some("drive_color")
+}
+#[allow(dead_code)]
+pub(crate) fn footer_power(index: usize) -> Option<Parameter> {
+    let _ = index;
+    None
 }

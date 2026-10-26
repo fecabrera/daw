@@ -1,0 +1,123 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.drive-v2"
+vendor = "Sie"
+product = "Drive v2"
+version = "0.1.0"
+clap_id = "io.github.fecabrera.daw.drive-v2"
+processor_id = "d4410cb2d051423f8f807d60525a7810"
+controller_id = "3f02614c11464ba59925ff6f578b960e"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 102
+key = "gain"
+minimum = 0.0
+maximum = 1.0
+default = 0.2
+scale = "linear"
+
+[[parameters]]
+id = 103
+key = "tone"
+minimum = 0.0
+maximum = 1.0
+default = 0.5
+scale = "linear"
+
+[[parameters]]
+id = 104
+key = "color_shape"
+minimum = 0.0
+maximum = 2.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 105
+key = "color_strength"
+minimum = 0.0
+maximum = 1.0
+default = 0.5
+scale = "linear"
+
+[[parameters]]
+id = 106
+key = "color_frequency"
+minimum = 250.0
+maximum = 2000.0
+default = 750.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 107
+key = "input_gain"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 108
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 109
+key = "clip"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 110
+key = "color_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[strips]]
+footer = "Drive"
+controls = [
+    { parameter = "clip", control = "mode" },
+    { parameter = "gain", control = "percent" },
+    { parameter = "tone", control = "percent" },
+]
+
+[[strips]]
+footer = "Color"
+power = "color_enabled"
+controls = [
+    { parameter = "color_shape", control = "shape", diagram = "drive_color", enabled_by = "color_enabled" },
+    { parameter = "color_strength", control = "percent", enabled_by = "color_enabled" },
+    { parameter = "color_frequency", control = "frequency", enabled_by = "color_enabled" },
+]
+
+[[strips]]
+footer = "Output"
+controls = [
+    { parameter = "input_gain", control = "gain" },
+    { parameter = "level", control = "gain" },
+    { parameter = "dry_wet", control = "percent" },
+]

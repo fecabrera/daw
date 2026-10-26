@@ -1,0 +1,13 @@
+[package]
+name = "daw-drive-v2-editor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+
+[dependencies]
+daw-drive-plugin = { package = "daw-drive-v2-plugin", path = "../drive-v2-plugin" }
+daw-plugin-support.workspace = true
+daw-plugin-window.workspace = true
+daw-unit-ui.workspace = true
+egui.workspace = true

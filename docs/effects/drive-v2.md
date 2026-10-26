@@ -28,3 +28,5 @@ Color retains the original pre-clipping responses and frequency mapping. Its sep
 Input Gain, Drive Gain, Drive Tone, Color Strength, Color Frequency, Output Level, and Dry/Wet accept shared Envelope, LFO, and Macro sources in the same MIDI instrument. Use the standard header dot and connections. Input/Output amounts span ±24 dB; Gain/Tone/Strength/Dry-Wet span ±100 percentage points; Color Frequency spans ±3 octaves. Base silence stays silent. Color power, Shape, and Clip remain manual controls.
 
 Controls, power, and Clip changes ramp smoothly. Connections, settings, and panel presentation save per effect. Playback and export share processing. Like Drive, this effect runs at the project rate without oversampling and adds no latency. Strong distortion can alias, especially with high-frequency input. See [Drive](drive.md) for the shared color and tone behavior.
+
+Separate CLAP/VST3 development builds use these same controls and DSP. See [Drive v2 plugins](drive-v2-plugin.md) for building, installation, and verification limits.

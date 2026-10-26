@@ -67,7 +67,7 @@ pub(crate) unsafe fn apply(
     }
 }
 unsafe extern "C" fn count(_: *const clap_plugin) -> u32 {
-    7
+    Parameter::COUNT as u32
 }
 unsafe extern "C" fn info(
     _: *const clap_plugin,
@@ -98,7 +98,7 @@ unsafe extern "C" fn info(
         if *parameter == Parameter::Bypass {
             output.flags |= CLAP_PARAM_IS_BYPASS;
         }
-        if *parameter == Parameter::ColorShape {
+        if info.scale == daw_drive_plugin::Scale::Choice {
             output.flags |= CLAP_PARAM_IS_ENUM;
         }
         write_text(info.name, &mut output.name);

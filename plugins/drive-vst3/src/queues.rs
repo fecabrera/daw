@@ -73,17 +73,17 @@ impl<'a> Cursor<'a> {
     }
 }
 pub(crate) struct Queues<'a> {
-    pub cursors: [Option<(Parameter, Cursor<'a>)>; 7],
+    pub cursors: [Option<(Parameter, Cursor<'a>)>; daw_drive_plugin::Parameter::COUNT],
     pub count: usize,
 }
 impl<'a> Queues<'a> {
     pub unsafe fn new(
         input: *mut IParameterChanges,
-        previous: [f64; 7],
+        previous: [f64; daw_drive_plugin::Parameter::COUNT],
         frames: i32,
     ) -> Result<Self, ()> {
         let mut result = Self {
-            cursors: [None; 7],
+            cursors: [None; daw_drive_plugin::Parameter::COUNT],
             count: 0,
         };
         let Some(input) = (unsafe { ComRef::from_raw(input) }) else {
@@ -93,7 +93,7 @@ impl<'a> Queues<'a> {
         if count < 0 {
             return Err(());
         }
-        let mut seen = [false; 7];
+        let mut seen = [false; daw_drive_plugin::Parameter::COUNT];
         for index in 0..count {
             let Some(queue) = (unsafe { ComRef::from_raw(input.getParameterData(index)) }) else {
                 return Err(());

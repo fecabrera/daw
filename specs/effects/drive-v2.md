@@ -33,3 +33,7 @@ Declare Shared destinations in `ModulationParameter::DRIVE_V2`: DriveInput, Driv
 Use shared saved route validation, source discovery/publication, cached resolution, typed processing, one-millisecond offset smoothing, five-millisecond route/source ramps, compatible route-history matching, marker/amount controls and prepared snapshots. The outer stage smooths input/output/blend offsets; the existing kernel smooths Gain/Tone/Strength/Frequency offsets once. Do not double-smooth offsets. Seven processed telemetry readings follow the declared order, with input/output in dB and Frequency in Hz. Off Color masks corresponding markers while routing/filter histories continue. No provider is evaluated in the UI.
 
 The existing engine prepares every route and processor outside the callback; reset, sampling and compatible retargeting allocate nothing and do not block, log or perform I/O. Composition uses stack-only temporary legacy settings with empty route storage when retargeting. Header bypass preserves the unprocessed input. Standard shared chain handling supplies reset/seek, loop, snapshot cloning, memory accounting, retirement and export parity.
+
+## Separate plugins
+
+[Drive v2 plugin builds](../architecture/drive-v2-plugin-builds.md) define independent CLAP/VST3 identity, host parameters, state, shared editor, packaging and validation limits over this processor. The original Drive product remains separate.

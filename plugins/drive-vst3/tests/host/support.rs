@@ -1,4 +1,3 @@
-use daw_drive::Drive;
 use daw_drive_plugin::{IDENTITY, Parameter as P, PluginState, SUPPORTED_RATES};
 use daw_plugin_vst3::{
     class_id,
@@ -292,7 +291,7 @@ impl Plugin {
                 }
             } else {
                 (
-                    unsafe { ComPtr::from_raw(daw_drive_vst3::GetPluginFactory()).unwrap() },
+                    unsafe { ComPtr::from_raw(plugin_export::GetPluginFactory()).unwrap() },
                     None,
                     None,
                 )
@@ -488,7 +487,7 @@ fn run(
 fn reference(
     drive: &mut Drive,
     state: &mut PluginState,
-    normalized: &mut [f64; 7],
+    normalized: &mut [f64; P::COUNT],
     left: &[f32],
     right: &[f32],
     points: &[(P, Vec<(i32, f64)>)],
@@ -531,7 +530,7 @@ fn reference(
     }
     output
 }
-fn normalized(state: PluginState) -> [f64; 7] {
+fn normalized(state: PluginState) -> [f64; P::COUNT] {
     P::ALL.map(|p| p.normalize(state.get(p)).unwrap())
 }
 fn assert_samples(actual: &(Vec<f32>, Vec<f32>), expected: &(Vec<f32>, Vec<f32>)) {
@@ -543,4 +542,8 @@ fn assert_samples(actual: &(Vec<f32>, Vec<f32>), expected: &(Vec<f32>, Vec<f32>)
     {
         assert_eq!(a.to_bits(), b.to_bits(), "{a} != {b}");
     }
+}
+
+fn enable_color(state: &mut PluginState) {
+    if let Some(p) = P::ALL.into_iter().find(|p| p.info().key == "color_enabled") { state.set(p, 1.0).unwrap(); }
 }

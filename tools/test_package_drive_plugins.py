@@ -83,6 +83,65 @@ class PackagingTests(unittest.TestCase):
                     self.assertIn(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n", checksums)
                 self.assertFalse(list(output.glob(".drive-*")))
 
+    def test_drive_v2_platform_archives(self):
+        for target, (system, architecture, pattern) in TARGETS.items():
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                release = base / "target" / target / "release"
+                release.mkdir(parents=True)
+                for format_name in ("clap", "vst3"):
+                    (release / pattern.format(f"daw_drive_v2_{format_name}")).write_bytes(format_name.encode())
+                output = base / "artifacts"
+                def sign_fixture(bundle, binary):
+                    self.assertTrue((bundle / "Contents/Resources/licenses/DAW-LICENSE.txt").is_file())
+                    binary.write_bytes(binary.read_bytes() + b"_signed")
+                    seal = bundle / "Contents/_CodeSignature/CodeResources"
+                    seal.parent.mkdir()
+                    seal.write_bytes(b"fixture resource seal")
+                with contextlib.redirect_stdout(io.StringIO()), patch(
+                    "package_drive_plugins.finalize_macos_bundle", side_effect=sign_fixture
+                ):
+                    package(target, base / "target", output, unit="drive-v2")
+                archives = sorted(output.glob("*.zip"))
+                self.assertEqual(len(archives), 2)
+                for archive in archives:
+                    format_name = archive.stem.rsplit("-", 1)[1]
+                    with zipfile.ZipFile(archive) as zipped:
+                        if system == "macos":
+                            binary = f"Drive v2.{format_name}/Contents/MacOS/Drive v2"
+                            info = plistlib.loads(zipped.read(f"Drive v2.{format_name}/Contents/Info.plist"))
+                            self.assertEqual(info["CFBundleExecutable"], "Drive v2")
+                            identifier = "io.github.fecabrera.daw.drive-v2" + (".vst3" if format_name == "vst3" else "")
+                            self.assertEqual(info["CFBundleIdentifier"], identifier)
+                        elif format_name == "clap":
+                            binary = "Drive v2.clap"
+                        elif system == "windows":
+                            binary = "Drive v2.vst3/Contents/x86_64-win/Drive v2.vst3"
+                        else:
+                            binary = "Drive v2.vst3/Contents/x86_64-linux/Drive v2.so"
+                        payload = zipped.read(binary)
+                        self.assertEqual(payload, format_name.encode() + (b"_signed" if system == "macos" else b""))
+                        self.assertTrue(zipped.getinfo(binary).external_attr >> 16 & 0o111)
+                        metadata = json.loads(zipped.read("build.json"))
+                        self.assertEqual(metadata["target"], target)
+                        self.assertEqual(metadata["binary_sha256"], hashlib.sha256(payload).hexdigest())
+                        self.assertTrue(metadata["development_preview"])
+                        license_prefix = (f"Drive v2.{format_name}/Contents/Resources/licenses/"
+                                          if "/" in binary else "licenses/")
+                        self.assertEqual(zipped.read(license_prefix + "DAW-LICENSE.txt"), (ROOT / "LICENSE").read_bytes())
+                        for notice in ("Outfit-OFL.txt", "Hack-LICENSE.txt", "window/baseview-LICENSE-MIT.txt",
+                                       "fallback-fonts/egui-fonts-Hack-Regular.txt"):
+                            self.assertIn(license_prefix + notice, zipped.namelist())
+                        self.assertIn("README.txt", zipped.namelist())
+                        if system == "macos":
+                            self.assertIn(f"Drive v2.{format_name}/Contents/_CodeSignature/CodeResources", zipped.namelist())
+                    self.assertEqual((release / pattern.format(f"daw_drive_v2_{format_name}")).read_bytes(), format_name.encode())
+                    self.assertIn(f"-{system}-{architecture}-", archive.name)
+                checksums = next(output.glob("*SHA256SUMS.txt")).read_text()
+                for archive in archives:
+                    self.assertIn(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n", checksums)
+                self.assertFalse(list(output.glob(".drive-*")))
+
     def test_macos_finalization_relocates_before_signing_complete_bundle(self):
         bundle = Path("Drive.vst3")
         binary = bundle / "Contents/MacOS/Drive"

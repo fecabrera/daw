@@ -1,6 +1,5 @@
 // Test-only CLAP host. All pointers below refer to owned storage kept alive for
 // each callback; returned plugin/extension pointers live through plugin destroy.
-use daw_drive::Drive;
 use daw_drive_plugin::{IDENTITY, Parameter as P, PluginState, SUPPORTED_RATES};
 use daw_plugin_clap::sys::{
     audio_buffer::*,
@@ -106,7 +105,7 @@ impl Plugin {
                     (entry, Some(library), counts)
                 }
             } else {
-                (daw_drive_clap::clap_entry, None, None)
+                (plugin_export::clap_entry, None, None)
             };
         unsafe {
             assert!(entry.init.unwrap()(c"development-test".as_ptr()));
@@ -433,4 +432,8 @@ fn assert_samples(actual: &(Vec<f32>, Vec<f32>), expected: &(Vec<f32>, Vec<f32>)
             "sample-for-sample parity: {a} != {b}"
         );
     }
+}
+
+fn enable_color(state: &mut PluginState) {
+    if let Some(p) = P::ALL.into_iter().find(|p| p.info().key == "color_enabled") { state.set(p, 1.0).unwrap(); }
 }

@@ -3,11 +3,12 @@ use super::*;
 fn six_rates_shapes_blocks_and_normalized_curves_match_direct_drive() {
     let _serial = SERIAL.lock().unwrap();
     for rate in SUPPORTED_RATES {
-        for shape in 0..4 {
+        for shape in 0..=P::ColorShape.info().maximum as usize {
             for in_place in [false, true] {
                 let mut plugin = Plugin::new();
                 let mut state = PluginState::default();
                 state.set(P::ColorShape, shape as f64).unwrap();
+                enable_color(&mut state);
                 plugin.load(state);
                 plugin.activate(rate, 4096, 0);
                 let mut drive = Drive::new(
@@ -110,7 +111,9 @@ fn silence_flags_active_recall_and_offline_mode_keep_original_dsp_behavior() {
     let mut plugin = Plugin::new();
     plugin.activate(48000, 512, 2);
     let mut state = PluginState::default();
-    state.set(P::ColorShape, 3.0).unwrap();
+    state
+        .set(P::ColorShape, P::ColorShape.info().maximum)
+        .unwrap();
     state.set(P::ColorStrength, 0.9).unwrap();
     plugin.load(state);
     let mut drive = Drive::new(
@@ -158,10 +161,11 @@ fn silence_flags_active_recall_and_offline_mode_keep_original_dsp_behavior() {
 fn exported_impulses_have_no_adapter_delay_and_decay_within_tail_policy() {
     let _serial = SERIAL.lock().unwrap();
     for rate in SUPPORTED_RATES {
-        for shape in 0..4 {
+        for shape in 0..=P::ColorShape.info().maximum as usize {
             let mut plugin = Plugin::new();
             let mut state = PluginState::default();
             state.set(P::ColorShape, shape as f64).unwrap();
+            enable_color(&mut state);
             state.set(P::ColorStrength, 1.0).unwrap();
             state.set(P::ColorFrequency, 250.0).unwrap();
             state.set(P::Volume, 12.0).unwrap();

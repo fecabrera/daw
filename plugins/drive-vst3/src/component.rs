@@ -17,7 +17,7 @@ pub(crate) struct Audio {
     pub processor: Option<Processor>,
     pub state: PluginState,
     pub applied: u64,
-    pub normalized: [f64; 7],
+    pub normalized: [f64; daw_drive_plugin::Parameter::COUNT],
 }
 impl Default for Audio {
     fn default() -> Self {

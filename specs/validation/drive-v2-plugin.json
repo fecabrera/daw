@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "platform": "macos-arm64",
+  "development_preview": true,
+  "release_ready": false,
+  "toolchain": "1.97.0",
+  "locked_offline": true,
+  "loaded_allocation_tests": {
+    "clap": 12,
+    "vst3": 11,
+    "rust_callback_allocations": 0,
+    "rust_callback_deallocations": 0,
+    "positive_controls": true
+  },
+  "normal_loaded_tests": {
+    "clap": 13,
+    "vst3": 12
+  },
+  "cpu_budgets": {
+    "clap": [
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 1125,
+        "direct_p99_ns": 1417,
+        "exported_median_ns": 1250,
+        "exported_p99_ns": 1583,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 2350.0,
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 13375,
+        "direct_p99_ns": 17625,
+        "exported_median_ns": 10333,
+        "exported_p99_ns": 13208,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 24050.0,
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 17584,
+        "direct_p99_ns": 24667,
+        "exported_median_ns": 19125,
+        "exported_p99_ns": 25958,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 22100.8,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 216208,
+        "direct_p99_ns": 252583,
+        "exported_median_ns": 166209,
+        "exported_p99_ns": 424250,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 267449.6,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 2166,
+        "direct_p99_ns": 2750,
+        "exported_median_ns": 2667,
+        "exported_p99_ns": 3500,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 3599.2,
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 16875,
+        "direct_p99_ns": 24917,
+        "exported_median_ns": 20667,
+        "exported_p99_ns": 28167,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 28250.0,
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 36083,
+        "direct_p99_ns": 45792,
+        "exported_median_ns": 42834,
+        "exported_p99_ns": 53333,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 44299.6,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 274791,
+        "direct_p99_ns": 340500,
+        "exported_median_ns": 321042,
+        "exported_p99_ns": 383250,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 337749.2,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      }
+    ],
+    "vst3": [
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 1083,
+        "direct_p99_ns": 1459,
+        "exported_median_ns": 1250,
+        "exported_p99_ns": 1625,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 2299.6,
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 13375,
+        "direct_p99_ns": 21417,
+        "exported_median_ns": 10625,
+        "exported_p99_ns": 17084,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 24050.0,
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 17625,
+        "direct_p99_ns": 25000,
+        "exported_median_ns": 19375,
+        "exported_p99_ns": 30333,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 22150.0,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 212625,
+        "direct_p99_ns": 273583,
+        "exported_median_ns": 162958,
+        "exported_p99_ns": 211875,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 263150.0,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 2125,
+        "direct_p99_ns": 2791,
+        "exported_median_ns": 2584,
+        "exported_p99_ns": 3625,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 3550.0,
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 16708,
+        "direct_p99_ns": 25167,
+        "exported_median_ns": 21083,
+        "exported_p99_ns": 31583,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 28049.6,
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 34625,
+        "direct_p99_ns": 55375,
+        "exported_median_ns": 41750,
+        "exported_p99_ns": 61208,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 42550.0,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 267833,
+        "direct_p99_ns": 338667,
+        "exported_median_ns": 320833,
+        "exported_p99_ns": 394292,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 329399.6,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      }
+    ]
+  },
+  "artifacts": {
+    "libdaw_drive_v2_clap.dylib": {
+      "sha256": "c3d28a7353a78b22bf3010ddbd4d9810dc5edb51b4f7ff46df773e1528016b6e"
+    },
+    "libdaw_drive_v2_vst3.dylib": {
+      "sha256": "6ef423652cc7f1a2b6f0ead36cde257f193030c9e57cf48daf72a188f8e0d91b"
+    },
+    "Drive-v2-0.1.0-macos-arm64-clap.zip": {
+      "sha256": "a3a8188d26b413c23204f4dc93b773b9907a961ef5f3ecdb040e5cb902b168c3",
+      "extracted_strict_signature_verified": true
+    },
+    "Drive-v2-0.1.0-macos-arm64-vst3.zip": {
+      "sha256": "6778856d2ad336097a6a8ac4f7cab1a42f444f22a0cb9af2b14f9f6fa1007d69",
+      "extracted_strict_signature_verified": true
+    }
+  },
+  "not_executed": [
+    "SDK validators",
+    "native editor attachment",
+    "external DAW sessions",
+    "native accessibility",
+    "Windows/Linux native execution",
+    "clean-machine acceptance"
+  ]
+}

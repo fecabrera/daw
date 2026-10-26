@@ -1327,6 +1327,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-drive-v2-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-drive",
+ "daw-drive-v2-editor",
+ "daw-drive-v2-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-drive-v2-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-drive-v2-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-drive-v2-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-drive",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-drive-v2-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-drive",
+ "daw-drive-v2-editor",
+ "daw-drive-v2-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-drive-vst3"
 version = "0.1.0"
 dependencies = [

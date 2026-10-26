@@ -42,6 +42,17 @@ cargo test -p daw-drive-plugin --locked
 
 These commands build only the shared contract. See the [Phase 1 contract](specs/architecture/drive-plugin-phase1.md) for its scope.
 
+#### Drive v2 plugins
+
+Drive v2 has separate CLAP/VST3 development targets with the built-in three-strip controls. On macOS Apple Silicon:
+
+```sh
+cargo build --release --locked --target aarch64-apple-darwin -p daw-drive-v2-clap -p daw-drive-v2-vst3 --lib
+python3 tools/package_drive_plugins.py --unit drive-v2 --target aarch64-apple-darwin
+```
+
+Use the Windows/Linux targets in the local packaging table below on those platforms. Archives go to `target/plugin-artifacts`. See [Drive v2 plugin controls, installation and limits](docs/effects/drive-v2-plugin.md) and [implementation/checks](specs/architecture/drive-v2-plugin-builds.md). These plugins have identities separate from original Drive.
+
 #### Drive CLAP development processor
 
 A separate CLAP development target shares built-in Drive DSP and its two-strip editor. This is not a release package. Native execution has been checked on macOS arm64 only. See [development controls and limits](docs/effects/drive-plugin.md).
@@ -188,9 +199,9 @@ Create a portable ZIP with `sh tools/package_linux.sh release`. Use `debug` for 
 
 ### GitHub Actions builds
 
-The [Build plugins workflow](.github/workflows/plugins.yml) runs on pushes, pull requests, and manual dispatches. Three independent workers build Drive CLAP and VST3 for Windows x64 (`windows-2025`), macOS arm64 (`macos-15`), and Linux x64 (`ubuntu-24.04`). Each worker uses the shared native setup, locked release builds, packaging tests, and native plugin library tests. A platform failure does not cancel the other workers. These jobs run independently of the DAW workflow.
+The [Build plugins workflow](.github/workflows/plugins.yml) runs on pushes, pull requests, and manual dispatches. Six independent workers build original Drive and Drive v2 CLAP and VST3 for Windows x64 (`windows-2025`), macOS arm64 (`macos-15`), and Linux x64 (`ubuntu-24.04`). Each product/platform worker uses the shared native setup, locked release builds, packaging tests, and native plugin library tests. A platform failure does not cancel the other workers. These jobs run independently of the DAW workflow.
 
-Download `Drive-CLAP-<target>` and `Drive-VST3-<target>` artifacts from the run summary. Each contains a plugin ZIP with its native bundle layout, notices, build metadata, and basic installation/removal instructions. Extract the inner ZIP before use; it preserves executable permissions. `Drive-checksums-<target>` contains archive SHA-256 checksums. Artifacts and `logs-plugins-<OS>-<architecture>` command logs remain available for 14 days. These development previews do not establish SDK-validator, native editor, external-host, or clean-machine acceptance. macOS bundles receive an ad-hoc signature after assembly; they are not Developer ID signed or notarized. Windows/Linux binaries have no distribution signature. The workflow does not install plugins or publish a release.
+Download `Drive-CLAP-<target>` and `Drive-VST3-<target>` artifacts (or `Drive-v2-CLAP-<target>` and `Drive-v2-VST3-<target>`) from the run summary. Each contains a plugin ZIP with its native bundle layout, notices, build metadata, and basic installation/removal instructions. Extract the inner ZIP before use; it preserves executable permissions. `Drive-checksums-<target>` contains archive SHA-256 checksums. Artifacts and `logs-plugins-<OS>-<architecture>` command logs remain available for 14 days. These development previews do not establish SDK-validator, native editor, external-host, or clean-machine acceptance. macOS bundles receive an ad-hoc signature after assembly; they are not Developer ID signed or notarized. Windows/Linux binaries have no distribution signature. The workflow does not install plugins or publish a release.
 
 To build and package locally, use the platform prerequisites above, then run these commands with the native target from the table:
 

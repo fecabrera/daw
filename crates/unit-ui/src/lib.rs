@@ -1,5 +1,6 @@
 //! Portable unit controls and presentation. No project, device, or host dependencies.
 pub mod drive;
+pub mod drive_v2;
 pub mod fonts;
 pub mod gain;
 mod icons;

@@ -36,6 +36,7 @@ pub struct PanelControl {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Strip {
     pub footer: &'static str,
+    pub power: Option<Parameter>,
     pub controls: [PanelControl; 3],
 }
 include!(concat!(env!("OUT_DIR"), "/manifest.rs"));

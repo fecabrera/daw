@@ -62,7 +62,7 @@ impl IEditControllerTrait for Controller {
         kNotImplemented
     }
     unsafe fn getParameterCount(&self) -> i32 {
-        7
+        Parameter::COUNT as i32
     }
     unsafe fn getParameterInfo(&self, index: i32, output: *mut ParameterInfo) -> tresult {
         boundary(kInternalError, || {
@@ -82,17 +82,17 @@ impl IEditControllerTrait for Controller {
             if *parameter == Parameter::Bypass {
                 info.flags |= ParameterInfo_::ParameterFlags_::kIsBypass;
             }
-            if *parameter == Parameter::ColorShape {
+            if meta.scale == daw_drive_plugin::Scale::Choice {
                 info.flags |= ParameterInfo_::ParameterFlags_::kIsList;
             }
             write_utf16(meta.name, &mut info.title);
             write_utf16(meta.name, &mut info.shortTitle);
             write_utf16(
-                match parameter {
-                    Parameter::Volume => "dB",
-                    Parameter::ColorFrequency => "Hz",
-                    Parameter::Bypass | Parameter::ColorShape => "",
-                    _ => "%",
+                match meta.scale {
+                    daw_drive_plugin::Scale::Gain => "dB",
+                    daw_drive_plugin::Scale::Logarithmic => "Hz",
+                    daw_drive_plugin::Scale::Linear => "%",
+                    _ => "",
                 },
                 &mut info.units,
             );
@@ -116,14 +116,11 @@ impl IEditControllerTrait for Controller {
             let Ok(text) = parameter.format(plain) else {
                 return kInvalidArgument;
             };
-            let text = match parameter {
-                Parameter::Volume => text.strip_suffix(" dB").unwrap_or(&text),
-                Parameter::ColorFrequency => text.strip_suffix(" Hz").unwrap_or(&text),
-                Parameter::Gain | Parameter::Tone | Parameter::ColorStrength => {
-                    text.strip_suffix('%').unwrap_or(&text)
-                }
-                _ => &text,
-            };
+            let text = text
+                .strip_suffix(" dB")
+                .or_else(|| text.strip_suffix(" Hz"))
+                .or_else(|| text.strip_suffix('%'))
+                .unwrap_or(&text);
             if write_utf16(text, unsafe { &mut *output }) {
                 kResultOk
             } else {

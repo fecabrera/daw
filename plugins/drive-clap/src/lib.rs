@@ -50,8 +50,7 @@ static DESCRIPTOR: clap_plugin_descriptor = clap_plugin_descriptor {
     url: c"https://github.com/fecabrera/daw".as_ptr(),
     manual_url: c"".as_ptr(),
     support_url: c"https://github.com/fecabrera/daw/issues".as_ptr(),
-    description: c"Stereo soft-clipping Drive (development processor; custom editor pending)"
-        .as_ptr(),
+    description: c"Stereo distortion development plugin".as_ptr(),
     features: FEATURES.0.as_ptr(),
 };
 unsafe extern "C" fn entry_init(_: *const c_char) -> bool {

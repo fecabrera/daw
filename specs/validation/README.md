@@ -4,6 +4,17 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Drive v2 CLAP/VST3 builds — 2026-10-26
+
+Added distinct Drive v2 plugin identities, a checked 11-parameter contract, bounded 104-byte state, and both format exports over existing DriveV2 DSP. The three-strip body is shared with the DAW. Native packaging and the CI product matrix cover both Drive products. No registry dependency versions changed.
+
+- Locked offline macOS arm64 release builds and native ZIP packaging passed. Both extracted bundles passed strict ad-hoc signature verification.
+- Loaded allocation-check libraries passed **12 CLAP + 11 VST3** ABI cases; guarded callback paths observed zero Rust allocations/deallocations, with positive controls enabled.
+- Normal loaded libraries passed **13 CLAP + 12 VST3** cases, including eight unchanged direct-DSP callback-budget cases per format. See the [sanitized record](drive-v2-plugin.json).
+- Four v2 compatibility tests, two v2 manifest tests, three v2 synthetic editor tests, the three-strip scaling/enablement test, seven packaging tests, original Drive regression suites, and the DAW Drive v2 layout/history test passed. Affected packages passed strict all-target Clippy; formatting and workflow YAML parsing passed.
+
+SDK validators and native editor attachment were not run: pinned tools are absent in this workspace. External-host sessions, native accessibility, Windows/Linux execution, clean-machine acceptance, notarization/distribution signatures and the full release notice audit remain open. Existing Drive validation does not establish v2 acceptance. See [implementation and reproduction](../architecture/drive-v2-plugin-builds.md).
+
 ## macOS plugin bundle signing repair — 2026-10-26
 
 The installed Drive VST3 had a valid-looking directory layout but retained only the Rust dylib's linker signature. Strict bundle verification failed with `code has no resources but signature indicates they must be present`; the SDK loader reported `Invalid Module`. The downloaded installation also had quarantine metadata. Finder package classification was false, but that classification is separate from SDK bundle loading.

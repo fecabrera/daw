@@ -1,5 +1,8 @@
 //! Build-only parser. The manifest cannot execute code or refer to arbitrary UI widgets.
-use crate::parameters::{Parameter, Scale};
+use crate::parameters::{
+    MANIFEST_TYPE_ID, Parameter, SETTINGS_VERSION, STRIP_BINDINGS, Scale, diagram_binding,
+    enable_binding, footer_power,
+};
 use std::collections::HashSet;
 use toml_edit::{DocumentMut, Item, Table};
 
@@ -65,17 +68,14 @@ pub fn generate(input: &str) -> Result<String> {
     for (key, expected) in [
         ("schema_version", 1),
         ("state_version", 1),
-        (
-            "settings_version",
-            i64::from(daw_unit_core::DRIVE_STATE_VERSION),
-        ),
+        ("settings_version", i64::from(SETTINGS_VERSION)),
     ] {
         if root.get(key).and_then(Item::as_integer) != Some(expected) {
             return Err(format!("unsupported {key}"));
         }
     }
-    if string(root, "type_id")? != daw_unit_core::DRIVE_TYPE_ID {
-        return Err(fail("manifest must describe original Drive"));
+    if string(root, "type_id")? != MANIFEST_TYPE_ID {
+        return Err(fail("incorrect unit type ID"));
     }
     let vendor = string(root, "vendor")?;
     let product = string(root, "product")?;
@@ -152,26 +152,14 @@ pub fn generate(input: &str) -> Result<String> {
         .get("strips")
         .and_then(Item::as_array_of_tables)
         .ok_or_else(|| fail("missing strips"))?;
-    if strips.len() != 2 {
+    if strips.len() != STRIP_BINDINGS.len() {
         return Err(fail("expected two strips"));
     }
-    let expected = [
-        [
-            (Parameter::Volume, "gain", "Gain"),
-            (Parameter::Gain, "percent", "Percent"),
-            (Parameter::Tone, "percent", "Percent"),
-        ],
-        [
-            (Parameter::ColorShape, "shape", "Shape"),
-            (Parameter::ColorStrength, "percent", "Percent"),
-            (Parameter::ColorFrequency, "frequency", "Frequency"),
-        ],
-    ];
     let mut panels = String::new();
     for (index, strip) in strips.iter().enumerate() {
-        keys(strip, &["footer", "controls"])?;
+        keys(strip, &["footer", "controls", "power"])?;
         let footer = string(strip, "footer")?;
-        if footer != ["Drive", "Color"][index] {
+        if footer != STRIP_BINDINGS[index].0 {
             return Err(fail("incorrect strip footer/order"));
         }
         let controls = strip
@@ -181,7 +169,16 @@ pub fn generate(input: &str) -> Result<String> {
         if controls.len() != 3 {
             return Err(fail("expected three controls per strip"));
         }
-        panels.push_str(&format!("Strip {{ footer: {footer:?}, controls: ["));
+        let power = footer_power(index);
+        if strip.get("power").and_then(Item::as_str) != power.map(|p| p.info().key)
+            || strip.contains_key("power") != power.is_some()
+        {
+            return Err(fail("incorrect footer power binding"));
+        }
+        panels.push_str(&format!(
+            "Strip {{ footer: {footer:?}, power: {}, controls: [",
+            power.map_or("None".into(), |p| format!("Some(Parameter::{p:?})"))
+        ));
         for (slot, value) in controls.iter().enumerate() {
             let table = value
                 .as_inline_table()
@@ -193,23 +190,13 @@ pub fn generate(input: &str) -> Result<String> {
                 return Err(fail("unknown control field"));
             }
             let text = |key: &str| table.get(key).and_then(toml_edit::Value::as_str);
-            let (parameter, kind, variant) = expected[index][slot];
+            let (parameter, kind, variant) = STRIP_BINDINGS[index].1[slot];
             if text("parameter") != Some(parameter.info().key) || text("control") != Some(kind) {
                 return Err(fail("missing, duplicate, or unknown panel binding/control"));
             }
-            let enable = if matches!(
-                parameter,
-                Parameter::ColorStrength | Parameter::ColorFrequency
-            ) {
-                Some("color_shape")
-            } else {
-                None
-            };
-            let diagram = if parameter == Parameter::ColorShape {
-                Some("drive_color")
-            } else {
-                None
-            };
+            let enabled_parameter = enable_binding(parameter);
+            let enable = enabled_parameter.map(|p| p.info().key);
+            let diagram = diagram_binding(parameter);
             // Reject wrong types as well as wrong values for optional fields.
             if text("enabled_by") != enable
                 || table.contains_key("enabled_by") != enable.is_some()
@@ -218,7 +205,7 @@ pub fn generate(input: &str) -> Result<String> {
             {
                 return Err(fail("unsupported enablement or diagram reference"));
             }
-            panels.push_str(&format!("PanelControl {{ parameter: Parameter::{parameter:?}, control: Control::{variant}, enabled_by: {}, diagram: {diagram:?} }},", if enable.is_some() { "Some(Parameter::ColorShape)" } else { "None" }));
+            panels.push_str(&format!("PanelControl {{ parameter: Parameter::{parameter:?}, control: Control::{variant}, enabled_by: {}, diagram: {diagram:?} }},", enabled_parameter.map_or("None".into(), |p| format!("Some(Parameter::{p:?})"))));
         }
         panels.push_str("] },");
     }
@@ -226,7 +213,9 @@ pub fn generate(input: &str) -> Result<String> {
         .map(|p| format!("Parameter::{p:?}"))
         .join(", ");
     Ok(format!(
-        "pub const MANIFEST_SCHEMA_VERSION: u32 = 1;\npub const UNIT_TYPE_ID: &str = {:?};\npub const IDENTITY: Identity = Identity {{ vendor: {vendor:?}, product: {product:?}, version: {version:?}, clap_id: {clap_id:?}, processor_id: {processor:?}, controller_id: {controller:?} }};\npub const PANEL: [Strip; 2] = [{panels}];\npub const PARAMETER_ORDER: [Parameter; 7] = [{order}];\n",
-        daw_unit_core::DRIVE_TYPE_ID
+        "pub const MANIFEST_SCHEMA_VERSION: u32 = 1;\npub const UNIT_TYPE_ID: &str = {:?};\npub const IDENTITY: Identity = Identity {{ vendor: {vendor:?}, product: {product:?}, version: {version:?}, clap_id: {clap_id:?}, processor_id: {processor:?}, controller_id: {controller:?} }};\npub const PANEL: [Strip; {strip_count}] = [{panels}];\npub const PARAMETER_ORDER: [Parameter; {parameter_count}] = [{order}];\n",
+        MANIFEST_TYPE_ID,
+        strip_count = STRIP_BINDINGS.len(),
+        parameter_count = Parameter::COUNT
     ))
 }

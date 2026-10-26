@@ -3,17 +3,17 @@ use super::*;
 fn identity_factory_metadata_negotiation_and_lifecycle() {
     let _serial = SERIAL.lock().unwrap();
     let mut plugin = Plugin::new();
-    assert_eq!(
-        daw_drive_vst3::PROCESSOR_ID,
-        class_id(IDENTITY.processor_id)
-    );
+    assert_eq!(plugin_export::PROCESSOR_ID, class_id(IDENTITY.processor_id));
     let mut controller_id = [0; 16];
     assert_eq!(
         unsafe { plugin.component.getControllerClassId(&mut controller_id) },
         kResultOk
     );
     assert_eq!(controller_id, class_id(IDENTITY.controller_id));
-    assert_eq!(unsafe { plugin.controller.getParameterCount() }, 7);
+    assert_eq!(
+        unsafe { plugin.controller.getParameterCount() },
+        P::COUNT as i32
+    );
     let requirements = plugin
         .component
         .cast::<IProcessContextRequirements>()
@@ -65,7 +65,13 @@ fn identity_factory_metadata_negotiation_and_lifecycle() {
             .unwrap();
     let mut size: ViewRect = unsafe { std::mem::zeroed() };
     assert_eq!(unsafe { view.getSize(&mut size) }, kResultOk);
-    assert_eq!((size.right, size.bottom), (180, 218));
+    assert_eq!(
+        (size.right, size.bottom),
+        (
+            daw_drive_editor::WIDTH as i32,
+            daw_drive_editor::HEIGHT as i32
+        )
+    );
     assert_eq!(unsafe { view.canResize() }, kResultFalse);
     assert!(unsafe { plugin.controller.createView(c"unknown".as_ptr()) }.is_null());
 }

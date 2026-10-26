@@ -23,7 +23,9 @@ fn callback_cpu_budget() {
         for frames in [32_usize, 512] {
             for instances in [1, 8] {
                 let mut state = PluginState::default();
-                state.set(P::ColorShape, 3.0).unwrap();
+                state
+                    .set(P::ColorShape, P::ColorShape.info().maximum)
+                    .unwrap();
                 let plugins: Vec<_> = (0..instances)
                     .map(|_| {
                         let mut plugin = Plugin::new();

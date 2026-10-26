@@ -5,7 +5,10 @@ fn metadata_configuration_failures_reactivation_and_instance_isolation() {
     let _serial = SERIAL.lock().unwrap();
     let mut plugin = Plugin::new();
     let second = Plugin::new();
-    assert_eq!(unsafe { plugin.params().count.unwrap()(plugin.pointer) }, 7);
+    assert_eq!(
+        unsafe { plugin.params().count.unwrap()(plugin.pointer) },
+        P::COUNT as u32
+    );
     for (index, parameter) in P::ALL.into_iter().enumerate() {
         let mut info = std::mem::MaybeUninit::uninit();
         assert!(unsafe {
@@ -311,7 +314,10 @@ fn editor_contract_can_be_queried_and_closed_without_initializing_graphics() {
     assert!(!unsafe { gui.create.unwrap()(plugin.pointer, api, false) });
     let (mut width, mut height) = (0, 0);
     assert!(unsafe { gui.get_size.unwrap()(plugin.pointer, &mut width, &mut height) });
-    assert_eq!((width, height), (180, 218));
+    assert_eq!(
+        (width, height),
+        (daw_drive_editor::WIDTH, daw_drive_editor::HEIGHT)
+    );
     assert!(!unsafe { gui.can_resize.unwrap()(plugin.pointer) });
     assert!(!unsafe { gui.get_resize_hints.unwrap()(plugin.pointer, ptr::null_mut()) });
     assert!(!unsafe { gui.set_scale.unwrap()(plugin.pointer, f64::NAN) });
