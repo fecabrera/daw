@@ -54,3 +54,8 @@ The engine reuses shared envelope evaluation and route smoothing. It sums signed
 
 
 Modulation uses the [shared portable source and destination contract](../modulation/contract.md). Source lookup, scope checks, typed route evaluation, and common smoothing belong to `unit-core`; the unit retains its audio processing and final parameter bounds.
+
+
+## Separate plugin builds — planned
+
+Drive remains built into the DAW. The [CLAP/VST3 implementation plan](../architecture/unit-plugin-builds.md) adds independent adapters over the original `daw-drive::Drive` processor and requires the same two-strip body as the plugin editor, without the DAW header or modulation-routing strips. Drive v2 is outside the first delivery. Plugin exports are not yet implemented; this plan does not change the existing DSP, project state, or controls.

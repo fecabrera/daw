@@ -4,6 +4,14 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Separate unit plugin builds: planning — 2026-10-25
+
+Recorded the accepted direction and [Drive CLAP/VST3 implementation plan](../architecture/unit-plugin-builds.md): built-in Rust units remain the DAW path; independent plugin adapters share the original Drive DSP and its required two-strip custom editor. The plan defines package ownership, a build-time manifest, stable parameters/state, automation/lifecycle rules, six implementation stages, dependency research, and automated/native release gates. Drive v2 and third-party hosting remain outside the first delivery.
+
+- Checked the plan against the existing Drive settings, DSP, UI, modulation contract, workspace structure, and native CI/packaging conventions.
+- Local documentation file links and `git diff --check`: passed. Protocol and dependency research uses linked primary sources; no framework or dependency was added.
+- Documentation-only change. No Rust builds, audio tests, plugin validators, native editor checks, or external-host checks were run. No plugin implementation or compatibility result is claimed.
+
 ## Unit context-menu power actions — 2026-10-25
 
 Installed effect and component header menus now begin with Enable/Disable. A selected header targets its selected owner-lane group; an unselected header targets only itself. All-enabled groups disable together, and mixed or disabled groups enable together. Components reuse the enclosing instrument transaction; track, Master, and inline layer effects reuse their chain transaction. Menu focus retains unit selection and returns keyboard focus after applying an action.

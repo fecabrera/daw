@@ -304,7 +304,9 @@ Q09 was resolved on 2026-10-11: units will ship as Rust crates and standalone to
 | Rust crates | Reuse the unit core and implementations in the DAW or other Rust applications. |
 | Standalone tools | Run unit implementations through an independent application that supplies host services. |
 
-Keep UI editors optional and provide standalone adapters without changing DSP code. The standalone tools' interface, device support, and packaging remain to be specified. The roadmap's plugin-engine work remains a separate feature.
+Keep UI dependencies optional for portable DSP and headless hosts. A plugin delivery can require a custom editor under its own contract. Provide standalone adapters without changing DSP code. The standalone tools' interface, device support, and packaging remain to be specified. The roadmap's plugin-engine work remains a separate feature.
+
+Decision — 2026-10-25: keep DAW units built in and add independent CLAP/VST3 export builds over the same portable DSP, starting with the original `daw.drive`. The external Drive plugins require the existing two-strip body as their custom editor, shared through dependency-light UI code. This extends independent distribution; runtime unit loading and third-party hosting inside the DAW remain separate work. See the [implementation plan](unit-plugin-builds.md) for ownership, manifest/parameter/state contracts, stages, packaging, and acceptance gates. Plugin export builds are planned, not implemented.
 
 ## Question status and remaining details
 

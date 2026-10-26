@@ -7,6 +7,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [MVP scope and architecture](architecture/mvp-scope.md).
 - [Iteration 1 implementation specification](architecture/iteration-1.md).
 - [Modular audio units](architecture/modular-audio-units.md).
+- [Separate CLAP/VST3 unit builds](architecture/unit-plugin-builds.md): implementation plan for built-in units with independent plugin exports, starting with Drive and its shared two-strip editor.
 - [Prepared rendering and performance](architecture/performance.md).
 - [Stem-separation native dependency audit](audio/stem-native-dependencies.md): pinned native components, advisories, licenses and platform packaging.
 - [Parallel cache preparation validation — 2026-10-19](validation/parallel-cache-preparation-2026-10-19.md).
