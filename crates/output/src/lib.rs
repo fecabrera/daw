@@ -3,6 +3,8 @@ mod audition_stream;
 pub use audition_stream::{AuditionStream, AuditionStreamWriter, audition_stream};
 mod cache_schedule;
 mod devices;
+#[cfg(target_os = "windows")]
+mod wasapi;
 use cpal::traits::{DeviceTrait, StreamTrait};
 use daw_core::Id;
 use daw_engine::{ModulationTarget, RenderPlan, Renderer, TransportState};

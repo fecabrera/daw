@@ -5030,3 +5030,19 @@ Executed on macOS arm64 with the pinned toolchain and locked offline dependencie
 - Strict locked offline workspace/all-target Clippy, formatting and diff checks passed. Both new runtime dependency graphs exclude DAW project/UI/engine/output crates. Workflow YAML parsed and has twelve independent product/platform combinations. Changed documentation file targets resolve. `sh tools/package_macos.sh debug` rebuilt the desktop app.
 
 Native Windows/Linux execution, GitHub-hosted CI, real plugin editor attachment, native accessibility, external DAWs, SDK validators, clean-machine distribution and complete release notice acceptance remain unverified. These artifacts are development previews; automated host/egui checks do not establish native device/window acceptance.
+
+## Windows audio-discovery lifetime and UI test isolation — 2026-10-26
+
+The Windows jobs in [run 40398090662](https://github.com/fecabrera/daw/actions/runs/40398090662/job/121836384894) and [run 40379313221](https://github.com/fecabrera/daw/actions/runs/40379313221/job/121770915739) both terminated the UI test executable with `0xc0000005` immediately after the same Mixer test group. The next native-toolbar Settings test starts real device discovery. The logs do not contain a native stack dump, so this is a source-supported diagnosis, not a dump-confirmed fault address. CPAL 0.16's global enumerator and thread-local STA teardown match the [upstream lifetime report](https://github.com/RustAudio/cpal/issues/1302).
+
+Device discovery and output-device selection now seed that cache in a process-lived MTA before CPAL access. UI test instances use deterministic discovery functions. A Windows-only isolated subprocess regression exercises repeated native enumeration/selection after each caller worker exits, then from a simulated window STA whose apartment must remain unchanged. It allows absent devices while rejecting native faults. The cached binding version is unchanged; application notices now include its complete MIT/Apache texts and source notice.
+
+Executed locally on macOS arm64:
+
+- `cargo test --offline --locked -p daw-ui --lib`: **646 passed**, including asynchronous injected discovery success/failure/retry. No UI test discovery invokes CPAL.
+- `cargo test --offline --locked -p daw-output --lib`: **41 passed** on macOS.
+- `cargo test --offline --locked --workspace`: **1464 passed, 11 ignored, no failures**, across 138 suites on macOS. The final Windows-only lifetime and STA regression code was checked separately with the Windows-target harness; it was not executed locally.
+- Strict locked offline workspace/all-target Clippy, formatting, diff and documentation file-target checks passed. `sh tools/package_macos.sh debug` rebuilt the desktop app; bundled Windows binding notices match their sources.
+- Cross-checked the actual `output::wasapi` and `output::devices` modules, including the Windows subprocess test, with `cargo check --target x86_64-pc-windows-msvc --all-targets` in an ignored minimal harness using CPAL 0.16.0 and windows-sys 0.52.0. The same Windows-target harness passed strict all-target Clippy after selecting one consistent pinned compiler/driver. These validate Rust/Win32 binding types, not linking or native execution.
+
+Native Windows execution and an updated GitHub CI run remain required to confirm that the reported crash is resolved. No native Windows runtime result is claimed. Hardware format negotiation, repeated actual Settings refresh and live playback/device switching remain separate device checks.

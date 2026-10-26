@@ -1,0 +1,12 @@
+Windows audio COM bindings
+
+windows-sys 0.52.0: https://github.com/microsoft/windows-rs
+Source: https://crates.io/crates/windows-sys/0.52.0
+Available under MIT OR Apache-2.0. The complete license texts and copyright
+notices are in Windows-Sys-MIT.txt and Windows-Sys-APACHE.txt.
+
+The desktop application and its output library reuse this existing binding
+version for native Win32 APIs. The output library uses the System::Com bindings
+to retain the Windows audio enumerator's process-lived COM apartment.
+
+Application packagers copy this directory, including these notices.

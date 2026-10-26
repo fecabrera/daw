@@ -23,6 +23,16 @@ Apply probes an output replacement on the control thread before publishing it or
 
 No new work is added to the audio callback. Discovery, allocation, configuration and device opening happen outside it. The original rendering, prepared project audio, resampling and channel conversion remain shared. CLI export does not discover devices or read application preferences.
 
+## Windows enumerator lifetime
+
+CPAL 0.16 keeps a process-global `OnceLock` device enumerator but initializes COM on the first calling thread as an STA. If a temporary discovery worker owns that STA, its exit can invalidate the cached interface pointer. Subsequent enumeration can terminate the process with `0xc0000005` instead of returning a Rust error. This affects ordinary Settings refresh as well as tests. The same cache/lifetime issue is documented [upstream](https://github.com/RustAudio/cpal/issues/1302); the pinned 0.16 source has that pattern.
+
+`output::wasapi::prepare` gates both device discovery and output-device selection before their first CPAL host call. A one-time fresh initialization thread explicitly joins the MTA with `CoInitializeEx`, retains it with `CoIncrementMTAUsage`, then seeds CPAL's enumerator in that MTA. Keep one successful MTA usage reference for the same process lifetime as CPAL's static cache. Balance the usage reference on initialization failure/unwind; balance the thread-local initialization with `CoUninitialize` when that worker exits. Do not release it when the short initialization/discovery thread exits. This uses Microsoft's documented [MTA lifetime API](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coincrementmtausage) and leaves the window thread's apartment unchanged. Return worker/COM failures through the existing output/discovery errors. Initialization and waiting occur only on control/worker threads; the audio callback is unchanged. Other platforms retain their existing path.
+
+Reuse the existing `windows-sys` 0.52 binding as a target-specific dependency, with its version shared in the workspace and its license/source notices included by the application packagers. No CPAL or registry package upgrade is required.
+
+UI unit tests use a per-instance injected discovery function. Their default returns an empty synthetic catalog; UI tests must not enumerate real hardware or initialize native audio. Test success/failure/retry through the same bounded worker/result path. Keep real Windows lifetime coverage in an isolated output subprocess: discover/select devices on successive short-lived threads, join each, then repeat. Also query from a simulated window STA and verify its apartment remains STA. Missing hardware and driver errors are valid results; native faults and worker panics fail the test. The subprocess keeps a fault from killing the entire test executable.
+
 ## Validation
 
 Test automatic preference selection, explicit format/rate/buffer requests and unsupported combinations without hardware. Test preference round trips and legacy defaults, missing devices, failed stream publication, input-only/no-op changes, draft cancellation and popup Escape behavior. Run workspace regression checks. Record native hardware switching, driver format negotiation, disconnect/reconnect and Windows/Linux checks separately; unit tests do not establish those results.

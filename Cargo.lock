@@ -1569,6 +1569,7 @@ dependencies = [
  "rtrb",
  "rubato 0.16.2",
  "serde",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

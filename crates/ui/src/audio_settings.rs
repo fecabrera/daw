@@ -8,11 +8,30 @@ pub(super) struct AudioDialog {
     error: Option<String>,
 }
 
-#[derive(Default)]
 pub(super) struct DevicesState {
+    discover: fn() -> Result<Devices, String>,
     pub catalog: Option<Devices>,
     pub error: Option<String>,
     pending: Option<std::sync::mpsc::Receiver<Result<Devices, String>>>,
+}
+impl Default for DevicesState {
+    fn default() -> Self {
+        Self {
+            discover: || {
+                #[cfg(test)]
+                {
+                    Ok(Devices::default())
+                }
+                #[cfg(not(test))]
+                {
+                    daw_output::discover_devices()
+                }
+            },
+            catalog: None,
+            error: None,
+            pending: None,
+        }
+    }
 }
 impl DevicesState {
     pub fn busy(&self) -> bool {
@@ -172,11 +191,12 @@ impl DawUi {
         if self.audio_devices.pending.is_some() {
             return;
         }
+        let discover = self.audio_devices.discover;
         let (sender, receiver) = std::sync::mpsc::sync_channel(1);
         match std::thread::Builder::new()
             .name("audio-device-discovery".into())
             .spawn(move || {
-                let _ = sender.send(daw_output::discover_devices());
+                let _ = sender.send(discover());
             }) {
             Ok(_) => {
                 self.audio_devices.pending = Some(receiver);
@@ -306,6 +326,44 @@ impl DawUi {
 mod tests {
     use super::*;
     use daw_output::{Configuration, SampleFormat};
+
+    #[test]
+    fn discovery_uses_injected_results_and_reports_worker_failure_without_hardware() {
+        let ctx = egui::Context::default();
+        let mut app = DawUi::default();
+        for fail in [false, true, false] {
+            app.audio_devices.discover = if fail {
+                || Err("injected device discovery failure".into())
+            } else {
+                || Ok(devices())
+            };
+            app.refresh_audio_devices();
+            assert!(app.audio_devices.busy());
+            let deadline = std::time::Instant::now() + Duration::from_secs(30);
+            while app.audio_devices.busy() {
+                app.poll_audio_devices(&ctx);
+                assert!(std::time::Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            if fail {
+                assert!(app.audio_devices.catalog.is_none());
+                assert_eq!(
+                    app.audio_devices.error.as_deref(),
+                    Some("injected device discovery failure")
+                );
+            } else {
+                assert_eq!(
+                    app.audio_devices.catalog.as_ref().unwrap().outputs[0]
+                        .id
+                        .name,
+                    "Speakers"
+                );
+                assert!(app.audio_devices.error.is_none());
+            }
+            assert!(!app.dirty);
+            assert!(app.output.is_none());
+        }
+    }
 
     fn id(name: &str) -> DeviceId {
         DeviceId {

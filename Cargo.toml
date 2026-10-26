@@ -64,6 +64,7 @@ hound = "3.5"
 rubato = "0.16"
 rtrb = "0.3"
 cpal = "0.16"
+windows-sys = "0.52"
 eframe = { version = "0.36.2", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland", "accesskit", "persistence"] }
 egui = "0.36.2"
 rfd = "0.15"

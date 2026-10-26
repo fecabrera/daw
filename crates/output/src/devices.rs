@@ -143,6 +143,8 @@ fn device_ids(
 }
 
 pub fn discover_devices() -> Result<Devices, String> {
+    #[cfg(target_os = "windows")]
+    super::wasapi::prepare()?;
     let host = cpal::default_host();
     let default_output = host
         .default_output_device()
@@ -181,6 +183,8 @@ pub fn discover_devices() -> Result<Devices, String> {
 }
 
 pub(super) fn output_device(selection: Option<&DeviceId>) -> Result<cpal::Device, String> {
+    #[cfg(target_os = "windows")]
+    super::wasapi::prepare()?;
     let host = cpal::default_host();
     let Some(selection) = selection else {
         return host
@@ -239,6 +243,70 @@ pub(super) fn choose_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_discovery_survives_initializer_worker_exit() {
+        const CHILD: &str = "DAW_WASAPI_DISCOVERY_TEST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            use windows_sys::Win32::System::Com::{
+                APTTYPE_STA, COINIT_APARTMENTTHREADED, CoGetApartmentType, CoInitializeEx,
+                CoUninitialize,
+            };
+            // Simulate the window thread's STA while temporary discovery workers come and go.
+            // SAFETY: this isolated test thread owns and balances its COM initialization.
+            let status =
+                unsafe { CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32) };
+            assert!(status >= 0, "initialize simulated window STA: {status:#X}");
+            struct Sta;
+            impl Drop for Sta {
+                fn drop(&mut self) {
+                    // SAFETY: balances the successful initialization on this test thread.
+                    unsafe {
+                        CoUninitialize();
+                    }
+                }
+            }
+            let _sta = Sta;
+            for _ in 0..3 {
+                std::thread::spawn(|| {
+                    super::super::wasapi::prepare().expect("initialize Windows audio COM lifetime");
+                    // Device absence/driver rejection is allowed. A dead COM vtable is not.
+                    let _ = discover_devices();
+                    let _ = output_device(None);
+                })
+                .join()
+                .expect("device discovery worker panicked");
+            }
+            // The cached MTA enumerator must also remain callable from the window's STA.
+            let _ = discover_devices();
+            let _ = output_device(None);
+            let (mut apartment, mut qualifier) = (0, 0);
+            // SAFETY: both output pointers refer to writable stack values.
+            assert!(unsafe { CoGetApartmentType(&mut apartment, &mut qualifier) } >= 0);
+            assert_eq!(
+                apartment, APTTYPE_STA,
+                "audio initialization changed the window apartment"
+            );
+            return;
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "devices::tests::windows_discovery_survives_initializer_worker_exit",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("start isolated device discovery regression");
+        assert!(
+            output.status.success(),
+            "device discovery child failed: {}\n{}\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     fn range(format: cpal::SampleFormat, min: u32, max: u32) -> cpal::SupportedStreamConfigRange {
         cpal::SupportedStreamConfigRange::new(
