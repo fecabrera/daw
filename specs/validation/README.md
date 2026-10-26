@@ -4999,3 +4999,17 @@ Native checks, separate from synthetic egui tests:
 - The inspected native accessibility tree exposed the window/title but no knob controls. Shared egui widget metadata does not supply native screen-reader support by itself. A native accessibility adapter remains implementation work, not a passed check.
 
 No external CLAP/VST3 DAW, audio-device listening, Windows/X11 native editor, clean-machine distribution, signing or release acceptance is claimed. Only the macOS arm64 Rust target is installed here. Native accessibility, other platforms/hosts and complete distribution notice review remain release gates. The published objc2 OpenGL archive omits license text; the exact matching repository's license/SDK notice is retained with its source revision in plugin-window notices. Appearance preferences currently survive editor reopen only within the instance; they are not saved with host project state.
+
+## Dynamics Out-strip meters — 2026-10-26
+
+Limiter's reduction rail now occupies only the left Limit strip. Its right Out strip, Compressor's Out strip, and OTT's Out strip use the standard output level rail and held sample peak. Compressor's reduction row and OTT's three signed band monitors retain their existing geometry. Output holds and reduction/band holds reset independently.
+
+- `cargo test --offline --locked -p daw-ui --lib`: **645 passed**. The shared Out-strip integration case now covers all eleven effects, every theme, compact/collapsed visibility, rail geometry, and click interactions without project edits. The focused layout case passed again after adding explicit strip-containment checks.
+- `cargo test --offline --locked -p daw-engine --test effect_output_meters`: **2 passed**. Six processing rates cover final stereo output, unchanged audio, current release, raw held peaks, bypass clearing, reset, re-enable, detached DSP clones, and handle retention. The generic test window was extended to cover Limiter latency at 192 kHz.
+- `cargo test --offline --locked -p daw-output -p daw-compressor -p daw-limiter -p daw-ott`: **76 passed** across the four library suites. Shared bindings exercise instrument layers/Main and track/Master paths, separate output and reduction holds, allocation-free layer processing, and compatible bypass transitions.
+- `cargo test --offline --locked --workspace`: **1421 passed, 7 ignored, no failures**, across 112 suites.
+- `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`, formatting, and diff checks passed.
+- `sh tools/package_macos.sh debug`: rebuilt `target/debug/DAW.app`.
+- `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py`: passed codec/export, repeatability, missing-source, group-bus, overwrite, and exit-code smoke checks.
+
+Native window interactions, live audio-device checks, and Windows/Linux native execution were not run for this change. Automated egui checks do not establish native rendering or device behavior.

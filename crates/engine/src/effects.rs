@@ -759,6 +759,20 @@ impl EffectChain {
             unit.set_band_level_meter(band, meter.current().clone());
         }
     }
+    pub fn set_output_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::BandMeter<3>>) {
+        match self.units.iter_mut().find(|(effect, _)| *effect == id) {
+            Some((_, Some(RuntimeEffect::Compressor(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone())
+            }
+            Some((_, Some(RuntimeEffect::Limiter(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone())
+            }
+            Some((_, Some(RuntimeEffect::Ott(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone())
+            }
+            _ => {}
+        }
+    }
     pub fn set_band_meter(&mut self, id: Id, meter: &Arc<daw_unit_core::BandMeter<3>>) {
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {
             Some((_, Some(RuntimeEffect::Ott(unit, _)))) => {

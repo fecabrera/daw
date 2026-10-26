@@ -7,6 +7,7 @@ use daw_core::{CompressorDetection, ModulationParameter as Parameter, OttSetting
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
+    pub output_meter: Rect,
     pub header: Rect,
     pub power: Rect,
     pub controls: [[[Rect; 3]; 2]; 4],
@@ -105,29 +106,30 @@ fn row(
 pub(super) fn show<'a>(
     ui: &mut Ui,
     settings: &mut OttSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     gains: impl Into<meters::BandGainChange<'a>>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
     let gains = gains.into();
     ui.scope_builder(
         egui::UiBuilder::new()
             .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
-        |ui| show_inner(ui, settings, compact, height, gains, sources, live),
+        |ui| show_inner(ui, settings, dimensions, gains, sources, live, level),
     )
     .inner
 }
 fn show_inner(
     ui: &mut Ui,
     settings: &mut OttSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     gains: meters::BandGainChange<'_>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
+    let (compact, height) = dimensions;
     let gains = gains.for_unit(settings.enabled);
     let mut bases = [0.0; 19];
     bases[0] = settings.low_frequency_hz;
@@ -157,6 +159,7 @@ fn show_inner(
     let open = settings.modulation_open;
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
+        output_meter: Rect::NOTHING,
         header: Rect::NOTHING,
         power: Rect::NOTHING,
         controls: [[[Rect::NOTHING; 3]; 2]; 4],
@@ -190,6 +193,9 @@ fn show_inner(
                     });
                 })).inner.response.rect;
                 bounds.sections[section] = rect;
+                    if !compact && section == 3 {
+                        bounds.output_meter = meters::effect_output_level(ui, rect, panel.margin, level, settings.enabled);
+                    }
                 if section > 0 { panels::unit_divider(ui, rect.left(), rect.y_range().into()); }
                 if !compact && section < 3 {
                     let rail = meters::unit_monitor_rail(rect, panel.margin);
@@ -262,11 +268,11 @@ mod tests {
                                     rails = show(
                                         ui,
                                         settings,
-                                        compact,
-                                        244.0,
+                                        (compact, 244.0),
                                         meters::BandGainChange::new(meter.readings(), Some(&meter)),
                                         &[],
                                         None,
+                                        meters::OutputLevel::new(0.0, None),
                                     )
                                     .0
                                     .meters;
@@ -416,8 +422,16 @@ mod tests {
                             |ui| {
                                 egui::CentralPanel::default().show(ui, |ui| {
                                     bounds = Some(
-                                        show(ui, &mut settings, false, 244.0, [gain; 3], &[], None)
-                                            .0,
+                                        show(
+                                            ui,
+                                            &mut settings,
+                                            (false, 244.0),
+                                            [gain; 3],
+                                            &[],
+                                            None,
+                                            meters::OutputLevel::new(0.0, None),
+                                        )
+                                        .0,
                                     );
                                 });
                             },

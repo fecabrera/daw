@@ -34,3 +34,7 @@ Turning the unit off clears the fill, peak line, and numeric reading and stops m
 Threshold, Ratio, Attack, Release, Knee, Level, and Dry/Wet accept shared Envelope, LFO, and Macro sources from the same MIDI instrument. Open the secondary-color header dot for [connections](../modulation/README.md). Peak/RMS remains a manual choice. Attack and Release amounts use octaves of time: +1 doubles the duration and −1 halves it.
 
 Lookahead, automatic makeup gain, external sidechain routing, and detector high-pass controls are not available.
+
+## Output level meter
+
+The **Out** strip has the [shared output level meter](output-meter.md), with a current level rail and click-resettable held sample peak. It measures the final stereo output. Its peak reset is independent of the gain-reduction meter.

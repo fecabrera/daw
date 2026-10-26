@@ -9,6 +9,7 @@ use daw_core::{CompressorDetection, CompressorSettings, ModulationParameter as P
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
+    pub output_meter: Rect,
     pub header: Rect,
     pub power: Rect,
     pub controls: [[Rect; 3]; 3],
@@ -70,29 +71,30 @@ fn row(
 pub(super) fn show<'a>(
     ui: &mut Ui,
     settings: &mut CompressorSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     reduction_db: impl Into<meters::GainReduction<'a>>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
     let reduction_db = reduction_db.into();
     ui.scope_builder(
         egui::UiBuilder::new()
             .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
-        |ui| show_inner(ui, settings, compact, height, reduction_db, sources, live),
+        |ui| show_inner(ui, settings, dimensions, reduction_db, sources, live, level),
     )
     .inner
 }
 fn show_inner(
     ui: &mut Ui,
     settings: &mut CompressorSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     reduction_db: meters::GainReduction<'_>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
+    let (compact, height) = dimensions;
     let reduction_db = reduction_db.for_unit(settings.enabled);
     let bases = [
         settings.threshold_db,
@@ -117,6 +119,7 @@ fn show_inner(
     let open = settings.modulation_open;
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
+        output_meter: Rect::NOTHING,
         header: Rect::NOTHING,
         power: Rect::NOTHING,
         controls: [[Rect::NOTHING; 3]; 3],
@@ -179,6 +182,9 @@ fn show_inner(
                         .response
                         .rect;
                     bounds.sections[column] = rect;
+                    if !compact && column == 2 {
+                        bounds.output_meter = meters::effect_output_level(ui, rect, panel.margin, level, settings.enabled);
+                    }
                     if column > 0 {
                         panels::unit_divider(ui, rect.left(), rect.y_range().into());
                     }

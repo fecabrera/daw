@@ -1,7 +1,7 @@
 //! Stereo limiter with fixed host-compensated latency and allocation-free processing.
 use daw_unit_core::{
-    EffectUnit, LIMITER_TYPE_ID, LimiterMode, LimiterRouting, LimiterSettings, PeakMeter, PortKind,
-    ProcessingContext, UnitDescriptor, UnitMeter,
+    BandMeter, EffectUnit, LIMITER_TYPE_ID, LevelMonitor, LimiterMode, LimiterRouting,
+    LimiterSettings, PeakMeter, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
 };
 use std::sync::{Arc, atomic::AtomicU32};
 mod modulation;
@@ -70,6 +70,7 @@ pub struct Limiter {
     true_peak: bool,
     guard: true_peak::Guard,
     reduction_db: f32,
+    output_monitor: LevelMonitor<3>,
     meter: UnitMeter<PeakMeter>,
 }
 impl Limiter {
@@ -98,6 +99,7 @@ impl Limiter {
             true_peak: settings.mode == LimiterMode::TruePeak,
             guard: true_peak::Guard::new(),
             reduction_db: 0.0,
+            output_monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
             meter: UnitMeter::new(settings.enabled),
         }
     }
@@ -113,6 +115,7 @@ impl Limiter {
     }
     pub fn retarget(&mut self, settings: &LimiterSettings) {
         self.meter.set_enabled(settings.enabled);
+        self.output_monitor.set_enabled(settings.enabled);
         for (parameter, value) in self.parameters.iter_mut().zip(Self::values(settings)) {
             parameter.retarget(value, (self.rate / 200).max(1));
         }
@@ -127,6 +130,10 @@ impl Limiter {
     }
     pub fn gain_reduction_db(&self) -> f32 {
         self.reduction_db
+    }
+    /// Attach final-output current and held sample peaks on a control thread.
+    pub fn set_output_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
+        self.output_monitor.attach_peak(meter);
     }
     fn publish(&self) {
         self.meter.publish(self.reduction_db);
@@ -188,6 +195,7 @@ impl EffectUnit for Limiter {
         self.gains = [1.0; 3];
         self.guard.reset();
         self.reduction_db = 0.0;
+        self.output_monitor.reset();
         self.publish();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
@@ -253,7 +261,9 @@ impl Limiter {
         self.reduction_db =
             ((-20.0 * reduction.max(1e-30).log10()) as f32 + self.guard.reduction_db) * p[5] as f32;
         self.publish();
-        output.map(|v| v.clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32)
+        let output = output.map(|v| v.clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32);
+        self.output_monitor.sample_output(output);
+        output
     }
 }
 

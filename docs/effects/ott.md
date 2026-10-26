@@ -54,3 +54,7 @@ Assignment dots, range arcs, tooltips, and moving values show modulation activit
 ## Limits
 
 Compression thresholds, ratios, and knees are fixed. Independent upward/downward amounts and automatic makeup are not exposed. It is not an exact emulation of another product. Export does not append an effect tail.
+
+## Output level meter
+
+The **Out** strip has the [shared output level meter](output-meter.md), with a current level rail and click-resettable held sample peak. It measures the final stereo output. Its peak reset is independent of the band meters.

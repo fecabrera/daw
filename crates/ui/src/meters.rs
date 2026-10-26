@@ -616,11 +616,11 @@ mod tests {
                         bounds = crate::limiter_panel::show(
                             ui,
                             settings,
-                            compact,
-                            244.0,
+                            (compact, 244.0),
                             GainReduction::new(2.0, Some(&meter)),
                             &[],
                             None,
+                            OutputLevel::new(0.0, None),
                         )
                         .0
                         .meter;
@@ -725,11 +725,11 @@ mod tests {
                                         crate::compressor_panel::show(
                                             ui,
                                             &mut settings,
-                                            false,
-                                            244.0,
+                                            (false, 244.0),
                                             12.0,
                                             &[],
                                             None,
+                                            OutputLevel::new(0.0, None),
                                         )
                                         .0
                                         .controls[2][2],
@@ -744,11 +744,11 @@ mod tests {
                                         crate::limiter_panel::show(
                                             ui,
                                             &mut settings,
-                                            false,
-                                            244.0,
+                                            (false, 244.0),
                                             12.0,
                                             &[],
                                             None,
+                                            OutputLevel::new(0.0, None),
                                         )
                                         .0
                                         .meter,
@@ -763,11 +763,11 @@ mod tests {
                                         crate::ott_panel::show(
                                             ui,
                                             &mut settings,
-                                            false,
-                                            244.0,
+                                            (false, 244.0),
                                             [-12.0, 8.0, -3.0],
                                             &[],
                                             None,
+                                            OutputLevel::new(0.0, None),
                                         )
                                         .0
                                         .meters,

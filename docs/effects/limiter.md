@@ -21,7 +21,7 @@ Header power bypasses limiting while retaining the unit's delay and settings.
 
 ## Gain-reduction meter
 
-The rail shows current gain reduction from 0–24 dB. A thin line in the secondary text color marks the highest reduction since the peak was reset. Click the rail to reset this line. The current reading and limiting settings stay the same. If limiting continues, new readings can immediately set another peak.
+The rail above the left **Limit** strip shows current gain reduction from 0–24 dB. A thin line in the secondary text color marks the highest reduction since the peak was reset. Click the rail to reset this line. The current reading and limiting settings stay the same. If limiting continues, new readings can immediately set another peak.
 
 Hover for current and peak readings, including reductions above 24 dB. The peak line stops at the end of the rail. Compact and collapsed units hide the meter, but peak capture continues. The held peak remains during pause, stop, and seeking until you reset it or turn the unit off.
 
@@ -38,3 +38,7 @@ The ceiling applies at this unit's output after controls settle. Later effects, 
 True Peak is an estimate, not a guaranteed bound for every reconstructed waveform or a certification claim. A demanding near-Nyquist stereo burst exceeded the selected ceiling by about 0.21 dB in an independent reconstruction check. Leave additional headroom where the delivery target requires it.
 
 Each instance adds a fixed delay of approximately 10 ms plus 32 samples, including Peak mode and bypass. Playback and export compensate for effect alignment. Lookahead changes do not move clips on the timeline.
+
+## Output level meter
+
+The **Out** strip has the [shared output level meter](output-meter.md), with a current level rail and click-resettable held sample peak. It measures the final stereo output. Its peak reset is independent of the gain-reduction meter.

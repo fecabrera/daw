@@ -1,7 +1,7 @@
 //! Linked stereo feed-forward compressor. FunDSP detector types remain private.
 use daw_unit_core::{
-    COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings, EffectUnit, PeakMeter, PortKind,
-    ProcessingContext, UnitDescriptor, UnitMeter,
+    BandMeter, COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings, EffectUnit,
+    LevelMonitor, PeakMeter, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
 };
 use fundsp::dynamics::{Meter, MeterState};
 use std::sync::{Arc, atomic::AtomicU32};
@@ -72,6 +72,7 @@ pub struct Compressor {
     configured_times: [f32; 2],
     coefficients: [f64; 2],
     reduction_db: f64,
+    output_monitor: LevelMonitor<3>,
     meter: UnitMeter<PeakMeter>,
     external: daw_unit_core::ModulationSmoother<7>,
     effective: [f32; 9],
@@ -93,6 +94,7 @@ impl Compressor {
             configured_times: [f32::NAN; 2],
             coefficients: [0.0; 2],
             reduction_db: 0.0,
+            output_monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
             meter: UnitMeter::new(settings.enabled),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: Self::values(settings),
@@ -116,6 +118,7 @@ impl Compressor {
     /// Keep detector/envelope history and unrelated in-flight ramps on compatible edits.
     pub fn retarget(&mut self, settings: &CompressorSettings) {
         self.meter.set_enabled(settings.enabled);
+        self.output_monitor.set_enabled(settings.enabled);
         for (parameter, target) in self.parameters.iter_mut().zip(Self::values(settings)) {
             parameter.retarget(target, self.fade_frames);
         }
@@ -140,6 +143,10 @@ impl Compressor {
                 self.configured_times[index] = time;
             }
         }
+    }
+    /// Attach final-output current and held sample peaks on a control thread.
+    pub fn set_output_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
+        self.output_monitor.attach_peak(meter);
     }
     fn publish(&self) {
         self.meter.publish(self.gain_reduction_db());
@@ -166,6 +173,7 @@ impl EffectUnit for Compressor {
         self.external.reset();
         self.effective = self.parameters.each_ref().map(|p| p.value);
         self.configure([self.effective[3], self.effective[4]]);
+        self.output_monitor.reset();
         self.publish();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
@@ -206,6 +214,7 @@ impl Compressor {
                 as f32
         });
         self.publish();
+        self.output_monitor.sample_output(output);
         output
     }
 }

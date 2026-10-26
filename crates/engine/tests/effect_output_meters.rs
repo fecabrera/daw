@@ -21,8 +21,8 @@ fn verify<T: EffectUnit + Clone>(
     attach(&mut unit, meter.clone());
     let release = (-1.0 / (0.3 * rate as f32)).exp();
     let mut peak = 0.0_f32;
-    for frame in 0..1024 {
-        let sample = if frame < 512 { [0.05, -0.4] } else { [0.0; 2] };
+    for frame in 0..8192 {
+        let sample = if frame < 4096 { [0.05, -0.4] } else { [0.0; 2] };
         let expected = reference.process_sample(sample);
         assert_eq!(
             unit.process_sample(sample),
@@ -53,7 +53,7 @@ fn verify<T: EffectUnit + Clone>(
     assert_eq!(Arc::strong_count(&meter), 2);
     power(&mut unit, false);
     assert_eq!(readings(&meter), [0.0; 3]);
-    for _ in 0..512 {
+    for _ in 0..4096 {
         unit.process_sample([0.2, -0.6]);
     }
     assert_eq!(
@@ -67,7 +67,7 @@ fn verify<T: EffectUnit + Clone>(
         "bypass must retain the handle until retirement"
     );
     power(&mut unit, true);
-    for _ in 0..512 {
+    for _ in 0..4096 {
         unit.process_sample([0.2, -0.6]);
     }
     assert!(readings(&meter)[0] > 0.0);
@@ -189,6 +189,51 @@ fn output_meters_follow_final_audio_and_share_bypass_reset_and_snapshot_lifecycl
                 u.retarget(&s);
             },
         );
+        let settings = daw_unit_core::CompressorSettings {
+            level_db: 6.0,
+            dry_wet: 0.37,
+            ..Default::default()
+        };
+        verify(
+            daw_compressor::Compressor::new(context, &settings),
+            rate,
+            |u, raw| u.set_output_peak_meter(Arc::new(daw_unit_core::BandMeter::new(raw))),
+            |u, on| {
+                let mut s = settings.clone();
+                s.enabled = on;
+                u.retarget(&s);
+            },
+        );
+        let settings = daw_unit_core::OttSettings {
+            level_db: 6.0,
+            dry_wet: 0.37,
+            ..Default::default()
+        };
+        verify(
+            daw_ott::Ott::new(context, &settings),
+            rate,
+            |u, raw| u.set_output_peak_meter(Arc::new(daw_unit_core::BandMeter::new(raw))),
+            |u, on| {
+                let mut s = settings.clone();
+                s.enabled = on;
+                u.retarget(&s);
+            },
+        );
+        let settings = daw_unit_core::LimiterSettings {
+            input_db: 12.0,
+            ceiling_db: -6.0,
+            ..Default::default()
+        };
+        verify(
+            daw_limiter::Limiter::new(context, &settings),
+            rate,
+            |u, raw| u.set_output_peak_meter(Arc::new(daw_unit_core::BandMeter::new(raw))),
+            |u, on| {
+                let mut s = settings.clone();
+                s.enabled = on;
+                u.retarget(&s);
+            },
+        );
         let settings = daw_unit_core::MultibandEqSettings {
             output_gain_db: 6.0,
             ..Default::default()
@@ -207,6 +252,89 @@ fn output_meters_follow_final_audio_and_share_bypass_reset_and_snapshot_lifecycl
         assert!(
             held > 0.4,
             "Multiband EQ must meter after final output gain"
+        );
+    }
+}
+
+fn verify_dynamics_peaks<T: EffectUnit + Clone>(
+    mut unit: T,
+    attach: impl Fn(&mut T, Arc<daw_unit_core::BandMeter<3>>),
+    power: impl Fn(&mut T, bool),
+) {
+    let meter = Arc::new(daw_unit_core::BandMeter::default());
+    attach(&mut unit, meter.clone());
+    let mut held = 0.0_f32;
+    for frame in 0..8192 {
+        let output = unit.process_sample(if frame < 4096 { [0.1, -0.7] } else { [0.0; 2] });
+        held = held.max(output[0].abs().max(output[1].abs()));
+        assert_eq!(meter.boost_peaks()[0].peak(), held);
+    }
+    assert!(held > 0.0);
+    unit.reset();
+    assert_eq!(meter.readings(), [0.0; 3]);
+    assert_eq!(meter.boost_peaks()[0].peak(), held);
+    meter.boost_peaks()[0].reset_peak();
+    unit.process_sample([0.0; 2]);
+    assert_eq!(meter.boost_peaks()[0].peak(), 0.0);
+    for _ in 0..4096 {
+        unit.process_sample([0.1, -0.7]);
+    }
+    let previous = meter.readings();
+    let mut clone = unit.clone();
+    clone.reset();
+    clone.process_sample([1.0; 2]);
+    assert_eq!(meter.readings(), previous);
+    assert_eq!(Arc::strong_count(&meter), 2);
+    power(&mut unit, false);
+    assert_eq!(meter.boost_peaks()[0].peak(), 0.0);
+    for _ in 0..4096 {
+        unit.process_sample([1.0; 2]);
+    }
+    assert_eq!(meter.readings(), [0.0; 3]);
+    assert_eq!(meter.boost_peaks()[0].peak(), 0.0);
+    assert_eq!(Arc::strong_count(&meter), 2);
+    power(&mut unit, true);
+    for _ in 0..4096 {
+        unit.process_sample([0.1, -0.7]);
+    }
+    assert!(meter.boost_peaks()[0].peak() > 0.0);
+}
+#[test]
+fn dynamics_output_holds_follow_final_audio_and_clear_only_on_reset_or_bypass() {
+    for rate in [44100, 48000, 88200, 96000, 176400, 192000] {
+        let context = ProcessingContext {
+            sample_rate_hz: rate,
+            max_block_frames: 512,
+        };
+        let settings = daw_unit_core::CompressorSettings::default();
+        verify_dynamics_peaks(
+            daw_compressor::Compressor::new(context, &settings),
+            daw_compressor::Compressor::set_output_peak_meter,
+            |u, on| {
+                let mut s = settings.clone();
+                s.enabled = on;
+                u.retarget(&s);
+            },
+        );
+        let settings = daw_unit_core::OttSettings::default();
+        verify_dynamics_peaks(
+            daw_ott::Ott::new(context, &settings),
+            daw_ott::Ott::set_output_peak_meter,
+            |u, on| {
+                let mut s = settings.clone();
+                s.enabled = on;
+                u.retarget(&s);
+            },
+        );
+        let settings = daw_unit_core::LimiterSettings::default();
+        verify_dynamics_peaks(
+            daw_limiter::Limiter::new(context, &settings),
+            daw_limiter::Limiter::set_output_peak_meter,
+            |u, on| {
+                let mut s = settings.clone();
+                s.enabled = on;
+                u.retarget(&s);
+            },
         );
     }
 }

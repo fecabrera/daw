@@ -7,6 +7,7 @@ use std::sync::{Condvar, Mutex};
 pub(super) struct Bindings {
     pub tracks: HashMap<Id, Arc<StereoMeter>>,
     pub effects: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
+    pub outputs: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
     pub bands: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     pub modulation: HashMap<ModulationTarget, ModulationMeter>,
     pub live_pitches: daw_engine::LiveMidiPitches,
@@ -164,6 +165,7 @@ impl Worker {
                             let bindings = Bindings {
                                 tracks: track_meters(&plan, &previous.tracks),
                                 effects: effect_meters(&plan, &previous.effects),
+                                outputs: output_meters(&plan, &previous.outputs),
                                 bands: band_meters(&plan, &previous.bands),
                                 modulation: modulation_meters(&plan, &previous.modulation),
                                 live_pitches: daw_engine::LiveMidiPitches::prepare(
@@ -278,6 +280,7 @@ impl Worker {
                     renderer.reset_track_peaks();
                     bind_effect_meters(&mut renderer, &bindings.effects);
                     bind_band_meters(&mut renderer, &bindings.bands);
+                    bind_output_meters(&mut renderer, &bindings.outputs);
                     renderer.bind_modulation(&bindings.modulation);
                     renderer.bind_live_midi_pitches(&bindings.live_pitches);
                     renderer.ready_at = Some(std::time::Instant::now());

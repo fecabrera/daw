@@ -615,6 +615,20 @@ impl Renderer {
             effects.set_meter(id, &meter);
         }
     }
+    /// Bind dynamics output monitoring independently of reduction and signed band meters.
+    pub fn set_effect_output_peak_meter(
+        &mut self,
+        id: Id,
+        meter: std::sync::Arc<daw_unit_core::BandMeter<3>>,
+    ) {
+        self.master_effects.set_output_meter(id, &meter);
+        for midi in self.midi.iter_mut().flatten() {
+            midi.set_effect_output_meter(id, &meter);
+        }
+        for chain in &mut self.effects {
+            chain.set_output_meter(id, &meter);
+        }
+    }
     pub fn set_ott_meter(
         &mut self,
         id: Id,

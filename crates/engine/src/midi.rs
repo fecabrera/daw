@@ -1396,6 +1396,15 @@ impl MidiTrackRuntime {
             bus.chain.set_band_level_meter(effect, band, meter);
         }
     }
+    pub fn set_effect_output_meter(
+        &mut self,
+        id: Id,
+        meter: &std::sync::Arc<daw_unit_core::BandMeter<3>>,
+    ) {
+        for bus in &mut self.layer_effects {
+            bus.chain.set_output_meter(id, meter);
+        }
+    }
     pub fn set_effect_band_meter(
         &mut self,
         id: Id,

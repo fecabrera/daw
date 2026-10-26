@@ -192,6 +192,32 @@ fn bind_effect_meters(
         renderer.set_effect_peak_meter(*id, meter.clone());
     }
 }
+// Dynamics have separate output and reduction/band readings. Keep their handles independent.
+fn output_meters(
+    plan: &RenderPlan,
+    previous: &HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
+) -> HashMap<Id, Arc<daw_unit_core::BandMeter<3>>> {
+    plan.project
+        .all_effects()
+        .filter(|e| {
+            matches!(
+                e.unit,
+                daw_core::EffectSettings::Compressor(_)
+                    | daw_core::EffectSettings::Limiter(_)
+                    | daw_core::EffectSettings::Ott(_)
+            )
+        })
+        .map(|e| (e.id, previous.get(&e.id).cloned().unwrap_or_default()))
+        .collect()
+}
+fn bind_output_meters(
+    renderer: &mut Renderer,
+    meters: &HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
+) {
+    for (id, meter) in meters {
+        renderer.set_effect_output_peak_meter(*id, meter.clone());
+    }
+}
 fn band_meters(
     plan: &RenderPlan,
     previous: &HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
@@ -410,6 +436,7 @@ pub struct AudioOutput {
     pub description: String,
     track_meters: HashMap<Id, Arc<StereoMeter>>,
     effect_meters: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
+    output_meters: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
     band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
     modulation_meters: HashMap<ModulationTarget, ModulationMeter>,
     live_pitches: daw_engine::LiveMidiPitches,
@@ -512,6 +539,7 @@ impl AudioOutput {
         let status = preparation.status.clone();
         let meters = track_meters(&plan, &HashMap::new());
         let reductions = effect_meters(&plan, &HashMap::new());
+        let outputs = output_meters(&plan, &HashMap::new());
         let changes = band_meters(&plan, &HashMap::new());
         let modulation = modulation_meters(&plan, &HashMap::new());
         let live_pitches = daw_engine::LiveMidiPitches::prepare(&plan.project, &Default::default());
@@ -530,6 +558,7 @@ impl AudioOutput {
             let audition = state.audition_sender.take().unwrap();
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_band_meters(&mut state.renderer, &changes);
+            bind_output_meters(&mut state.renderer, &outputs);
             state.renderer.bind_modulation(&modulation);
             state.renderer.bind_live_midi_pitches(&live_pitches);
             macro_rules! stream {
@@ -594,6 +623,7 @@ impl AudioOutput {
             track_meters: meters,
             effect_meters: reductions,
             band_meters: changes,
+            output_meters: outputs,
             modulation_meters: modulation,
             live_pitches,
         })
@@ -609,6 +639,7 @@ impl AudioOutput {
             tracks: self.track_meters.clone(),
             effects: self.effect_meters.clone(),
             bands: self.band_meters.clone(),
+            outputs: self.output_meters.clone(),
             modulation: self.modulation_meters.clone(),
             live_pitches: self.live_pitches.clone(),
         }
@@ -722,13 +753,19 @@ impl AudioOutput {
     }
     /// Held linear output sample peak, retained while paused/stopped and resettable by the UI.
     pub fn effect_output_peak(&self, id: Id) -> Option<&daw_unit_core::PeakHold> {
-        self.band_meters
-            .get(&ModulationTarget::Effect(id))
+        self.output_meters
+            .get(&id)
+            .or_else(|| self.band_meters.get(&ModulationTarget::Effect(id)))
             .map(|m| &m.boost_peaks()[0])
     }
     /// Current linear output level; stopped or absent outputs show silence.
     pub fn effect_output_level(&self, id: Id) -> f32 {
-        self.band_monitor_values(id)[0]
+        if !self.status.playing.load(Ordering::Relaxed) {
+            return 0.0;
+        }
+        self.output_meters
+            .get(&id)
+            .map_or_else(|| self.band_monitor_values(id)[0], |m| m.readings()[0])
     }
     /// Linear Low/Mid/High output peaks. Stopped or absent outputs show silence.
     pub fn eq_band_levels(&self, id: Id) -> [f32; 3] {
@@ -848,6 +885,7 @@ impl AudioOutput {
                     self.track_meters = ready.bindings.tracks;
                     self.effect_meters = ready.bindings.effects;
                     self.band_meters = ready.bindings.bands;
+                    self.output_meters = ready.bindings.outputs;
                     self.modulation_meters = ready.bindings.modulation;
                     self.live_pitches = ready.bindings.live_pitches;
                 }
@@ -1653,10 +1691,12 @@ mod gain_reduction_meter_tests {
             let main = effect.id;
             instrument.main.effects.push(effect);
             let meters = effect_meters(&plan, &HashMap::new());
+            let outputs = output_meters(&plan, &HashMap::new());
             let bands = band_meters(&plan, &HashMap::new());
             let mut renderer = Renderer::new(plan.clone());
             bind_effect_meters(&mut renderer, &meters);
             bind_band_meters(&mut renderer, &bands);
+            bind_output_meters(&mut renderer, &outputs);
             renderer.play();
             crate::preparation_tests::realtime(|| {
                 for _ in 0..4000 {
@@ -1676,6 +1716,12 @@ mod gain_reduction_meter_tests {
             };
             for id in [layer, main] {
                 assert!(peak(id) > 0.0);
+                assert!(outputs[&id].readings()[0] > 0.0);
+                assert!(outputs[&id].boost_peaks()[0].peak() > 0.0);
+                assert!(Arc::ptr_eq(
+                    &outputs[&id],
+                    &output_meters(&plan, &outputs)[&id]
+                ));
             }
             if kind == 2 {
                 for peak in bands[&ModulationTarget::Effect(layer)].reduction_peaks() {
@@ -1685,7 +1731,10 @@ mod gain_reduction_meter_tests {
                 meters[&layer].reset_peak();
             }
             assert_eq!(peak(layer), 0.0);
+            assert!(outputs[&layer].boost_peaks()[0].peak() > 0.0);
+            outputs[&main].boost_peaks()[0].reset_peak();
             assert!(peak(main) > 0.0);
+            assert_eq!(outputs[&main].boost_peaks()[0].peak(), 0.0);
             assert!(if kind == 2 {
                 Arc::ptr_eq(
                     &band_meters(&plan, &bands)[&ModulationTarget::Effect(main)],
@@ -1791,16 +1840,23 @@ mod band_meter_tests {
                 }
                 effect_test_chain(&mut plan, master).push(effect);
                 let scalar = effect_meters(&plan, &HashMap::new());
+                let outputs = output_meters(&plan, &HashMap::new());
                 let bands = band_meters(&plan, &HashMap::new());
                 let cells: Vec<_> = scalar
                     .values()
                     .map(|meter| meter.current().as_ref())
-                    .chain(bands.values().flat_map(|m| m.current().iter()))
+                    .chain(
+                        bands
+                            .values()
+                            .chain(outputs.values())
+                            .flat_map(|m| m.current().iter()),
+                    )
                     .collect();
                 let tracks = track_meters(&plan, &HashMap::new());
                 let mut renderer = PreparedRenderer::new(plan.clone(), &tracks);
                 bind_effect_meters(&mut renderer, &scalar);
                 bind_band_meters(&mut renderer, &bands);
+                bind_output_meters(&mut renderer, &outputs);
                 renderer.play();
                 for _ in 0..2000 {
                     renderer.next_sample();
@@ -1825,6 +1881,7 @@ mod band_meter_tests {
                     let mut next = PreparedRenderer::new(plan.clone(), &tracks);
                     bind_effect_meters(&mut next, &scalar);
                     bind_band_meters(&mut next, &bands);
+                    bind_output_meters(&mut next, &outputs);
                     next.inherit(&mut renderer);
                     renderer = next;
                     if !enabled {
@@ -1833,6 +1890,7 @@ mod band_meter_tests {
                         assert!(
                             bands
                                 .values()
+                                .chain(outputs.values())
                                 .flat_map(|meter| meter
                                     .reduction_peaks()
                                     .iter()
@@ -1855,6 +1913,7 @@ mod band_meter_tests {
                         assert!(
                             bands
                                 .values()
+                                .chain(outputs.values())
                                 .flat_map(|meter| meter
                                     .reduction_peaks()
                                     .iter()
@@ -1867,6 +1926,12 @@ mod band_meter_tests {
                         }
                     }
                 }
+                let retained = output_meters(&plan, &outputs);
+                for (id, meter) in &outputs {
+                    assert!(Arc::ptr_eq(meter, &retained[id]));
+                }
+                effect_test_chain(&mut plan, master).clear();
+                assert!(output_meters(&plan, &outputs).is_empty());
             }
         }
     }

@@ -6766,6 +6766,9 @@ fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_se
     for color_theme in settings::ColorTheme::ALL {
         for (compact, collapsed) in [(false, false), (true, false), (false, true)] {
             for make in [
+                daw_core::EffectInstance::limiter,
+                daw_core::EffectInstance::compressor,
+                daw_core::EffectInstance::ott,
                 daw_core::EffectInstance::drive,
                 daw_core::EffectInstance::drive_v2,
                 daw_core::EffectInstance::bitcrusher,
@@ -6793,6 +6796,9 @@ fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_se
                     daw_core::EffectSettings::Filter(s) => s.collapsed = collapsed,
                     daw_core::EffectSettings::AutoFilter(s) => s.collapsed = collapsed,
                     daw_core::EffectSettings::MultibandEq(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::Limiter(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::Compressor(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::Ott(s) => s.collapsed = collapsed,
                     _ => unreachable!(),
                 }
                 app.session.project.tracks[0].effects = vec![effect];
@@ -6815,6 +6821,29 @@ fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_se
                     }
                     daw_core::EffectSettings::MultibandEq(_) => {
                         app.effects_bounds.multiband_eq_units[0].output_meter
+                    }
+                    daw_core::EffectSettings::Limiter(_) => {
+                        let b = &app.effects_bounds.limiter_units[0];
+                        if !compact && !collapsed {
+                            assert!(b.sections[0].contains_rect(b.meter));
+                            assert!(b.sections[1].contains_rect(b.output_meter));
+                            assert!(!b.meter.intersects(b.output_meter));
+                        }
+                        b.output_meter
+                    }
+                    daw_core::EffectSettings::Compressor(_) => {
+                        let b = &app.effects_bounds.compressor_units[0];
+                        if !compact && !collapsed {
+                            assert!(b.sections[2].contains_rect(b.output_meter));
+                        }
+                        b.output_meter
+                    }
+                    daw_core::EffectSettings::Ott(_) => {
+                        let b = &app.effects_bounds.ott_units[0];
+                        if !compact && !collapsed {
+                            assert!(b.sections[3].contains_rect(b.output_meter));
+                        }
+                        b.output_meter
                     }
                     _ => unreachable!(),
                 };

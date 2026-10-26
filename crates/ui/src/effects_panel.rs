@@ -914,8 +914,7 @@ impl DawUi {
                                     let (_bounds, header) = crate::ott_panel::show(
                                         ui,
                                         settings,
-                                        compact,
-                                        height,
+                                        (compact, height),
                                         gains,
                                         modulation_sources,
                                         self.output.as_ref().and_then(|o| {
@@ -923,6 +922,7 @@ impl DawUi {
                                                 daw_engine::ModulationTarget::Effect(effect.id),
                                             )
                                         }),
+                                        output_level,
                                     );
                                     let power = _bounds.power;
                                     #[cfg(test)]
@@ -943,8 +943,7 @@ impl DawUi {
                                     let (_bounds, header) = crate::limiter_panel::show(
                                         ui,
                                         settings,
-                                        compact,
-                                        height,
+                                        (compact, height),
                                         reduction,
                                         modulation_sources,
                                         self.output.as_ref().and_then(|o| {
@@ -952,6 +951,7 @@ impl DawUi {
                                                 daw_engine::ModulationTarget::Effect(effect.id),
                                             )
                                         }),
+                                        output_level,
                                     );
                                     let power = _bounds.power;
                                     #[cfg(test)]
@@ -1072,8 +1072,7 @@ impl DawUi {
                                     let (_bounds, header) = crate::compressor_panel::show(
                                         ui,
                                         settings,
-                                        compact,
-                                        height,
+                                        (compact, height),
                                         reduction,
                                         modulation_sources,
                                         self.output.as_ref().and_then(|o| {
@@ -1081,6 +1080,7 @@ impl DawUi {
                                                 daw_engine::ModulationTarget::Effect(effect.id),
                                             )
                                         }),
+                                        output_level,
                                     );
                                     let power = _bounds.power;
                                     #[cfg(test)]

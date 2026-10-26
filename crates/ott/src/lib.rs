@@ -1,7 +1,7 @@
 //! Three-band upward/downward compression with private FunDSP crossovers and detectors.
 use daw_unit_core::{
-    BandMeter, CompressorDetection, EffectUnit, OTT_TYPE_ID, OttBandSettings, OttSettings,
-    PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
+    BandMeter, CompressorDetection, EffectUnit, LevelMonitor, OTT_TYPE_ID, OttBandSettings,
+    OttSettings, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
 };
 use fundsp::{
     audionode::AudioNode,
@@ -246,6 +246,7 @@ pub struct Ott {
     splits: [Split; 3],
     bands: [Band; 3],
     fade_frames: u32,
+    output_monitor: LevelMonitor<3>,
     meter: UnitMeter<BandMeter<3>>,
 }
 impl Ott {
@@ -262,6 +263,7 @@ impl Ott {
             ],
             bands: settings.bands.map(|s| Band::new(rate, s)),
             fade_frames: (rate / 200).max(1),
+            output_monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
             meter: UnitMeter::new(settings.enabled),
         }
     }
@@ -277,6 +279,7 @@ impl Ott {
     }
     pub fn retarget(&mut self, settings: &OttSettings) {
         self.meter.set_enabled(settings.enabled);
+        self.output_monitor.set_enabled(settings.enabled);
         let values = Self::values(settings);
         let crossover_changed = self.parameters[..2]
             .iter()
@@ -307,6 +310,10 @@ impl Ott {
     pub fn set_gain_change_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
         self.meter.attach(meter, self.gain_change_db());
     }
+    /// Attach final-output current and held sample peaks on a control thread.
+    pub fn set_output_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
+        self.output_monitor.attach_peak(meter);
+    }
     fn publish(&self) {
         self.meter.publish(self.gain_change_db());
     }
@@ -333,6 +340,7 @@ impl EffectUnit for Ott {
         for band in &mut self.bands {
             band.reset();
         }
+        self.output_monitor.reset();
         self.publish();
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
@@ -369,6 +377,7 @@ impl Ott {
             finite(f64::from(input[ch]) * (1.0 - f64::from(p[5])) + mix * f64::from(p[5]))
         });
         self.publish();
+        self.output_monitor.sample_output(output);
         output
     }
 }
