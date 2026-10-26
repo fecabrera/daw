@@ -4,6 +4,19 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## macOS plugin bundle signing repair — 2026-10-26
+
+The installed Drive VST3 had a valid-looking directory layout but retained only the Rust dylib's linker signature. Strict bundle verification failed with `code has no resources but signature indicates they must be present`; the SDK loader reported `Invalid Module`. The downloaded installation also had quarantine metadata. Finder package classification was false, but that classification is separate from SDK bundle loading.
+
+The shared packager now relocates each Mach-O library ID to a bundle-relative `@rpath` ID, signs the complete macOS CLAP/VST3 bundle ad hoc after all resources are final, verifies it, and then computes hashes/archives. Both standalone checkers use the same finalizer. Their Python 3.10 import contract remains intact; only manifest packaging imports Python 3.11's `tomllib`. This is development signing, not Developer ID signing or notarization.
+
+- Six packaging tests pass, covering all platform layouts, final binary hashes, failure preservation, checker imports without `tomllib`, native archive extraction/signature verification and rejection after resource tampering. Ten existing checker tests also pass.
+- Locked offline native release builds pass. Both extracted Drive bundles pass strict signature verification. Loaded release ABI tests pass **11 CLAP + 10 VST3** cases; two explicit CPU benchmarks remain ignored. No Rust source or dependency input changed.
+- The rebuilt VST3 passes Steinberg validator **47 tests, 0 failures**, including loading through macOS Core Foundation. The installed copy was replaced with that locally built bundle, and the original was retained in ignored workspace storage. Strict verification and all 47 SDK tests also pass at the installed path. The replacement has no download quarantine attribute; the original backup retains its metadata.
+- Python compilation, documentation file links and diff checks pass. Finder still reports the repaired directory as a non-package on this machine, while its bundle identity and SDK loading succeed. No Launch Services registration or Finder flag was changed.
+
+An Ableton scan/session is not verified here. Live requires a correctly signed plugin and matching host architecture; its scanner may need a rescan after replacement. Logic Pro requires Audio Units, so these VST3/CLAP builds cannot load there. Audio Unit support, Developer ID distribution trust/notarization, external-host/platform release coverage and the complete release notice audit remain open.
+
 ## Audio device selection and quality defaults — 2026-10-26
 
 Added input/output device selectors to the main application Settings window and a separate Audio quality defaults dialog for output sample rate, stream bit depth and buffer size. Preferences remain machine-local. Device discovery returns descriptors from a named worker through a bounded channel; it never opens a capture stream. Output changes probe a replacement before publication, stop playback on success and retain accepted preferences/output on failure. Playback and chord/note audition use the same preferences. Input selection is reserved for future recording and does not monitor audio. Project processing/export settings and project modification state remain separate. See [device requirements](../audio/devices.md).

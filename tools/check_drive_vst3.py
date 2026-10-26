@@ -12,6 +12,7 @@ import shutil
 import re
 import subprocess
 import sys
+from package_drive_plugins import finalize_macos_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN = {"daw-desktop", "daw-cli", "daw-core", "daw-ui", "daw-engine", "daw-project", "daw-output", "daw-media", "daw-separation", "cpal", "rfd", "eframe", "clap-sys", "daw-plugin-clap", "daw-drive-clap"}
@@ -107,6 +108,8 @@ def main() -> int:
     for source in ["crates/unit-ui/assets/fonts/OFL.txt", "crates/unit-ui/assets/fonts/Hack-LICENSE.txt"]:
         shutil.copy2(ROOT / source, notices / ("Outfit-OFL.txt" if source.endswith("OFL.txt") else "Hack-LICENSE.txt"))
     (notices / "DEVELOPMENT.txt").write_text("Drive editor development artifact. Complete release dependency/notice audit, native accessibility, platform and external-host checks remain gates. Not a release package.\n")
+    if platform.system() == "Darwin":
+        finalize_macos_bundle(bundle, binary)
     normal_env = dict(env, DRIVE_VST3_TEST_LIBRARY=str(binary))
     normal_env.pop("DRIVE_VST3_REQUIRE_ALLOCATION_CHECK", None)
     run(tests, work / "artifact-parity-tests.log", normal_env)

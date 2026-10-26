@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 import plistlib
 import shutil
+import subprocess
 import tempfile
-import tomllib
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,8 +18,25 @@ TARGETS = {
 }
 
 
+def finalize_macos_bundle(bundle, binary):
+    """Relocate and seal a complete development bundle, including its resources.
+
+    Rust's linker signature covers the bare dylib, not the enclosing plugin bundle.
+    Hosts such as Live reject that signature after the dylib is placed in a bundle.
+    Ad-hoc signing supports local development; it is not Developer ID notarization.
+    """
+    subprocess.run(["install_name_tool", "-id",
+                    f"@rpath/{bundle.name}/Contents/MacOS/{binary.name}", str(binary)], check=True)
+    subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none",
+                    str(bundle)], check=True)
+    subprocess.run(["codesign", "--verify", "--strict", str(bundle)], check=True)
+
+
 def package(target, target_dir, output_dir, root=ROOT):
     """Read release libraries and publish one ZIP per format after staging succeeds."""
+    # The checkers import finalization on Python 3.10; only packaging needs 3.11.
+    import tomllib
+
     system, architecture, library_pattern = TARGETS[target]
     manifest = tomllib.loads((root / "plugins/drive/unit.toml").read_text(encoding="utf-8"))
     version = manifest["version"]
@@ -63,16 +80,21 @@ def package(target, target_dir, output_dir, root=ROOT):
             for source_name, destination in (("OFL.txt", "Outfit-OFL.txt"),
                                              ("Hack-LICENSE.txt", "Hack-LICENSE.txt")):
                 shutil.copy2(root / "crates/unit-ui/assets/fonts" / source_name, notices / destination)
+            if system == "macos":
+                # Sign after the plist and every resource are final, before hashing/ZIP.
+                finalize_macos_bundle(bundle, binary)
             metadata = {"product": manifest["product"], "vendor": manifest["vendor"],
                         "version": version, "target": target, "format": format_name,
                         "development_preview": True,
                         "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
             (content / "build.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
             (content / "README.txt").write_text(
-                "Drive development preview. Unsigned; macOS builds are not notarized.\n"
+                "Drive development preview. macOS bundles are ad-hoc signed, not notarized.\n"
+                "Windows/Linux binaries have no distribution signature.\n"
                 "Extract the ZIP before use. Copy Drive." + format_name + " to a plugin search\n"
                 "folder supported by your DAW, then rescan. Keep the licenses with it.\n"
                 "To remove, close the DAW and remove that file or bundle.\n"
+                "Logic Pro requires Audio Units; these CLAP/VST3 builds do not support it.\n"
                 "Native accessibility, external-host/platform checks and a complete release\n"
                 "dependency/notice audit remain open. This is not a release package.\n",
                 encoding="utf-8")

@@ -4,6 +4,14 @@ Drive has independent CLAP and VST3 development plugins. Both use the original b
 
 See [CLAP build and checks](../../README.md#drive-clap-development-processor) or [VST3 build and checks](../../README.md#drive-vst3-development-processor) to create the development artifact. The build does not install it into a plugin folder. Release installation instructions will accompany the completed plugins.
 
+## Host compatibility and installation
+
+Use the VST3 build in a host that supports VST3. Logic Pro requires Audio Units; it cannot load these VST3 or CLAP builds. An Audio Unit version is not implemented. The macOS build is Apple Silicon only: use a native Apple Silicon host, not an Intel/Rosetta VST3 host.
+
+On macOS, a `.vst3` plugin is a bundle directory containing `Contents/Info.plist` and its executable. A folder appearance alone does not establish whether it can load. Copy the whole `Drive.vst3` bundle to `/Library/Audio/Plug-Ins/VST3` or your user's `~/Library/Audio/Plug-Ins/VST3`. Keep its contents intact. In Ableton Live, enable the VST3 system folders and rescan after replacing the plugin. Restart the host if the old module was loaded.
+
+New macOS development packages are ad-hoc signed after their resources are assembled. Older archives had only the Rust dylib's linker signature, which is invalid as a complete bundle signature and can prevent host loading. Use a newly packaged build. These previews are not notarized; downloaded builds can still need approval through macOS Privacy & Security. The packager does not install plugins automatically.
+
 ## Parameters
 
 The host exposes Volume, Gain, Tone, Color shape, Color strength, Color frequency, and Bypass. Their defaults and audible behavior match [built-in Drive](drive.md). Bypass defaults off. Both development processors accept stereo 32-bit audio at 44.1, 48, 88.2, 96, 176.4, or 192 kHz; it rejects other rates.
