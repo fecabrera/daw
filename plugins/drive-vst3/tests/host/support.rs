@@ -436,6 +436,28 @@ fn run(
     in_place: bool,
     silence: u64,
 ) -> (Vec<f32>, Vec<f32>) {
+    run_with_transport(
+        plugin,
+        left,
+        right,
+        points,
+        mode,
+        in_place,
+        silence,
+        ptr::null_mut(),
+    )
+}
+#[allow(clippy::too_many_arguments)]
+fn run_with_transport(
+    plugin: &Plugin,
+    left: &mut [f32],
+    right: &mut [f32],
+    points: &[(P, Vec<(i32, f64)>)],
+    mode: i32,
+    in_place: bool,
+    silence: u64,
+    transport: *mut ProcessContext,
+) -> (Vec<f32>, Vec<f32>) {
     let queues = changes(points);
     let mut out_left = vec![f32::NAN; left.len()];
     let mut out_right = out_left.clone();
@@ -471,7 +493,7 @@ fn run(
         outputParameterChanges: ptr::null_mut(),
         inputEvents: ptr::null_mut(),
         outputEvents: ptr::null_mut(),
-        processContext: ptr::null_mut(),
+        processContext: transport,
     };
     assert_eq!(
         plugin.measured(|| unsafe { plugin.processor.process(&mut data) }),
@@ -545,5 +567,7 @@ fn assert_samples(actual: &(Vec<f32>, Vec<f32>), expected: &(Vec<f32>, Vec<f32>)
 }
 
 fn enable_color(state: &mut PluginState) {
-    if let Some(p) = P::ALL.into_iter().find(|p| p.info().key == "color_enabled") { state.set(p, 1.0).unwrap(); }
+    if let Some(p) = P::ALL.into_iter().find(|p| p.info().key == "color_enabled") {
+        state.set(p, 1.0).unwrap();
+    }
 }

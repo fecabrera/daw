@@ -262,12 +262,18 @@ unsafe extern "C" fn on_main(plugin: *const clap_plugin) {
         }
     });
 }
-unsafe extern "C" fn latency(_: *const clap_plugin) -> u32 {
-    daw_drive_plugin::LATENCY_FRAMES
+unsafe extern "C" fn latency(plugin: *const clap_plugin) -> u32 {
+    boundary(0, || {
+        daw_drive_plugin::latency_frames(
+            unsafe { instance(plugin) }.map_or(48000, |i| i.rate.load(Ordering::Acquire)),
+        )
+    })
 }
 unsafe extern "C" fn tail(plugin: *const clap_plugin) -> u32 {
     boundary(48000, || {
-        unsafe { instance(plugin) }.map_or(48000, |i| i.rate.load(Ordering::Acquire))
+        daw_drive_plugin::tail_frames(
+            unsafe { instance(plugin) }.map_or(48000, |i| i.rate.load(Ordering::Acquire)),
+        )
     })
 }
 static LATENCY: clap_plugin_latency = clap_plugin_latency { get: Some(latency) };

@@ -29,3 +29,5 @@ Double-click a knob to restore its default. Hold Shift while dragging for fine a
 Open the secondary-color header dot for [modulation connections](../modulation/README.md). Direction and Spread accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Per note Envelopes cannot feed this track effect. Audio tracks and Master have no instrument providers; their connection controls can remain unassigned.
 
 Direction amounts use degrees. Spread amounts use linear spread units. Contributions add to each base setting, with the result limited to the control's range. The base pointer and readout retain the saved value; range arcs and live dots show modulation. Input remains a manual choice.
+
+This effect also has a [standalone CLAP/VST3 plugin](plugins.md).

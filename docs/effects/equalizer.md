@@ -23,3 +23,5 @@ Each band has a horizontal output-level monitor below the header. It shows the l
 Open the header's secondary-color dot to add [modulation](../modulation/README.md). Low/Mid/High Gain and Low/High Frequency and Q accept shared Envelope, LFO, and Macro sources from the same MIDI instrument, including Output. Per note Envelopes are unavailable for this track effect.
 
 Gain amounts use dB, Frequency uses octaves, and Q uses Q units. The knob pointer retains the base setting while range arcs and live dots show modulation. Band power and the monitors are not modulation destinations.
+
+This effect also has a [standalone CLAP/VST3 plugin](plugins.md).

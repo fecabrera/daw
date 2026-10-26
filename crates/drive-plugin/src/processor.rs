@@ -66,6 +66,8 @@ impl Processor {
     pub fn reset(&mut self) {
         self.drive.reset();
     }
+    /// Units without a transport clock ignore host timing.
+    pub fn set_transport(&mut self, _frame: Option<u64>, _tempo: Option<f32>) {}
     pub fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
         self.drive.process_sample(input)
     }

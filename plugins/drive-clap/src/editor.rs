@@ -15,7 +15,11 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
-const CAPACITY: usize = 512;
+const CAPACITY: usize = if 4 * daw_drive_plugin::Parameter::COUNT > 512 {
+    8 * daw_drive_plugin::Parameter::COUNT
+} else {
+    512
+};
 pub(crate) struct Gui {
     pub created: bool,
     pub scale: f64,
@@ -64,6 +68,7 @@ impl Default for Bridge {
 impl Bridge {
     pub fn main(&self, i: &Instance) {
         self.model.output_reset.store(false, Ordering::Release);
+        self.model.meter_reset.store(0, Ordering::Release);
         if let Some(window) = self.gui.borrow().window.as_ref() {
             window.host_main_thread_callback();
         }
@@ -442,7 +447,10 @@ mod tests {
         let bridge = Bridge::default();
         for (index, edit) in [
             Edit::Begin(Parameter::ALL[2]),
-            Edit::Value(Parameter::ALL[2], 0.7),
+            Edit::Value(
+                Parameter::ALL[2],
+                Parameter::ALL[2].denormalize(0.7).unwrap(),
+            ),
             Edit::End(Parameter::ALL[2]),
         ]
         .into_iter()
@@ -483,7 +491,10 @@ mod tests {
             checked_flush(&bridge, &mut audio, &events);
             assert_eq!(*output.types.last().unwrap(), expected);
         }
-        assert_eq!(audio.state.get(Parameter::ALL[2]), 0.7);
+        assert_eq!(
+            audio.state.get(Parameter::ALL[2]),
+            Parameter::ALL[2].denormalize(0.7).unwrap()
+        );
         assert_eq!(bridge.applied.load(Ordering::Acquire), 0);
         // An event acknowledgement cannot overtake its matching audio-state publication.
         unsafe {
@@ -519,7 +530,10 @@ mod tests {
             for index in 0..CAPACITY {
                 let edit = match index % 3 {
                     0 => Edit::Begin(Parameter::ALL[2]),
-                    1 => Edit::Value(Parameter::ALL[2], 0.7),
+                    1 => Edit::Value(
+                        Parameter::ALL[2],
+                        Parameter::ALL[2].denormalize(0.7).unwrap(),
+                    ),
                     _ => Edit::End(Parameter::ALL[2]),
                 };
                 producer.push((edit, index as u64 + 1)).unwrap();

@@ -26,3 +26,5 @@ Open the header's modulation dot to connect shared Envelope, LFO, or Macro sourc
 Removing a band removes its modulation connections. Other bands keep their connections when their displayed numbers change. Undo restores a removed band and its connections.
 
 The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.
+
+This effect also has a [standalone CLAP/VST3 plugin](plugins.md).

@@ -72,3 +72,7 @@ Check all six project rates: exact default unity and dry bypass, M/S decoding, w
 Check track and Master chains against independently predecoded audio; live/offline/block/random-access/loop parity; route reorder and compatible replacement; actual snapshots; source validation/remapping; save/reopen/Save As/duplication/rate persistence and invalid-edit rollback. UI checks cover both themes, all installation targets, Imaging folder and display order, knob edits, shared amount scales/reset/Shift, modulation markers and connection opening, power, compact/collapse, and removal. Native appearance, pointer/device timing, and Windows/Linux need separate verification.
 
 For L/R Spread, use different tones on the left and right channels. At Direction 0°, verify all six measured Mid/Side gain pairs plus interpolation within lower and upper segments. Cover track and Master installation at all project rates, offline rendering, and compatible changes during playback after the 5 ms base ramp. Check mono, anti-phase, and nearly identical channels; base/modulated equivalence; unchanged M/S Side gain; and smooth transitions across unity and input modes. Do not treat two identical channels as evidence of stereo width.
+
+## Plugin delivery
+
+This unit also has independent CLAP/VST3 previews. The [shared build contract](../architecture/all-effect-plugin-builds.md) defines identity, state, automation, timing, meters, packaging, CI, and acceptance limits.

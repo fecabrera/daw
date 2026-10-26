@@ -1211,6 +1211,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-auto-filter-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-auto-filter",
+ "daw-auto-filter-editor",
+ "daw-auto-filter-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-auto-filter-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-auto-filter-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-auto-filter-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-auto-filter",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-auto-filter-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-auto-filter",
+ "daw-auto-filter-editor",
+ "daw-auto-filter-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-bitcrusher"
 version = "0.1.0"
 dependencies = [
@@ -1278,6 +1330,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-chorus-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-chorus",
+ "daw-chorus-editor",
+ "daw-chorus-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-chorus-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-chorus-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-chorus-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-chorus",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-chorus-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-chorus",
+ "daw-chorus-editor",
+ "daw-chorus-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-cli"
 version = "0.1.0"
 dependencies = [
@@ -1295,6 +1399,58 @@ version = "0.1.0"
 dependencies = [
  "daw-unit-core",
  "fundsp",
+]
+
+[[package]]
+name = "daw-compressor-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-compressor",
+ "daw-compressor-editor",
+ "daw-compressor-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-compressor-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-compressor-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-compressor-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-compressor",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-compressor-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-compressor",
+ "daw-compressor-editor",
+ "daw-compressor-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]
@@ -1331,6 +1487,58 @@ name = "daw-direction-mixer"
 version = "0.1.0"
 dependencies = [
  "daw-unit-core",
+]
+
+[[package]]
+name = "daw-direction-mixer-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-direction-mixer",
+ "daw-direction-mixer-editor",
+ "daw-direction-mixer-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-direction-mixer-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-direction-mixer-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-direction-mixer-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-direction-mixer",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-direction-mixer-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-direction-mixer",
+ "daw-direction-mixer-editor",
+ "daw-direction-mixer-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]
@@ -1490,11 +1698,115 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-equalizer-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-equalizer",
+ "daw-equalizer-editor",
+ "daw-equalizer-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-equalizer-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-equalizer-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-equalizer-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-equalizer",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-equalizer-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-equalizer",
+ "daw-equalizer-editor",
+ "daw-equalizer-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-filter"
 version = "0.1.0"
 dependencies = [
  "daw-unit-core",
  "fundsp",
+]
+
+[[package]]
+name = "daw-filter-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-filter",
+ "daw-filter-editor",
+ "daw-filter-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-filter-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-filter-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-filter-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-filter",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-filter-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-filter",
+ "daw-filter-editor",
+ "daw-filter-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]
@@ -1516,6 +1828,58 @@ name = "daw-limiter"
 version = "0.1.0"
 dependencies = [
  "daw-unit-core",
+]
+
+[[package]]
+name = "daw-limiter-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-limiter",
+ "daw-limiter-editor",
+ "daw-limiter-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-limiter-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-limiter-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-limiter-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-limiter",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-limiter-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-limiter",
+ "daw-limiter-editor",
+ "daw-limiter-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]
@@ -1542,6 +1906,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-multiband-eq-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-equalizer",
+ "daw-multiband-eq-editor",
+ "daw-multiband-eq-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-multiband-eq-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-multiband-eq-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-multiband-eq-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-equalizer",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+ "uuid",
+]
+
+[[package]]
+name = "daw-multiband-eq-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-equalizer",
+ "daw-multiband-eq-editor",
+ "daw-multiband-eq-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-oscillator"
 version = "0.1.0"
 dependencies = [
@@ -1555,6 +1972,58 @@ version = "0.1.0"
 dependencies = [
  "daw-unit-core",
  "fundsp",
+]
+
+[[package]]
+name = "daw-ott-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-ott",
+ "daw-ott-editor",
+ "daw-ott-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-ott-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-ott-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-ott-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-ott",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-ott-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-ott",
+ "daw-ott-editor",
+ "daw-ott-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]
@@ -1701,6 +2170,58 @@ version = "0.1.0"
 dependencies = [
  "daw-unit-core",
  "fundsp",
+]
+
+[[package]]
+name = "daw-stereo-spread-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-stereo-spread",
+ "daw-stereo-spread-editor",
+ "daw-stereo-spread-plugin",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-stereo-spread-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-stereo-spread-plugin",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-stereo-spread-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-support",
+ "daw-stereo-spread",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-stereo-spread-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-stereo-spread",
+ "daw-stereo-spread-editor",
+ "daw-stereo-spread-plugin",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]

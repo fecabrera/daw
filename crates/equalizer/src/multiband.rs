@@ -100,6 +100,7 @@ fn values(s: &MultibandEqBand) -> [f32; 3] {
 #[derive(Clone)]
 struct Band {
     id: ModulationTargetId,
+    fixed_slot: bool,
     filters: [[Filter; 2]; 6],
     parameters: Ramp<3>,
     weights: Ramp<6>,
@@ -120,6 +121,7 @@ impl Band {
         };
         Self {
             id: s.id,
+            fixed_slot: false,
             filters: EqBandMode::ALL
                 .map(|mode| std::array::from_fn(|_| Filter::new(mode, &params))),
             parameters: Ramp::new(effective),
@@ -164,6 +166,12 @@ impl ModulationDestination for Band {
         m: &ModulationInputs,
         _: ModulationContext,
     ) -> [f32; 2] {
+        // Prepared plugin slots may sleep after their bypass ramp. Ordinary DAW
+        // bands keep their existing warm-history behavior.
+        if self.fixed_slot && self.weights.remaining == 0 && self.weights.target == [0.0; 6] {
+            self.monitor.sample_output(input);
+            return input;
+        }
         let base = self.parameters.advance();
         let offsets = self
             .external
@@ -258,6 +266,41 @@ impl MultibandEq {
             bypass: Ramp::new([if s.enabled { 1.0 } else { 0.0 }]),
             fade_frames: (c.sample_rate_hz / 200).max(1),
         }
+    }
+    /// Enable fixed-slot suspension after bypass ramps. Call during preparation.
+    /// This does not change the DAW's variable-topology band lifecycle.
+    pub fn prepare_fixed_band_slots(&mut self) {
+        for band in &mut self.bands {
+            band.destination.fixed_slot = true;
+        }
+    }
+    /// Retarget a prepared topology without allocation. IDs and order must match.
+    /// Route/topology changes still use a worker-prepared processor and `inherit`.
+    pub fn retarget(&mut self, s: &MultibandEqSettings) {
+        if s.bands.len() != self.bands.len()
+            || !self
+                .bands
+                .iter()
+                .zip(&s.bands)
+                .all(|(a, b)| a.destination.id == b.id)
+        {
+            return;
+        }
+        for (band, settings) in self.bands.iter_mut().zip(&s.bands) {
+            band.destination
+                .parameters
+                .set(values(settings), self.fade_frames);
+            band.destination
+                .weights
+                .set(weights(settings), self.fade_frames);
+            band.destination.monitor.set_enabled(s.enabled);
+        }
+        self.output
+            .destination
+            .gain
+            .set([s.output_gain_db], self.fade_frames);
+        self.bypass.set([f32::from(s.enabled)], self.fade_frames);
+        self.output_monitor.set_enabled(s.enabled);
     }
     /// Attach the final unit output monitor, independently of per-band analysis.
     /// Prepare and attach on the control thread; retain the handle until retirement.
@@ -624,5 +667,78 @@ mod meter_tests {
             assert_eq!(read(&handles[0]), 0.0);
             assert_eq!(read(&handles[1]), 0.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod prepared_slot_tests {
+    use super::*;
+    #[test]
+    fn prepared_retarget_rejects_topology_changes_and_preserves_fixed_slot_mode() {
+        let context = ProcessingContext {
+            sample_rate_hz: 48000,
+            max_block_frames: 512,
+        };
+        let mut settings = MultibandEqSettings::default();
+        let mut processor = MultibandEq::new(context, &settings);
+        processor.prepare_fixed_band_slots();
+        let mut invalid = settings.clone();
+        invalid.bands.push(MultibandEqBand::default());
+        invalid.output_gain_db = -12.0;
+        processor.retarget(&invalid);
+        assert_eq!(processor.output.destination.gain.target, [0.0]);
+        settings.bands[0].gain_db = 6.0;
+        settings.bands[0].enabled = false;
+        processor.retarget(&settings);
+        for _ in 0..240 {
+            assert!(
+                processor
+                    .process_sample([0.25, -0.125])
+                    .iter()
+                    .all(|v| v.is_finite())
+            );
+        }
+        assert_eq!(processor.process_sample([0.25, -0.125]), [0.25, -0.125]);
+        assert!(processor.bands[0].destination.fixed_slot);
+        settings.bands[0].enabled = true;
+        processor.retarget(&settings);
+        for _ in 0..240 {
+            processor.process_sample([0.25, -0.125]);
+        }
+        assert_eq!(
+            processor.band_parameters(settings.bands[0].id).unwrap()[0],
+            6.0
+        );
+    }
+}
+
+#[cfg(test)]
+mod prepared_meter_tests {
+    use super::*;
+    #[test]
+    fn sleeping_band_measures_bypassed_audio_and_unit_bypass_clears_its_meter() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU32, Ordering},
+        };
+        let mut settings = MultibandEqSettings::default();
+        settings.bands[0].enabled = false;
+        let mut processor = MultibandEq::new(
+            ProcessingContext {
+                sample_rate_hz: 48000,
+                max_block_frames: 512,
+            },
+            &settings,
+        );
+        processor.prepare_fixed_band_slots();
+        let meter = Arc::new(std::array::from_fn(|_| AtomicU32::new(0)));
+        processor.set_band_level_meter(settings.bands[0].id, meter.clone());
+        assert_eq!(processor.process_sample([0.25, -0.125]), [0.25, -0.125]);
+        assert_eq!(f32::from_bits(meter[0].load(Ordering::Relaxed)), 0.25);
+        settings.enabled = false;
+        processor.retarget(&settings);
+        assert_eq!(meter[0].load(Ordering::Relaxed), 0);
+        processor.process_sample([1.0; 2]);
+        assert_eq!(meter[0].load(Ordering::Relaxed), 0);
     }
 }

@@ -59,22 +59,42 @@ impl ControllerData {
             }
         }
         self.model.publish(self.state.get());
+        let mask = self
+            .model
+            .meter_reset
+            .swap(0, std::sync::atomic::Ordering::AcqRel);
+        if mask != 0 {
+            let mut values = [0.0; daw_drive_plugin::METER_VALUES];
+            values[0] = f64::from(mask);
+            if self
+                .meter_connection
+                .send(crate::telemetry::Kind::Reset, values)
+                != kResultOk
+            {
+                self.model
+                    .meter_reset
+                    .fetch_or(mask, std::sync::atomic::Ordering::Release);
+                return;
+            }
+        }
         if self
             .model
             .output_reset
             .swap(false, std::sync::atomic::Ordering::AcqRel)
-            && self
-                .meter_connection
-                .send(crate::telemetry::Kind::Reset, [0.0; 2])
-                != kResultOk
+            && self.meter_connection.send(
+                crate::telemetry::Kind::Reset,
+                [0.0; daw_drive_plugin::METER_VALUES],
+            ) != kResultOk
         {
             self.model
                 .output_reset
                 .store(true, std::sync::atomic::Ordering::Release);
             return;
         }
-        self.meter_connection
-            .send(crate::telemetry::Kind::Request, [0.0; 2]);
+        self.meter_connection.send(
+            crate::telemetry::Kind::Request,
+            [0.0; daw_drive_plugin::METER_VALUES],
+        );
     }
 }
 #[cfg(target_os = "macos")]

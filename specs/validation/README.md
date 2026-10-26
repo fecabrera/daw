@@ -4,6 +4,22 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## All effect plugin exports — 2026-10-26
+
+The remaining ten effects now have independent typed plugin/editor packages, checked manifests, and CLAP/VST3 targets. All fourteen products are registered for manifest-discovered packaging and the 42-job native CI matrix. See the [build contract](../architecture/all-effect-plugin-builds.md) and [user plugin list](../../docs/effects/plugins.md).
+
+Completed checks:
+
+- `cargo test --offline --locked --workspace`: **1,655 passed, 11 opt-in tests ignored, no failures**, including documentation tests. Final affected native clock/reset and EQ/editor checks also passed.
+- `cargo fmt --all --check` and `cargo clippy --offline --locked --workspace --all-targets -- -D warnings` passed.
+- `python -m unittest discover -s tools -p test_package_plugins.py -v`: **14 passed**. Coverage includes all product archives on three platform layouts, unique identities, target/CI registration, checksums, and preservation of existing artifacts after later-unit/signing failures.
+- Built all **28 macOS debug libraries** with `allocation-check`, then loaded both formats for every product through the ABI harness. Positive controls detected allocations/deallocations; checked callback paths observed **zero Rust allocations/deallocations**. Native tests cover metadata, six rates, every parameter, choices, dense automation, irregular/in-place buffers, state recall/corruption and CLAP reset.
+- A final loaded-library rerun for Auto-filter and Chorus passed tempo, seek, stop/resume, reset and VST3 offline-context cases with allocation guards enabled. Live stopped clocks advance locally; offline VST3 rendering retains the supplied timeline position.
+- Typed model/editor checks cover frozen identities/default state, conversion bounds/text, wrapper/direct-DSP parity, bypass clearing, prepared EQ topology rejection, sleeping-band metering, and whole-step EQ mode keyboard input. The Limiter post-reset meter test now runs beyond its maximum supported latency before asserting a nonzero level.
+- `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`. Markdown file links and `git diff --check` passed.
+
+Multiband EQ uses 64 fixed plugin band slots; the DAW retains variable topology. CLAP intra-block `tempo_inc` ramps remain unsupported. Native Windows/Linux execution, native editor attachment, SDK validators, external hosts, accessibility, clean-machine installation and new-product release CPU budgets remain open. Archive layouts were tested with fixture libraries; this check does not claim release acceptance. Logs remain in ignored `work/effect-plugins-*` files.
+
 ## Standard effect output rails and peak indicators — 2026-10-26
 
 Bitcrusher, Drive, Drive v2, Saturator, Filter, Auto-filter, and Multiband EQ now reuse Chorus's rail geometry through `unit-ui::meters`, with a shared held-peak marker/reset. Chorus adopts the same held-peak path. Drive keeps its two-strip body and meters above Volume. Multiband EQ retains separate band analysis and adds a final-output monitor. DSP output publication uses shared `LevelMonitor`/`UnitMeter`/`BandMeter`/`PeakHold` storage and existing stable-ID host binding. No new registry dependency, parameter, saved setting, or audio latency is introduced.

@@ -349,6 +349,17 @@ fn run(
     in_place: bool,
     mask: u64,
 ) -> (Vec<f32>, Vec<f32>) {
+    run_with_transport(plugin, left, right, events, in_place, mask, ptr::null())
+}
+fn run_with_transport(
+    plugin: &Plugin,
+    left: &mut [f32],
+    right: &mut [f32],
+    events: &EventList,
+    in_place: bool,
+    mask: u64,
+    transport: *const clap_event_transport,
+) -> (Vec<f32>, Vec<f32>) {
     assert_eq!(left.len(), right.len());
     let mut out_left = vec![f32::NAN; left.len()];
     let mut out_right = out_left.clone();
@@ -376,7 +387,7 @@ fn run(
     let process = clap_process {
         steady_time: -1,
         frames_count: left.len() as u32,
-        transport: ptr::null(),
+        transport,
         audio_inputs: &input,
         audio_outputs: &mut output,
         audio_inputs_count: 1,
@@ -435,5 +446,7 @@ fn assert_samples(actual: &(Vec<f32>, Vec<f32>), expected: &(Vec<f32>, Vec<f32>)
 }
 
 fn enable_color(state: &mut PluginState) {
-    if let Some(p) = P::ALL.into_iter().find(|p| p.info().key == "color_enabled") { state.set(p, 1.0).unwrap(); }
+    if let Some(p) = P::ALL.into_iter().find(|p| p.info().key == "color_enabled") {
+        state.set(p, 1.0).unwrap();
+    }
 }

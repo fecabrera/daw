@@ -1,0 +1,27 @@
+[package]
+name = "daw-direction-mixer-clap"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[features]
+allocation-check = []
+
+[lib]
+path = "../drive-clap/src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+daw-drive-editor = { package = "daw-direction-mixer-editor", path = "../../crates/direction-mixer-editor" }
+daw-plugin-window.workspace = true
+rtrb.workspace = true
+daw-drive-plugin = { package = "daw-direction-mixer-plugin", path = "../../crates/direction-mixer-plugin" }
+daw-plugin-clap.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+libloading.workspace = true
+daw-direction-mixer.workspace = true
+daw-unit-core.workspace = true

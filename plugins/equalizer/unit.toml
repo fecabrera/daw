@@ -1,0 +1,123 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.eq3"
+vendor = "Sie"
+version = "0.1.0"
+product = "3-band EQ"
+clap_id = "io.github.fecabrera.daw.equalizer"
+processor_id = "f0a391ea518b5d63a546232af2006aeb"
+controller_id = "1aa6b82c9f7956a1b07d05f2afdc428d"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "low_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 102
+key = "low_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 250.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 103
+key = "low_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 104
+key = "low_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 105
+key = "mid_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 106
+key = "mid_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 107
+key = "high_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 108
+key = "high_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 2500.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 109
+key = "high_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 110
+key = "high_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[strips]]
+footer = "Low"
+power = "low_enabled"
+controls = [
+{ parameter = "low_gain", control = "db" },
+{ parameter = "low_frequency", control = "frequency" },
+{ parameter = "low_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Mid"
+power = "mid_enabled"
+controls = [
+{ parameter = "mid_gain", control = "db" },
+]
+
+[[strips]]
+footer = "High"
+power = "high_enabled"
+controls = [
+{ parameter = "high_gain", control = "db" },
+{ parameter = "high_frequency", control = "frequency" },
+{ parameter = "high_q", control = "scalar" },
+]

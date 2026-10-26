@@ -1,0 +1,82 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.limiter"
+vendor = "Sie"
+version = "0.1.0"
+product = "Limiter"
+clap_id = "io.github.fecabrera.daw.limiter"
+processor_id = "433248e0532a5b87aa4b9e7ca9e3f9b4"
+controller_id = "c5da49a780c255b3876d5b65d84eb925"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "input"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 102
+key = "release"
+minimum = 1.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 103
+key = "lookahead"
+minimum = 0.0
+maximum = 10.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 104
+key = "ceiling"
+minimum = -24.0
+maximum = 0.0
+default = -1.0
+scale = "linear"
+
+[[parameters]]
+id = 105
+key = "mode"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 106
+key = "routing"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[strips]]
+footer = "Limit"
+controls = [
+{ parameter = "input", control = "db" },
+{ parameter = "release", control = "scalar" },
+{ parameter = "lookahead", control = "scalar" },
+]
+
+[[strips]]
+footer = "Out"
+controls = [
+{ parameter = "ceiling", control = "db" },
+{ parameter = "mode", control = "mode" },
+{ parameter = "routing", control = "mode" },
+]

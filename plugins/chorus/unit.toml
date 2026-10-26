@@ -1,0 +1,132 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.chorus"
+vendor = "Sie"
+version = "0.1.0"
+product = "Chorus"
+clap_id = "io.github.fecabrera.daw.chorus"
+processor_id = "b2f183ad88ac53589ad683c3d0febe3b"
+controller_id = "d7f4f4f0dc4e5b22ab4275dd9c977123"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "delay"
+minimum = 5.0
+maximum = 30.0
+default = 15.0
+scale = "linear"
+
+[[parameters]]
+id = 102
+key = "depth"
+minimum = 0.0
+maximum = 1.0
+default = 0.25
+scale = "linear"
+
+[[parameters]]
+id = 103
+key = "feedback"
+minimum = -0.8
+maximum = 0.8
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 104
+key = "rate_hz"
+minimum = 0.05
+maximum = 10.0
+default = 0.8
+scale = "logarithmic"
+
+[[parameters]]
+id = 105
+key = "stereo_phase"
+minimum = -180.0
+maximum = 180.0
+default = 90.0
+scale = "linear"
+
+[[parameters]]
+id = 106
+key = "width"
+minimum = 0.0
+maximum = 2.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 107
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 108
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 0.35
+scale = "linear"
+
+[[parameters]]
+id = 109
+key = "voices"
+minimum = 1.0
+maximum = 4.0
+default = 2.0
+scale = "choice"
+
+[[parameters]]
+id = 110
+key = "rate_mode"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 111
+key = "note_rate"
+minimum = 0.0
+maximum = 26.0
+default = 12.0
+scale = "choice"
+
+[[strips]]
+footer = "Chorus"
+controls = [
+{ parameter = "delay", control = "scalar" },
+{ parameter = "depth", control = "percent" },
+{ parameter = "feedback", control = "percent" },
+]
+
+[[strips]]
+footer = "Voices"
+controls = [
+{ parameter = "rate_mode", control = "mode" },
+{ parameter = "rate_hz", control = "frequency" },
+{ parameter = "note_rate", control = "integer" },
+{ parameter = "stereo_phase", control = "scalar" },
+{ parameter = "voices", control = "integer" },
+]
+
+[[strips]]
+footer = "Out"
+controls = [
+{ parameter = "width", control = "percent" },
+{ parameter = "level", control = "gain" },
+{ parameter = "dry_wet", control = "percent" },
+]

@@ -123,7 +123,7 @@ impl IPluginFactory2Trait for Factory {
             write_text(IDENTITY.version, &mut info.version);
             write_text("VST 3.8.1", &mut info.sdkVersion);
             if index == 0 {
-                write_text("Fx|Distortion|Stereo", &mut info.subCategories);
+                write_text(daw_drive_plugin::VST3_CATEGORIES, &mut info.subCategories);
             }
             unsafe {
                 output.write(info);

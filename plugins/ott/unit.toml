@@ -1,0 +1,245 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.ott"
+vendor = "Sie"
+version = "0.1.0"
+product = "OTT"
+clap_id = "io.github.fecabrera.daw.ott"
+processor_id = "24e3b310996d527683e6c7b77836858e"
+controller_id = "aa98b4e3e6655fbda2a39d802fc468b6"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "low_frequency"
+minimum = 20.0
+maximum = 2000.0
+default = 250.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 102
+key = "high_frequency"
+minimum = 200.0
+maximum = 20000.0
+default = 2500.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 103
+key = "low_depth"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 104
+key = "low_input_db"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 105
+key = "low_output_db"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 106
+key = "low_attack_ms"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 107
+key = "low_release_ms"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 108
+key = "low_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 109
+key = "mid_depth"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 110
+key = "mid_input_db"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 111
+key = "mid_output_db"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 112
+key = "mid_attack_ms"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 113
+key = "mid_release_ms"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 114
+key = "mid_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 115
+key = "high_depth"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 116
+key = "high_input_db"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 117
+key = "high_output_db"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 118
+key = "high_attack_ms"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 119
+key = "high_release_ms"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 120
+key = "high_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 121
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 122
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 123
+key = "detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[strips]]
+footer = "Low"
+power = "low_enabled"
+controls = [
+{ parameter = "low_frequency", control = "frequency" },
+{ parameter = "low_depth", control = "percent" },
+{ parameter = "low_input_db", control = "db" },
+{ parameter = "low_output_db", control = "db" },
+{ parameter = "low_attack_ms", control = "scalar" },
+{ parameter = "low_release_ms", control = "scalar" },
+]
+
+[[strips]]
+footer = "Mid"
+power = "mid_enabled"
+controls = [
+{ parameter = "mid_depth", control = "percent" },
+{ parameter = "mid_input_db", control = "db" },
+{ parameter = "mid_output_db", control = "db" },
+{ parameter = "mid_attack_ms", control = "scalar" },
+{ parameter = "mid_release_ms", control = "scalar" },
+]
+
+[[strips]]
+footer = "High"
+power = "high_enabled"
+controls = [
+{ parameter = "high_frequency", control = "frequency" },
+{ parameter = "high_depth", control = "percent" },
+{ parameter = "high_input_db", control = "db" },
+{ parameter = "high_output_db", control = "db" },
+{ parameter = "high_attack_ms", control = "scalar" },
+{ parameter = "high_release_ms", control = "scalar" },
+]
+
+[[strips]]
+footer = "Out"
+controls = [
+{ parameter = "level", control = "gain" },
+{ parameter = "dry_wet", control = "percent" },
+{ parameter = "detection", control = "mode" },
+]

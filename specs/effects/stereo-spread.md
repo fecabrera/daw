@@ -70,3 +70,7 @@ The band-distribution concept and Order meaning follow Apple's public [Stereo Sp
 Check all six processing rates: neutral/bypass exactness; mono widening and mono fold-down; alternating midrange channel emphasis; separate endpoint intensities; positive/negative and mixed signs; frequency selectivity outside both limits; 2/8/12 bands; finite extreme inputs, crossed modulation limits, rapid Order changes, reset, and base/modulated parity. Check shared/local source scope and all four typed destinations.
 
 Verify track and Master installation, live/offline/block/random-access/loop parity, all three provider kinds, route cancellation/reorder, compatible history, and allocation-free sampling/replacement/transport. Check snapshots, atomic invalid-edit rollback, source moves/remapping, legacy optional modulation fields, future payloads, save/reopen/Save As/duplication/rate persistence. UI checks cover both themes, all view targets, Imaging catalog order and default collapse, five knobs/reset/defaults, fixed equal strips, power/compact/collapse, removal, shared amount scales, markers, and connection opening. Native listening/appearance/device timing and Windows/Linux require separate verification; record executed checks in [validation history](../validation/README.md).
+
+## Plugin delivery
+
+This unit also has independent CLAP/VST3 previews. The [shared build contract](../architecture/all-effect-plugin-builds.md) defines identity, state, automation, timing, meters, packaging, CI, and acceptance limits.

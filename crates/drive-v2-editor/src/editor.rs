@@ -11,7 +11,11 @@ use std::{
 };
 pub const WIDTH: u32 = drive::SIZE.x as u32;
 pub const HEIGHT: u32 = drive::SIZE.y as u32;
-const CAPACITY: usize = 256;
+const CAPACITY: usize = if 4 * Parameter::COUNT > 256 {
+    8 * Parameter::COUNT
+} else {
+    256
+};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Edit {
     Begin(Parameter),
@@ -21,6 +25,7 @@ pub enum Edit {
 /// Access this channel only from editor/control threads. The audio callback never locks it.
 pub struct Model {
     pub output_meter: Arc<daw_drive_plugin::OutputMeter>,
+    pub meter_reset: std::sync::atomic::AtomicU32,
     pub output_reset: std::sync::atomic::AtomicBool,
     state: Snapshot<{ Parameter::COUNT }>,
     events: Mutex<VecDeque<Edit>>,
@@ -31,6 +36,7 @@ impl Default for Model {
     fn default() -> Self {
         Self {
             output_meter: Arc::default(),
+            meter_reset: std::sync::atomic::AtomicU32::new(0),
             output_reset: std::sync::atomic::AtomicBool::new(false),
             state: Snapshot::new(Parameter::ALL.map(|p| PluginState::default().get(p).to_bits())),
             events: Mutex::new(VecDeque::with_capacity(CAPACITY)),
@@ -41,11 +47,8 @@ impl Default for Model {
 }
 impl Model {
     /// Apply a host-transported VST3 snapshot on the control thread.
-    pub fn receive_output(&self, values: [f32; 2]) {
-        use daw_unit_core::MeterStorage;
-        self.output_meter.boost_peaks()[0].reset_peak();
-        self.output_meter.store([values[1], 0.0, 0.0]);
-        self.output_meter.initialize([values[0], 0.0, 0.0]);
+    pub fn receive_output(&self, values: [f32; daw_drive_plugin::METER_VALUES]) {
+        daw_drive_plugin::receive_meter(&self.output_meter, values);
     }
 
     pub fn publish(&self, state: PluginState) {
@@ -191,6 +194,7 @@ impl Editor {
                 )
             })
             .inner;
+        crate::paint_extra(ui, &bounds, &self.model, &settings);
         let next = PluginState::from_settings(&settings).unwrap_or(self.state);
         for (slot, p) in Parameter::ALL[1..].iter().copied().enumerate() {
             let Some(response) = &bounds.controls[slot] else {

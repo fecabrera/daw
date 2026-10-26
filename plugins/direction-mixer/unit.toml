@@ -1,0 +1,50 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.direction-mixer"
+vendor = "Sie"
+version = "0.1.0"
+product = "Direction Mixer"
+clap_id = "io.github.fecabrera.daw.direction-mixer"
+processor_id = "944a9984c86551aca8e83b7e55d9bcb3"
+controller_id = "aea2ba4616655bccb7ec09e95d3e4ef4"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "input"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 102
+key = "direction"
+minimum = -180.0
+maximum = 180.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 103
+key = "spread"
+minimum = 0.0
+maximum = 2.0
+default = 1.0
+scale = "linear"
+
+[[strips]]
+footer = "Stereo"
+controls = [
+{ parameter = "input", control = "mode" },
+{ parameter = "direction", control = "scalar" },
+{ parameter = "spread", control = "percent" },
+]

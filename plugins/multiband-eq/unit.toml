@@ -1,0 +1,3232 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.multiband-eq"
+vendor = "Sie"
+version = "0.1.0"
+product = "Multiband EQ"
+clap_id = "io.github.fecabrera.daw.multiband-eq"
+processor_id = "9808dfb34e8a5c25b7e85310f1681cc6"
+controller_id = "5b663758e70351a1b8ada02ccbbfe11a"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "band_1_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 102
+key = "band_1_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 103
+key = "band_1_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 104
+key = "band_1_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 105
+key = "band_1_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 106
+key = "band_2_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 107
+key = "band_2_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 108
+key = "band_2_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 109
+key = "band_2_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 110
+key = "band_2_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 111
+key = "band_3_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 112
+key = "band_3_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 113
+key = "band_3_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 114
+key = "band_3_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 115
+key = "band_3_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 116
+key = "band_4_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 117
+key = "band_4_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 118
+key = "band_4_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 119
+key = "band_4_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 120
+key = "band_4_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 121
+key = "band_5_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 122
+key = "band_5_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 123
+key = "band_5_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 124
+key = "band_5_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 125
+key = "band_5_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 126
+key = "band_6_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 127
+key = "band_6_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 128
+key = "band_6_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 129
+key = "band_6_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 130
+key = "band_6_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 131
+key = "band_7_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 132
+key = "band_7_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 133
+key = "band_7_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 134
+key = "band_7_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 135
+key = "band_7_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 136
+key = "band_8_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 137
+key = "band_8_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 138
+key = "band_8_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 139
+key = "band_8_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 140
+key = "band_8_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 141
+key = "band_9_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 142
+key = "band_9_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 143
+key = "band_9_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 144
+key = "band_9_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 145
+key = "band_9_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 146
+key = "band_10_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 147
+key = "band_10_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 148
+key = "band_10_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 149
+key = "band_10_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 150
+key = "band_10_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 151
+key = "band_11_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 152
+key = "band_11_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 153
+key = "band_11_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 154
+key = "band_11_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 155
+key = "band_11_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 156
+key = "band_12_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 157
+key = "band_12_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 158
+key = "band_12_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 159
+key = "band_12_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 160
+key = "band_12_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 161
+key = "band_13_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 162
+key = "band_13_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 163
+key = "band_13_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 164
+key = "band_13_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 165
+key = "band_13_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 166
+key = "band_14_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 167
+key = "band_14_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 168
+key = "band_14_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 169
+key = "band_14_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 170
+key = "band_14_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 171
+key = "band_15_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 172
+key = "band_15_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 173
+key = "band_15_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 174
+key = "band_15_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 175
+key = "band_15_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 176
+key = "band_16_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 177
+key = "band_16_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 178
+key = "band_16_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 179
+key = "band_16_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 180
+key = "band_16_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 181
+key = "band_17_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 182
+key = "band_17_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 183
+key = "band_17_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 184
+key = "band_17_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 185
+key = "band_17_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 186
+key = "band_18_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 187
+key = "band_18_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 188
+key = "band_18_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 189
+key = "band_18_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 190
+key = "band_18_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 191
+key = "band_19_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 192
+key = "band_19_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 193
+key = "band_19_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 194
+key = "band_19_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 195
+key = "band_19_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 196
+key = "band_20_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 197
+key = "band_20_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 198
+key = "band_20_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 199
+key = "band_20_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 200
+key = "band_20_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 201
+key = "band_21_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 202
+key = "band_21_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 203
+key = "band_21_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 204
+key = "band_21_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 205
+key = "band_21_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 206
+key = "band_22_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 207
+key = "band_22_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 208
+key = "band_22_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 209
+key = "band_22_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 210
+key = "band_22_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 211
+key = "band_23_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 212
+key = "band_23_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 213
+key = "band_23_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 214
+key = "band_23_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 215
+key = "band_23_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 216
+key = "band_24_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 217
+key = "band_24_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 218
+key = "band_24_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 219
+key = "band_24_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 220
+key = "band_24_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 221
+key = "band_25_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 222
+key = "band_25_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 223
+key = "band_25_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 224
+key = "band_25_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 225
+key = "band_25_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 226
+key = "band_26_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 227
+key = "band_26_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 228
+key = "band_26_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 229
+key = "band_26_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 230
+key = "band_26_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 231
+key = "band_27_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 232
+key = "band_27_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 233
+key = "band_27_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 234
+key = "band_27_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 235
+key = "band_27_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 236
+key = "band_28_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 237
+key = "band_28_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 238
+key = "band_28_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 239
+key = "band_28_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 240
+key = "band_28_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 241
+key = "band_29_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 242
+key = "band_29_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 243
+key = "band_29_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 244
+key = "band_29_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 245
+key = "band_29_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 246
+key = "band_30_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 247
+key = "band_30_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 248
+key = "band_30_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 249
+key = "band_30_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 250
+key = "band_30_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 251
+key = "band_31_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 252
+key = "band_31_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 253
+key = "band_31_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 254
+key = "band_31_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 255
+key = "band_31_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 256
+key = "band_32_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 257
+key = "band_32_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 258
+key = "band_32_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 259
+key = "band_32_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 260
+key = "band_32_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 261
+key = "band_33_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 262
+key = "band_33_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 263
+key = "band_33_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 264
+key = "band_33_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 265
+key = "band_33_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 266
+key = "band_34_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 267
+key = "band_34_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 268
+key = "band_34_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 269
+key = "band_34_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 270
+key = "band_34_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 271
+key = "band_35_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 272
+key = "band_35_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 273
+key = "band_35_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 274
+key = "band_35_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 275
+key = "band_35_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 276
+key = "band_36_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 277
+key = "band_36_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 278
+key = "band_36_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 279
+key = "band_36_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 280
+key = "band_36_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 281
+key = "band_37_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 282
+key = "band_37_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 283
+key = "band_37_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 284
+key = "band_37_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 285
+key = "band_37_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 286
+key = "band_38_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 287
+key = "band_38_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 288
+key = "band_38_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 289
+key = "band_38_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 290
+key = "band_38_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 291
+key = "band_39_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 292
+key = "band_39_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 293
+key = "band_39_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 294
+key = "band_39_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 295
+key = "band_39_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 296
+key = "band_40_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 297
+key = "band_40_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 298
+key = "band_40_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 299
+key = "band_40_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 300
+key = "band_40_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 301
+key = "band_41_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 302
+key = "band_41_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 303
+key = "band_41_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 304
+key = "band_41_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 305
+key = "band_41_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 306
+key = "band_42_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 307
+key = "band_42_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 308
+key = "band_42_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 309
+key = "band_42_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 310
+key = "band_42_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 311
+key = "band_43_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 312
+key = "band_43_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 313
+key = "band_43_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 314
+key = "band_43_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 315
+key = "band_43_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 316
+key = "band_44_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 317
+key = "band_44_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 318
+key = "band_44_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 319
+key = "band_44_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 320
+key = "band_44_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 321
+key = "band_45_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 322
+key = "band_45_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 323
+key = "band_45_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 324
+key = "band_45_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 325
+key = "band_45_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 326
+key = "band_46_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 327
+key = "band_46_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 328
+key = "band_46_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 329
+key = "band_46_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 330
+key = "band_46_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 331
+key = "band_47_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 332
+key = "band_47_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 333
+key = "band_47_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 334
+key = "band_47_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 335
+key = "band_47_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 336
+key = "band_48_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 337
+key = "band_48_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 338
+key = "band_48_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 339
+key = "band_48_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 340
+key = "band_48_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 341
+key = "band_49_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 342
+key = "band_49_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 343
+key = "band_49_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 344
+key = "band_49_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 345
+key = "band_49_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 346
+key = "band_50_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 347
+key = "band_50_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 348
+key = "band_50_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 349
+key = "band_50_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 350
+key = "band_50_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 351
+key = "band_51_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 352
+key = "band_51_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 353
+key = "band_51_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 354
+key = "band_51_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 355
+key = "band_51_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 356
+key = "band_52_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 357
+key = "band_52_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 358
+key = "band_52_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 359
+key = "band_52_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 360
+key = "band_52_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 361
+key = "band_53_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 362
+key = "band_53_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 363
+key = "band_53_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 364
+key = "band_53_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 365
+key = "band_53_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 366
+key = "band_54_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 367
+key = "band_54_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 368
+key = "band_54_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 369
+key = "band_54_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 370
+key = "band_54_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 371
+key = "band_55_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 372
+key = "band_55_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 373
+key = "band_55_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 374
+key = "band_55_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 375
+key = "band_55_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 376
+key = "band_56_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 377
+key = "band_56_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 378
+key = "band_56_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 379
+key = "band_56_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 380
+key = "band_56_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 381
+key = "band_57_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 382
+key = "band_57_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 383
+key = "band_57_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 384
+key = "band_57_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 385
+key = "band_57_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 386
+key = "band_58_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 387
+key = "band_58_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 388
+key = "band_58_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 389
+key = "band_58_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 390
+key = "band_58_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 391
+key = "band_59_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 392
+key = "band_59_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 393
+key = "band_59_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 394
+key = "band_59_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 395
+key = "band_59_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 396
+key = "band_60_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 397
+key = "band_60_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 398
+key = "band_60_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 399
+key = "band_60_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 400
+key = "band_60_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 401
+key = "band_61_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 402
+key = "band_61_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 403
+key = "band_61_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 404
+key = "band_61_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 405
+key = "band_61_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 406
+key = "band_62_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 407
+key = "band_62_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 408
+key = "band_62_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 409
+key = "band_62_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 410
+key = "band_62_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 411
+key = "band_63_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 412
+key = "band_63_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 413
+key = "band_63_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 414
+key = "band_63_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 415
+key = "band_63_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 416
+key = "band_64_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 417
+key = "band_64_mode"
+minimum = 0.0
+maximum = 5.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 418
+key = "band_64_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 419
+key = "band_64_gain"
+minimum = -24.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 420
+key = "band_64_q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 421
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[strips]]
+footer = "Band 1"
+power = "band_1_enabled"
+controls = [
+{ parameter = "band_1_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_1_frequency", control = "frequency" },
+{ parameter = "band_1_gain", control = "db" },
+{ parameter = "band_1_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 2"
+power = "band_2_enabled"
+controls = [
+{ parameter = "band_2_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_2_frequency", control = "frequency" },
+{ parameter = "band_2_gain", control = "db" },
+{ parameter = "band_2_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 3"
+power = "band_3_enabled"
+controls = [
+{ parameter = "band_3_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_3_frequency", control = "frequency" },
+{ parameter = "band_3_gain", control = "db" },
+{ parameter = "band_3_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 4"
+power = "band_4_enabled"
+controls = [
+{ parameter = "band_4_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_4_frequency", control = "frequency" },
+{ parameter = "band_4_gain", control = "db" },
+{ parameter = "band_4_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 5"
+power = "band_5_enabled"
+controls = [
+{ parameter = "band_5_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_5_frequency", control = "frequency" },
+{ parameter = "band_5_gain", control = "db" },
+{ parameter = "band_5_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 6"
+power = "band_6_enabled"
+controls = [
+{ parameter = "band_6_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_6_frequency", control = "frequency" },
+{ parameter = "band_6_gain", control = "db" },
+{ parameter = "band_6_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 7"
+power = "band_7_enabled"
+controls = [
+{ parameter = "band_7_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_7_frequency", control = "frequency" },
+{ parameter = "band_7_gain", control = "db" },
+{ parameter = "band_7_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 8"
+power = "band_8_enabled"
+controls = [
+{ parameter = "band_8_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_8_frequency", control = "frequency" },
+{ parameter = "band_8_gain", control = "db" },
+{ parameter = "band_8_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 9"
+power = "band_9_enabled"
+controls = [
+{ parameter = "band_9_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_9_frequency", control = "frequency" },
+{ parameter = "band_9_gain", control = "db" },
+{ parameter = "band_9_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 10"
+power = "band_10_enabled"
+controls = [
+{ parameter = "band_10_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_10_frequency", control = "frequency" },
+{ parameter = "band_10_gain", control = "db" },
+{ parameter = "band_10_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 11"
+power = "band_11_enabled"
+controls = [
+{ parameter = "band_11_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_11_frequency", control = "frequency" },
+{ parameter = "band_11_gain", control = "db" },
+{ parameter = "band_11_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 12"
+power = "band_12_enabled"
+controls = [
+{ parameter = "band_12_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_12_frequency", control = "frequency" },
+{ parameter = "band_12_gain", control = "db" },
+{ parameter = "band_12_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 13"
+power = "band_13_enabled"
+controls = [
+{ parameter = "band_13_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_13_frequency", control = "frequency" },
+{ parameter = "band_13_gain", control = "db" },
+{ parameter = "band_13_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 14"
+power = "band_14_enabled"
+controls = [
+{ parameter = "band_14_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_14_frequency", control = "frequency" },
+{ parameter = "band_14_gain", control = "db" },
+{ parameter = "band_14_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 15"
+power = "band_15_enabled"
+controls = [
+{ parameter = "band_15_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_15_frequency", control = "frequency" },
+{ parameter = "band_15_gain", control = "db" },
+{ parameter = "band_15_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 16"
+power = "band_16_enabled"
+controls = [
+{ parameter = "band_16_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_16_frequency", control = "frequency" },
+{ parameter = "band_16_gain", control = "db" },
+{ parameter = "band_16_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 17"
+power = "band_17_enabled"
+controls = [
+{ parameter = "band_17_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_17_frequency", control = "frequency" },
+{ parameter = "band_17_gain", control = "db" },
+{ parameter = "band_17_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 18"
+power = "band_18_enabled"
+controls = [
+{ parameter = "band_18_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_18_frequency", control = "frequency" },
+{ parameter = "band_18_gain", control = "db" },
+{ parameter = "band_18_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 19"
+power = "band_19_enabled"
+controls = [
+{ parameter = "band_19_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_19_frequency", control = "frequency" },
+{ parameter = "band_19_gain", control = "db" },
+{ parameter = "band_19_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 20"
+power = "band_20_enabled"
+controls = [
+{ parameter = "band_20_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_20_frequency", control = "frequency" },
+{ parameter = "band_20_gain", control = "db" },
+{ parameter = "band_20_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 21"
+power = "band_21_enabled"
+controls = [
+{ parameter = "band_21_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_21_frequency", control = "frequency" },
+{ parameter = "band_21_gain", control = "db" },
+{ parameter = "band_21_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 22"
+power = "band_22_enabled"
+controls = [
+{ parameter = "band_22_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_22_frequency", control = "frequency" },
+{ parameter = "band_22_gain", control = "db" },
+{ parameter = "band_22_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 23"
+power = "band_23_enabled"
+controls = [
+{ parameter = "band_23_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_23_frequency", control = "frequency" },
+{ parameter = "band_23_gain", control = "db" },
+{ parameter = "band_23_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 24"
+power = "band_24_enabled"
+controls = [
+{ parameter = "band_24_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_24_frequency", control = "frequency" },
+{ parameter = "band_24_gain", control = "db" },
+{ parameter = "band_24_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 25"
+power = "band_25_enabled"
+controls = [
+{ parameter = "band_25_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_25_frequency", control = "frequency" },
+{ parameter = "band_25_gain", control = "db" },
+{ parameter = "band_25_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 26"
+power = "band_26_enabled"
+controls = [
+{ parameter = "band_26_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_26_frequency", control = "frequency" },
+{ parameter = "band_26_gain", control = "db" },
+{ parameter = "band_26_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 27"
+power = "band_27_enabled"
+controls = [
+{ parameter = "band_27_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_27_frequency", control = "frequency" },
+{ parameter = "band_27_gain", control = "db" },
+{ parameter = "band_27_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 28"
+power = "band_28_enabled"
+controls = [
+{ parameter = "band_28_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_28_frequency", control = "frequency" },
+{ parameter = "band_28_gain", control = "db" },
+{ parameter = "band_28_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 29"
+power = "band_29_enabled"
+controls = [
+{ parameter = "band_29_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_29_frequency", control = "frequency" },
+{ parameter = "band_29_gain", control = "db" },
+{ parameter = "band_29_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 30"
+power = "band_30_enabled"
+controls = [
+{ parameter = "band_30_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_30_frequency", control = "frequency" },
+{ parameter = "band_30_gain", control = "db" },
+{ parameter = "band_30_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 31"
+power = "band_31_enabled"
+controls = [
+{ parameter = "band_31_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_31_frequency", control = "frequency" },
+{ parameter = "band_31_gain", control = "db" },
+{ parameter = "band_31_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 32"
+power = "band_32_enabled"
+controls = [
+{ parameter = "band_32_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_32_frequency", control = "frequency" },
+{ parameter = "band_32_gain", control = "db" },
+{ parameter = "band_32_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 33"
+power = "band_33_enabled"
+controls = [
+{ parameter = "band_33_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_33_frequency", control = "frequency" },
+{ parameter = "band_33_gain", control = "db" },
+{ parameter = "band_33_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 34"
+power = "band_34_enabled"
+controls = [
+{ parameter = "band_34_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_34_frequency", control = "frequency" },
+{ parameter = "band_34_gain", control = "db" },
+{ parameter = "band_34_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 35"
+power = "band_35_enabled"
+controls = [
+{ parameter = "band_35_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_35_frequency", control = "frequency" },
+{ parameter = "band_35_gain", control = "db" },
+{ parameter = "band_35_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 36"
+power = "band_36_enabled"
+controls = [
+{ parameter = "band_36_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_36_frequency", control = "frequency" },
+{ parameter = "band_36_gain", control = "db" },
+{ parameter = "band_36_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 37"
+power = "band_37_enabled"
+controls = [
+{ parameter = "band_37_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_37_frequency", control = "frequency" },
+{ parameter = "band_37_gain", control = "db" },
+{ parameter = "band_37_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 38"
+power = "band_38_enabled"
+controls = [
+{ parameter = "band_38_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_38_frequency", control = "frequency" },
+{ parameter = "band_38_gain", control = "db" },
+{ parameter = "band_38_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 39"
+power = "band_39_enabled"
+controls = [
+{ parameter = "band_39_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_39_frequency", control = "frequency" },
+{ parameter = "band_39_gain", control = "db" },
+{ parameter = "band_39_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 40"
+power = "band_40_enabled"
+controls = [
+{ parameter = "band_40_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_40_frequency", control = "frequency" },
+{ parameter = "band_40_gain", control = "db" },
+{ parameter = "band_40_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 41"
+power = "band_41_enabled"
+controls = [
+{ parameter = "band_41_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_41_frequency", control = "frequency" },
+{ parameter = "band_41_gain", control = "db" },
+{ parameter = "band_41_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 42"
+power = "band_42_enabled"
+controls = [
+{ parameter = "band_42_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_42_frequency", control = "frequency" },
+{ parameter = "band_42_gain", control = "db" },
+{ parameter = "band_42_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 43"
+power = "band_43_enabled"
+controls = [
+{ parameter = "band_43_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_43_frequency", control = "frequency" },
+{ parameter = "band_43_gain", control = "db" },
+{ parameter = "band_43_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 44"
+power = "band_44_enabled"
+controls = [
+{ parameter = "band_44_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_44_frequency", control = "frequency" },
+{ parameter = "band_44_gain", control = "db" },
+{ parameter = "band_44_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 45"
+power = "band_45_enabled"
+controls = [
+{ parameter = "band_45_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_45_frequency", control = "frequency" },
+{ parameter = "band_45_gain", control = "db" },
+{ parameter = "band_45_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 46"
+power = "band_46_enabled"
+controls = [
+{ parameter = "band_46_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_46_frequency", control = "frequency" },
+{ parameter = "band_46_gain", control = "db" },
+{ parameter = "band_46_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 47"
+power = "band_47_enabled"
+controls = [
+{ parameter = "band_47_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_47_frequency", control = "frequency" },
+{ parameter = "band_47_gain", control = "db" },
+{ parameter = "band_47_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 48"
+power = "band_48_enabled"
+controls = [
+{ parameter = "band_48_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_48_frequency", control = "frequency" },
+{ parameter = "band_48_gain", control = "db" },
+{ parameter = "band_48_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 49"
+power = "band_49_enabled"
+controls = [
+{ parameter = "band_49_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_49_frequency", control = "frequency" },
+{ parameter = "band_49_gain", control = "db" },
+{ parameter = "band_49_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 50"
+power = "band_50_enabled"
+controls = [
+{ parameter = "band_50_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_50_frequency", control = "frequency" },
+{ parameter = "band_50_gain", control = "db" },
+{ parameter = "band_50_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 51"
+power = "band_51_enabled"
+controls = [
+{ parameter = "band_51_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_51_frequency", control = "frequency" },
+{ parameter = "band_51_gain", control = "db" },
+{ parameter = "band_51_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 52"
+power = "band_52_enabled"
+controls = [
+{ parameter = "band_52_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_52_frequency", control = "frequency" },
+{ parameter = "band_52_gain", control = "db" },
+{ parameter = "band_52_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 53"
+power = "band_53_enabled"
+controls = [
+{ parameter = "band_53_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_53_frequency", control = "frequency" },
+{ parameter = "band_53_gain", control = "db" },
+{ parameter = "band_53_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 54"
+power = "band_54_enabled"
+controls = [
+{ parameter = "band_54_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_54_frequency", control = "frequency" },
+{ parameter = "band_54_gain", control = "db" },
+{ parameter = "band_54_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 55"
+power = "band_55_enabled"
+controls = [
+{ parameter = "band_55_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_55_frequency", control = "frequency" },
+{ parameter = "band_55_gain", control = "db" },
+{ parameter = "band_55_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 56"
+power = "band_56_enabled"
+controls = [
+{ parameter = "band_56_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_56_frequency", control = "frequency" },
+{ parameter = "band_56_gain", control = "db" },
+{ parameter = "band_56_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 57"
+power = "band_57_enabled"
+controls = [
+{ parameter = "band_57_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_57_frequency", control = "frequency" },
+{ parameter = "band_57_gain", control = "db" },
+{ parameter = "band_57_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 58"
+power = "band_58_enabled"
+controls = [
+{ parameter = "band_58_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_58_frequency", control = "frequency" },
+{ parameter = "band_58_gain", control = "db" },
+{ parameter = "band_58_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 59"
+power = "band_59_enabled"
+controls = [
+{ parameter = "band_59_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_59_frequency", control = "frequency" },
+{ parameter = "band_59_gain", control = "db" },
+{ parameter = "band_59_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 60"
+power = "band_60_enabled"
+controls = [
+{ parameter = "band_60_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_60_frequency", control = "frequency" },
+{ parameter = "band_60_gain", control = "db" },
+{ parameter = "band_60_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 61"
+power = "band_61_enabled"
+controls = [
+{ parameter = "band_61_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_61_frequency", control = "frequency" },
+{ parameter = "band_61_gain", control = "db" },
+{ parameter = "band_61_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 62"
+power = "band_62_enabled"
+controls = [
+{ parameter = "band_62_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_62_frequency", control = "frequency" },
+{ parameter = "band_62_gain", control = "db" },
+{ parameter = "band_62_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 63"
+power = "band_63_enabled"
+controls = [
+{ parameter = "band_63_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_63_frequency", control = "frequency" },
+{ parameter = "band_63_gain", control = "db" },
+{ parameter = "band_63_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Band 64"
+power = "band_64_enabled"
+controls = [
+{ parameter = "band_64_mode", control = "shape", diagram = "eq_response" },
+{ parameter = "band_64_frequency", control = "frequency" },
+{ parameter = "band_64_gain", control = "db" },
+{ parameter = "band_64_q", control = "scalar" },
+]
+
+[[strips]]
+footer = "Output"
+controls = [
+{ parameter = "level", control = "gain" },
+]

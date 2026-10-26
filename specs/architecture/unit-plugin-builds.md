@@ -201,3 +201,5 @@ The following primary sources were checked on 2026-10-25. They inform the plan; 
 
 
 [Saturator and Bitcrusher](saturator-bitcrusher-plugin-builds.md) now have independent CLAP/VST3 targets, typed contracts, shared DAW/plugin bodies, output meters, per-unit latency reporting, packaging and CI entries. Their release/native-host gates remain open.
+
+[All effect plugin builds](all-effect-plugin-builds.md) extends this architecture to all fourteen registered effects, with host transport, rate-dependent latency, shared dynamics telemetry, and fixed Multiband EQ slots.

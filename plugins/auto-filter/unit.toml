@@ -1,0 +1,155 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.auto-filter"
+vendor = "Sie"
+version = "0.1.0"
+product = "Auto-filter"
+clap_id = "io.github.fecabrera.daw.auto-filter"
+processor_id = "4a06a9a861eb5626b870774b104a18a3"
+controller_id = "7b246f7c4d005a199d0c5aa2159a2a78"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "shape"
+minimum = 0.0
+maximum = 3.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 102
+key = "frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 1000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 103
+key = "q"
+minimum = 0.1
+maximum = 10.0
+default = 0.7071067690849304
+scale = "logarithmic"
+
+[[parameters]]
+id = 104
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 105
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 106
+key = "lfo_enabled"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "boolean"
+
+[[parameters]]
+id = 107
+key = "wave"
+minimum = 0.0
+maximum = 4.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 108
+key = "rate_mode"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "choice"
+
+[[parameters]]
+id = 109
+key = "rate_hz"
+minimum = 0.01
+maximum = 20.0
+default = 2.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 110
+key = "note_rate"
+minimum = 0.0
+maximum = 26.0
+default = 12.0
+scale = "choice"
+
+[[parameters]]
+id = 111
+key = "strength"
+minimum = 0.0
+maximum = 6.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 112
+key = "sync_phase"
+minimum = -180.0
+maximum = 180.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 113
+key = "stereo_phase"
+minimum = -180.0
+maximum = 180.0
+default = 0.0
+scale = "linear"
+
+[[strips]]
+footer = "Filter"
+controls = [
+{ parameter = "shape", control = "shape", diagram = "filter_response" },
+{ parameter = "frequency", control = "frequency" },
+{ parameter = "q", control = "scalar" },
+]
+
+[[strips]]
+footer = "LFO"
+power = "lfo_enabled"
+controls = [
+{ parameter = "wave", control = "shape", diagram = "lfo_wave" },
+{ parameter = "rate_mode", control = "mode" },
+{ parameter = "rate_hz", control = "frequency" },
+{ parameter = "note_rate", control = "integer" },
+]
+
+[[strips]]
+footer = "Amount"
+controls = [
+{ parameter = "strength", control = "scalar" },
+{ parameter = "sync_phase", control = "scalar" },
+{ parameter = "stereo_phase", control = "scalar" },
+]
+
+[[strips]]
+footer = "Out"
+controls = [
+{ parameter = "level", control = "gain" },
+{ parameter = "dry_wet", control = "percent" },
+]

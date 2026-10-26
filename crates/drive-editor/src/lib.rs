@@ -21,6 +21,7 @@ pub enum Edit {
 /// Access this channel only from editor/control threads. The audio callback never locks it.
 pub struct Model {
     pub output_meter: Arc<daw_drive_plugin::OutputMeter>,
+    pub meter_reset: std::sync::atomic::AtomicU32,
     pub output_reset: std::sync::atomic::AtomicBool,
     state: Snapshot<7>,
     events: Mutex<VecDeque<Edit>>,
@@ -31,6 +32,7 @@ impl Default for Model {
     fn default() -> Self {
         Self {
             output_meter: Arc::default(),
+            meter_reset: std::sync::atomic::AtomicU32::new(0),
             output_reset: std::sync::atomic::AtomicBool::new(false),
             state: Snapshot::new(Parameter::ALL.map(|p| PluginState::default().get(p).to_bits())),
             events: Mutex::new(VecDeque::with_capacity(CAPACITY)),

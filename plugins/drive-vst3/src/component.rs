@@ -294,7 +294,7 @@ impl IAudioProcessorTrait for Component {
         if size == 0 { kResultOk } else { kResultFalse }
     }
     unsafe fn getLatencySamples(&self) -> u32 {
-        daw_drive_plugin::LATENCY_FRAMES
+        daw_drive_plugin::latency_frames(self.rate.load(Ordering::Acquire))
     }
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
         boundary(kInternalError, || {
@@ -329,13 +329,19 @@ impl IAudioProcessorTrait for Component {
         })
     }
     unsafe fn getTailSamples(&self) -> u32 {
-        self.rate.load(Ordering::Acquire)
+        daw_drive_plugin::tail_frames(self.rate.load(Ordering::Acquire))
     }
 }
 
 impl IProcessContextRequirementsTrait for Component {
     unsafe fn getProcessContextRequirements(&self) -> u32 {
-        0
+        if daw_drive_plugin::USES_TRANSPORT {
+            let tempo: u32 = IProcessContextRequirements_::Flags_::kNeedTempo as _;
+            let state: u32 = IProcessContextRequirements_::Flags_::kNeedTransportState as _;
+            tempo | state
+        } else {
+            0
+        }
     }
 }
 
@@ -352,25 +358,31 @@ impl IConnectionPointTrait for Component {
     }
     unsafe fn notify(&self, message: *mut IMessage) -> tresult {
         boundary(kInternalError, || {
-            let Some((kind, _)) = (unsafe { crate::telemetry::read(message) }) else {
+            let Some((kind, values)) = (unsafe { crate::telemetry::read(message) }) else {
                 return kInvalidArgument;
             };
             match kind {
                 crate::telemetry::Kind::Reset => {
-                    self.output_meter.boost_peaks()[0].reset_peak();
+                    daw_drive_plugin::reset_meter(
+                        &self.output_meter,
+                        if values[0] == 0.0 {
+                            1
+                        } else {
+                            values[0] as u32
+                        },
+                    );
                     kResultOk
                 }
-                crate::telemetry::Kind::Request => self.meter_connection.send(
-                    crate::telemetry::Kind::Reading,
-                    [
-                        if self.processing.load(Ordering::Acquire) {
-                            f64::from(self.output_meter.readings()[0])
-                        } else {
-                            0.0
-                        },
-                        f64::from(self.output_meter.boost_peaks()[0].peak()),
-                    ],
-                ),
+                crate::telemetry::Kind::Request => {
+                    self.meter_connection
+                        .send(crate::telemetry::Kind::Reading, {
+                            let mut values = daw_drive_plugin::meter_values(&self.output_meter);
+                            if !self.processing.load(Ordering::Acquire) {
+                                values[0] = 0.0;
+                            }
+                            values
+                        })
+                }
                 _ => kResultFalse,
             }
         })

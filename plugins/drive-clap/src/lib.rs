@@ -1,4 +1,4 @@
-//! Headless development CLAP export of the original built-in Drive.
+//! Shared native CLAP boundary for independent portable effect plugins.
 //! All unsafe code is confined to CLAP pointer/ownership boundaries.
 #[cfg(feature = "allocation-check")]
 mod allocations;
@@ -22,7 +22,7 @@ struct Features([*const c_char; 4]);
 unsafe impl Sync for Features {}
 static FEATURES: Features = Features([
     c"audio-effect".as_ptr(),
-    c"distortion".as_ptr(),
+    daw_drive_plugin::CLAP_FEATURE.as_ptr(),
     c"stereo".as_ptr(),
     ptr::null(),
 ]);
@@ -50,7 +50,7 @@ static DESCRIPTOR: clap_plugin_descriptor = clap_plugin_descriptor {
     url: c"https://github.com/fecabrera/daw".as_ptr(),
     manual_url: c"".as_ptr(),
     support_url: c"https://github.com/fecabrera/daw/issues".as_ptr(),
-    description: c"Stereo distortion development plugin".as_ptr(),
+    description: c"Stereo effect development plugin".as_ptr(),
     features: FEATURES.0.as_ptr(),
 };
 unsafe extern "C" fn entry_init(_: *const c_char) -> bool {

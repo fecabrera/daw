@@ -60,3 +60,5 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 ## Audio preparation
 
 - [Stem separation](audio/stem-separation.md): local models, four-stem groups, progress, and source retention.
+
+- [Effect plugins](effects/plugins.md): all CLAP/VST3 products, unit slugs, controls, and limits.

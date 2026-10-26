@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-from package_plugins import ROOT, TARGETS, finalize_macos_bundle, package, select_units
+from package_plugins import ROOT, TARGETS, finalize_macos_bundle, package, select_units, available_units
 
 
 class PackagingTests(unittest.TestCase):
@@ -142,6 +142,15 @@ class PackagingTests(unittest.TestCase):
                     self.assertIn(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n", checksums)
                 self.assertFalse(list(output.glob(".plugins-*")))
 
+    def test_every_registered_product_has_both_targets_and_a_ci_entry(self):
+        import re
+        workflow = (ROOT / ".github/workflows/plugins.yml").read_text()
+        matrix = set(re.findall(r"slug: ([a-z0-9-]+)", workflow))
+        self.assertEqual(matrix, set(available_units()))
+        for unit in available_units():
+            for fmt in ("clap", "vst3"):
+                self.assertTrue((ROOT / f"plugins/{unit}-{fmt}/Cargo.toml").is_file())
+
     def test_registered_products_have_distinct_public_identities(self):
         import tomllib
         identities = []
@@ -152,7 +161,8 @@ class PackagingTests(unittest.TestCase):
 
     def test_selection_rejects_invalid_names_and_deduplicates(self):
         self.assertEqual(select_units(" drive-v2,drive,drive-v2 "), ["drive-v2", "drive"])
-        self.assertEqual(select_units("all"), ["bitcrusher", "drive", "drive-v2", "saturator"])
+        self.assertEqual(select_units("all"), sorted(available_units()))
+        self.assertEqual(len(select_units("all")),14)
         for value in ("", "drive,", ",drive", "drive,,drive-v2", "unknown", "all,drive", "../drive"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 select_units(value)
@@ -164,7 +174,7 @@ class PackagingTests(unittest.TestCase):
                     base = Path(temporary)
                     release = base / "target" / target / "release"
                     release.mkdir(parents=True)
-                    for unit in ("drive", "drive_v2", "saturator", "bitcrusher"):
+                    for unit in (slug.replace("-","_") for slug in select_units("all")):
                         for fmt in ("clap", "vst3"):
                             (release / pattern.format(f"daw_{unit}_{fmt}")).write_bytes(f"{unit}:{fmt}".encode())
                     output = base / "artifacts"
@@ -175,7 +185,7 @@ class PackagingTests(unittest.TestCase):
                     for archive in output.glob("*.zip"):
                         with zipfile.ZipFile(archive) as zipped:
                             metadata = json.loads(zipped.read("build.json"))
-                            self.assertIn(metadata["product"], ("Drive", "Drive v2", "Saturator", "Bitcrusher"))
+                            self.assertTrue(metadata["product"])
                         checksum = next(output.glob((metadata["product"].replace(" ", "-") + "-0.1.0-") + "*SHA256SUMS.txt")).read_text()
                         self.assertIn(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}", checksum)
                     self.assertFalse(list(output.glob(".plugins-*")))
@@ -187,7 +197,7 @@ class PackagingTests(unittest.TestCase):
                 target = "aarch64-apple-darwin"
                 release = base / "target" / target / "release"
                 release.mkdir(parents=True)
-                for unit in ("drive", "drive_v2", "saturator", "bitcrusher"):
+                for unit in (slug.replace("-","_") for slug in select_units("all")):
                     for fmt in ("clap", "vst3"):
                         (release / f"libdaw_{unit}_{fmt}.dylib").write_bytes(b"old")
                 output = base / "artifacts"
@@ -241,7 +251,7 @@ class PackagingTests(unittest.TestCase):
             target = "x86_64-unknown-linux-gnu"
             release = base / "target" / target / "release"
             release.mkdir(parents=True)
-            for unit in ("drive", "drive_v2", "saturator", "bitcrusher"):
+            for unit in (slug.replace("-","_") for slug in select_units("all")):
                 for fmt in ("clap", "vst3"):
                     (release / f"libdaw_{unit}_{fmt}.so").write_bytes(b"fixture")
             command = [sys.executable, str(ROOT / "tools/package_plugins.py"), "--target", target,

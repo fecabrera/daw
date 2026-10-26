@@ -1,4 +1,4 @@
-//! Independent headless Drive VST3 development export. No GUI or device startup.
+//! Shared VST3 boundary for independent portable effect plugins.
 #![allow(non_snake_case)] // SDK method names are part of its COM interfaces.
 #[cfg(feature = "allocation-check")]
 mod allocations;

@@ -46,3 +46,37 @@ pub type OutputMeter = daw_unit_core::BandMeter<3>;
 
 /// Portable DSP latency, including bypass.
 pub const LATENCY_FRAMES: u32 = 0;
+
+/// Host delay compensation at the selected processing rate.
+pub fn latency_frames(_rate: u32) -> u32 {
+    LATENCY_FRAMES
+}
+
+pub const METER_VALUES: usize = 2;
+pub fn meter_values(m: &OutputMeter) -> [f64; METER_VALUES] {
+    [
+        f64::from(m.readings()[0]),
+        f64::from(m.boost_peaks()[0].peak()),
+    ]
+}
+pub fn receive_meter(m: &OutputMeter, v: [f32; METER_VALUES]) {
+    use daw_unit_core::MeterStorage;
+    m.clear();
+    m.store([v[1], 0.0, 0.0]);
+    m.initialize([v[0], 0.0, 0.0]);
+}
+pub fn reset_meter(m: &OutputMeter, mask: u32) {
+    if mask & 1 != 0 {
+        m.boost_peaks()[0].reset_peak();
+    }
+}
+
+/// Conservative tail bound in samples; histories continue on quiet blocks.
+pub fn tail_frames(rate: u32) -> u32 {
+    rate.saturating_mul(1)
+}
+
+/// Format classification does not alter product identity.
+pub const CLAP_FEATURE: &std::ffi::CStr = c"distortion";
+pub const VST3_CATEGORIES: &str = "Fx|Distortion|Stereo";
+pub const USES_TRANSPORT: bool = false;

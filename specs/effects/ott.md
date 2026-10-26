@@ -88,3 +88,7 @@ Processed telemetry follows `OTT` order: Low crossover, High crossover; then Dep
 ## Standard output monitoring
 
 The Out strip alone adds the [standard effect output meter](../architecture/modular-audio-units.md#standard-effect-out-strip-meter), including the shared held sample-peak indicator and independent click reset. Keep control positions, strip widths, unit height, and existing reduction/band monitors unchanged. Hide the output rail in compact and collapsed modes. Meter final stereo audio through `LevelMonitor<3>::sample_output`; use separate prepared handles from reduction and signed band telemetry. Bind through tracks, Master and instrument layers, retain handles by stable effect ID, detach DSP clones, and clear all monitors on unit bypass. Monitoring must not allocate, lock, change audio, or modify saved state.
+
+## Plugin delivery
+
+This unit also has independent CLAP/VST3 previews. The [shared build contract](../architecture/all-effect-plugin-builds.md) defines identity, state, automation, timing, meters, packaging, CI, and acceptance limits.

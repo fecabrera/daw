@@ -8,3 +8,5 @@ mod editor {
     }
 }
 pub use editor::*;
+
+fn paint_extra(_: &mut egui::Ui, _: &body::Bounds, _: &Model, _: &daw_unit_core::DriveV2Settings) {}

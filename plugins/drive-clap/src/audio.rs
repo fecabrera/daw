@@ -112,6 +112,14 @@ pub(crate) unsafe extern "C" fn process(
             } // All output frames are written; no quietness assumption.
         }
         i.apply_pending(audio);
+        if daw_drive_plugin::USES_TRANSPORT && !process.transport.is_null() {
+            // SAFETY: the host retains the block transport through process.
+            transport(
+                audio,
+                unsafe { process.transport.read_unaligned() },
+                i.rate.load(Ordering::Acquire),
+            );
+        }
         unsafe {
             i.editor.flush(audio, process.out_events);
         }
@@ -132,8 +140,26 @@ pub(crate) unsafe extern "C" fn process(
                 }
                 position += 1;
             }
-            unsafe {
-                apply(audio, pointer, header);
+            if daw_drive_plugin::USES_TRANSPORT
+                && header.space_id == daw_plugin_clap::sys::events::CLAP_CORE_EVENT_SPACE_ID
+                && header.type_ == daw_plugin_clap::sys::events::CLAP_EVENT_TRANSPORT
+                && header.size as usize
+                    >= size_of::<daw_plugin_clap::sys::events::clap_event_transport>()
+            {
+                // SAFETY: the checked event extent contains one transport event.
+                transport(
+                    audio,
+                    unsafe {
+                        pointer
+                            .cast::<daw_plugin_clap::sys::events::clap_event_transport>()
+                            .read_unaligned()
+                    },
+                    i.rate.load(Ordering::Acquire),
+                );
+            } else {
+                unsafe {
+                    apply(audio, pointer, header);
+                }
             }
         }
         while position < frames {
@@ -144,7 +170,7 @@ pub(crate) unsafe extern "C" fn process(
         }
         i.publish(audio);
         // Keep histories advancing even for silence/bypass. Never infer sleep
-        // from a quiet input block; the tail extension reports one second.
+        // from a quiet input block; the tail extension reports a unit-owned bound.
         CLAP_PROCESS_CONTINUE
     })
 }
@@ -172,4 +198,23 @@ unsafe fn sample(
         }
     }
     true
+}
+
+fn transport(
+    audio: &mut crate::instance::Audio,
+    event: daw_plugin_clap::sys::events::clap_event_transport,
+    rate: u32,
+) {
+    use daw_plugin_clap::sys::{events::*, fixedpoint::CLAP_SECTIME_FACTOR};
+    let frame = (event.flags & CLAP_TRANSPORT_HAS_SECONDS_TIMELINE != 0
+        && event.flags & CLAP_TRANSPORT_IS_PLAYING != 0)
+        .then(|| {
+            (event.song_pos_seconds as f64 / CLAP_SECTIME_FACTOR as f64 * f64::from(rate))
+                .max(0.0)
+                .round() as u64
+        });
+    let tempo = (event.flags & CLAP_TRANSPORT_HAS_TEMPO != 0).then_some(event.tempo as f32);
+    if let Some(processor) = &mut audio.processor {
+        processor.set_transport(frame, tempo);
+    }
 }

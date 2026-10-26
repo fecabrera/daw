@@ -1,0 +1,14 @@
+[package]
+name = "daw-ott-editor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+
+[dependencies]
+daw-unit-core.workspace = true
+daw-drive-plugin = { package = "daw-ott-plugin", path = "../ott-plugin" }
+daw-plugin-support.workspace = true
+daw-plugin-window.workspace = true
+daw-unit-ui.workspace = true
+egui.workspace = true

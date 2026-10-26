@@ -31,3 +31,5 @@ Open the secondary-color header dot for [modulation connections](../modulation/R
 Intensity amounts use percentage points, from −100 to +100. Frequency amounts use octaves, from −6 to +6. Contributions add to each saved setting and stay within its range. Frequency boundaries retain their 1 Hz separation when modulated. Order remains a manual stepped control.
 
 The base pointer and readout retain the saved value. Range arcs and moving dots show modulation; the dots reflect the actual constrained frequencies.
+
+This effect also has a [standalone CLAP/VST3 plugin](plugins.md).

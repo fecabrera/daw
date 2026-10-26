@@ -1,0 +1,26 @@
+[package]
+name = "daw-direction-mixer-vst3"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[lib]
+path = "../drive-vst3/src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+allocation-check = []
+
+[dependencies]
+daw-drive-editor = { package = "daw-direction-mixer-editor", path = "../../crates/direction-mixer-editor" }
+daw-plugin-window.workspace = true
+daw-drive-plugin = { package = "daw-direction-mixer-plugin", path = "../../crates/direction-mixer-plugin" }
+daw-plugin-vst3.workspace = true
+
+[dev-dependencies]
+daw-direction-mixer.workspace = true
+daw-unit-core.workspace = true
+libloading.workspace = true
+serde_json.workspace = true

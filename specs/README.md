@@ -78,3 +78,5 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Performance audit — 2026-10-18](validation/performance-audit-2026-10-18.md): measured CPU/allocation baselines, scaling findings, proposed remediations, and native verification gaps.
 
 - [Performance remediation — 2026-10-18](validation/performance-remediation-2026-10-18.md): implemented changes, before/after evidence, and remaining checks.
+
+- [All effect plugin builds](architecture/all-effect-plugin-builds.md): remaining ten products, fixed EQ bank, timing, meters, packaging, and CI.

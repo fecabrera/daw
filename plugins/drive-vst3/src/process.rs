@@ -27,6 +27,18 @@ pub(crate) unsafe fn process(component: &Component, data: *mut ProcessData) -> t
     // concurrent with mutable UI-thread inactive lifecycle/state calls.
     let audio = unsafe { component.audio() };
     component.recall(audio);
+    if daw_drive_plugin::USES_TRANSPORT && !data.processContext.is_null() {
+        // SAFETY: the host retains its context for this block.
+        let context = unsafe { data.processContext.read() };
+        let playing: u32 = ProcessContext_::StatesAndFlags_::kPlaying as _;
+        let frame = (context.state & playing != 0 || data.processMode == 2)
+            .then_some(context.projectTimeSamples.max(0) as u64);
+        let tempo_flag: u32 = ProcessContext_::StatesAndFlags_::kTempoValid as _;
+        let tempo = (context.state & tempo_flag != 0).then_some(context.tempo as f32);
+        if let Some(processor) = &mut audio.processor {
+            processor.set_transport(frame, tempo);
+        }
+    }
     let Ok(mut queues) =
         (unsafe { Queues::new(data.inputParameterChanges, audio.normalized, frames) })
     else {

@@ -1,0 +1,78 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.stereo-spread"
+vendor = "Sie"
+version = "0.1.0"
+product = "Stereo Spread"
+clap_id = "io.github.fecabrera.daw.stereo-spread"
+processor_id = "7f37db78c11d5e91ae90e98e0d660d29"
+controller_id = "90cf84df309250ec88c0b65825d92298"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "lower_intensity"
+minimum = -1.0
+maximum = 1.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 102
+key = "lower_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 103
+key = "upper_intensity"
+minimum = -1.0
+maximum = 1.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 104
+key = "upper_frequency"
+minimum = 20.0
+maximum = 20000.0
+default = 20000.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 105
+key = "order"
+minimum = 2.0
+maximum = 12.0
+default = 8.0
+scale = "choice"
+
+[[strips]]
+footer = "Lower"
+controls = [
+{ parameter = "lower_intensity", control = "percent" },
+{ parameter = "lower_frequency", control = "frequency" },
+]
+
+[[strips]]
+footer = "Upper"
+controls = [
+{ parameter = "upper_intensity", control = "percent" },
+{ parameter = "upper_frequency", control = "frequency" },
+]
+
+[[strips]]
+footer = "Spread"
+controls = [
+{ parameter = "order", control = "integer" },
+]
