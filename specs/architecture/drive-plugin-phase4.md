@@ -14,7 +14,7 @@ The shared base retains gain silence/log scales, choice diagrams, cyclic choice 
 
 `crates/drive-editor` binds the six controls to typed plugin parameters. It retains full-precision host values for parameters that the user did not edit; merely drawing an f32 control must not quantize a saved f64 value. It emits Begin/Value/End batches. Discrete, reset and keyboard edits use complete gestures; drags end on release, focus loss, or editor destruction.
 
-The background menu selects Dark, Light, or Mist with the shared default accent. Preferences belong to an instance, survive editor reopen, and are separate from automatable parameters. They are not serialized yet. The background interaction is registered before the knobs so it cannot steal their clicks. No new inline text editor is added; existing host text conversion remains available in generic host controls.
+The background menu selects Dark, Light, or Mist with the shared plugin default accent, Deep Orange (`#FF5722`). Preferences belong to an instance, survive editor reopen, and are separate from automatable parameters. They are not serialized yet. The background interaction is registered before the knobs so it cannot steal their clicks. No new inline text editor is added; existing host text conversion remains available in generic host controls.
 
 ## Native boundary and threading
 

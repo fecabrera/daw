@@ -8,7 +8,7 @@ Date: 2026-10-26. Status: CLAP/VST3 development targets and shared three-strip e
 
 The `daw-drive-v2-clap` and `daw-drive-v2-vst3` targets compile the existing format adapter sources through explicit Cargo library paths. Dependency aliases select the v2 contract and editor. Fixed arrays and parameter counts derive from the typed contract; both products can build in the same workspace invocation without feature selection changing identity. Format-specific lifecycle, buffer handling, normalized VST3 curves, state publication, and GUI ownership remain in the existing adapters. Building either target does not build the DAW apps, project, engine, media, or device crates.
 
-`crates/unit-ui::drive_v2` owns the shared three-strip body. The DAW retains shell, selection, history, and modulation ownership. `crates/drive-v2-editor` binds ten controls to bounded Begin/Value/End batches, reserves gesture-end capacity, and retains unedited f64 host values. The editor is fixed at 270 × 218 logical points. Whole-unit Bypass is host-owned; Color power stays in its footer.
+`crates/unit-ui::drive_v2` owns the shared three-strip body. The DAW retains shell, selection, history, and modulation ownership. `crates/drive-v2-editor` binds ten controls to bounded Begin/Value/End batches, reserves gesture-end capacity, and retains unedited f64 host values. The editor is fixed at 270 × 218 logical points. Whole-unit Bypass is host-owned; Color power stays in its footer. Both plugin products use the shared Deep Orange (`#FF5722`) default accent in Dark, Light, and Mist.
 
 ## Frozen identity and parameters
 

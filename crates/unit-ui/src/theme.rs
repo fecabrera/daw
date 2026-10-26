@@ -10,6 +10,8 @@ pub const TIME_UNIT: Color32 = Color32::from_rgb(170, 174, 179);
 pub const SECONDARY: Color32 = Color32::from_rgb(139, 143, 148);
 /// Default accent. Runtime colors come from the current context.
 pub const ACCENT: Color32 = Color32::from_rgb(156, 39, 176);
+/// Deep Orange default for independent plugin editors.
+pub const PLUGIN_ACCENT: Color32 = Color32::from_rgb(255, 87, 34);
 pub const SELECTION_OUTLINE: Stroke = Stroke {
     width: 2.0,
     color: ACCENT,

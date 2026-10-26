@@ -137,7 +137,7 @@ impl Editor {
                 } else {
                     theme::LIGHT
                 },
-                theme::ACCENT,
+                theme::PLUGIN_ACCENT,
             );
             self.appearance = appearance;
         }

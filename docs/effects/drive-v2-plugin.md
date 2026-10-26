@@ -26,7 +26,7 @@ The fixed editor is 270 × 218 logical points. Drive contains Soft/Hard, Gain an
 
 The host exposes all ten controls plus whole-unit Bypass. Input Gain and Output Level support exact silence through +12 dB. Audio is stereo 32-bit at 44.1/48/88.2/96/176.4/192 kHz. Latency is zero, with a one-second residual tail declaration. Unsupported rates and formats are rejected. Processing, smoothing, and bypass match built-in Drive v2.
 
-Host state saves the 11 base parameters. DAW modulation routes, project identities, paths, and exact DSP histories are excluded. Dark/Light/Mist appearance survives editor reopen for an instance but is not serialized. Host automation and Undo remain host-owned.
+Host state saves the 11 base parameters. DAW modulation routes, project identities, paths, and exact DSP histories are excluded. The default plugin accent is Deep Orange (`#FF5722`). Dark/Light/Mist appearance survives editor reopen for an instance but is not serialized. Host automation and Undo remain host-owned.
 
 ## Verification and limits
 

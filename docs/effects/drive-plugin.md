@@ -28,6 +28,6 @@ Drive adds no processing delay. It reports a one-second residual tail to the hos
 
 The Drive strip contains Volume, Gain, and Tone. The Color strip contains Shape, Strength, and Frequency. Drag a knob up or right to increase its value. Hold Shift for smaller changes. Use arrow keys after selecting a knob. Double-click to reset it. The host receives edit gestures for automation and Undo.
 
-Right-click the editor background to select Dark, Light, or Mist. This choice stays with the plugin instance when you close and reopen the editor. It does not change the sound and is not saved with host project state yet. The host supplies the window frame and Bypass control.
+Plugin editors use Deep Orange (`#FF5722`) as their default accent. Right-click the editor background to select Dark, Light, or Mist. This choice stays with the plugin instance when you close and reopen the editor. It does not change the sound and is not saved with host project state yet. The host supplies the window frame and Bypass control.
 
 The editor has a fixed size. Native screen-reader control exposure and Windows/Linux editor behavior still require work and validation. These development artifacts are not release packages.
