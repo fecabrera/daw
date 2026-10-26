@@ -69,12 +69,13 @@ pub const DARK: Palette = Palette {
     meter: METER,
 };
 
+/// Near-white surfaces and pale separators sampled from the Light reference.
 pub const LIGHT: Palette = Palette {
-    background: Color32::from_rgb(233, 233, 233),
-    panel: Color32::from_rgb(249, 249, 249),
-    input: Color32::WHITE,
-    border: Color32::from_rgb(190, 193, 197),
-    divider: Color32::from_rgb(130, 134, 139),
+    background: Color32::from_rgb(251, 251, 251),
+    panel: Color32::WHITE,
+    input: Color32::from_rgb(246, 246, 251),
+    border: Color32::from_rgb(242, 242, 242),
+    divider: Color32::from_rgb(220, 220, 220),
     text: Color32::from_rgb(40, 43, 47),
     time_unit: Color32::from_rgb(85, 89, 94),
     secondary: Color32::from_rgb(106, 110, 115),

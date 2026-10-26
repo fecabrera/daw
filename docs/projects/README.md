@@ -31,7 +31,7 @@ Settings groups controls into four categories:
 - **MIDI**: how notes are divided when splitting clips.
 - **Stem Separation**: local model selection and validation.
 
-Choose **Dark**, **Light**, or **Mist** under **Appearance > Theme**. Mist uses cool grey backgrounds and pale panels. All themes keep your selected accent and clip colors.
+Choose **Dark**, **Light**, or **Mist** under **Appearance > Theme**. Light uses near-white backgrounds, white panels, and pale grey separators. Mist uses cool grey backgrounds and pale panels. All themes keep your selected accent and clip colors.
 
 On Windows, **Appearance > Titlebar > Custom** combines the menu, project title, and view buttons in the titlebar. A continuous divider separates this row from playback controls in restored and maximized windows. **Native** is the default titlebar style.
 
