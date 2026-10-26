@@ -52,6 +52,15 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/stereo-spread` | Portable spectral stereo widening with private FunDSP filter banks and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/direction-mixer` | Portable stereo direction/width and M/S decoding through the shared effect and modulation APIs; no DAW, UI, or device dependencies. |
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
+| `crates/drive-plugin` | Format-neutral Drive plugin identity, typed parameter mappings, checked panel bindings, bounded state envelope/publication, and prepared processor over the original Drive DSP. No DAW, SDK, window, or device dependencies. |
+| `crates/unit-ui` | Shared unit knobs, portable parameter controls, theme/fonts and Drive body. Only egui and unit-core dependencies; no DAW project, SDK, window or device dependencies. |
+| `crates/drive-editor` | Drive body bindings, bounded editor/control messages, gestures and instance appearance. No SDK or audio ownership. |
+| `crates/plugin-window` | Native child-window adapter over the selected egui backend. Keep platform parent handles, main-thread lifetime and display scaling here. |
+| `crates/plugin-support` | Format-neutral ABI containment, fixed atomic snapshots, and bounded UTF-8 text helpers. No SDK, DAW, window, or device dependencies. |
+| `crates/plugin-clap` | Narrow CLAP binding facade; reexports shared boundary helpers. No concrete unit, DAW, window, or device dependencies. |
+| `crates/plugin-vst3` | Narrow VST3 binding facade, platform TUID encoding, UTF-16 text and borrowed stream helpers. No concrete unit, DAW, window, or device dependencies. |
+| `plugins/drive-vst3` | Independent Drive VST3 factory, component/audio processor, edit controller, normalized queues, and host/state boundary. Keep COM ownership here; reuse shared parameter/state, publication and DSP. |
+| `plugins/drive-clap` | Independent Drive CLAP entry, lifecycle, host/event/state bridge, and planar audio boundary. Keep unsafe SDK ownership here; reuse shared parameter/state and DSP crates. |
 | `crates/filter` | Portable stereo filtering, parameter/bypass smoothing and shared modulation; owns private FunDSP coefficients and integrators reused by Auto-filter. |
 | `crates/auto-filter` | Shared Filter processor plus a transport-locked LFO behind the effect API. |
 | `crates/ott` | Portable three-band upward/downward dynamics, phase-matched crossovers, and signed gain monitoring; keep FunDSP types private. |
@@ -72,6 +81,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/ui` | egui application state, interactions, previews, reusable controls, and presentation. |
 | `apps/desktop` | eframe startup, GPU backend selection, and native menu, window, and file-drag adapters. Windows uses Glow/OpenGL for native caption composition; macOS/Linux use wgpu. Keep OS-specific code here. |
 | `apps/cli` | clap arguments, diagnostics, and exit codes over the shared project/export APIs. Must remain usable without graphics or an audio device. |
+| `plugins/drive` | Build-time Drive plugin manifest; stable public identities, parameter declarations, and two-strip panel bindings. |
 | `tools` | Demo generation, CLI smoke checks, CI summaries, and macOS/Windows/Linux packaging. |
 | `.github/workflows` | Native platform tests and release-package artifact uploads. |
 | `examples` | Tracked generated audio and demo project fixtures. |
@@ -241,6 +251,7 @@ cargo test --workspace
 - On macOS, rebuild desktop deliverables with `sh tools/package_macos.sh debug` or `release` when desktop/runtime changes need an updated app. The unsigned bundle is under `target/<profile>/DAW.app`.
 - CI calls `.github/workflows/platform.yml` independently for Windows, macOS, and Linux, with fail-fast disabled. Each invocation has separate `test` and `build` jobs; build depends only on that invocation's tests and includes release builds, packaging, and artifact uploads. Do not gate all builds on the aggregate test matrix. Both jobs use `.github/actions/setup-build` for native dependencies, the pinned Rust toolchain, Python, and Cargo caching. Tests run locked workspace checks and CLI smoke checks. Keep the portable Windows executable with its project license and dependency notices, and retain the same notices in macOS DMG and Linux ZIP artifacts. Use the native scripts in `tools` rather than duplicating packaging commands in the workflow.
 - Keep CI command output visible in the console and in log artifacts. Preserve command failures when using `tee`, upload logs on failure, and write job summaries through `tools/summarize_ci.py`. Windows setup selects the MSVC linker by absolute path to avoid Git Bash's `link.exe`. UI background-job tests use a bounded 30-second wall-clock deadline for slower hosted workers.
+- `.github/workflows/plugins.yml` builds Drive CLAP/VST3 previews on independent native platform workers. Reuse the shared setup/log/summary helpers and `tools/package_drive_plugins.py`; retain native bundle layouts, executable ZIP permissions and notices. Keep plugin uploads gated on that worker's tests. Development CI does not replace SDK-validator, native editor/host or release acceptance checks.
 - For documentation-only changes, check content, links, commands against their definitions, and `git diff --check`; do not rebuild or run unrelated audio tests.
 - Use temporary folders for tests. Do not overwrite user projects, recordings, or exports. Review `git diff` and `git status` before completion.
 - Once relevant checks pass, repeat them only after new changes or unresolved failures. Record unavailable device/platform checks explicitly; automated egui tests do not establish native gesture behavior.
@@ -264,4 +275,4 @@ cargo test --workspace
 - Media notices belong in `crates/media/assets/licenses`. Preserve Rubber Band's GPL v2 text in `RubberBand-GPL.txt`, its source notice, and the Speex and KissFFT notices, including `RubberBand-Speex.txt`. Preserve LAME notices as well.
 - EQ dependency notices belong in `crates/equalizer/assets/licenses`; packaging includes them with the oscillator notices. Unit footer Power/label pairs reuse `rows::power_label` for button size, gap, alignment, and text style. Effects units use `PanelStyle::unit_in_lane` to share the single status separator.
 - Oscillator dependency notices belong in `crates/oscillator/assets/licenses`; macOS packaging includes them. Keep the same notices with other distributions.
-- Font/icon notices belong with their assets in `crates/ui/assets`; other UI dependency notices belong in `crates/ui/assets/licenses`. `tools/package_macos.sh` copies these notices into the bundle; keep equivalent notices with other distributions.
+- Font assets/notices belong in `crates/unit-ui/assets`; icon assets/notices stay in `crates/ui/assets`. Other shared font notices belong in `crates/unit-ui/assets/licenses`, DAW UI dependency notices in `crates/ui/assets/licenses`, and plugin window notices in `crates/plugin-window/assets/licenses`. `tools/package_macos.sh` copies these notices into the bundle; keep equivalent notices with other distributions.

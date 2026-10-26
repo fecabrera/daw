@@ -8,6 +8,11 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Iteration 1 implementation specification](architecture/iteration-1.md).
 - [Modular audio units](architecture/modular-audio-units.md).
 - [Separate CLAP/VST3 unit builds](architecture/unit-plugin-builds.md): implementation plan for built-in units with independent plugin exports, starting with Drive and its shared two-strip editor.
+- [Drive plugin Phase 0](architecture/drive-plugin-phase0.md): reproducible local probes, narrow-adapter decision, native editor feasibility, baseline/tail policy, and remaining platform/host gates.
+- [Drive plugin Phase 1](architecture/drive-plugin-phase1.md): frozen identity, checked manifest/panel bindings, shared parameter mappings, and bounded state compatibility.
+- [Drive plugin Phase 2](architecture/drive-plugin-phase2.md): headless CLAP processor, bounded active recall, loaded-binary parity/allocation/CPU evidence, and retained validator rate-policy failure.
+- [Drive plugin Phase 3](architecture/drive-plugin-phase3.md): separate VST3 component/controller, normalized linear automation queues, common state publication, SDK validation and remaining release gates.
+- [Drive plugin Phase 4: shared editor](architecture/drive-plugin-phase4.md).
 - [Prepared rendering and performance](architecture/performance.md).
 - [Stem-separation native dependency audit](audio/stem-native-dependencies.md): pinned native components, advisories, licenses and platform packaging.
 - [Parallel cache preparation validation — 2026-10-19](validation/parallel-cache-preparation-2026-10-19.md).

@@ -25,11 +25,11 @@ mkdir -p "$package/licenses"
 cp "target/$profile/daw-desktop" "$package/daw-desktop"
 chmod 755 "$package/daw-desktop"
 cp LICENSE "$package/LICENSE.txt"
-cp crates/ui/assets/fonts/OFL.txt "$package/licenses/Outfit-OFL.txt"
-cp crates/ui/assets/fonts/Hack-LICENSE.txt "$package/licenses/Hack-LICENSE.txt"
+cp crates/unit-ui/assets/fonts/OFL.txt "$package/licenses/Outfit-OFL.txt"
+cp crates/unit-ui/assets/fonts/Hack-LICENSE.txt "$package/licenses/Hack-LICENSE.txt"
 cp crates/ui/assets/icons/LUCIDE-LICENSE.txt "$package/licenses/LUCIDE-LICENSE.txt"
 cp crates/ui/assets/icons/EGUI-LUCIDE-LICENSE.txt "$package/licenses/EGUI-LUCIDE-LICENSE.txt"
-for directory in crates/ui/assets/licenses crates/media/assets/licenses \
+for directory in crates/ui/assets/licenses crates/unit-ui/assets/licenses crates/media/assets/licenses \
   crates/oscillator/assets/licenses crates/equalizer/assets/licenses crates/timestretch/licenses crates/separation/assets/licenses; do
   cp "$directory"/*.txt "$package/licenses/"
 done

@@ -1,0 +1,5 @@
+calloop 0.14.4
+Source: https://crates.io/crates/calloop/0.14.4
+Repository: https://github.com/Smithay/calloop
+License: MIT; unmodified text in Calloop-MIT.txt.
+Baseview 0.3.7 requires this exact compatible release on Linux.

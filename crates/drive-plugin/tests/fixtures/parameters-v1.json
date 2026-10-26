@@ -1,0 +1,128 @@
+[
+  {
+    "key": "bypass",
+    "id": 100,
+    "plain": 0,
+    "normalized": 0,
+    "text": "Off"
+  },
+  {
+    "key": "bypass",
+    "id": 100,
+    "plain": 1,
+    "normalized": 1,
+    "text": "On"
+  },
+  {
+    "key": "volume",
+    "id": 101,
+    "plain": -1000,
+    "normalized": 0,
+    "text": "−∞ dB"
+  },
+  {
+    "key": "volume",
+    "id": 101,
+    "plain": -950,
+    "normalized": 1.5811388300841896e-46,
+    "text": "-950.0 dB"
+  },
+  {
+    "key": "volume",
+    "id": 101,
+    "plain": -60,
+    "normalized": 0.05,
+    "text": "-60.0 dB"
+  },
+  {
+    "key": "volume",
+    "id": 101,
+    "plain": -20,
+    "normalized": 0.25,
+    "text": "-20.0 dB"
+  },
+  {
+    "key": "volume",
+    "id": 101,
+    "plain": 0,
+    "normalized": 0.5,
+    "text": "0.0 dB"
+  },
+  {
+    "key": "volume",
+    "id": 101,
+    "plain": 12,
+    "normalized": 1,
+    "text": "12.0 dB"
+  },
+  {
+    "key": "gain",
+    "id": 102,
+    "plain": 0.2,
+    "normalized": 0.2,
+    "text": "20%"
+  },
+  {
+    "key": "tone",
+    "id": 103,
+    "plain": 0.5,
+    "normalized": 0.5,
+    "text": "50%"
+  },
+  {
+    "key": "color_shape",
+    "id": 104,
+    "plain": 0,
+    "normalized": 0,
+    "text": "Off"
+  },
+  {
+    "key": "color_shape",
+    "id": 104,
+    "plain": 1,
+    "normalized": 0.3333333333333333,
+    "text": "Mid scoop"
+  },
+  {
+    "key": "color_shape",
+    "id": 104,
+    "plain": 2,
+    "normalized": 0.6666666666666666,
+    "text": "Mid hump"
+  },
+  {
+    "key": "color_shape",
+    "id": 104,
+    "plain": 3,
+    "normalized": 1,
+    "text": "Mid hump + bass cut"
+  },
+  {
+    "key": "color_strength",
+    "id": 105,
+    "plain": 0.5,
+    "normalized": 0.5,
+    "text": "50%"
+  },
+  {
+    "key": "color_frequency",
+    "id": 106,
+    "plain": 250,
+    "normalized": 0,
+    "text": "250 Hz"
+  },
+  {
+    "key": "color_frequency",
+    "id": 106,
+    "plain": 750,
+    "normalized": 0.5283208335737188,
+    "text": "750 Hz"
+  },
+  {
+    "key": "color_frequency",
+    "id": 106,
+    "plain": 2000,
+    "normalized": 1,
+    "text": "2000 Hz"
+  }
+]

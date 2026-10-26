@@ -2,7 +2,7 @@
 use super::{KnobSpec, ParameterScale};
 
 #[derive(Clone, Copy)]
-pub(crate) enum AmountMapping {
+pub enum AmountMapping {
     /// Signed offsets in destination units. Gain mirrors its attenuation curve.
     Offset { origin: f32, direction: f32 },
     /// Saved octaves correspond to ratios on the destination's frequency or time scale.
@@ -11,7 +11,7 @@ pub(crate) enum AmountMapping {
     Depth,
 }
 #[derive(Clone, Copy)]
-pub(super) struct AmountScale {
+pub struct AmountScale {
     native_min: f32,
     native_max: f32,
     native_reset: f32,
@@ -21,7 +21,7 @@ pub(super) struct AmountScale {
     limit: f32,
 }
 impl KnobSpec {
-    pub(crate) fn modulation_amount(mut self, limit: f32, mapping: AmountMapping) -> Self {
+    pub fn modulation_amount(mut self, limit: f32, mapping: AmountMapping) -> Self {
         // Amounts retain the shared fine mode independently of native control calibration.
         self.fine_drag_sensitivity = super::DEFAULT_FINE_DRAG_SENSITIVITY;
         // Symmetric destinations already have the signed domain and quantization.
@@ -70,7 +70,7 @@ impl AmountScale {
             AmountMapping::Octaves => self.native_reset * 2.0_f32.powf(magnitude),
             AmountMapping::Depth => {
                 if magnitude >= 1.0 {
-                    daw_core::SILENT_GAIN_DB
+                    daw_unit_core::SILENT_GAIN_DB
                 } else {
                     20.0 * (1.0 - magnitude).log10()
                 }
@@ -81,10 +81,10 @@ impl AmountScale {
         match self.mapping {
             AmountMapping::Offset { origin, direction } => (value - origin) / direction,
             AmountMapping::Octaves => (value / self.native_reset).log2(),
-            AmountMapping::Depth => 1.0 - daw_core::linear_gain(value),
+            AmountMapping::Depth => 1.0 - crate::gain::linear_gain(value),
         }
     }
-    pub(super) fn position(self, value: f32) -> f32 {
+    pub fn position(self, value: f32) -> f32 {
         if value == 0.0 {
             return 0.5;
         }
@@ -98,7 +98,7 @@ impl AmountScale {
         0.5 + value.signum() * 0.5 * (self.native_position(self.to_native(value.abs())) - origin)
             / (end - origin)
     }
-    pub(super) fn value(self, position: f32) -> f32 {
+    pub fn value(self, position: f32) -> f32 {
         if position == 0.5 {
             return 0.0;
         }
@@ -119,7 +119,7 @@ impl AmountScale {
         signed.signum()
             * self.amount_from_native(self.native_value(origin + signed.abs() * (end - origin)))
     }
-    pub(super) fn step(self, value: f32, delta: f32) -> f32 {
+    pub fn step(self, value: f32, delta: f32) -> f32 {
         let sign = if value < 0.0 { -1.0 } else { 1.0 };
         let direction = match self.mapping {
             AmountMapping::Offset { direction, .. } => sign * direction,
@@ -147,7 +147,7 @@ impl AmountScale {
         }
     }
     /// Preserve travel per destination-scale unit when adapting its domain to signed amounts.
-    pub(super) fn drag_factor(self) -> f32 {
+    pub fn drag_factor(self) -> f32 {
         let span = if matches!(self.mapping, AmountMapping::Octaves) {
             self.native_position(self.to_native(self.limit))
                 - self.native_position(self.to_native(-self.limit))
@@ -158,7 +158,7 @@ impl AmountScale {
         };
         1.0 / span
     }
-    pub(super) fn reference_amount(self, native: f32) -> Option<f32> {
+    pub fn reference_amount(self, native: f32) -> Option<f32> {
         if matches!(self.mapping, AmountMapping::Depth) && native > 0.0 {
             return None;
         }

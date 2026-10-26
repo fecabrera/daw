@@ -1,0 +1,82 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.drive"
+vendor = "Sie"
+product = "Drive"
+version = "0.1.0"
+clap_id = "io.github.fecabrera.daw.drive"
+processor_id = "f399b92b5d264c7d98c6de3c2654d534"
+controller_id = "c212153f328b4d87a659bb681c55f768"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "volume"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 102
+key = "gain"
+minimum = 0.0
+maximum = 1.0
+default = 0.2
+scale = "linear"
+
+[[parameters]]
+id = 103
+key = "tone"
+minimum = 0.0
+maximum = 1.0
+default = 0.5
+scale = "linear"
+
+[[parameters]]
+id = 104
+key = "color_shape"
+minimum = 0.0
+maximum = 3.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 105
+key = "color_strength"
+minimum = 0.0
+maximum = 1.0
+default = 0.5
+scale = "linear"
+
+[[parameters]]
+id = 106
+key = "color_frequency"
+minimum = 250.0
+maximum = 2000.0
+default = 750.0
+scale = "logarithmic"
+
+[[strips]]
+footer = "Drive"
+controls = [
+    { parameter = "volume", control = "gain" },
+    { parameter = "gain", control = "percent" },
+    { parameter = "tone", control = "percent" },
+]
+
+[[strips]]
+footer = "Color"
+controls = [
+    { parameter = "color_shape", control = "shape", diagram = "drive_color" },
+    { parameter = "color_strength", control = "percent", enabled_by = "color_shape" },
+    { parameter = "color_frequency", control = "frequency", enabled_by = "color_shape" },
+]

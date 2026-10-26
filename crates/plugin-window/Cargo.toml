@@ -1,0 +1,11 @@
+[package]
+name = "daw-plugin-window"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+
+[dependencies]
+egui-baseview = { version = "=0.7.2", default-features = false, features = ["opengl", "tracing"] }
+baseview = "=0.3.7"
+raw-window-handle = "0.6"

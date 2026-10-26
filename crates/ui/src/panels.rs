@@ -1,8 +1,8 @@
 use egui::{Color32, Frame, Rect, Response, Stroke, Ui, Vec2};
 
-pub(super) const UNIT_STRIP_WIDTH: f32 = 90.0;
+pub(super) use daw_unit_ui::layout::UNIT_STRIP_WIDTH;
 pub(super) const HEADER_HEIGHT: f32 = crate::toolbars::CONTROL_HEIGHT + 2.0;
-pub(super) const HEADER_FONT_SIZE: f32 = 11.0;
+pub(super) use daw_unit_ui::layout::HEADER_FONT_SIZE;
 pub(super) const UNIT_POWER_SIZE: f32 = 10.0;
 /// A neighboring panel supplies this unit's left divider.
 pub(super) const SHARED_LEFT_BORDER_TAG: &str = "shared-unit-left-border";
@@ -12,11 +12,7 @@ pub(super) const SHARED_BOTTOM_BORDER_TAG: &str = "shared-unit-bottom-border";
 pub(super) const SHARED_TOP_BORDER_TAG: &str = "shared-unit-top-border";
 
 /// Three shared knob rows and a footer, before the unit frame and header.
-pub(super) fn unit_control_height() -> f32 {
-    3.0 * crate::knobs::CHOICE_SIZE
-        + 3.0 * f32::from(crate::theme::TOOLBAR_PADDING)
-        + crate::icons::COMPACT_BUTTON_SIZE
-}
+pub(super) use daw_unit_ui::layout::unit_control_height;
 
 pub(super) fn unit_height(compact: bool) -> f32 {
     if compact {
@@ -379,7 +375,7 @@ impl Default for PanelStyle {
     fn default() -> Self {
         Self {
             outline: None,
-            margin: 10,
+            margin: daw_unit_ui::layout::PANEL_MARGIN,
         }
     }
 }

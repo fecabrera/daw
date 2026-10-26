@@ -1,0 +1,11 @@
+[package]
+name = "daw-plugin-vst3"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[dependencies]
+vst3.workspace = true
+daw-plugin-support.workspace = true

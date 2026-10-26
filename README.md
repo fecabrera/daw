@@ -31,6 +31,53 @@ Planned work includes audio and beat editors, beat tracks, more effects, effects
 
 Run commands from the repository root with the toolchain pinned in [rust-toolchain.toml](rust-toolchain.toml). Dependency and minimum Rust versions are defined in [Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock). Rubber Band is built from bundled source and requires a C++ compiler and Clang/libclang for its Rust bindings. The packaged app needs no separate Rubber Band, LAME, or ONNX Runtime installation. The first build downloads the pinned ONNX Runtime binaries; it does not download model weights.
 
+### Drive plugin development
+
+Separate Drive CLAP/VST3 builds are in progress. The shared metadata, parameter, and state contract can be built and tested without a plugin SDK or audio device:
+
+```sh
+cargo build -p daw-drive-plugin --locked
+cargo test -p daw-drive-plugin --locked
+```
+
+These commands build only the shared contract. See the [Phase 1 contract](specs/architecture/drive-plugin-phase1.md) for its scope.
+
+#### Drive CLAP development processor
+
+A separate CLAP development target shares built-in Drive DSP and its two-strip editor. This is not a release package. Native execution has been checked on macOS arm64 only. See [development controls and limits](docs/effects/drive-plugin.md).
+
+Build the library with the pinned Rust toolchain:
+
+```sh
+cargo build -p daw-drive-clap --release --locked
+```
+
+Run the development artifact checks with Python 3.10 or later and clap-validator **0.4.1**. The [Phase 0 tools](#drive-plugin-feasibility-tools) build the pinned validator, or build that validator directly from revision `152b9823e992d782c5c1fd33bca0295478b919aa` of the official [clap-validator repository](https://github.com/free-audio/clap-validator). It needs only its normal Rust/native platform build prerequisites; no VST3 SDK is required for this target.
+
+```sh
+python3 tools/check_drive_clap.py --validator work/drive-plugin-phase0/clap-validator/target/release/clap-validator
+```
+
+The checker uses its own target directory and places the native development artifact at `work/drive-plugin-phase2/Drive.clap`. It tests both an instrumented library and the normal artifact, then measures callback budgets. Cached Cargo dependencies are used by default; add `--fetch` for missing locked downloads. No plugin is installed. On macOS the output is a bundle; Windows/Linux development layout is supported by the tool but native checks remain open.
+
+The full validator currently reports **32 success, 11 skipped, 1 failed**: its rate sweep requires unsupported 8 kHz activation. The complete result is retained. A successful checker exit means the scoped checks completed with that known out-of-contract failure, not an unconditional validator pass. `--strict-validator` exits 2 for any validator failure. Missing/partial evidence and any other validator failure fail the checker. See [Phase 2 evidence and remaining gates](specs/architecture/drive-plugin-phase2.md).
+
+
+#### Drive VST3 development processor
+
+The separate VST3 development target shares the same Drive DSP, parameters and base settings as CLAP. It provides a processor, edit controller, and shared two-strip editor.
+
+```sh
+cargo build -p daw-drive-vst3 --release --locked
+python3 tools/check_drive_vst3.py --validator work/drive-plugin-phase0/vst3-build/bin/Release/validator
+```
+
+Use Python 3.10 or later and the pinned Steinberg SDK validator reporting **3.8.1**. The [Phase 0 tools](#drive-plugin-feasibility-tools) build it from SDK revision `3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96` and its committed submodules. Building the Rust plugin itself uses the locked Rust bindings and does not require a local SDK/C++ installation. Building the validator requires the native CMake/Ninja/compiler setup described in the feasibility section; full Xcode is needed for that SDK build on macOS.
+
+The checker builds in isolated scratch space and writes `work/drive-plugin-phase3/Drive.vst3`, without installing it. It checks instrumented and normal loaded binaries, CPU budgets, build separation and the full validator summary. Cached dependencies are used by default; `--fetch` permits missing locked downloads. Native execution has been checked on macOS arm64 only; Windows/Linux bundle layouts exist in the tool but their native acceptance remains open.
+
+The SDK validator currently reports **47 passed, 0 failed**. It reports unsupported-rate diagnostics while accepting clean refusal of rates outside the six-rate policy. This does not resolve the CLAP validator's different rate-sweep expectation. Full release acceptance still requires native accessibility, external-host/platform checks, and production packaging. See [Phase 3 implementation and evidence](specs/architecture/drive-plugin-phase3.md).
+
 ### Windows
 
 These steps target Windows x64 with the MSVC Rust toolchain. Install the following software before building:
@@ -108,6 +155,26 @@ Create a disk image with `sh tools/package_macos_dmg.sh release`. Use `debug` fo
 
 Stem separation requires Apple Silicon on macOS. Intel builds omit that backend and disable its controls; the other app features remain available.
 
+#### Drive native editor development checks
+
+The macOS native editor harness uses the pinned SDK checkouts prepared by the feasibility tools below. It builds both development targets and opens temporary host windows while processing. It does not install plugins:
+
+```sh
+python3 tools/check_drive_editor.py
+```
+
+The harness needs full Xcode and a graphical login session. Results go under `work/drive-plugin-phase4/`. See [Phase 4 editor implementation](specs/architecture/drive-plugin-phase4.md) for the checks and remaining platform/accessibility limits.
+
+#### Drive plugin feasibility tools
+
+The isolated [Phase 0 experiment](specs/architecture/drive-plugin-phase0.md) currently runs on macOS arm64. It requires the pinned Rust toolchain, Python 3.10 or later, CMake 3.25 or later, Ninja, and full Xcode with its macOS SDK. The runner uses `DEVELOPER_DIR` when set, or `/Applications/Xcode.app/Contents/Developer` when present; it does not change the system's selected developer directory.
+
+```sh
+python3 tools/probe_drive_plugins.py --fetch --gui
+```
+
+`--fetch` downloads exact pinned sources and locked dependencies. Omit it for a cached run. `--gui` briefly opens temporary native probe windows; omit it for headless checks. Results and private test bundles go under `work/drive-plugin-phase0/`. These are disposable gain probes, not Drive products; the command does not install plugins or open user projects. A completed diagnostic run can reject the candidate framework. Read `candidate_gates` in `report.json`; `--require-framework-contract` returns a failing exit status for unmet production gates.
+
 ### Linux
 
 Install Rust through Rustup, a C++ compiler, Clang/libclang, ALSA development libraries, pkg-config, and OpenSSL development headers (for build-time runtime downloads). Ensure the XDG Desktop Portal service is available for file dialogs. Package names depend on your distribution.
@@ -120,6 +187,25 @@ cargo run -p daw-desktop
 Create a portable ZIP with `sh tools/package_linux.sh release`. Use `debug` for a debug build. The archive is `target/<profile>/DAW-linux-x64.zip` on x64 or `DAW-linux-arm64.zip` on ARM64. Extract it and run `DAW/daw-desktop`. Keep `DAW/LICENSE.txt` and `DAW/licenses` with the executable. The archive preserves executable permissions and includes the same dependency notices as the other packages. It does not bundle system libraries: the destination needs compatible C/C++ runtime, ALSA, graphics libraries, and a desktop portal for dialogs.
 
 ### GitHub Actions builds
+
+The [Build plugins workflow](.github/workflows/plugins.yml) runs on pushes, pull requests, and manual dispatches. Three independent workers build Drive CLAP and VST3 for Windows x64 (`windows-2025`), macOS arm64 (`macos-15`), and Linux x64 (`ubuntu-24.04`). Each worker uses the shared native setup, locked release builds, packaging tests, and native plugin library tests. A platform failure does not cancel the other workers. These jobs run independently of the DAW workflow.
+
+Download `Drive-CLAP-<target>` and `Drive-VST3-<target>` artifacts from the run summary. Each contains a plugin ZIP with its native bundle layout, notices, build metadata, and basic installation/removal instructions. Extract the inner ZIP before use; it preserves executable permissions. `Drive-checksums-<target>` contains archive SHA-256 checksums. Artifacts and `logs-plugins-<OS>-<architecture>` command logs remain available for 14 days. These unsigned development previews do not establish SDK-validator, native editor, external-host, or clean-machine acceptance. The workflow does not install plugins, sign/notarize binaries, or publish a release.
+
+To build and package locally, use the platform prerequisites above, then run these commands with the native target from the table:
+
+```sh
+cargo build --release --locked --target <target> -p daw-drive-clap -p daw-drive-vst3 --lib
+python tools/package_drive_plugins.py --target <target>
+```
+
+| Platform | Target |
+| --- | --- |
+| Windows x64 | `x86_64-pc-windows-msvc` |
+| macOS Apple Silicon | `aarch64-apple-darwin` |
+| Linux x64 | `x86_64-unknown-linux-gnu` |
+
+The packager requires Python 3.11 or later and reads release libraries from `target/<target>/release`. It writes separate CLAP/VST3 ZIPs and checksums to `target/plugin-artifacts`. It stages both formats before replacing existing archives. SDK validator and performance checks remain available through the separate Drive check tools described above.
 
 The [Test and build workflow](.github/workflows/build-and-test.yml) runs on pushes, pull requests, and manual dispatches. It calls the [platform workflow](.github/workflows/platform.yml) separately for Windows, macOS, and Linux. Each platform has separate `test` and `build` jobs. Tests run formatting, strict workspace/all-target Clippy, workspace tests, and the headless CLI smoke checks with the pinned Rust toolchain and locked dependencies. Build starts after that platform's tests pass, builds and packages release binaries on a fresh worker, and uploads artifacts retained for 14 days. A failure on one platform does not block or cancel another platform's build. Both jobs use the same [native build setup action](.github/actions/setup-build/action.yml).
 
@@ -144,6 +230,6 @@ Workers also upload command logs as `logs-test-<OS>-<architecture>` and `logs-bu
 
 ## Licenses
 
-Original code uses the [BSD 2-Clause License](LICENSE). Bundled dependencies have separate terms. Their notices are included with the [media libraries](crates/media/assets/licenses), [fonts](crates/ui/assets/fonts), [icons](crates/ui/assets/icons), [UI dependencies](crates/ui/assets/licenses), and [oscillator dependencies](crates/oscillator/assets/licenses), and [EQ dependencies](crates/equalizer/assets/licenses), and [stem-separation dependencies](crates/separation/assets/licenses).
+Original code uses the [BSD 2-Clause License](LICENSE). Bundled dependencies have separate terms. Their notices are included with the [media libraries](crates/media/assets/licenses), [fonts](crates/unit-ui/assets/fonts), [icons](crates/ui/assets/icons), [UI dependencies](crates/ui/assets/licenses), and [oscillator dependencies](crates/oscillator/assets/licenses), and [EQ dependencies](crates/equalizer/assets/licenses), and [stem-separation dependencies](crates/separation/assets/licenses).
 
 The [native dependency audit](specs/audio/stem-native-dependencies.md) records platform runtime requirements and license obligations for the combined applications. The original-code BSD license does not replace bundled-library terms or corresponding-source requirements.

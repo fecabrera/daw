@@ -4,53 +4,10 @@ use egui::{Pos2, Response, Stroke, Ui, Vec2};
 
 const HANDLE_ASPECT: f32 = 0.5;
 pub const SCALE_WIDTH: f32 = 30.0;
-pub const MAX_GAIN_DB: f32 = 12.0;
-// More travel near unity, with a continuous amplitude tail down to exact silence.
-const SCALE: [(f32, f32); 10] = [
-    (-60.0, 0.08),
-    (-40.0, 0.16),
-    (-30.0, 0.28),
-    (-20.0, 0.40),
-    (-15.0, 0.48),
-    (-10.0, 0.56),
-    (-6.0, 0.64),
-    (-3.0, 0.72),
-    (0.0, 0.80),
-    (MAX_GAIN_DB, 1.0),
-];
-pub const GAIN_MARKS: [f32; 13] = [
-    SILENT_GAIN_DB,
-    -40.0,
-    -30.0,
-    -20.0,
-    -15.0,
-    -10.0,
-    -6.0,
-    -3.0,
-    0.0,
-    3.0,
-    6.0,
-    9.0,
-    MAX_GAIN_DB,
-];
-
-pub fn format_gain(db: f32) -> String {
-    if linear_gain(db) == 0.0 {
-        "−∞".into()
-    } else {
-        format!("{db:.1}")
-    }
-}
+pub use daw_unit_ui::gain::{GAIN_MARKS, MAX_GAIN_DB, format_gain};
 pub fn parse_gain(text: &str) -> Option<f32> {
-    let text = text.trim();
-    if matches!(
-        text.to_ascii_lowercase().as_str(),
-        "−∞" | "-∞" | "-inf" | "-infinity"
-    ) {
-        return Some(SILENT_GAIN_DB);
-    }
-    text.parse::<f32>()
-        .ok()
+    daw_unit_core::gain::parse_db(text)
+        .map(daw_unit_core::gain::to_db_f32)
         .filter(|db| db.is_finite() && linear_gain(*db).is_finite())
 }
 pub fn clamp_gain(db: f32) -> f32 {
@@ -59,36 +16,10 @@ pub fn clamp_gain(db: f32) -> f32 {
 
 /// Position from the bottom of the handle travel, shared by the handle and scale marks.
 pub fn position_for_gain(db: f32) -> f32 {
-    if db < SCALE[0].0 {
-        return (linear_gain(db) / linear_gain(SCALE[0].0) * SCALE[0].1).clamp(0.0, SCALE[0].1);
-    }
-    for pair in SCALE.windows(2) {
-        if db <= pair[1].0 {
-            return egui::lerp(
-                pair[0].1..=pair[1].1,
-                (db - pair[0].0) / (pair[1].0 - pair[0].0),
-            );
-        }
-    }
-    1.0
+    daw_unit_core::gain::fader_position(f64::from(db)) as f32
 }
 pub fn gain_at_position(position: f32) -> f32 {
-    let position = position.clamp(0.0, 1.0);
-    if position == 0.0 {
-        return SILENT_GAIN_DB;
-    }
-    if position < SCALE[0].1 {
-        return 20.0 * (position / SCALE[0].1 * linear_gain(SCALE[0].0)).log10();
-    }
-    for pair in SCALE.windows(2) {
-        if position <= pair[1].1 {
-            return egui::lerp(
-                pair[0].0..=pair[1].0,
-                (position - pair[0].1) / (pair[1].1 - pair[0].1),
-            );
-        }
-    }
-    MAX_GAIN_DB
+    daw_unit_core::gain::fader_db(f64::from(position)) as f32
 }
 
 /// Match the slider rail width when placing controls above it.
@@ -454,5 +385,22 @@ mod tests {
         assert_eq!(value, 12.0);
         frame(&ctx, &mut value, vec![button(point, false)], false);
         assert_eq!(value, 12.0);
+    }
+}
+
+#[cfg(test)]
+mod finite_gain_text_tests {
+    #[test]
+    fn finite_db_input_keeps_its_numeric_readout_above_the_sentinel() {
+        assert_eq!(super::format_gain(-950.0), "-950.0");
+        assert_eq!(super::parse_gain("-950 dB"), Some(-950.0));
+        let near_silence = super::parse_gain("-999.9999999 dB").unwrap();
+        assert!(near_silence > daw_core::SILENT_GAIN_DB);
+        assert_ne!(super::format_gain(near_silence), "−∞");
+        assert_eq!(
+            super::parse_gain(&super::format_gain(near_silence)),
+            Some(near_silence)
+        );
+        assert_eq!(super::parse_gain("−∞ dB"), Some(daw_core::SILENT_GAIN_DB));
     }
 }

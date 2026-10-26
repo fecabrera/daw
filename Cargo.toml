@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 exclude = ["vendor/charon-audio"]
-members = ["crates/chorus", "crates/separation", "crates/saturator", "crates/bitcrusher", "crates/stereo-spread", "crates/direction-mixer", "crates/sampler", "crates/granulizer", "crates/macro", "crates/lfo", "crates/amplitude", "crates/timestretch", "crates/timestretch-cli", "crates/unit-core", "crates/oscillator", "crates/envelope", "crates/equalizer", "crates/drive", "crates/auto-filter", "crates/filter", "crates/compressor", "crates/limiter", "crates/ott", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
+members = ["crates/plugin-window", "crates/drive-editor", "crates/unit-ui", "crates/plugin-support", "crates/plugin-vst3", "plugins/drive-vst3", "plugins/drive-clap", "crates/plugin-clap", "crates/drive-plugin", "crates/chorus", "crates/separation", "crates/saturator", "crates/bitcrusher", "crates/stereo-spread", "crates/direction-mixer", "crates/sampler", "crates/granulizer", "crates/macro", "crates/lfo", "crates/amplitude", "crates/timestretch", "crates/timestretch-cli", "crates/unit-core", "crates/oscillator", "crates/envelope", "crates/equalizer", "crates/drive", "crates/auto-filter", "crates/filter", "crates/compressor", "crates/limiter", "crates/ott", "crates/core", "crates/media", "crates/engine", "crates/project", "crates/output", "crates/ui", "apps/desktop", "apps/cli"]
 default-members = ["apps/desktop", "apps/cli"]
 
 # Optimize shared DSP across crate boundaries without changing floating-point semantics.
@@ -15,6 +15,17 @@ edition = "2024"
 rust-version = "1.95"
 
 [workspace.dependencies]
+daw-plugin-window = { path = "crates/plugin-window" }
+daw-drive-editor = { path = "crates/drive-editor" }
+daw-unit-ui = { path = "crates/unit-ui" }
+vst3 = "=0.3.0"
+daw-plugin-support = { path = "crates/plugin-support" }
+daw-plugin-vst3 = { path = "crates/plugin-vst3" }
+libloading = "0.8.9"
+clap-sys = "=0.5.0"
+daw-plugin-clap = { path = "crates/plugin-clap" }
+daw-drive-plugin = { path = "crates/drive-plugin" }
+toml_edit = { version = "0.25.15", default-features = false, features = ["parse"] }
 daw-chorus = { path = "crates/chorus" }
 daw-separation = { path = "crates/separation" }
 daw-saturator = { path = "crates/saturator" }

@@ -1,6 +1,6 @@
 # Built-in units and separate plugin builds
 
-Status: accepted direction; implementation plan. No plugin binaries, SDK dependencies, or plugin editor are implemented by this document.
+Status: accepted direction; implementation plan. [Phase 0 local feasibility](drive-plugin-phase0.md) is implemented with isolated development probes. [Phase 1 shared metadata, parameters, and state](drive-plugin-phase1.md) are implemented. [Phase 2 headless CLAP processor](drive-plugin-phase2.md) is implemented and checked on macOS arm64. [Phase 3 headless VST3 processor/controller](drive-plugin-phase3.md) is implemented and checked on macOS arm64. [Phase 4 shared editor implementation](drive-plugin-phase4.md) now exposes the two-strip body in both formats. Native accessibility, other platforms, external hosts, and release gates remain open.
 
 Date: 2026-10-25.
 
@@ -35,15 +35,17 @@ The editor must work when embedded by a host, handle OS display scaling, and ope
 
 ## Ownership and dependency direction
 
-Proposed package names and paths are implementation targets, not existing packages:
+Package names and paths below describe the implementation direction. `crates/drive-plugin`, `crates/plugin-support`, both format bridges/export targets, and `plugins/drive/unit.toml` now exist; shared editor packages now exist.
 
 | Location | Responsibility |
 | --- | --- |
 | `crates/drive` | Existing shared stereo DSP, ramps, bypass, history, and final bounds. No plugin SDK or UI dependencies. |
 | `crates/unit-core` | Existing portable settings and modulation contracts. No plugin SDK, window, or host dependencies. |
 | `crates/drive-plugin` | Format-neutral Drive parameter model, state envelope, and block/event adapter over the existing processor. |
-| `crates/plugin-clap` | Narrow reusable CLAP lifecycle/event/state/host-call bridge. |
+| `crates/plugin-support` | Format-neutral ABI containment, atomic snapshots, and bounded text helpers. |
+| `crates/plugin-clap` | Narrow reusable CLAP binding facade over the common boundary helpers. |
 | `crates/plugin-vst3` | Narrow reusable VST3 processor/controller/event/state bridge. |
+| `crates/plugin-window` | Selected Phase 0 direction: thin native editor/window adapter over the verified egui backend, shared by both format bridges. |
 | `crates/unit-ui` | Minimal reusable controls, formatting, theme/assets, and Drive body extracted from the current UI. No DAW project, engine, output, or file-dialog dependencies. |
 | `plugins/drive-clap` | CLAP entry point and independent plugin artifact. |
 | `plugins/drive-vst3` | VST3 entry points and independent plugin artifact. |
@@ -64,7 +66,7 @@ Use standard control/scale/diagram identifiers and typed parameter bindings. Do 
 
 Freeze public plugin identity before producing compatibility fixtures: CLAP plugin ID, VST3 processor/controller class IDs, vendor/product names, and stable parameter IDs. Use the original internal type ID as provenance; it does not replace the VST3 class IDs. Do not regenerate class IDs per build, use list position as identity, or reuse Drive v2 identities.
 
-The following numeric IDs are proposed reservations to freeze in Phase 1:
+The following numeric IDs are frozen by [Phase 1](drive-plugin-phase1.md):
 
 | ID | Key | Plain value / default | Adapter behavior |
 | --- | --- | --- | --- |
@@ -111,6 +113,8 @@ Each phase has an exit gate. These are engineering completion criteria, not addi
 
 ### Phase 0 — Adapter and host feasibility
 
+Local results and the narrow-adapter decision are recorded in [Phase 0 feasibility](drive-plugin-phase0.md). The macOS experiment is reproducible; cross-platform native checks remain open.
+
 1. Compare a maintained dual-format Rust framework with narrow CLAP bindings and VST3 bindings/SDK adapters. Inspect exact pinned releases, transitive licenses, supported platforms/toolchain, editor embedding, automation, bypass, tail reporting, thread rules, and packaging.
 2. Produce minimal stereo pass-through test artifacts for both formats in ignored scratch space. Prove discovery, lifecycle, event delivery, host-owned buffers, and native editor-window feasibility before selecting a framework.
 3. Record the selected stack, revisions, notices, native build requirements, target architectures, named external test hosts, and validator versions. Confirm the pinned Rust toolchain works without an unrelated upgrade.
@@ -120,6 +124,8 @@ Exit: a written dependency/host decision, reproducible prototype build instructi
 
 ### Phase 1 — Identity, manifest, parameters, and state
 
+Implemented contract and compatibility fixtures are recorded in [Phase 1](drive-plugin-phase1.md). Native adapter publication and editor integration remain in their respective phases.
+
 1. Freeze the public identity tuple, parameter IDs, mappings, schema versions, and plugin release-version policy. Public vendor/class identifiers must be assigned once before public builds.
 2. Implement Drive's declarative metadata and panel bindings, with build-time validation and generated/checked descriptors. Keep the DAW's catalog and concrete construction unchanged.
 3. Implement the shared parameter/state model and pure conversions. Freeze compatibility fixtures and tests for exact silence, Color Off retention, discrete choices, defaults, text input, invalid values, and failed state restoration.
@@ -128,6 +134,8 @@ Exit: one reviewed contract used by both adapters, with no duplicate parameter m
 
 ### Phase 2 — Drive CLAP build
 
+Local implementation/evidence and the retained upstream rate-sweep failure are recorded in [Phase 2](drive-plugin-phase2.md). The headless development artifact is not the completed product release.
+
 1. Add the plugin target and required entry/factory, audio ports, parameters/flush, state, latency/tail, processing status, and host-callback handling.
 2. Connect block/events to the portable processor. Exercise activation failures, multiple instances, resets, in-place buffers, variable block sizes, stopped parameter edits, bypass, and repeated lifecycle transitions.
 3. Run CLAP validation and direct-DSP parity/allocation tests. An editor-free build may be used here but is not a release artifact.
@@ -135,6 +143,8 @@ Exit: one reviewed contract used by both adapters, with no duplicate parameter m
 Exit: a working CLAP processor and state implementation with deterministic parity evidence.
 
 ### Phase 3 — Drive VST3 build
+
+Local component/controller implementation, normalized curve reconstruction, and SDK evidence are recorded in [Phase 3](drive-plugin-phase3.md). The custom editor and external-host/platform release acceptance remain later work.
 
 1. Add stable factory/component/controller identities, stereo bus negotiation, processor lifecycle, parameter queues/conversions, state, bypass flag, latency/tail reporting, and controller synchronization.
 2. Reuse the same Drive model and processor adapter where semantics match. Preserve VST3 automation curve and gesture requirements.
@@ -151,6 +161,8 @@ Exit: a working VST3 processor using the same DSP and compatible plugin state mo
 Exit: both formats expose the required custom body; native editor checks are recorded separately from synthetic egui tests.
 
 ### Phase 5 — Packaging, CI, documentation, and release evidence
+
+Partial implementation: [Build plugins](../../.github/workflows/plugins.yml) builds development previews on independent Windows x64, macOS arm64, and Linux x64 workers. Each worker gates uploads on packaging tests and native unit/loaded-library tests. [The packager](../../tools/package_drive_plugins.py) creates separate native CLAP/VST3 ZIPs with notices, metadata, instructions and checksums. Shared setup, logs and summaries are reused. External SDK validators, instrumented allocation checks, callback budgets, dependency inspection, native GUI/host acceptance and the complete release notice audit remain separate gates; this workflow does not complete Phase 5 or produce release-ready artifacts.
 
 1. Add native packaging scripts for `.clap` and `.vst3` bundles on macOS, Windows, and Linux. Keep binaries/host code inside the correct platform bundle layout; inspect dynamic dependencies on clean test machines.
 2. Produce independent plugin archives with version/architecture metadata, project and dependency notices, font/icon notices, installation/removal instructions, and checksums. Development packaging does not install into a user's plugin directories. Signing/notarization and public upload belong to an explicit release task.
@@ -175,7 +187,7 @@ Exit: independently packaged Drive CLAP/VST3 plugins with the shared editor and 
 | Hosts and validators | CLAP validator and Steinberg VST3 validator, with exact versions/commands. At least one named non-DAW external host per format on every advertised OS; cover scan, instantiate, playback, offline render, automate, bypass, save/reopen, duplicate, and reopen editor. Missing host coverage blocks the corresponding release claim. |
 | Regression and packaging | Required workspace checks after Rust changes; existing Drive/project/UI compatibility retained. Verify bundle loading, architecture, dynamic dependencies, licenses/assets, clean-machine installation/removal, and independent archives. |
 
-During implementation run affected checks, then `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` with the pinned toolchain. Run targeted plugin builds, validators, native editor/host checks, and native packaging in addition. CLI smoke checks are required only if shared DAW import/render/export or CLI code changes. This documentation-only planning change requires content/link and diff checks, not audio builds.
+During implementation run affected checks, then `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` with the pinned toolchain. Run targeted plugin builds, validators, native editor/host checks, and native packaging in addition. CLI smoke checks are required only if shared DAW import/render/export or CLI code changes. Documentation-only plan edits require content/link and diff checks, not audio builds. Phase 0 now also has isolated tool checks documented in its feasibility record.
 
 ## Dependency and protocol research
 

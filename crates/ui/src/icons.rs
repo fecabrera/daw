@@ -1,7 +1,7 @@
 use egui::{Color32, Context, Response, Ui, Vec2};
 pub use egui_lucide::Lucide;
 
-pub const COMPACT_BUTTON_SIZE: f32 = 18.0;
+pub use daw_unit_ui::layout::COMPACT_BUTTON_SIZE;
 pub const TOOLBAR_BUTTON_SIZE: f32 = 24.0;
 pub const TOOLBAR_ICON_SIZE: f32 = 16.0;
 pub(super) const HEADER_ICON_WIDTH: f32 = 28.0;
@@ -276,36 +276,7 @@ pub fn dot_toggle(
 }
 
 /// Paint into an existing response so unit shells retain their stable interaction IDs.
-pub fn paint_dot_toggle(
-    ui: &Ui,
-    response: &Response,
-    diameter: f32,
-    selected: bool,
-    color: egui::Color32,
-) {
-    let color = if ui.is_enabled() {
-        color
-    } else {
-        color.gamma_multiply(0.5)
-    };
-    if response.hovered() || response.has_focus() {
-        ui.painter().circle_filled(
-            response.rect.center(),
-            diameter * 0.5 + 3.0,
-            color.gamma_multiply(0.15),
-        );
-    }
-    ui.painter().circle(
-        response.rect.center(),
-        (diameter - 1.0) * 0.5,
-        if selected {
-            color
-        } else {
-            egui::Color32::TRANSPARENT
-        },
-        egui::Stroke::new(1.0, color),
-    );
-}
+pub use daw_unit_ui::knobs::paint_dot_toggle;
 
 fn draw_circular_button(
     ui: &mut Ui,

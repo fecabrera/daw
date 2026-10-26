@@ -1,0 +1,125 @@
+name: Build plugins
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+
+jobs:
+  plugins:
+    name: Drive / ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows x64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            clap_library: daw_drive_clap.dll
+            vst3_library: daw_drive_vst3.dll
+          - platform: macOS arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+            clap_library: libdaw_drive_clap.dylib
+            vst3_library: libdaw_drive_vst3.dylib
+          - platform: Linux x64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            clap_library: libdaw_drive_clap.so
+            vst3_library: libdaw_drive_vst3.so
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        id: checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare logs
+        run: |
+          mkdir -p work/ci-logs
+          printf 'Runner: %s / %s\nCommit: %s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$GITHUB_SHA" > work/ci-logs/runner.log
+
+      - name: Set up native build
+        id: setup
+        uses: ./.github/actions/setup-build
+
+      - name: Test packaging
+        id: plugin_packaging_tests
+        run: python -m unittest discover -s tools -p test_package_drive_plugins.py -v 2>&1 | tee work/ci-logs/packaging-tests.log
+
+      - name: Build CLAP and VST3 libraries
+        id: plugin_build
+        run: cargo build --release --locked --target '${{ matrix.target }}' -p daw-drive-clap -p daw-drive-vst3 --lib 2>&1 | tee work/ci-logs/plugin-build.log
+
+      - name: Test native plugin libraries
+        id: plugin_tests
+        env:
+          DRIVE_CLAP_TEST_LIBRARY: ${{ github.workspace }}/target/${{ matrix.target }}/release/${{ matrix.clap_library }}
+          DRIVE_VST3_TEST_LIBRARY: ${{ github.workspace }}/target/${{ matrix.target }}/release/${{ matrix.vst3_library }}
+        run: cargo test --release --locked --target '${{ matrix.target }}' -p daw-drive-clap -p daw-drive-vst3 -p daw-drive-plugin -p daw-drive-editor 2>&1 | tee work/ci-logs/plugin-tests.log
+
+      - name: Package plugin previews
+        id: plugin_package
+        run: python tools/package_drive_plugins.py --target '${{ matrix.target }}' 2>&1 | tee work/ci-logs/plugin-package.log
+
+      # ZIPs retain bundle structure and executable modes after artifact download.
+      - name: Upload CLAP preview
+        id: clap_artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Drive-CLAP-${{ matrix.target }}
+          path: target/plugin-artifacts/*-clap.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload VST3 preview
+        id: vst3_artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Drive-VST3-${{ matrix.target }}
+          path: target/plugin-artifacts/*-vst3.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload checksums
+        id: plugin_checksums
+        uses: actions/upload-artifact@v7
+        with:
+          name: Drive-checksums-${{ matrix.target }}
+          path: target/plugin-artifacts/*-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload command logs
+        id: logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-plugins-${{ runner.os }}-${{ runner.arch }}
+          path: work/ci-logs/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Write summary
+        if: always() && steps.checkout.outcome == 'success'
+        env:
+          CI_STEP_RESULTS: ${{ toJSON(steps) }}
+          CI_JOB_LABEL: Drive plugins / ${{ matrix.platform }}
+          CI_JOB_STATUS: ${{ job.status }}
+        run: python tools/summarize_ci.py

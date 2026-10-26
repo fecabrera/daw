@@ -1,7 +1,7 @@
 use super::tests::{pointer, spec_frame};
 use super::*;
 use crate::parameter_knobs;
-use daw_core::ModulationParameter as P;
+use daw_unit_core::ModulationParameter as P;
 
 const PARAMETERS: [P; 63] = [
     P::ChorusDelay,
@@ -189,9 +189,9 @@ fn signed_amount_scales_cover_both_bounds_and_roundtrip_without_changing_saved_u
         assert!(spec.value_label.is_some() && spec.endpoint_labels.is_some());
         // Legacy fractional amounts remain valid even for a now-stepped pitch control.
         assert!(
-            daw_core::Modulation {
+            daw_unit_core::Modulation {
                 amount: 0.25,
-                ..daw_core::Modulation::new(parameter)
+                ..daw_unit_core::Modulation::new(parameter)
             }
             .valid()
         );

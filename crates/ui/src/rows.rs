@@ -25,17 +25,7 @@ pub(super) fn fixed<R>(
 }
 
 /// Reserve the tallest control's height before placing vertically centered items.
-pub fn centered<R>(
-    ui: &mut Ui,
-    height: f32,
-    content: impl FnOnce(&mut Ui) -> R,
-) -> InnerResponse<R> {
-    ui.allocate_ui_with_layout(
-        Vec2::new(ui.available_width(), height),
-        Layout::left_to_right(Align::Center),
-        content,
-    )
-}
+pub use daw_unit_ui::rows::centered;
 
 /// Keep header text at the left inset while centering it vertically.
 pub fn left_aligned<R>(
@@ -188,19 +178,7 @@ pub(super) fn power_label_with(
 }
 
 /// Center a standard unit footer label in its reserved row.
-pub fn unit_label(ui: &mut Ui, name: &str) -> egui::Response {
-    let label = ui.painter().layout_no_wrap(
-        name.into(),
-        egui::FontId::proportional(crate::panels::HEADER_FONT_SIZE),
-        crate::theme::palette(ui.ctx()).text,
-    );
-    ui.add_space(
-        ((ui.available_width() - label.size().x) * 0.5)
-            .max(0.0)
-            .round(),
-    );
-    ui.add(egui::Label::new(label).selectable(false))
-}
+pub use daw_unit_ui::rows::unit_label;
 
 /// Join related inputs inside one standard frame, retaining each widget's interaction.
 pub fn input_group<R>(ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {

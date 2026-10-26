@@ -1,0 +1,11 @@
+[package]
+name = "daw-plugin-clap"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[dependencies]
+daw-plugin-support.workspace = true
+clap-sys.workspace = true

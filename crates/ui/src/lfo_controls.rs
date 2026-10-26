@@ -17,7 +17,7 @@ pub(super) fn choice<T: Copy + PartialEq>(
 }
 
 pub(super) fn diagram(value: f32) -> Vec<Vec2> {
-    use daw_core::Waveform;
+    use daw_unit_core::Waveform;
     let wave = LfoWave::ALL[value as usize];
     let waveform = match wave {
         LfoWave::Sine => Waveform::Sine,
@@ -68,14 +68,7 @@ fn note_label(position: f32) -> String {
     NOTE_RATES[position.round().clamp(0.0, f32::from(NoteRate::COUNT - 1)) as usize].label()
 }
 
-pub(super) fn phase_spec(name: &'static str) -> KnobSpec {
-    KnobSpec::new(name, -180.0..=180.0, 0.0, 1.0)
-        .centered(0.0)
-        .bipolar()
-        .value_label(|v| format!("{v:.0}°"))
-        .format(|v| format!("{v:.0}°"))
-        .endpoint_labels("−180", "+180")
-}
+pub(super) use daw_unit_ui::lfo_controls::phase_spec;
 
 pub(super) fn wave(ui: &mut Ui, wave: &mut LfoWave) -> egui::Response {
     choice(
@@ -136,7 +129,7 @@ pub(super) fn modulated_rate(
         hz,
         note,
         modulation,
-        crate::parameter_knobs::destination(daw_core::ModulationParameter::LfoRate),
+        crate::parameter_knobs::destination(daw_unit_core::ModulationParameter::LfoRate),
     )
 }
 pub(super) fn modulated_rate_with_spec(

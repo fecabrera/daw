@@ -1,0 +1,5 @@
+{
+  "clap": {"url": "https://github.com/free-audio/clap.git", "revision": "a47f6badb49d948fd009998f28309cdab78979c9"},
+  "clap-validator": {"url": "https://github.com/free-audio/clap-validator.git", "revision": "152b9823e992d782c5c1fd33bca0295478b919aa"},
+  "vst3sdk": {"url": "https://github.com/steinbergmedia/vst3sdk.git", "revision": "3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96"}
+}

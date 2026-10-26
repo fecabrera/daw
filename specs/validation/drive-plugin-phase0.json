@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "architecture": "arm64",
+  "hardware": {
+    "machdep.cpu.brand_string": "Apple M5",
+    "hw.ncpu": "10",
+    "hw.memsize": "17179869184"
+  },
+  "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+  "clang": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "sources": {
+    "clap": {
+      "url": "https://github.com/free-audio/clap.git",
+      "revision": "a47f6badb49d948fd009998f28309cdab78979c9"
+    },
+    "clap-validator": {
+      "url": "https://github.com/free-audio/clap-validator.git",
+      "revision": "152b9823e992d782c5c1fd33bca0295478b919aa"
+    },
+    "vst3sdk": {
+      "url": "https://github.com/steinbergmedia/vst3sdk.git",
+      "revision": "3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96"
+    }
+  },
+  "dependency_count": 175,
+  "baseline": {
+    "direct_drive_timings": [
+      {
+        "blocks": 10000,
+        "frames": 32,
+        "instances": 1,
+        "median_ns": 708,
+        "p99_ns": 875,
+        "period_ns": 666666.6666666666,
+        "rate": 48000
+      },
+      {
+        "blocks": 10000,
+        "frames": 32,
+        "instances": 8,
+        "median_ns": 9708,
+        "p99_ns": 12083,
+        "period_ns": 666666.6666666666,
+        "rate": 48000
+      },
+      {
+        "blocks": 10000,
+        "frames": 512,
+        "instances": 1,
+        "median_ns": 12458,
+        "p99_ns": 15458,
+        "period_ns": 10666666.666666666,
+        "rate": 48000
+      },
+      {
+        "blocks": 10000,
+        "frames": 512,
+        "instances": 8,
+        "median_ns": 164375,
+        "p99_ns": 188875,
+        "period_ns": 10666666.666666666,
+        "rate": 48000
+      }
+    ],
+    "tail_input": [
+      4.0,
+      -2.0
+    ],
+    "tail_policy_seconds": 1,
+    "tail_threshold_dbfs": -120,
+    "tails": [
+      {
+        "cases": 108,
+        "last_above_threshold_frame": 1333,
+        "last_above_threshold_ms": 30.226757369614514,
+        "rate": 44100
+      },
+      {
+        "cases": 108,
+        "last_above_threshold_frame": 1446,
+        "last_above_threshold_ms": 30.125,
+        "rate": 48000
+      },
+      {
+        "cases": 108,
+        "last_above_threshold_frame": 2611,
+        "last_above_threshold_ms": 29.603174603174605,
+        "rate": 88200
+      },
+      {
+        "cases": 108,
+        "last_above_threshold_frame": 2833,
+        "last_above_threshold_ms": 29.510416666666668,
+        "rate": 96000
+      },
+      {
+        "cases": 108,
+        "last_above_threshold_frame": 4935,
+        "last_above_threshold_ms": 27.976190476190474,
+        "rate": 176400
+      },
+      {
+        "cases": 108,
+        "last_above_threshold_frame": 5333,
+        "last_above_threshold_ms": 27.776041666666668,
+        "rate": 192000
+      }
+    ]
+  },
+  "baseline_gates": {
+    "tail_survey_within_policy": true,
+    "direct_baseline_within_callback_budget": true
+  },
+  "probes": {
+    "clap": {
+      "format": "clap",
+      "discovery": true,
+      "stereo_buffers": true,
+      "sample_offset_17": true,
+      "variable_blocks": true,
+      "editor_cycles": 3
+    },
+    "vst3": {
+      "format": "vst3",
+      "discovery": true,
+      "stereo_buffers": true,
+      "sample_offset_17": true,
+      "curve_interpolated": false,
+      "dense_event_allocations": 1,
+      "dense_event_deallocations": 1,
+      "variable_blocks": true,
+      "editor_cycles": 3
+    }
+  },
+  "candidate_gates": {
+    "vst3_curve_contract": false,
+    "callback_allocation_contract": false,
+    "production_contract_satisfied": false
+  },
+  "clap_validator": {
+    "version": "0.4.1",
+    "passed": 34,
+    "skipped": 10
+  },
+  "vst3_validator": {
+    "sdk_revision": "3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96",
+    "passed": 47,
+    "failed": 0
+  },
+  "native_editor_checked": true,
+  "external_daw_checked": false,
+  "notice_text_gaps": [
+    "accesskit 0.24.1",
+    "block2 0.5.1",
+    "block2 0.6.2",
+    "com-scrape-types 0.1.1",
+    "dispatch 0.2.0",
+    "dispatch2 0.3.1",
+    "ecolor 0.36.2",
+    "egui 0.36.2",
+    "egui_glow 0.36.2",
+    "emath 0.36.2",
+    "epaint 0.36.2",
+    "objc-sys 0.3.5",
+    "objc2 0.5.3",
+    "objc2 0.6.5",
+    "objc2-app-kit 0.2.2",
+    "objc2-app-kit 0.3.2",
+    "objc2-core-data 0.2.2",
+    "objc2-core-foundation 0.3.2",
+    "objc2-core-image 0.2.2",
+    "objc2-encode 4.1.0",
+    "objc2-metal 0.2.2",
+    "objc2-open-gl 0.3.2",
+    "objc2-quartz-core 0.2.2",
+    "profiling 1.0.18"
+  ],
+  "note": "Disposable gain probe; this is not a Drive plugin or release compatibility claim.",
+  "provenance": {
+    "tool_lock_sha256": "a483f3b757a35a2aab89c32578446a189279295e3e55ef386fe08d8800862948",
+    "budget_sha256": "607dc9693265f0e75ba1bdef72e5231a1d196e60d83098c34fcaa43a938a2b08",
+    "profile": "release, thin LTO, one codegen unit",
+    "candidate": "nice-plug 0.4.2 with nice-plug-egui 0.5.0; both formats are the same disposable gain DSP",
+    "scope": "local macOS arm64 only; these are not Drive release binaries"
+  }
+}

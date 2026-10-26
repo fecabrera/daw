@@ -21,6 +21,13 @@ def main():
         "windows_artifact": "Windows artifact upload",
         "macos_artifact": "macOS artifact upload",
         "linux_artifact": "Linux artifact upload",
+        "plugin_packaging_tests": "Plugin packaging tests",
+        "plugin_build": "Plugin release build",
+        "plugin_tests": "Native plugin tests",
+        "plugin_package": "Plugin preview packaging",
+        "clap_artifact": "CLAP artifact upload",
+        "vst3_artifact": "VST3 artifact upload",
+        "plugin_checksums": "Plugin checksum upload",
         "logs": "Log upload",
     }
     lines = [

@@ -1,4 +1,5 @@
 //! Portable contracts and saved settings shared by built-in audio units and their hosts.
+pub mod gain;
 pub mod memory;
 mod meter;
 pub use meter::{BandMeter, LevelMonitor, MeterStorage, PeakHold, PeakMeter, UnitMeter};
@@ -57,7 +58,10 @@ pub use drive_v2::{
     DRIVE_V2_STATE_VERSION, DRIVE_V2_TYPE_ID, DriveV2Clip, DriveV2ColorShape, DriveV2Settings,
 };
 mod drive;
-pub use drive::{DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveColorShape, DriveSettings};
+pub use drive::{
+    DRIVE_MAX_FREQUENCY_HZ, DRIVE_MAX_VOLUME_DB, DRIVE_MIN_FREQUENCY_HZ, DRIVE_STATE_VERSION,
+    DRIVE_TYPE_ID, DriveColorShape, DriveSettings,
+};
 mod effects;
 pub use effects::{
     EQ_STATE_VERSION, EQ_TYPE_ID, EffectInstance, EffectSettings, EqBandSettings, EqSettings,

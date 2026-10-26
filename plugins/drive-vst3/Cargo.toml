@@ -1,0 +1,25 @@
+[package]
+name = "daw-drive-vst3"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+allocation-check = []
+
+[dependencies]
+daw-drive-editor.workspace = true
+daw-plugin-window.workspace = true
+daw-drive-plugin.workspace = true
+daw-plugin-vst3.workspace = true
+
+[dev-dependencies]
+daw-drive.workspace = true
+daw-unit-core.workspace = true
+libloading.workspace = true
+serde_json.workspace = true

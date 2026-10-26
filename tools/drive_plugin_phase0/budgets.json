@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "declared_before_candidate_performance_measurement": true,
+  "drive_median_budget": {
+    "direct_dsp_multiplier": 1.20,
+    "additional_nanoseconds_per_instance_per_block": 1000,
+    "comparison": "same compiler/profile/hardware/DSP settings and reconstructed parameter stream"
+  },
+  "callback_p99_budget_fraction_of_period": 0.50,
+  "baseline_required_to_fit_callback_budget": true,
+  "baseline_warmup_blocks": 1000,
+  "measurement_blocks": 10000,
+  "benchmark_rate_hz": 48000,
+  "benchmark_block_sizes": [32, 512],
+  "benchmark_instance_counts": [1, 8],
+  "audio_thread_allocations_and_final_owner_deallocations": 0,
+  "adapter_latency_frames": 0,
+  "tail_threshold_dbfs": -120,
+  "proposed_tail_policy_seconds": 1,
+  "note": "Drive budgets gate later Drive exports. A gain/pass-through probe is not a Drive performance measurement. No universal framework overhead percentage is claimed."
+}

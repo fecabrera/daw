@@ -1,0 +1,22 @@
+{
+  "nice-plug-0.4.2": {
+    "license_file": "nice-plug-91ba75d20c43-ISC.txt",
+    "source": "https://codeberg.org/RustAudio/nice-plug/src/commit/91ba75d20c43ca0cd21afa802d0ae8c0511f48ed/LICENSE",
+    "revision": "91ba75d20c43ca0cd21afa802d0ae8c0511f48ed"
+  },
+  "nice-plug-core-0.4.2": {
+    "license_file": "nice-plug-91ba75d20c43-ISC.txt",
+    "source": "https://codeberg.org/RustAudio/nice-plug/src/commit/91ba75d20c43ca0cd21afa802d0ae8c0511f48ed/LICENSE",
+    "revision": "91ba75d20c43ca0cd21afa802d0ae8c0511f48ed"
+  },
+  "nice-plug-egui-0.5.0": {
+    "license_file": "nice-plug-ce793d8275ae-ISC.txt",
+    "source": "https://codeberg.org/RustAudio/nice-plug/src/commit/ce793d8275aebf7589e35fb5fc1e1e3e6a016940/LICENSE",
+    "revision": "ce793d8275aebf7589e35fb5fc1e1e3e6a016940"
+  },
+  "nice-plug-derive-0.1.2": {
+    "license_file": "nice-plug-ba4eb8aca372-ISC.txt",
+    "source": "https://codeberg.org/RustAudio/nice-plug/src/commit/ba4eb8aca372be239d25cabf8b4bdfe6bbce911c/LICENSE",
+    "revision": "ba4eb8aca372be239d25cabf8b4bdfe6bbce911c"
+  }
+}

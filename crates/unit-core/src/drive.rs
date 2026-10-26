@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 
 pub const DRIVE_TYPE_ID: &str = "daw.drive";
 pub const DRIVE_STATE_VERSION: u32 = 1;
+pub const DRIVE_MAX_VOLUME_DB: f32 = 12.0;
+pub const DRIVE_MIN_FREQUENCY_HZ: f32 = 250.0;
+pub const DRIVE_MAX_FREQUENCY_HZ: f32 = 2000.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -74,12 +77,12 @@ impl DriveSettings {
     pub fn valid(&self) -> bool {
         self.version == DRIVE_STATE_VERSION
             && self.volume_db.is_finite()
-            && (crate::SILENT_GAIN_DB..=12.0).contains(&self.volume_db)
+            && (crate::SILENT_GAIN_DB..=DRIVE_MAX_VOLUME_DB).contains(&self.volume_db)
             && [self.gain, self.tone, self.color_strength]
                 .into_iter()
                 .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
             && crate::ModulationDestinationSettings::valid_modulations(self)
             && self.color_frequency_hz.is_finite()
-            && (250.0..=2000.0).contains(&self.color_frequency_hz)
+            && (DRIVE_MIN_FREQUENCY_HZ..=DRIVE_MAX_FREQUENCY_HZ).contains(&self.color_frequency_hz)
     }
 }

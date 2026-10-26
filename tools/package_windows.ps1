@@ -49,8 +49,8 @@ try {
     Copy-Item -LiteralPath 'LICENSE' -Destination (Join-Path $packageDirectory 'LICENSE.txt')
 
     $namedNotices = @{
-        'crates/ui/assets/fonts/OFL.txt' = 'Outfit-OFL.txt'
-        'crates/ui/assets/fonts/Hack-LICENSE.txt' = 'Hack-LICENSE.txt'
+        'crates/unit-ui/assets/fonts/OFL.txt' = 'Outfit-OFL.txt'
+        'crates/unit-ui/assets/fonts/Hack-LICENSE.txt' = 'Hack-LICENSE.txt'
         'crates/ui/assets/icons/LUCIDE-LICENSE.txt' = 'LUCIDE-LICENSE.txt'
         'crates/ui/assets/icons/EGUI-LUCIDE-LICENSE.txt' = 'EGUI-LUCIDE-LICENSE.txt'
     }
@@ -59,6 +59,7 @@ try {
     }
     foreach ($directory in @(
         'crates/ui/assets/licenses',
+        'crates/unit-ui/assets/licenses',
         'crates/media/assets/licenses',
         'crates/oscillator/assets/licenses',
         'crates/equalizer/assets/licenses',

@@ -15,6 +15,8 @@ Drive adds soft-clipping saturation with adjustable tone and pre-clipping color.
 
 Mid scoop lowers the middle frequencies. Mid hump raises them. Mid hump + bass cut also reduces bass for a tighter sound. Strength controls the depth, and Frequency moves the color's center. Color Off disables that voicing and its controls; Gain, Tone, and Volume remain active.
 
+Volume accepts a numeric dB value or `−∞` for exact silence. Very low finite values retain their numeric readout, even when their output is too small to hear.
+
 Gain zero keeps the signal clean apart from the selected Color and Tone. Tone is neutral at 50%. Volume adjusts the output after the other controls. Header power bypasses the whole effect.
 
 ## Modulation and limits
