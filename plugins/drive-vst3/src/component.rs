@@ -294,7 +294,7 @@ impl IAudioProcessorTrait for Component {
         if size == 0 { kResultOk } else { kResultFalse }
     }
     unsafe fn getLatencySamples(&self) -> u32 {
-        0
+        daw_drive_plugin::LATENCY_FRAMES
     }
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
         boundary(kInternalError, || {

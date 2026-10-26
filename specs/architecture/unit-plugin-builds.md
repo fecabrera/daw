@@ -199,3 +199,5 @@ The following primary sources were checked on 2026-10-25. They inform the plan; 
 - [clap-sys manifest](https://github.com/micahrj/clap-sys/blob/master/Cargo.toml) declares MIT/Apache-2.0 licensing. [vst3-rs manifest](https://github.com/coupler-rs/vst3-rs/blob/master/Cargo.toml) declares MIT OR Apache-2.0. These are low-level binding candidates; neither supplies the complete Drive editor/host contract on its own.
 - [NIH-plug](https://github.com/robbert-vdh/nih-plug) demonstrates dual-format Rust exports and editor adapters. Its inspected README describes ISC framework code, GPLv3 VST3 bindings, and maintenance-mode status. Do not infer a framework's or its bundled bindings' terms from the current Steinberg SDK license. Evaluate a maintained stack and its actual dependency graph before selection.
 
+
+[Saturator and Bitcrusher](saturator-bitcrusher-plugin-builds.md) now have independent CLAP/VST3 targets, typed contracts, shared DAW/plugin bodies, output meters, per-unit latency reporting, packaging and CI entries. Their release/native-host gates remain open.

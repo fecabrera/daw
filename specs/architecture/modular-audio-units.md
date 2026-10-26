@@ -532,7 +532,7 @@ Use `UnitMeter`, `BandMeter`, and `PeakHold` for the lifecycle and held maximum.
 
 The one-point held marker uses the shared peak-marker painter and secondary text color. Hover gives current and held dBFS. A primary rail click with enabled/focused UI resets only the held peak. It must not change gain, emit host parameter gestures, modify project/plugin state, or create Undo history. Mask stale current and held values while the owning effect is off. Pause/stop retains the held maximum; stopped current readings are zero.
 
-Drive plugin editors embed the same body and meter view. CLAP attaches the prepared meter directly to its instance model. VST3 keeps processor and controller ownership separate: `IConnectionPoint` messages carry two bounded finite scalar readings on the control thread, with a separate reset request. No Rust pointer is sent between objects/processes. The editor polls through its existing main-thread pump; audio only publishes atomic readings and calls no SDK messaging or GUI functions. Meter values do not enter the parameter list, saved state envelope, or manifest control bindings.
+Drive, Drive v2, Saturator, and Bitcrusher plugin editors embed their shared bodies and meter view. CLAP attaches the prepared meter directly to its instance model. VST3 keeps processor and controller ownership separate: `IConnectionPoint` messages carry two bounded finite scalar readings on the control thread, with a separate reset request. No Rust pointer is sent between objects/processes. The editor polls through its existing main-thread pump; audio only publishes atomic readings and calls no SDK messaging or GUI functions. Meter values do not enter the parameter list, saved state envelope, or manifest control bindings.
 
 ## Effect meter lifecycle
 

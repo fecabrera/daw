@@ -1218,6 +1218,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-bitcrusher-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-bitcrusher",
+ "daw-bitcrusher-editor",
+ "daw-bitcrusher-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-bitcrusher-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-bitcrusher-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-bitcrusher-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-bitcrusher",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-bitcrusher-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-bitcrusher",
+ "daw-bitcrusher-editor",
+ "daw-bitcrusher-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-chorus"
 version = "0.1.0"
 dependencies = [
@@ -1575,6 +1627,58 @@ name = "daw-saturator"
 version = "0.1.0"
 dependencies = [
  "daw-unit-core",
+]
+
+[[package]]
+name = "daw-saturator-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-saturator",
+ "daw-saturator-editor",
+ "daw-saturator-plugin",
+ "daw-unit-core",
+ "libloading",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-saturator-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-saturator-plugin",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-saturator-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-support",
+ "daw-saturator",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-saturator-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-saturator",
+ "daw-saturator-editor",
+ "daw-saturator-plugin",
+ "daw-unit-core",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]

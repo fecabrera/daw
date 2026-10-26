@@ -38,3 +38,5 @@ Use the standard unit selection, Shift-click groups, drag moves/copies, and Dele
 The effect uses 4× oversampling to reduce aliasing. Its filters roll off the highest frequencies near the project Nyquist limit; strong distortion can still produce aliasing. Saturator uses independently tuned curves and does not reproduce Ableton's algorithms exactly. Live playback and export use the same processing.
 
 The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.
+
+Separate [CLAP and VST3 plugin previews](distortion-plugins.md) provide these controls in an external host.

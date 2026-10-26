@@ -37,9 +37,12 @@ pub struct PanelControl {
 pub struct Strip {
     pub footer: &'static str,
     pub power: Option<Parameter>,
-    pub controls: [PanelControl; 3],
+    pub controls: &'static [PanelControl],
 }
 include!(concat!(env!("OUT_DIR"), "/manifest.rs"));
 
 /// Standard current/held output telemetry; allocate and attach outside processing.
 pub type OutputMeter = daw_unit_core::BandMeter<3>;
+
+/// Portable DSP latency, including bypass.
+pub const LATENCY_FRAMES: u32 = 0;

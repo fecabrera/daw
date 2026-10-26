@@ -1,0 +1,27 @@
+[package]
+name = "daw-bitcrusher-clap"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+publish = false
+
+[features]
+allocation-check = []
+
+[lib]
+path = "../drive-clap/src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+daw-drive-editor = { package = "daw-bitcrusher-editor", path = "../../crates/bitcrusher-editor" }
+daw-plugin-window.workspace = true
+rtrb.workspace = true
+daw-drive-plugin = { package = "daw-bitcrusher-plugin", path = "../../crates/bitcrusher-plugin" }
+daw-plugin-clap.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+libloading.workspace = true
+daw-bitcrusher.workspace = true
+daw-unit-core.workspace = true

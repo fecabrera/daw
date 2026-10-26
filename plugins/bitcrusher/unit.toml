@@ -1,0 +1,73 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.bitcrusher"
+vendor = "Sie"
+version = "0.1.0"
+product = "Bitcrusher"
+clap_id = "io.github.fecabrera.daw.bitcrusher"
+processor_id = "388c10c571d34e1fa4f5217aca4fab48"
+controller_id = "185b014d54264bfb875cfb6de00d76db"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 102
+key = "drive"
+minimum = 0.0
+maximum = 24.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 103
+key = "resolution"
+minimum = 1.0
+maximum = 24.0
+default = 24.0
+scale = "choice"
+
+[[parameters]]
+id = 104
+key = "downsampling"
+minimum = 1.0
+maximum = 40.0
+default = 1.0
+scale = "choice"
+
+[[parameters]]
+id = 105
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[strips]]
+footer = "Crush"
+controls = [
+    { parameter = "drive", control = "db" },
+    { parameter = "resolution", control = "integer" },
+    { parameter = "downsampling", control = "integer" },
+]
+
+[[strips]]
+footer = "Output"
+controls = [
+    { parameter = "level", control = "gain" },
+    { parameter = "dry_wet", control = "percent" },
+]

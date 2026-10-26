@@ -23,8 +23,15 @@ fn callback_cpu_budget() {
         for frames in [32_usize, 512] {
             for instances in [1, 8] {
                 let mut state = PluginState::default();
-                state
-                    .set(P::ColorShape, P::ColorShape.info().maximum)
+                if let Some(shape) = P::ALL
+                    .into_iter()
+                    .find(|p| matches!(p.info().key, "color_shape" | "shape"))
+                {
+                    state.set(shape, shape.info().maximum).unwrap();
+                }
+                let automation = P::ALL
+                    .into_iter()
+                    .find(|p| matches!(p.info().key, "gain" | "drive"))
                     .unwrap();
                 let plugins: Vec<_> = (0..instances)
                     .map(|_| {
@@ -65,7 +72,7 @@ fn callback_cpu_budget() {
                     .collect();
                 let points = if automated {
                     vec![(
-                        P::Gain,
+                        automation,
                         (0..frames)
                             .map(|i| (i as i32, (i % 101) as f64 / 100.0))
                             .collect(),
@@ -107,7 +114,7 @@ fn callback_cpu_budget() {
                                 for (index, drive) in drives.iter_mut().enumerate() {
                                     if automated {
                                         states[index]
-                                            .set_normalized(P::Gain, points[0].1[frame].1)
+                                            .set_normalized(automation, points[0].1[frame].1)
                                             .unwrap();
                                         drive.retarget(&states[index].to_settings());
                                     }

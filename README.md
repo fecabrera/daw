@@ -31,7 +31,7 @@ Planned work includes audio and beat editors, beat tracks, more effects, effects
 
 Run commands from the repository root with the toolchain pinned in [rust-toolchain.toml](rust-toolchain.toml). Dependency and minimum Rust versions are defined in [Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock). Rubber Band is built from bundled source and requires a C++ compiler and Clang/libclang for its Rust bindings. The packaged app needs no separate Rubber Band, LAME, or ONNX Runtime installation. The first build downloads the pinned ONNX Runtime binaries; it does not download model weights.
 
-### Drive plugin development
+### Built-in plugin development
 
 Separate Drive CLAP/VST3 builds are in progress. The shared metadata, parameter, and state contract can be built and tested without a plugin SDK or audio device:
 
@@ -52,6 +52,17 @@ python3 tools/package_plugins.py --units drive-v2 --target aarch64-apple-darwin
 ```
 
 Use the Windows/Linux targets in the local packaging table below on those platforms. Archives go to `target/plugin-artifacts`. See [Drive v2 plugin controls, installation and limits](docs/effects/drive-v2-plugin.md) and [implementation/checks](specs/architecture/drive-v2-plugin-builds.md). These plugins have identities separate from original Drive.
+
+#### Saturator and Bitcrusher plugins
+
+Saturator and Bitcrusher have separate CLAP/VST3 development targets that share their built-in processors and editors. On macOS Apple Silicon:
+
+```sh
+cargo build --release --locked --target aarch64-apple-darwin -p daw-saturator-clap -p daw-saturator-vst3 -p daw-bitcrusher-clap -p daw-bitcrusher-vst3 --lib
+python3 tools/package_plugins.py --units saturator,bitcrusher --target aarch64-apple-darwin
+```
+
+Use the native Windows/Linux target from the packaging table on those platforms. See the [plugin guide](docs/effects/distortion-plugins.md) and [implementation/checks](specs/architecture/saturator-bitcrusher-plugin-builds.md). Each product has independent plugin identities and saved state.
 
 #### Drive CLAP development processor
 
@@ -199,9 +210,9 @@ Create a portable ZIP with `sh tools/package_linux.sh release`. Use `debug` for 
 
 ### GitHub Actions builds
 
-The [Build plugins workflow](.github/workflows/plugins.yml) runs on pushes, pull requests, and manual dispatches. Six independent workers build original Drive and Drive v2 CLAP and VST3 for Windows x64 (`windows-2025`), macOS arm64 (`macos-15`), and Linux x64 (`ubuntu-24.04`). Each product/platform worker uses the shared native setup, locked release builds, packaging tests, and native plugin library tests. A platform failure does not cancel the other workers. These jobs run independently of the DAW workflow.
+The [Build plugins workflow](.github/workflows/plugins.yml) runs on pushes, pull requests, and manual dispatches. Twelve independent workers build Drive, Drive v2, Saturator, and Bitcrusher CLAP and VST3 for Windows x64 (`windows-2025`), macOS arm64 (`macos-15`), and Linux x64 (`ubuntu-24.04`). Each product/platform worker uses the shared native setup, locked release builds, packaging tests, and native plugin library tests. A platform failure does not cancel the other workers. These jobs run independently of the DAW workflow.
 
-Download `Drive-CLAP-<target>` and `Drive-VST3-<target>` artifacts (or `Drive-v2-CLAP-<target>` and `Drive-v2-VST3-<target>`) from the run summary. Each contains a plugin ZIP with its native bundle layout, notices, build metadata, and basic installation/removal instructions. Extract the inner ZIP before use; it preserves executable permissions. `Drive-checksums-<target>` contains archive SHA-256 checksums. Artifacts and `logs-plugins-<OS>-<architecture>` command logs remain available for 14 days. These development previews do not establish SDK-validator, native editor, external-host, or clean-machine acceptance. macOS bundles receive an ad-hoc signature after assembly; they are not Developer ID signed or notarized. Windows/Linux binaries have no distribution signature. The workflow does not install plugins or publish a release.
+Download `<product>-CLAP-<target>` and `<product>-VST3-<target>` artifacts from the run summary. Product names are `Drive`, `Drive-v2`, `Saturator`, and `Bitcrusher`. Each contains a plugin ZIP with its native bundle layout, notices, build metadata, and basic installation/removal instructions. Extract the inner ZIP before use; it preserves executable permissions. `<product>-checksums-<target>` contains archive SHA-256 checksums. Artifacts and `logs-plugins-<unit>-<OS>-<architecture>` command logs remain available for 14 days. These development previews do not establish SDK-validator, native editor, external-host, or clean-machine acceptance. macOS bundles receive an ad-hoc signature after assembly; they are not Developer ID signed or notarized. Windows/Linux binaries have no distribution signature. The workflow does not install plugins or publish a release.
 
 To build and package locally, use the platform prerequisites above, then run these commands with the native target from the table:
 
@@ -219,7 +230,9 @@ python tools/package_plugins.py --units drive --target <target>
 Select multiple units with a comma-separated list, or package every unit manifest with `all`:
 
 ```sh
-python tools/package_plugins.py --units drive,drive-v2 --target <target>
+cargo build --release --locked --target <target> -p daw-saturator-clap -p daw-saturator-vst3 -p daw-bitcrusher-clap -p daw-bitcrusher-vst3 --lib
+python tools/package_plugins.py --units saturator,bitcrusher --target <target>
+python tools/package_plugins.py --units drive,drive-v2,saturator,bitcrusher --target <target>
 python tools/package_plugins.py --units all --target <target>
 ```
 

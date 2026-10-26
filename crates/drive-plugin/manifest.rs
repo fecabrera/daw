@@ -108,7 +108,7 @@ pub fn generate(input: &str) -> Result<String> {
         .and_then(Item::as_array_of_tables)
         .ok_or_else(|| fail("missing parameters"))?;
     if parameters.len() != Parameter::ALL.len() {
-        return Err(fail("expected seven parameters"));
+        return Err(fail("incorrect parameter count"));
     }
     let mut seen = HashSet::new();
     for parameter in parameters {
@@ -140,7 +140,7 @@ pub fn generate(input: &str) -> Result<String> {
             || (number(parameter, "default")? as f32) != info.default as f32
         {
             return Err(format!(
-                "parameter contract differs from shared Drive settings: {}",
+                "parameter contract differs from shared unit settings: {}",
                 info.key
             ));
         }
@@ -153,7 +153,7 @@ pub fn generate(input: &str) -> Result<String> {
         .and_then(Item::as_array_of_tables)
         .ok_or_else(|| fail("missing strips"))?;
     if strips.len() != STRIP_BINDINGS.len() {
-        return Err(fail("expected two strips"));
+        return Err(fail("incorrect strip count"));
     }
     let mut panels = String::new();
     for (index, strip) in strips.iter().enumerate() {
@@ -166,8 +166,8 @@ pub fn generate(input: &str) -> Result<String> {
             .get("controls")
             .and_then(Item::as_array)
             .ok_or_else(|| fail("missing panel controls"))?;
-        if controls.len() != 3 {
-            return Err(fail("expected three controls per strip"));
+        if controls.len() != STRIP_BINDINGS[index].1.len() {
+            return Err(fail("incorrect control count for strip"));
         }
         let power = footer_power(index);
         if strip.get("power").and_then(Item::as_str) != power.map(|p| p.info().key)
@@ -176,7 +176,7 @@ pub fn generate(input: &str) -> Result<String> {
             return Err(fail("incorrect footer power binding"));
         }
         panels.push_str(&format!(
-            "Strip {{ footer: {footer:?}, power: {}, controls: [",
+            "Strip {{ footer: {footer:?}, power: {}, controls: &[",
             power.map_or("None".into(), |p| format!("Some(Parameter::{p:?})"))
         ));
         for (slot, value) in controls.iter().enumerate() {

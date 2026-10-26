@@ -441,9 +441,9 @@ mod tests {
     fn rejected_host_events_retry_in_order_without_losing_value_or_end() {
         let bridge = Bridge::default();
         for (index, edit) in [
-            Edit::Begin(Parameter::Gain),
-            Edit::Value(Parameter::Gain, 0.7),
-            Edit::End(Parameter::Gain),
+            Edit::Begin(Parameter::ALL[2]),
+            Edit::Value(Parameter::ALL[2], 0.7),
+            Edit::End(Parameter::ALL[2]),
         ]
         .into_iter()
         .enumerate()
@@ -471,8 +471,8 @@ mod tests {
         };
         checked_flush(&bridge, &mut audio, &events);
         assert_eq!(
-            audio.state.get(Parameter::Gain),
-            PluginState::default().get(Parameter::Gain)
+            audio.state.get(Parameter::ALL[2]),
+            PluginState::default().get(Parameter::ALL[2])
         );
         for expected in [
             CLAP_EVENT_PARAM_GESTURE_BEGIN,
@@ -483,7 +483,7 @@ mod tests {
             checked_flush(&bridge, &mut audio, &events);
             assert_eq!(*output.types.last().unwrap(), expected);
         }
-        assert_eq!(audio.state.get(Parameter::Gain), 0.7);
+        assert_eq!(audio.state.get(Parameter::ALL[2]), 0.7);
         assert_eq!(bridge.applied.load(Ordering::Acquire), 0);
         // An event acknowledgement cannot overtake its matching audio-state publication.
         unsafe {
@@ -518,15 +518,15 @@ mod tests {
             let mut producer = i.editor.producer.borrow_mut();
             for index in 0..CAPACITY {
                 let edit = match index % 3 {
-                    0 => Edit::Begin(Parameter::Gain),
-                    1 => Edit::Value(Parameter::Gain, 0.7),
-                    _ => Edit::End(Parameter::Gain),
+                    0 => Edit::Begin(Parameter::ALL[2]),
+                    1 => Edit::Value(Parameter::ALL[2], 0.7),
+                    _ => Edit::End(Parameter::ALL[2]),
                 };
                 producer.push((edit, index as u64 + 1)).unwrap();
             }
         }
         i.editor.sent.set(CAPACITY as u64);
-        assert!(i.editor.model.push(&[Edit::End(Parameter::Gain)]));
+        assert!(i.editor.model.push(&[Edit::End(Parameter::ALL[2])]));
         i.editor.main(i);
         assert!(i.editor.main_pending.load(Ordering::Acquire));
         assert!(!i.editor.gui.borrow().created);

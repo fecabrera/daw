@@ -263,7 +263,7 @@ unsafe extern "C" fn on_main(plugin: *const clap_plugin) {
     });
 }
 unsafe extern "C" fn latency(_: *const clap_plugin) -> u32 {
-    0
+    daw_drive_plugin::LATENCY_FRAMES
 }
 unsafe extern "C" fn tail(plugin: *const clap_plugin) -> u32 {
     boundary(48000, || {

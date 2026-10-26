@@ -27,6 +27,8 @@ jobs:
         unit:
           - { slug: drive, name: Drive, library: daw_drive }
           - { slug: drive-v2, name: Drive-v2, library: daw_drive_v2 }
+          - { slug: saturator, name: Saturator, library: daw_saturator }
+          - { slug: bitcrusher, name: Bitcrusher, library: daw_bitcrusher }
         platform: [Windows x64, macOS arm64, Linux x64]
         include:
           - platform: Windows x64

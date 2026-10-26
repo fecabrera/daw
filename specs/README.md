@@ -13,6 +13,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Drive plugin Phase 2](architecture/drive-plugin-phase2.md): headless CLAP processor, bounded active recall, loaded-binary parity/allocation/CPU evidence, and retained validator rate-policy failure.
 - [Drive plugin Phase 3](architecture/drive-plugin-phase3.md): separate VST3 component/controller, normalized linear automation queues, common state publication, SDK validation and remaining release gates.
 - [Drive plugin Phase 4: shared editor](architecture/drive-plugin-phase4.md).
+- [Saturator and Bitcrusher plugin builds](architecture/saturator-bitcrusher-plugin-builds.md).
 - [Drive v2 plugin builds](architecture/drive-v2-plugin-builds.md): separate CLAP/VST3 products, shared three-strip editor, state contract and local validation.
 - [Prepared rendering and performance](architecture/performance.md).
 - [Stem-separation native dependency audit](audio/stem-native-dependencies.md): pinned native components, advisories, licenses and platform packaging.

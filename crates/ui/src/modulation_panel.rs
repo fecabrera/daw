@@ -284,27 +284,7 @@ pub(super) fn targeted_body_with_sources<'a>(
 }
 
 /// Keep the label and dropdown inside the same standard control row.
-pub(super) fn selector_row(
-    ui: &mut Ui,
-    label: &str,
-    selector: impl FnOnce(&mut Ui) -> egui::Response,
-) -> egui::Response {
-    ui.allocate_ui_with_layout(
-        Vec2::new(ui.available_width(), knobs::CHOICE_SIZE),
-        egui::Layout::top_down(egui::Align::Center),
-        |ui| {
-            ui.set_min_height(knobs::CHOICE_SIZE);
-            ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING) * 0.5;
-            ui.label(
-                egui::RichText::new(label)
-                    .size(panels::HEADER_FONT_SIZE)
-                    .color(theme::palette(ui.ctx()).secondary),
-            );
-            selector(ui)
-        },
-    )
-    .inner
-}
+pub(super) use daw_unit_ui::rows::selector_row;
 
 /// Apply destination-owned limits to both the possible-range arc and its tooltip.
 pub(super) fn bound_marker(

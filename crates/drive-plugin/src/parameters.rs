@@ -142,6 +142,14 @@ impl Parameter {
             steps,
         }
     }
+    pub fn unit(self) -> &'static str {
+        match self.info().scale {
+            Scale::Gain => "dB",
+            Scale::Logarithmic => "Hz",
+            Scale::Linear => "%",
+            _ => "",
+        }
+    }
     pub fn validate(self, value: f64) -> Result<f64, ParameterError> {
         let info = self.info();
         if !value.is_finite()

@@ -1,0 +1,73 @@
+schema_version = 1
+settings_version = 1
+state_version = 1
+type_id = "daw.saturator"
+vendor = "Sie"
+version = "0.1.0"
+product = "Saturator"
+clap_id = "io.github.fecabrera.daw.saturator"
+processor_id = "4e89e3f0bc7e4a18a4780bfcc786af73"
+controller_id = "e46f5b5f179f4f829ed224252f1bfee7"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 102
+key = "drive"
+minimum = -36.0
+maximum = 36.0
+default = 0.0
+scale = "linear"
+
+[[parameters]]
+id = 103
+key = "shape"
+minimum = 0.0
+maximum = 4.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 104
+key = "clip_mode"
+minimum = 0.0
+maximum = 2.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 105
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[strips]]
+footer = "Saturation"
+controls = [
+    { parameter = "shape", control = "selector" },
+    { parameter = "clip_mode", control = "selector" },
+    { parameter = "drive", control = "db" },
+]
+
+[[strips]]
+footer = "Out"
+controls = [
+    { parameter = "level", control = "gain" },
+    { parameter = "dry_wet", control = "percent" },
+]

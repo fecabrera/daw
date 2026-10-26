@@ -23,8 +23,15 @@ fn callback_cpu_budget() {
         for frames in [32_usize, 512] {
             for instances in [1, 8] {
                 let mut state = PluginState::default();
-                state
-                    .set(P::ColorShape, P::ColorShape.info().maximum)
+                if let Some(shape) = P::ALL
+                    .into_iter()
+                    .find(|p| matches!(p.info().key, "color_shape" | "shape"))
+                {
+                    state.set(shape, shape.info().maximum).unwrap();
+                }
+                let automation = P::ALL
+                    .into_iter()
+                    .find(|p| matches!(p.info().key, "gain" | "drive"))
                     .unwrap();
                 let plugins: Vec<_> = (0..instances)
                     .map(|_| {
@@ -65,7 +72,13 @@ fn callback_cpu_budget() {
                     .collect();
                 let events = EventList::new(&if automated {
                     (0..frames)
-                        .map(|i| (i as u32, P::Gain, (i % 101) as f64 / 100.0))
+                        .map(|i| {
+                            (
+                                i as u32,
+                                automation,
+                                automation.denormalize((i % 101) as f64 / 100.0).unwrap(),
+                            )
+                        })
                         .collect::<Vec<_>>()
                 } else {
                     vec![]
@@ -107,7 +120,9 @@ fn callback_cpu_budget() {
                                 let mut sample = std::hint::black_box(*sample);
                                 for (index, drive) in drives.iter_mut().enumerate() {
                                     if automated {
-                                        states[index].set(P::Gain, events.0[frame].value).unwrap();
+                                        states[index]
+                                            .set(automation, events.0[frame].value)
+                                            .unwrap();
                                         drive.retarget(&states[index].to_settings());
                                     }
                                     sample = drive.process_sample(sample);

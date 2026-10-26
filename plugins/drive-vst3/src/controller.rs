@@ -88,15 +88,7 @@ impl IEditControllerTrait for Controller {
             }
             write_utf16(meta.name, &mut info.title);
             write_utf16(meta.name, &mut info.shortTitle);
-            write_utf16(
-                match meta.scale {
-                    daw_drive_plugin::Scale::Gain => "dB",
-                    daw_drive_plugin::Scale::Logarithmic => "Hz",
-                    daw_drive_plugin::Scale::Linear => "%",
-                    _ => "",
-                },
-                &mut info.units,
-            );
+            write_utf16(parameter.unit(), &mut info.units);
             unsafe {
                 output.write(info);
             }

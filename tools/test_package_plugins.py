@@ -142,33 +142,41 @@ class PackagingTests(unittest.TestCase):
                     self.assertIn(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n", checksums)
                 self.assertFalse(list(output.glob(".plugins-*")))
 
+    def test_registered_products_have_distinct_public_identities(self):
+        import tomllib
+        identities = []
+        for path in sorted((ROOT / "plugins").glob("*/unit.toml")):
+            manifest = tomllib.loads(path.read_text())
+            identities.extend(manifest[key] for key in ("clap_id", "processor_id", "controller_id"))
+        self.assertEqual(len(identities), len(set(identities)))
+
     def test_selection_rejects_invalid_names_and_deduplicates(self):
         self.assertEqual(select_units(" drive-v2,drive,drive-v2 "), ["drive-v2", "drive"])
-        self.assertEqual(select_units("all"), ["drive", "drive-v2"])
+        self.assertEqual(select_units("all"), ["bitcrusher", "drive", "drive-v2", "saturator"])
         for value in ("", "drive,", ",drive", "drive,,drive-v2", "unknown", "all,drive", "../drive"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 select_units(value)
 
     def test_multiple_units_and_all_package_both_products_on_each_platform(self):
         for target, (_, _, pattern) in TARGETS.items():
-            for selection in ("drive,drive-v2", "all"):
+            for selection in ("drive,drive-v2", "saturator,bitcrusher", "all"):
                 with self.subTest(target=target, selection=selection), tempfile.TemporaryDirectory() as temporary:
                     base = Path(temporary)
                     release = base / "target" / target / "release"
                     release.mkdir(parents=True)
-                    for unit in ("drive", "drive_v2"):
+                    for unit in ("drive", "drive_v2", "saturator", "bitcrusher"):
                         for fmt in ("clap", "vst3"):
                             (release / pattern.format(f"daw_{unit}_{fmt}")).write_bytes(f"{unit}:{fmt}".encode())
                     output = base / "artifacts"
                     with contextlib.redirect_stdout(io.StringIO()), patch("package_plugins.finalize_macos_bundle"):
                         package(target, base / "target", output, units=selection)
-                    self.assertEqual(len(list(output.glob("*.zip"))), 4)
-                    self.assertEqual(len(list(output.glob("*SHA256SUMS.txt"))), 2)
+                    self.assertEqual(len(list(output.glob("*.zip"))), 2 * len(select_units(selection)))
+                    self.assertEqual(len(list(output.glob("*SHA256SUMS.txt"))), len(select_units(selection)))
                     for archive in output.glob("*.zip"):
                         with zipfile.ZipFile(archive) as zipped:
                             metadata = json.loads(zipped.read("build.json"))
-                            self.assertIn(metadata["product"], ("Drive", "Drive v2"))
-                        checksum = next(output.glob(("Drive-v2-" if metadata["product"] == "Drive v2" else "Drive-0*") + "*SHA256SUMS.txt")).read_text()
+                            self.assertIn(metadata["product"], ("Drive", "Drive v2", "Saturator", "Bitcrusher"))
+                        checksum = next(output.glob((metadata["product"].replace(" ", "-") + "-0.1.0-") + "*SHA256SUMS.txt")).read_text()
                         self.assertIn(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}", checksum)
                     self.assertFalse(list(output.glob(".plugins-*")))
 
@@ -179,7 +187,7 @@ class PackagingTests(unittest.TestCase):
                 target = "aarch64-apple-darwin"
                 release = base / "target" / target / "release"
                 release.mkdir(parents=True)
-                for unit in ("drive", "drive_v2"):
+                for unit in ("drive", "drive_v2", "saturator", "bitcrusher"):
                     for fmt in ("clap", "vst3"):
                         (release / f"libdaw_{unit}_{fmt}.dylib").write_bytes(b"old")
                 output = base / "artifacts"
@@ -233,16 +241,16 @@ class PackagingTests(unittest.TestCase):
             target = "x86_64-unknown-linux-gnu"
             release = base / "target" / target / "release"
             release.mkdir(parents=True)
-            for unit in ("drive", "drive_v2"):
+            for unit in ("drive", "drive_v2", "saturator", "bitcrusher"):
                 for fmt in ("clap", "vst3"):
                     (release / f"libdaw_{unit}_{fmt}.so").write_bytes(b"fixture")
             command = [sys.executable, str(ROOT / "tools/package_plugins.py"), "--target", target,
                        "--target-dir", str(base / "target")]
-            for selection in ("drive,drive-v2", "all"):
+            for selection in ("drive,drive-v2", "saturator,bitcrusher", "all"):
                 output = base / selection
                 result = subprocess.run(command + ["--units", selection, "--output-dir", str(output)], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(len(list(output.glob("*.zip"))), 4)
+                self.assertEqual(len(list(output.glob("*.zip"))), 2 * len(select_units(selection)))
             output = base / "invalid"
             result = subprocess.run(command + ["--units", "drive,unknown", "--output-dir", str(output)], capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)

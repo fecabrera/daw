@@ -1,10 +1,4 @@
-use crate::{
-    icons,
-    knobs::{self, Knob},
-    meters,
-    midi_editor::UNIT_STRIP_WIDTH,
-    panels, parameter_knobs, rows, theme,
-};
+use crate::{meters, panels};
 use daw_core::{BitcrusherSettings, ModulationParameter as Parameter};
 use egui::{Rect, Ui, Vec2};
 
@@ -73,44 +67,11 @@ fn show_inner(
     let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(
         ui, ("Bitcrusher", compact), height, &mut enabled, &mut collapsed, |ui| {
             ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-                for (column, name) in ["Crush", "Output"].into_iter().enumerate() {
-                    let rect = ui.push_id(column, |ui| egui::Frame::new().inner_margin(panel.margin).show(ui, |ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                            ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(panel.margin));
-                            ui.set_min_height(crate::envelope_panel::body_height(compact));
-                            if !compact {
-                                for row in 0..3 {
-                                    knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
-                                        let index = column * 3 + row;
-                                        if index >= 5 { return ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), egui::Sense::hover()); }
-                                        let mut value = match index {
-                                            0 => s.drive_db, 1 => f32::from(s.resolution_bits),
-                                            2 => f32::from(s.downsampling), 3 => s.level_db, _ => s.dry_wet,
-                                        };
-                                        let response = ui.add(Knob::new(&mut value, parameter_knobs::destination(Parameter::BITCRUSHER[index]))
-                                            .modulated(markers[index].as_ref(), &mut s.modulation_open));
-                                        if response.changed() {
-                                            match index { 0 => s.drive_db = value, 1 => s.resolution_bits = value as u8,
-                                                2 => s.downsampling = value as u8, 3 => s.level_db = value, _ => s.dry_wet = value }
-                                        }
-                                        bounds.controls[index] = response.rect;
-                                        response
-                                    });
-                                }
-                            }
-                            rows::centered(ui, if compact { crate::envelope_panel::body_height(true) }
-                                else { icons::COMPACT_BUTTON_SIZE }, |ui| { rows::unit_label(ui, name); });
-                        });
-                    })).inner.response.rect;
-                    bounds.sections[column] = rect;
-                    if column == 1 && !compact {
-                        let rail = meters::effect_output_level(ui, rect, panel.margin, level, settings.enabled);
-                        #[cfg(test)] { bounds.meter = rail; }
-                        #[cfg(not(test))] let _ = rail;
-                    }
-                    if column > 0 { panels::unit_divider(ui, rect.left(), rect.y_range().into()); }
-                }
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                let body = daw_unit_ui::bitcrusher::show(ui, settings, compact, crate::envelope_panel::body_height(true), &markers, level);
+                bounds.sections = body.sections;
+                bounds.controls = body.knobs;
+                #[cfg(test)] { bounds.meter = body.meter; }
                 if open {
                     let last = bounds.sections[1];
                     panels::unit_divider(ui, last.right(), last.y_range().into());

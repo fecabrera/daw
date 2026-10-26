@@ -88,3 +88,25 @@ pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Resp
         .on_hover_text(name)
         .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
+
+pub fn selector_row(
+    ui: &mut Ui,
+    label: &str,
+    selector: impl FnOnce(&mut Ui) -> egui::Response,
+) -> egui::Response {
+    ui.allocate_ui_with_layout(
+        Vec2::new(ui.available_width(), crate::knobs::CHOICE_SIZE),
+        egui::Layout::top_down(egui::Align::Center),
+        |ui| {
+            ui.set_min_height(crate::knobs::CHOICE_SIZE);
+            ui.spacing_mut().item_spacing.y = f32::from(crate::theme::TOOLBAR_PADDING) * 0.5;
+            ui.label(
+                egui::RichText::new(label)
+                    .size(crate::layout::HEADER_FONT_SIZE)
+                    .color(crate::theme::palette(ui.ctx()).secondary),
+            );
+            selector(ui)
+        },
+    )
+    .inner
+}

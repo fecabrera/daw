@@ -11,3 +11,6 @@ pub mod meters;
 pub mod parameter_knobs;
 pub mod rows;
 pub mod theme;
+
+pub mod bitcrusher;
+pub mod saturator;

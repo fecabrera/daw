@@ -80,3 +80,5 @@ Verify track/Master and mono/stereo/live/export/block/random-access/seek/loop pa
 ## Standard output monitoring
 
 Use the [standard effect Out-strip meter](../architecture/modular-audio-units.md#standard-effect-out-strip-meter) for final linked-stereo level, shared held-peak capture/reset, bypass masking, and allocation-free prepared meter binding. Retain audio DSP, latency, saved settings and existing modulation behavior.
+
+Separate [CLAP/VST3 plugin builds](../architecture/saturator-bitcrusher-plugin-builds.md) reuse this portable processor and the shared headerless body.

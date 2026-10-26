@@ -159,7 +159,7 @@ fn shape_order_discrete_thresholds_and_off_values_are_retained() {
     assert_eq!(PANEL[1].controls[0].diagram, Some("drive_color"));
     assert_eq!(PANEL[1].controls[1].enabled_by, Some(P::ColorShape));
     assert_eq!(
-        PANEL.map(|s| s.controls.map(|c| c.parameter)),
+        PANEL.map(|s| std::array::from_fn::<_, 3, _>(|i| s.controls[i].parameter)),
         [
             [P::Volume, P::Gain, P::Tone],
             [P::ColorShape, P::ColorStrength, P::ColorFrequency]
