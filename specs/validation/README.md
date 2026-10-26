@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Light-theme oscillator separator assertion — 2026-10-26
+
+The Light palette's white panel and `#F2F2F2` border differ by 13 channel levels. The specified halfway separator has 6 levels of contrast after rounding, so the older fixed minimum of 8 no longer applies. Updated the existing oscillator layout test to require nonzero separator contrast below panel-border contrast. Production colors, separator blending, and layout are unchanged. This supersedes the numeric test threshold in the historical oscillator-separator check below.
+
+The focused oscillator test and formatting passed locally on macOS. Native Windows/Linux appearance was not checked.
+
 ## Generic plugin packager — 2026-10-26
 
 Renamed the packager to `tools/package_plugins.py` and its tests to `tools/test_package_plugins.py`. The required `--units` argument accepts comma-separated unit names or `all`. Unit manifests and format target Cargo manifests determine products and library names. CI, checker imports, and current build instructions use the new name. Commands in earlier validation entries record the tool names used at that time.

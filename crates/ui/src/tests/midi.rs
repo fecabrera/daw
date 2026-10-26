@@ -2890,9 +2890,11 @@ fn oscillator_strips_have_centered_power_label_pairs_and_a_clickable_add_strip()
                 separator.to_array()[channel].abs_diff(palette.panel.to_array()[channel]);
             let border_contrast =
                 palette.border.to_array()[channel].abs_diff(palette.panel.to_array()[channel]);
+            // Light's pale border has only 13 levels of contrast. Its halfway
+            // separator remains distinct without meeting the old 8-level floor.
             assert!(
-                contrast >= 8 && contrast < border_contrast,
-                "separator must remain visible below border contrast in both themes"
+                contrast > 0 && contrast < border_contrast,
+                "separator must remain distinct from the panel and below border contrast in both themes"
             );
         }
         let point = app.midi_editor.oscillator_power_bounds[1].center();
