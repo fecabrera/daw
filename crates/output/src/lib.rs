@@ -2,9 +2,13 @@ mod audition;
 mod audition_stream;
 pub use audition_stream::{AuditionStream, AuditionStreamWriter, audition_stream};
 mod cache_schedule;
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+mod devices;
+use cpal::traits::{DeviceTrait, StreamTrait};
 use daw_core::Id;
 use daw_engine::{ModulationTarget, RenderPlan, Renderer, TransportState};
+pub use devices::{
+    AudioSettings, Configuration, DeviceId, DeviceInfo, Devices, SampleFormat, discover_devices,
+};
 use rtrb::{Consumer, Producer, RingBuffer};
 use rubato::Resampler;
 use std::collections::HashMap;
@@ -460,31 +464,40 @@ impl AudioOutput {
         plan: RenderPlan,
         preparation: Option<AudioPreparation>,
     ) -> Result<Self, String> {
+        Self::with_settings(plan, preparation, &AudioSettings::default())
+    }
+    pub fn with_settings(
+        plan: RenderPlan,
+        preparation: Option<AudioPreparation>,
+        settings: &AudioSettings,
+    ) -> Result<Self, String> {
         let project_rate_hz = plan.project.sample_rate_hz;
         let buffer_size_frames = plan.project.buffer_size_frames;
-        let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .ok_or("No default audio output device")?;
+        let device = devices::output_device(settings.output_device.as_ref())?;
         let default = device.default_output_config().map_err(|e| e.to_string())?;
-        let config = device
-            .supported_output_configs()
-            .map_err(|e| e.to_string())?
-            .find(|c| {
-                c.channels() == default.channels()
-                    && c.sample_format() == default.sample_format()
-                    && c.min_sample_rate().0 <= project_rate_hz
-                    && c.max_sample_rate().0 >= project_rate_hz
-            })
-            .map(|c| c.with_sample_rate(cpal::SampleRate(project_rate_hz)))
-            .unwrap_or(default);
+        let config = devices::choose_config(
+            device
+                .supported_output_configs()
+                .map_err(|e| e.to_string())?,
+            default,
+            settings,
+            project_rate_hz,
+        )?;
         let format = config.sample_format();
         let rate = config.sample_rate().0;
         let mut stream_config: cpal::StreamConfig = config.clone().into();
-        stream_config.buffer_size = cpal::BufferSize::Fixed(match config.buffer_size() {
-            cpal::SupportedBufferSize::Range { min, max } => buffer_size_frames.clamp(*min, *max),
-            cpal::SupportedBufferSize::Unknown => buffer_size_frames,
-        });
+        let requested_buffer = settings.buffer_size_frames.unwrap_or(buffer_size_frames);
+        stream_config.buffer_size =
+            cpal::BufferSize::Fixed(if settings.buffer_size_frames.is_some() {
+                requested_buffer
+            } else {
+                match config.buffer_size() {
+                    cpal::SupportedBufferSize::Range { min, max } => {
+                        requested_buffer.clamp(*min, *max)
+                    }
+                    cpal::SupportedBufferSize::Unknown => requested_buffer,
+                }
+            });
         let preparation = match preparation {
             Some(p) => p,
             None => AudioPreparation::new(plan.clone())?,
@@ -522,6 +535,7 @@ impl AudioOutput {
                 cpal::SampleFormat::F64 => stream!(f64),
                 cpal::SampleFormat::I8 => stream!(i8),
                 cpal::SampleFormat::I16 => stream!(i16),
+                cpal::SampleFormat::I24 => stream!(cpal::I24),
                 cpal::SampleFormat::I32 => stream!(i32),
                 cpal::SampleFormat::I64 => stream!(i64),
                 cpal::SampleFormat::U8 => stream!(u8),
@@ -535,7 +549,9 @@ impl AudioOutput {
         let (stream, commands, retired, audition) = match build(&stream_config) {
             Ok(s) => s,
             Err(first) => {
-                if stream_config.buffer_size == cpal::BufferSize::Default {
+                if settings.buffer_size_frames.is_some()
+                    || stream_config.buffer_size == cpal::BufferSize::Default
+                {
                     return Err(first);
                 }
                 stream_config.buffer_size = cpal::BufferSize::Default;
@@ -544,11 +560,12 @@ impl AudioOutput {
         };
         stream.play().map_err(|e| e.to_string())?;
         let description = format!(
-            "{} · {} Hz · {:?} (requested {} samples)",
+            "{} · {} Hz · {} · {:?} (requested {} samples)",
             device.name().unwrap_or_else(|_| "Default output".into()),
             rate,
+            SampleFormat::from_cpal(format).map_or("Unknown format", SampleFormat::label),
             stream_config.buffer_size,
-            buffer_size_frames
+            requested_buffer
         );
         status
             .playhead

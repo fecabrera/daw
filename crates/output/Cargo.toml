@@ -12,3 +12,4 @@ daw-unit-core.workspace = true
 cpal.workspace = true
 rubato.workspace = true
 rtrb.workspace = true
+serde.workspace = true

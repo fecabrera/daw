@@ -313,9 +313,10 @@ impl DawUi {
         #[cfg(not(test))]
         {
             if self.output.is_none() {
-                match AudioOutput::with_preparation(
+                match AudioOutput::with_settings(
                     self.session.plan(),
                     self.audio_preparation.take().map(|(_, _, p)| p),
+                    &self.settings.audio,
                 ) {
                     Ok(output) => self.output = Some(output),
                     Err(error) => {

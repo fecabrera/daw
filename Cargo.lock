@@ -1463,6 +1463,7 @@ dependencies = [
  "daw-unit-core",
  "rtrb",
  "rubato 0.16.2",
+ "serde",
 ]
 
 [[package]]

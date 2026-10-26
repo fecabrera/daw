@@ -20,7 +20,7 @@ Use ASD-STE100 principles and Plain Language for specifications, technical docum
 | MVP-04 | Provide a timeline, left track list, top playback toolbar, zoom, and scrolling. |
 | MVP-05 | Play, pause, stop, seek, and loop a selected range. |
 | MVP-06 | Mix tracks with master gain, peak meters, and a clipping indicator. |
-| MVP-07 | Use the default output device and handle initialization errors and disconnection. |
+| MVP-07 | Use the selected output device (system default initially) and handle initialization errors and disconnection. |
 | MVP-08 | Save and open folder-based projects with external source references. Preserve missing clips. |
 | MVP-10 | Export stereo WAV, MP3 or AAC, including projects with missing sources. |
 | MVP-11 | Use a selectable project processing rate; default 48 kHz. |
@@ -206,13 +206,13 @@ The engine's sample counter drives time and the displayed playhead. Rendering mu
 
 ### Output device and callback
 
-Use CoreAudio on macOS, shared WASAPI on Windows, and ALSA on Linux through CPAL. On Linux, use the system default and its configured PipeWire/PulseAudio bridge.
+Use CoreAudio on macOS, shared WASAPI on Windows, and ALSA on Linux through CPAL. On Linux, use the selected device (system default initially) and its configured PipeWire/PulseAudio bridge.
 
-Prefer a stream at the project rate and request the project buffer size (default 512 frames). Select the nearest supported buffer size when available; fall back to the host default when fixed-size requests fail. Callback sizes can vary. If the device requires another sample rate, use preallocated output resampling without changing project timing or export rate.
+Use the machine-local [audio device preferences](../audio/devices.md). Automatic prefers a stream at the project rate and requests the project buffer size (default 512 frames). Clamp automatic buffer requests to the supported range; fall back to the host default when automatic fixed-size requests fail. Explicit rate, format and buffer choices must succeed without silent substitution. Callback sizes can vary. If the device requires another sample rate, use preallocated output resampling without changing project timing or export rate.
 
 The callback must not perform file I/O, decoding, allocation, blocking locks, logging, or final asset destruction. Create buffers and converters before starting the stream. Retire replaced assets on a control thread. Offline rendering can use worker-thread allocation and I/O.
 
-On output initialization failure, show an error and keep editing and export available. On disconnection, stop playback safely and report the error. Do not switch devices automatically. A later playback attempt can reinitialize the system default device.
+On output initialization failure, show an error and keep editing and export available. On disconnection, stop playback safely and report the error. Do not switch devices automatically. A later playback attempt can reinitialize the selected device; System default resolves the current host default at that time.
 
 ## Desktop interface
 

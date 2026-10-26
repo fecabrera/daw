@@ -36,7 +36,7 @@ Provide a headless command-line mode from the start, using the same project mode
 | MVP-04 | Timeline | Provide a simple timeline with a track list on the left and a toolbar above the timeline containing playback controls. Provide horizontal zoom and scrolling. |
 | MVP-05 | Transport | Play, pause, stop, seek, and loop a selected region. |
 | MVP-06 | Mixing | Mixer tracks. Provide a master gain control and peak meters. |
-| MVP-07 | Output | Use the system's default audio output device. Display audio initialization errors. If the device disconnects, stop playback safely and display a clear error. |
+| MVP-07 | Output | Use the selected audio output device (system default initially). Configure machine-local output rate, bit depth and buffer preferences through [Audio Settings](../audio/devices.md). Display audio initialization errors. If the device disconnects, stop playback safely and display a clear error. |
 | MVP-08 | Projects | Save and open projects stored as folders containing manifest files and an assets directory. Reference external source audio files during the MVP. Open projects with missing sources normally, show a warning, and display affected clips as empty placeholders. |
 | MVP-10 | Export | Export the arrangement as a stereo WAV, MP3 or AAC file. |
 | MVP-11 | Sample rate | Use a selectable project processing rate (44.1, 48, 88.2, 96, 176.4, or 192 kHz; default 48 kHz). Convert imports to that rate. |
@@ -54,7 +54,7 @@ Use stable Rust, edition 2024, and Cargo. Select compatible released crate versi
 | Desktop UI | [egui and eframe](https://github.com/emilk/egui) | Window lifecycle, widgets, input, and custom timeline controls. Use Glow/OpenGL on Windows for native caption composition and wgpu on macOS/Linux. |
 | Headless CLI | [clap](https://docs.rs/clap/latest/clap/) | Command parsing, help, project validation, and offline export. |
 | Waveforms and timeline | egui Painter with application code | Draw cached waveform peaks, clips, rulers, and meters. Generate waveform peaks on a background worker. |
-| Audio output | [cpal](https://github.com/RustAudio/cpal) | Default output device, stream configuration, audio callback, and stream errors. |
+| Audio output | [cpal](https://github.com/RustAudio/cpal) | Device discovery/selection, stream configuration, audio callback, and stream errors. |
 | Audio engine | Application code in Rust | Sample-based transport, clip scheduling, gain/pan, mute/solo, fades, metering, and mixing. Reuse the rendering logic for live playback and offline export. |
 | Audio decoding | [symphonia](https://github.com/pdeljanov/Symphonia) | Enable WAV, PCM, MP3, AAC and ISO MP4 support. See [audio import](../audio/import.md). |
 | WAV export | [hound](https://docs.rs/hound/latest/hound/) | Write WAV exports behind the encoder interface. |
@@ -71,8 +71,8 @@ Use stable Rust, edition 2024, and Cargo. Select compatible released crate versi
 
 - macOS: CoreAudio through CPAL.
 - Windows: WASAPI through CPAL, using shared output for the MVP.
-- Linux: ALSA through CPAL, using the system default device and its PipeWire/PulseAudio bridge where configured. Linux builds require ALSA development libraries.
-- Keep the project and mixer at the selected processing rate. Prefer a device stream at that rate. If the default device requires another rate, use a preallocated Rubato output conversion stage; the project sample rate stays unchanged.
+- Linux: ALSA through CPAL, using the selected device (system default initially) and its PipeWire/PulseAudio bridge where configured. Linux builds require ALSA development libraries.
+- Keep the project and mixer at the selected processing rate. Prefer a device stream at that rate when the output rate is Automatic. If the selected device stream uses another rate, use a preallocated Rubato output conversion stage; the project sample rate stays unchanged.
 - Keep audio backend details behind an output interface so additional backends can be added later.
 
 ### Module boundaries and real-time rules

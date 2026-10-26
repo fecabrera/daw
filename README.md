@@ -10,7 +10,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Instrument components:** [Oscillator](docs/instruments/oscillator.md), [Sampler](docs/instruments/sampler.md), [Granulizer](docs/instruments/granulizer.md), [Envelope](docs/instruments/envelope.md), [LFO](docs/instruments/lfo.md), [Amplitude](docs/instruments/amplitude.md), and [Macro](docs/instruments/macro.md).
 - **Effects:** [3-band EQ](docs/effects/equalizer.md), [Multiband EQ](docs/effects/multiband-eq.md), [Drive](docs/effects/drive.md), [Drive v2](docs/effects/drive-v2.md), [Bitcrusher](docs/effects/bitcrusher.md), [Saturator](docs/effects/saturator.md), [Filter](docs/effects/filter.md), [Auto-filter](docs/effects/auto-filter.md), [Compressor](docs/effects/compressor.md), [OTT](docs/effects/ott.md), [Limiter](docs/effects/limiter.md), [Direction Mixer](docs/effects/direction-mixer.md), [Stereo Spread](docs/effects/stereo-spread.md), and [Chorus](docs/effects/chorus.md).
 - **Mixer:** track gain, pan, mute, and solo controls, [track group buses](docs/editing/track-groups.md) with shared effects, and master gain.
-- **Playback:** tempo controls, loop playback, and stereo level meters.
+- **Playback:** tempo controls, loop playback, stereo level meters, and [audio device settings](docs/projects/README.md#audio-devices) for output selection, stream sample rate/bit depth, and buffer size. Input-device selection is saved for future recording.
 - **Editing history:** [undo and redo](docs/editing/undo-redo.md) for project edits.
 - **Projects:** save and open projects, with configurable audio processing settings.
 - **Appearance:** Dark, Light, and Mist themes, accent colors, and colored clips.

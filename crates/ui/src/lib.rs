@@ -95,6 +95,7 @@ mod track_overview;
 mod track_selector;
 mod transport_controls;
 pub use mixer::ViewMode;
+mod audio_settings;
 mod musical_time;
 pub mod panels;
 mod project_name_dialog;
@@ -752,6 +753,8 @@ pub struct DawUi {
     mixer_faders: HashMap<Option<Id>, Rect>,
     settings: settings::AppSettings,
     settings_open: bool,
+    audio_settings: Option<audio_settings::AudioDialog>,
+    audio_devices: audio_settings::DevicesState,
     separation_models: separation_models::State,
     project_settings: Option<project_settings::ProjectSettings>,
     pub session: Session,
@@ -863,6 +866,8 @@ impl Default for DawUi {
             mixer_faders: HashMap::new(),
             settings: settings::AppSettings::default(),
             settings_open: false,
+            audio_settings: None,
+            audio_devices: Default::default(),
             separation_models: Default::default(),
             project_settings: None,
             session: Session::default(),
@@ -971,7 +976,9 @@ impl DawUi {
 
     pub fn open_settings(&mut self) {
         if self.settings_enabled() {
+            self.audio_settings = None;
             self.settings_open = true;
+            self.refresh_audio_devices();
         }
     }
     pub fn project_settings_enabled(&self) -> bool {
@@ -1485,9 +1492,10 @@ impl DawUi {
             self.output = None;
         }
         if self.output.is_none() {
-            match AudioOutput::with_preparation(
+            match AudioOutput::with_settings(
                 self.session.plan(),
                 self.audio_preparation.take().map(|(_, _, p)| p),
+                &self.settings.audio,
             ) {
                 Ok(o) => self.output = Some(o),
                 Err(e) => {
@@ -1978,6 +1986,7 @@ impl DawUi {
             output.set_waker(move || wake.request_repaint());
         }
         self.poll();
+        self.poll_audio_devices(&ctx);
         // Publish completed jobs before a new pointer gesture starts its own undo step.
         if ui.is_enabled()
             && self.edit_environment_available()
@@ -2036,6 +2045,7 @@ impl DawUi {
             if self.job.is_none() && self.regular_save.is_none() {
                 self.project_name_dialog = None;
                 self.settings_open = false;
+                self.audio_settings = None;
                 self.project_settings = None;
                 self.request(Action::CloseWindow);
             }
@@ -5140,22 +5150,47 @@ impl DawUi {
                 None => self.project_settings = Some(draft),
             }
         }
-        if self.settings_open {
+        if self.settings_open && self.audio_settings.is_some() {
+            self.show_audio_settings(ctx);
+        } else if self.settings_open {
             let mut model_action = None;
             let enabled =
                 self.job.is_none() && !self.separation_models.busy() && self.error.is_none();
+            let mut audio = settings::AudioControls {
+                devices: self.audio_devices.catalog.as_ref(),
+                error: self.audio_devices.error.as_deref(),
+                enabled: enabled && !self.audio_devices.busy(),
+                ..Default::default()
+            };
             if settings::show(
                 ctx,
                 &mut self.settings,
                 &self.separation_models.validated,
                 enabled,
                 &mut model_action,
+                &mut audio,
             ) {
                 self.settings_open = false;
+            }
+            let selection = audio.selection.take();
+            let quality_requested = audio.quality_requested;
+            let refresh_requested = audio.refresh_requested;
+            if let Some(draft) = selection {
+                self.apply_audio_device_selection(draft);
+            }
+            if quality_requested {
+                self.open_audio_settings();
+            }
+            if refresh_requested {
+                self.refresh_audio_devices();
             }
             if let Some(action) = model_action {
                 self.change_separation_model(action);
             }
+        }
+        // A Refresh click can start discovery after this frame's receiver poll.
+        if self.audio_devices.busy() {
+            ctx.request_repaint_after(Duration::from_millis(100));
         }
         #[derive(Clone, Copy)]
         enum UnsavedChoice {

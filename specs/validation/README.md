@@ -4,6 +4,17 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Audio device selection and quality defaults — 2026-10-26
+
+Added input/output device selectors to the main application Settings window and a separate Audio quality defaults dialog for output sample rate, stream bit depth and buffer size. Preferences remain machine-local. Device discovery returns descriptors from a named worker through a bounded channel; it never opens a capture stream. Output changes probe a replacement before publication, stop playback on success and retain accepted preferences/output on failure. Playback and chord/note audition use the same preferences. Input selection is reserved for future recording and does not monitor audio. Project processing/export settings and project modification state remain separate. See [device requirements](../audio/devices.md).
+
+- Output tests pass, including three new cases for automatic rate/format selection, explicit request rejection, buffer bounds and device-rate conversion selection.
+- `cargo test --workspace --offline --locked`: **1,371 passed, 5 ignored**, including doctests. Explicit CPU-budget and extended acceptance cases remain opt-in. The final layout has separate follow-up UI coverage below.
+- `cargo test -p daw-ui --offline --locked`: **644 passed**, including seven focused device/quality cases. The rendered main window exposes device selection and quality navigation. Device selection preserves quality defaults until the caller validates it. The separate dialog omits device controls. Tests cover popup-first Escape, no-op/input-only publication, saved/legacy preferences, unavailable outputs and injected stream failure without project/preference mutation.
+- Formatting, strict workspace/all-target Clippy, documentation file links and diff checks pass. The macOS debug app is rebuilt with `sh tools/package_macos.sh debug`.
+
+Native device switching, actual driver/hardware format and buffer negotiation, disconnect/reconnect, microphone capture/monitoring, and Windows/Linux native execution are not established by these automated checks. CPAL exposes device names rather than portable stable IDs; duplicate-name selections depend on enumeration order. Shared drivers can use a hardware format different from the selected stream format.
+
 ## Drive plugin artifact workflow — 2026-10-26
 
 Added `plugins.yml` with independent Windows x64, macOS arm64 and Linux x64 workers, shared setup, locked targeted release builds, native plugin tests, and separate CLAP/VST3 preview uploads. Each platform uploads checksums and command logs with 14-day retention. The packager stages both native formats with build metadata, project/dependency/font notices, and installation/removal instructions. Existing DAW jobs remain independent.

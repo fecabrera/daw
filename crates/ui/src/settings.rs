@@ -146,6 +146,7 @@ impl TitlebarStyle {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
+    pub audio: daw_output::AudioSettings,
     pub separation_models: std::sync::Arc<daw_project::SeparationModels>,
     pub accent: AccentColor,
     pub theme: ColorTheme,
@@ -230,12 +231,24 @@ fn model_row(
     );
 }
 
+/// Discovery data and actions for the main Settings device selectors.
+#[derive(Default)]
+pub struct AudioControls<'a> {
+    pub devices: Option<&'a daw_output::Devices>,
+    pub error: Option<&'a str>,
+    pub enabled: bool,
+    pub selection: Option<daw_output::AudioSettings>,
+    pub quality_requested: bool,
+    pub refresh_requested: bool,
+}
+
 pub fn show(
     ctx: &Context,
     settings: &mut AppSettings,
     models: &daw_project::SeparationModels,
     models_enabled: bool,
     model_action: &mut Option<ModelAction>,
+    audio: &mut AudioControls<'_>,
 ) -> bool {
     let popup_was_open = egui::Popup::is_any_open(ctx);
     let close = crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
@@ -349,6 +362,21 @@ pub fn show(
             );
             ui.separator();
             ui.strong("Playback");
+            ui.add_enabled_ui(audio.enabled, |ui| {
+                let empty = daw_output::Devices::default();
+                let devices = audio.devices.unwrap_or(&empty);
+                let mut draft = settings.audio.clone();
+                let output_changed = crate::audio_settings::device_row(ui, label_width, "Output device", &mut draft.output_device, &devices.outputs);
+                let input_changed = crate::audio_settings::device_row(ui, label_width, "Input device", &mut draft.input_device, &devices.inputs);
+                if output_changed || input_changed { audio.selection = Some(draft); }
+                crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
+                    if ui.button("Audio quality defaults…").clicked() { audio.quality_requested = true; }
+                    if ui.button("Refresh devices").clicked() { audio.refresh_requested = true; }
+                });
+            });
+            ui.label("Changing output stops playback. Input selection is saved for future recording; input monitoring is not available.");
+            if !audio.enabled { ui.label("Checking audio devices…"); }
+            if let Some(error) = audio.error { ui.label(error); }
             crate::rows::field(
                 ui, label_width,
                 |ui| { ui.label("Seek cache"); },
@@ -427,7 +455,16 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| closed = show(ui.ctx(), settings, &Default::default(), true, &mut None),
+            |ui| {
+                closed = show(
+                    ui.ctx(),
+                    settings,
+                    &Default::default(),
+                    true,
+                    &mut None,
+                    &mut AudioControls::default(),
+                )
+            },
         );
         output.textures_delta.clear();
         (closed, output.shapes)

@@ -56,6 +56,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 - [AAC-LC export](audio/aac-export.md): portable streaming encoding, rate conversion and ADTS limits.
 - [Audio import](audio/import.md): WAV, MP3 and AAC-LC decoding, metadata and preparation limits.
+- [Audio device preferences](audio/devices.md): machine-local device selection and output format/buffer negotiation.
 
 - [Shared modulation contract](modulation/contract.md).
 - [Oscillator pitch and gain modulation](modulation/oscillator-pitch.md).

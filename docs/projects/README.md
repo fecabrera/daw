@@ -27,7 +27,7 @@ Open Settings from the app-name menu on macOS or File on Windows/Linux. Use Comm
 Settings groups controls into four categories:
 
 - **Appearance**: titlebar style where supported, theme, and accent color.
-- **Playback**: seek cache profile.
+- **Playback**: input/output devices, audio quality defaults, and seek cache profile.
 - **MIDI**: how notes are divided when splitting clips.
 - **Stem Separation**: local model selection and validation.
 
@@ -36,6 +36,18 @@ Choose **Dark**, **Light**, or **Mist** under **Appearance > Theme**. Mist uses 
 On Windows, **Appearance > Titlebar > Custom** combines the menu, project title, and view buttons in the titlebar. A continuous divider separates this row from playback controls in restored and maximized windows. **Native** is the default titlebar style.
 
 Changes apply on this computer and are retained across restarts. Close retains your choices. These preferences are separate from Project Settings.
+
+## Audio devices
+
+The main **Settings** window exposes **Output device** and **Input device** under **Playback**. Select an output device and, if needed, save an input-device choice. **System default** uses the operating system's default device when the next stream opens. **Refresh devices** updates the list. An unavailable saved device is marked in the list. Output selection tests the replacement before saving it. Failure keeps the previous device and shows an error in Settings; success stops playback and keeps the playhead. Input selection saves immediately without interrupting playback.
+
+Input selection is saved for future recording. The app does not yet record or monitor input.
+
+Open **Audio quality defaults…** for the separate sample rate, bit depth, and buffer size controls. Choose supported combinations for the selected output device. **Automatic** prefers the project rate and buffer size and the driver's default sample format. The bit-depth list distinguishes integer audio from floating-point audio. These choices configure the app's device stream; the driver can mix or convert it to a different hardware format. Smaller buffers can improve response time but increase processing demands.
+
+**Apply** tests output changes before saving them. Success stops playback and keeps the playhead; press Play to resume. Failure keeps the previous output and preferences and displays an error. **Cancel** or Escape discards the draft and returns to Settings. Escape closes an open dropdown first.
+
+These choices stay on this computer. They do not change the project processing rate, prepared recordings, export format, or project modification state. Project Settings still controls processing rate and processing buffer size. Device output uses sample-rate conversion when necessary. Some drivers only expose their shared floating-point format; use the operating system or device control panel to configure hardware options that the app cannot expose.
 
 ## Seek cache profiles
 
