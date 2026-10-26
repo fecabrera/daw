@@ -68,7 +68,7 @@ jobs:
 
       - name: Test packaging
         id: plugin_packaging_tests
-        run: python -m unittest discover -s tools -p test_package_drive_plugins.py -v 2>&1 | tee work/ci-logs/packaging-tests.log
+        run: python -m unittest discover -s tools -p test_package_plugins.py -v 2>&1 | tee work/ci-logs/packaging-tests.log
 
       - name: Build CLAP and VST3 libraries
         id: plugin_build
@@ -83,7 +83,7 @@ jobs:
 
       - name: Package plugin previews
         id: plugin_package
-        run: python tools/package_drive_plugins.py --unit '${{ matrix.unit.slug }}' --output-dir 'target/plugin-artifacts/${{ matrix.unit.slug }}' --target '${{ matrix.target }}' 2>&1 | tee work/ci-logs/plugin-package.log
+        run: python tools/package_plugins.py --units '${{ matrix.unit.slug }}' --output-dir 'target/plugin-artifacts/${{ matrix.unit.slug }}' --target '${{ matrix.target }}' 2>&1 | tee work/ci-logs/plugin-package.log
 
       # ZIPs retain bundle structure and executable modes after artifact download.
       - name: Upload CLAP preview

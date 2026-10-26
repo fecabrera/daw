@@ -4,6 +4,15 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Generic plugin packager — 2026-10-26
+
+Renamed the packager to `tools/package_plugins.py` and its tests to `tools/test_package_plugins.py`. The required `--units` argument accepts comma-separated unit names or `all`. Unit manifests and format target Cargo manifests determine products and library names. CI, checker imports, and current build instructions use the new name. Commands in earlier validation entries record the tool names used at that time.
+
+All selected units stage before any archive is replaced. Unknown/empty selections fail before output creation. A missing library or signing failure in a later unit preserves existing archives/checksums for the entire selection.
+
+- Twelve packaging tests passed, including CLI selection, both products on all platform layouts, future unit discovery with custom library names, cross-unit failure preservation, hashes/notices, and native macOS signature/seal checks.
+- Existing CLAP/VST3 checker tests passed. Workflow YAML and current documentation links were checked. This change does not validate plugin audio or external host behavior.
+
 ## Drive v2 CLAP/VST3 builds — 2026-10-26
 
 Added distinct Drive v2 plugin identities, a checked 11-parameter contract, bounded 104-byte state, and both format exports over existing DriveV2 DSP. The three-strip body is shared with the DAW. Native packaging and the CI product matrix cover both Drive products. No registry dependency versions changed.

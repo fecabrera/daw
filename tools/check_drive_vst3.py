@@ -12,7 +12,7 @@ import shutil
 import re
 import subprocess
 import sys
-from package_drive_plugins import finalize_macos_bundle
+from package_plugins import finalize_macos_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN = {"daw-desktop", "daw-cli", "daw-core", "daw-ui", "daw-engine", "daw-project", "daw-output", "daw-media", "daw-separation", "cpal", "rfd", "eframe", "clap-sys", "daw-plugin-clap", "daw-drive-clap"}

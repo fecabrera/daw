@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-from package_drive_plugins import ROOT, TARGETS, finalize_macos_bundle, package
+from package_plugins import ROOT, TARGETS, finalize_macos_bundle, package, select_units
 
 
 class PackagingTests(unittest.TestCase):
@@ -40,9 +40,9 @@ class PackagingTests(unittest.TestCase):
                     seal.parent.mkdir()
                     seal.write_bytes(b"fixture resource seal")
                 with contextlib.redirect_stdout(io.StringIO()), patch(
-                    "package_drive_plugins.finalize_macos_bundle", side_effect=sign_fixture
+                    "package_plugins.finalize_macos_bundle", side_effect=sign_fixture
                 ):
-                    package(target, base / "target", output)
+                    package(target, base / "target", output, units="drive")
                 archives = sorted(output.glob("*.zip"))
                 self.assertEqual(len(archives), 2)
                 for archive in archives:
@@ -81,7 +81,7 @@ class PackagingTests(unittest.TestCase):
                 checksums = next(output.glob("*SHA256SUMS.txt")).read_text()
                 for archive in archives:
                     self.assertIn(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n", checksums)
-                self.assertFalse(list(output.glob(".drive-*")))
+                self.assertFalse(list(output.glob(".plugins-*")))
 
     def test_drive_v2_platform_archives(self):
         for target, (system, architecture, pattern) in TARGETS.items():
@@ -99,9 +99,9 @@ class PackagingTests(unittest.TestCase):
                     seal.parent.mkdir()
                     seal.write_bytes(b"fixture resource seal")
                 with contextlib.redirect_stdout(io.StringIO()), patch(
-                    "package_drive_plugins.finalize_macos_bundle", side_effect=sign_fixture
+                    "package_plugins.finalize_macos_bundle", side_effect=sign_fixture
                 ):
-                    package(target, base / "target", output, unit="drive-v2")
+                    package(target, base / "target", output, units="drive-v2")
                 archives = sorted(output.glob("*.zip"))
                 self.assertEqual(len(archives), 2)
                 for archive in archives:
@@ -140,12 +140,120 @@ class PackagingTests(unittest.TestCase):
                 checksums = next(output.glob("*SHA256SUMS.txt")).read_text()
                 for archive in archives:
                     self.assertIn(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n", checksums)
-                self.assertFalse(list(output.glob(".drive-*")))
+                self.assertFalse(list(output.glob(".plugins-*")))
+
+    def test_selection_rejects_invalid_names_and_deduplicates(self):
+        self.assertEqual(select_units(" drive-v2,drive,drive-v2 "), ["drive-v2", "drive"])
+        self.assertEqual(select_units("all"), ["drive", "drive-v2"])
+        for value in ("", "drive,", ",drive", "drive,,drive-v2", "unknown", "all,drive", "../drive"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                select_units(value)
+
+    def test_multiple_units_and_all_package_both_products_on_each_platform(self):
+        for target, (_, _, pattern) in TARGETS.items():
+            for selection in ("drive,drive-v2", "all"):
+                with self.subTest(target=target, selection=selection), tempfile.TemporaryDirectory() as temporary:
+                    base = Path(temporary)
+                    release = base / "target" / target / "release"
+                    release.mkdir(parents=True)
+                    for unit in ("drive", "drive_v2"):
+                        for fmt in ("clap", "vst3"):
+                            (release / pattern.format(f"daw_{unit}_{fmt}")).write_bytes(f"{unit}:{fmt}".encode())
+                    output = base / "artifacts"
+                    with contextlib.redirect_stdout(io.StringIO()), patch("package_plugins.finalize_macos_bundle"):
+                        package(target, base / "target", output, units=selection)
+                    self.assertEqual(len(list(output.glob("*.zip"))), 4)
+                    self.assertEqual(len(list(output.glob("*SHA256SUMS.txt"))), 2)
+                    for archive in output.glob("*.zip"):
+                        with zipfile.ZipFile(archive) as zipped:
+                            metadata = json.loads(zipped.read("build.json"))
+                            self.assertIn(metadata["product"], ("Drive", "Drive v2"))
+                        checksum = next(output.glob(("Drive-v2-" if metadata["product"] == "Drive v2" else "Drive-0*") + "*SHA256SUMS.txt")).read_text()
+                        self.assertIn(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}", checksum)
+                    self.assertFalse(list(output.glob(".plugins-*")))
+
+    def test_later_unit_failure_preserves_all_existing_products(self):
+        for failure_kind in ("missing_library", "signing"):
+            with self.subTest(failure=failure_kind), tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                target = "aarch64-apple-darwin"
+                release = base / "target" / target / "release"
+                release.mkdir(parents=True)
+                for unit in ("drive", "drive_v2"):
+                    for fmt in ("clap", "vst3"):
+                        (release / f"libdaw_{unit}_{fmt}.dylib").write_bytes(b"old")
+                output = base / "artifacts"
+                with contextlib.redirect_stdout(io.StringIO()), patch("package_plugins.finalize_macos_bundle"):
+                    package(target, base / "target", output, units="all")
+                previous = {p.name: p.read_bytes() for p in output.iterdir()}
+                (release / "libdaw_drive_clap.dylib").write_bytes(b"new")
+                if failure_kind == "missing_library":
+                    (release / "libdaw_drive_v2_vst3.dylib").unlink()
+                    effects = None
+                    error = FileNotFoundError
+                else:
+                    effects = [None, None, None, subprocess.CalledProcessError(1, ["codesign"])]
+                    error = subprocess.CalledProcessError
+                with patch("package_plugins.finalize_macos_bundle", side_effect=effects), self.assertRaises(error):
+                    package(target, base / "target", output, units="all")
+                self.assertEqual({p.name: p.read_bytes() for p in output.iterdir()}, previous)
+
+    def test_new_manifest_and_custom_library_names_need_no_packager_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            root = base / "repo"
+            unit = root / "plugins/example"
+            unit.mkdir(parents=True)
+            (unit / "unit.toml").write_text('product = "Example"\nversion = "1.2.3"\nvendor = "Test"\nclap_id = "org.example.effect"\n')
+            target = "x86_64-unknown-linux-gnu"
+            release = base / "target" / target / "release"
+            release.mkdir(parents=True)
+            for fmt in ("clap", "vst3"):
+                manifest = root / f"plugins/example-{fmt}/Cargo.toml"
+                manifest.parent.mkdir()
+                manifest.write_text(f'[package]\nname = "other-{fmt}"\n[lib]\nname = "custom_{fmt}"\n')
+                (release / f"libcustom_{fmt}.so").write_bytes(fmt.encode())
+            shutil.copy2(ROOT / "LICENSE", root / "LICENSE")
+            for crate in ("plugin-clap", "plugin-vst3", "equalizer", "oscillator", "plugin-window", "unit-ui", "ui"):
+                shutil.copytree(ROOT / f"crates/{crate}/assets/licenses", root / f"crates/{crate}/assets/licenses")
+            shutil.copytree(ROOT / "crates/unit-ui/assets/fonts", root / "crates/unit-ui/assets/fonts")
+            output = base / "artifacts"
+            with contextlib.redirect_stdout(io.StringIO()):
+                package(target, base / "target", output, root=root, units="all")
+            self.assertEqual(select_units("all", root), ["example"])
+            self.assertEqual(len(list(output.glob("Example-1.2.3-*.zip"))), 2)
+            with zipfile.ZipFile(output / "Example-1.2.3-linux-x64-clap.zip") as zipped:
+                self.assertEqual(zipped.read("Example.clap"), b"clap")
+            with zipfile.ZipFile(output / "Example-1.2.3-linux-x64-vst3.zip") as zipped:
+                self.assertEqual(zipped.read("Example.vst3/Contents/x86_64-linux/Example.so"), b"vst3")
+
+    def test_cli_accepts_lists_and_all_and_reports_unknown_units(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            target = "x86_64-unknown-linux-gnu"
+            release = base / "target" / target / "release"
+            release.mkdir(parents=True)
+            for unit in ("drive", "drive_v2"):
+                for fmt in ("clap", "vst3"):
+                    (release / f"libdaw_{unit}_{fmt}.so").write_bytes(b"fixture")
+            command = [sys.executable, str(ROOT / "tools/package_plugins.py"), "--target", target,
+                       "--target-dir", str(base / "target")]
+            for selection in ("drive,drive-v2", "all"):
+                output = base / selection
+                result = subprocess.run(command + ["--units", selection, "--output-dir", str(output)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(len(list(output.glob("*.zip"))), 4)
+            output = base / "invalid"
+            result = subprocess.run(command + ["--units", "drive,unknown", "--output-dir", str(output)], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unknown units", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertFalse(output.exists())
 
     def test_macos_finalization_relocates_before_signing_complete_bundle(self):
         bundle = Path("Drive.vst3")
         binary = bundle / "Contents/MacOS/Drive"
-        with patch("package_drive_plugins.subprocess.run") as run:
+        with patch("package_plugins.subprocess.run") as run:
             finalize_macos_bundle(bundle, binary)
         commands = [call.args[0] for call in run.call_args_list]
         self.assertEqual(commands, [
@@ -164,13 +272,13 @@ class PackagingTests(unittest.TestCase):
             for format_name in ("clap", "vst3"):
                 (release / f"libdaw_drive_{format_name}.dylib").write_bytes(format_name.encode())
             output = base / "artifacts"
-            with contextlib.redirect_stdout(io.StringIO()), patch("package_drive_plugins.finalize_macos_bundle"):
-                package(target, base / "target", output)
+            with contextlib.redirect_stdout(io.StringIO()), patch("package_plugins.finalize_macos_bundle"):
+                package(target, base / "target", output, units="drive")
             before = {path.name: path.read_bytes() for path in output.iterdir()}
             failure = subprocess.CalledProcessError(1, ["codesign"])
-            with patch("package_drive_plugins.finalize_macos_bundle", side_effect=[None, failure]):
+            with patch("package_plugins.finalize_macos_bundle", side_effect=[None, failure]):
                 with self.assertRaises(subprocess.CalledProcessError):
-                    package(target, base / "target", output)
+                    package(target, base / "target", output, units="drive")
             self.assertEqual({path.name: path.read_bytes() for path in output.iterdir()}, before)
 
     @unittest.skipUnless(sys.platform == "darwin", "requires native Mach-O tools")
@@ -188,7 +296,7 @@ class PackagingTests(unittest.TestCase):
             original = library.read_bytes()
             output = base / "artifacts"
             with contextlib.redirect_stdout(io.StringIO()):
-                package(target, base / "target", output)
+                package(target, base / "target", output, units="drive")
             self.assertEqual(library.read_bytes(), original)
             for archive in output.glob("*.zip"):
                 extracted = base / archive.stem
@@ -216,12 +324,12 @@ class PackagingTests(unittest.TestCase):
             vst3.write_bytes(b"vst3")
             output = base / "artifacts"
             with contextlib.redirect_stdout(io.StringIO()):
-                package(target, base / "target", output)
+                package(target, base / "target", output, units="drive")
             previous = {path.name: path.read_bytes() for path in output.iterdir()}
             vst3.unlink()
             (release / "libdaw_drive_clap.so").write_bytes(b"new clap")
             with self.assertRaises(FileNotFoundError):
-                package(target, base / "target", output)
+                package(target, base / "target", output, units="drive")
             self.assertEqual({path.name: path.read_bytes() for path in output.iterdir()}, previous)
 
 

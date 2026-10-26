@@ -9,10 +9,10 @@ Use the native platform prerequisites in the [README](../../README.md). On macOS
 ```sh
 cargo build --release --locked --target aarch64-apple-darwin \
   -p daw-drive-v2-clap -p daw-drive-v2-vst3 --lib
-python3 tools/package_drive_plugins.py --unit drive-v2 --target aarch64-apple-darwin
+python3 tools/package_plugins.py --units drive-v2 --target aarch64-apple-darwin
 ```
 
-The packager requires Python 3.11 or later and both libraries. On Windows x64 use `x86_64-pc-windows-msvc`; on Linux x64 use `x86_64-unknown-linux-gnu`. It writes separate `Drive-v2-…-clap.zip` and `Drive-v2-…-vst3.zip` archives and SHA-256 checksums into `target/plugin-artifacts`. macOS bundles are signed ad hoc after assembly. These are development previews, without notarization or distribution signatures.
+The generic packager requires Python 3.11 or later and both libraries. Use `--units drive,drive-v2` to package both products or `--units all` for every unit manifest; build every selected unit first. On Windows x64 use `x86_64-pc-windows-msvc`; on Linux x64 use `x86_64-unknown-linux-gnu`. It writes separate `Drive-v2-…-clap.zip` and `Drive-v2-…-vst3.zip` archives and SHA-256 checksums into `target/plugin-artifacts`. macOS bundles are signed ad hoc after assembly. These are development previews, without notarization or distribution signatures.
 
 The Build plugins workflow builds both Drive products and both formats independently on macOS arm64, Windows x64, and Linux x64. Artifacts use `Drive-v2-CLAP-<target>` and `Drive-v2-VST3-<target>` names. CI configuration does not establish native host acceptance.
 

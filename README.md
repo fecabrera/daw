@@ -48,7 +48,7 @@ Drive v2 has separate CLAP/VST3 development targets with the built-in three-stri
 
 ```sh
 cargo build --release --locked --target aarch64-apple-darwin -p daw-drive-v2-clap -p daw-drive-v2-vst3 --lib
-python3 tools/package_drive_plugins.py --unit drive-v2 --target aarch64-apple-darwin
+python3 tools/package_plugins.py --units drive-v2 --target aarch64-apple-darwin
 ```
 
 Use the Windows/Linux targets in the local packaging table below on those platforms. Archives go to `target/plugin-artifacts`. See [Drive v2 plugin controls, installation and limits](docs/effects/drive-v2-plugin.md) and [implementation/checks](specs/architecture/drive-v2-plugin-builds.md). These plugins have identities separate from original Drive.
@@ -207,7 +207,7 @@ To build and package locally, use the platform prerequisites above, then run the
 
 ```sh
 cargo build --release --locked --target <target> -p daw-drive-clap -p daw-drive-vst3 --lib
-python tools/package_drive_plugins.py --target <target>
+python tools/package_plugins.py --units drive --target <target>
 ```
 
 | Platform | Target |
@@ -216,7 +216,16 @@ python tools/package_drive_plugins.py --target <target>
 | macOS Apple Silicon | `aarch64-apple-darwin` |
 | Linux x64 | `x86_64-unknown-linux-gnu` |
 
-The packager requires Python 3.11 or later and reads release libraries from `target/<target>/release`. It writes separate CLAP/VST3 ZIPs and checksums to `target/plugin-artifacts`. It stages both formats before replacing existing archives. On macOS it replaces the build-path library ID, signs each complete bundle ad hoc, and verifies the signature before hashing and archiving. The extracted ZIP retains the resource seal. A downloaded preview can still require explicit approval in macOS Privacy & Security; ad-hoc signing is not notarization. SDK validator and performance checks remain available through the separate Drive check tools described above.
+Select multiple units with a comma-separated list, or package every unit manifest with `all`:
+
+```sh
+python tools/package_plugins.py --units drive,drive-v2 --target <target>
+python tools/package_plugins.py --units all --target <target>
+```
+
+Build both CLAP/VST3 libraries for every selected unit first. Unit names come from `plugins/*/unit.toml`; library names come from each unit's format target Cargo manifest. Unknown or empty selections fail before packaging.
+
+The packager requires Python 3.11 or later and reads release libraries from `target/<target>/release`. It writes separate CLAP/VST3 ZIPs and checksums to `target/plugin-artifacts`. It stages both formats for all selected units before replacing existing archives. Preparation or signing failures preserve the previous archives for the full selection. On macOS it replaces the build-path library ID, signs each complete bundle ad hoc, and verifies the signature before hashing and archiving. The extracted ZIP retains the resource seal. A downloaded preview can still require explicit approval in macOS Privacy & Security; ad-hoc signing is not notarization. SDK validator and performance checks remain available through the separate Drive check tools described above.
 
 The [Test and build workflow](.github/workflows/build-and-test.yml) runs on pushes, pull requests, and manual dispatches. It calls the [platform workflow](.github/workflows/platform.yml) separately for Windows, macOS, and Linux. Each platform has separate `test` and `build` jobs. Tests run formatting, strict workspace/all-target Clippy, workspace tests, and the headless CLI smoke checks with the pinned Rust toolchain and locked dependencies. Build starts after that platform's tests pass, builds and packages release binaries on a fresh worker, and uploads artifacts retained for 14 days. A failure on one platform does not block or cancel another platform's build. Both jobs use the same [native build setup action](.github/actions/setup-build/action.yml).
 

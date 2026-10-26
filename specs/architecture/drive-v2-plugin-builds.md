@@ -30,6 +30,8 @@ Vendor: `Sie`. Product: `Drive v2`. CLAP ID: `io.github.fecabrera.daw.drive-v2`.
 
 IDs 100–106 retain familiar slots where applicable, but v2 has a distinct product identity and different Color shape meaning. Original Drive identity, state, parameter values, and two-strip panel remain covered by their existing compatibility fixtures. No automatic preset migration is claimed.
 
+The shared `tools/package_plugins.py` accepts `--units drive,drive-v2` or `--units all`. It discovers unit manifests and Cargo library names, retains separate product archives/checksums, and stages every selected product before publication.
+
 ## State and processing
 
 The state envelope is exactly 104 bytes: eight-byte ASCII `DAWDRV2!`, little-endian u32 plugin-state version 1, little-endian u32 portable settings version 1, then 11 little-endian f64 plain values in ID order. A synthetic default-state hex fixture and identity fixture pin this contract. Decode validates the whole candidate before publication. Bounded stream operations reject corrupt, truncated, oversized, nonfinite and future states. CLAP and VST3 use the same envelope and coherent atomic recall/publication behavior. Appearance preferences are instance-local and not serialized, matching original Drive's current editor limitation.
