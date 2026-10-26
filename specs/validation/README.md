@@ -4,6 +4,19 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Unit context-menu power actions — 2026-10-25
+
+Installed effect and component header menus now begin with Enable/Disable. A selected header targets its selected owner-lane group; an unselected header targets only itself. All-enabled groups disable together, and mixed or disabled groups enable together. Components reuse the enclosing instrument transaction; track, Master, and inline layer effects reuse their chain transaction. Menu focus retains unit selection and returns keyboard focus after applying an action.
+
+- Focused egui tests cover every component (Oscillator, Sampler, Granulizer, Envelope, LFO, Macro, Amplitude), expanded and collapsed rows/units, first-item order, no edit on opening or pressing, and release-only toggles.
+- Group tests cover regular layers and Output components, mixed states, track/Master/layer effects, unselected targets, retained selection, and one-step Undo.
+- `cargo fmt --all --check`, `git diff --check`, and `cargo clippy --workspace --all-targets --offline --locked -- -D warnings`: passed.
+- `sh tools/package_macos.sh debug`: passed; rebuilt `target/debug/DAW.app`.
+- `cargo test --workspace --offline --locked`: passed, including all 655 UI tests and doctests. The initial run caught a removed component-transfer focus restoration; restoring it retained existing drag selection and passed the full rerun.
+- Documentation file links: passed.
+
+Native pointer/device checks and Windows/Linux builds remain untested.
+
 ## Two-column strip spacing — 2026-10-25
 
 Chorus Motion now matches OTT: one equal gap between full-size columns and at each outer edge. The 52-point controls use 19-point gaps and a 161-point strip, with one centered footer and no internal divider. `panels` owns shared column geometry/layout; Chorus, OTT and Auto-filter reuse it. The architecture specification and repository UI instructions document this standard for current and future double-width strips.

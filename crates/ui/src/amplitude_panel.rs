@@ -106,12 +106,22 @@ pub(super) fn unit(
             },
         )
         .inner;
+    let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
     result.header.context_menu(|ui| {
+        if let Some(menu) = &power_menu {
+            menu.show(ui);
+        }
         if ui.button("Remove amplitude").clicked() {
             settings.present = false;
             ui.close();
         }
     });
+    if power_menu
+        .as_ref()
+        .is_some_and(|menu| menu.action().is_some())
+    {
+        crate::unit_power::schedule_focus(ui, &result.header);
+    }
 
     Some(result)
 }

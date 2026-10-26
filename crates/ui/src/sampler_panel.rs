@@ -428,7 +428,11 @@ impl DawUi {
         let mut remove = false;
         let mut replace = false;
         let mut switch = false;
+        let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
         result.header.context_menu(|ui| {
+            if let Some(menu) = &power_menu {
+                menu.show(ui);
+            }
             if ui.button("Choose sample…").clicked() {
                 choose = true;
                 ui.close();
@@ -457,6 +461,12 @@ impl DawUi {
                 ui.close();
             }
         });
+        if power_menu
+            .as_ref()
+            .is_some_and(|menu| menu.action().is_some())
+        {
+            crate::unit_power::schedule_focus(ui, &result.header);
+        }
         if switch {
             s.granulizer = if s.granulizer.is_some() {
                 None

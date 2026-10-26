@@ -63,4 +63,4 @@ Layer effects process that layer's notes together, after Amplitude and before la
 
 Effects run in their left-to-right order. Moving a control component across an effect changes its display position; it does not change modulation timing or the fixed Amplitude processing stage. Master effects process the combined track mix.
 
-The header power control turns a unit on or off. Double-click its header to collapse or expand it. Off units keep their settings and remain editable. See [moving and copying units](../editing/units.md) and [modulation](../modulation/README.md).
+The header power control turns a unit on or off. Right-click a header for **Enable** or **Disable** as the first menu item. On a selected unit, this action applies to all selected units in its lane. Double-click its header to collapse or expand it. Off units keep their settings and remain editable. See [moving and copying units](../editing/units.md) and [modulation](../modulation/README.md).

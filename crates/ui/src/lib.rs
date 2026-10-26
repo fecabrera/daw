@@ -2,6 +2,7 @@ mod audio_edits;
 mod audio_preparation;
 mod clip_lane;
 mod clip_menu;
+mod unit_power;
 pub use clip_menu::ClipMenuAction;
 mod audio_editor;
 mod clip_paint;
@@ -1946,6 +1947,7 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        crate::unit_power::restore_focus(ui.ctx());
         // Cancellation below can retire a gesture before Escape reaches selection.
         let selection_escape_available = self.selection_escape_available(ui.ctx());
         self.ensure_history();
@@ -2208,6 +2210,7 @@ impl DawUi {
             self.component_drag.is_some(),
         );
         if !self.selected_effects.is_empty()
+            && !(self.edit_environment_available() && crate::unit_power::keeps_selection(ui))
             && self.effects_lane_focus.lost(
                 &ctx,
                 self.view_mode.has_effects()
@@ -5288,6 +5291,7 @@ mod tests {
     mod track_shortcuts;
     mod transport;
     mod trim_boundary;
+    mod unit_power;
     #[cfg(target_os = "windows")]
     mod windows_titlebar;
     use super::*;

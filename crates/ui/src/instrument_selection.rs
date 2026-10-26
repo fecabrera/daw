@@ -121,10 +121,11 @@ impl DawUi {
                 );
             }
         }
-        if self
-            .instrument_ui
-            .component_focus
-            .lost(ui.ctx(), available, dragging)
+        if !(available && crate::unit_power::keeps_selection(ui))
+            && self
+                .instrument_ui
+                .component_focus
+                .lost(ui.ctx(), available, dragging)
         {
             self.instrument_ui.selected_components.clear();
             self.instrument_ui.component_focus = Default::default();

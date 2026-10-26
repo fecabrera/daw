@@ -45,6 +45,12 @@ Command+A on macOS or Ctrl+A on Windows/Linux selects every installed unit in th
 
 Effects and components share `unit_selection::shortcuts` for Delete/Backspace and Select All key handling, and `unit_selection::select_all` for selection replacement. Reuse pane ownership, text editing, pointer/drag, enabled UI, window focus, job/dialog, and name-edit guards. Require the exact platform command modifier and ignore held-key repeats and extra modifiers. Consume blocked/repeated unit shortcuts while the pane owns them; leave text editors' keys intact. Preserve control focus, track/clip selections, unit order, and project data. Do not expand the selection into other lanes or catalogs. Select All must not dirty the project or publish an audio edit. Existing group movement/copy/removal consumes the resulting selection unchanged, with sources first.
 
+## Context-menu power actions
+
+Installed effect and component header menus place Enable/Disable first. If the clicked unit is selected, target the selected units in that owner lane; otherwise target only the clicked unit. Disable when all targets are enabled; Enable when any target is disabled. Apply one common state on menu-item release. Preserve settings, identities, order, collapse state, routes, and other lanes. Opening or dismissing a menu makes no edit. Header power controls retain their single-unit behavior.
+
+`unit_power` shares the label/action and typed settings access. Component scopes pass transient group state through egui stack tags so nested panels retain their existing menus. Apply requests after panel rendering through the enclosing instrument edit. Effects use the existing chain edit; inline effects defer requests until the complete owner chain is available. Preserve unit selection while a popup is open. Retain existing editing, drag, job/dialog, focus, and disabled-UI guards. Missing effects expose an unavailable power item without changing opaque saved state. Save and Undo/Redo reuse the existing enabled fields and transactions.
+
 ## Removing selected component units
 
 With the component lane focused, press Delete or Backspace to remove every selected unit through one `Edit::SetInstrument`. This works on regular layers and Main, with compact rows and collapsed units. Surviving units, layer/track/clip selection, and clips stay unchanged. The lane keeps keyboard focus after removal, including when empty. Held-key repeats and additional deletion presses with no selected units do not remove clips or mark the project modified.

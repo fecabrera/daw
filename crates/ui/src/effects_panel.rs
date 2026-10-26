@@ -722,9 +722,35 @@ impl DawUi {
         } else {
             effects.iter().map(|e| e.id).collect()
         };
+        let mut power_actions = Vec::new();
+        let mut power_states = if let Some(target @ EffectTarget::Layer { .. }) = target {
+            self.effect_chain(target)
+                .map_or_else(Vec::new, |(chain, _)| chain.to_vec())
+        } else {
+            effects.to_vec()
+        };
         ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing.x = -1.0;
             for effect in effects.iter_mut() {
+                let selected_here = match target {
+                    Some(EffectTarget::Layer { layer, .. }) => {
+                        self.instrument_ui.effects_layer == Some(layer)
+                    }
+                    _ => self.instrument_ui.effects_layer.is_none(),
+                };
+                let targets = if selected_here {
+                    crate::unit_selection::drag_group(&order, &self.selected_effects, effect.id)
+                } else {
+                    vec![effect.id]
+                };
+                let supported = crate::unit_power::effect_enabled(&mut effect.unit).is_some();
+                let menu = crate::unit_power::PowerMenu::new(
+                    power_states
+                        .iter_mut()
+                        .filter(|e| targets.contains(&e.id))
+                        .filter_map(|e| crate::unit_power::effect_enabled(&mut e.unit).copied()),
+                );
+
                 let mut unit_scope = egui::UiBuilder::new().id_salt(effect.id);
                 if slots.is_empty() {
                     unit_scope = unit_scope.ui_stack_info(
@@ -1053,8 +1079,15 @@ impl DawUi {
                     if allowed && interactive {
                         self.start_effect_drag(ui, &header, power, target, effect.id, &order);
                         header
+                            .clone()
                             .on_hover_cursor(egui::CursorIcon::Grab)
                             .context_menu(|ui| {
+                                ui.add_enabled_ui(self.effects_drag.is_none() && supported, |ui| {
+                                    menu.show(ui)
+                                });
+                                if menu.action().is_some() {
+                                    crate::unit_power::schedule_focus(ui, &header);
+                                }
                                 if ui
                                     .add_enabled(
                                         self.effects_drag.is_none(),
@@ -1089,9 +1122,25 @@ impl DawUi {
                         &self.effects_lane_focus,
                     );
                 }
+                if let Some(enable) = menu.action() {
+                    power_actions.push((targets, enable));
+                }
                 slots.push((effect.id, rect));
             }
         });
+        for (targets, enable) in power_actions {
+            if let Some(EffectTarget::Layer { layer, .. }) = target {
+                self.instrument_ui
+                    .inline_power_actions
+                    .push((layer, targets, enable));
+            } else {
+                for effect in effects.iter_mut().filter(|e| targets.contains(&e.id)) {
+                    if let Some(state) = crate::unit_power::effect_enabled(&mut effect.unit) {
+                        *state = enable;
+                    }
+                }
+            }
+        }
         // Paint last so adjacent units cannot cover a selected outline.
         for (id, rect) in &slots {
             crate::unit_selection::paint(ui, *rect, self.selected_effects.contains(id));

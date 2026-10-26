@@ -133,6 +133,18 @@ impl DawUi {
         layer: InlineEffects<'_>,
         viewport: Rect,
     ) {
+        for (owner, targets, enable) in &self.instrument_ui.inline_power_actions {
+            if *owner == layer.id {
+                for effect in layer.effects.iter_mut().filter(|e| targets.contains(&e.id)) {
+                    if let Some(state) = crate::unit_power::effect_enabled(&mut effect.unit) {
+                        *state = *enable;
+                    }
+                }
+            }
+        }
+        self.instrument_ui
+            .inline_power_actions
+            .retain(|(owner, _, _)| *owner != layer.id);
         let allowed = self.effects_editing_enabled(ui) && self.component_drag.is_none();
         let target = EffectTarget::Layer {
             track,

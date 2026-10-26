@@ -11,6 +11,7 @@ pub(super) struct InstrumentUi {
     pub(super) selected_layers: HashSet<Id>,
     pub(super) track_effects_target: bool,
     pub(super) effects_layer: Option<Id>,
+    pub(super) inline_power_actions: Vec<(Id, Vec<Id>, bool)>,
     pub(super) inline_effect_removals: Vec<(Id, Id)>,
     pub(super) pending_effect_transfer: Option<(daw_core::EffectTransfer, Id, Rect, egui::Id)>,
     pub(super) effect_slots: Vec<(Id, Id, Rect)>,
@@ -133,6 +134,7 @@ impl DawUi {
         self.instrument_ui.component_slots.clear();
         self.instrument_ui.effect_slots.clear();
         self.instrument_ui.inline_effect_removals.clear();
+        self.instrument_ui.inline_power_actions.clear();
         self.instrument_ui.component_viewports.clear();
         #[cfg(test)]
         self.instrument_ui.component_bounds.clear();
@@ -489,7 +491,16 @@ impl DawUi {
                                                         }
                                                         let mut previous: Option<Rect> = None;
                                                         for component in layer.visible_units() {
-                                                            let rect = ui.push_id(component, |ui| match component {
+                                                            let selected = self.instrument_ui.selected_components.iter()
+                                                                .filter(|(id, _)| *id == layer.id)
+                                                                .map(|(_, component)| *component).collect();
+                                                            let targets = crate::unit_selection::drag_group(
+                                                                &layer.visible_units(), &selected, component,
+                                                            );
+                                                            let menu = crate::unit_power::PowerMenu::new(
+                                                                targets.iter().filter_map(|c| crate::unit_power::layer_enabled(layer, *c).copied()),
+                                                            );
+                                                            let rect = ui.scope_builder(menu.scope(component), |ui| match component {
                                                                 daw_core::InstrumentComponent::Effect(id) => {
                                                                     let effect=layer.effects.iter_mut().find(|e|e.id==id).unwrap();
                                                                     Some(self.inline_layer_effect(ui,track.id,layer.id,effect,(height,compact),&modulation_sources))
@@ -554,6 +565,11 @@ impl DawUi {
                                                                 }
                                                                 daw_core::InstrumentComponent::Oscillator(_) => None,
                                                             }).inner;
+                                                            if let Some(enable) = menu.action() {
+                                                                for target in targets {
+                                                                    if let Some(state) = crate::unit_power::layer_enabled(layer, target) { *state = enable; }
+                                                                }
+                                                            }
                                                             if let Some(rect) = rect {
                                                                 if !matches!(component,daw_core::InstrumentComponent::Effect(_)) {self.instrument_ui.component_slots.push((layer.id, component, rect));}
                                                                 if let Some(previous) = previous {
@@ -1315,7 +1331,11 @@ impl DawUi {
 
         let mut replace_source = false;
         let mut replace_granular = false;
+        let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
         result.header.context_menu(|ui| {
+            if let Some(menu) = &power_menu {
+                menu.show(ui);
+            }
             if ui.button("Replace source with Granulizer").clicked() {
                 replace_source = true;
                 replace_granular = true;
@@ -1326,6 +1346,12 @@ impl DawUi {
                 ui.close();
             }
         });
+        if power_menu
+            .as_ref()
+            .is_some_and(|menu| menu.action().is_some())
+        {
+            crate::unit_power::schedule_focus(ui, &result.header);
+        }
         let remove_id = remove.map(|index| oscillators[index].id);
         if add {
             oscillators.push(Default::default());

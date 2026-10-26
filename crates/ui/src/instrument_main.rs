@@ -172,7 +172,16 @@ impl DawUi {
                                 drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range()));
                             }
                             for component in bus.visible_units() {
-                                let rect = ui.push_id(component, |ui| match component {
+                                let selected = self.instrument_ui.selected_components.iter()
+                                    .filter(|(id, _)| *id == bus.id)
+                                    .map(|(_, component)| *component).collect();
+                                let targets = crate::unit_selection::drag_group(
+                                    &bus.visible_units(), &selected, component,
+                                );
+                                let menu = crate::unit_power::PowerMenu::new(
+                                    targets.iter().filter_map(|c| crate::unit_power::bus_enabled(bus, *c).copied()),
+                                );
+                                let rect = ui.scope_builder(menu.scope(component), |ui| match component {
                                     daw_core::InstrumentComponent::Effect(id) => {
                                         let effect=bus.effects.iter_mut().find(|e|e.id==id).unwrap();
                                         Some(self.inline_layer_effect(ui,track,bus.id,effect,(height,compact),sources))
@@ -213,6 +222,11 @@ impl DawUi {
                                     }
                                     _ => None,
                                 }).inner;
+                                if let Some(enable) = menu.action() {
+                                    for target in targets {
+                                        if let Some(state) = crate::unit_power::bus_enabled(bus, target) { *state = enable; }
+                                    }
+                                }
                                 if let Some(rect) = rect {
                                     if !matches!(component,daw_core::InstrumentComponent::Effect(_)) {self.instrument_ui.component_slots.push((bus.id, component, rect));}
                                     if let Some(previous) = previous { panels::unit_divider(ui, previous.right() - 0.5, previous.top()..=rect.bottom()); }

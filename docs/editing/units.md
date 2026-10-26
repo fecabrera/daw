@@ -10,6 +10,12 @@ Select All changes only the unit selection. It does not select units in other la
 
 Envelope, LFO, Macro, and Amplitude retain settings when removed; add them from the catalog to restore them. Removing Oscillator discards its sources and pitch connections. Removing Sampler discards its sample settings. Removing a component does not delete its external recording.
 
+## Enable or disable
+
+Right-click an installed effect or component header. The first menu item is **Disable** when every target is on, or **Enable** when any target is off. Opening a selected unit's menu applies this action to all selected units in that lane. Opening an unselected unit's menu targets only that unit.
+
+The action keeps the units and their settings. Undo and Redo apply to the group together. The header power control still toggles one unit.
+
 ## Move or copy components
 
 1. Select one or more installed units.
