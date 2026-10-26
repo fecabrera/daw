@@ -57,7 +57,7 @@ Sources:
 - [Direct Drive baseline and tail survey](../../tools/drive_plugin_phase0/src/baseline.rs).
 - [Pinned protocol sources](../../tools/drive_plugin_phase0/sources.json), [quantitative budgets](../../tools/drive_plugin_phase0/budgets.json), and [diagnostic/scratch-safety tests](../../tools/test_probe_drive_plugins.py).
 
-Platform prerequisites and commands are in [README](../../README.md#drive-plugin-feasibility-tools). The runner downloads only with explicit `--fetch`, uses the isolated lockfile, verifies SDK revisions/submodule gitlinks, and keeps outputs in an owned subdirectory of ignored `work/`. It refuses an unmarked nonempty directory and paths outside that scratch tree. It never installs a plugin or opens a user project.
+Platform prerequisites and commands are in [developer reference](plugin-development-tools.md#feasibility-tools). The runner downloads only with explicit `--fetch`, uses the isolated lockfile, verifies SDK revisions/submodule gitlinks, and keeps outputs in an owned subdirectory of ignored `work/`. It refuses an unmarked nonempty directory and paths outside that scratch tree. It never installs a plugin or opens a user project.
 
 Outputs include private `.clap`/`.vst3` bundles, direct-DSP measurements, standard-validator results, independent-host observations, dependency/notice inventories, compiler/hardware metadata, and `report.json`. `--gui` briefly opens temporary host windows and verifies native child-view attachment/removal. The default run does not initialize a plugin editor. This is a native window test harness, not a general DAW or an editor visual/accessibility acceptance test.
 

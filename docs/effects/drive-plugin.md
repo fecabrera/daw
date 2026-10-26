@@ -2,7 +2,7 @@
 
 Drive has independent CLAP and VST3 development plugins. Both use the original built-in Drive sound and the same two-strip editor as built-in Drive. External DAW and Windows/Linux acceptance checks are not complete, and this is not a release package.
 
-See [CLAP build and checks](../../README.md#drive-clap-development-processor) or [VST3 build and checks](../../README.md#drive-vst3-development-processor) to create the development artifact. The build does not install it into a plugin folder. Release installation instructions will accompany the completed plugins.
+See [build and packaging instructions](../../README.md#plugins) to create the development artifacts. Packaging does not install them into a plugin folder.
 
 ## Host compatibility and installation
 
