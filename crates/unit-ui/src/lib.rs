@@ -7,6 +7,7 @@ mod icons;
 pub mod knobs;
 pub mod layout;
 pub mod lfo_controls;
+pub mod meters;
 pub mod parameter_knobs;
 pub mod rows;
 pub mod theme;

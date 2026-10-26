@@ -10,6 +10,7 @@ pub const MARGIN: i8 = crate::layout::PANEL_MARGIN;
 pub const BODY_HEIGHT: f32 = crate::layout::unit_control_height();
 pub const SIZE: Vec2 = Vec2::new(3.0 * UNIT_STRIP_WIDTH, BODY_HEIGHT + 2.0 * MARGIN as f32);
 pub struct Bounds {
+    pub meter: Rect,
     pub sections: [Rect; 3],
     pub knobs: [[Rect; 3]; 3],
     pub color_power: Rect,
@@ -36,8 +37,10 @@ pub fn show(
     compact: bool,
     compact_height: f32,
     markers: &[Option<ModulationMarker>; 7],
+    level: crate::meters::OutputLevel<'_>,
 ) -> Bounds {
     let mut bounds = Bounds {
+        meter: Rect::NOTHING,
         sections: [Rect::NOTHING; 3],
         knobs: [[Rect::NOTHING; 3]; 3],
         color_power: Rect::NOTHING,
@@ -45,6 +48,7 @@ pub fn show(
         controls: std::array::from_fn(|_| None),
         rect: Rect::NOTHING,
     };
+    let enabled = s.enabled;
     let DriveV2Settings {
         input_gain_db,
         gain,
@@ -216,6 +220,10 @@ pub fn show(
                 .response
                 .rect;
             bounds.sections[column] = strip;
+            if column == 2 && !compact {
+                bounds.meter =
+                    crate::meters::effect_output_level(ui, strip, MARGIN, level, enabled);
+            }
             if column > 0 {
                 crate::drive::divider(ui, strip.left(), strip.y_range());
             }
@@ -253,6 +261,7 @@ mod tests {
                                 false,
                                 0.0,
                                 &std::array::from_fn(|_| None),
+                                0.0.into(),
                             );
                             assert_eq!(b.rect.size(), SIZE);
                             for column in 0..3 {

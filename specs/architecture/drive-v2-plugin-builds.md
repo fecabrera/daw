@@ -52,3 +52,7 @@ Executed on macOS arm64:
 Native UI/device checks are separate from synthetic egui and loaded ABI tests. SDK validators and native editor attachment were not executed for v2: the pinned validator/SDK tools were absent locally. External DAWs, native accessibility, native Windows/Linux execution, clean-machine packaging and the complete release notice audit remain open. Original Drive's CLAP validator unsupported-rate discrepancy remains relevant; no unconditional validator pass is claimed for v2.
 
 Reproduce the loaded-library checks by building both v2 packages with `--features allocation-check`, retaining those libraries, then running their `--release --test host` suites with `DRIVE_CLAP_TEST_LIBRARY` and `DRIVE_VST3_TEST_LIBRARY` set to the retained paths. Set `DRIVE_CLAP_REQUIRE_ALLOCATION_CHECK=1` and `DRIVE_VST3_REQUIRE_ALLOCATION_CHECK=1` to require the guard. Build normal libraries again before packaging. The inherited ignored `callback_cpu_budget` tests require an explicit normal loaded-library release run and `DRIVE_CLAP_BENCH_REPORT` / `DRIVE_VST3_BENCH_REPORT` paths under ignored scratch space; they do not run in ordinary `cargo test`.
+
+## Output meter
+
+The shared Output strip includes the [standard level rail and held-peak indicator](modular-audio-units.md#standard-effect-out-strip-meter), using the same prepared meter and control-thread CLAP/VST3 telemetry paths as Drive. These values are not parameters or saved state. Editor dimensions, identity, and all existing state fixtures remain unchanged.

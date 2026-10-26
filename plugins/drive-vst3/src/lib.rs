@@ -8,6 +8,7 @@ mod editor;
 mod factory;
 mod process;
 mod queues;
+mod telemetry;
 use daw_drive_plugin::IDENTITY;
 use daw_plugin_vst3::{class_id, sys::Steinberg::*};
 pub const PROCESSOR_ID: TUID = class_id(IDENTITY.processor_id);

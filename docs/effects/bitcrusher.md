@@ -35,3 +35,5 @@ All five controls accept shared Envelope, LFO, and Macro sources from the same M
 Contributions add to the base settings and stay within their bounds. Modulated Resolution and Downsampling resolve to whole steps. These steps are part of the effect and can produce abrupt changes in its texture. Exact base Level silence stays silent under modulation.
 
 Base pointers and readouts retain the saved values. Range arcs and moving dots show modulation; the processed Resolution and Downsampling readings remain whole numbers.
+
+The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.

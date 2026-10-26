@@ -37,3 +37,7 @@ The existing output band-meter preparation, worker bindings and retirement path 
 `RoutedDestination` prepares each typed destination's routes, invokes the standard resolver, and transfers route ramps by route ID and target. `process_modulation_chain` composes repeated destinations without a unit-specific source lookup or routing loop. Band controls use the shared 1 ms additive offset smoother. Gain adds dB, Frequency multiplies by 2^octaves, and Q adds Q units; final bounds stay in portable DSP. Output Gain also uses the shared offset smoother.
 
 The engine publishes each band's three effective parameters with `ModulationTarget::EffectBand`; Output uses the ordinary Effect snapshot. This avoids a fixed snapshot limit on band count. Prepared output handles include every band on track, layer, Main, and Master chains. UI markers filter by stable target UUID and reuse the shared range/indicator and amount-knob definitions.
+
+## Standard output monitoring
+
+Use the [standard effect Out-strip meter](../architecture/modular-audio-units.md#standard-effect-out-strip-meter) for final linked-stereo level, shared held-peak capture/reset, bypass masking, and allocation-free prepared meter binding. Retain audio DSP, latency, saved settings and existing modulation behavior.

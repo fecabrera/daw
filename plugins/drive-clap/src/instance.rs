@@ -26,7 +26,7 @@ impl Audio {
         if self.state.set(parameter, value).is_ok()
             && let Some(processor) = &mut self.processor
         {
-            processor.restore(self.state);
+            processor.apply_parameter(parameter, &self.state);
         }
     }
 }
@@ -165,9 +165,10 @@ unsafe extern "C" fn activate(
         }
         let audio = unsafe { i.audio() };
         i.apply_pending(audio);
-        let Ok(processor) = Processor::new(rate, minimum, maximum, audio.state) else {
+        let Ok(mut processor) = Processor::new(rate, minimum, maximum, audio.state) else {
             return false;
         };
+        processor.set_output_meter(i.editor.model.output_meter.clone());
         audio.processor = Some(processor);
         audio.minimum = minimum;
         audio.maximum = maximum;
@@ -186,7 +187,8 @@ unsafe extern "C" fn deactivate(plugin: *const clap_plugin) {
         }
         let audio = unsafe { i.audio() };
         i.apply_pending(audio);
-        audio.processor = None; // Final DSP retirement stays on the main thread.
+        audio.processor = None;
+        i.editor.model.output_meter.current()[0].store(0, Ordering::Relaxed); // Final DSP retirement stays on the main thread.
         i.publish(audio);
         i.lifecycle.store(1, Ordering::Release);
     });
@@ -206,6 +208,7 @@ unsafe extern "C" fn stop(plugin: *const clap_plugin) {
             let _ = i
                 .lifecycle
                 .compare_exchange(3, 2, Ordering::AcqRel, Ordering::Acquire);
+            i.editor.model.output_meter.current()[0].store(0, Ordering::Relaxed);
         }
     });
 }

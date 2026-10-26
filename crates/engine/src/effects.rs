@@ -768,7 +768,28 @@ impl EffectChain {
                 unit.set_band_level_meter(meter.current().clone())
             }
             Some((_, Some(RuntimeEffect::Chorus(unit, _)))) => {
-                unit.set_meter(meter.current().clone());
+                unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::Drive(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::DriveV2(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::Bitcrusher(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::Saturator(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone());
+            }
+            Some((_, Some(RuntimeEffect::Filter(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone())
+            }
+            Some((_, Some(RuntimeEffect::AutoFilter(unit, _)))) => {
+                unit.set_output_peak_meter(meter.clone())
+            }
+            Some((_, Some(RuntimeEffect::MultibandEq(unit)))) => {
+                unit.set_output_peak_meter(meter.clone())
             }
             _ => {}
         }

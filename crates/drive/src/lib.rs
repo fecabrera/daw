@@ -1,9 +1,11 @@
 //! Stereo soft-clipping drive with pre-clipping color and post-clipping tone.
 //! FunDSP filter types stay private; callback operations do not allocate or block.
 use daw_unit_core::{
-    DRIVE_TYPE_ID, DriveSettings, EffectUnit, PortKind, ProcessingContext, UnitDescriptor,
+    DRIVE_TYPE_ID, DriveSettings, EffectUnit, LevelMonitor, PortKind, ProcessingContext,
+    UnitDescriptor,
 };
 use fundsp::{audionode::AudioNode, svf::*};
+use std::sync::{Arc, atomic::AtomicU32};
 
 mod v2;
 pub use v2::DriveV2;
@@ -66,6 +68,7 @@ pub struct Drive {
     normalization: f32,
     external: daw_unit_core::ModulationSmoother<5>,
     effective: [f32; 5],
+    monitor: LevelMonitor<3>,
 }
 fn amplitude(db: f32) -> f32 {
     10_f32.powf(db / 20.0)
@@ -96,6 +99,7 @@ impl Drive {
             mix: Ramp::new(f32::from(settings.enabled)),
             fade_frames: (context.sample_rate_hz / 200).max(1),
             configured: [f32::NAN; 4],
+            monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
             clipping: 0.0,
             normalization: 1.0,
             external: daw_unit_core::ModulationSmoother::new(context),
@@ -110,8 +114,17 @@ impl Drive {
         drive.configure(drive.base_parameters());
         drive
     }
+    /// Attach a prepared output monitor on the control thread.
+    pub fn set_meter(&mut self, meter: Arc<[AtomicU32; 3]>) {
+        self.monitor.attach(meter);
+    }
+    /// Attach current output and a click-resettable sample peak on the control thread.
+    pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
+        self.monitor.attach_peak(meter);
+    }
     /// Preserve filter history and any unrelated in-flight ramps on live edits.
     pub fn retarget(&mut self, settings: &DriveSettings) {
+        self.monitor.set_enabled(settings.enabled);
         let frames = self.fade_frames;
         self.gain.retarget(settings.gain, frames);
         self.tone.retarget(settings.tone, frames);
@@ -124,6 +137,7 @@ impl Drive {
         }
         self.mix.retarget(f32::from(settings.enabled), frames);
     }
+
     fn base_parameters(&self) -> [f32; 4] {
         [
             self.gain.value,
@@ -194,6 +208,7 @@ impl EffectUnit for Drive {
         }
     }
     fn reset(&mut self) {
+        self.monitor.reset();
         for ramp in self.ramps() {
             ramp.reset();
         }
@@ -228,7 +243,9 @@ impl Drive {
     /// Offsets in the same order: dB, normalized fractions, and octaves for Frequency.
     /// Sources and route amounts belong to the host; this portable stage smooths offsets by 1 ms.
     pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 5]) -> [f32; 2] {
-        self.process_kernel(input, offsets, 0.0, false)
+        let output = self.process_kernel(input, offsets, 0.0, false);
+        self.monitor.sample_output(output);
+        output
     }
     /// Color/clipping/Tone output before the legacy Volume and power blend.
     pub(crate) fn process_tone(

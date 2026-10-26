@@ -40,3 +40,6 @@ pub struct Strip {
     pub controls: [PanelControl; 3],
 }
 include!(concat!(env!("OUT_DIR"), "/manifest.rs"));
+
+/// Standard current/held output telemetry; allocate and attach outside processing.
+pub type OutputMeter = daw_unit_core::BandMeter<3>;

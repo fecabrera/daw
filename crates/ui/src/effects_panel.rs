@@ -50,6 +50,7 @@ pub(crate) struct EffectsUiBounds {
     pub lane_viewport: Rect,
     pub lane_scroll: f32,
     pub units: Vec<crate::equalizer_panel::Bounds>,
+    pub multiband_eq_units: Vec<crate::multiband_eq_panel::Bounds>,
     pub drive_units: Vec<crate::drive_panel::Bounds>,
     pub drive_v2_units: Vec<crate::drive_v2_panel::Bounds>,
     pub auto_filter_units: Vec<crate::auto_filter_panel::Bounds>,
@@ -101,6 +102,7 @@ impl Default for EffectsUiBounds {
             lane_viewport: Rect::NOTHING,
             lane_scroll: 0.0,
             units: vec![],
+            multiband_eq_units: vec![],
             drive_units: vec![],
             drive_v2_units: vec![],
             auto_filter_units: vec![],
@@ -193,6 +195,7 @@ impl DawUi {
         #[cfg(test)]
         {
             self.effects_bounds.units.clear();
+            self.effects_bounds.multiband_eq_units.clear();
             self.effects_bounds.drive_units.clear();
             self.effects_bounds.drive_v2_units.clear();
             self.effects_bounds.auto_filter_units.clear();
@@ -760,319 +763,330 @@ impl DawUi {
                 let unit = ui.scope_builder(unit_scope, |ui| {
                     let interactive = self.effects_drag.as_ref().is_none_or(|drag| !drag.active);
                     let (header, power) = ui
-                        .add_enabled_ui(interactive, |ui| match &mut effect.unit {
-                            daw_core::EffectSettings::MultibandEq(settings) => {
-                                let (bounds, header) = crate::multiband_eq_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    modulation_sources,
-                                    |band| {
-                                        self.output.as_ref().and_then(|o| {
-                                            o.modulation_snapshot(match band {
-                                                Some(band) => {
-                                                    daw_engine::ModulationTarget::EffectBand {
-                                                        effect: effect.id,
-                                                        band,
+                        .add_enabled_ui(interactive, |ui| {
+                            let output_level = meters::OutputLevel::new(
+                                self.output
+                                    .as_ref()
+                                    .map_or(0.0, |o| o.effect_output_level(effect.id)),
+                                self.output
+                                    .as_ref()
+                                    .and_then(|o| o.effect_output_peak(effect.id)),
+                            );
+                            match &mut effect.unit {
+                                daw_core::EffectSettings::MultibandEq(settings) => {
+                                    let (bounds, header) = crate::multiband_eq_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        |band| {
+                                            self.output.as_ref().and_then(|o| {
+                                                o.modulation_snapshot(match band {
+                                                    Some(band) => {
+                                                        daw_engine::ModulationTarget::EffectBand {
+                                                            effect: effect.id,
+                                                            band,
+                                                        }
                                                     }
-                                                }
-                                                None => {
-                                                    daw_engine::ModulationTarget::Effect(effect.id)
-                                                }
+                                                    None => daw_engine::ModulationTarget::Effect(
+                                                        effect.id,
+                                                    ),
+                                                })
                                             })
-                                        })
-                                    },
-                                    |band| {
-                                        self.output.as_ref().map_or(0.0, |o| {
-                                            o.eq_individual_band_level(effect.id, band)
-                                        })
-                                    },
-                                );
-                                (header, bounds.power)
-                            }
-                            daw_core::EffectSettings::Eq3(settings) => {
-                                let (_bounds, header) = crate::equalizer_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    self.output.as_ref().map_or([0.0; 3], |output| {
-                                        output.eq_band_levels(effect.id)
-                                    }),
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                );
-                                let power = _bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.units.push(_bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::DriveV2(settings) => {
-                                let (bounds, header) = crate::drive_v2_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                );
-                                let power = bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.drive_v2_units.push(bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::Drive(settings) => {
-                                let (_bounds, header) = crate::drive_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_values(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                );
-                                let power = _bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.drive_units.push(_bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::AutoFilter(settings) => {
-                                let (_bounds, header) = crate::auto_filter_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                    self.session.project.sample_rate_hz,
-                                );
-                                let power = _bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.auto_filter_units.push(_bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::Filter(settings) => {
-                                let (_bounds, header) = crate::auto_filter_panel::show_static(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_values(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                    self.session.project.sample_rate_hz,
-                                );
-                                let power = _bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.filter_units.push(_bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::Ott(settings) => {
-                                let gains = self.output.as_ref().map_or([0.0; 3], |output| {
-                                    output.ott_gain_change_db(effect.id)
-                                });
-                                let gains = meters::BandGainChange::new(
-                                    gains,
-                                    self.output
+                                        },
+                                        |band| {
+                                            self.output.as_ref().map_or(0.0, |o| {
+                                                o.eq_individual_band_level(effect.id, band)
+                                            })
+                                        },
+                                        output_level,
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.multiband_eq_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Eq3(settings) => {
+                                    let (_bounds, header) = crate::equalizer_panel::show(
+                                        ui,
+                                        settings,
+                                        compact,
+                                        height,
+                                        self.output.as_ref().map_or([0.0; 3], |output| {
+                                            output.eq_band_levels(effect.id)
+                                        }),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                    );
+                                    let power = _bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.units.push(_bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::DriveV2(settings) => {
+                                    let (bounds, header) = crate::drive_v2_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        output_level,
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.drive_v2_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Drive(settings) => {
+                                    let (_bounds, header) = crate::drive_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_values(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        output_level,
+                                    );
+                                    let power = _bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.drive_units.push(_bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::AutoFilter(settings) => {
+                                    let (_bounds, header) = crate::auto_filter_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        self.session.project.sample_rate_hz,
+                                        output_level,
+                                    );
+                                    let power = _bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.auto_filter_units.push(_bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Filter(settings) => {
+                                    let (_bounds, header) = crate::auto_filter_panel::show_static(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_values(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        self.session.project.sample_rate_hz,
+                                        output_level,
+                                    );
+                                    let power = _bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.filter_units.push(_bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Ott(settings) => {
+                                    let gains = self.output.as_ref().map_or([0.0; 3], |output| {
+                                        output.ott_gain_change_db(effect.id)
+                                    });
+                                    let gains = meters::BandGainChange::new(
+                                        gains,
+                                        self.output.as_ref().and_then(|output| {
+                                            output.ott_gain_change_meter(effect.id)
+                                        }),
+                                    );
+                                    let (_bounds, header) = crate::ott_panel::show(
+                                        ui,
+                                        settings,
+                                        compact,
+                                        height,
+                                        gains,
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                    );
+                                    let power = _bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.ott_units.push(_bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Limiter(settings) => {
+                                    let reduction = self
+                                        .output
                                         .as_ref()
-                                        .and_then(|output| output.ott_gain_change_meter(effect.id)),
-                                );
-                                let (_bounds, header) = crate::ott_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    gains,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
+                                        .map_or(0.0, |output| output.gain_reduction_db(effect.id));
+                                    let reduction = meters::GainReduction::new(
+                                        reduction,
+                                        self.output.as_ref().and_then(|output| {
+                                            output.gain_reduction_meter(effect.id)
+                                        }),
+                                    );
+                                    let (_bounds, header) = crate::limiter_panel::show(
+                                        ui,
+                                        settings,
+                                        compact,
+                                        height,
+                                        reduction,
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                    );
+                                    let power = _bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.limiter_units.push(_bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::StereoSpread(settings) => {
+                                    let (bounds, header) = crate::stereo_spread_panel::show(
+                                        ui,
+                                        settings,
+                                        compact,
+                                        height,
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.stereo_spread_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Saturator(settings) => {
+                                    let (bounds, header) = crate::saturator_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        output_level,
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.saturator_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Bitcrusher(settings) => {
+                                    let (bounds, header) = crate::bitcrusher_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        output_level,
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.bitcrusher_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Chorus(settings) => {
+                                    let (bounds, header) = crate::chorus_panel::show(
+                                        ui,
+                                        settings,
+                                        (compact, height),
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                        output_level,
+                                        self.session.project.tempo_bpm,
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.chorus_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::DirectionMixer(settings) => {
+                                    let (bounds, header) = crate::direction_mixer_panel::show(
+                                        ui,
+                                        settings,
+                                        compact,
+                                        height,
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                    );
+                                    let power = bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.direction_mixer_units.push(bounds);
+                                    (header, power)
+                                }
+                                daw_core::EffectSettings::Missing { type_id, .. } => {
+                                    let response = ui.add(
+                                        egui::Label::new(format!(
+                                            "Missing effect: {type_id} (bypassed)"
                                         ))
-                                    }),
-                                );
-                                let power = _bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.ott_units.push(_bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::Limiter(settings) => {
-                                let reduction = self
-                                    .output
-                                    .as_ref()
-                                    .map_or(0.0, |output| output.gain_reduction_db(effect.id));
-                                let reduction = meters::GainReduction::new(
-                                    reduction,
-                                    self.output
+                                        .sense(Sense::click_and_drag()),
+                                    );
+                                    (response, Rect::NOTHING)
+                                }
+                                daw_core::EffectSettings::Compressor(settings) => {
+                                    let reduction = self
+                                        .output
                                         .as_ref()
-                                        .and_then(|output| output.gain_reduction_meter(effect.id)),
-                                );
-                                let (_bounds, header) = crate::limiter_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    reduction,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                );
-                                let power = _bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.limiter_units.push(_bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::StereoSpread(settings) => {
-                                let (bounds, header) = crate::stereo_spread_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                );
-                                let power = bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.stereo_spread_units.push(bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::Saturator(settings) => {
-                                let (bounds, header) = crate::saturator_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                );
-                                let power = bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.saturator_units.push(bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::Bitcrusher(settings) => {
-                                let (bounds, header) = crate::bitcrusher_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                );
-                                let power = bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.bitcrusher_units.push(bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::Chorus(settings) => {
-                                let (bounds, header) = crate::chorus_panel::show(
-                                    ui,
-                                    settings,
-                                    (compact, height),
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                    self.output
-                                        .as_ref()
-                                        .map_or(0.0, |o| o.effect_output_level(effect.id)),
-                                    self.session.project.tempo_bpm,
-                                );
-                                let power = bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.chorus_units.push(bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::DirectionMixer(settings) => {
-                                let (bounds, header) = crate::direction_mixer_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                );
-                                let power = bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.direction_mixer_units.push(bounds);
-                                (header, power)
-                            }
-                            daw_core::EffectSettings::Missing { type_id, .. } => {
-                                let response = ui.add(
-                                    egui::Label::new(format!(
-                                        "Missing effect: {type_id} (bypassed)"
-                                    ))
-                                    .sense(Sense::click_and_drag()),
-                                );
-                                (response, Rect::NOTHING)
-                            }
-                            daw_core::EffectSettings::Compressor(settings) => {
-                                let reduction = self
-                                    .output
-                                    .as_ref()
-                                    .map_or(0.0, |output| output.gain_reduction_db(effect.id));
-                                let reduction = meters::GainReduction::new(
-                                    reduction,
-                                    self.output
-                                        .as_ref()
-                                        .and_then(|output| output.gain_reduction_meter(effect.id)),
-                                );
-                                let (_bounds, header) = crate::compressor_panel::show(
-                                    ui,
-                                    settings,
-                                    compact,
-                                    height,
-                                    reduction,
-                                    modulation_sources,
-                                    self.output.as_ref().and_then(|o| {
-                                        o.modulation_snapshot(daw_engine::ModulationTarget::Effect(
-                                            effect.id,
-                                        ))
-                                    }),
-                                );
-                                let power = _bounds.power;
-                                #[cfg(test)]
-                                self.effects_bounds.compressor_units.push(_bounds);
-                                (header, power)
+                                        .map_or(0.0, |output| output.gain_reduction_db(effect.id));
+                                    let reduction = meters::GainReduction::new(
+                                        reduction,
+                                        self.output.as_ref().and_then(|output| {
+                                            output.gain_reduction_meter(effect.id)
+                                        }),
+                                    );
+                                    let (_bounds, header) = crate::compressor_panel::show(
+                                        ui,
+                                        settings,
+                                        compact,
+                                        height,
+                                        reduction,
+                                        modulation_sources,
+                                        self.output.as_ref().and_then(|o| {
+                                            o.modulation_snapshot(
+                                                daw_engine::ModulationTarget::Effect(effect.id),
+                                            )
+                                        }),
+                                    );
+                                    let power = _bounds.power;
+                                    #[cfg(test)]
+                                    self.effects_bounds.compressor_units.push(_bounds);
+                                    (header, power)
+                                }
                             }
                         })
                         .inner;

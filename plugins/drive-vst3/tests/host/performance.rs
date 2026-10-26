@@ -34,15 +34,24 @@ fn callback_cpu_budget() {
                         plugin
                     })
                     .collect();
+                let direct_meters: Vec<std::sync::Arc<daw_unit_core::BandMeter<3>>> =
+                    (0..instances).map(|_| std::sync::Arc::default()).collect();
                 let mut drives: Vec<_> = (0..instances)
-                    .map(|_| {
-                        Drive::new(
+                    .map(|index| {
+                        let mut drive = Drive::new(
                             ProcessingContext {
                                 sample_rate_hz: 48000,
                                 max_block_frames: frames as u32,
                             },
                             &state.to_settings(),
-                        )
+                        );
+                        // Match the exported processor's current/held output monitoring.
+                        // The exported meter escapes to its UI consumer. Keep the direct
+                        // handle equally observable instead of benchmarking private atomics.
+                        drive.set_output_peak_meter(std::hint::black_box(
+                            direct_meters[index].clone(),
+                        ));
+                        drive
                     })
                     .collect();
                 let mut states = vec![state; instances];
@@ -118,6 +127,9 @@ fn callback_cpu_budget() {
                         }
                     }
                 }
+                for meter in &direct_meters {
+                    assert!(std::hint::black_box(meter.boost_peaks()[0].peak()) > 0.0);
+                }
                 for timing in &mut timings {
                     timing.sort_unstable();
                 }
@@ -136,7 +148,7 @@ fn callback_cpu_budget() {
                     * budgets["callback_p99_budget_fraction_of_period"]
                         .as_f64()
                         .unwrap();
-                results.push(serde_json::json!({"frames":frames,"instances":instances,"automated":automated,"blocks":10000,"direct_median_ns":direct,"exported_median_ns":exported,"median_ceiling_ns":ceiling,"direct_p99_ns":direct_p99,"exported_p99_ns":exported_p99,"p99_ceiling_ns":p99_ceiling,"passed":exported as f64<=ceiling && exported_p99 as f64<=p99_ceiling && direct_p99 as f64<=p99_ceiling}));
+                results.push(serde_json::json!({"frames":frames,"instances":instances,"automated":automated,"monitoring":"current_and_held_output_peak","blocks":10000,"direct_median_ns":direct,"exported_median_ns":exported,"median_ceiling_ns":ceiling,"direct_p99_ns":direct_p99,"exported_p99_ns":exported_p99,"p99_ceiling_ns":p99_ceiling,"passed":exported as f64<=ceiling && exported_p99 as f64<=p99_ceiling && direct_p99 as f64<=p99_ceiling}));
             }
         }
     }

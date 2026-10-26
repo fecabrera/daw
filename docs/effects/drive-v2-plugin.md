@@ -31,3 +31,5 @@ Host state saves the 11 base parameters. DAW modulation routes, project identiti
 ## Verification and limits
 
 See the [implementation and local checks](../../specs/architecture/drive-v2-plugin-builds.md). Native editor attachment, SDK validators, external DAWs, accessibility, Windows/Linux execution, and clean-machine distribution require separate checks. Original Drive's historical validation results do not validate Drive v2.
+
+The editor includes the [standard output rail and held-peak indicator](output-meter.md). Clicking the rail resets monitoring without a host automation gesture. VST3 meter delivery uses the host's processor/controller connection; CLAP reads the instance's prepared atomic meter.

@@ -35,10 +35,17 @@ impl PeakHold {
     pub fn reset_peak(&self) {
         self.0.store(0, Ordering::Relaxed);
     }
+    #[inline]
     fn record(&self, value: f32) {
         if value.is_finite() && value > 0.0 {
             // Positive finite float bits have the same order as their values.
-            self.0.fetch_max(value.to_bits(), Ordering::Relaxed);
+            // Avoid an atomic read-modify-write for samples below the held maximum.
+            // A concurrent reset can linearize after this load; the next sample
+            // still records against the reset value instead of the display release.
+            let bits = value.to_bits();
+            if bits > self.0.load(Ordering::Relaxed) {
+                self.0.fetch_max(bits, Ordering::Relaxed);
+            }
         }
     }
 }
@@ -112,6 +119,14 @@ impl<const N: usize> BandMeter<N> {
             boosts: std::array::from_fn(|_| PeakHold::default()),
         }
     }
+    #[inline]
+    fn store_levels(&self, current: [f32; N], instant: [f32; N]) {
+        self.initialize(current);
+        for (i, value) in instant.into_iter().enumerate() {
+            self.reductions[i].record(-value);
+            self.boosts[i].record(value);
+        }
+    }
     pub fn current(&self) -> &Arc<[AtomicU32; N]> {
         &self.current
     }
@@ -129,11 +144,7 @@ impl<const N: usize> MeterStorage for BandMeter<N> {
     type Reading = [f32; N];
     const ZERO: Self::Reading = [0.0; N];
     fn store(&self, reading: Self::Reading) {
-        self.initialize(reading);
-        for (i, value) in reading.into_iter().enumerate() {
-            self.reductions[i].record(-value);
-            self.boosts[i].record(value);
-        }
+        self.store_levels(reading, reading);
     }
     fn initialize(&self, reading: Self::Reading) {
         for (cell, value) in self.current.iter().zip(reading) {
@@ -221,6 +232,17 @@ impl<T: MeterStorage> UnitMeter<T> {
     }
 }
 
+impl<const N: usize> UnitMeter<BandMeter<N>> {
+    #[inline]
+    fn publish_levels(&self, current: [f32; N], instant: [f32; N]) {
+        if self.enabled
+            && let Some(handle) = &self.handle
+        {
+            handle.store_levels(current, instant);
+        }
+    }
+}
+
 /// Shared instant-attack, 300 ms-release level publication and bypass lifecycle.
 /// Values are nonnegative linear amplitudes. Prepare and attach handles off the callback.
 #[derive(Clone)]
@@ -228,6 +250,7 @@ pub struct LevelMonitor<const N: usize> {
     peaks: [f32; N],
     release: f32,
     meter: UnitMeter<[AtomicU32; N]>,
+    peak_meter: UnitMeter<BandMeter<N>>,
 }
 impl<const N: usize> LevelMonitor<N> {
     pub fn new(sample_rate_hz: u32, enabled: bool) -> Self {
@@ -235,23 +258,32 @@ impl<const N: usize> LevelMonitor<N> {
             peaks: [0.0; N],
             release: (-1.0 / (0.3 * sample_rate_hz as f32)).exp(),
             meter: UnitMeter::new(enabled),
+            peak_meter: UnitMeter::new(enabled),
         }
     }
     pub fn attach(&mut self, handle: Arc<[AtomicU32; N]>) {
         self.meter.attach(handle, self.peaks);
     }
+    pub fn attach_peak(&mut self, handle: Arc<BandMeter<N>>) {
+        self.peak_meter.attach(handle, self.peaks);
+    }
     pub fn is_connected(&self) -> bool {
-        self.meter.is_connected()
+        self.peak_meter.is_connected() || self.meter.is_connected()
     }
     pub fn is_enabled(&self) -> bool {
         self.meter.enabled
     }
     pub fn set_enabled(&mut self, enabled: bool) {
+        if self.is_enabled() == enabled {
+            return;
+        }
         self.meter.set_enabled(enabled);
+        self.peak_meter.set_enabled(enabled);
         if !enabled {
             self.reset();
         }
     }
+    #[inline]
     pub fn sample(&mut self, levels: [f32; N]) {
         if !self.is_connected() {
             return;
@@ -265,10 +297,21 @@ impl<const N: usize> LevelMonitor<N> {
             *held = level.max(*held * self.release);
         }
         self.meter.publish(self.peaks);
+        self.peak_meter.publish_levels(self.peaks, levels);
     }
     pub fn reset(&mut self) {
         self.peaks = [0.0; N];
         self.meter.publish(self.peaks);
+        self.peak_meter.publish_levels(self.peaks, [0.0; N]);
+    }
+}
+
+impl LevelMonitor<3> {
+    /// Standard effect-output reading: linked stereo absolute peak in slot zero.
+    /// Remaining slots stay zero for the existing prepared band-meter transport.
+    #[inline]
+    pub fn sample_output(&mut self, output: [f32; 2]) {
+        self.sample([output[0].abs().max(output[1].abs()), 0.0, 0.0]);
     }
 }
 
@@ -442,5 +485,49 @@ mod level_monitor_tests {
             monitor.sample([f32::NAN]);
             assert_eq!(read(), 0.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod output_peak_tests {
+    use super::*;
+    #[test]
+    fn output_peaks_capture_samples_without_reholding_decaying_values_after_reset() {
+        let meter = Arc::new(BandMeter::<3>::default());
+        let mut monitor = LevelMonitor::new(48000, true);
+        monitor.attach_peak(meter.clone());
+        monitor.sample_output([0.25, -2.0]);
+        monitor.sample_output([0.0; 2]);
+        assert_eq!(meter.boost_peaks()[0].peak(), 2.0);
+        assert!(meter.readings()[0] > 1.0);
+        meter.boost_peaks()[0].reset_peak();
+        monitor.sample_output([0.0; 2]);
+        assert_eq!(meter.boost_peaks()[0].peak(), 0.0);
+        assert!(
+            meter.readings()[0] > 1.0,
+            "display release must not repopulate the held peak"
+        );
+        monitor.sample_output([0.125, -0.5]);
+        assert_eq!(meter.boost_peaks()[0].peak(), 0.5);
+        let fresh = Arc::new(BandMeter::<3>::default());
+        monitor.attach_peak(fresh.clone());
+        assert_eq!(
+            fresh.boost_peaks()[0].peak(),
+            0.0,
+            "binding is not live peak capture"
+        );
+        assert!(fresh.readings()[0] > 0.0);
+        let mut snapshot = monitor.clone();
+        snapshot.sample_output([4.0; 2]);
+        assert_eq!(fresh.boost_peaks()[0].peak(), 0.0);
+        monitor.set_enabled(false);
+        assert_eq!(fresh.readings(), [0.0; 3]);
+        assert_eq!(fresh.boost_peaks()[0].peak(), 0.0);
+        monitor.sample_output([4.0; 2]);
+        assert_eq!(fresh.readings(), [0.0; 3]);
+        assert_eq!(Arc::strong_count(&fresh), 2);
+        monitor.set_enabled(true);
+        monitor.sample_output([0.2, -0.4]);
+        assert_eq!(fresh.boost_peaks()[0].peak(), 0.4);
     }
 }

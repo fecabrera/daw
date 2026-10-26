@@ -225,6 +225,7 @@ impl ModulationDestination for Output {
 }
 #[derive(Clone)]
 pub struct MultibandEq {
+    output_monitor: daw_unit_core::LevelMonitor<3>,
     bands: Vec<RoutedDestination<Band>>,
     output: RoutedDestination<Output>,
     bypass: Ramp<1>,
@@ -233,6 +234,7 @@ pub struct MultibandEq {
 impl MultibandEq {
     pub fn new(c: ProcessingContext, s: &MultibandEqSettings) -> Self {
         Self {
+            output_monitor: daw_unit_core::LevelMonitor::new(c.sample_rate_hz, s.enabled),
             bands: s
                 .bands
                 .iter()
@@ -257,6 +259,11 @@ impl MultibandEq {
             fade_frames: (c.sample_rate_hz / 200).max(1),
         }
     }
+    /// Attach the final unit output monitor, independently of per-band analysis.
+    /// Prepare and attach on the control thread; retain the handle until retirement.
+    pub fn set_output_peak_meter(&mut self, meter: std::sync::Arc<daw_unit_core::BandMeter<3>>) {
+        self.output_monitor.attach_peak(meter);
+    }
     /// Attach a prepared level handle to one stable band. Remaining cells are reserved.
     pub fn set_band_level_meter(
         &mut self,
@@ -269,6 +276,9 @@ impl MultibandEq {
     }
     /// Transfer histories into a prepared topology. Removed owners stay in the retired processor.
     pub fn inherit(&mut self, previous: &mut Self) {
+        let enabled = self.output_monitor.is_enabled();
+        std::mem::swap(&mut self.output_monitor, &mut previous.output_monitor);
+        self.output_monitor.set_enabled(enabled);
         for band in &mut self.bands {
             if let Some(old) = previous
                 .bands
@@ -300,7 +310,9 @@ impl MultibandEq {
         let wet = process_modulation_chain(&mut self.bands, input, shared, context);
         let wet = self.output.process(wet, shared, context);
         let mix = self.bypass.advance()[0];
-        std::array::from_fn(|ch| input[ch] + (wet[ch] - input[ch]) * mix)
+        let output = std::array::from_fn(|ch| input[ch] + (wet[ch] - input[ch]) * mix);
+        self.output_monitor.sample_output(output);
+        output
     }
     pub fn band_parameters(&self, id: ModulationTargetId) -> Option<[f32; 3]> {
         self.bands
@@ -326,6 +338,7 @@ impl EffectUnit for MultibandEq {
         self.process_at(input, &[], ModulationContext::default())
     }
     fn reset(&mut self) {
+        self.output_monitor.reset();
         for b in &mut self.bands {
             b.destination.reset();
             b.reset_routes();

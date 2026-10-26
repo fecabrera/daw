@@ -42,8 +42,17 @@ impl Processor {
             state,
         })
     }
+    pub fn set_output_meter(&mut self, meter: std::sync::Arc<crate::OutputMeter>) {
+        self.drive.set_output_peak_meter(meter);
+    }
     pub fn state(&self) -> PluginState {
         self.state
+    }
+    /// Copy only the changed parameter from an already validated snapshot.
+    /// Timed automation must not copy the complete state on every sample.
+    pub fn apply_parameter(&mut self, parameter: Parameter, state: &PluginState) {
+        self.state.copy_parameter_from(parameter, state);
+        self.drive.retarget(&self.state.to_settings());
     }
     pub fn restore(&mut self, state: PluginState) {
         self.state = state;

@@ -6,6 +6,7 @@ rust-version.workspace = true
 license = "BSD-2-Clause"
 
 [dependencies]
+daw-unit-core.workspace = true
 daw-drive-plugin = { package = "daw-drive-v2-plugin", path = "../drive-v2-plugin" }
 daw-plugin-support.workspace = true
 daw-plugin-window.workspace = true

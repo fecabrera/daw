@@ -21,7 +21,7 @@ impl Default for Controller {
     }
 }
 impl Class for Controller {
-    type Interfaces = (IEditController,);
+    type Interfaces = (IEditController, IConnectionPoint);
 }
 impl IPluginBaseTrait for Controller {
     unsafe fn initialize(&self, _: *mut FUnknown) -> tresult {
@@ -34,6 +34,7 @@ impl IPluginBaseTrait for Controller {
     unsafe fn terminate(&self) -> tresult {
         boundary(kInternalError, || {
             self.initialized.set(false);
+            self.data.meter_connection.clear();
             drop(self.data.handler.borrow_mut().take());
             kResultOk
         })
@@ -217,5 +218,87 @@ impl IEditControllerTrait for Controller {
             }
             crate::editor::View::create(self.data.clone())
         })
+    }
+}
+
+impl IConnectionPointTrait for Controller {
+    unsafe fn connect(&self, other: *mut IConnectionPoint) -> tresult {
+        boundary(kInternalError, || unsafe {
+            self.data.meter_connection.connect(other)
+        })
+    }
+    unsafe fn disconnect(&self, other: *mut IConnectionPoint) -> tresult {
+        boundary(kInternalError, || unsafe {
+            self.data.meter_connection.disconnect(other)
+        })
+    }
+    unsafe fn notify(&self, message: *mut IMessage) -> tresult {
+        boundary(kInternalError, || {
+            let Some((crate::telemetry::Kind::Reading, values)) =
+                (unsafe { crate::telemetry::read(message) })
+            else {
+                return kInvalidArgument;
+            };
+            self.data.model.receive_output(values);
+            kResultOk
+        })
+    }
+}
+
+#[cfg(test)]
+mod output_meter_tests {
+    use super::*;
+    use daw_plugin_vst3::sys::ComWrapper;
+    use daw_unit_core::MeterStorage;
+    #[test]
+    fn connection_transfers_only_meter_values_and_balances_peak_reset_without_host_edits() {
+        let component = ComWrapper::new(crate::component::Component::default());
+        let controller = ComWrapper::new(Controller::default());
+        let a = component.to_com_ptr::<IConnectionPoint>().unwrap();
+        let b = controller.to_com_ptr::<IConnectionPoint>().unwrap();
+        // SAFETY: both wrappers and their owned interfaces remain live through disconnect.
+        unsafe {
+            assert_eq!(a.connect(b.as_ptr()), kResultOk);
+            assert_eq!(b.connect(a.as_ptr()), kResultOk);
+        }
+        component
+            .processing
+            .store(true, std::sync::atomic::Ordering::Release);
+        component.output_meter.store([2.0, 0.0, 0.0]);
+        component.output_meter.initialize([0.25, 0.0, 0.0]);
+        let state = controller.data.state.get();
+        controller.data.main();
+        assert_eq!(
+            controller.data.model.output_meter.readings(),
+            [0.25, 0.0, 0.0]
+        );
+        assert_eq!(
+            controller.data.model.output_meter.boost_peaks()[0].peak(),
+            2.0
+        );
+        assert_eq!(controller.data.state.get(), state);
+        controller
+            .data
+            .model
+            .output_reset
+            .store(true, std::sync::atomic::Ordering::Release);
+        controller.data.main();
+        assert_eq!(component.output_meter.boost_peaks()[0].peak(), 0.0);
+        assert_eq!(component.output_meter.readings()[0], 0.25);
+        assert_eq!(
+            controller.data.model.output_meter.boost_peaks()[0].peak(),
+            0.0
+        );
+        component
+            .processing
+            .store(false, std::sync::atomic::Ordering::Release);
+        controller.data.main();
+        assert_eq!(controller.data.model.output_meter.readings()[0], 0.0);
+        // SAFETY: null is explicitly rejected; connections are then removed before object release.
+        unsafe {
+            assert_eq!(b.notify(std::ptr::null_mut()), kInvalidArgument);
+            assert_eq!(a.disconnect(b.as_ptr()), kResultOk);
+            assert_eq!(b.disconnect(a.as_ptr()), kResultOk);
+        }
     }
 }

@@ -20,6 +20,8 @@ pub enum Edit {
 }
 /// Access this channel only from editor/control threads. The audio callback never locks it.
 pub struct Model {
+    pub output_meter: Arc<daw_drive_plugin::OutputMeter>,
+    pub output_reset: std::sync::atomic::AtomicBool,
     state: Snapshot<7>,
     events: Mutex<VecDeque<Edit>>,
     pub appearance: AtomicU32,
@@ -28,6 +30,8 @@ pub struct Model {
 impl Default for Model {
     fn default() -> Self {
         Self {
+            output_meter: Arc::default(),
+            output_reset: std::sync::atomic::AtomicBool::new(false),
             state: Snapshot::new(Parameter::ALL.map(|p| PluginState::default().get(p).to_bits())),
             events: Mutex::new(VecDeque::with_capacity(CAPACITY)),
             appearance: AtomicU32::new(0),
@@ -36,6 +40,14 @@ impl Default for Model {
     }
 }
 impl Model {
+    /// Apply a host-transported VST3 snapshot on the control thread.
+    pub fn receive_output(&self, values: [f32; 2]) {
+        use daw_unit_core::MeterStorage;
+        self.output_meter.boost_peaks()[0].reset_peak();
+        self.output_meter.store([values[1], 0.0, 0.0]);
+        self.output_meter.initialize([values[0], 0.0, 0.0]);
+    }
+
     pub fn publish(&self, state: PluginState) {
         self.state
             .publish(Parameter::ALL.map(|p| state.get(p).to_bits()));
@@ -167,6 +179,11 @@ impl Editor {
                     false,
                     0.0,
                     &std::array::from_fn(|_| None),
+                    daw_unit_ui::meters::OutputLevel::new(
+                        self.model.output_meter.readings()[0],
+                        Some(&self.model.output_meter.boost_peaks()[0]),
+                    )
+                    .with_reset_request(&self.model.output_reset),
                 )
             })
             .inner;
@@ -353,5 +370,26 @@ mod tests {
         drop(editor);
         let edits = events(&model);
         assert_eq!(edits.last(), Some(&Edit::End(Parameter::Gain)));
+    }
+    #[test]
+    fn output_peak_reset_is_not_a_parameter_gesture() {
+        use daw_unit_core::MeterStorage;
+        let (ctx, model, mut editor) = setup();
+        model.output_meter.store([1.5, 0.0, 0.0]);
+        model.output_meter.initialize([0.25, 0.0, 0.0]);
+        frame(&ctx, &mut editor, vec![], true);
+        let pos = Pos2::new(45.0, 4.0);
+        for pressed in [true, false] {
+            frame(
+                &ctx,
+                &mut editor,
+                vec![Event::PointerMoved(pos), pointer(pos, pressed)],
+                true,
+            );
+        }
+        assert_eq!(model.output_meter.boost_peaks()[0].peak(), 0.0);
+        assert_eq!(model.output_meter.readings()[0], 0.25);
+        assert!(events(&model).is_empty());
+        assert_eq!(editor.state, PluginState::default());
     }
 }

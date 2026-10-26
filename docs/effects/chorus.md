@@ -28,3 +28,5 @@ Header power bypasses the complete effect, including Level, while retaining dela
 All controls except Voices accept shared Envelope, LFO and Macro modulation through the existing [connection strips](../modulation/README.md). Rate amounts use octaves in both modes and stay within the active mode’s rate range; Delay uses milliseconds; Stereo phase uses degrees; Depth, Feedback, Width and Dry/Wet use percentage points; Level uses dB. Audio tracks and Master have no instrument providers, so their connections can remain unassigned.
 
 Chorus continues processing through timeline gaps. Export ends at the arranged duration and does not append its delay tail. Seeking reconstructs history on a worker; long arrangements can need preparation time. The dry signal has no added delay; the wet delays are part of the effect's sound.
+
+The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.

@@ -4,7 +4,7 @@
   "drive_median_budget": {
     "direct_dsp_multiplier": 1.20,
     "additional_nanoseconds_per_instance_per_block": 1000,
-    "comparison": "same compiler/profile/hardware/DSP settings and reconstructed parameter stream"
+    "comparison": "same compiler/profile/hardware/DSP settings, prepared output monitoring, and reconstructed parameter stream"
   },
   "callback_p99_budget_fraction_of_period": 0.50,
   "baseline_required_to_fit_callback_budget": true,

@@ -204,6 +204,13 @@ fn band_meters(
                 daw_core::EffectSettings::Ott(_)
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::Chorus(_)
+                    | daw_core::EffectSettings::Drive(_)
+                    | daw_core::EffectSettings::DriveV2(_)
+                    | daw_core::EffectSettings::Bitcrusher(_)
+                    | daw_core::EffectSettings::Saturator(_)
+                    | daw_core::EffectSettings::Filter(_)
+                    | daw_core::EffectSettings::AutoFilter(_)
+                    | daw_core::EffectSettings::MultibandEq(_)
             )
             .then_some(ModulationTarget::Effect(effect.id));
             let bands = match &effect.unit {
@@ -713,7 +720,13 @@ impl AudioOutput {
             .get(&ModulationTarget::Effect(id))
             .map(AsRef::as_ref)
     }
-    /// Linear output peak for an effect's single level rail; stopped/absent outputs show silence.
+    /// Held linear output sample peak, retained while paused/stopped and resettable by the UI.
+    pub fn effect_output_peak(&self, id: Id) -> Option<&daw_unit_core::PeakHold> {
+        self.band_meters
+            .get(&ModulationTarget::Effect(id))
+            .map(|m| &m.boost_peaks()[0])
+    }
+    /// Current linear output level; stopped or absent outputs show silence.
     pub fn effect_output_level(&self, id: Id) -> f32 {
         self.band_monitor_values(id)[0]
     }
@@ -1755,6 +1768,13 @@ mod band_meter_tests {
             for make in [
                 daw_core::EffectInstance::equalizer,
                 daw_core::EffectInstance::chorus,
+                daw_core::EffectInstance::drive,
+                daw_core::EffectInstance::drive_v2,
+                daw_core::EffectInstance::bitcrusher,
+                daw_core::EffectInstance::saturator,
+                daw_core::EffectInstance::filter,
+                daw_core::EffectInstance::auto_filter,
+                daw_core::EffectInstance::multiband_equalizer,
                 daw_core::EffectInstance::compressor,
                 daw_core::EffectInstance::limiter,
                 daw_core::EffectInstance::ott,
@@ -1791,6 +1811,12 @@ mod band_meter_tests {
                         daw_core::EffectSettings::MultibandEq(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Eq3(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Chorus(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Drive(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::DriveV2(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Bitcrusher(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Saturator(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Filter(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::AutoFilter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Compressor(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Limiter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Ott(s) => s.enabled = enabled,
@@ -2238,7 +2264,13 @@ mod multiband_meter_tests {
         plan.project.tracks[0].effects.push(first);
         plan.project.master.effects.push(second);
         let meters = band_meters(&plan, &HashMap::new());
-        assert_eq!(meters.len(), 82);
+        assert_eq!(meters.len(), 84);
+        for effect in [&first_key, &second_key] {
+            let ModulationTarget::EffectBand { effect, .. } = effect else {
+                unreachable!()
+            };
+            assert!(meters.contains_key(&ModulationTarget::Effect(*effect)));
+        }
         assert!(!Arc::ptr_eq(&meters[&first_key], &meters[&second_key]));
         let mut renderer = Renderer::new(plan.clone());
         bind_band_meters(&mut renderer, &meters);

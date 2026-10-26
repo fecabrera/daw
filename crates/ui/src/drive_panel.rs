@@ -1,8 +1,10 @@
-use crate::{knobs, panels};
+use crate::{knobs, meters, panels};
 use daw_core::DriveSettings;
 use egui::{Rect, Ui};
 
 pub(super) struct Bounds {
+    #[cfg(test)]
+    pub meter: Rect,
     pub header: Rect,
     pub power: Rect,
     pub knobs: [[Rect; 3]; 2],
@@ -11,26 +13,27 @@ pub(super) struct Bounds {
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut DriveSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<[f32; 5]>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
     ui.scope_builder(
         egui::UiBuilder::new()
             .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
-        |ui| show_inner(ui, settings, compact, height, sources, live),
+        |ui| show_inner(ui, settings, dimensions, sources, live, level),
     )
     .inner
 }
 fn show_inner(
     ui: &mut Ui,
     settings: &mut DriveSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<[f32; 5]>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
+    let (compact, height) = dimensions;
     let open = settings.modulation_open;
     let bases = [
         settings.volume_db,
@@ -52,6 +55,8 @@ fn show_inner(
     });
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
+        #[cfg(test)]
+        meter: Rect::NOTHING,
         header: Rect::NOTHING,
         power: Rect::NOTHING,
         knobs: [[Rect::NOTHING; 3]; 2],
@@ -64,7 +69,8 @@ fn show_inner(
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 let shared = daw_unit_ui::drive::show(ui, settings, compact,
-                    crate::envelope_panel::body_height(true), &markers);
+                    crate::envelope_panel::body_height(true), &markers, level);
+                #[cfg(test)] { bounds.meter = shared.meter; }
                 bounds.knobs = shared.knobs;
                 bounds.labels = shared.labels;
                 if open {

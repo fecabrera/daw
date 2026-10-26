@@ -30,3 +30,5 @@ Input Gain, Drive Gain, Drive Tone, Color Strength, Color Frequency, Output Leve
 Controls, power, and Clip changes ramp smoothly. Connections, settings, and panel presentation save per effect. Playback and export share processing. Like Drive, this effect runs at the project rate without oversampling and adds no latency. Strong distortion can alias, especially with high-frequency input. See [Drive](drive.md) for the shared color and tone behavior.
 
 Separate CLAP/VST3 development builds use these same controls and DSP. See [Drive v2 plugins](drive-v2-plugin.md) for building, installation, and verification limits.
+
+The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.

@@ -77,6 +77,11 @@ impl Chorus {
     pub fn set_meter(&mut self, meter: Arc<[AtomicU32; 3]>) {
         self.monitor.attach(meter);
     }
+    /// Attach current output and a click-resettable sample peak on the control thread.
+    pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
+        self.monitor.attach_peak(meter);
+    }
+
     pub fn retarget(&mut self, s: &ChorusSettings) {
         self.rate_mode = s.rate_mode;
         self.note_rate = s.note_rate;
@@ -194,10 +199,7 @@ impl Chorus {
             (dry[ch] * (1.0 - f64::from(p[8])) + effected * f64::from(p[8]))
                 .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
         });
-        if self.monitor.is_enabled() {
-            self.monitor
-                .sample([output[0].abs().max(output[1].abs()), 0.0, 0.0]);
-        }
+        self.monitor.sample_output(output);
         output
     }
 }

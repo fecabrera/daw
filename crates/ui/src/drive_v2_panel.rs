@@ -1,7 +1,9 @@
-use crate::panels;
+use crate::{meters, panels};
 use daw_core::{DriveV2Settings, ModulationParameter as P};
 use egui::{Rect, Ui};
 pub(super) struct Bounds {
+    #[cfg(test)]
+    pub meter: Rect,
     pub power: Rect,
     #[cfg(test)]
     pub sections: [Rect; 3],
@@ -15,26 +17,27 @@ pub(super) struct Bounds {
 pub(super) fn show(
     ui: &mut Ui,
     s: &mut DriveV2Settings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
     ui.scope_builder(
         egui::UiBuilder::new()
             .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
-        |ui| show_inner(ui, s, compact, height, sources, live),
+        |ui| show_inner(ui, s, dimensions, sources, live, level),
     )
     .inner
 }
 fn show_inner(
     ui: &mut Ui,
     s: &mut DriveV2Settings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
+    let (compact, height) = dimensions;
     let bases = [
         s.input_gain_db,
         s.gain,
@@ -57,6 +60,8 @@ fn show_inner(
     });
     let open = s.modulation_open;
     let mut bounds = Bounds {
+        #[cfg(test)]
+        meter: Rect::NOTHING,
         power: Rect::NOTHING,
         #[cfg(test)]
         sections: [Rect::NOTHING; 3],
@@ -87,9 +92,11 @@ fn show_inner(
                     compact,
                     crate::envelope_panel::body_height(true),
                     &markers,
+                    level,
                 );
                 #[cfg(test)]
                 {
+                    bounds.meter = shared.meter;
                     bounds.sections = shared.sections;
                     bounds.knobs = shared.knobs;
                     bounds.color_power = shared.color_power;

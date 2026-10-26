@@ -72,3 +72,7 @@ loop parity; state/route versions, invalid edits, duplication and save/reopen;
 track/Master/layer/Output placement; both-theme two-strip controls and compact mode.
 Record native interaction, listening and Windows/Linux checks separately in
 [validation history](../validation/README.md).
+
+## Standard output monitoring
+
+Use the [standard effect Out-strip meter](../architecture/modular-audio-units.md#standard-effect-out-strip-meter) for final linked-stereo level, shared held-peak capture/reset, bypass masking, and allocation-free prepared meter binding. Retain audio DSP, latency, saved settings and existing modulation behavior.

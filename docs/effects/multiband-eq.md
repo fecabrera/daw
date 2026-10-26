@@ -24,3 +24,5 @@ Each expanded band has a meter above its knobs. It shows the louder channel at t
 Open the header's modulation dot to connect shared Envelope, LFO, or Macro sources from the same MIDI instrument. Select **Band N · Gain**, **Frequency**, **Q**, or **Output · Gain**. Gain amounts use dB, Frequency uses octaves, and Q uses Q units. Knob arcs and live indicators show modulation while the pointer retains the saved base value. Mode and power are discrete controls.
 
 Removing a band removes its modulation connections. Other bands keep their connections when their displayed numbers change. Undo restores a removed band and its connections.
+
+The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.

@@ -1,11 +1,12 @@
 //! Portable stereo waveshaping with shared modulation and fixed-latency 4× anti-aliasing.
 mod oversampling;
 use daw_unit_core::{
-    EffectUnit, ModulationContext, ModulationDestination, ModulationDestinationSettings,
-    ModulationInputs, ModulationParameter, ModulationRamp, ModulationScope, ModulationSmoother,
-    PortKind, ProcessingContext, SATURATOR_TYPE_ID, SILENT_GAIN_DB, SaturatorClipMode,
-    SaturatorSettings, SaturatorShape, UnitDescriptor,
+    EffectUnit, LevelMonitor, ModulationContext, ModulationDestination,
+    ModulationDestinationSettings, ModulationInputs, ModulationParameter, ModulationRamp,
+    ModulationScope, ModulationSmoother, PortKind, ProcessingContext, SATURATOR_TYPE_ID,
+    SILENT_GAIN_DB, SaturatorClipMode, SaturatorSettings, SaturatorShape, UnitDescriptor,
 };
+use std::sync::{Arc, atomic::AtomicU32};
 fn gain(db: f32) -> f32 {
     if db <= SILENT_GAIN_DB {
         0.0
@@ -71,6 +72,7 @@ pub struct Saturator {
     external: ModulationSmoother<3>,
     effective: [f32; 3],
     fade_frames: u32,
+    monitor: LevelMonitor<3>,
     oversampling: oversampling::Oversampling,
     dry: [[f32; 2]; oversampling::LATENCY],
     dry_index: usize,
@@ -91,6 +93,7 @@ impl Saturator {
             shapes: SaturatorShape::ALL.map(|v| ModulationRamp::new(f32::from(v == s.shape))),
             clips: SaturatorClipMode::ALL.map(|v| ModulationRamp::new(f32::from(v == s.clip_mode))),
             external: ModulationSmoother::new(context),
+            monitor: LevelMonitor::new(context.sample_rate_hz, s.enabled),
             effective: [s.drive_db, s.level_db, s.dry_wet],
             fade_frames: (context.sample_rate_hz / 200).max(1),
             oversampling: oversampling::Oversampling::new(),
@@ -98,7 +101,16 @@ impl Saturator {
             dry_index: 0,
         }
     }
+    /// Attach a prepared output monitor on the control thread.
+    pub fn set_meter(&mut self, meter: Arc<[AtomicU32; 3]>) {
+        self.monitor.attach(meter);
+    }
+    /// Attach current output and a click-resettable sample peak on the control thread.
+    pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
+        self.monitor.attach_peak(meter);
+    }
     pub fn retarget(&mut self, s: &SaturatorSettings) {
+        self.monitor.set_enabled(s.enabled);
         for (r, v) in self.parameters.iter_mut().zip(Self::values(s)) {
             r.set(v, self.fade_frames);
         }
@@ -109,6 +121,7 @@ impl Saturator {
             r.set(f32::from(v == s.clip_mode), self.fade_frames);
         }
     }
+
     /// Processed Drive dB, Level dB, Dry/Wet, excluding the separate bypass ramp.
     pub fn effective_parameters(&self) -> [f32; 3] {
         self.effective
@@ -152,7 +165,7 @@ impl Saturator {
                     .sum::<f64>()
             })
         });
-        std::array::from_fn(|ch| {
+        let output = std::array::from_fn(|ch| {
             // Reconstruction can overshoot a clipped high-rate sample. Guard sample ceilings again
             // only after the No Clip contribution has completely faded out.
             let wet = if clips[0] == 0.0 {
@@ -164,7 +177,9 @@ impl Saturator {
             let enabled = f64::from(p[3]);
             (f64::from(dry[ch]) * (1.0 - enabled) + processed * enabled)
                 .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
-        })
+        });
+        self.monitor.sample_output(output);
+        output
     }
 }
 impl EffectUnit for Saturator {
@@ -181,6 +196,7 @@ impl EffectUnit for Saturator {
         Self::LATENCY_FRAMES
     }
     fn reset(&mut self) {
+        self.monitor.reset();
         for r in &mut self.parameters {
             r.reset();
         }

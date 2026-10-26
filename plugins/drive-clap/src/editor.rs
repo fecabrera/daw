@@ -63,6 +63,7 @@ impl Default for Bridge {
 }
 impl Bridge {
     pub fn main(&self, i: &Instance) {
+        self.model.output_reset.store(false, Ordering::Release);
         if let Some(window) = self.gui.borrow().window.as_ref() {
             window.host_main_thread_callback();
         }

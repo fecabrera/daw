@@ -3,12 +3,14 @@ use crate::parameter_knobs;
 use crate::{
     icons,
     knobs::{self, Knob, KnobSpec},
-    panels, rows, theme,
+    meters, panels, rows, theme,
 };
 use daw_core::{AutoFilterSettings, FilterShape, ModulationParameter as Parameter};
 use egui::{Rect, Ui, Vec2};
 
 pub(super) struct Bounds {
+    #[cfg(test)]
+    pub meter: Rect,
     pub header: Rect,
     pub power: Rect,
     pub knobs: [[Rect; 3]; 4],
@@ -136,9 +138,10 @@ fn show_panel(
     dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<[f32; 8]>,
-    sample_rate_hz: u32,
-    internal_lfo: bool,
+    options: (u32, bool),
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
+    let (sample_rate_hz, internal_lfo) = options;
     let (compact, height) = dimensions;
     ui.scope_builder(egui::UiBuilder::new().ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),|ui| {
     let modulation_open=settings.modulation_open;
@@ -154,6 +157,7 @@ fn show_panel(
     if let Some(marker) = &mut markers[0] { marker.range = marker.range.map(|v| v.min(sample_rate_hz as f32 * 0.45)); }
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
+        #[cfg(test)] meter: Rect::NOTHING,
         header: Rect::NOTHING,
         power: Rect::NOTHING,
         knobs: [[Rect::NOTHING; 3]; 4],
@@ -189,6 +193,11 @@ fn show_panel(
                     });
                 })).inner.response.rect;
                 bounds.sections[section] = rect;
+                if section == 2 && !compact {
+                    let rail = meters::effect_output_level(ui, rect, panel.margin, level, settings.enabled);
+                    #[cfg(test)] {bounds.meter=rail;}
+                    #[cfg(not(test))] let _=rail;
+                }
                 if section > 0 { panels::unit_divider(ui, rect.left(), rect.y_range().into()); }
             }
             if modulation_open {
@@ -211,31 +220,31 @@ fn show_panel(
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut AutoFilterSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
     sample_rate_hz: u32,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
     show_panel(
         ui,
         settings,
-        (compact, height),
+        dimensions,
         sources,
         live.map(|v| std::array::from_fn(|i| v[i])),
-        sample_rate_hz,
-        true,
+        (sample_rate_hz, true),
+        level,
     )
 }
 
 pub(super) fn show_static(
     ui: &mut Ui,
     settings: &mut daw_core::FilterSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<[f32; 5]>,
     sample_rate_hz: u32,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
     // This is a temporary control view, never saved or sent to the processor.
     // Move routes into it so painting does not clone the connection list.
@@ -255,11 +264,11 @@ pub(super) fn show_static(
     let result = show_panel(
         ui,
         &mut view,
-        (compact, height),
+        dimensions,
         sources,
         live.map(|v| std::array::from_fn(|i| if i < 5 { v[i] } else { f32::NAN })),
-        sample_rate_hz,
-        false,
+        (sample_rate_hz, false),
+        level,
     );
     settings.enabled = view.enabled;
     settings.collapsed = view.collapsed;

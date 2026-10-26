@@ -37,3 +37,7 @@ The existing engine prepares every route and processor outside the callback; res
 ## Separate plugins
 
 [Drive v2 plugin builds](../architecture/drive-v2-plugin-builds.md) define independent CLAP/VST3 identity, host parameters, state, shared editor, packaging and validation limits over this processor. The original Drive product remains separate.
+
+## Standard output monitoring
+
+Use the [standard effect Out-strip meter](../architecture/modular-audio-units.md#standard-effect-out-strip-meter) for final linked-stereo level, shared held-peak capture/reset, bypass masking, and allocation-free prepared meter binding. Retain audio DSP, latency, saved settings and existing modulation behavior.

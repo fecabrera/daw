@@ -101,3 +101,20 @@ fn malformed_foreign_and_future_state_do_not_replace_working_state() {
         original
     );
 }
+
+use daw_drive_v2_plugin::{Parameter as CopyParameter, PluginState as CopyState, Processor};
+#[test]
+fn timed_parameter_application_copies_only_the_selected_validated_value() {
+    let mut processor = Processor::new(48000.0, 1, 512, CopyState::default()).unwrap();
+    let mut source = CopyState::default();
+    for parameter in CopyParameter::ALL {
+        source.set(parameter, parameter.info().maximum).unwrap();
+    }
+    let mut expected = CopyState::default();
+    for parameter in CopyParameter::ALL.into_iter().rev() {
+        expected.set(parameter, source.get(parameter)).unwrap();
+        processor.apply_parameter(parameter, &source);
+        assert_eq!(processor.state(), expected);
+        assert!(processor.state().to_settings().valid());
+    }
+}

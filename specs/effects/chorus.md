@@ -27,3 +27,7 @@ Use the existing band-meter binding/retirement path and `UnitMeter` lifecycle th
 Chorus requests the existing full processing-history preparation path so native seek/cache reconstruction includes feedback and clock history on workers. Reuse track, layer, Main, Master, grouped-bus, serial-effect, playback and export processing. Gaps feed silence into the continuing processor. Stop/reset clears buffers and phase; pause retains state through the existing transport fade. Export retains the current arranged-duration policy; automatic tail extension remains outside this change.
 
 Acceptance covers rendered wet-tone frequency deviation across fast Hz rates, note durations, tempo and octave modulation at six project rates, compensation startup/retarget/reset, six-rate delay/feedback/stereo/width behavior, finite boundaries and modulation bounds, meter bypass/clone lifecycle, compatible history and allocation checks, playback/export/prepared-seek parity, all shared modulation targets and owners, persistence/copy/rate changes, and shared UI/catalog interactions. Record executed checks and native/listening/platform limits in [validation](../validation/README.md).
+
+## Standard output monitoring
+
+Use the [standard effect Out-strip meter](../architecture/modular-audio-units.md#standard-effect-out-strip-meter) for final linked-stereo level, shared held-peak capture/reset, bypass masking, and allocation-free prepared meter binding. Retain audio DSP, latency, saved settings and existing modulation behavior.

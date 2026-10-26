@@ -19,6 +19,7 @@ use std::{
 };
 #[derive(Default)]
 pub(crate) struct ControllerData {
+    pub meter_connection: crate::telemetry::Connection,
     pub state: Cell<PluginState>,
     attached: Cell<bool>,
     pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
@@ -58,6 +59,22 @@ impl ControllerData {
             }
         }
         self.model.publish(self.state.get());
+        if self
+            .model
+            .output_reset
+            .swap(false, std::sync::atomic::Ordering::AcqRel)
+            && self
+                .meter_connection
+                .send(crate::telemetry::Kind::Reset, [0.0; 2])
+                != kResultOk
+        {
+            self.model
+                .output_reset
+                .store(true, std::sync::atomic::Ordering::Release);
+            return;
+        }
+        self.meter_connection
+            .send(crate::telemetry::Kind::Request, [0.0; 2]);
     }
 }
 #[cfg(target_os = "macos")]

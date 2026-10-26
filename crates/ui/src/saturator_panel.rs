@@ -1,6 +1,7 @@
 use crate::{
     icons,
     knobs::{self, Knob},
+    meters,
     midi_editor::UNIT_STRIP_WIDTH,
     panels, parameter_knobs, rows, theme,
 };
@@ -14,30 +15,33 @@ pub(super) struct Bounds {
     pub power: Rect,
     pub controls: [Rect; 5],
     pub sections: [Rect; 2],
+    #[cfg(test)]
+    pub meter: Rect,
 }
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut SaturatorSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
     ui.scope_builder(
         egui::UiBuilder::new()
             .ui_stack_info(egui::UiStackInfo::default().with_tag("unit-modulation-button")),
-        |ui| show_inner(ui, settings, compact, height, sources, live),
+        |ui| show_inner(ui, settings, dimensions, sources, live, level),
     )
     .inner
 }
 fn show_inner(
     ui: &mut Ui,
     settings: &mut SaturatorSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
+    let (compact, height) = dimensions;
     let bases = [settings.drive_db, settings.level_db, settings.dry_wet];
     let markers: [_; 3] = std::array::from_fn(|i| {
         crate::modulation_panel::marker(
@@ -57,6 +61,8 @@ fn show_inner(
         power: Rect::NOTHING,
         controls: [Rect::NOTHING; 5],
         sections: [Rect::NOTHING; 2],
+        #[cfg(test)]
+        meter: Rect::NOTHING,
     };
     let mut enabled = settings.enabled;
     let mut collapsed = settings.collapsed;
@@ -98,6 +104,11 @@ fn show_inner(
                         });
                     })).inner.response.rect;
                     bounds.sections[column] = rect;
+                    if column == 1 && !compact {
+                        let rail = meters::effect_output_level(ui, rect, panel.margin, level, settings.enabled);
+                        #[cfg(test)] { bounds.meter = rail; }
+                        #[cfg(not(test))] let _ = rail;
+                    }
                     if column > 0 { panels::unit_divider(ui, rect.left(), rect.y_range().into()); }
                 }
                 if open {

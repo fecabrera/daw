@@ -1311,6 +1311,7 @@ dependencies = [
  "daw-drive-plugin",
  "daw-plugin-support",
  "daw-plugin-window",
+ "daw-unit-core",
  "daw-unit-ui",
  "egui",
 ]
@@ -1348,6 +1349,7 @@ dependencies = [
  "daw-drive-v2-plugin",
  "daw-plugin-support",
  "daw-plugin-window",
+ "daw-unit-core",
  "daw-unit-ui",
  "egui",
 ]

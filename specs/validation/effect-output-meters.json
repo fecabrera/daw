@@ -1,0 +1,696 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "platform": "macos-arm64",
+  "toolchain": "1.97.0",
+  "release_ready": false,
+  "effects": [
+    "Bitcrusher",
+    "Drive",
+    "Drive v2",
+    "Saturator",
+    "Chorus",
+    "Filter",
+    "Auto-filter",
+    "Multiband EQ"
+  ],
+  "workspace_before_final_hot_path_changes": {
+    "passed": 1416,
+    "ignored": 7,
+    "failed": 0
+  },
+  "full_ui_suite": {
+    "passed": 645,
+    "failed": 0
+  },
+  "final_loaded_allocation_cases": {
+    "drive_clap": 11,
+    "drive_vst3": 10,
+    "drive_v2_clap": 12,
+    "drive_v2_vst3": 11,
+    "rust_allocations": 0,
+    "rust_deallocations": 0,
+    "positive_controls": true
+  },
+  "final_loaded_normal_cases_including_cpu": {
+    "drive_clap": 12,
+    "drive_vst3": 11,
+    "drive_v2_clap": 13,
+    "drive_v2_vst3": 12
+  },
+  "cpu_limits_changed": false,
+  "cpu_baseline": "same compiler/profile, prepared and observable current/held output meters, DSP settings and parameter stream",
+  "final_cpu_cases": {
+    "drive-clap": [
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 1083,
+        "direct_p99_ns": 1375,
+        "exported_median_ns": 1083,
+        "exported_p99_ns": 1375,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 2299.6,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 12625,
+        "direct_p99_ns": 18000,
+        "exported_median_ns": 9416,
+        "exported_p99_ns": 12333,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 23150.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 16959,
+        "direct_p99_ns": 23833,
+        "exported_median_ns": 17250,
+        "exported_p99_ns": 23333,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 21350.8,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 202500,
+        "direct_p99_ns": 242583,
+        "exported_median_ns": 149041,
+        "exported_p99_ns": 178875,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 251000.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 1833,
+        "direct_p99_ns": 2375,
+        "exported_median_ns": 2000,
+        "exported_p99_ns": 2667,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 3199.6,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 15458,
+        "direct_p99_ns": 23875,
+        "exported_median_ns": 16625,
+        "exported_p99_ns": 24084,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 26549.6,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 29208,
+        "direct_p99_ns": 40875,
+        "exported_median_ns": 32291,
+        "exported_p99_ns": 43709,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 36049.6,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 263875,
+        "direct_p99_ns": 320166,
+        "exported_median_ns": 256875,
+        "exported_p99_ns": 298542,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 324650.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      }
+    ],
+    "drive-vst3": [
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 1041,
+        "direct_p99_ns": 1334,
+        "exported_median_ns": 1125,
+        "exported_p99_ns": 1500,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 2249.2,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 11541,
+        "direct_p99_ns": 15667,
+        "exported_median_ns": 9750,
+        "exported_p99_ns": 12833,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 21849.199999999997,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 17042,
+        "direct_p99_ns": 24500,
+        "exported_median_ns": 17417,
+        "exported_p99_ns": 23666,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 21450.399999999998,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 193041,
+        "direct_p99_ns": 231041,
+        "exported_median_ns": 150084,
+        "exported_p99_ns": 179083,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 239649.19999999998,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 1708,
+        "direct_p99_ns": 2417,
+        "exported_median_ns": 2167,
+        "exported_p99_ns": 2792,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 3049.6,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 14292,
+        "direct_p99_ns": 21250,
+        "exported_median_ns": 17625,
+        "exported_p99_ns": 25791,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 25150.399999999998,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 29042,
+        "direct_p99_ns": 39625,
+        "exported_median_ns": 34167,
+        "exported_p99_ns": 46583,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 35850.4,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 245000,
+        "direct_p99_ns": 283208,
+        "exported_median_ns": 272583,
+        "exported_p99_ns": 326958,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 302000.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      }
+    ],
+    "drive-v2-clap": [
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 1291,
+        "direct_p99_ns": 1667,
+        "exported_median_ns": 1458,
+        "exported_p99_ns": 1875,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 2549.2,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 14041,
+        "direct_p99_ns": 18292,
+        "exported_median_ns": 12125,
+        "exported_p99_ns": 15834,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 24849.2,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 20250,
+        "direct_p99_ns": 27333,
+        "exported_median_ns": 22584,
+        "exported_p99_ns": 30083,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 25300.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 222500,
+        "direct_p99_ns": 262792,
+        "exported_median_ns": 190875,
+        "exported_p99_ns": 223959,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 275000.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 2416,
+        "direct_p99_ns": 3125,
+        "exported_median_ns": 2875,
+        "exported_p99_ns": 3709,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 3899.2,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 19292,
+        "direct_p99_ns": 26208,
+        "exported_median_ns": 22459,
+        "exported_p99_ns": 30541,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 31150.399999999998,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 39542,
+        "direct_p99_ns": 51542,
+        "exported_median_ns": 46500,
+        "exported_p99_ns": 60334,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 48450.4,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 307458,
+        "direct_p99_ns": 359000,
+        "exported_median_ns": 345291,
+        "exported_p99_ns": 402042,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 376949.6,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      }
+    ],
+    "drive-v2-vst3": [
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 1250,
+        "direct_p99_ns": 1625,
+        "exported_median_ns": 1500,
+        "exported_p99_ns": 1917,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 2500.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 14000,
+        "direct_p99_ns": 19834,
+        "exported_median_ns": 12417,
+        "exported_p99_ns": 16209,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 24800.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 20125,
+        "direct_p99_ns": 27959,
+        "exported_median_ns": 22625,
+        "exported_p99_ns": 32916,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 25150.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 223542,
+        "direct_p99_ns": 263375,
+        "exported_median_ns": 191167,
+        "exported_p99_ns": 224125,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 276250.39999999997,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 2375,
+        "direct_p99_ns": 3084,
+        "exported_median_ns": 2959,
+        "exported_p99_ns": 3875,
+        "frames": 32,
+        "instances": 1,
+        "median_ceiling_ns": 3850.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 19291,
+        "direct_p99_ns": 25792,
+        "exported_median_ns": 22959,
+        "exported_p99_ns": 32208,
+        "frames": 32,
+        "instances": 8,
+        "median_ceiling_ns": 31149.2,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 333333.3333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 39375,
+        "direct_p99_ns": 51250,
+        "exported_median_ns": 47166,
+        "exported_p99_ns": 60334,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 48250.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 306459,
+        "direct_p99_ns": 350750,
+        "exported_median_ns": 349792,
+        "exported_p99_ns": 405709,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 375750.8,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": true
+      }
+    ]
+  },
+  "retained_measurement_failures": {
+    "drive-vst3": [
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 29916,
+        "direct_p99_ns": 44084,
+        "exported_median_ns": 37083,
+        "exported_p99_ns": 46000,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 36899.2,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      }
+    ],
+    "drive-v2-clap": [
+      {
+        "automated": false,
+        "blocks": 10000,
+        "direct_median_ns": 17666,
+        "direct_p99_ns": 22250,
+        "exported_median_ns": 22584,
+        "exported_p99_ns": 28750,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 22199.2,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 35459,
+        "direct_p99_ns": 44833,
+        "exported_median_ns": 50000,
+        "exported_p99_ns": 60209,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 43550.799999999996,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 272750,
+        "direct_p99_ns": 309292,
+        "exported_median_ns": 374542,
+        "exported_p99_ns": 423250,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 335300.0,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      }
+    ],
+    "optimized-drive-v2-clap": [
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 35542,
+        "direct_p99_ns": 46709,
+        "exported_median_ns": 50166,
+        "exported_p99_ns": 61750,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 43650.4,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      },
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 274667,
+        "direct_p99_ns": 311459,
+        "exported_median_ns": 373792,
+        "exported_p99_ns": 425083,
+        "frames": 512,
+        "instances": 8,
+        "median_ceiling_ns": 337600.39999999997,
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      }
+    ],
+    "matched-drive-v2-clap": [
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 39584,
+        "direct_p99_ns": 51083,
+        "exported_median_ns": 48541,
+        "exported_p99_ns": 61250,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 48500.799999999996,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      }
+    ],
+    "final-drive-v2-vst3": [
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 39167,
+        "direct_p99_ns": 50167,
+        "exported_median_ns": 48834,
+        "exported_p99_ns": 61750,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 48000.4,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      }
+    ],
+    "retarget-drive-v2-vst3": [
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 39333,
+        "direct_p99_ns": 50750,
+        "exported_median_ns": 49250,
+        "exported_p99_ns": 62250,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 48199.6,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      }
+    ],
+    "inline-drive-v2-vst3": [
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 39125,
+        "direct_p99_ns": 50125,
+        "exported_median_ns": 48417,
+        "exported_p99_ns": 62208,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 47950.0,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      }
+    ],
+    "observable-drive-v2-vst3": [
+      {
+        "automated": true,
+        "blocks": 10000,
+        "direct_median_ns": 37958,
+        "direct_p99_ns": 50500,
+        "exported_median_ns": 48500,
+        "exported_p99_ns": 61334,
+        "frames": 512,
+        "instances": 1,
+        "median_ceiling_ns": 46549.6,
+        "monitoring": "current_and_held_output_peak",
+        "p99_ceiling_ns": 5333333.333333333,
+        "passed": false
+      }
+    ]
+  },
+  "resolution": [
+    "avoid redundant atomic peak writes and unchanged enable updates",
+    "match direct-DSP and exported meter configuration and keep the reference handles observable",
+    "copy only the changed typed parameter from validated state during timed automation; full recall remains a complete restore"
+  ],
+  "artifacts": {
+    "Drive-0.1.0-macos-arm64-clap.zip": {
+      "sha256": "c6cea519f1fe38b81bdcb181813363ec55f75af4f7ac134556d2be50e96dd3e8",
+      "extracted_strict_signature_verified": true
+    },
+    "Drive-0.1.0-macos-arm64-vst3.zip": {
+      "sha256": "dd31245044a2ed93e2a767b54067b3ed3d7d35dab2d66565551fec06742e78b3",
+      "extracted_strict_signature_verified": true
+    },
+    "Drive-v2-0.1.0-macos-arm64-clap.zip": {
+      "sha256": "cf630d221c6f9f02d937e53a1c44b10882e5333c15fd81cdd924ace4958ab314",
+      "extracted_strict_signature_verified": true
+    },
+    "Drive-v2-0.1.0-macos-arm64-vst3.zip": {
+      "sha256": "d38303da875c8897048c3e5bb08fd24ec878fe8184ab9046bd6daf401105dd70",
+      "extracted_strict_signature_verified": true
+    }
+  },
+  "not_verified": [
+    "native Windows/Linux execution",
+    "native editor attachment or external DAW sessions",
+    "VST3 inter-process host proxy delivery",
+    "SDK validators"
+  ]
+}

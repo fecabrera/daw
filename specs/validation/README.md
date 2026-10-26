@@ -4,6 +4,19 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Standard effect output rails and peak indicators — 2026-10-26
+
+Bitcrusher, Drive, Drive v2, Saturator, Filter, Auto-filter, and Multiband EQ now reuse Chorus's rail geometry through `unit-ui::meters`, with a shared held-peak marker/reset. Chorus adopts the same held-peak path. Drive keeps its two-strip body and meters above Volume. Multiband EQ retains separate band analysis and adds a final-output monitor. DSP output publication uses shared `LevelMonitor`/`UnitMeter`/`BandMeter`/`PeakHold` storage and existing stable-ID host binding. No new registry dependency, parameter, saved setting, or audio latency is introduced.
+
+Drive CLAP editors read prepared instance atomics. Drive VST3 editors use separate processor/controller meters and control-thread `IConnectionPoint` request/reading/reset messages. Neither format sends messages or touches GUI objects from audio. Peak reset changes no parameter or project history.
+
+- Full workspace run: **1,416 passed, 7 opt-in tests ignored, no failures**, before the final hot-path refinements. Full UI suite: **645 passed**. Final focused monitoring, output binding/bypass, layout, editor, parameter-copy and VST3 message tests passed after those refinements. Strict workspace/all-target Clippy and formatting passed.
+- Final native loaded allocation tests passed **11 CLAP + 10 VST3** for Drive and **12 CLAP + 11 VST3** for Drive v2. Positive controls were enabled; checked callback paths observed zero Rust allocations/deallocations.
+- Final normal loaded runs passed **12 CLAP + 11 VST3** and **13 CLAP + 12 VST3**, including **32 CPU cases** under the original numeric budgets. Locked offline release builds, packaging of both products, and extracted strict macOS signature verification passed.
+- Initial CPU runs exposed both monitoring cost and a benchmark mismatch: the direct reference did not publish the same output meters. The retained measurements include those failures and later dense-automation misses. The final reference uses equally observable prepared meters. Shared peak capture skips redundant atomic updates; unchanged monitor enable updates return early; timed automation copies only the changed typed value from validated state. Full recall still restores every value. No numeric threshold was relaxed. See the [sanitized measurements](effect-output-meters.json).
+
+The [standard Out-strip specification](../architecture/modular-audio-units.md#standard-effect-out-strip-meter) and [user guide](../../docs/effects/output-meter.md) define the common behavior. Native Windows/Linux execution, native editor/external-host sessions, inter-process VST3 proxy delivery, and SDK validators were not checked here. Logs remain in ignored `work/effect-output-meter-*` files.
+
 ## Light-theme oscillator separator assertion — 2026-10-26
 
 The Light palette's white panel and `#F2F2F2` border differ by 13 channel levels. The specified halfway separator has 6 levels of contrast after rounding, so the older fixed minimum of 8 no longer applies. Updated the existing oscillator layout test to require nonzero separator contrast below panel-border contrast. Production colors, separator blending, and layout are unchanged. This supersedes the numeric test threshold in the historical oscillator-separator check below.

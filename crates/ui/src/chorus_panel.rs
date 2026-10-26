@@ -22,7 +22,7 @@ pub(super) fn show(
     dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
-    level: f32,
+    level: meters::OutputLevel<'_>,
     tempo: f32,
 ) -> (Bounds, egui::Response) {
     ui.scope_builder(
@@ -38,7 +38,7 @@ fn show_inner(
     dimensions: (bool, f32),
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
-    level: f32,
+    level: meters::OutputLevel<'_>,
     tempo: f32,
 ) -> (Bounds, egui::Response) {
     let (compact, height) = dimensions;
@@ -127,9 +127,9 @@ fn show_inner(
                     }).inner.response.rect;
                     if section > 0 { panels::unit_divider(ui, strip.left(), strip.y_range().into()); }
                     if section == 2 && !compact {
-                        let rail = meters::unit_monitor_rail(strip, panel.margin);
-                        meters::band_level_rail(ui, rail, "Output", meters::unit_reading(s.enabled, level), s.enabled);
+                        let rail = meters::effect_output_level(ui, strip, panel.margin, level, s.enabled);
                         #[cfg(test)] { b.meter = rail; }
+                        #[cfg(not(test))] let _ = rail;
                     }
                     #[cfg(test)] { b.sections[section] = strip; }
                     last = strip;

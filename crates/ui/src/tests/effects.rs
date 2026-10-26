@@ -6760,3 +6760,83 @@ fn chorus_reuses_three_strips_catalog_modulation_and_power_in_all_themes() {
         assert_eq!(daw_core::ModulationParameter::CHORUS.len(), 8);
     }
 }
+
+#[test]
+fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_settings() {
+    for color_theme in settings::ColorTheme::ALL {
+        for (compact, collapsed) in [(false, false), (true, false), (false, true)] {
+            for make in [
+                daw_core::EffectInstance::drive,
+                daw_core::EffectInstance::drive_v2,
+                daw_core::EffectInstance::bitcrusher,
+                daw_core::EffectInstance::saturator,
+                daw_core::EffectInstance::chorus,
+                daw_core::EffectInstance::filter,
+                daw_core::EffectInstance::auto_filter,
+                daw_core::EffectInstance::multiband_equalizer,
+            ] {
+                let (mut app, _, ctx, _) = chain_fixture(compact, false);
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                let mut effect = make();
+                match &mut effect.unit {
+                    daw_core::EffectSettings::Drive(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::DriveV2(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::Bitcrusher(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::Saturator(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::Chorus(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::Filter(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::AutoFilter(s) => s.collapsed = collapsed,
+                    daw_core::EffectSettings::MultibandEq(s) => s.collapsed = collapsed,
+                    _ => unreachable!(),
+                }
+                app.session.project.tracks[0].effects = vec![effect];
+                frame(&mut app, &ctx, vec![]);
+                let rail = match &app.session.project.tracks[0].effects[0].unit {
+                    daw_core::EffectSettings::Drive(_) => app.effects_bounds.drive_units[0].meter,
+                    daw_core::EffectSettings::DriveV2(_) => {
+                        app.effects_bounds.drive_v2_units[0].meter
+                    }
+                    daw_core::EffectSettings::Bitcrusher(_) => {
+                        app.effects_bounds.bitcrusher_units[0].meter
+                    }
+                    daw_core::EffectSettings::Saturator(_) => {
+                        app.effects_bounds.saturator_units[0].meter
+                    }
+                    daw_core::EffectSettings::Chorus(_) => app.effects_bounds.chorus_units[0].meter,
+                    daw_core::EffectSettings::Filter(_) => app.effects_bounds.filter_units[0].meter,
+                    daw_core::EffectSettings::AutoFilter(_) => {
+                        app.effects_bounds.auto_filter_units[0].meter
+                    }
+                    daw_core::EffectSettings::MultibandEq(_) => {
+                        app.effects_bounds.multiband_eq_units[0].output_meter
+                    }
+                    _ => unreachable!(),
+                };
+                if compact || collapsed {
+                    assert!(!rail.is_positive());
+                    continue;
+                }
+                assert_eq!(rail.height(), 4.0);
+                assert_eq!(
+                    rail.width(),
+                    panels::UNIT_STRIP_WIDTH
+                        - 2.0 * f32::from(panels::PanelStyle::default().margin)
+                );
+                let before = app.session.project.clone();
+                app.dirty = false;
+                click(&mut app, &ctx, rail.center());
+                assert_eq!(app.session.project, before);
+                assert!(
+                    !app.dirty,
+                    "meter interaction must not create project edits"
+                );
+            }
+        }
+    }
+}

@@ -31,6 +31,8 @@ impl Default for Audio {
     }
 }
 pub(crate) struct Component {
+    pub output_meter: std::sync::Arc<daw_drive_plugin::OutputMeter>,
+    pub meter_connection: crate::telemetry::Connection,
     pub initialized: AtomicBool,
     pub active: AtomicBool,
     pub processing: AtomicBool,
@@ -44,6 +46,8 @@ pub(crate) struct Component {
 impl Default for Component {
     fn default() -> Self {
         Self {
+            output_meter: std::sync::Arc::default(),
+            meter_connection: Default::default(),
             initialized: AtomicBool::new(false),
             active: AtomicBool::new(false),
             processing: AtomicBool::new(false),
@@ -57,7 +61,12 @@ impl Default for Component {
     }
 }
 impl Class for Component {
-    type Interfaces = (IComponent, IAudioProcessor, IProcessContextRequirements);
+    type Interfaces = (
+        IComponent,
+        IAudioProcessor,
+        IProcessContextRequirements,
+        IConnectionPoint,
+    );
 }
 impl Component {
     /// # Safety
@@ -92,6 +101,7 @@ impl IPluginBaseTrait for Component {
             if self.active.load(Ordering::Acquire) {
                 return kResultFalse;
             }
+            self.meter_connection.clear();
             self.setup.set(None);
             self.initialized.store(false, Ordering::Release);
             kResultOk
@@ -193,7 +203,7 @@ impl IComponentTrait for Component {
                 let Some(setup) = self.setup.get() else {
                     return kResultFalse;
                 };
-                let Ok(processor) = Processor::new(
+                let Ok(mut processor) = Processor::new(
                     setup.sampleRate,
                     1,
                     setup.maxSamplesPerBlock as u32,
@@ -201,6 +211,7 @@ impl IComponentTrait for Component {
                 ) else {
                     return kResultFalse;
                 };
+                processor.set_output_meter(self.output_meter.clone());
                 audio.processor = Some(processor);
             } else {
                 audio.processor = None;
@@ -325,5 +336,43 @@ impl IAudioProcessorTrait for Component {
 impl IProcessContextRequirementsTrait for Component {
     unsafe fn getProcessContextRequirements(&self) -> u32 {
         0
+    }
+}
+
+impl IConnectionPointTrait for Component {
+    unsafe fn connect(&self, other: *mut IConnectionPoint) -> tresult {
+        boundary(kInternalError, || unsafe {
+            self.meter_connection.connect(other)
+        })
+    }
+    unsafe fn disconnect(&self, other: *mut IConnectionPoint) -> tresult {
+        boundary(kInternalError, || unsafe {
+            self.meter_connection.disconnect(other)
+        })
+    }
+    unsafe fn notify(&self, message: *mut IMessage) -> tresult {
+        boundary(kInternalError, || {
+            let Some((kind, _)) = (unsafe { crate::telemetry::read(message) }) else {
+                return kInvalidArgument;
+            };
+            match kind {
+                crate::telemetry::Kind::Reset => {
+                    self.output_meter.boost_peaks()[0].reset_peak();
+                    kResultOk
+                }
+                crate::telemetry::Kind::Request => self.meter_connection.send(
+                    crate::telemetry::Kind::Reading,
+                    [
+                        if self.processing.load(Ordering::Acquire) {
+                            f64::from(self.output_meter.readings()[0])
+                        } else {
+                            0.0
+                        },
+                        f64::from(self.output_meter.boost_peaks()[0].peak()),
+                    ],
+                ),
+                _ => kResultFalse,
+            }
+        })
     }
 }

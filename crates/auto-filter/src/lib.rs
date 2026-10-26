@@ -64,6 +64,14 @@ pub struct AutoFilter {
     clock: daw_lfo::LfoClock,
 }
 impl AutoFilter {
+    /// Attach a prepared current-level handle on the control thread.
+    pub fn set_meter(&mut self, meter: std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>) {
+        self.filter.set_meter(meter);
+    }
+    /// Attach current output and held-peak storage on the control thread.
+    pub fn set_output_peak_meter(&mut self, meter: std::sync::Arc<daw_unit_core::BandMeter<3>>) {
+        self.filter.set_output_peak_meter(meter);
+    }
     pub fn new(context: ProcessingContext, settings: &AutoFilterSettings) -> Self {
         let sample_rate = f64::from(context.sample_rate_hz);
         Self {

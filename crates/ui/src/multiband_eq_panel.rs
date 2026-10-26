@@ -2,6 +2,7 @@
 use crate::{
     icons,
     knobs::{self, Knob, KnobSpec},
+    meters,
     modulation_panel::{self, Source, Target},
     panels, parameter_knobs, rows, theme,
 };
@@ -13,6 +14,8 @@ const CONTROL_SCALE: f32 = CONTROL_SIZE / knobs::CHOICE_SIZE;
 const CONTROL_GAP: f32 = 3.0;
 
 pub(super) struct Bounds {
+    #[cfg(test)]
+    pub output_meter: Rect,
     pub header: Rect,
     pub power: Rect,
     pub bands: Vec<Rect>,
@@ -52,13 +55,16 @@ fn remove_menu(response: &egui::Response, remove: &mut Option<Id>, id: Id) {
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut MultibandEqSettings,
-    compact: bool,
-    height: f32,
+    dimensions: (bool, f32),
     sources: &[Source],
     live: impl Fn(Option<Id>) -> Option<daw_engine::ModulationSnapshot>,
     levels: impl Fn(Id) -> f32,
+    level: meters::OutputLevel<'_>,
 ) -> (Bounds, egui::Response) {
+    let (compact, height) = dimensions;
     let mut bounds = Bounds {
+        #[cfg(test)]
+        output_meter: Rect::NOTHING,
         header: Rect::NOTHING,
         power: Rect::NOTHING,
         bands: Vec::new(),
@@ -82,6 +88,21 @@ pub(super) fn show(
         &mut collapsed,
         |ui| {
             body(ui, settings, compact, sources, &live, &levels, &mut bounds);
+            if !compact {
+                let rail = meters::effect_output_level(
+                    ui,
+                    bounds.output,
+                    panels::PanelStyle::default().margin,
+                    level,
+                    settings.enabled,
+                );
+                #[cfg(test)]
+                {
+                    bounds.output_meter = rail;
+                }
+                #[cfg(not(test))]
+                let _ = rail;
+            }
         },
     );
     settings.enabled = enabled;
@@ -367,11 +388,11 @@ mod tests {
                         show(
                             ui,
                             s,
-                            compact,
-                            panels::unit_height(compact),
+                            (compact, panels::unit_height(compact)),
                             &[],
                             |_| None,
                             |_| 0.0,
+                            0.0.into(),
                         )
                         .0,
                     );
@@ -478,11 +499,11 @@ mod meter_tests {
                             show(
                                 ui,
                                 &mut s,
-                                compact,
-                                panels::unit_height(compact),
+                                (compact, panels::unit_height(compact)),
                                 &[],
                                 |_| None,
                                 |_| 2.0,
+                                0.0.into(),
                             )
                             .0,
                         );

@@ -23,6 +23,8 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 
 ## Effects
 
+- [Standard effect output meters and held peaks](effects/output-meter.md)
+
 - [3-band EQ](effects/equalizer.md)
 - [Multiband EQ](effects/multiband-eq.md)
 - [Drive](effects/drive.md)

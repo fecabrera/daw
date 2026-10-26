@@ -10,6 +10,7 @@ pub const MARGIN: i8 = crate::layout::PANEL_MARGIN;
 pub const BODY_HEIGHT: f32 = crate::layout::unit_control_height();
 pub const SIZE: Vec2 = Vec2::new(2.0 * STRIP_WIDTH, BODY_HEIGHT + 2.0 * MARGIN as f32);
 pub struct Bounds {
+    pub meter: Rect,
     pub knobs: [[Rect; 3]; 2],
     pub labels: [Rect; 2],
     /// Volume, Gain, Tone, Shape, Strength, Frequency. Absent when compact.
@@ -38,8 +39,10 @@ pub fn show(
     compact: bool,
     compact_height: f32,
     markers: &[Option<ModulationMarker>; 5],
+    level: crate::meters::OutputLevel<'_>,
 ) -> Bounds {
     let mut bounds = Bounds {
+        meter: Rect::NOTHING,
         knobs: [[Rect::NOTHING; 3]; 2],
         labels: [Rect::NOTHING; 2],
         controls: std::array::from_fn(|_| None),
@@ -162,6 +165,15 @@ pub fn show(
                     .inner
                     .response
                     .rect;
+                if index == 0 && !compact {
+                    bounds.meter = crate::meters::effect_output_level(
+                        ui,
+                        strip,
+                        MARGIN,
+                        level,
+                        settings.enabled,
+                    );
+                }
                 if index > 0 {
                     divider(ui, strip.left(), strip.y_range());
                 }
@@ -209,6 +221,7 @@ mod tests {
                                 false,
                                 0.0,
                                 &std::array::from_fn(|_| None),
+                                0.0.into(),
                             );
                             assert_eq!(bounds.rect.size(), SIZE);
                             for strip in 0..2 {

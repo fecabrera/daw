@@ -31,3 +31,5 @@ The Drive strip contains Volume, Gain, and Tone. The Color strip contains Shape,
 Plugin editors use Deep Orange (`#FF5722`) as their default accent. Right-click the editor background to select Dark, Light, or Mist. This choice stays with the plugin instance when you close and reopen the editor. It does not change the sound and is not saved with host project state yet. The host supplies the window frame and Bypass control.
 
 The editor has a fixed size. Native screen-reader control exposure and Windows/Linux editor behavior still require work and validation. These development artifacts are not release packages.
+
+The editor includes the [standard output rail and held-peak indicator](output-meter.md). Clicking the rail resets monitoring without a host automation gesture. VST3 meter delivery uses the host's processor/controller connection; CLAP reads the instance's prepared atomic meter.

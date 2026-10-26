@@ -52,6 +52,9 @@ impl Default for PluginState {
     }
 }
 impl PluginState {
+    pub(crate) fn copy_parameter_from(&mut self, parameter: Parameter, source: &Self) {
+        self.values[parameter.index()] = source.values[parameter.index()];
+    }
     pub fn get(&self, parameter: Parameter) -> f64 {
         self.values[parameter.index()]
     }

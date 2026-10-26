@@ -1,12 +1,13 @@
 use crate::theme;
 use egui::{Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 
-const MIN_DBFS: f32 = -60.0;
+pub use daw_unit_ui::meters::{
+    OutputLevel, band_color, band_level_rail, effect_output_level, unit_monitor_rail, unit_reading,
+};
+use daw_unit_ui::meters::{
+    horizontal_rail, peak_marker, peak_text, position_for_dbfs, position_for_peak,
+};
 
-/// Hide queued or stale readings as soon as the unit's saved power state is off.
-pub fn unit_reading<T: Default>(enabled: bool, reading: T) -> T {
-    if enabled { reading } else { T::default() }
-}
 const CHANNEL_WIDTH: f32 = 8.0;
 const CHANNEL_SPACING: f32 = 4.0;
 const SCALE_INSET: f32 = 5.0;
@@ -162,11 +163,7 @@ fn paint_peak_hold(ui: &Ui, rail: Rect, origin: f32, span: f32, held: f32) {
     if held > 0.0 {
         let x =
             (origin + span * (held / 24.0).min(1.0)).clamp(rail.left() + 0.5, rail.right() - 0.5);
-        ui.painter().vline(
-            x,
-            rail.y_range(),
-            Stroke::new(1.0, theme::palette(ui.ctx()).secondary),
-        );
+        peak_marker(ui, rail, x);
     }
 }
 #[derive(Clone, Copy)]
@@ -243,33 +240,8 @@ pub fn gain_reduction(ui: &mut Ui, reading: GainReduction<'_>) -> Response {
     response
 }
 
-fn position_for_dbfs(db: f32) -> f32 {
-    ((db - MIN_DBFS) / -MIN_DBFS).clamp(0.0, 1.0)
-}
-
-fn position_for_peak(peak: f32) -> f32 {
-    if peak > 0.0 {
-        position_for_dbfs(20.0 * peak.log10())
-    } else {
-        0.0
-    }
-}
-
 fn level_rail(rect: Rect) -> Rect {
     rect.shrink2(Vec2::new(0.0, SCALE_INSET.min(rect.height() / 4.0)))
-}
-
-fn peak_text(peak: f32) -> String {
-    if peak > 0.0 {
-        let db = 20.0 * peak.log10();
-        if db > 0.0 {
-            format!("+{db:.1}")
-        } else {
-            format!("{db:.1}")
-        }
-    } else {
-        "−∞".into()
-    }
 }
 
 /// Read the held stereo peak; clicking resets monitoring without changing gain.
@@ -465,74 +437,6 @@ pub fn channel(ui: &mut Ui, label: &str, height: f32, peak: f32, clipped: bool) 
     } else {
         format!("{label}: {level}")
     })
-}
-
-/// Fit a four-point monitor above standard knob rows without changing unit height.
-pub fn unit_monitor_rail(strip: Rect, margin: i8) -> Rect {
-    Rect::from_min_size(
-        strip.min + Vec2::new(f32::from(margin), 2.0),
-        Vec2::new(strip.width() - 2.0 * f32::from(margin), 4.0),
-    )
-}
-
-fn horizontal_rail(ui: &Ui, rail: Rect, progress: f32, color: egui::Color32) {
-    ui.painter()
-        .rect_filled(rail, 1.0, theme::palette(ui.ctx()).input);
-    if progress > 0.0 {
-        ui.painter().rect_filled(
-            Rect::from_min_size(rail.min, Vec2::new(rail.width() * progress, rail.height())),
-            1.0,
-            color,
-        );
-    }
-}
-
-/// Disabled bands share the theme's secondary color for every monitor type.
-fn band_color(ui: &Ui, enabled: bool, active: egui::Color32) -> egui::Color32 {
-    if enabled {
-        active
-    } else {
-        theme::palette(ui.ctx()).secondary
-    }
-}
-
-/// Stereo peak level using the shared −60 to 0 dBFS scale; retain headroom in readings.
-pub fn band_level_rail(ui: &mut Ui, rail: Rect, name: &str, peak: f32, enabled: bool) {
-    let peak = if peak.is_finite() { peak.max(0.0) } else { 0.0 };
-    let palette = theme::palette(ui.ctx());
-    horizontal_rail(
-        ui,
-        rail,
-        position_for_peak(peak),
-        band_color(
-            ui,
-            enabled,
-            if peak > 1.0 {
-                palette.error
-            } else {
-                theme::accent(ui.ctx())
-            },
-        ),
-    );
-    let db = if peak > 0.0 {
-        20.0 * peak.log10()
-    } else {
-        f32::NEG_INFINITY
-    };
-    let level = peak_text(peak);
-    let response = ui.interact(rail, ui.id().with(("band-level", name)), Sense::hover());
-    response.widget_info(|| {
-        let mut info = egui::WidgetInfo::labeled(
-            egui::WidgetType::ProgressIndicator,
-            ui.is_enabled(),
-            format!("{name} output level: {level} dBFS"),
-        );
-        info.value = db.is_finite().then_some(f64::from(db));
-        info
-    });
-    response.on_hover_text(format!(
-        "{name} output level: {level} dBFS (display range −60 to 0 dBFS)"
-    ));
 }
 
 /// Thin limiter monitor fits above the standard knob rows without changing unit height.

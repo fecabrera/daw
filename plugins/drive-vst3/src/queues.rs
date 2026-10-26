@@ -1,4 +1,4 @@
-//! Borrow queues directly. At most seven cursors exist; point counts are uncapped.
+//! Borrow queues directly. One cursor per known parameter; point counts are uncapped.
 use daw_drive_plugin::Parameter;
 use daw_plugin_vst3::sys::{
     ComRef,

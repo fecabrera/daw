@@ -71,6 +71,7 @@ fn weights<const N: usize>(index: usize) -> [Ramp; N] {
 
 #[derive(Clone)]
 pub struct Filter {
+    monitor: daw_unit_core::LevelMonitor<3>,
     sample_rate: f64,
     fade: u32,
     filters: [StateVariableFilter; 2],
@@ -87,6 +88,7 @@ impl Filter {
     pub fn new(context: ProcessingContext, settings: &FilterSettings) -> Self {
         Self {
             sample_rate: f64::from(context.sample_rate_hz),
+            monitor: daw_unit_core::LevelMonitor::new(context.sample_rate_hz, settings.enabled),
             fade: (context.sample_rate_hz / 200).max(1),
             filters: std::array::from_fn(|_| StateVariableFilter::default()),
             frequency_log: Ramp::new(f64::from(settings.frequency_hz).log2()),
@@ -105,6 +107,14 @@ impl Filter {
             ],
         }
     }
+    /// Attach a prepared current-level handle on the control thread.
+    pub fn set_meter(&mut self, meter: std::sync::Arc<[std::sync::atomic::AtomicU32; 3]>) {
+        self.monitor.attach(meter);
+    }
+    /// Attach current output and held-peak storage on the control thread.
+    pub fn set_output_peak_meter(&mut self, meter: std::sync::Arc<daw_unit_core::BandMeter<3>>) {
+        self.monitor.attach_peak(meter);
+    }
     /// Last processed cutoff L/R (Hz), Q, output dB and wet fraction.
     pub fn effective_parameters(&self) -> [f32; 5] {
         let mut values = self.effective;
@@ -113,6 +123,7 @@ impl Filter {
     }
     /// Preserve integrators and ramps during compatible live publication.
     pub fn retarget(&mut self, settings: &FilterSettings) {
+        self.monitor.set_enabled(settings.enabled);
         self.frequency_log
             .retarget(f64::from(settings.frequency_hz).log2(), self.fade);
         self.q.retarget(settings.q.into(), self.fade);
@@ -160,6 +171,7 @@ impl Filter {
             let processed = (dry + (filtered - dry) * wet) * level;
             output[ch] = (dry + (processed - dry) * mix) as f32;
         }
+        self.monitor.sample_output(output);
         output
     }
 }
@@ -174,6 +186,7 @@ impl EffectUnit for Filter {
         }
     }
     fn reset(&mut self) {
+        self.monitor.reset();
         for ramp in [
             &mut self.frequency_log,
             &mut self.q,

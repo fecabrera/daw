@@ -99,7 +99,7 @@ pub(crate) unsafe fn process(component: &Component, data: *mut ProcessData) -> t
                 }
                 audio.normalized[slot] = value;
                 if let Some(processor) = &mut audio.processor {
-                    processor.restore(audio.state);
+                    processor.apply_parameter(*parameter, &audio.state);
                 }
             }
         }

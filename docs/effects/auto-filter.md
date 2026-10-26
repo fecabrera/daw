@@ -37,3 +37,5 @@ LFO strength accepts signed amounts from −6 to +6 octaves. Both phase targets 
 External Frequency modulation combines with the internal sweep. The range arc shows possible movement, and two live Frequency dots show the stereo values. The base pointer stays unchanged. Audio tracks and Master can use the internal LFO without an external source.
 
 Filter ringing is included within the arranged export range; export does not append an extra tail.
+
+The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.

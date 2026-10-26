@@ -31,3 +31,5 @@ instrument modulation sources. Filter has no internal LFO controls or sweep.
 Filtering adds no processing latency. Ringing stays within the arranged export
 range; export does not append an extra tail. Power, controls, connections and
 collapse state are saved with the project. Undo and Redo apply to changes.
+
+The output strip uses the [standard effect output meter and held-peak indicator](output-meter.md). Click its rail to reset only the held peak.

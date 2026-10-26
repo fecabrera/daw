@@ -1,10 +1,11 @@
 //! Stereo amplitude quantization and whole-ratio sample holding.
 use daw_unit_core::{
-    BITCRUSHER_TYPE_ID, BitcrusherSettings, EffectUnit, ModulationContext, ModulationDestination,
-    ModulationDestinationSettings, ModulationInputs, ModulationParameter, ModulationRamp,
-    ModulationScope, ModulationSmoother, PortKind, ProcessingContext, SILENT_GAIN_DB,
-    UnitDescriptor,
+    BITCRUSHER_TYPE_ID, BitcrusherSettings, EffectUnit, LevelMonitor, ModulationContext,
+    ModulationDestination, ModulationDestinationSettings, ModulationInputs, ModulationParameter,
+    ModulationRamp, ModulationScope, ModulationSmoother, PortKind, ProcessingContext,
+    SILENT_GAIN_DB, UnitDescriptor,
 };
+use std::sync::{Arc, atomic::AtomicU32};
 
 fn amplitude(db: f32) -> f32 {
     10.0_f32.powf(db / 20.0)
@@ -30,6 +31,7 @@ pub struct Bitcrusher {
     held: [f64; 2],
     elapsed: u8,
     fade_frames: u32,
+    monitor: LevelMonitor<3>,
 }
 impl Bitcrusher {
     fn values(s: &BitcrusherSettings) -> [f32; 6] {
@@ -47,6 +49,7 @@ impl Bitcrusher {
         Self {
             parameters: Self::values(s).map(ModulationRamp::new),
             external: ModulationSmoother::new(context),
+            monitor: LevelMonitor::new(context.sample_rate_hz, s.enabled),
             effective: [
                 s.drive_db,
                 f32::from(s.resolution_bits),
@@ -59,11 +62,21 @@ impl Bitcrusher {
             fade_frames: (context.sample_rate_hz / 200).max(1),
         }
     }
+    /// Attach a prepared output monitor on the control thread.
+    pub fn set_meter(&mut self, meter: Arc<[AtomicU32; 3]>) {
+        self.monitor.attach(meter);
+    }
+    /// Attach current output and a click-resettable sample peak on the control thread.
+    pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
+        self.monitor.attach_peak(meter);
+    }
     pub fn retarget(&mut self, s: &BitcrusherSettings) {
+        self.monitor.set_enabled(s.enabled);
         for (ramp, target) in self.parameters.iter_mut().zip(Self::values(s)) {
             ramp.set(target, self.fade_frames);
         }
     }
+
     /// Last processed Drive dB, whole Resolution/Downsampling, Level dB, and Dry/Wet.
     pub fn effective_parameters(&self) -> [f32; 5] {
         self.effective
@@ -102,14 +115,16 @@ impl Bitcrusher {
         if p[5] == 0.0 {
             return dry;
         }
-        std::array::from_fn(|ch| {
+        let output = std::array::from_fn(|ch| {
             let dry = f64::from(dry[ch]);
             // Weighted sums preserve clipped wet samples even when dry headroom is huge.
             let wet = (dry * (1.0 - mix) + self.held[ch] * mix) * gain;
             let enabled = f64::from(p[5]);
             (dry * (1.0 - enabled) + wet * enabled).clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
                 as f32
-        })
+        });
+        self.monitor.sample_output(output);
+        output
     }
 }
 impl EffectUnit for Bitcrusher {
@@ -123,6 +138,7 @@ impl EffectUnit for Bitcrusher {
         }
     }
     fn reset(&mut self) {
+        self.monitor.reset();
         for ramp in &mut self.parameters {
             ramp.reset();
         }

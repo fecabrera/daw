@@ -24,3 +24,5 @@ Gain zero keeps the signal clean apart from the selected Color and Tone. Tone is
 Volume, Gain, Tone, Color strength, and Color frequency accept shared Envelope, LFO, and Macro sources from the same MIDI instrument. Open the secondary-color header dot and assign connections as described in [modulation](../modulation/README.md). Color shape remains a manual choice. Color modulation affects the sound only when a color shape is enabled.
 
 Strong drive on high-frequency material can produce aliasing, heard as additional tones. Higher project processing rates reduce this limitation. Drive is not an exact model of a particular pedal. Export ends at the arranged duration.
+
+The Drive strip shows the [standard output meter and held-peak indicator](output-meter.md) above Volume. Click its rail to reset only the held peak.
