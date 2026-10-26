@@ -134,7 +134,8 @@ impl IComponentTrait for Component {
             bus.direction = direction;
             bus.channelCount = 2;
             bus.busType = 0;
-            bus.flags = BusInfo_::BusFlags_::kDefaultActive;
+            // SDK enum constants are signed on Windows; BusInfo stores unsigned flags.
+            bus.flags = BusInfo_::BusFlags_::kDefaultActive as _;
             write_utf16(
                 if direction == 0 {
                     "Stereo input"
