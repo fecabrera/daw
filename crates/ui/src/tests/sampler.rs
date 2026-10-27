@@ -1026,7 +1026,11 @@ fn sampler_gain_modulation_reuses_header_strips_source_picker_marker_and_saved_v
                 _ => None,
             })
             .unwrap();
-        choose_dropdown(&mut app, &ctx, source_picker, "Layer 1 · Envelope 1");
+        click(&mut app, &ctx, source_picker.center(), false);
+        let submenu = super::envelope_units::source_submenu(&mut app, &ctx, "Layer 1");
+        let source_option = super::envelope_units::popup_label(&submenu, "Envelope 1");
+        click(&mut app, &ctx, source_option, false);
+        wait(&mut app, &ctx);
         assert_eq!(state(&app).modulations[0].source, Some(source));
         let s = app.session.project.tracks[0]
             .instrument

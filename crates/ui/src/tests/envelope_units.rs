@@ -35,6 +35,32 @@ pub(super) fn label(shapes: &[egui::epaint::ClippedShape], text: &str) -> Pos2 {
         })
         .unwrap_or_else(|| panic!("Missing label {text}"))
 }
+/// Popup text is painted after matching labels in the underlying instrument.
+pub(super) fn popup_label(shapes: &[egui::epaint::ClippedShape], text: &str) -> Pos2 {
+    shapes
+        .iter()
+        .rev()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Text(t) if t.galley.text() == text => Some(t.pos + t.galley.size() * 0.5),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("Missing popup label {text}"))
+}
+pub(super) fn source_submenu(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    group: &str,
+) -> Vec<egui::epaint::ClippedShape> {
+    let root = frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0));
+    let point = popup_label(&root, group);
+    click(app, ctx, point, false);
+    frame_shapes(
+        app,
+        ctx,
+        vec![egui::Event::PointerMoved(point)],
+        Vec2::new(1280.0, 800.0),
+    )
+}
 #[test]
 fn generic_envelopes_add_independent_instances_and_keep_settings_power_and_collapse() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
@@ -150,8 +176,8 @@ fn amplitude_expands_shared_modulation_strips_without_hiding_regular_controls() 
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let none = label(&shapes, "None");
         click(&mut app, &ctx, none, false);
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let source = label(&shapes, "Layer 1 · Envelope 1");
+        let shapes = source_submenu(&mut app, &ctx, "Layer 1");
+        let source = popup_label(&shapes, "Envelope 1");
         click(&mut app, &ctx, source, false);
         let settings = &app.session.project.tracks[0]
             .instrument
@@ -352,10 +378,16 @@ fn auto_filter_expansion_keeps_regular_controls_and_lists_only_shared_envelopes(
     let point = label(&shapes, "None");
     click(&mut app, &ctx, point, false);
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-    assert!(!shapes.iter().any(
-        |s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="Layer 1 · Envelope 2")
-    ));
-    let point = label(&shapes, "Layer 1 · Envelope 1");
+    let _ = shapes;
+    let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+    assert!(
+        !crate::modulation_panel::sources(Some(instrument))
+            .iter()
+            .any(|s| s.label == "Layer 1 · Envelope 2"
+                && daw_unit_core::ModulationScope::Shared.accepts(s.scope))
+    );
+    let shapes = source_submenu(&mut app, &ctx, "Layer 1");
+    let point = popup_label(&shapes, "Envelope 1");
     click(&mut app, &ctx, point, false);
     let daw_core::EffectSettings::AutoFilter(filter) =
         &app.session.project.tracks[0].effects[0].unit
@@ -1577,8 +1609,20 @@ fn envelope_inputs_share_strips_markers_source_filtering_and_saved_open_state() 
             let none = label(&shapes, "None");
             click(&mut app, &ctx, none, false);
             let popup = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let source = label(&popup, "Output · Macro 1");
-            assert!(!popup.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text()==format!("{} · Envelope 1",if main {"Output"}else{"Layer 1"}))));
+            let _ = popup;
+            let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
+            let available = crate::modulation_panel::provider_sources(instrument);
+            assert!(
+                !available
+                    .iter()
+                    .find(|(destination, _)| destination.layer == owner && destination.unit == id)
+                    .unwrap()
+                    .1
+                    .iter()
+                    .any(|source| source.id.layer == owner && source.id.unit == id)
+            );
+            let popup = source_submenu(&mut app, &ctx, "Output");
+            let source = popup_label(&popup, "Macro 1");
             click(&mut app, &ctx, source, false);
             assert_eq!(get(&app).modulations[0].source, Some(macro_source));
             let saved = serde_json::to_vec(&app.session.project).unwrap();

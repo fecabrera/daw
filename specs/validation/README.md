@@ -4,6 +4,22 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Layer-grouped modulation source menus — 2026-10-26
+
+The shared Source picker uses one submenu per eligible layer, followed by Output. None stays first with a divider below it. Groups use stable layer IDs; leaf labels use provider names and selected values retain the owner prefix. Existing scope, presence and cycle filtering remains in place. Source, Destination and Envelope Mode selectors fill the available strip interior. Popup rows use regular button text, rounded panel-list highlights, 4-point inner padding around labels and arrows, a shared 4-point outer popup margin, a shared 140-point minimum width, 4-point gaps between items and around unpadded 1-point dividers, and single-line labels through hover transitions.
+
+Completed checks:
+
+- `cargo test --offline --locked -p daw-ui --lib`: **654 passed**. New coverage includes subgroup order and scope filtering, duplicate layer/provider names, divider geometry, leaf selection and None, inner-width alignment with varied padding/margins, and stable borderless hover in Dark and Light themes. Tests compare full-row highlight colors over labels, horizontal padding and submenu arrows.
+- The move regression uses the project component-group transfer transaction to move an assigned Envelope from Layer 1 to Layer 2, into Output and back. It checks current submenu membership, owner labels and source identity, and preserves the assigned route ID, amount, destination and power. The same picker context is reused across moves.
+- Existing Amplitude, Auto-filter, Envelope and Sampler interaction tests now traverse the source submenu. Marker labels and routing identities retain their existing contracts.
+- Regular menu text and split inner/outer padding retain full-row hit areas and highlights. The geometry regression checks regular font sizing, 4-point label padding and outer margins, 4-point item gaps and divider spacing. Padding and spacing use separate constants so changing one does not change the other.
+- Submenu arrows now use the shared Lucide ChevronRight image, tinted with the row text color. The icon change passed all 654 UI tests, strict workspace/all-target Clippy and formatting. The macOS debug app was rebuilt.
+- `cargo test --offline --locked --workspace` passed, including documentation tests, before the final padding, spacing, arrow and text-size changes. The final UI-only reruns cover those presentation changes.
+- `cargo fmt --all --check` and strict locked offline workspace/all-target Clippy passed. `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app`.
+
+Automated egui checks establish interaction and geometry. Native pointer behavior in the rebuilt app and Windows/Linux execution remain separate checks. Logs are in ignored `work/grouped-modulation-*` files.
+
 ## All effect plugin exports — 2026-10-26
 
 The remaining ten effects now have independent typed plugin/editor packages, checked manifests, and CLAP/VST3 targets. All fourteen products are registered for manifest-discovered packaging and the 42-job native CI matrix. See the [build contract](../architecture/all-effect-plugin-builds.md) and [user plugin list](../../docs/effects/plugins.md).

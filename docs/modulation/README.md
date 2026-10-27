@@ -7,12 +7,14 @@ Modulation changes a parameter over time without changing its base setting. Enve
 1. Add an Envelope, LFO, or Macro to a MIDI instrument layer or Output.
 2. Open the receiving unit's modulation controls with the secondary-color dot in its header.
 3. Click Plus to add a connection.
-4. Select Source and Parameter, then turn Amount up or down.
+4. Select a Source and Destination, then turn Amount up or down.
 5. Use the connection's power button to disable it, or right-click to remove it.
 
 New connections are enabled but have no source and zero Amount. They do not affect the sound until assigned and adjusted. Connections and their visible layout save with the project.
 
 ## Choose sources and amounts
+
+The Source dropdown starts with None, followed by a divider. Each layer has its own submenu, with Output listed after the layers. Open a submenu to select its Envelope, LFO, or Macro. Groups with no compatible sources are hidden. The selected value includes the layer name so repeated component names remain clear. Source and Destination selectors fill the space inside their strip.
 
 Sources stay within one MIDI instrument. Output sources can reach compatible layer, layer-effect, and track-effect parameters. Audio tracks and the project Master do not have instrument modulation sources.
 

@@ -7,11 +7,12 @@ use crate::{
 use daw_core::{InstrumentSettings, Modulation, ModulationParameter, ModulationSourceId};
 use daw_unit_core::{ModulationRange, ModulationScope};
 use egui::{Rect, Ui, Vec2};
-pub(super) const SELECTOR_WIDTH: f32 = 65.0;
 #[derive(Clone)]
 pub(super) struct Source {
     pub id: ModulationSourceId,
     pub label: String,
+    pub layer_name: String,
+    pub name: String,
     pub scope: ModulationScope,
     pub range: ModulationRange,
     pub behavior: daw_unit_core::ModulationBehavior,
@@ -25,12 +26,227 @@ pub(super) fn sources(instrument: Option<&InstrumentSettings>) -> Vec<Source> {
         .map(|source| Source {
             id: source.id,
             label: format!("{} · {}", source.layer_name, source.display_name()),
+            layer_name: source.layer_name.into(),
+            name: source.display_name().into_owned(),
             scope: source.scope,
             range: source.output.range,
             behavior: source.output.behavior,
             enabled: source.enabled,
         })
         .collect()
+}
+/// Group by stable layer identity, retaining instrument and provider order.
+/// The caller has already removed missing providers and cyclic connections.
+struct SourceGroup<'a> {
+    id: daw_core::Id,
+    name: &'a str,
+    sources: Vec<&'a Source>,
+}
+fn source_groups(sources: &[Source], scope: ModulationScope) -> Vec<SourceGroup<'_>> {
+    let mut groups: Vec<SourceGroup<'_>> = Vec::new();
+    for source in sources.iter().filter(|source| scope.accepts(source.scope)) {
+        if let Some(group) = groups.iter_mut().find(|group| group.id == source.id.layer) {
+            group.sources.push(source);
+        } else {
+            groups.push(SourceGroup {
+                id: source.id.layer,
+                name: &source.layer_name,
+                sources: vec![source],
+            });
+        }
+    }
+    groups
+}
+const SOURCE_MENU_MIN_WIDTH: f32 = 140.0;
+const SOURCE_MENU_PADDING: i8 = 4;
+const SOURCE_MENU_ITEM_SPACING: f32 = 4.0;
+fn source_menu_style(style: &mut egui::Style) {
+    egui::containers::menu::menu_style(style);
+    style.spacing.button_padding = Vec2::splat(f32::from(SOURCE_MENU_PADDING));
+    style.spacing.icon_spacing = 0.0;
+    style.spacing.item_spacing.y = SOURCE_MENU_ITEM_SPACING;
+    style.spacing.menu_margin = egui::Margin::same(SOURCE_MENU_PADDING);
+    style.wrap_mode = Some(egui::TextWrapMode::Extend);
+    let text = style.visuals.widgets.noninteractive.fg_stroke.color;
+    let secondary = style.visuals.weak_text_color();
+    let fill = style.visuals.selection.bg_fill;
+    let radius = style.visuals.widgets.inactive.corner_radius;
+    style.visuals.selection.stroke = egui::Stroke::new(0.0, text);
+    style.visuals.widgets.inactive.fg_stroke.color = secondary;
+    for visuals in [
+        &mut style.visuals.widgets.hovered,
+        &mut style.visuals.widgets.active,
+        &mut style.visuals.widgets.open,
+    ] {
+        visuals.weak_bg_fill = fill;
+        visuals.bg_fill = fill;
+        visuals.bg_stroke = egui::Stroke::NONE;
+        visuals.fg_stroke.color = text;
+        visuals.corner_radius = radius;
+        visuals.expansion = 0.0;
+    }
+}
+fn source_menu_label(label: &str) -> egui::RichText {
+    egui::RichText::new(label).text_style(egui::TextStyle::Button)
+}
+fn source_menu_width<'a>(ui: &Ui, labels: impl Iterator<Item = &'a str>, arrows: bool) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let text = labels
+        .map(|label| {
+            ui.painter()
+                .layout_no_wrap(label.into(), font.clone(), theme::palette(ui.ctx()).text)
+                .size()
+                .x
+        })
+        .fold(0.0, f32::max);
+    (text
+        + 2.0 * f32::from(SOURCE_MENU_PADDING)
+        + if arrows {
+            ui.spacing().icon_width + ui.spacing().icon_spacing
+        } else {
+            0.0
+        })
+    .max(SOURCE_MENU_MIN_WIDTH)
+}
+fn source_menu_layout<R>(ui: &mut Ui, width: f32, content: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.set_width(width);
+    ui.with_layout(
+        egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
+        content,
+    )
+    .inner
+}
+fn source_picker(
+    ui: &mut Ui,
+    selected: &mut Option<ModulationSourceId>,
+    sources: &[Source],
+    scope: ModulationScope,
+) -> egui::Response {
+    let label = selected
+        .and_then(|id| sources.iter().find(|source| source.id == id))
+        .map_or(
+            if selected.is_some() {
+                "Unavailable"
+            } else {
+                "None"
+            },
+            |source| source.label.as_str(),
+        );
+    egui::ComboBox::from_id_salt("source")
+        .selected_text(egui::RichText::new(label).size(panels::HEADER_FONT_SIZE))
+        .width(ui.available_width())
+        .truncate()
+        .popup_style(source_menu_style.into())
+        .show_ui(ui, |ui| {
+            let groups = source_groups(sources, scope);
+            let width = source_menu_width(
+                ui,
+                std::iter::once("None").chain(groups.iter().map(|g| g.name)),
+                true,
+            );
+            source_menu_layout(ui, width, |ui| {
+                if ui
+                    .selectable_value(selected, None, source_menu_label("None"))
+                    .clicked()
+                {
+                    ui.close();
+                }
+                if !groups.is_empty() {
+                    ui.add(egui::Separator::default().spacing(1.0));
+                }
+                for group in groups {
+                    ui.push_id(group.id, |ui| {
+                        egui::containers::menu::SubMenuButton::from_button(
+                            egui::Button::new(source_menu_label(group.name))
+                                .right_text(
+                                    crate::icons::Lucide::ChevronRight
+                                        .size(crate::icons::TOOLBAR_ICON_SIZE)
+                                        .image(),
+                                )
+                                .image_tint_follows_text_color(true),
+                        )
+                        .config(egui::containers::menu::MenuConfig::new().style(source_menu_style))
+                        .ui(ui, |ui| {
+                            let width = source_menu_width(
+                                ui,
+                                group.sources.iter().map(|s| s.name.as_str()),
+                                false,
+                            );
+                            source_menu_layout(ui, width, |ui| {
+                                for source in group.sources {
+                                    if ui
+                                        .selectable_value(
+                                            selected,
+                                            Some(source.id),
+                                            source_menu_label(&source.name),
+                                        )
+                                        .clicked()
+                                    {
+                                        ui.close();
+                                    }
+                                }
+                            });
+                        });
+                    });
+                }
+            });
+        })
+        .response
+        .on_hover_text(if scope == ModulationScope::PerNote {
+            "Modulation source"
+        } else {
+            "Shared modulation source. Per-note sources cannot feed this unit."
+        })
+}
+fn destination_picker<'a>(
+    ui: &mut Ui,
+    route: &mut Modulation,
+    targets: &[Target],
+    scope: ModulationScope,
+    sources_for_target: impl Fn(Option<daw_core::Id>) -> &'a [Source],
+) -> egui::Response {
+    egui::ComboBox::from_id_salt("parameter")
+        .selected_text(
+            egui::RichText::new(
+                targets
+                    .iter()
+                    .find(|t| t.parameter == route.parameter && t.id == route.target)
+                    .map_or("Unavailable", |t| t.label.as_str()),
+            )
+            .size(panels::HEADER_FONT_SIZE),
+        )
+        .width(ui.available_width())
+        .truncate()
+        .show_ui(ui, |ui| {
+            for target in targets {
+                if ui
+                    .selectable_label(
+                        route.parameter == target.parameter && route.target == target.id,
+                        &target.label,
+                    )
+                    .clicked()
+                {
+                    let target_changed = route.target != target.id;
+                    route.parameter = target.parameter;
+                    route.target = target.id;
+                    if target_changed
+                        && scope == ModulationScope::Shared
+                        && route.source.is_some_and(|source| {
+                            !sources_for_target(target.id)
+                                .iter()
+                                .any(|s| s.id == source && scope.accepts(s.scope))
+                        })
+                    {
+                        route.source = None;
+                    }
+                    route.amount = route
+                        .amount
+                        .clamp(-target.parameter.limit(), target.parameter.limit());
+                }
+            }
+        })
+        .response
+        .on_hover_text("Destination parameter")
 }
 /// Filter through the shared graph rules before opening a provider's source picker.
 pub(super) fn provider_sources(
@@ -148,97 +364,71 @@ pub(super) fn targeted_body_with_sources<'a>(
     let body = ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         for (index, route) in routes.iter_mut().enumerate() {
-            let strip = ui
-                .scope_builder(egui::UiBuilder::new().id_salt(route.id).sense(egui::Sense::click_and_drag()), |ui| {
-                    ui.add_enabled_ui(!reordering, |ui| egui::Frame::new().inner_margin(10).show(ui, |ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
-                        ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
-                        ui.set_min_height(crate::envelope_panel::body_height(compact));
-                        if !compact {
-                            let sources = sources_for_target(route.target);
-                            let selected = route
-                                .source
-                                .and_then(|id| sources.iter().find(|s| s.id == id))
-                                .map_or(
-                                    if route.source.is_some() {
-                                        "Unavailable"
-                                    } else {
-                                        "None"
-                                    },
-                                    |s| s.label.as_str(),
-                                );
-                            selector_row(ui, "Source", |ui| {
-                                egui::ComboBox::from_id_salt("source")
-                                    .selected_text(egui::RichText::new(selected).size(panels::HEADER_FONT_SIZE))
-                                    .width(SELECTOR_WIDTH)
-                                    .truncate()
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut route.source, None, "None");
-                                        for source in sources.iter().filter(|s| scope.accepts(s.scope)) {
-                                            ui.selectable_value(
-                                                &mut route.source,
-                                                Some(source.id),
-                                                &source.label,
-                                            );
-                                        }
-                                    })
-                                    .response
-                                    .on_hover_text(if scope==ModulationScope::PerNote {"Modulation source"}else{"Shared modulation source. Per-note sources cannot feed this unit."})
-                            });
-                            selector_row(ui, "Destination", |ui| {
-                                egui::ComboBox::from_id_salt("parameter")
-                                    .selected_text(egui::RichText::new(targets.iter().find(|t| t.parameter == route.parameter && t.id == route.target).map_or("Unavailable", |t| t.label.as_str())).size(panels::HEADER_FONT_SIZE))
-                                    .width(SELECTOR_WIDTH)
-                                    .truncate()
-                                    .show_ui(ui, |ui| {
-                                        for target in targets {
-                                            if ui.selectable_label(route.parameter == target.parameter && route.target == target.id, &target.label).clicked() {
-                                                let target_changed = route.target != target.id;
-                                                route.parameter = target.parameter;
-                                                route.target = target.id;
-                                                if target_changed && scope == ModulationScope::Shared && route.source.is_some_and(|source| !sources_for_target(target.id).iter().any(|s| s.id == source && scope.accepts(s.scope))) {
-                                                    route.source = None;
-                                                }
-                                                route.amount = route.amount.clamp(-target.parameter.limit(), target.parameter.limit());
-                                            }
-                                        }
-                                    })
-                                    .response
-                                    .on_hover_text("Destination parameter")
-                            });
-                            let spec = crate::parameter_knobs::amount(route.parameter);
-                            knobs::row(ui, &mut route.amount, knobs::CHOICE_SIZE, |ui, value| {
-                                ui.add(Knob::new(value, spec))
-                            });
-                        }
-                        rows::centered(
-                            ui,
-                            if compact {
-                                crate::envelope_panel::body_height(true)
-                            } else {
-                                icons::COMPACT_BUTTON_SIZE
-                            },
-                            |ui| {
-                                if rows::power_label(
-                                    ui,
-                                    &format!("Mod {}", index + 1),
-                                    "Toggle modulation connection",
-                                    route.enabled,
-                                )
-                                .clicked()
-                                {
-                                    route.enabled = !route.enabled;
+            let strip = ui.scope_builder(
+                egui::UiBuilder::new()
+                    .id_salt(route.id)
+                    .sense(egui::Sense::click_and_drag()),
+                |ui| {
+                    ui.add_enabled_ui(!reordering, |ui| {
+                        egui::Frame::new().inner_margin(10).show(ui, |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                ui.spacing_mut().item_spacing.y = f32::from(theme::TOOLBAR_PADDING);
+                                ui.set_width(crate::midi_editor::UNIT_STRIP_WIDTH - 20.0);
+                                ui.set_min_height(crate::envelope_panel::body_height(compact));
+                                if !compact {
+                                    let sources = sources_for_target(route.target);
+                                    selector_row(ui, "Source", |ui| {
+                                        source_picker(ui, &mut route.source, sources, scope)
+                                    });
+                                    selector_row(ui, "Destination", |ui| {
+                                        destination_picker(
+                                            ui,
+                                            route,
+                                            targets,
+                                            scope,
+                                            &sources_for_target,
+                                        )
+                                    });
+                                    let spec = crate::parameter_knobs::amount(route.parameter);
+                                    knobs::row(
+                                        ui,
+                                        &mut route.amount,
+                                        knobs::CHOICE_SIZE,
+                                        |ui, value| ui.add(Knob::new(value, spec)),
+                                    );
                                 }
-                            },
-                        );
-                        });
-                    }))
-                });
+                                rows::centered(
+                                    ui,
+                                    if compact {
+                                        crate::envelope_panel::body_height(true)
+                                    } else {
+                                        icons::COMPACT_BUTTON_SIZE
+                                    },
+                                    |ui| {
+                                        if rows::power_label(
+                                            ui,
+                                            &format!("Mod {}", index + 1),
+                                            "Toggle modulation connection",
+                                            route.enabled,
+                                        )
+                                        .clicked()
+                                        {
+                                            route.enabled = !route.enabled;
+                                        }
+                                    },
+                                );
+                            });
+                        })
+                    })
+                },
+            );
             crate::strip_reorder::arm(ui, owner, &strip.response, route.id, &original);
             slots.push((route.id, strip.response.rect));
             strip.response.context_menu(|ui| {
-                if ui.add_enabled(!reordering, egui::Button::new("Remove modulation")).clicked() {
+                if ui
+                    .add_enabled(!reordering, egui::Button::new("Remove modulation"))
+                    .clicked()
+                {
                     remove = Some(index);
                     ui.close();
                 }
@@ -251,16 +441,20 @@ pub(super) fn targeted_body_with_sources<'a>(
                 );
             }
         }
-        let add_strip = ui.add_enabled_ui(!reordering, |ui| icons::circular_strip_button(
-            ui,
-            icons::Lucide::Plus,
-            "Add modulation",
-            Vec2::new(
-                icons::COMPACT_BUTTON_SIZE + 20.0,
-                crate::envelope_panel::body_height(compact) + 20.0,
-            ),
-            icons::COMPACT_BUTTON_SIZE,
-        )).inner;
+        let add_strip = ui
+            .add_enabled_ui(!reordering, |ui| {
+                icons::circular_strip_button(
+                    ui,
+                    icons::Lucide::Plus,
+                    "Add modulation",
+                    Vec2::new(
+                        icons::COMPACT_BUTTON_SIZE + 20.0,
+                        crate::envelope_panel::body_height(compact) + 20.0,
+                    ),
+                    icons::COMPACT_BUTTON_SIZE,
+                )
+            })
+            .inner;
         if !routes.is_empty() {
             panels::unit_divider(ui, add_strip.rect.left(), add_strip.rect.y_range().into());
         }
@@ -722,6 +916,8 @@ mod tests {
                 unit: daw_core::Id::new_v4(),
             },
             label: "Layer 1 · Envelope 1".into(),
+            layer_name: "Layer 1".into(),
+            name: "Envelope 1".into(),
             scope: mode.into(),
             range: ModulationRange::Unipolar,
             behavior: daw_unit_core::ModulationBehavior::Contour,
@@ -1003,3 +1199,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "modulation_panel/source_picker_tests.rs"]
+mod source_picker_tests;

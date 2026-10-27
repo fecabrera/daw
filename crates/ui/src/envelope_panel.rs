@@ -330,7 +330,7 @@ fn note_mode(
 ) -> egui::Response {
     egui::ComboBox::from_id_salt("envelope-mode")
             .selected_text(egui::RichText::new(mode.label()).size(panels::HEADER_FONT_SIZE))
-            .width(crate::modulation_panel::SELECTOR_WIDTH)
+            .width(ui.available_width())
             .truncate()
             .show_ui(ui, |ui| {
                 for choice in EnvelopeMode::ALL {
@@ -343,4 +343,43 @@ fn note_mode(
             }).response.on_hover_text(
         "Per note: independent envelope and duration. Retrigger: restart for every note using its length. Legato: keep the first held note's envelope and duration until the last note ends.",
     )
+}
+
+#[cfg(test)]
+mod selector_width_tests {
+    use super::*;
+    #[test]
+    fn mode_dropdown_fills_the_padded_control_strip() {
+        for width in [54.0, 70.0, 110.0] {
+            let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
+            theme::configure(&ctx);
+            let mut mode = EnvelopeMode::Retrigger;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(600.0, 300.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::Frame::new()
+                        .inner_margin(10)
+                        .outer_margin(4)
+                        .show(ui, |ui| {
+                            ui.set_width(width);
+                            let inner = ui.available_rect_before_wrap();
+                            let response = modulation_panel::selector_row(ui, "Mode", |ui| {
+                                note_mode(ui, &mut mode, false, false)
+                            });
+                            assert!((response.rect.width() - inner.width()).abs() < 0.1);
+                            assert!((response.rect.left() - inner.left()).abs() < 0.1);
+                            assert!((response.rect.right() - inner.right()).abs() < 0.1);
+                        });
+                },
+            );
+            output.textures_delta.clear();
+        }
+    }
 }
