@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Output merge icon — 2026-10-27
+
+Output now uses the shared Lucide Merge icon rotated 90° clockwise, with its arrow pointing right. Header geometry, theme colors, selection and the fixed bus identity remain unchanged. This supersedes the earlier Keyboard Music artwork.
+
+The updated Output header render test passes in Dark and Light, expanded and collapsed. It checks the Merge texture and rotated vertex positions, standard spacing, selection and unchanged project state. All 658 UI tests pass. Formatting, strict workspace/all-target Clippy and whitespace checks pass. A full `cargo test --workspace` run remains in progress in `work/output-merge-tests.log`; no failures were reported at handoff. Native UI and other-platform rendering were not checked.
+
 ## Windows discovery apartment assertion — 2026-10-27
 
 The isolated discovery regression assumed `CoGetApartmentType` always returns `APTTYPE_STA` (0) after STA initialization. Windows CI returned `APTTYPE_MAINSTA` (3), which is also single-threaded. The test now captures the apartment type and qualifier before audio initialization, requires an STA/MAINSTA baseline, and compares the complete pair after each discovery worker exits and after window-thread discovery. A real apartment or qualifier change still fails. The subprocess isolation, worker lifetimes and production WASAPI initialization are unchanged. See [Windows enumerator lifetime](../audio/devices.md#windows-enumerator-lifetime).

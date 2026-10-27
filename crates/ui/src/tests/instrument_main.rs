@@ -18,7 +18,7 @@ fn setup(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id) {
     (app, ctx, track)
 }
 #[test]
-fn output_header_shares_layer_icon_spacing_and_keeps_its_fixed_bus_identity() {
+fn output_header_uses_merge_icon_and_keeps_layer_spacing_and_fixed_bus_identity() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
             let (mut app, ctx, _) = setup(theme);
@@ -34,6 +34,34 @@ fn output_header_shares_layer_icon_spacing_and_keeps_its_fixed_bus_identity() {
             );
             assert_eq!(bounds.icon.left(), bounds.label.left() + 7.0);
             assert!((bounds.name.left() - bounds.icon.right() - 6.0).abs() < 0.1);
+            let uri = icons::Lucide::Merge
+                .size(icons::TOOLBAR_ICON_SIZE)
+                .color(theme::palette(&ctx).secondary)
+                .uri();
+            let egui::load::TexturePoll::Ready { texture } = ctx
+                .try_load_texture(
+                    &uri,
+                    egui::TextureOptions::LINEAR,
+                    egui::load::SizeHint::Size {
+                        width: 16,
+                        height: 16,
+                        maintain_aspect_ratio: false,
+                    },
+                )
+                .unwrap()
+            else {
+                panic!("Output merge icon must be ready")
+            };
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Mesh(mesh)
+                    if mesh.texture_id == texture.id
+                        && mesh.vertices.len() == 4
+                        && mesh.vertices.iter().all(|vertex| {
+                            let local = (vertex.uv.to_vec2() - Vec2::splat(0.5)) * icons::TOOLBAR_ICON_SIZE;
+                            let expected = bounds.icon.center() + Vec2::new(-local.y, local.x);
+                            vertex.pos.distance(expected) < 0.1
+                        })
+            )), "Output must render Merge rotated clockwise with its arrow pointing right");
             assert!(
                 shapes.iter().any(
                     |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Output")

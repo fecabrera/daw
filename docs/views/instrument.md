@@ -24,7 +24,7 @@ Use Up/Down to move through visible folders and components. On a folder, Enter h
 
 A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain one of Oscillator, Sampler, or Granulizer. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a layer.
 
-Layers show a waveform icon before their names. Output uses a keyboard icon. Click a regular layer header to select it. Shift-click toggles layers in the selection. Each selected layer has an outline. Output is selected separately and stays pinned at the bottom.
+Layers show a waveform icon before their names. Output uses a merge icon with its arrow pointing right. Click a regular layer header to select it. Shift-click toggles layers in the selection. Each selected layer has an outline. Output is selected separately and stays pinned at the bottom.
 
 Press M to toggle Mute and S to toggle Solo on each selected regular layer. With Output selected, or with no layer selected, these keys target only the displayed track. Press Escape to clear layer selection. While editing text, Escape first leaves the editor; press it again to clear layer selection. These shortcuts work from any focused pane or non-text control in Instrument. Text entry and active gestures take precedence; dialogs and blocking jobs disable the shortcuts. Release a dragged control before using M/S. Holding a key does not toggle repeatedly.
 

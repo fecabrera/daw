@@ -28,6 +28,16 @@ pub(super) fn paint_disclosure(ui: &Ui, rect: egui::Rect, open: bool, color: Col
 
 /// Leading track/layer artwork shares geometry and colors with the group disclosure.
 pub(super) fn header_icon(ui: &mut Ui, icon: Lucide, sense: egui::Sense) -> Response {
+    header_icon_with_rotation(ui, icon, sense, 0.0)
+}
+
+/// Rotate header artwork clockwise without changing its layout or hit area.
+pub(super) fn header_icon_with_rotation(
+    ui: &mut Ui,
+    icon: Lucide,
+    sense: egui::Sense,
+    angle: f32,
+) -> Response {
     let (rect, response) = ui.allocate_exact_size(
         Vec2::new(HEADER_ICON_WIDTH, crate::toolbars::CONTROL_HEIGHT),
         sense,
@@ -38,11 +48,15 @@ pub(super) fn header_icon(ui: &mut Ui, icon: Lucide, sense: egui::Sense) -> Resp
     } else {
         palette.secondary
     };
-    paint_header_icon(
+    let image = icon.size(TOOLBAR_ICON_SIZE).color(color).image();
+    let image = if angle == 0.0 {
+        image
+    } else {
+        image.rotate(angle, Vec2::splat(0.5))
+    };
+    image.paint_at(
         ui,
         egui::Rect::from_center_size(rect.center(), Vec2::splat(TOOLBAR_ICON_SIZE)),
-        icon,
-        color,
     );
     response
 }
