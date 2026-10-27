@@ -158,7 +158,7 @@ fn context_menu_uses_shared_rows_and_preserves_identity_dismissal_and_release_ac
             hovered.shapes.iter().any(|shape| matches!(
                 &shape.shape, egui::Shape::Rect(rect)
                     if rect.rect == hovered.rows[1]
-                        && rect.fill == ctx.global_style().visuals.selection.bg_fill
+                        && rect.fill == crate::theme::TOOLBAR_HOVER_FILL
                         && rect.stroke.width == 0.0 && rect.corner_radius.nw > 0
             )),
             "Padding must receive the shared full-row hover highlight"

@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Menu hover background — 2026-10-27
+
+Shared menus, context menus and dropdown popups now use `theme::TOOLBAR_HOVER_FILL` for hovered, pressed and open submenu rows. This is the translucent grey used by the view buttons. Selected choices retain their accent fill. Row geometry, spacing, text and action dispatch stay with the existing shared components.
+
+The focused popup tests pass in light and dark themes. Dropdown checks cover hover over text and padding; context-menu checks cover full-row rounded hover fills and existing release/dismissal behavior. Formatting, strict workspace/all-target Clippy, whitespace and documentation link checks pass. The macOS debug app bundle rebuild passes. The initial workspace run stopped at three UI assertions for the old accent hover fill. After updating those expectations, all 657 DAW UI tests and all previously unrun workspace packages (`daw-unit-core`, `daw-unit-ui`, `timestretch`, `timestretch-cli`) pass. All workspace documentation tests pass. Previously completed workspace targets needed no rerun because the remaining changes only update UI test expectations. Logs use the ignored `work/menu-view-hover-*` prefix. Native pointer and external plugin-host rendering were not checked for this color change.
+
 ## Shared context menus — 2026-10-27
 
 DAW and plugin editor context menus now use `unit-ui::menus::ContextMenu`. The component reuses the canonical popup style and full-row layout, preserves egui popup identity and caller-owned opening guards, and lets long labels expand all rows. Clip and track actions share a button that retains spacing before shortcuts. Context action groups use the shared unpadded divider. Existing action owners, guards, selection, and plugin appearance storage remain in place.

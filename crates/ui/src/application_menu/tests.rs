@@ -66,7 +66,7 @@ fn text_rect(frame: &Frame, label: &str) -> Rect {
 
 fn highlight<'a>(
     frame: &'a Frame,
-    ctx: &egui::Context,
+    fill: egui::Color32,
     label: &str,
 ) -> &'a egui::epaint::RectShape {
     let label = text_rect(frame, label);
@@ -74,10 +74,7 @@ fn highlight<'a>(
         .shapes
         .iter()
         .find_map(|shape| match &shape.shape {
-            egui::Shape::Rect(rect)
-                if rect.fill == ctx.global_style().visuals.selection.bg_fill
-                    && rect.rect.contains_rect(label) =>
-            {
+            egui::Shape::Rect(rect) if rect.fill == fill && rect.rect.contains_rect(label) => {
                 Some(rect)
             }
             _ => None,
@@ -125,7 +122,7 @@ fn application_menu_reuses_dropdown_rows_submenus_and_dividers() {
             let file = text_rect(&root, "File").center();
             click(&mut app, &ctx, file);
             let child = frame(&mut app, &ctx, vec![Event::PointerMoved(file)]);
-            let row = highlight(&child, &ctx, "File");
+            let row = highlight(&child, crate::theme::TOOLBAR_HOVER_FILL, "File");
             assert!(row.rect.width() >= menus::MIN_WIDTH);
             assert!(row.corner_radius.nw > 0);
             assert_eq!(row.stroke.width, 0.0);
@@ -161,7 +158,7 @@ fn application_menu_reuses_dropdown_rows_submenus_and_dividers() {
             }
             let open = text_rect(&child, "Open…").center();
             let hovered = frame(&mut app, &ctx, vec![Event::PointerMoved(open)]);
-            let open_row = highlight(&hovered, &ctx, "Open…").rect;
+            let open_row = highlight(&hovered, crate::theme::TOOLBAR_HOVER_FILL, "Open…").rect;
             assert!(open_row.width() >= 220.0);
             let save = text_rect(&hovered, "Save");
             let divider_y = hovered
@@ -215,11 +212,20 @@ fn application_menu_view_action_works_from_row_padding() {
         1,
         "Only the active view has a visible checkmark"
     );
-    assert!(highlight(&child, &ctx, "Timeline").rect.width() >= menus::MIN_WIDTH);
+    assert!(
+        highlight(
+            &child,
+            ctx.global_style().visuals.selection.bg_fill,
+            "Timeline"
+        )
+        .rect
+        .width()
+            >= menus::MIN_WIDTH
+    );
     let mixer = text_rect(&child, "Mixer").center();
     frame(&mut app, &ctx, vec![Event::PointerMoved(mixer)]);
     let hovered = frame(&mut app, &ctx, vec![Event::PointerMoved(mixer)]);
-    let row = highlight(&hovered, &ctx, "Mixer").rect;
+    let row = highlight(&hovered, crate::theme::TOOLBAR_HOVER_FILL, "Mixer").rect;
     click(
         &mut app,
         &ctx,

@@ -9,7 +9,7 @@ Use `unit-ui::menus::Dropdown` for all selectors. It wraps egui's ComboBox, reta
 - Use regular Button text in popup items, even inside a control group that uses Small text. Selected captions can retain compact text.
 - Apply 4-point inner padding around labels and submenu arrows, 4-point outer popup margins, and 4-point vertical gaps between items.
 - Give root and child popup contents a minimum width of 140 points. Longer labels expand the popup; keep labels on one line and each row's hit area and highlight at full content width. Hover must not wrap labels or resize rows.
-- Use rounded, borderless row highlights and theme secondary text for inactive rows. Hover, press, selection and open submenus use the same accent-tinted fill and normal text color over the whole row, including text, padding and arrow. Disabled choices retain egui's disabled behavior.
+- Use rounded, borderless row highlights and theme secondary text for inactive rows. Hover, press and open submenus use `theme::TOOLBAR_HOVER_FILL`, the same translucent grey as the view buttons. Selected choices retain their accent-tinted fill. Use normal text color over the whole highlighted row, including text, padding and arrow. Disabled choices retain egui's disabled behavior.
 - Use the shared 16-point Lucide ChevronRight for submenu arrows, tinted with the row text color. Retain egui's submenu hover, focus and dismissal behavior.
 - Use `menus::separator`: the divider occupies only its 1-point line height. The shared 4-point item gap supplies the space above and below it; add no divider padding.
 

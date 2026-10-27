@@ -654,7 +654,7 @@ fn list_menu_rows_share_minimum_width_padding_rounding_and_full_row_hover_color(
             );
         }
         let parent = highlighted_row(&opened, "Layer 2");
-        assert_eq!(parent.1, fill);
+        assert_eq!(parent.1, theme::TOOLBAR_HOVER_FILL);
         for point in [
             group,
             egui::pos2(parent.0.left() + 1.0, parent.0.center().y),
@@ -706,7 +706,7 @@ fn list_menu_rows_share_minimum_width_padding_rounding_and_full_row_hover_color(
             (leaf_row.top() - first_row.bottom() - 4.0).abs() < 0.1,
             "menu rows must have a 4-point gap"
         );
-        assert_eq!(leaf_fill, fill);
+        assert_eq!(leaf_fill, theme::TOOLBAR_HOVER_FILL);
         assert_eq!(leaf_radius, radius);
         assert!((leaf.left() - leaf_row.left() - 4.0).abs() < 0.1);
         for point in [
@@ -725,7 +725,7 @@ fn list_menu_rows_share_minimum_width_padding_rounding_and_full_row_hover_color(
             let (rect, current_fill, current_radius) = highlighted_row(&hovered, "LFO 1");
             assert_eq!(
                 (rect, current_fill, current_radius),
-                (leaf_row, fill, radius)
+                (leaf_row, theme::TOOLBAR_HOVER_FILL, radius)
             );
         }
         assert_eq!(selected, None);

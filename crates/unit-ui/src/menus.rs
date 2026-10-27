@@ -23,7 +23,7 @@ pub fn popup_style(style: &mut Style) {
     style.wrap_mode = Some(egui::TextWrapMode::Extend);
     let text = style.visuals.widgets.noninteractive.fg_stroke.color;
     let secondary = style.visuals.weak_text_color();
-    let fill = style.visuals.selection.bg_fill;
+    let fill = crate::theme::TOOLBAR_HOVER_FILL;
     let radius = style.visuals.widgets.inactive.corner_radius;
     style.visuals.selection.stroke = egui::Stroke::new(0.0, text);
     style.visuals.widgets.inactive.fg_stroke.color = secondary;
@@ -249,6 +249,34 @@ mod tests {
                 .expect("full-width selected row");
             assert!(row.rect.width() > MIN_WIDTH, "long labels expand the popup");
             assert!(row.corner_radius.nw > 0);
+            let label = opened
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text)
+                        if text.galley.text() == "Long dropdown item without wrapping" =>
+                    {
+                        Some(egui::Rect::from_min_size(text.pos, text.galley.size()))
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            for point in [
+                label.center(),
+                egui::pos2(label.left() - 2.0, label.center().y),
+            ] {
+                render(vec![egui::Event::PointerMoved(point)]);
+                let (_, hovered) = render(vec![egui::Event::PointerMoved(point)]);
+                assert!(
+                    hovered.shapes.iter().any(|shape| matches!(
+                        &shape.shape, egui::Shape::Rect(rect)
+                            if rect.rect.contains(point) && rect.rect.width() >= MIN_WIDTH
+                                && rect.fill == crate::theme::TOOLBAR_HOVER_FILL
+                                && rect.stroke.width == 0.0 && rect.corner_radius.nw > 0
+                    )),
+                    "Dropdown labels and padding must use the view-button hover color"
+                );
+            }
             assert_eq!(selected, 0);
         }
     }
