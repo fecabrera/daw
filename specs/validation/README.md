@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Windows discovery apartment assertion — 2026-10-27
+
+The isolated discovery regression assumed `CoGetApartmentType` always returns `APTTYPE_STA` (0) after STA initialization. Windows CI returned `APTTYPE_MAINSTA` (3), which is also single-threaded. The test now captures the apartment type and qualifier before audio initialization, requires an STA/MAINSTA baseline, and compares the complete pair after each discovery worker exits and after window-thread discovery. A real apartment or qualifier change still fails. The subprocess isolation, worker lifetimes and production WASAPI initialization are unchanged. See [Windows enumerator lifetime](../audio/devices.md#windows-enumerator-lifetime).
+
+All **41 output library tests** pass on macOS. The actual `devices.rs` and `wasapi.rs`, including their Windows test configuration, pass an isolated `x86_64-pc-windows-msvc` check and strict Clippy with CPAL 0.16, windows-sys 0.52 and the pinned Rust 1.97 compiler. The cross-check explicitly selects the installed Rustup compiler and its Windows target libraries. Native Windows execution remains unverified on this macOS machine. Formatting, strict workspace/all-target Clippy and whitespace checks pass. The full locked offline macOS workspace run passes: **1,729 tests passed, 11 opt-in tests ignored, no failures**, including documentation tests. Logs use `work/windows-apartment-*`; the ignored module cross-check harness is in `work/wasapi-crosscheck`.
+
 ## Small unit dropdown items — 2026-10-27
 
 Unit selectors now opt into `unit-ui::menus::Dropdown::small_items()`. Envelope, LFO, Sampler/Granulizer selectors, Saturator controls, and modulation source/destination menus use Small popup text (11 points). Modulation layer submenus use the shared `small_popup_style` and measure labels with the same font. Other selectors, application menus and context menus retain regular Button text (13 points). Captions, minimum widths, padding, item gaps, rounded rows, arrows and hover colors retain the shared contract.

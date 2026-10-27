@@ -250,8 +250,8 @@ mod tests {
         const CHILD: &str = "DAW_WASAPI_DISCOVERY_TEST_CHILD";
         if std::env::var_os(CHILD).is_some() {
             use windows_sys::Win32::System::Com::{
-                APTTYPE_STA, COINIT_APARTMENTTHREADED, CoGetApartmentType, CoInitializeEx,
-                CoUninitialize,
+                APTTYPE, APTTYPE_MAINSTA, APTTYPE_STA, APTTYPEQUALIFIER, COINIT_APARTMENTTHREADED,
+                CoGetApartmentType, CoInitializeEx, CoUninitialize,
             };
             // Simulate the window thread's STA while temporary discovery workers come and go.
             // SAFETY: this isolated test thread owns and balances its COM initialization.
@@ -268,6 +268,17 @@ mod tests {
                 }
             }
             let _sta = Sta;
+            fn apartment() -> (APTTYPE, APTTYPEQUALIFIER) {
+                let (mut kind, mut qualifier) = (0, 0);
+                // SAFETY: both output pointers refer to writable stack values on this thread.
+                let status = unsafe { CoGetApartmentType(&mut kind, &mut qualifier) };
+                assert!(status >= 0, "query window apartment: {status:#X}");
+                (kind, qualifier)
+            }
+            // COM reports its main STA separately. Preserve the actual initial type
+            // and qualifier instead of assuming every single-threaded apartment is STA.
+            let initial_apartment = apartment();
+            assert!(matches!(initial_apartment.0, APTTYPE_STA | APTTYPE_MAINSTA));
             for _ in 0..3 {
                 std::thread::spawn(|| {
                     super::super::wasapi::prepare().expect("initialize Windows audio COM lifetime");
@@ -277,15 +288,18 @@ mod tests {
                 })
                 .join()
                 .expect("device discovery worker panicked");
+                assert_eq!(
+                    apartment(),
+                    initial_apartment,
+                    "audio initialization changed the window apartment after worker exit"
+                );
             }
             // The cached MTA enumerator must also remain callable from the window's STA.
             let _ = discover_devices();
             let _ = output_device(None);
-            let (mut apartment, mut qualifier) = (0, 0);
-            // SAFETY: both output pointers refer to writable stack values.
-            assert!(unsafe { CoGetApartmentType(&mut apartment, &mut qualifier) } >= 0);
             assert_eq!(
-                apartment, APTTYPE_STA,
+                apartment(),
+                initial_apartment,
                 "audio initialization changed the window apartment"
             );
             return;
