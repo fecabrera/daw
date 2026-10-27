@@ -4121,7 +4121,7 @@ impl DawUi {
                             input.focused
                                 && input.pointer.button_clicked(egui::PointerButton::Secondary)
                         });
-                    if let Some(action) = egui::Popup::context_menu(&inner.response)
+                    if let Some(action) = menus::ContextMenu::new(&inner.response)
                         .open_memory(context_click.then_some(egui::SetOpenCommand::Bool(true)))
                         .show(|ui| self.track_context_menu(ui))
                         .and_then(|response| response.inner)

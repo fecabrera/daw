@@ -196,7 +196,7 @@ impl DawUi {
                 menus::separator(ui);
             }
             for &action in *group {
-                let mut button = egui::Button::new(self.clip_menu_label_for(action, target));
+                let mut button = menus::action_button(self.clip_menu_label_for(action, target));
                 if let Some(shortcut) = action.shortcut() {
                     button =
                         button.shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &shortcut));

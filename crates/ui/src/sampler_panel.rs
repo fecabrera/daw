@@ -429,7 +429,7 @@ impl DawUi {
         let mut replace = false;
         let mut switch = false;
         let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
-        result.header.context_menu(|ui| {
+        crate::menus::ContextMenu::new(&result.header).show(|ui| {
             if let Some(menu) = &power_menu {
                 menu.show(ui);
             }
@@ -437,7 +437,7 @@ impl DawUi {
                 choose = true;
                 ui.close();
             }
-            ui.separator();
+            crate::menus::separator(ui);
             if ui
                 .button(format!("Remove {}", s.name().to_lowercase()))
                 .clicked()

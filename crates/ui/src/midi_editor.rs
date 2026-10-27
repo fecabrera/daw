@@ -858,7 +858,7 @@ impl DawUi {
         else {
             return;
         };
-        ui.separator();
+        menus::separator(ui);
         ui.label("Velocity");
         let mut velocity = note.velocity;
         if ui

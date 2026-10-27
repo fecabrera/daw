@@ -4,6 +4,22 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Shared context menus — 2026-10-27
+
+DAW and plugin editor context menus now use `unit-ui::menus::ContextMenu`. The component reuses the canonical popup style and full-row layout, preserves egui popup identity and caller-owned opening guards, and lets long labels expand all rows. Clip and track actions share a button that retains spacing before shortcuts. Context action groups use the shared unpadded divider. Existing action owners, guards, selection, and plugin appearance storage remain in place.
+
+Completed checks on Windows:
+
+- `cargo test -p daw-ui -p daw-unit-ui -p daw-drive-v2-editor --offline context_menu -- --nocapture`: passed. Coverage includes all three palettes, regular text inside Small controls, long-label expansion and stable full-row geometry, shortcut spacing, rounded hover fills over padding, divider spacing, disabled actions, response popup identity, compound-control guards, release-only dispatch, and Escape dismissal. Existing clip, MIDI, track, and Macro context actions pass. The plugin appearance test selects Mist from row padding and confirms unchanged parameter state and no host parameter events.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- Complete `daw-ui`, `daw-unit-ui`, and all fourteen editor test suites and doc tests: passed through a package-selected `cargo test --offline` run. The output is in `work/context-menu-ui-editor-tests.log`.
+- `cargo build -p daw-desktop --offline`: passed; rebuilt the debug executable.
+- Native Windows preview at 150% display scale: opened track and empty-track context menus with a real pointer in Dark, Light, and Mist. Captures confirm typography, menu widths, shortcut separation, group dividers, and disabled Ungroup. The fixture and preview process were isolated from user projects and audio devices.
+- `cargo test --workspace --offline --no-fail-fast`: completed with one failing target, `daw-output --lib`. The unchanged `devices::tests::windows_discovery_survives_initializer_worker_exit` again reports apartment type 3 instead of STA (0), as recorded in the application-menu checks below. All other workspace test targets and doc tests passed. The affected UI/editor suites were also rerun after the final shortcut-spacing change.
+
+Native macOS/Linux rendering and plugin host context menus remain unverified. Automated egui and editor checks do not establish native platform or host behavior.
+
 ## Windows and Linux application menu design — 2026-10-26
 
 The burger menu and all five application submenus now reuse the canonical dropdown popup style and layout. Submenu rows use Lucide ChevronRight arrows. Action groups use the shared unpadded separator. View choices retain one active-view checkmark inside a shared selectable button row, including its full-row highlight and shortcut layout.

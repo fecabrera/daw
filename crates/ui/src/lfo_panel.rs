@@ -210,7 +210,7 @@ pub(super) fn unit(
     lfo.collapsed = collapsed;
     modulation_panel::toggle(ui, &result.header, lfo.collapsed, &mut lfo.modulation_open);
     let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
-    result.header.context_menu(|ui| {
+    crate::menus::ContextMenu::new(&result.header).show(|ui| {
         if let Some(menu) = &power_menu {
             menu.show(ui);
         }

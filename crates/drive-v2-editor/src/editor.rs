@@ -210,7 +210,7 @@ impl Editor {
                 self.active[slot] = false;
             }
         }
-        background.context_menu(|ui| {
+        daw_unit_ui::menus::ContextMenu::new(&background).show(|ui| {
             for (index, name) in ["Dark", "Light", "Mist"].into_iter().enumerate() {
                 if ui
                     .selectable_label(appearance == index as u32, name)

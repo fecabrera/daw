@@ -1092,27 +1092,27 @@ impl DawUi {
                         .inner;
                     if allowed && interactive {
                         self.start_effect_drag(ui, &header, power, target, effect.id, &order);
-                        header
-                            .clone()
-                            .on_hover_cursor(egui::CursorIcon::Grab)
-                            .context_menu(|ui| {
-                                ui.add_enabled_ui(self.effects_drag.is_none() && supported, |ui| {
-                                    menu.show(ui)
-                                });
-                                if menu.action().is_some() {
-                                    crate::unit_power::schedule_focus(ui, &header);
-                                }
-                                if ui
-                                    .add_enabled(
-                                        self.effects_drag.is_none(),
-                                        egui::Button::new("Remove effect"),
-                                    )
-                                    .clicked()
-                                {
-                                    remove = Some(effect.id);
-                                    ui.close();
-                                }
+                        crate::menus::ContextMenu::new(
+                            &header.clone().on_hover_cursor(egui::CursorIcon::Grab),
+                        )
+                        .show(|ui| {
+                            ui.add_enabled_ui(self.effects_drag.is_none() && supported, |ui| {
+                                menu.show(ui)
                             });
+                            if menu.action().is_some() {
+                                crate::unit_power::schedule_focus(ui, &header);
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.effects_drag.is_none(),
+                                    egui::Button::new("Remove effect"),
+                                )
+                                .clicked()
+                            {
+                                remove = Some(effect.id);
+                                ui.close();
+                            }
+                        });
                     }
                 });
                 let rect = unit.response.rect;

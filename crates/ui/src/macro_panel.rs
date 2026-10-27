@@ -165,7 +165,7 @@ pub(super) fn unit(
                     }));
                     // Child controls own their pointer events; include them as well as strip padding.
                     for response in strip.inner.inner.inner.iter().chain([&strip.response]) {
-                        response.context_menu(|ui| {
+                        crate::menus::ContextMenu::new(response).show(|ui| {
                             if ui.add_enabled(response.enabled(), egui::Button::new("Remove macro")).clicked() { remove = Some(index); ui.close(); }
                         });
                     }
@@ -195,7 +195,7 @@ pub(super) fn unit(
         &mut module.modulation_open,
     );
     let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
-    result.header.context_menu(|ui| {
+    crate::menus::ContextMenu::new(&result.header).show(|ui| {
         if let Some(menu) = &power_menu {
             menu.show(ui);
         }

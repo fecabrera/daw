@@ -70,6 +70,99 @@
     fn events(model: &Model) -> Vec<Edit> {
         std::iter::from_fn(|| model.pop()).collect()
     }
+
+    #[test]
+    fn appearance_context_menu_uses_shared_rows_without_parameter_edits() {
+        fn render(ctx: &egui::Context, editor: &mut Editor, input: Vec<Event>) -> egui::FullOutput {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        Pos2::ZERO,
+                        Vec2::new(WIDTH as f32, HEIGHT as f32),
+                    )),
+                    events: input,
+                    focused: true,
+                    ..Default::default()
+                },
+                |ui| editor.show(ui),
+            );
+            output.textures_delta.clear();
+            output
+        }
+        let (ctx, model, mut editor) = setup();
+        ctx.all_styles_mut(|style| style.animation_time = 0.0);
+        render(&ctx, &mut editor, vec![]);
+        let at = Pos2::new(4.0, 4.0);
+        for pressed in [true, false] {
+            render(
+                &ctx,
+                &mut editor,
+                vec![
+                    Event::PointerMoved(at),
+                    Event::PointerButton {
+                        pos: at,
+                        button: PointerButton::Secondary,
+                        pressed,
+                        modifiers: Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        let opened = render(&ctx, &mut editor, vec![]);
+        let text_rect = |label: &str| {
+            opened
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        assert_eq!(text.galley.rows.len(), 1);
+                        assert!(
+                            text.galley
+                                .job
+                                .sections
+                                .iter()
+                                .all(|s| s.format.font_id.size == 13.0)
+                        );
+                        Some(Rect::from_min_size(text.pos, text.galley.size()))
+                    }
+                    _ => None,
+                })
+                .expect("Appearance menu item")
+        };
+        let dark = text_rect("Dark");
+        text_rect("Light");
+        let mist = text_rect("Mist");
+        let selected = opened
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Rect(rect)
+                    if rect.rect.contains_rect(dark)
+                        && rect.fill == ctx.global_style().visuals.selection.bg_fill =>
+                {
+                    Some(rect)
+                }
+                _ => None,
+            })
+            .expect("Shared selected appearance row");
+        assert!(selected.rect.width() >= daw_unit_ui::menus::MIN_WIDTH);
+        assert!(selected.corner_radius.nw > 0);
+        let target = Pos2::new(selected.rect.right() - 1.0, mist.center().y);
+        render(
+            &ctx,
+            &mut editor,
+            vec![Event::PointerMoved(target), pointer(target, true)],
+        );
+        assert_eq!(model.appearance.load(Ordering::Relaxed), 0);
+        render(&ctx, &mut editor, vec![pointer(target, false)]);
+        render(&ctx, &mut editor, vec![]);
+        assert_eq!(model.appearance.load(Ordering::Relaxed), 2);
+        assert_eq!(theme::palette(&ctx), theme::MIST);
+        assert!(events(&model).is_empty());
+        assert_eq!(editor.state, PluginState::default());
+        assert!(!egui::Popup::is_any_open(&ctx));
+    }
+
     #[test]
     fn ten_controls_emit_balanced_host_gestures_and_off_color_is_retained() {
         let (ctx, model, mut editor) = setup();

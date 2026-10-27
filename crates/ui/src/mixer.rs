@@ -320,7 +320,7 @@ impl DawUi {
                                 && self.editing_enabled()
                                 && ui.rect_contains_pointer(rect)
                                 && ui.input(|i| i.focused && i.pointer.secondary_clicked());
-                            if let Some(selected) = egui::Popup::context_menu(&response)
+                            if let Some(selected) = crate::menus::ContextMenu::new(&response)
                                 .open_memory(
                                     context_click.then_some(egui::SetOpenCommand::Bool(true)),
                                 )

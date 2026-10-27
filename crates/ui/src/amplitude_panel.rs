@@ -107,7 +107,7 @@ pub(super) fn unit(
         )
         .inner;
     let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
-    result.header.context_menu(|ui| {
+    crate::menus::ContextMenu::new(&result.header).show(|ui| {
         if let Some(menu) = &power_menu {
             menu.show(ui);
         }

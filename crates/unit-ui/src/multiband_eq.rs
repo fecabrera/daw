@@ -8,7 +8,7 @@ pub const CONTROL_SIZE: f32 = 42.0;
 const CONTROL_SCALE: f32 = CONTROL_SIZE / knobs::CHOICE_SIZE;
 pub const CONTROL_GAP: f32 = 3.0;
 fn remove_menu(response: &egui::Response, remove: &mut bool) {
-    response.context_menu(|ui| {
+    crate::menus::ContextMenu::new(response).show(|ui| {
         if ui.button("Remove band").clicked() {
             *remove = true;
             ui.close();

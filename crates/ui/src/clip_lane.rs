@@ -42,7 +42,7 @@ impl DawUi {
                 &clip.name,
             )
         });
-        response.context_menu(|ui| {
+        menus::ContextMenu::new(&response).show(|ui| {
             self.clip_context_menu(ui, clip.id);
             self.midi_clip_note_menu(ui, clip);
         });

@@ -6,6 +6,8 @@ Dropdown menus use consistent text, padded rows and rounded highlights. Open a l
 
 On Windows and Linux, open the burger menu for File, Edit, Clip, Track, and View. Its categories and submenus use the same design as dropdown menus. Keyboard shortcuts appear beside the actions that support them; unavailable actions appear dimmed.
 
+Right-click an item to open its available actions. Context menus for clips, tracks, unit headers, and editable strips use the same design as dropdown menus. Independent plugin editors use it for their appearance menu and EQ band actions. Escape or a click outside the menu dismisses it without applying an action.
+
 ## Views
 
 - [Timeline](views/timeline.md): browse chords, import, arrange, select, trim, loop, split, and copy clips or a time range, and edit clip settings.

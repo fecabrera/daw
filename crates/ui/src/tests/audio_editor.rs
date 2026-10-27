@@ -370,7 +370,7 @@ fn menu_item(shapes: &[egui::epaint::ClippedShape], label: &str) -> Pos2 {
 
 #[test]
 fn waveform_context_menu_matches_timeline_and_keeps_selection_and_viewports() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+    for color_theme in settings::ColorTheme::ALL {
         let (mut app, ctx, first, second) = selectable_waveforms();
         app.set_settings(
             &ctx,
@@ -403,6 +403,20 @@ fn waveform_context_menu_matches_timeline_and_keeps_selection_and_viewports() {
             })
             .collect();
         assert_eq!(labels, expected);
+        for shape in &painted {
+            if let egui::Shape::Text(text) = &shape.shape
+                && expected.contains(&text.galley.text())
+            {
+                assert_eq!(text.galley.rows.len(), 1);
+                assert!(
+                    text.galley
+                        .job
+                        .sections
+                        .iter()
+                        .all(|s| s.format.font_id.size == 13.0)
+                );
+            }
+        }
         assert!(menu_item(&painted, expected[1]).y < menu_item(&painted, expected[2]).y);
         assert_eq!(app.selected_clip, Some(first));
         assert_eq!(app.selected_clips, HashSet::from([first]));

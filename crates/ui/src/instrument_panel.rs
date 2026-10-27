@@ -443,7 +443,7 @@ impl DawUi {
                                         });
                                         let response =
                                             response.on_hover_cursor(egui::CursorIcon::Grab);
-                                        response.context_menu(|ui| {
+                                        crate::menus::ContextMenu::new(&response).show(|ui| {
                                             if ui
                                                 .add_enabled(
                                                     count > 1 && !self.instrument_ui.dragging(),
@@ -1249,7 +1249,7 @@ impl DawUi {
                             .iter()
                             .chain([&column.response, &strip.response])
                         {
-                            response.context_menu(|ui| {
+                            crate::menus::ContextMenu::new(response).show(|ui| {
                                 if ui
                                     .add_enabled(
                                         response.enabled(),
@@ -1332,7 +1332,7 @@ impl DawUi {
         let mut replace_source = false;
         let mut replace_granular = false;
         let power_menu = crate::unit_power::PowerMenu::from_ui(ui);
-        result.header.context_menu(|ui| {
+        crate::menus::ContextMenu::new(&result.header).show(|ui| {
             if let Some(menu) = &power_menu {
                 menu.show(ui);
             }

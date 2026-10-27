@@ -391,7 +391,7 @@ pub(super) fn targeted_body_with_sources<'a>(
             );
             crate::strip_reorder::arm(ui, owner, &strip.response, route.id, &original);
             slots.push((route.id, strip.response.rect));
-            strip.response.context_menu(|ui| {
+            crate::menus::ContextMenu::new(&strip.response).show(|ui| {
                 if ui
                     .add_enabled(!reordering, egui::Button::new("Remove modulation"))
                     .clicked()

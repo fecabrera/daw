@@ -19,6 +19,12 @@ Use `unit-ui::menus::Dropdown` for all selectors. It wraps egui's ComboBox, reta
 
 The burger menu and its File, Edit, Clip, Track, and View submenus reuse `menus::popup_style` and `menus::layout`. Use the same regular text, full-row rounded highlights, minimum popup width, padding, item gaps, and Lucide ChevronRight arrows as dropdown menus. Action groups use `menus::separator` without added divider padding. View choices use `menus::checked_button`, which retains the active-view checkmark inside a shared selectable button row. Preserve existing menu order, shortcuts, checked views, enabled guards, submenu navigation, dismissal, and release-only actions. Keep toolbar controls and native macOS menus unchanged.
 
+## Context menus
+
+All application and independent plugin editor context menus use `menus::ContextMenu`. This component wraps egui's context popup with `popup_style` and `layout`, including the minimum content width, regular text, shared padding and gaps, and full-row rounded highlights. It retains the response's default popup identity, pointer anchor, focus, and dismissal, so existing `Response::context_menu_opened` checks remain valid. Track panels retain their compound-control opening guards through `ContextMenu::open_memory`.
+
+Use the component for clip, MIDI note, track and empty-track areas; effect and instrument headers; oscillator, Macro, and modulation strips; EQ band removal; and plugin appearance menus. Use `menus::separator` for their action groups. Shared clip and track actions use `menus::action_button` to retain a visible gap before right-aligned shortcuts, including when long labels expand the popup. Keep action dispatch, disabled guards, selected targets, note fields, menu ordering, project edits, plugin parameters, and appearance storage in their existing owners. Opening or dismissing a menu must not change project data or send host parameter edits.
+
 ## Catalog panels
 
 Effects, Components and Chords share `Catalog` and `ControlPanel::catalog_body` / `catalog_row`:

@@ -211,7 +211,7 @@ impl DawUi {
             if action.starts_menu_group() {
                 crate::menus::separator(ui);
             }
-            let mut button = egui::Button::new(self.track_action_label(action));
+            let mut button = crate::menus::action_button(self.track_action_label(action));
             if let Some(shortcut) = action.shortcut() {
                 button = button.shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &shortcut));
             }
@@ -336,7 +336,7 @@ impl DawUi {
             return;
         }
         let response = ui.interact(rect, ui.id().with("empty-tracks"), egui::Sense::click());
-        let action = egui::Popup::context_menu(&response)
+        let action = crate::menus::ContextMenu::new(&response)
             .show(|ui| {
                 for action in [TrackAction::Add, TrackAction::AddMidi] {
                     if ui
@@ -370,9 +370,9 @@ impl DawUi {
         .enumerate()
         {
             if index > 0 && action.starts_menu_group() {
-                ui.separator();
+                crate::menus::separator(ui);
             }
-            let mut button = egui::Button::new(self.track_action_label(action));
+            let mut button = crate::menus::action_button(self.track_action_label(action));
             if let Some(shortcut) = action.shortcut() {
                 button = button.shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &shortcut));
             }

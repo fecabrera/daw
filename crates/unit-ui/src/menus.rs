@@ -1,10 +1,15 @@
-//! Shared dropdown presentation and catalog list spacing.
+//! Shared dropdown/context-menu presentation and catalog list spacing.
 use egui::{ComboBox, InnerResponse, Style, TextStyle, Ui, Vec2, WidgetText};
 
 pub const ITEM_PADDING: i8 = 4;
 pub const OUTER_MARGIN: i8 = 4;
 pub const ITEM_SPACING: f32 = 4.0;
 pub const MIN_WIDTH: f32 = 140.0;
+
+/// Keep a visible gap between action labels and right-aligned shortcuts.
+pub fn action_button(label: impl Into<WidgetText>) -> egui::Button<'static> {
+    egui::Button::new(label.into()).gap(ITEM_SPACING)
+}
 
 /// Style popup contents without changing the collapsed selector's geometry.
 pub fn popup_style(style: &mut Style) {
@@ -80,6 +85,30 @@ pub fn layout<R>(ui: &mut Ui, width: f32, content: impl FnOnce(&mut Ui) -> R) ->
     .inner
 }
 
+/// A secondary-click popup with the canonical menu style, rows, and egui identity.
+#[must_use = "Call .show() to display the context menu"]
+pub struct ContextMenu(egui::Popup<'static>);
+
+impl ContextMenu {
+    pub fn new(response: &egui::Response) -> Self {
+        Self(
+            egui::Popup::context_menu(response)
+                .width(MIN_WIDTH)
+                .style(popup_style),
+        )
+    }
+
+    /// Retain caller-owned opening guards for compound controls such as track panels.
+    pub fn open_memory(mut self, state: impl Into<Option<egui::SetOpenCommand>>) -> Self {
+        self.0 = self.0.open_memory(state);
+        self
+    }
+
+    pub fn show<R>(self, content: impl FnOnce(&mut Ui) -> R) -> Option<InnerResponse<R>> {
+        self.0.show(|ui| layout(ui, ui.available_width(), content))
+    }
+}
+
 /// A selector with the canonical popup style and existing caption/size options.
 #[must_use]
 pub struct Dropdown(ComboBox);
@@ -117,6 +146,10 @@ impl Dropdown {
             .show_ui(ui, |ui| layout(ui, ui.available_width(), content))
     }
 }
+
+#[cfg(test)]
+#[path = "menus/context_menu_tests.rs"]
+mod context_menu_tests;
 
 #[cfg(test)]
 mod tests {
