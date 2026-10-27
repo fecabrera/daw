@@ -275,7 +275,7 @@ pub fn show(
                     ui.label("Titlebar");
                 },
                 |ui| {
-                    egui::ComboBox::from_id_salt("titlebar_style")
+                    crate::menus::Dropdown::from_id_salt("titlebar_style")
                         .selected_text(settings.titlebar.name())
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
@@ -292,7 +292,7 @@ pub fn show(
                     ui.label("Theme");
                 },
                 |ui| {
-                    egui::ComboBox::from_id_salt("color_theme")
+                    crate::menus::Dropdown::from_id_salt("color_theme")
                         .selected_text(settings.theme.name())
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
@@ -317,7 +317,7 @@ pub fn show(
                     swatch(ui, rect, swatch_color);
                 },
                 |ui| {
-                    egui::ComboBox::from_id_salt("accent_color")
+                    crate::menus::Dropdown::from_id_salt("accent_color")
                         .selected_text(settings.accent.name())
                         .width(ui.available_width())
                         .height(300.0)
@@ -381,7 +381,7 @@ pub fn show(
                 ui, label_width,
                 |ui| { ui.label("Seek cache"); },
                 |ui| {
-                    egui::ComboBox::from_id_salt("seek_cache")
+                    crate::menus::Dropdown::from_id_salt("seek_cache")
                         .selected_text(settings.seek_cache.name())
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
@@ -407,7 +407,7 @@ pub fn show(
                     ui.label("Split MIDI notes");
                 },
                 |ui| {
-                    egui::ComboBox::from_id_salt("midi_note_split")
+                    crate::menus::Dropdown::from_id_salt("midi_note_split")
                         .selected_text(settings.midi_note_split.name())
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {

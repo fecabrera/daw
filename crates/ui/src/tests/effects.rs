@@ -1205,7 +1205,7 @@ fn effect_catalog_colors_follow_hover_and_selection_without_editing_the_project(
                     })
                     .unwrap();
                 assert_eq!(text.pos.x, folder.pos.x);
-                assert_eq!(text.pos.y, entry.top() + f32::from(theme::TOOLBAR_PADDING));
+                assert_eq!(text.pos.y, entry.center().y - text.galley.size().y * 0.5);
                 assert!(
                     text.galley
                         .job

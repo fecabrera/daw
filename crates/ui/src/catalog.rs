@@ -241,7 +241,7 @@ impl Catalog {
         let scroll = egui::ScrollArea::vertical()
             .id_salt(("catalog-rows", title))
             .max_height((bounds.bottom() - header.response.rect.bottom()).max(0.0))
-            .show(ui, |ui| {
+            .show(ui, |ui| panel.catalog_body(ui, |ui| {
                 for row in self.visible_rows() {
                     // Scope IDs by identity so collapsing an earlier folder cannot move focus.
                     let response = ui.push_id(match row {
@@ -290,7 +290,7 @@ impl Catalog {
                         }
                     }
                 }
-            });
+            }));
         // Include folders in the occupied area; clicking one must not clear other selections.
         let bottom = output
             .rows

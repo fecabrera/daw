@@ -78,7 +78,7 @@ impl DawUi {
                     ui.add_enabled_ui(midi && !self.midi_editor.dragging(), |ui| {
                         panel.field_row(ui, 45.0, |ui| { ui.label("Root"); }, |ui| {
                             const ROOTS: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-                            let response = egui::ComboBox::from_id_salt("scale-root")
+                            let response = crate::menus::Dropdown::from_id_salt("scale-root")
                                 .selected_text(options.root.map_or("Off", |root| ROOTS[usize::from(root)]))
                                 .width(ui.available_width()).show_ui(ui, |ui| {
                                     ui.selectable_value(&mut options.root, None, "Off");
@@ -91,7 +91,7 @@ impl DawUi {
                         });
                         ui.add_enabled_ui(options.root.is_some(), |ui| {
                             panel.field_row(ui, 45.0, |ui| { ui.label("Scale"); }, |ui| {
-                                let response = egui::ComboBox::from_id_salt("scale-mode")
+                                let response = crate::menus::Dropdown::from_id_salt("scale-mode")
                                     .selected_text(options.scale.name()).width(ui.available_width())
                                     .show_ui(ui, |ui| {
                                         for scale in Scale::ALL {

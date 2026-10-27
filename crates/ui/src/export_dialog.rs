@@ -26,7 +26,7 @@ pub fn show(
             .spacing(egui::Vec2::new(12.0, 8.0))
             .show(ui, |ui| {
                 ui.label("Format");
-                egui::ComboBox::from_id_salt("export_format")
+                crate::menus::Dropdown::from_id_salt("export_format")
                     .selected_text(settings.format.label())
                     .show_ui(ui, |ui| {
                         for format in ExportFormat::ALL {
@@ -37,7 +37,7 @@ pub fn show(
                 ui.label("Codec");
                 match settings.format {
                     ExportFormat::Wav => {
-                        egui::ComboBox::from_id_salt("export_codec")
+                        crate::menus::Dropdown::from_id_salt("export_codec")
                             .selected_text(settings.wav_codec.label())
                             .show_ui(ui, |ui| {
                                 for codec in WavCodec::ALL {
@@ -64,7 +64,7 @@ pub fn show(
                         &mut settings.mp3_bitrate
                     };
                     ui.label("Bitrate");
-                    egui::ComboBox::from_id_salt("export_bitrate")
+                    crate::menus::Dropdown::from_id_salt("export_bitrate")
                         .selected_text(format!("{} kbps", bitrate.kbps()))
                         .show_ui(ui, |ui| {
                             for candidate in Mp3Bitrate::ALL {

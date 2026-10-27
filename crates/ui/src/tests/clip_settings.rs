@@ -158,7 +158,7 @@ fn pointer_move(app: &mut DawUi, ctx: &egui::Context, at: Pos2, shift: bool) {
 }
 
 #[test]
-fn clip_settings_text_baselines_and_row_spacing_match_the_catalog_in_both_themes() {
+fn clip_settings_keep_form_spacing_while_catalog_rows_use_shared_list_spacing() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, track) = fixture();
         let ctx = context();
@@ -176,15 +176,25 @@ fn clip_settings_text_baselines_and_row_spacing_match_the_catalog_in_both_themes
         let catalog = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let positions = ["EQ & Filters", "Dynamics", "Distortion", "Imaging"]
             .map(|label| text_pos(&catalog, label).unwrap());
-        let header = text_pos(&catalog, "Effects").unwrap();
+        for pair in positions.windows(2) {
+            assert!((pair[1].y - pair[0].y - 28.0).abs() <= 0.5);
+        }
         app.timeline_catalog_visible = false;
         app.clip_settings_visible = true;
         frame(&mut app, &ctx, vec![]);
         let form = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let form_header = text_pos(&form, "Clip settings").unwrap();
-        for (label, expected) in ["Name", "Source", "Gain", "Transpose"]
+        let first_form_row = text_pos(&form, "Name").unwrap();
+        let font = egui::TextStyle::Small.resolve(&ctx.global_style());
+        let row_height = ctx.fonts_mut(|fonts| {
+            fonts
+                .layout_no_wrap("Ag".into(), font, egui::Color32::WHITE)
+                .size()
+                .y
+        }) + 2.0 * f32::from(theme::TOOLBAR_PADDING);
+        for (index, label) in ["Name", "Source", "Gain", "Transpose"]
             .into_iter()
-            .zip(positions)
+            .enumerate()
         {
             let actual = text_pos(&form, label).unwrap();
             assert!(
@@ -192,8 +202,8 @@ fn clip_settings_text_baselines_and_row_spacing_match_the_catalog_in_both_themes
                 "{label} left inset"
             );
             assert!(
-                ((actual.y - form_header.y) - (expected.y - header.y)).abs() <= 0.5,
-                "{label}: form={actual:?}, catalog={expected:?}"
+                (actual.y - first_form_row.y - index as f32 * row_height).abs() <= 0.5,
+                "{label}: form rows retain their own spacing"
             );
         }
 
@@ -203,11 +213,7 @@ fn clip_settings_text_baselines_and_row_spacing_match_the_catalog_in_both_themes
         let prompt = text_pos(&empty, "Select a clip").unwrap();
         let header = text_pos(&empty, "Clip settings").unwrap();
         assert!((prompt.x - header.x).abs() <= 0.5);
-        assert!(
-            (prompt.y - header.y - (positions[0].y - text_pos(&catalog, "Effects").unwrap().y))
-                .abs()
-                <= 0.5
-        );
+        assert!((prompt.y - header.y - (first_form_row.y - form_header.y)).abs() <= 0.5);
     }
 }
 

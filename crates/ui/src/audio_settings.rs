@@ -76,7 +76,7 @@ pub(super) fn device_row(
             ui.label(label);
         },
         |ui| {
-            egui::ComboBox::from_id_salt(label)
+            crate::menus::Dropdown::from_id_salt(label)
                 .selected_text(device_label(selected.as_ref(), devices))
                 .width(ui.available_width())
                 .show_ui(ui, |ui| {
@@ -127,7 +127,7 @@ impl AudioDialog {
             ui.add_enabled_ui(!busy, |ui| {
                 let configurations = self.selected_output().map(|device| device.configurations.clone()).unwrap_or_default();
                 rows::field(ui, width, |ui| { ui.label("Output sample rate"); }, |ui| {
-                    egui::ComboBox::from_id_salt("device_sample_rate").selected_text(self.draft.sample_rate_hz.map_or_else(|| "Automatic (prefer project)".into(), |rate| format!("{rate} Hz")))
+                    crate::menus::Dropdown::from_id_salt("device_sample_rate").selected_text(self.draft.sample_rate_hz.map_or_else(|| "Automatic (prefer project)".into(), |rate| format!("{rate} Hz")))
                         .width(ui.available_width()).show_ui(ui, |ui| {
                             ui.selectable_value(&mut self.draft.sample_rate_hz, None, "Automatic (prefer project)");
                             for rate in daw_core::SAMPLE_RATES {
@@ -139,7 +139,7 @@ impl AudioDialog {
                         });
                 });
                 rows::field(ui, width, |ui| { ui.label("Output bit depth"); }, |ui| {
-                    egui::ComboBox::from_id_salt("device_sample_format").selected_text(self.draft.sample_format.map_or("Automatic (driver default)", |format| format.label()))
+                    crate::menus::Dropdown::from_id_salt("device_sample_format").selected_text(self.draft.sample_format.map_or("Automatic (driver default)", |format| format.label()))
                         .width(ui.available_width()).show_ui(ui, |ui| {
                             ui.selectable_value(&mut self.draft.sample_format, None, "Automatic (driver default)");
                             let mut formats = Vec::new();
@@ -155,7 +155,7 @@ impl AudioDialog {
                         });
                 });
                 rows::field(ui, width, |ui| { ui.label("Output buffer size"); }, |ui| {
-                    egui::ComboBox::from_id_salt("device_buffer_size").selected_text(self.draft.buffer_size_frames.map_or_else(|| "Automatic (prefer project)".into(), |frames| format!("{frames} samples")))
+                    crate::menus::Dropdown::from_id_salt("device_buffer_size").selected_text(self.draft.buffer_size_frames.map_or_else(|| "Automatic (prefer project)".into(), |frames| format!("{frames} samples")))
                         .width(ui.available_width()).show_ui(ui, |ui| {
                             ui.selectable_value(&mut self.draft.buffer_size_frames, None, "Automatic (prefer project)");
                             for frames in daw_core::BUFFER_SIZES {

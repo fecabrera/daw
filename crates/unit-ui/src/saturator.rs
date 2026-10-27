@@ -48,12 +48,12 @@ pub fn show(
        match index {
         0=>rows::selector_row(ui,"Shape",|ui| {
           let before=s.shape;
-          let mut response=egui::ComboBox::from_id_salt("shape").selected_text(egui::RichText::new(s.shape.label()).size(HEADER_FONT_SIZE)).width(65.0).truncate().show_ui(ui,|ui| {for shape in daw_unit_core::SaturatorShape::ALL {ui.selectable_value(&mut s.shape,shape,shape.label());}}).response;
+          let mut response=crate::menus::Dropdown::from_id_salt("shape").selected_text(egui::RichText::new(s.shape.label()).size(HEADER_FONT_SIZE)).width(65.0).truncate().show_ui(ui,|ui| {for shape in daw_unit_core::SaturatorShape::ALL {ui.selectable_value(&mut s.shape,shape,shape.label());}}).response;
           if before!=s.shape {response.mark_changed();} response
         }),
         1=>rows::selector_row(ui,"Clip Mode",|ui| {
           let before=s.clip_mode;
-          let mut response=egui::ComboBox::from_id_salt("clip-mode").selected_text(egui::RichText::new(s.clip_mode.label()).size(HEADER_FONT_SIZE)).width(65.0).truncate().show_ui(ui,|ui| {for clip in daw_unit_core::SaturatorClipMode::ALL {ui.selectable_value(&mut s.clip_mode,clip,clip.label());}}).response;
+          let mut response=crate::menus::Dropdown::from_id_salt("clip-mode").selected_text(egui::RichText::new(s.clip_mode.label()).size(HEADER_FONT_SIZE)).width(65.0).truncate().show_ui(ui,|ui| {for clip in daw_unit_core::SaturatorClipMode::ALL {ui.selectable_value(&mut s.clip_mode,clip,clip.label());}}).response;
           if before!=s.clip_mode {response.mark_changed();} response
         }),
         _=> {let target=match index {2=>0,3=>1,_=>2}; let value=match index {2=>&mut s.drive_db,3=>&mut s.level_db,_=>&mut s.dry_wet}; ui.add(Knob::new(value,parameter_knobs::destination(P::SATURATOR[target]).named(P::SATURATOR[target].label())).modulated(markers[target].as_ref(),&mut s.modulation_open))}

@@ -150,7 +150,7 @@ impl ControlPanel {
         .inner
     }
 
-    /// Catalog entries share padding, small text, and the view controls' selected fill.
+    /// Catalog entries share dropdown spacing, small text, and the view controls' selected fill.
     pub(super) fn catalog_item(
         &self,
         ui: &mut Ui,
@@ -169,8 +169,26 @@ impl ControlPanel {
             ))
     }
 
-    /// Inset form contents from the panel edges. Rows own the vertical padding,
-    /// just as catalog rows do, so the first label shares the catalog baseline.
+    /// Catalog lists share dropdown margins, item padding and row gaps.
+    pub(super) fn catalog_body<R>(&self, ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> R {
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.y = crate::menus::ITEM_SPACING;
+            Frame::new()
+                .inner_margin(crate::menus::OUTER_MARGIN)
+                .show(ui, |ui| {
+                    ui.set_width(
+                        (self.rect.width() - 1.0 - 2.0 * f32::from(crate::menus::OUTER_MARGIN))
+                            .max(0.0),
+                    );
+                    content(ui)
+                })
+                .inner
+        })
+        .inner
+    }
+
+    /// Inset form contents from the panel edges. Form rows retain their own height;
+    /// catalog lists use `catalog_body` and the shared menu spacing instead.
     pub(super) fn padded_body<R>(
         &self,
         ui: &mut Ui,
@@ -192,8 +210,8 @@ impl ControlPanel {
     }
 
     pub(super) fn content_row_height(ui: &Ui) -> f32 {
-        // Use the catalog's pixel-rounded galley height, rather than raw font
-        // metrics, so fractional display scales retain existing scroll bounds.
+        // Use pixel-rounded galley height so form fields retain stable baselines
+        // at fractional display scales.
         ui.painter()
             .layout_no_wrap(
                 "Ag".into(),
@@ -205,7 +223,7 @@ impl ControlPanel {
             + 2.0 * f32::from(crate::theme::TOOLBAR_PADDING)
     }
 
-    /// Form controls share the catalogs' row height and centered text baseline.
+    /// Form controls share one row height and centered text baseline.
     pub(super) fn field_row<R>(
         &self,
         ui: &mut Ui,
@@ -230,7 +248,7 @@ impl ControlPanel {
         indented: bool,
         folder: Option<bool>,
     ) -> Response {
-        let padding = f32::from(crate::theme::TOOLBAR_PADDING);
+        let padding = f32::from(crate::menus::ITEM_PADDING);
         let palette = crate::theme::palette(ui.ctx());
         let galley = ui.painter().layout_no_wrap(
             name.into(),
@@ -238,7 +256,10 @@ impl ControlPanel {
             palette.text,
         );
         let (rect, response) = ui.allocate_exact_size(
-            Vec2::new(self.rect.width() - 1.0, Self::content_row_height(ui)),
+            Vec2::new(
+                ui.available_width(),
+                galley.size().y.max(crate::icons::TOOLBAR_ICON_SIZE) + 2.0 * padding,
+            ),
             if folder.is_some() {
                 egui::Sense::click()
             } else {
@@ -302,7 +323,10 @@ impl ControlPanel {
                 .paint_at(ui, icon_rect(1));
         }
         ui.painter().galley_with_override_text_color(
-            rect.min + Vec2::new(padding + text_offset, padding),
+            egui::pos2(
+                rect.left() + padding + text_offset,
+                rect.center().y - galley.size().y * 0.5,
+            ),
             galley,
             color,
         );
@@ -664,4 +688,76 @@ fn paint_selection_border(painter: &egui::Painter, rect: Rect) {
         crate::theme::selection_outline(painter.ctx()),
         egui::StrokeKind::Inside,
     );
+}
+
+#[cfg(test)]
+mod catalog_style_tests {
+    use super::*;
+    #[test]
+    fn catalog_rows_share_menu_padding_margins_gaps_and_inset_selection() {
+        for color in [
+            crate::settings::ColorTheme::Dark,
+            crate::settings::ColorTheme::Light,
+        ] {
+            let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
+            crate::icons::configure(&ctx);
+            crate::theme::configure(&ctx);
+            crate::theme::apply(
+                &ctx,
+                crate::settings::AppSettings {
+                    theme: color,
+                    ..Default::default()
+                },
+            );
+            let mut rows = Vec::new();
+            let mut origin = egui::Pos2::ZERO;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(600.0, 500.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    origin = ui.cursor().min;
+                    let panel = ControlPanel::begin(
+                        ui,
+                        Rect::from_min_size(origin, Vec2::new(250.0, 500.0)),
+                    );
+                    panel.catalog_body(ui, |ui| {
+                        rows.push(panel.catalog_folder(ui, "Folder", true).rect);
+                        rows.push(panel.catalog_item(ui, "Selected", true, true).rect);
+                        rows.push(panel.catalog_item(ui, "Other", false, true).rect);
+                    });
+                },
+            );
+            assert_eq!(rows[0].left() - origin.x, 4.0);
+            assert_eq!(rows[0].top() - origin.y, 4.0);
+            assert_eq!(origin.x + 249.0 - rows[0].right(), 4.0);
+            for pair in rows.windows(2) {
+                assert_eq!(pair[1].top() - pair[0].bottom(), 4.0);
+                assert_eq!(pair[0].width(), pair[1].width());
+            }
+            assert!(output.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == rows[1] && r.fill == crate::theme::toggle_colors(&ctx, true).0 && r.corner_radius.nw > 0)));
+            let label = output
+                .shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "Folder" => Some(t),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(
+                label.pos.y + label.galley.size().y * 0.5,
+                rows[0].center().y
+            );
+            assert_eq!(
+                label.pos.x - rows[0].left(),
+                4.0 + 2.0 * (crate::icons::TOOLBAR_ICON_SIZE + 4.0)
+            );
+            output.textures_delta.clear();
+        }
+    }
 }

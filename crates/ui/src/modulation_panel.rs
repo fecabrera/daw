@@ -57,35 +57,8 @@ fn source_groups(sources: &[Source], scope: ModulationScope) -> Vec<SourceGroup<
     }
     groups
 }
-const SOURCE_MENU_MIN_WIDTH: f32 = 140.0;
-const SOURCE_MENU_PADDING: i8 = 4;
-const SOURCE_MENU_ITEM_SPACING: f32 = 4.0;
-fn source_menu_style(style: &mut egui::Style) {
-    egui::containers::menu::menu_style(style);
-    style.spacing.button_padding = Vec2::splat(f32::from(SOURCE_MENU_PADDING));
-    style.spacing.icon_spacing = 0.0;
-    style.spacing.item_spacing.y = SOURCE_MENU_ITEM_SPACING;
-    style.spacing.menu_margin = egui::Margin::same(SOURCE_MENU_PADDING);
-    style.wrap_mode = Some(egui::TextWrapMode::Extend);
-    let text = style.visuals.widgets.noninteractive.fg_stroke.color;
-    let secondary = style.visuals.weak_text_color();
-    let fill = style.visuals.selection.bg_fill;
-    let radius = style.visuals.widgets.inactive.corner_radius;
-    style.visuals.selection.stroke = egui::Stroke::new(0.0, text);
-    style.visuals.widgets.inactive.fg_stroke.color = secondary;
-    for visuals in [
-        &mut style.visuals.widgets.hovered,
-        &mut style.visuals.widgets.active,
-        &mut style.visuals.widgets.open,
-    ] {
-        visuals.weak_bg_fill = fill;
-        visuals.bg_fill = fill;
-        visuals.bg_stroke = egui::Stroke::NONE;
-        visuals.fg_stroke.color = text;
-        visuals.corner_radius = radius;
-        visuals.expansion = 0.0;
-    }
-}
+#[cfg(test)]
+const SOURCE_MENU_MIN_WIDTH: f32 = crate::menus::MIN_WIDTH;
 fn source_menu_label(label: &str) -> egui::RichText {
     egui::RichText::new(label).text_style(egui::TextStyle::Button)
 }
@@ -100,21 +73,13 @@ fn source_menu_width<'a>(ui: &Ui, labels: impl Iterator<Item = &'a str>, arrows:
         })
         .fold(0.0, f32::max);
     (text
-        + 2.0 * f32::from(SOURCE_MENU_PADDING)
+        + 2.0 * f32::from(crate::menus::ITEM_PADDING)
         + if arrows {
             ui.spacing().icon_width + ui.spacing().icon_spacing
         } else {
             0.0
         })
-    .max(SOURCE_MENU_MIN_WIDTH)
-}
-fn source_menu_layout<R>(ui: &mut Ui, width: f32, content: impl FnOnce(&mut Ui) -> R) -> R {
-    ui.set_width(width);
-    ui.with_layout(
-        egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
-        content,
-    )
-    .inner
+    .max(crate::menus::MIN_WIDTH)
 }
 fn source_picker(
     ui: &mut Ui,
@@ -132,11 +97,10 @@ fn source_picker(
             },
             |source| source.label.as_str(),
         );
-    egui::ComboBox::from_id_salt("source")
+    crate::menus::Dropdown::from_id_salt("source")
         .selected_text(egui::RichText::new(label).size(panels::HEADER_FONT_SIZE))
         .width(ui.available_width())
         .truncate()
-        .popup_style(source_menu_style.into())
         .show_ui(ui, |ui| {
             let groups = source_groups(sources, scope);
             let width = source_menu_width(
@@ -144,7 +108,7 @@ fn source_picker(
                 std::iter::once("None").chain(groups.iter().map(|g| g.name)),
                 true,
             );
-            source_menu_layout(ui, width, |ui| {
+            crate::menus::layout(ui, width, |ui| {
                 if ui
                     .selectable_value(selected, None, source_menu_label("None"))
                     .clicked()
@@ -152,7 +116,7 @@ fn source_picker(
                     ui.close();
                 }
                 if !groups.is_empty() {
-                    ui.add(egui::Separator::default().spacing(1.0));
+                    crate::menus::separator(ui);
                 }
                 for group in groups {
                     ui.push_id(group.id, |ui| {
@@ -165,14 +129,17 @@ fn source_picker(
                                 )
                                 .image_tint_follows_text_color(true),
                         )
-                        .config(egui::containers::menu::MenuConfig::new().style(source_menu_style))
+                        .config(
+                            egui::containers::menu::MenuConfig::new()
+                                .style(crate::menus::popup_style),
+                        )
                         .ui(ui, |ui| {
                             let width = source_menu_width(
                                 ui,
                                 group.sources.iter().map(|s| s.name.as_str()),
                                 false,
                             );
-                            source_menu_layout(ui, width, |ui| {
+                            crate::menus::layout(ui, width, |ui| {
                                 for source in group.sources {
                                     if ui
                                         .selectable_value(
@@ -205,7 +172,7 @@ fn destination_picker<'a>(
     scope: ModulationScope,
     sources_for_target: impl Fn(Option<daw_core::Id>) -> &'a [Source],
 ) -> egui::Response {
-    egui::ComboBox::from_id_salt("parameter")
+    crate::menus::Dropdown::from_id_salt("parameter")
         .selected_text(
             egui::RichText::new(
                 targets

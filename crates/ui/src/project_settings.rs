@@ -94,7 +94,7 @@ impl ProjectSettings {
                     ui.label("Sample rate");
                 },
                 |ui| {
-                    egui::ComboBox::from_id_salt("project_sample_rate")
+                    crate::menus::Dropdown::from_id_salt("project_sample_rate")
                         .selected_text(format!("{} Hz", self.sample_rate_hz))
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
@@ -115,7 +115,7 @@ impl ProjectSettings {
                     ui.label("Buffer size");
                 },
                 |ui| {
-                    egui::ComboBox::from_id_salt("project_buffer_size")
+                    crate::menus::Dropdown::from_id_salt("project_buffer_size")
                         .selected_text(format!("{} samples", self.buffer_size_frames))
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
@@ -136,7 +136,7 @@ impl ProjectSettings {
                     ui.label("Time stretch engine");
                 },
                 |ui| {
-                    egui::ComboBox::from_id_salt("project_stretch_engine")
+                    crate::menus::Dropdown::from_id_salt("project_stretch_engine")
                         .selected_text(self.stretch_engine.label())
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {

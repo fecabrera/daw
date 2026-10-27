@@ -2,6 +2,8 @@
 
 Use these guides to arrange audio, build MIDI instruments, and export a mix. For installation and platform setup, see the main [README](../README.md#build-and-run).
 
+Dropdown menus use consistent text, padded rows and rounded highlights. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs use the same row spacing and inset selection highlights.
+
 ## Views
 
 - [Timeline](views/timeline.md): browse chords, import, arrange, select, trim, loop, split, and copy clips or a time range, and edit clip settings.

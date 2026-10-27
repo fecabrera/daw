@@ -140,6 +140,8 @@ The audio callback must remain nonblocking and must not allocate or perform file
 
 ## UI conventions
 
+- Use `unit-ui::menus::Dropdown` for dropdown selectors and its shared popup style/layout for submenus. Follow [canonical dropdowns and catalog spacing](specs/views/dropdowns.md): regular popup text, rounded full-row highlights, 4-point inner padding, outer margins and item gaps, ChevronRight submenu arrows, and unpadded dividers. Effects, Components and Chords catalogs reuse the same spacing constants through `ControlPanel::catalog_body` and `catalog_row`; retain their Small text and existing interactions.
+
 - Disabled bands use the theme's secondary grey for meter fills, including boost, reduction, overload, and residual readings during band transitions. Reuse `meters::band_color` for this rule across current and future band monitors. Keep the meter's scale, readings, geometry, tooltips, and accessibility unchanged.
 
 - Register instrument catalog components once in `instrument_catalog.rs::ENTRIES`, using `Entry::layer` with its category and an optional `.with_main` installation function. Registration drives category membership, catalog additions, drag eligibility, and unsupported-target hints. Reuse the optional folders in `catalog.rs` and shared `ControlPanel` rows; do not maintain separate component lists for folders. Do not add component type allowlists to drag handlers. Preview checks must inspect registration metadata without invoking constructors or assigning IDs. Installed transfers continue through core `Project::can_transfer_component` and its transaction. See [component registration](specs/editing/components.md#registering-instrument-components).

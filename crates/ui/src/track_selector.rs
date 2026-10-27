@@ -57,7 +57,8 @@ impl DawUi {
                     .and_then(|id| tracks.iter().find(|t| t.0 == id))
                     .map_or(prompt, |t| t.1.as_str());
                 let mut selected = current;
-                let mut combo = egui::ComboBox::from_id_salt("source-track").selected_text(label);
+                let mut combo =
+                    crate::menus::Dropdown::from_id_salt("source-track").selected_text(label);
                 if let Some(width) = width {
                     combo = combo.width(width).truncate();
                 }

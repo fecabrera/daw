@@ -140,7 +140,7 @@ impl DawUi {
             |ui| {
                 let response = ui
                     .add_enabled_ui(allowed, |ui| {
-                        egui::ComboBox::from_id_salt("chord-root-filter")
+                        crate::menus::Dropdown::from_id_salt("chord-root-filter")
                             .selected_text(root.map_or("All notes", |index| CHORD_ROOTS[index]))
                             .width(92.0)
                             .show_ui(ui, |ui| {

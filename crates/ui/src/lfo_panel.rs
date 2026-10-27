@@ -241,7 +241,7 @@ pub(super) fn unit(
                 .max_rect(rect)
                 .id_salt((lfo.id, "restart")),
         );
-        egui::ComboBox::from_id_salt("mode")
+        crate::menus::Dropdown::from_id_salt("mode")
             .selected_text(egui::RichText::new(lfo.settings.restart.label()).size(panels::HEADER_FONT_SIZE))
             .width(80.0)
             .truncate()

@@ -675,13 +675,13 @@ fn choice_dropdown<T: Copy + PartialEq>(
             ui.spacing_mut().button_padding.x = 3.0;
             ui.spacing_mut().icon_width = 12.0;
             ui.spacing_mut().icon_spacing = 4.0;
-            egui::ComboBox::from_id_salt(key)
+            crate::menus::Dropdown::from_id_salt(key)
                 .selected_text(egui::RichText::new(selected).small())
                 .width(width)
                 .wrap_mode(egui::TextWrapMode::Truncate)
                 .show_ui(ui, |ui| {
                     for (choice, label) in options {
-                        ui.selectable_value(value, *choice, egui::RichText::new(*label).small());
+                        ui.selectable_value(value, *choice, *label);
                     }
                 })
                 .response

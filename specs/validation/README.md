@@ -4,6 +4,22 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Canonical dropdowns and catalog spacing — 2026-10-26
+
+The shared `unit-ui::menus` module now owns dropdown popup styling, layout, minimum width and divider geometry. All existing DAW selectors and portable Saturator selectors use its `Dropdown` wrapper. Existing collapsed captions and control widths remain local to each selector. The canonical contract is [Dropdowns and catalog list spacing](../views/dropdowns.md).
+
+Effects, Components and Chords reuse the same 4-point padding, outer margins and row gaps through `ControlPanel::catalog_body` / `catalog_row`. Their Small text and existing selection, focus, folders, keyboard, scrolling and release-only drag paths remain in place. Labels and icons share centered baselines. Form fields retain their independent layout; the former test requiring catalog and form row baselines to match is superseded.
+
+Completed checks:
+
+- Shared dropdown tests cover regular popup text inside Small control groups, long single-line labels, expanded row widths, disabled options and rounded selected rows in both themes. Catalog geometry checks cover outer margins, row gaps, label/icon alignment and inset selection painting.
+- All **655 DAW UI tests** and **24 shared unit-UI tests** pass in the locked offline workspace run, including existing catalog folder, keyboard, drag, scroll and editing-guard checks.
+- `cargo test --offline --locked --workspace` passed, including plugin host/state/DSP checks, project and audio regressions, time-stretch matrices, CLI integration tests and documentation tests.
+- The focused form-spacing regression passes. Strict locked offline workspace/all-target Clippy, formatting, whitespace and documentation target checks pass.
+- `sh tools/package_macos.sh debug` rebuilt `target/debug/DAW.app` with the shared dropdowns and catalog geometry.
+
+Native pointer behavior, Windows/Linux execution and native plugin-host rendering remain unverified for this presentation change. Logs are in ignored `work/canonical-menus-*` files.
+
 ## Layer-grouped modulation source menus — 2026-10-26
 
 The shared Source picker uses one submenu per eligible layer, followed by Output. None stays first with a divider below it. Groups use stable layer IDs; leaf labels use provider names and selected values retain the owner prefix. Existing scope, presence and cycle filtering remains in place. Source, Destination and Envelope Mode selectors fill the available strip interior. Popup rows use regular button text, rounded panel-list highlights, 4-point inner padding around labels and arrows, a shared 4-point outer popup margin, a shared 140-point minimum width, 4-point gaps between items and around unpadded 1-point dividers, and single-line labels through hover transitions.
