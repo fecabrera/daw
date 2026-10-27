@@ -328,7 +328,7 @@ fn note_mode(
     shared_only: bool,
     local_inputs: bool,
 ) -> egui::Response {
-    crate::menus::Dropdown::from_id_salt("envelope-mode")
+    crate::menus::Dropdown::from_id_salt("envelope-mode").small_items()
             .selected_text(egui::RichText::new(mode.label()).size(panels::HEADER_FONT_SIZE))
             .width(ui.available_width())
             .truncate()

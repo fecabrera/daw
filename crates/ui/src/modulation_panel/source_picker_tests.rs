@@ -669,7 +669,7 @@ fn list_menu_rows_share_minimum_width_padding_rounding_and_full_row_hover_color(
             assert_eq!(highlighted_row(&opened, "Layer 2"), parent);
         }
         for (shown, label) in [(&root, "None"), (&root, "Layer 2"), (&opened, "LFO 1")] {
-            let font = egui::TextStyle::Button.resolve(&ctx.global_style());
+            let font = egui::TextStyle::Small.resolve(&ctx.global_style());
             let expected = ctx.fonts_mut(|fonts| {
                 fonts
                     .layout_no_wrap(label.into(), font, egui::Color32::WHITE)

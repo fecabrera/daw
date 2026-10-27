@@ -60,10 +60,10 @@ fn source_groups(sources: &[Source], scope: ModulationScope) -> Vec<SourceGroup<
 #[cfg(test)]
 const SOURCE_MENU_MIN_WIDTH: f32 = crate::menus::MIN_WIDTH;
 fn source_menu_label(label: &str) -> egui::RichText {
-    egui::RichText::new(label).text_style(egui::TextStyle::Button)
+    egui::RichText::new(label).text_style(egui::TextStyle::Small)
 }
 fn source_menu_width<'a>(ui: &Ui, labels: impl Iterator<Item = &'a str>, arrows: bool) -> f32 {
-    let font = egui::TextStyle::Button.resolve(ui.style());
+    let font = egui::TextStyle::Small.resolve(ui.style());
     let text = labels
         .map(|label| {
             ui.painter()
@@ -98,6 +98,7 @@ fn source_picker(
             |source| source.label.as_str(),
         );
     crate::menus::Dropdown::from_id_salt("source")
+        .small_items()
         .selected_text(egui::RichText::new(label).size(panels::HEADER_FONT_SIZE))
         .width(ui.available_width())
         .truncate()
@@ -131,7 +132,7 @@ fn source_picker(
                         )
                         .config(
                             egui::containers::menu::MenuConfig::new()
-                                .style(crate::menus::popup_style),
+                                .style(crate::menus::small_popup_style),
                         )
                         .ui(ui, |ui| {
                             let width = source_menu_width(
@@ -173,6 +174,7 @@ fn destination_picker<'a>(
     sources_for_target: impl Fn(Option<daw_core::Id>) -> &'a [Source],
 ) -> egui::Response {
     crate::menus::Dropdown::from_id_salt("parameter")
+        .small_items()
         .selected_text(
             egui::RichText::new(
                 targets

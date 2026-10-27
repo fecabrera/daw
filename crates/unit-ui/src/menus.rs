@@ -41,6 +41,12 @@ pub fn popup_style(style: &mut Style) {
     }
 }
 
+/// Unit selectors use compact text while retaining the canonical popup geometry.
+pub fn small_popup_style(style: &mut Style) {
+    popup_style(style);
+    style.override_text_style = Some(TextStyle::Small);
+}
+
 /// A divider owns only its line height; adjacent item spacing supplies the gaps.
 pub fn separator(ui: &mut Ui) -> egui::Response {
     ui.add(egui::Separator::default().spacing(1.0))
@@ -111,29 +117,40 @@ impl ContextMenu {
 
 /// A selector with the canonical popup style and existing caption/size options.
 #[must_use]
-pub struct Dropdown(ComboBox);
+pub struct Dropdown {
+    combo_box: ComboBox,
+    small_items: bool,
+}
 impl Dropdown {
     pub fn from_id_salt(id: impl egui::AsIdSalt) -> Self {
-        Self(ComboBox::from_id_salt(id))
+        Self {
+            combo_box: ComboBox::from_id_salt(id),
+            small_items: false,
+        }
+    }
+    /// Use Small text for unit popup items; the collapsed caption remains unchanged.
+    pub fn small_items(mut self) -> Self {
+        self.small_items = true;
+        self
     }
     pub fn selected_text(mut self, text: impl Into<WidgetText>) -> Self {
-        self.0 = self.0.selected_text(text);
+        self.combo_box = self.combo_box.selected_text(text);
         self
     }
     pub fn width(mut self, width: f32) -> Self {
-        self.0 = self.0.width(width);
+        self.combo_box = self.combo_box.width(width);
         self
     }
     pub fn height(mut self, height: f32) -> Self {
-        self.0 = self.0.height(height);
+        self.combo_box = self.combo_box.height(height);
         self
     }
     pub fn truncate(mut self) -> Self {
-        self.0 = self.0.truncate();
+        self.combo_box = self.combo_box.truncate();
         self
     }
     pub fn wrap_mode(mut self, mode: egui::TextWrapMode) -> Self {
-        self.0 = self.0.wrap_mode(mode);
+        self.combo_box = self.combo_box.wrap_mode(mode);
         self
     }
     pub fn show_ui<R>(
@@ -141,8 +158,13 @@ impl Dropdown {
         ui: &mut Ui,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> InnerResponse<Option<R>> {
-        self.0
-            .popup_style(popup_style.into())
+        let style: fn(&mut Style) = if self.small_items {
+            small_popup_style
+        } else {
+            popup_style
+        };
+        self.combo_box
+            .popup_style(style.into())
             .show_ui(ui, |ui| layout(ui, ui.available_width(), content))
     }
 }
@@ -155,129 +177,137 @@ mod context_menu_tests;
 mod tests {
     use super::*;
     #[test]
-    fn dropdown_popup_uses_regular_text_and_full_rows_inside_small_controls() {
-        for color in [egui::Theme::Dark, egui::Theme::Light] {
-            let ctx = egui::Context::default();
-            crate::fonts::configure(&ctx);
-            crate::theme::configure(&ctx);
-            ctx.set_theme(color);
-            ctx.all_styles_mut(|style| style.animation_time = 0.0);
-            let mut selected = 0;
-            let mut button = egui::Rect::NOTHING;
-            let mut render = |events| {
-                let mut output = ctx.run_ui(
-                    egui::RawInput {
-                        screen_rect: Some(egui::Rect::from_min_size(
-                            egui::Pos2::ZERO,
-                            Vec2::new(600.0, 500.0),
-                        )),
-                        events,
-                        focused: true,
-                        ..Default::default()
+    fn dropdown_popup_uses_requested_text_size_and_full_rows() {
+        for small in [false, true] {
+            for color in [egui::Theme::Dark, egui::Theme::Light] {
+                let ctx = egui::Context::default();
+                crate::fonts::configure(&ctx);
+                crate::theme::configure(&ctx);
+                ctx.set_theme(color);
+                ctx.all_styles_mut(|style| style.animation_time = 0.0);
+                let mut selected = 0;
+                let mut button = egui::Rect::NOTHING;
+                let mut render = |events| {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                Vec2::new(600.0, 500.0),
+                            )),
+                            events,
+                            focused: true,
+                            ..Default::default()
+                        },
+                        |ui| {
+                            ui.style_mut().override_text_style = Some(TextStyle::Small);
+                            let dropdown = Dropdown::from_id_salt("test");
+                            let dropdown = if small {
+                                dropdown.small_items()
+                            } else {
+                                dropdown
+                            };
+                            button = dropdown
+                                .selected_text(egui::RichText::new("Closed").small())
+                                .width(65.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut selected, 0, "First");
+                                    ui.selectable_value(
+                                        &mut selected,
+                                        1,
+                                        "Long dropdown item without wrapping",
+                                    );
+                                    ui.add_enabled_ui(false, |ui| {
+                                        ui.selectable_value(&mut selected, 2, "Disabled")
+                                    });
+                                })
+                                .response
+                                .rect;
+                        },
+                    );
+                    output.textures_delta.clear();
+                    (button, output)
+                };
+                let (closed, _) = render(vec![]);
+                let point = closed.center();
+                render(vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: Default::default(),
                     },
-                    |ui| {
-                        ui.style_mut().override_text_style = Some(TextStyle::Small);
-                        button = Dropdown::from_id_salt("test")
-                            .selected_text(egui::RichText::new("Closed").small())
-                            .width(65.0)
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut selected, 0, "First");
-                                ui.selectable_value(
-                                    &mut selected,
-                                    1,
-                                    "Long dropdown item without wrapping",
-                                );
-                                ui.add_enabled_ui(false, |ui| {
-                                    ui.selectable_value(&mut selected, 2, "Disabled")
-                                });
-                            })
-                            .response
-                            .rect;
-                    },
-                );
-                output.textures_delta.clear();
-                (button, output)
-            };
-            let (closed, _) = render(vec![]);
-            let point = closed.center();
-            render(vec![
-                egui::Event::PointerMoved(point),
-                egui::Event::PointerButton {
+                ]);
+                render(vec![egui::Event::PointerButton {
                     pos: point,
                     button: egui::PointerButton::Primary,
-                    pressed: true,
+                    pressed: false,
                     modifiers: Default::default(),
-                },
-            ]);
-            render(vec![egui::Event::PointerButton {
-                pos: point,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers: Default::default(),
-            }]);
-            let (_, opened) = render(vec![]);
-            for label in ["First", "Long dropdown item without wrapping", "Disabled"] {
-                let text = opened
+                }]);
+                let (_, opened) = render(vec![]);
+                for label in ["First", "Long dropdown item without wrapping", "Disabled"] {
+                    let text = opened
+                        .shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(t) if t.galley.text() == label => Some(t),
+                            _ => None,
+                        })
+                        .expect("popup item");
+                    assert_eq!(text.galley.rows.len(), 1);
+                    assert!(
+                        text.galley
+                            .job
+                            .sections
+                            .iter()
+                            .all(|s| s.format.font_id.size == if small { 11.0 } else { 13.0 })
+                    );
+                }
+                let row = opened
                     .shapes
                     .iter()
                     .find_map(|shape| match &shape.shape {
-                        egui::Shape::Text(t) if t.galley.text() == label => Some(t),
+                        egui::Shape::Rect(r)
+                            if r.fill == crate::theme::toggle_colors(&ctx, true).0
+                                && r.rect.width() >= MIN_WIDTH =>
+                        {
+                            Some(r)
+                        }
                         _ => None,
                     })
-                    .expect("popup item");
-                assert_eq!(text.galley.rows.len(), 1);
-                assert!(
-                    text.galley
-                        .job
-                        .sections
-                        .iter()
-                        .all(|s| s.format.font_id.size == 13.0)
-                );
+                    .expect("full-width selected row");
+                assert!(row.rect.width() > MIN_WIDTH, "long labels expand the popup");
+                assert!(row.corner_radius.nw > 0);
+                let label = opened
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text)
+                            if text.galley.text() == "Long dropdown item without wrapping" =>
+                        {
+                            Some(egui::Rect::from_min_size(text.pos, text.galley.size()))
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+                for point in [
+                    label.center(),
+                    egui::pos2(label.left() - 2.0, label.center().y),
+                ] {
+                    render(vec![egui::Event::PointerMoved(point)]);
+                    let (_, hovered) = render(vec![egui::Event::PointerMoved(point)]);
+                    assert!(
+                        hovered.shapes.iter().any(|shape| matches!(
+                            &shape.shape, egui::Shape::Rect(rect)
+                                if rect.rect.contains(point) && rect.rect.width() >= MIN_WIDTH
+                                    && rect.fill == crate::theme::TOOLBAR_HOVER_FILL
+                                    && rect.stroke.width == 0.0 && rect.corner_radius.nw > 0
+                        )),
+                        "Dropdown labels and padding must use the view-button hover color"
+                    );
+                }
+                assert_eq!(selected, 0);
             }
-            let row = opened
-                .shapes
-                .iter()
-                .find_map(|shape| match &shape.shape {
-                    egui::Shape::Rect(r)
-                        if r.fill == crate::theme::toggle_colors(&ctx, true).0
-                            && r.rect.width() >= MIN_WIDTH =>
-                    {
-                        Some(r)
-                    }
-                    _ => None,
-                })
-                .expect("full-width selected row");
-            assert!(row.rect.width() > MIN_WIDTH, "long labels expand the popup");
-            assert!(row.corner_radius.nw > 0);
-            let label = opened
-                .shapes
-                .iter()
-                .find_map(|shape| match &shape.shape {
-                    egui::Shape::Text(text)
-                        if text.galley.text() == "Long dropdown item without wrapping" =>
-                    {
-                        Some(egui::Rect::from_min_size(text.pos, text.galley.size()))
-                    }
-                    _ => None,
-                })
-                .unwrap();
-            for point in [
-                label.center(),
-                egui::pos2(label.left() - 2.0, label.center().y),
-            ] {
-                render(vec![egui::Event::PointerMoved(point)]);
-                let (_, hovered) = render(vec![egui::Event::PointerMoved(point)]);
-                assert!(
-                    hovered.shapes.iter().any(|shape| matches!(
-                        &shape.shape, egui::Shape::Rect(rect)
-                            if rect.rect.contains(point) && rect.rect.width() >= MIN_WIDTH
-                                && rect.fill == crate::theme::TOOLBAR_HOVER_FILL
-                                && rect.stroke.width == 0.0 && rect.corner_radius.nw > 0
-                    )),
-                    "Dropdown labels and padding must use the view-button hover color"
-                );
-            }
-            assert_eq!(selected, 0);
         }
     }
 }

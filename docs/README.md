@@ -2,7 +2,7 @@
 
 Use these guides to arrange audio, build MIDI instruments, and export a mix. For installation and platform setup, see the main [README](../README.md#build-and-run).
 
-Dropdown and context menus use consistent text, padded rows and rounded highlights. Their hover background matches unselected view buttons. Selected view and toolbar buttons keep their active background when hovered or pressed. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs use the same row spacing and inset selection highlights.
+Dropdown and context menus use padded rows and rounded highlights. Unit selectors, including modulation sources, layer submenus and destinations, use smaller text. Their hover background matches unselected view buttons. Selected view and toolbar buttons keep their active background when hovered or pressed. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs use the same row spacing and inset selection highlights.
 
 On Windows and Linux, open the burger menu for File, Edit, Clip, Track, and View. Its categories and submenus use the same design as dropdown menus. Keyboard shortcuts appear beside the actions that support them; unavailable actions appear dimmed.
 

@@ -676,6 +676,7 @@ fn choice_dropdown<T: Copy + PartialEq>(
             ui.spacing_mut().icon_width = 12.0;
             ui.spacing_mut().icon_spacing = 4.0;
             crate::menus::Dropdown::from_id_salt(key)
+                .small_items()
                 .selected_text(egui::RichText::new(selected).small())
                 .width(width)
                 .wrap_mode(egui::TextWrapMode::Truncate)

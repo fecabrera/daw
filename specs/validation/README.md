@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Small unit dropdown items — 2026-10-27
+
+Unit selectors now opt into `unit-ui::menus::Dropdown::small_items()`. Envelope, LFO, Sampler/Granulizer selectors, Saturator controls, and modulation source/destination menus use Small popup text (11 points). Modulation layer submenus use the shared `small_popup_style` and measure labels with the same font. Other selectors, application menus and context menus retain regular Button text (13 points). Captions, minimum widths, padding, item gaps, rounded rows, arrows and hover colors retain the shared contract.
+
+Focused menu tests pass for both text sizes in light and dark themes, including full-width rows, disabled choices, single-line long labels, hover over text/padding and retained selection. All seven modulation picker tests and all 658 DAW UI tests pass. Saturator editor rendering, bindings and popup-selection tests pass. Formatting and whitespace checks pass. Strict workspace/all-target Clippy and the macOS debug app rebuild pass. Both Saturator CLAP/VST3 macOS arm64 release binaries and packages rebuild with signing verification. The full locked offline workspace run passes: **1,729 tests passed, 11 opt-in tests ignored, no failures**, including documentation tests. Native pointer checks were not run for this text-size change. Logs use `work/unit-dropdown-small-*`.
+
 ## Selected view and toolbar hover — 2026-10-27
 
 Selected view and borderless toolbar buttons now retain their active background during hover and press. The shared grey overlay applies only to enabled, unselected buttons. The shared toolbar helper covers sidebar catalog/lane toggles and semantic transport controls. Text, geometry, rounded corners, borderless painting and view-switch guards retain their existing behavior.
