@@ -29,6 +29,8 @@ pub struct Model {
     pub output_reset: std::sync::atomic::AtomicBool,
     state: Snapshot<{ Parameter::COUNT }>,
     events: Mutex<VecDeque<Edit>>,
+    /// Presentation-only band inventory; it never enters audio or parameter state.
+    pub visible_band_slots: std::sync::atomic::AtomicU64,
     pub appearance: AtomicU32,
     pub scale: AtomicU32,
 }
@@ -40,6 +42,7 @@ impl Default for Model {
             output_reset: std::sync::atomic::AtomicBool::new(false),
             state: Snapshot::new(Parameter::ALL.map(|p| PluginState::default().get(p).to_bits())),
             events: Mutex::new(VecDeque::with_capacity(CAPACITY)),
+            visible_band_slots: std::sync::atomic::AtomicU64::new(1),
             appearance: AtomicU32::new(0),
             scale: AtomicU32::new(1.0f32.to_bits()),
         }
@@ -179,21 +182,9 @@ impl Editor {
         // Reserve room for every active gesture's End, including focus loss/close.
         let ready = self.model.remaining() >= 4 * Parameter::COUNT;
         let bounds = ui
-            .add_enabled_ui(ready, |ui| {
-                drive::show(
-                    ui,
-                    &mut settings,
-                    false,
-                    0.0,
-                    &std::array::from_fn(|_| None),
-                    daw_unit_ui::meters::OutputLevel::new(
-                        self.model.output_meter.readings()[0],
-                        Some(&self.model.output_meter.boost_peaks()[0]),
-                    )
-                    .with_reset_request(&self.model.output_reset),
-                )
-            })
+            .add_enabled_ui(ready, |ui| crate::show_body(ui, &mut settings, &self.model))
             .inner;
+        debug_assert!(bounds.sections.iter().all(|rect| rect.is_finite()));
         crate::paint_extra(ui, &bounds, &self.model, &settings);
         let next = PluginState::from_settings(&settings).unwrap_or(self.state);
         for (slot, p) in Parameter::ALL[1..].iter().copied().enumerate() {

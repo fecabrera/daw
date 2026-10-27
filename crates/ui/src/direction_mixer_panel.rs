@@ -1,17 +1,7 @@
-use crate::{
-    icons,
-    knobs::{self, Knob, KnobSpec},
-    midi_editor::UNIT_STRIP_WIDTH,
-    panels, parameter_knobs, rows, theme,
-};
-use daw_core::{DirectionMixerInput, DirectionMixerSettings, ModulationParameter as Parameter};
+use crate::{panels, theme};
+use daw_core::{DirectionMixerSettings, ModulationParameter as Parameter};
+pub(super) use daw_unit_ui::direction_mixer::Bounds;
 use egui::{Rect, Ui};
-
-pub(super) struct Bounds {
-    pub header: Rect,
-    pub power: Rect,
-    pub controls: [Rect; 3],
-}
 
 pub(super) fn show(
     ui: &mut Ui,
@@ -51,6 +41,7 @@ fn show_inner(
     let panel = panels::PanelStyle::default();
     let open = settings.modulation_open;
     let mut bounds = Bounds {
+        section: Rect::NOTHING,
         header: Rect::NOTHING,
         power: Rect::NOTHING,
         controls: [Rect::NOTHING; 3],
@@ -60,35 +51,14 @@ fn show_inner(
     let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(
         ui, ("Direction Mixer", compact), height, &mut enabled, &mut collapsed, |ui| {
             ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing = egui::Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-                let strip = egui::Frame::new().inner_margin(panel.margin).show(ui, |ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(panel.margin));
-                        ui.set_min_height(crate::envelope_panel::body_height(compact));
-                        if !compact {
-                            let mut mode = f32::from(settings.input == DirectionMixerInput::MidSide);
-                            let response = knobs::row(ui, &mut mode, knobs::CHOICE_SIZE, |ui, value| ui.add(Knob::new(value,
-                                KnobSpec::new("Input format", 0.0..=1.0, 0.0, 1.0).two_way_labels("L/R", "M/S")
-                                    .format(|v| if v == 0.0 { "Left/right stereo".into() } else { "Mid/side recording".into() }))));
-                            bounds.controls[0] = response.rect;
-                            if response.changed() { settings.input = if mode == 0.0 { DirectionMixerInput::LeftRight } else { DirectionMixerInput::MidSide }; }
-                            response.on_hover_text("L/R: ordinary stereo. M/S: left input is Mid, right input is Side; output is decoded stereo.");
-                            for (i, marker) in markers.iter().enumerate() {
-                                let value = if i == 0 { &mut settings.direction_degrees } else { &mut settings.spread };
-                                bounds.controls[i+1] = knobs::row(ui, value, knobs::CHOICE_SIZE, |ui, value| ui.add(
-                                    Knob::new(value, parameter_knobs::destination(Parameter::DIRECTION_MIXER[i]))
-                                        .modulated(marker.as_ref(), &mut settings.modulation_open))).rect;
-                            }
-                        }
-                        rows::centered(ui, if compact { crate::envelope_panel::body_height(true) } else { icons::COMPACT_BUTTON_SIZE }, |ui| { rows::unit_label(ui, "Stereo"); });
-                    });
-                }).response.rect;
-                if open {
-                    panels::unit_divider(ui, strip.right(), strip.y_range().into());
+ ui.spacing_mut().item_spacing = egui::Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+ bounds = daw_unit_ui::direction_mixer::show(ui, settings, compact, crate::envelope_panel::body_height(compact), &markers);
+if open {
+                    panels::unit_divider(ui, bounds.section.right(), bounds.section.y_range().into());
                     crate::modulation_panel::body(ui, &mut settings.modulations, sources, &Parameter::DIRECTION_MIXER,
                         <DirectionMixerSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
                 }
-            });
+})
         });
     settings.enabled = enabled;
     settings.collapsed = collapsed;

@@ -15,3 +15,18 @@ pub mod theme;
 
 pub mod bitcrusher;
 pub mod saturator;
+
+pub mod compressor;
+pub mod control_capture;
+
+pub mod chorus;
+pub mod direction_mixer;
+pub mod limiter;
+pub mod ott;
+pub mod stereo_spread;
+
+pub mod auto_filter;
+
+pub mod equalizer;
+
+pub mod multiband_eq;

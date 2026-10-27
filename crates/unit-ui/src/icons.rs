@@ -29,3 +29,5 @@ pub fn paint_dot_toggle(
         egui::Stroke::new(1.0, color),
     );
 }
+
+pub use crate::layout::COMPACT_BUTTON_SIZE;

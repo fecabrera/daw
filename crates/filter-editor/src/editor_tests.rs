@@ -1,48 +1,95 @@
 use super::*;
 use daw_drive_plugin::{Parameter as P, PluginState};
 #[test]
-fn body_binds_all_visible_parameters_and_fits_declared_height() {
+fn body_binds_all_visible_parameters_and_fits_declared_viewport() {
     let ctx = egui::Context::default();
     daw_unit_ui::theme::configure(&ctx);
     daw_unit_ui::fonts::configure(&ctx);
     let mut seen = [false; P::COUNT];
-    for mode in 0..2 {
-        let mut state = PluginState::default();
-        if let Some(p) = P::ALL.into_iter().find(|p| p.info().key == "rate_mode") {
-            state.set(p, f64::from(mode)).unwrap();
-        }
-        let mut settings = state.to_settings();
-        let mut output = ctx.run_ui(
-            egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(WIDTH as f32, HEIGHT as f32),
-                )),
-                ..Default::default()
-            },
-            |ui| {
-                let bounds = body::show(
-                    ui,
-                    &mut settings,
-                    false,
-                    0.0,
-                    &std::array::from_fn(|_| None),
-                    daw_unit_ui::meters::OutputLevel::new(0.0, None),
-                );
-                for (slot, response) in bounds.controls.iter().enumerate() {
-                    if let Some(response) = response {
-                        seen[slot + 1] = true;
-                        assert!(
-                            response.rect.bottom() <= HEIGHT as f32 + 1.0,
-                            "{:?}: {:?}",
-                            P::ALL[slot + 1],
-                            response.rect
-                        );
+    for scale in [1.0, 1.5, 2.0] {
+        ctx.set_pixels_per_point(scale);
+        for mode in 0..2 {
+            let mut state = PluginState::default();
+            if let Some(p) = P::ALL.into_iter().find(|p| p.info().key == "rate_mode") {
+                state.set(p, f64::from(mode)).unwrap();
+            }
+            if body::SCROLLABLE {
+                for p in P::ALL {
+                    if p.info().key.ends_with("_enabled") {
+                        state.set(p, 1.0).unwrap();
                     }
                 }
-            },
-        );
-        output.textures_delta.clear();
+            }
+            let mut settings = state.to_settings();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(WIDTH as f32, HEIGHT as f32),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    let bounds = body::show(
+                        ui,
+                        &mut settings,
+                        false,
+                        0.0,
+                        &std::array::from_fn(|_| None),
+                        daw_unit_ui::meters::OutputLevel::new(0.0, None),
+                    );
+                    let scrolls = body::SCROLLABLE;
+                    for (index, section) in bounds.sections.iter().enumerate() {
+                        assert!(section.is_positive(), "empty strip {index}");
+                        assert!(
+                            section.top() >= -0.5 && section.bottom() <= HEIGHT as f32 + 0.5,
+                            "strip {index} exceeds declared height: {section:?}"
+                        );
+                        if !scrolls {
+                            assert!(
+                                section.left() >= -0.5 && section.right() <= WIDTH as f32 + 0.5,
+                                "strip {index} exceeds declared width: {section:?}"
+                            );
+                        }
+                        if index > 0 {
+                            assert!(
+                                (section.left() - bounds.sections[index - 1].right()).abs() <= 0.5,
+                                "strips must be contiguous and ordered"
+                            );
+                        }
+                    }
+                    for (slot, response) in bounds.controls.iter().enumerate() {
+                        if let Some(response) = response {
+                            seen[slot + 1] = true;
+                            assert!(
+                                bounds.sections.iter().any(|section| section
+                                    .expand(0.5)
+                                    .contains_rect(response.rect)),
+                                "control {:?} escapes its strip: {:?}",
+                                P::ALL[slot + 1],
+                                response.rect
+                            );
+                            if !scrolls {
+                                assert!(
+                                    response.rect.right() <= WIDTH as f32 + 0.5,
+                                    "control {:?} is clipped horizontally: {:?}",
+                                    P::ALL[slot + 1],
+                                    response.rect
+                                );
+                            }
+
+                            assert!(
+                                response.rect.bottom() <= HEIGHT as f32 + 1.0,
+                                "{:?}: {:?}",
+                                P::ALL[slot + 1],
+                                response.rect
+                            );
+                        }
+                    }
+                },
+            );
+            output.textures_delta.clear();
+        }
     }
     for p in P::ALL.into_iter().skip(1) {
         assert!(seen[p as usize - 100], "unbound parameter {p:?}");

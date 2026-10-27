@@ -1,17 +1,14 @@
 //! Variable-band EQ controls use the common unit shell, knobs, footers and routing strips.
 use crate::{
-    icons,
-    knobs::{self, Knob, KnobSpec},
     meters,
     modulation_panel::{self, Source, Target},
-    panels, parameter_knobs, rows, theme,
+    panels, theme,
 };
-use daw_core::{EqBandMode, Id, ModulationParameter as P, MultibandEqSettings};
+use daw_core::{Id, ModulationParameter as P, MultibandEqSettings};
 use egui::{Rect, Ui, Vec2};
 
-const CONTROL_SIZE: f32 = 42.0;
-const CONTROL_SCALE: f32 = CONTROL_SIZE / knobs::CHOICE_SIZE;
-const CONTROL_GAP: f32 = 3.0;
+#[cfg(test)]
+use daw_unit_ui::multiband_eq::CONTROL_SIZE;
 
 pub(super) struct Bounds {
     #[cfg(test)]
@@ -25,33 +22,7 @@ pub(super) struct Bounds {
     pub add: Rect,
     pub output: Rect,
 }
-fn diagram(value: f32) -> Vec<Vec2> {
-    let mode = EqBandMode::ALL[value.round() as usize];
-    (0..=24)
-        .map(|i| {
-            let x = i as f32 / 24.0;
-            let low = 1.0 / (1.0 + ((x - 0.5) * 12.0).exp());
-            let peak = (-((x - 0.5) * 5.0).powi(2)).exp();
-            let y = match mode {
-                EqBandMode::Bell => 0.5 + 0.5 * peak,
-                EqBandMode::LowShelf => 0.25 + 0.5 * low,
-                EqBandMode::HighShelf => 0.75 - 0.5 * low,
-                EqBandMode::LowPass => low,
-                EqBandMode::HighPass => 1.0 - low,
-                EqBandMode::Notch => 1.0 - peak,
-            };
-            Vec2::new(x - 0.5, 0.5 - y)
-        })
-        .collect()
-}
-fn remove_menu(response: &egui::Response, remove: &mut Option<Id>, id: Id) {
-    response.context_menu(|ui| {
-        if ui.button("Remove band").clicked() {
-            *remove = Some(id);
-            ui.close();
-        }
-    });
-}
+
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut MultibandEqSettings,
@@ -127,239 +98,104 @@ fn body(
     bounds: &mut Bounds,
 ) {
     let body_height = crate::envelope_panel::body_height(compact);
-    let mut remove = None;
-    let add = ui
-        .horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-            for (index, band) in settings.bands.iter_mut().enumerate() {
-                let id = band.id;
-                let target_routes: Vec<_> = settings
-                    .modulations
-                    .iter()
-                    .copied()
-                    .filter(|r| r.target == Some(id))
-                    .collect();
-                let bases = [band.gain_db, band.frequency_hz, band.q];
-                let markers: [_; 3] = std::array::from_fn(|i| {
-                    modulation_panel::marker(
-                        &target_routes,
-                        sources,
-                        P::EQ_BAND[i],
-                        bases[i],
-                        settings.enabled && band.enabled,
-                        None,
-                        [live(Some(id)).map(|v| v[i]), None],
-                    )
-                });
-                let mut knobs = [Rect::NOTHING; 4];
-                let strip = ui
-                    .push_id(id, |ui| {
-                        panels::unit_strip(ui, body_height, egui::UiBuilder::new(), |ui| {
-                            ui.spacing_mut().item_spacing.y = CONTROL_GAP;
-                            if !compact {
-                                knobs = band_controls(
-                                    ui,
-                                    band,
-                                    &markers,
-                                    &mut settings.modulation_open,
-                                    &mut remove,
-                                );
-                            }
-                            rows::centered(
-                                ui,
-                                if compact {
-                                    body_height
-                                } else {
-                                    icons::COMPACT_BUTTON_SIZE
-                                },
-                                |ui| {
-                                    let response = rows::power_label(
-                                        ui,
-                                        &format!("Band {}", index + 1),
-                                        &format!("Toggle EQ band {}", index + 1),
-                                        band.enabled,
-                                    );
-                                    let response = response.on_hover_text(
-                                        "Off bypasses this band. Right-click to remove it.",
-                                    );
-                                    if response.clicked() {
-                                        band.enabled = !band.enabled;
-                                    }
-                                    bounds.band_power.push(response.rect);
-                                    remove_menu(&response, &mut remove, id);
-                                },
-                            );
-                        })
-                        .response
-                        .rect
-                    })
-                    .inner;
-                if index > 0 {
-                    panels::unit_divider(ui, strip.left(), strip.y_range().into());
-                }
-                if !compact {
-                    let rail = crate::meters::unit_monitor_rail(
-                        strip,
-                        panels::PanelStyle::default().margin,
-                    );
-                    let level = crate::meters::unit_reading(settings.enabled, [levels(id)])[0];
-                    crate::meters::band_level_rail(
-                        ui,
-                        rail,
-                        &format!("Band {}", index + 1),
-                        level,
-                        band.enabled,
-                    );
-                    bounds.meters.push(rail);
-                }
-                bounds.bands.push(strip);
-                bounds.knobs.push(knobs);
-            }
-            let add_control = panels::unit_add_strip(ui, body_height, "Add EQ band");
-            bounds.add = add_control.inner.rect;
-            let add = add_control.inner.clicked();
-            let add_strip = add_control.response.rect;
-            if !settings.bands.is_empty() {
-                panels::unit_divider(ui, add_strip.left(), add_strip.y_range().into());
-            }
-            let output = panels::unit_strip(ui, body_height, egui::UiBuilder::new(), |ui| {
-                if !compact {
-                    let marker = modulation_panel::marker(
-                        &settings.modulations,
-                        sources,
-                        P::Level,
-                        settings.output_gain_db,
-                        settings.enabled,
-                        None,
-                        [live(None).map(|v| v[0]), None],
-                    );
-                    for row in 0..3 {
-                        knobs::row(
-                            ui,
-                            &mut settings.output_gain_db,
-                            knobs::CHOICE_SIZE,
-                            |ui, v| {
-                                if row == 0 {
-                                    ui.add(
-                                        Knob::new(v, parameter_knobs::destination(P::Level))
-                                            .modulated(
-                                                marker.as_ref(),
-                                                &mut settings.modulation_open,
-                                            ),
-                                    )
-                                } else {
-                                    ui.allocate_response(
-                                        Vec2::splat(knobs::CHOICE_SIZE),
-                                        egui::Sense::hover(),
-                                    )
-                                }
-                            },
-                        );
-                    }
-                }
-                rows::centered(
-                    ui,
-                    if compact {
-                        body_height
-                    } else {
-                        icons::COMPACT_BUTTON_SIZE
-                    },
-                    |ui| {
-                        rows::unit_label(ui, "Out");
-                    },
-                );
-            })
-            .response
-            .rect;
-            bounds.output = output;
-            panels::unit_divider(ui, output.left(), output.y_range().into());
-            if settings.modulation_open {
-                panels::unit_divider(ui, output.right(), output.y_range().into());
-                let mut targets: Vec<_> = settings
-                    .bands
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(i, b)| {
-                        P::EQ_BAND.map(|parameter| Target {
-                            parameter,
-                            id: Some(b.id),
-                            label: format!("Band {} · {}", i + 1, parameter.label()),
-                        })
-                    })
-                    .collect();
-                targets.push(Target {
-                    parameter: P::Level,
-                    id: None,
-                    label: "Output · Gain".into(),
-                });
-                modulation_panel::targeted_body(
-                    ui,
-                    &mut settings.modulations,
+    let markers: Vec<_> = settings
+        .bands
+        .iter()
+        .map(|band| {
+            let routes: Vec<_> = settings
+                .modulations
+                .iter()
+                .copied()
+                .filter(|r| r.target == Some(band.id))
+                .collect();
+            let bases = [band.gain_db, band.frequency_hz, band.q];
+            std::array::from_fn(|i| {
+                modulation_panel::marker(
+                    &routes,
                     sources,
-                    &targets,
-                    daw_unit_core::ModulationScope::Shared,
-                    compact,
-                );
-            }
-            add
+                    P::EQ_BAND[i],
+                    bases[i],
+                    settings.enabled && band.enabled,
+                    None,
+                    [live(Some(band.id)).map(|v| v[i]), None],
+                )
+            })
         })
-        .inner;
-
+        .collect();
+    let band_levels: Vec<_> = settings.bands.iter().map(|b| levels(b.id)).collect();
+    let output_marker = modulation_panel::marker(
+        &settings.modulations,
+        sources,
+        P::Level,
+        settings.output_gain_db,
+        settings.enabled,
+        None,
+        [live(None).map(|v| v[0]), None],
+    );
+    let mut remove = None;
+    let mut add = false;
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+        let shared = daw_unit_ui::multiband_eq::show(
+            ui,
+            settings,
+            (compact, body_height),
+            daw_unit_ui::multiband_eq::Controls {
+                add_enabled: true,
+                markers: &markers,
+                levels: &band_levels,
+                output_marker: output_marker.as_ref(),
+                output_level: None,
+            },
+        );
+        if let Some(index) = shared.remove {
+            remove = Some(settings.bands[index].id);
+        }
+        if let Some(button) = shared.add {
+            bounds.add = button.rect;
+            add = button.clicked();
+        }
+        bounds.band_power = shared.power;
+        bounds.meters = shared.meters;
+        bounds.bands = shared.bands;
+        bounds.knobs = shared.knobs;
+        bounds.output = shared.output;
+        let output = bounds.output;
+        if settings.modulation_open {
+            panels::unit_divider(ui, output.right(), output.y_range().into());
+            let mut targets: Vec<_> = settings
+                .bands
+                .iter()
+                .enumerate()
+                .flat_map(|(i, b)| {
+                    P::EQ_BAND.map(|parameter| Target {
+                        parameter,
+                        id: Some(b.id),
+                        label: format!("Band {} · {}", i + 1, parameter.label()),
+                    })
+                })
+                .collect();
+            targets.push(Target {
+                parameter: P::Level,
+                id: None,
+                label: "Output · Gain".into(),
+            });
+            modulation_panel::targeted_body(
+                ui,
+                &mut settings.modulations,
+                sources,
+                &targets,
+                daw_unit_core::ModulationScope::Shared,
+                compact,
+            );
+        }
+    });
     if let Some(id) = remove {
         settings.remove_band(id);
     }
     if add {
         settings.bands.push(Default::default());
     }
-}
-
-fn band_controls(
-    ui: &mut Ui,
-    band: &mut daw_core::MultibandEqBand,
-    markers: &[Option<knobs::ModulationMarker>; 3],
-    open: &mut bool,
-    remove: &mut Option<Id>,
-) -> [Rect; 4] {
-    std::array::from_fn(|row| {
-        let response = knobs::row(ui, band, CONTROL_SIZE, |ui, band| {
-            if row == 0 {
-                return crate::lfo_controls::choice(
-                    ui,
-                    &mut band.mode,
-                    &EqBandMode::ALL,
-                    KnobSpec::new("Band mode", 0.0..=5.0, 0.0, 1.0)
-                        .stepped(1.0)
-                        .cyclic()
-                        .diagrams(diagram)
-                        .display_scale(CONTROL_SCALE)
-                        .format(|v| EqBandMode::ALL[v.round() as usize].label().into()),
-                );
-            }
-            let i = match row {
-                1 => 1,
-                2 => 0,
-                _ => 2,
-            };
-            let enabled = i != 0 || band.mode.uses_gain();
-            let value = match i {
-                0 => &mut band.gain_db,
-                1 => &mut band.frequency_hz,
-                _ => &mut band.q,
-            };
-            ui.add_enabled_ui(enabled, |ui| {
-                ui.add(
-                    Knob::new(
-                        value,
-                        parameter_knobs::destination(P::EQ_BAND[i]).display_scale(CONTROL_SCALE),
-                    )
-                    .modulated(markers[i].as_ref(), open),
-                )
-            })
-            .inner
-        });
-        remove_menu(&response, remove, band.id);
-        response.rect
-    })
 }
 
 #[cfg(test)]
@@ -535,3 +371,9 @@ mod meter_tests {
         }
     }
 }
+
+#[cfg(test)]
+use daw_unit_ui::multiband_eq::diagram;
+
+#[cfg(test)]
+use crate::icons;

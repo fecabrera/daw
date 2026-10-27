@@ -84,6 +84,7 @@ pub fn power_label(ui: &mut Ui, label: &str, name: &str, on: bool) -> egui::Resp
         Vec2::new(width, size),
         egui::Label::new(galley).selectable(false).truncate(),
     );
+    crate::control_capture::record(ui, &response);
     response
         .on_hover_text(name)
         .on_hover_cursor(egui::CursorIcon::PointingHand)

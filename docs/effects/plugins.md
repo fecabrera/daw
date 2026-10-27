@@ -1,6 +1,6 @@
 # Effect plugins
 
-Every built-in effect has a separate CLAP and VST3 development preview. Each uses its portable DAW processor. Host bypass, automation, and presets work independently for each instance. The native editors reuse shared knobs, colors, level meters, and held peak controls.
+Every built-in effect has a separate CLAP and VST3 development preview. Each uses its portable DAW processor. Host bypass, automation, and presets work independently for each instance. Plugin editors use the same control bodies as the built-in effects, including strip layout, labels, footers and meters.
 
 | Product | Unit slug | Controls |
 | --- | --- | --- |
@@ -21,11 +21,11 @@ Every built-in effect has a separate CLAP and VST3 development preview. Each use
 
 [Build, package, and download instructions](../../README.md#plugins) apply to all products. The packager accepts one slug, a comma-separated list, or `--units all`. Build both formats for all selected units first. Extract the downloaded ZIP and keep the included licenses beside the plugin. Close your host before replacing or removing it.
 
-All editors have a [shared output level rail and held sample peak](output-meter.md). Limiter shows reduction on its left strip and output level on its right strip. Compressor also shows reduction, and OTT shows signed band gain changes. Click a meter to reset its held peak. Reset does not change audio or saved parameters. Right-click the background to choose Dark, Light, or Mist; Deep Orange is the default accent.
+Meters follow each built-in effect. Effects with an output rail use the [shared level meter and held sample peak](output-meter.md). Limiter shows reduction on its left strip and output level on its right strip. Compressor also shows reduction, and OTT shows signed band gain changes. Click a held reading to reset it. Reset does not change audio or saved parameters. Right-click the background to choose Dark, Light, or Mist; Deep Orange is the default accent.
 
 Auto-filter and Chorus use the host's tempo and sample position. Their clock starts locally at 120 BPM. Stopped transport and missing updates keep the last valid tempo and advance a local position; playback resumes phase alignment with the host. Negative host positions start at frame zero. Hz mode keeps its frequency; Note mode follows tempo. The editors show the active rate control. Bar labels use four beats per bar. CLAP tempo changes follow block snapshots and transport events; continuous tempo ramps within a block are not applied.
 
-Multiband EQ prepares 64 fixed slots to retain stable automation IDs. Band 1 starts enabled. Use each band's power control to enable another slot, and scroll horizontally to reach later slots and Output. A disabled slot keeps its settings and fades out before processing suspends. This plugin bank does not change the DAW's variable band count. Limiter reports rate-dependent processing latency, and Saturator reports 32 frames. Other plugins report zero latency. Leave host delay compensation enabled.
+Multiband EQ starts with one band. Click Plus to add bands, up to 64. Use the band power control to bypass it; right-click its footer to remove it. Scroll horizontally when needed. Automation IDs stay fixed. Presets restore enabled or changed bands; a bypassed band keeps its settings. Limiter reports rate-dependent processing latency, and Saturator reports 32 frames. Other plugins report zero latency. Leave host delay compensation enabled.
 
 These previews accept stereo planar 32-bit floating-point audio at 44.1, 48, 88.2, 96, 176.4, and 192 kHz. They do not include MIDI, sidechain inputs, DAW modulation routes, or DAW project data. Logic Pro requires Audio Units and cannot load these formats. VST3 meter delivery requires a processor/controller connection.
 

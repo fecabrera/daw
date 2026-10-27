@@ -1,18 +1,7 @@
-use crate::{
-    icons,
-    knobs::{self, Knob, KnobSpec},
-    midi_editor::UNIT_STRIP_WIDTH,
-    panels, parameter_knobs, rows, theme,
-};
+use crate::{panels, theme};
 use daw_core::{ModulationParameter as Parameter, StereoSpreadSettings};
-use egui::{Rect, Ui, Vec2};
-
-pub(super) struct Bounds {
-    pub header: Rect,
-    pub power: Rect,
-    pub controls: [Rect; 5],
-    pub sections: [Rect; 3],
-}
+pub(super) use daw_unit_ui::stereo_spread::Bounds;
+use egui::{Rect, Ui};
 pub(super) fn show(
     ui: &mut Ui,
     settings: &mut StereoSpreadSettings,
@@ -66,61 +55,16 @@ fn show_inner(
     let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(
         ui, ("Stereo Spread", compact), height, &mut enabled, &mut collapsed, |ui| {
             ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-                for (column, name) in ["Lower", "Upper", "Spread"].into_iter().enumerate() {
-                    let rect = ui.push_id(column, |ui| egui::Frame::new().inner_margin(panel.margin).show(ui, |ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                            ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(panel.margin));
-                            ui.set_min_height(crate::envelope_panel::body_height(compact));
-                            if !compact {
-                                for row in 0..3 {
-                                    knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
-                                        if (column, row) == (2, 0) {
-                                            let mut order = f32::from(s.order);
-                                            let response = ui.add(Knob::new(&mut order,
-                                                KnobSpec::new("Order", 2.0..=12.0, 8.0, 1.0)
-                                                    .stepped(1.0).reference_step(1.0)
-                                                    .value_label(|v| format!("{v:.0}"))
-                                                    .format(|v| format!("{v:.0} bands"))
-                                                    .endpoint_labels("2", "12")));
-                                            if response.changed() { s.order = order as u8; }
-                                            bounds.controls[4] = response.rect;
-                                            return response.on_hover_text("Order: number of alternating frequency bands.");
-                                        }
-                                        let (index, control, value) = match (column, row) {
-                                            (0, 0) => (0, 0, &mut s.lower_intensity),
-                                            (0, 1) => (2, 1, &mut s.lower_frequency_hz),
-                                            (1, 0) => (1, 2, &mut s.upper_intensity),
-                                            (1, 1) => (3, 3, &mut s.upper_frequency_hz),
-                                            _ => return ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), egui::Sense::hover()),
-                                        };
-                                        let response = ui.add(Knob::new(value,
-                                            parameter_knobs::destination(Parameter::STEREO_SPREAD[index]))
-                                            .modulated(markers[index].as_ref(), &mut s.modulation_open));
-                                        if response.changed() {
-                                            if index == 2 { s.lower_frequency_hz = s.lower_frequency_hz.min(s.upper_frequency_hz - 1.0); }
-                                            if index == 3 { s.upper_frequency_hz = s.upper_frequency_hz.max(s.lower_frequency_hz + 1.0); }
-                                        }
-                                        bounds.controls[control] = response.rect;
-                                        response
-                                    });
-                                }
-                            }
-                            rows::centered(ui, if compact { crate::envelope_panel::body_height(true) }
-                                else { icons::COMPACT_BUTTON_SIZE }, |ui| { rows::unit_label(ui, name); });
-                        });
-                    })).inner.response.rect;
-                    bounds.sections[column] = rect;
-                    if column > 0 { panels::unit_divider(ui, rect.left(), rect.y_range().into()); }
-                }
-                if open {
+ ui.spacing_mut().item_spacing = egui::Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
+ bounds = daw_unit_ui::stereo_spread::show(ui, settings, compact, crate::envelope_panel::body_height(compact), &markers);
+if open {
                     let last = bounds.sections[2];
                     panels::unit_divider(ui, last.right(), last.y_range().into());
                     crate::modulation_panel::body(ui, &mut settings.modulations, sources,
                         &Parameter::STEREO_SPREAD,
                         <StereoSpreadSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
                 }
-            });
+})
         });
     settings.enabled = enabled;
     settings.collapsed = collapsed;

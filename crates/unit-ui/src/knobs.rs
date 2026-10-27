@@ -294,7 +294,9 @@ impl<'a> Knob<'a> {
 }
 impl Widget for Knob<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        base_knob(ui, self.value, self.spec, self.modulation)
+        let response = base_knob(ui, self.value, self.spec, self.modulation);
+        crate::control_capture::record(ui, &response);
+        response
     }
 }
 

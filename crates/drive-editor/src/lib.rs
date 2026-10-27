@@ -395,3 +395,55 @@ mod tests {
         assert_eq!(editor.state, PluginState::default());
     }
 }
+
+#[cfg(test)]
+fn paint_reference(ui: &mut egui::Ui, settings: &mut daw_unit_core::DriveSettings, model: &Model) {
+    let level = daw_unit_ui::meters::OutputLevel::new(
+        model.output_meter.readings()[0],
+        Some(&model.output_meter.boost_peaks()[0]),
+    )
+    .with_reset_request(&model.output_reset);
+    let _ = daw_unit_ui::drive::show(
+        ui,
+        settings,
+        false,
+        0.0,
+        &std::array::from_fn::<_, 5, _>(|_| None),
+        level,
+    );
+}
+
+#[cfg(test)]
+#[path = "../../filter-editor/src/parity_tests.rs"]
+mod builtin_parity;
+
+#[cfg(test)]
+fn probe_controls(
+    ui: &mut egui::Ui,
+    settings: &mut daw_unit_core::DriveSettings,
+) -> Vec<(daw_drive_plugin::Parameter, egui::Rect)> {
+    let b = drive::show(
+        ui,
+        settings,
+        false,
+        0.0,
+        &std::array::from_fn(|_| None),
+        0.0.into(),
+    );
+    b.controls
+        .iter()
+        .enumerate()
+        .filter_map(|(i, r)| {
+            r.as_ref()
+                .filter(|r| r.enabled())
+                .map(|r| (daw_drive_plugin::Parameter::ALL[i + 1], r.rect))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+fn assert_builtin_defaults() {
+    let native = daw_drive_plugin::PluginState::default().to_settings();
+    let builtin: daw_unit_core::DriveSettings = Default::default();
+    assert_eq!(native, builtin);
+}

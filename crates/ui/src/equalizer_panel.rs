@@ -1,20 +1,10 @@
-use crate::{
-    icons,
-    knobs::{self, Knob},
-    meters,
-    midi_editor::UNIT_STRIP_WIDTH,
-    panels, parameter_knobs, rows, theme,
-};
+#[cfg(test)]
+use crate::panels::UNIT_STRIP_WIDTH;
+use crate::{knobs, meters, panels, theme};
 use daw_core::{EqSettings, ModulationParameter as Parameter};
 use egui::{Rect, Ui, Vec2};
 
-pub(super) struct Bounds {
-    pub header: Rect,
-    pub power: Rect,
-    pub knobs: [[Rect; 3]; 3],
-    pub bands: [Rect; 3],
-    pub meters: [Rect; 3],
-}
+pub(super) use daw_unit_ui::equalizer::Bounds;
 
 pub(super) fn show(
     ui: &mut Ui,
@@ -64,6 +54,7 @@ fn show_inner(
     });
     let panel = panels::PanelStyle::default();
     let mut bounds = Bounds {
+        sections: [Rect::NOTHING; 3],
         header: Rect::NOTHING,
         power: Rect::NOTHING,
         knobs: [[Rect::NOTHING; 3]; 3],
@@ -112,81 +103,34 @@ fn body(
     markers: &[Option<knobs::ModulationMarker>; 7],
     sources: &[crate::modulation_panel::Source],
 ) {
-    let margin = panels::PanelStyle::default().margin;
     let open = settings.modulation_open;
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-        let mut last_strip = Rect::NOTHING;
-        for (index, name) in ["Low", "Mid", "High"].into_iter().enumerate() {
-            let strip = ui.push_id(index, |ui| {
-                egui::Frame::new().inner_margin(margin).show(ui, |ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        ui.set_width(UNIT_STRIP_WIDTH - 2.0 * f32::from(margin));
-                        ui.set_min_height(crate::envelope_panel::body_height(compact));
-                        let band = &mut settings.bands[index];
-                        if !compact { bounds.knobs[index] = controls(ui, band, index, markers, &mut settings.modulation_open); }
-                        rows::centered(ui, if compact { crate::envelope_panel::body_height(true) } else { icons::COMPACT_BUTTON_SIZE }, |ui| {
-                            let response = rows::power_label(ui, name, &format!("Toggle {name} band cut"), band.enabled);
-                            let response = response.on_hover_text(if index == 1 {
-                                "Mid shelf uses Low/High frequency boundaries and Q slopes. Off cuts this middle range; saved gain is retained.".into()
-                            } else {
-                                format!("{name}: off cuts this range using frequency and Q; saved gain is retained.")
-                            });
-                            bounds.bands[index] = response.rect;
-                            if response.clicked() { band.enabled = !band.enabled; }
-                        });
-                    });
-                })
-            }).inner.response.rect;
-            last_strip = strip;
-            if !compact {
-                let rail = meters::unit_monitor_rail(strip, margin);
-                bounds.meters[index] = rail;
-                meters::band_level_rail(ui, rail, name, levels[index], settings.bands[index].enabled);
-            }
-            if index > 0 { panels::unit_divider(ui, strip.left(), strip.y_range().into()); }
-        }
+        let shared = daw_unit_ui::equalizer::show(
+            ui,
+            settings,
+            compact,
+            crate::envelope_panel::body_height(compact),
+            levels,
+            markers,
+        );
+        bounds.knobs = shared.knobs;
+        bounds.bands = shared.bands;
+        bounds.meters = shared.meters;
+        bounds.sections = shared.sections;
+        let last_strip = bounds.sections[2];
         if open {
             panels::unit_divider(ui, last_strip.right(), last_strip.y_range().into());
-            crate::modulation_panel::body(ui, &mut settings.modulations, sources, &Parameter::EQUALIZER, <EqSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);
+            crate::modulation_panel::body(
+                ui,
+                &mut settings.modulations,
+                sources,
+                &Parameter::EQUALIZER,
+                <EqSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE,
+                compact,
+            );
         }
     });
-}
-fn controls(
-    ui: &mut Ui,
-    band: &mut daw_core::EqBandSettings,
-    index: usize,
-    markers: &[Option<knobs::ModulationMarker>; 7],
-    open: &mut bool,
-) -> [Rect; 3] {
-    let first = [0, 3, 4][index];
-    let mut bounds = [Rect::NOTHING; 3];
-    for (row, rect) in bounds.iter_mut().enumerate() {
-        if index == 1 && row > 0 {
-            // Mid retains the shared row/footer geometry without legacy frequency/Q controls.
-            knobs::row(ui, &mut (), knobs::CHOICE_SIZE, |ui, _| {
-                ui.allocate_response(Vec2::splat(knobs::CHOICE_SIZE), egui::Sense::hover())
-            });
-            continue;
-        }
-        let value = match row {
-            0 => &mut band.gain_db,
-            1 => &mut band.frequency_hz,
-            _ => &mut band.q,
-        };
-        let target = first + row;
-        *rect = knobs::row(ui, value, knobs::CHOICE_SIZE, |ui, v| {
-            ui.add(
-                Knob::new(
-                    v,
-                    parameter_knobs::destination(Parameter::EQUALIZER[target]),
-                )
-                .modulated(markers[target].as_ref(), open),
-            )
-        })
-        .rect;
-    }
-    bounds
 }
 
 #[cfg(test)]

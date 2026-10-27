@@ -48,7 +48,6 @@ pub struct Strip {
 include!(concat!(env!("OUT_DIR"), "/manifest.rs"));
 
 /// Standard current/held output telemetry; allocate and attach outside processing.
-#[path = "../../compressor-plugin/src/meter.rs"]
 mod meter;
 pub use meter::{METER_VALUES, OutputMeter, meter_values, receive_meter, reset_meter};
 

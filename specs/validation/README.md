@@ -4,6 +4,23 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Built-in and plugin editor parity — 2026-10-26
+
+The ten newer plugin bodies had copied knob specifications, different control order and inherited horizontal Frame layouts. Fixing vertical flow alone did not restore built-in labels, column widths, footers or meter placement. All fourteen plugin editors now call the same portable `unit-ui` bodies as their built-in counterparts. DAW headers and modulation stay in the application UI; plugin adapters map actual widget responses to their frozen automation parameters.
+
+The shared layout retains 90-point single strips and 161-point double strips. Multiband EQ presents the built-in band, Add and Output strips over its fixed 64-slot automation bank. Power bypass retains a visible band; Remove resets and hides it without changing its slot ID. Equalizer and Multiband EQ publish their portable per-band levels to the shared painters. Multiband EQ's meter snapshot has 77 scalar values; parameter IDs and preset payloads are unchanged.
+
+Completed automated checks:
+
+- All fourteen editors pass default-setting comparisons, tessellated rendering comparisons and bound-parameter gesture checks. Rendering covers Dark, Light and Mist, 1×/1.5×/2× scaling, defaults and two changed parameter snapshots. Gesture checks include both rate modes and Saturator dropdown selections.
+- Geometry checks cover width, height, contiguous strip order and control containment. Multiband EQ tests cover Add, power, Remove and stable slot identity. Equalizer and Multiband EQ tests cover band-meter transport and bypass clearing.
+- All **655 DAW UI tests** pass after the shared-body extraction.
+- `cargo fmt --all --check`, strict locked offline workspace/all-target Clippy, whitespace and documentation file-target checks pass.
+- Native release library, editor, model and ABI tests pass for **all fourteen products**, with explicit paths to the rebuilt CLAP/VST3 libraries.
+- All **28 CLAP/VST3 release binaries** build for `aarch64-apple-darwin`. The generic packager produces **28 format ZIPs and fourteen checksum files** in `target/plugin-artifacts`, with macOS ad-hoc signing and strict signature verification.
+
+The full locked offline workspace run passes: **1,723 tests passed, 11 opt-in tests ignored, no failures**, including documentation tests. The macOS debug application bundle rebuild passes using the cached ONNX Runtime archive. External DAW reload/rendering and Windows/Linux native execution remain separate checks. Logs use the ignored `work/builtin-parity-*` prefix.
+
 ## Canonical dropdowns and catalog spacing — 2026-10-26
 
 The shared `unit-ui::menus` module now owns dropdown popup styling, layout, minimum width and divider geometry. All existing DAW selectors and portable Saturator selectors use its `Dropdown` wrapper. Existing collapsed captions and control widths remain local to each selector. The canonical contract is [Dropdowns and catalog list spacing](../views/dropdowns.md).

@@ -437,6 +437,7 @@ impl<'a> GainReduction<'a> {
             info.value = Some(f64::from(db));
             info
         });
+        crate::control_capture::record(ui, &response);
         response.on_hover_text(tooltip)
     }
     fn paint_peak(self, ui: &Ui, rail: Rect, origin: f32, span: f32) {

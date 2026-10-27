@@ -52,6 +52,10 @@ impl Processor {
     }
     pub fn set_output_meter(&mut self, meter: std::sync::Arc<crate::OutputMeter>) {
         self.drive.set_output_peak_meter(meter.output.clone());
+        for (band, handle) in self.settings.bands.iter().zip(&meter.eq_bands) {
+            self.drive
+                .set_band_level_meter(band.id, handle.current().clone());
+        }
     }
     pub fn state(&self) -> PluginState {
         self.state
