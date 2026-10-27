@@ -13,6 +13,7 @@ fn both_separation_cancel_buttons_wait_for_acknowledgement_and_allow_close() {
             app.busy = "Separating stems…".into();
             app.settings_cancel = Some(progress.cancel.clone());
             app.separation_status = Some(crate::separation::Status {
+                stems: None,
                 progress: progress.clone(),
                 state: job_report::State::Running,
                 warnings: Vec::new(),
@@ -104,6 +105,13 @@ fn model_validation_cancel_keeps_receiver_and_previous_model() {
     let previous = std::path::PathBuf::from("previous.onnx");
     std::sync::Arc::make_mut(&mut app.settings.separation_models).cpu = Some(previous.clone());
     app.separation_models.validated.cpu = Some(previous.clone());
+    let previous_info = daw_project::SeparationModelInfo {
+        stems: daw_project::SeparationStemSet::Six,
+        file_size_bytes: 258_000_000,
+    };
+    app.separation_models
+        .info
+        .insert(daw_project::SeparationModelKind::Cpu, previous_info);
     app.settings_open = true;
     let (release, wait) = mpsc::channel();
     app.start_model_validation(
@@ -134,7 +142,12 @@ fn model_validation_cancel_keeps_receiver_and_previous_model() {
     assert!(app.job.is_some());
     assert!(app.separation_models.running());
     assert!(!app.editing_enabled());
-    release.send(Ok(())).unwrap();
+    release
+        .send(Ok(daw_project::SeparationModelInfo {
+            stems: daw_project::SeparationStemSet::Four,
+            file_size_bytes: 1,
+        }))
+        .unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     while app.job.is_some() {
         app.poll();
@@ -145,6 +158,10 @@ fn model_validation_cancel_keeps_receiver_and_previous_model() {
     assert!(app.settings_cancel.is_none());
     assert_eq!(app.settings.separation_models.cpu, Some(previous.clone()));
     assert_eq!(app.separation_models.validated.cpu, Some(previous));
+    assert_eq!(
+        app.separation_models.info[&daw_project::SeparationModelKind::Cpu],
+        previous_info
+    );
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
     assert!(app.error.is_none());

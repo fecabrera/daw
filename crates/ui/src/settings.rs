@@ -189,6 +189,7 @@ fn model_row(
     width: f32,
     kind: daw_project::SeparationModelKind,
     path: Option<&std::path::Path>,
+    info: Option<&daw_project::SeparationModelInfo>,
     action: &mut Option<ModelAction>,
 ) {
     crate::rows::field(
@@ -229,6 +230,24 @@ fn model_row(
             });
         },
     );
+    if path.is_some()
+        && let Some(info) = info
+    {
+        crate::rows::field(
+            ui,
+            width,
+            |_| {},
+            |ui| {
+                ui.vertical(|ui| {
+                let color = crate::theme::palette(ui.ctx()).secondary;
+                let summary = format!("{} stems · 44.1 kHz · Stereo · {:.1} MB", info.stems.names().len(), info.file_size_bytes as f64 / 1_000_000.0);
+                ui.add(egui::Label::new(egui::RichText::new(summary).small().color(color)).wrap())
+                    .on_hover_text("Stem names and audio format follow the validated HTDemucs contract. File size is shown in decimal megabytes.");
+                ui.add(egui::Label::new(egui::RichText::new(info.stems.description()).small().color(color)).wrap());
+            });
+            },
+        );
+    }
 }
 
 /// Discovery data and actions for the main Settings device selectors.
@@ -246,6 +265,10 @@ pub fn show(
     ctx: &Context,
     settings: &mut AppSettings,
     models: &daw_project::SeparationModels,
+    model_info: &std::collections::HashMap<
+        daw_project::SeparationModelKind,
+        daw_project::SeparationModelInfo,
+    >,
     models_enabled: bool,
     model_action: &mut Option<ModelAction>,
     audio: &mut AudioControls<'_>,
@@ -427,9 +450,9 @@ pub fn show(
             ui.separator();
             ui.strong("Stem Separation");
             ui.add_enabled_ui(daw_project::SEPARATION_AVAILABLE && models_enabled, |ui| {
-                model_row(ui, label_width, daw_project::SeparationModelKind::Cpu, models.cpu.as_deref(), model_action);
+                model_row(ui, label_width, daw_project::SeparationModelKind::Cpu, models.cpu.as_deref(), model_info.get(&daw_project::SeparationModelKind::Cpu), model_action);
                 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-                model_row(ui, label_width, daw_project::SeparationModelKind::CoreMl, models.coreml.as_deref(), model_action);
+                model_row(ui, label_width, daw_project::SeparationModelKind::CoreMl, models.coreml.as_deref(), model_info.get(&daw_project::SeparationModelKind::CoreMl), model_action);
             });
             if !daw_project::SEPARATION_AVAILABLE {
                 ui.label(daw_project::SEPARATION_UNAVAILABLE_REASON);
@@ -459,6 +482,7 @@ mod tests {
                 closed = show(
                     ui.ctx(),
                     settings,
+                    &Default::default(),
                     &Default::default(),
                     true,
                     &mut None,
@@ -494,6 +518,106 @@ mod tests {
             vec![egui::Event::PointerMoved(point), button(true)],
         );
         frame(ctx, settings, vec![button(false)]).0
+    }
+
+    #[test]
+    fn validated_model_details_use_small_text_below_each_selector() {
+        use daw_project::{
+            SeparationModelInfo as Info, SeparationModelKind as Kind, SeparationStemSet as Stems,
+        };
+        for theme in [ColorTheme::Dark, ColorTheme::Light, ColorTheme::Mist] {
+            for width in [340.0, 650.0] {
+                for (has_path, has_info) in [(true, true), (true, false), (false, true)] {
+                    let ctx = Context::default();
+                    crate::theme::configure(&ctx);
+                    crate::theme::apply(
+                        &ctx,
+                        AppSettings {
+                            theme,
+                            ..Default::default()
+                        },
+                    );
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                Pos2::ZERO,
+                                Vec2::new(width, 500.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            for (kind, file, stems, bytes) in [
+                                (Kind::Cpu, "cpu.onnx", Stems::Six, 258_000_000),
+                                (Kind::CoreMl, "coreml.onnx", Stems::Four, 316_000_000),
+                            ] {
+                                let info = Info {
+                                    stems,
+                                    file_size_bytes: bytes,
+                                };
+                                model_row(
+                                    ui,
+                                    110.0,
+                                    kind,
+                                    has_path.then(|| std::path::Path::new(file)),
+                                    has_info.then_some(&info),
+                                    &mut None,
+                                );
+                            }
+                        },
+                    );
+                    output.textures_delta.clear();
+                    let text = |label: &str| {
+                        output.shapes.iter().find_map(|s| match &s.shape {
+                            egui::Shape::Text(t) if t.galley.text() == label => Some(t),
+                            _ => None,
+                        })
+                    };
+                    let mut previous_bottom = 0.0;
+                    for (file, summary, names) in [
+                        (
+                            "cpu.onnx",
+                            "6 stems · 44.1 kHz · Stereo · 258.0 MB",
+                            Stems::Six.description(),
+                        ),
+                        (
+                            "coreml.onnx",
+                            "4 stems · 44.1 kHz · Stereo · 316.0 MB",
+                            Stems::Four.description(),
+                        ),
+                    ] {
+                        if has_path && has_info {
+                            let filename = text(file).unwrap();
+                            let summary = text(summary).unwrap();
+                            let names = text(names).unwrap();
+                            assert!(filename.pos.y >= previous_bottom);
+                            assert!(summary.pos.y >= filename.pos.y + filename.galley.size().y);
+                            assert!(names.pos.y >= summary.pos.y + summary.galley.size().y);
+                            assert!(
+                                (summary.pos.x - filename.pos.x).abs() < 1.0,
+                                "width={width}, summary={:?}, file={:?}",
+                                summary.pos,
+                                filename.pos
+                            );
+                            assert_eq!(
+                                summary.galley.job.sections[0].format.font_id.size,
+                                egui::TextStyle::Small
+                                    .resolve(&ctx.style_of(ctx.theme()))
+                                    .size
+                            );
+                            assert_eq!(
+                                summary.galley.job.sections[0].format.color,
+                                crate::theme::palette(&ctx).secondary
+                            );
+                            previous_bottom = names.pos.y + names.galley.size().y;
+                        } else {
+                            assert!(text(summary).is_none());
+                            assert!(text(names).is_none());
+                        }
+                    }
+                    output.textures_delta.clear();
+                }
+            }
+        }
     }
 
     #[test]

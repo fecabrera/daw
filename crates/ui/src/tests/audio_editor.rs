@@ -388,7 +388,7 @@ fn waveform_context_menu_matches_timeline_and_keeps_selection_and_viewports() {
         assert!(egui::Popup::is_any_open(&ctx));
         let expected = [
             "Split at playhead",
-            "Stem-separation",
+            "Stem separation",
             "Edit clip",
             "Disable clip",
             "Delete clip",

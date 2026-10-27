@@ -1,11 +1,14 @@
 //! Worker validation and publication of machine-local model selections.
 use super::*;
-use daw_project::{SeparationModelKind as Kind, SeparationModels, SeparationProgress};
-use std::collections::VecDeque;
+use daw_project::{
+    SeparationModelInfo, SeparationModelKind as Kind, SeparationModels, SeparationProgress,
+};
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Default)]
 pub(super) struct State {
     pub validated: SeparationModels,
+    pub info: HashMap<Kind, SeparationModelInfo>,
     queue: VecDeque<(Kind, PathBuf)>,
     pending: Option<Pending>,
 }
@@ -37,6 +40,7 @@ impl DawUi {
             let path = self.settings.separation_models.path(kind);
             if self.separation_models.validated.path(kind) != path {
                 self.separation_models.validated.set(kind, None);
+                self.separation_models.info.remove(&kind);
             }
             if kind.available()
                 && self.separation_models.validated.path(kind).is_none()
@@ -63,6 +67,7 @@ impl DawUi {
         } else {
             std::sync::Arc::make_mut(&mut self.settings.separation_models).set(kind, None);
             self.separation_models.validated.set(kind, None);
+            self.separation_models.info.remove(&kind);
         }
     }
 
@@ -92,7 +97,11 @@ impl DawUi {
         &mut self,
         kind: Kind,
         path: PathBuf,
-        validate: impl FnOnce(Kind, &std::path::Path, &SeparationProgress) -> Result<(), String>
+        validate: impl FnOnce(
+            Kind,
+            &std::path::Path,
+            &SeparationProgress,
+        ) -> Result<SeparationModelInfo, String>
         + Send
         + 'static,
     ) {
@@ -114,7 +123,7 @@ impl DawUi {
         self.settings_cancel = Some(progress.cancel);
     }
 
-    pub(super) fn finish_model_validation(&mut self, result: Result<(), String>) {
+    pub(super) fn finish_model_validation(&mut self, result: Result<SeparationModelInfo, String>) {
         let Some(pending) = self.separation_models.pending.take() else {
             return;
         };
@@ -123,12 +132,15 @@ impl DawUi {
             return;
         }
         let cancelled = pending.progress.cancel.load(Ordering::Relaxed);
-        if result.is_ok() && !cancelled {
+        if let Ok(info) = result.as_ref()
+            && !cancelled
+        {
             std::sync::Arc::make_mut(&mut self.settings.separation_models)
                 .set(pending.kind, Some(pending.path.clone()));
             self.separation_models
                 .validated
                 .set(pending.kind, Some(pending.path));
+            self.separation_models.info.insert(pending.kind, *info);
         } else {
             // A file can change in place after its earlier validation.
             if result.is_err()
@@ -137,6 +149,7 @@ impl DawUi {
                     == Some(pending.path.as_path())
             {
                 self.separation_models.validated.set(pending.kind, None);
+                self.separation_models.info.remove(&pending.kind);
             }
             // A failed startup check rejects the saved path too. Validation
             // stamps are session-only, so stored settings cannot bypass a check.
@@ -161,6 +174,13 @@ impl DawUi {
 mod tests {
     use super::*;
 
+    fn test_info() -> SeparationModelInfo {
+        SeparationModelInfo {
+            stems: daw_project::SeparationStemSet::Six,
+            file_size_bytes: 258_000_000,
+        }
+    }
+
     fn finish(app: &mut DawUi) {
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
         while app.job.is_some() || app.separation_models.busy() {
@@ -183,9 +203,10 @@ mod tests {
             app.start_model_validation(kind, path.clone(), move |_, _, _| wait.recv().unwrap());
             assert!(app.settings.separation_models.path(kind).is_none());
             assert!(app.separation_models.validated.path(kind).is_none());
+            assert!(!app.separation_models.info.contains_key(&kind));
             assert!(!app.separation_enabled());
             assert!(!app.settings().to_json().contains(path.to_str().unwrap()));
-            assert!(release.send(Ok(())).is_ok());
+            assert!(release.send(Ok(test_info())).is_ok());
             finish(&mut app);
             assert_eq!(
                 app.settings.separation_models.path(kind),
@@ -196,6 +217,7 @@ mod tests {
                 Some(path.as_path())
             );
             assert!(app.separation_enabled());
+            assert_eq!(app.separation_models.info.get(&kind), Some(&test_info()));
 
             app.start_model_validation(kind, PathBuf::from("invalid.onnx"), |_, _, _| {
                 Err("wrong tensor contract".into())
@@ -209,6 +231,7 @@ mod tests {
                 app.separation_models.validated.path(kind),
                 Some(path.as_path())
             );
+            assert_eq!(app.separation_models.info.get(&kind), Some(&test_info()));
             assert!(!app.settings().to_json().contains("invalid.onnx"));
             assert!(app.error.take().unwrap().contains("validation failed"));
             assert!(app.separation_enabled());
@@ -217,6 +240,7 @@ mod tests {
             app.change_separation_model(settings::ModelAction { kind, path: None });
             assert!(app.settings.separation_models.path(kind).is_none());
             assert!(app.separation_models.validated.path(kind).is_none());
+            assert!(!app.separation_models.info.contains_key(&kind));
             assert_eq!(
                 app.separation_enabled(),
                 app.separation_models.validated.is_configured()
@@ -230,12 +254,13 @@ mod tests {
     fn failed_recheck_rejects_a_previously_validated_path() {
         let mut app = DawUi::default();
         let path = PathBuf::from("replaced-in-place.onnx");
-        app.start_model_validation(Kind::Cpu, path.clone(), |_, _, _| Ok(()));
+        app.start_model_validation(Kind::Cpu, path.clone(), |_, _, _| Ok(test_info()));
         finish(&mut app);
         app.start_model_validation(Kind::Cpu, path, |_, _, _| Err("damaged model".into()));
         finish(&mut app);
         assert!(app.settings.separation_models.cpu.is_none());
         assert!(app.separation_models.validated.cpu.is_none());
+        assert!(app.separation_models.info.is_empty());
         assert!(!app.separation_enabled());
         assert!(app.error.take().unwrap().contains("damaged model"));
         assert!(!app.dirty);
@@ -295,9 +320,13 @@ mod tests {
         let mut settings = app.settings();
         std::sync::Arc::make_mut(&mut settings.separation_models).cpu = Some(model.clone());
         app.set_settings(&egui::Context::default(), settings);
-        assert!(release.send(Ok(())).is_ok());
+        assert!(release.send(Ok(test_info())).is_ok());
         finish(&mut app);
         assert_eq!(app.separation_models.validated.cpu, Some(model));
+        assert_eq!(
+            app.separation_models.info[&Kind::Cpu].stems,
+            daw_project::SeparationStemSet::Four
+        );
         assert!(app.separation_enabled());
         assert!(app.error.is_none());
         assert!(!app.dirty);

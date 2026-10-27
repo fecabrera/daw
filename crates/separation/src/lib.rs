@@ -8,6 +8,43 @@ use std::{
 };
 
 pub const STEMS: [&str; 4] = ["drums", "bass", "other", "vocals"];
+pub const SIX_STEMS: [&str; 6] = ["drums", "bass", "other", "vocals", "guitar", "piano"];
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StemSet {
+    #[default]
+    Four,
+    Six,
+}
+impl StemSet {
+    pub fn names(self) -> &'static [&'static str] {
+        match self {
+            Self::Four => &STEMS,
+            Self::Six => &SIX_STEMS,
+        }
+    }
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Four => "Drums, Bass, Other, Vocals",
+            Self::Six => "Drums, Bass, Other, Vocals, Guitar, Piano",
+        }
+    }
+}
+
+/// Details returned only after the native model passes its output contract.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModelInfo {
+    pub stems: StemSet,
+    pub file_size_bytes: u64,
+}
+
+/// Validated identities of the files written by the selected backend.
+#[derive(Debug)]
+pub struct Output {
+    pub stems: StemSet,
+    pub warnings: Vec<String>,
+}
+
 pub const MODEL_RATE: u32 = 44_100;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -17,7 +54,7 @@ pub struct Models {
     pub coreml: Option<PathBuf>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ModelKind {
     Cpu,
     CoreMl,
@@ -90,8 +127,12 @@ pub const UNAVAILABLE_REASON: &str = "Stem separation is unavailable on Intel ma
 mod backend;
 
 /// Load the selected backend and check a short inference through the same
-/// four-stem output contract as separation. Call only from a worker.
-pub fn validate_model(kind: ModelKind, path: &Path, progress: &Progress) -> Result<(), Error> {
+/// four- or six-stem output contract as separation. Call only from a worker.
+pub fn validate_model(
+    kind: ModelKind,
+    path: &Path,
+    progress: &Progress,
+) -> Result<ModelInfo, Error> {
     progress.check()?;
     if !kind.available() {
         return Err(Error(format!(
@@ -116,7 +157,7 @@ pub fn separate(
     models: &Models,
     directory: &Path,
     progress: &Progress,
-) -> Result<Vec<String>, Error> {
+) -> Result<Output, Error> {
     progress.check()?;
     #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
     {

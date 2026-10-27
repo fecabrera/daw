@@ -4,6 +4,30 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Validated model selector details — 2026-10-27
+
+Successful CPU/CoreML model validation now returns the detected stem set and selected ONNX file byte length. The UI publishes those details with the accepted path and caches them only for the current process. Small secondary text below each selector shows the stem count, stereo/44.1 kHz format, decimal-MB file size and stem names. No file reads or model inference occur while painting. Audio format and names follow the supported HTDemucs contract, rather than optional ONNX metadata.
+
+All eight backend tests pass, including four/six-stem count and exact file-size results. All ten separation state/UI tests pass with checks for delayed publication, rejected replacement, cancellation, clearing, failed revalidation and superseded results. The focused rendering test passes in Dark, Light and Mist at 340- and 650-point widths, checking Small font size, secondary color, wrapping, selector-column alignment, non-overlap and hidden details without an accepted model. Both supplied CPU files pass the opt-in validation/separation/save/reopen test; the test now asserts their returned stem counts and exact file lengths.
+
+Inspection of the supplied ONNX headers found producer `pytorch` version `2.4.1`, IR version 8 and default operator set 17, with no model-level description or custom metadata. The compact UI uses validated audio details; it does not invent optional author, license or model-version fields. See the [ONNX metadata reference](https://onnx.ai/onnx/intro/concepts.html).
+
+Formatting, strict workspace/all-target Clippy, whitespace and local documentation link checks pass. The macOS debug app rebuild and CLI build/smoke checks pass. The full workspace test run passes: 1734 tests passed, 11 opt-in tests ignored, no failures, including all documentation tests. All 661 UI tests pass. Logs use `work/model-info-*`. Native pointer checks, Windows/Linux execution and a real six-stem CoreML model remain unverified.
+
+## Automatic four- and six-stem separation — 2026-10-27
+
+Settings retains one CPU model path and one CoreML model path. The Clip menu and shared clip context menu expose one **Stem separation** action. The worker accepts four- or six-stem output through Charon’s existing waveform/split-transform contracts, without inferring the count from filenames or parsing error messages. Project import and the finished status report use the successful model’s stem identities. Failed attempts clear only fixed stem filenames in their newly reserved job directory, including when fallback changes the count.
+
+Completed checks:
+
+- `cargo test -p daw-separation`: all eight tests pass, including automatic six-stem validation, all six finite stereo files with exact duration, failed CoreML fallback, wrong-format rejection, stale extra-output cleanup and retention of unrelated files.
+- `cargo test -p daw-separation -p daw-project separation`: all 16 project separation tests pass; the opt-in model test is skipped in this command. Coverage includes six-track import, original clip retention, history, temporary/saved projects, save/reopen, and rejection of incomplete output.
+- `cargo test -p daw-ui`: all 660 UI tests pass. CPU/CoreML validation, cancellation, settings round trips, shared menus and project action guards retain coverage with the single action and selectors.
+- The existing opt-in `local_models_separate_and_import` test passes with each user-provided CPU file, `htdemucs.onnx` and `htdemucs_6s.onnx`. Each test validates the model, automatically separates a 0.1-second synthetic stereo signal at 48 kHz, imports four or six stems at the original frame range, saves and reopens. `DAW_STEM_COUNT` asserts the expected result only; runtime selection takes no count argument. No weights or source recordings are included in the repository.
+- Formatting, strict workspace/all-target Clippy, whitespace and local documentation links pass. The headless CLI build/smoke checks and macOS debug app bundle rebuild pass. Logs use `work/auto-stems-*`, `work/auto-four-stems-*`, `work/auto-six-stems-*` and `work/six-stems-*`.
+
+The broader workspace run passed 1,732 unit/integration tests with 11 opt-in tests ignored. Its project documentation step encountered an older separation artifact after the single-action API revision. A fresh `cargo test --workspace --doc` passes for every workspace package. All affected suites were rerun against the final code: eight backend tests, all 24 project library tests (one model opt-in ignored in that command), and all 660 UI tests pass. Native pointer checks, Windows/Linux execution, a real six-stem CoreML model and separation quality on music were not checked. The synthetic signal checks the model and project contracts, not musical separation quality.
+
 ## MIDI Editor note and clip-edge priority — 2026-10-27
 
 Visible note rectangles now take priority over lower pattern trim/stretch hit areas, including notes at source boundaries. Clip edge press capture respects the enabled response and its hit rectangle. The drawing modifier disables lower clip edges, so Command-click/drag on macOS or Ctrl-click/drag on Windows/Linux can create notes at either boundary. Headers and the overview retain their clip gestures.

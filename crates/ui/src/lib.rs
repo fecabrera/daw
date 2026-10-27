@@ -320,7 +320,7 @@ enum Job {
     Saved(Session),
     Exported(Vec<String>),
     Separated(daw_project::PreparedSeparation),
-    ModelValidated(Result<(), String>),
+    ModelValidated(Result<daw_project::SeparationModelInfo, String>),
 }
 
 enum Action {
@@ -1429,6 +1429,7 @@ impl DawUi {
                         {
                             status.state = job_report::State::Cancelled;
                         } else {
+                            status.stems = Some(prepared.stems);
                             status.path = prepared.directory().to_owned();
                             status.warnings = prepared.warnings.clone();
                             status.state = job_report::State::Complete;
@@ -5167,6 +5168,7 @@ impl DawUi {
                 ctx,
                 &mut self.settings,
                 &self.separation_models.validated,
+                &self.separation_models.info,
                 enabled,
                 &mut model_action,
                 &mut audio,

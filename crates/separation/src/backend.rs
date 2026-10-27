@@ -1,5 +1,5 @@
 //! Supported-target Charon adapter. Backend types stay private.
-use super::{Error, MODEL_RATE, ModelKind, Models, Progress, STEMS};
+use super::{Error, MODEL_RATE, ModelInfo, ModelKind, Models, Output, Progress, StemSet};
 use charon_audio::{AudioSource, CancelToken, Control, Separator, SeparatorConfig, StemSink};
 use daw_media::{AudioEncoder, WavCodec, WavEncoder};
 use std::{path::Path, sync::atomic::Ordering};
@@ -11,7 +11,7 @@ pub fn separate(
     models: &Models,
     directory: &Path,
     progress: &Progress,
-) -> Result<Vec<String>, Error> {
+) -> Result<Output, Error> {
     progress.check()?;
     if samples.is_empty() || samples.iter().flatten().any(|v| !v.is_finite()) {
         return Err(Error(
@@ -19,7 +19,7 @@ pub fn separate(
         ));
     }
     run_models(models, progress, |config| {
-        attempt(samples, config, Some(directory), progress).map_err(|e| Error(e.to_string()))
+        detect_and_run(samples, config, Some(directory), progress)
     })
 }
 
@@ -58,8 +58,8 @@ fn config_for(kind: ModelKind, path: &Path) -> Result<SeparatorConfig, Error> {
 fn run_models(
     models: &Models,
     progress: &Progress,
-    run: impl FnMut(SeparatorConfig) -> Result<(), Error>,
-) -> Result<Vec<String>, Error> {
+    run: impl FnMut(SeparatorConfig) -> Result<StemSet, Error>,
+) -> Result<Output, Error> {
     #[cfg(target_os = "macos")]
     let mut run = run;
     progress.check()?;
@@ -70,7 +70,7 @@ fn run_models(
     #[cfg(target_os = "macos")]
     if let Some(model) = &models.coreml {
         match config_for(ModelKind::CoreMl, model).and_then(&mut run) {
-            Ok(()) => return Ok(warnings),
+            Ok(stems) => return Ok(Output { stems, warnings }),
             Err(e) => {
                 progress.check()?;
                 if models.cpu.is_none() {
@@ -91,32 +91,84 @@ fn run_models(
     if models.coreml.is_none() {
         warnings.push("No CoreML model selected; used CPU".into());
     }
-    config_for(ModelKind::Cpu, cpu).and_then(run).map_err(|e| {
+    let stems = config_for(ModelKind::Cpu, cpu).and_then(run).map_err(|e| {
         Error(if warnings.is_empty() {
             e.to_string()
         } else {
             format!("{}\nCPU separation failed: {e}", warnings.join("\n"))
         })
     })?;
-    Ok(warnings)
+    Ok(Output { stems, warnings })
 }
 
 pub(super) fn validate_model(
     kind: ModelKind,
     path: &Path,
     progress: &Progress,
-) -> Result<(), Error> {
+) -> Result<ModelInfo, Error> {
     // A full model window is padded by Charon, but no stem files are created.
     let probe: [[f32; 2]; 128] = std::array::from_fn(|i| {
         let value = (i as f32 * 0.1).sin() * 0.1;
         [value, -value * 0.5]
     });
-    attempt(&probe, config_for(kind, path)?, None, progress).map_err(|e| Error(e.to_string()))
+    let stems = detect_and_run(&probe, config_for(kind, path)?, None, progress)?;
+    let file_size_bytes = std::fs::metadata(path)
+        .map_err(|e| Error(format!("Cannot read model size: {e}")))?
+        .len();
+    progress.check()?;
+    Ok(ModelInfo {
+        stems,
+        file_size_bytes,
+    })
+}
+
+/// The exports use symbolic output dimensions. Probe the supported contracts
+/// through Charon itself; do not infer a count from a filename or error text.
+fn detect_and_run(
+    samples: &[[f32; 2]],
+    mut config: SeparatorConfig,
+    directory: Option<&Path>,
+    progress: &Progress,
+) -> Result<StemSet, Error> {
+    let mut errors = Vec::new();
+    for stems in [StemSet::Four, StemSet::Six] {
+        progress.check()?;
+        progress.done.store(0, Ordering::Relaxed);
+        progress.total.store(0, Ordering::Relaxed);
+        if let Some(directory) = directory {
+            // Only fixed output names in this job's reserved directory are
+            // removed. Failed attempts may have used a different stem count.
+            for name in StemSet::Six.names() {
+                match std::fs::remove_file(directory.join(format!("{name}.wav"))) {
+                    Ok(()) => (),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+                    Err(e) => return Err(Error(format!("Cannot clear staged stem: {e}"))),
+                }
+            }
+        }
+        config.model.sources = stems
+            .names()
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect();
+        match attempt(samples, config.clone(), stems, directory, progress) {
+            Ok(()) => return Ok(stems),
+            Err(error) => {
+                progress.check()?;
+                errors.push(format!("{}-stem contract: {error}", stems.names().len()));
+            }
+        }
+    }
+    Err(Error(format!(
+        "Model does not produce a supported four- or six-stem output:\n{}",
+        errors.join("\n")
+    )))
 }
 
 fn attempt(
     samples: &[[f32; 2]],
     config: SeparatorConfig,
+    stems: StemSet,
     directory: Option<&Path>,
     progress: &Progress,
 ) -> charon_audio::Result<()> {
@@ -138,7 +190,8 @@ fn attempt(
         directory,
         progress,
         encoders: Vec::new(),
-        counts: [0; 4],
+        counts: vec![0; stems.names().len()],
+        stems,
         expected: samples.len(),
     };
     separator.separate_stream(&mut source, &mut sink, &control)?;
@@ -180,7 +233,8 @@ struct Sink<'a> {
     directory: Option<&'a Path>,
     progress: &'a Progress,
     encoders: Vec<WavEncoder>,
-    counts: [usize; 4],
+    counts: Vec<usize>,
+    stems: StemSet,
     expected: usize,
 }
 impl StemSink for Sink<'_> {
@@ -190,14 +244,20 @@ impl StemSink for Sink<'_> {
         channels: usize,
         sample_rate: u32,
     ) -> charon_audio::Result<()> {
-        if channels != 2 || sample_rate != MODEL_RATE || !stems.iter().map(String::as_str).eq(STEMS)
+        if channels != 2
+            || sample_rate != MODEL_RATE
+            || !stems
+                .iter()
+                .map(String::as_str)
+                .eq(self.stems.names().iter().copied())
         {
-            return Err(charon_audio::CharonError::Processing(
-                "Expected four stereo HTDemucs stems at 44.1 kHz".into(),
-            ));
+            return Err(charon_audio::CharonError::Processing(format!(
+                "Expected {} stereo HTDemucs stems at 44.1 kHz",
+                self.stems.names().len()
+            )));
         }
         if let Some(directory) = self.directory {
-            for name in STEMS {
+            for name in self.stems.names() {
                 self.encoders.push(
                     WavEncoder::at_sample_rate(
                         &directory.join(format!("{name}.wav")),
@@ -214,7 +274,7 @@ impl StemSink for Sink<'_> {
         if self.progress.cancel.load(Ordering::Relaxed) {
             return Err(charon_audio::CharonError::Cancelled);
         }
-        if stem >= 4 || block.nrows() != 2 {
+        if stem >= self.counts.len() || block.nrows() != 2 {
             return Err("Invalid stem output".into());
         }
         if block.iter().any(|v| !v.is_finite()) {
@@ -236,7 +296,7 @@ impl StemSink for Sink<'_> {
         Ok(())
     }
     fn finish(&mut self) -> charon_audio::Result<()> {
-        if self.counts != [self.expected; 4] {
+        if self.counts.iter().any(|count| *count != self.expected) {
             return Err("Stem duration differs from input".into());
         }
         for encoder in self.encoders.drain(..) {
@@ -255,9 +315,79 @@ mod tests {
     }
 
     #[test]
+    fn six_stem_models_validate_their_count_and_stream_all_outputs() {
+        let model = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/identity_6stems.onnx");
+        let progress = super::Progress::default();
+        let info = super::validate_model(super::ModelKind::Cpu, &model, &progress).unwrap();
+        assert_eq!(info.stems, super::StemSet::Six);
+        assert_eq!(
+            info.file_size_bytes,
+            std::fs::metadata(&model).unwrap().len()
+        );
+        let directory = std::env::temp_dir().join(format!(
+            "daw-six-stems-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(directory.clone());
+        let samples: Vec<_> = (0..128)
+            .map(|n| [(n as f32 * 0.1).sin() * 0.2, (n as f32 * 0.07).cos() * 0.1])
+            .collect();
+        let result = super::separate(
+            &samples,
+            &super::Models {
+                cpu: Some(model),
+                coreml: Some(directory.join("missing.onnx")),
+            },
+            &directory,
+            &progress,
+        );
+        let output = result.unwrap();
+        assert_eq!(output.stems, super::StemSet::Six);
+        if cfg!(target_os = "macos") {
+            assert!(
+                output
+                    .warnings
+                    .iter()
+                    .any(|w| w.contains("CoreML failed; used CPU"))
+            );
+        }
+        for name in super::StemSet::Six.names() {
+            let audio = daw_media::decode_wav_at_rate(
+                &directory.join(format!("{name}.wav")),
+                super::MODEL_RATE,
+            )
+            .unwrap();
+            assert_eq!(audio.samples.len(), samples.len());
+            for (actual, expected) in audio.samples.iter().zip(&samples) {
+                for ch in 0..2 {
+                    assert!((actual[ch] - expected[ch]).abs() < 1e-5);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn validation_loads_the_backend_and_rejects_the_wrong_contract() {
         let p = super::Progress::default();
-        super::validate_model(super::ModelKind::Cpu, &fixture("identity_4stems.onnx"), &p).unwrap();
+        let model = fixture("identity_4stems.onnx");
+        let info = super::validate_model(super::ModelKind::Cpu, &model, &p).unwrap();
+        assert_eq!(info.stems, super::StemSet::Four);
+        assert_eq!(
+            info.file_size_bytes,
+            std::fs::metadata(model).unwrap().len()
+        );
         assert!(
             super::validate_model(super::ModelKind::Cpu, &fixture("identity_split.onnx"), &p)
                 .is_err()
@@ -302,6 +432,7 @@ mod tests {
             let result = super::attempt(
                 &[[0.1, -0.05]; 128],
                 config,
+                super::StemSet::Four,
                 None,
                 &super::Progress::default(),
             );
@@ -317,10 +448,11 @@ mod tests {
             directory: None,
             progress: &progress,
             encoders: Vec::new(),
-            counts: [0; 4],
+            counts: vec![0; 4],
+            stems: super::StemSet::Four,
             expected: 2,
         };
-        let stems: Vec<_> = super::STEMS.iter().map(|s| s.to_string()).collect();
+        let stems: Vec<_> = crate::STEMS.iter().map(|s| s.to_string()).collect();
         assert!(sink.begin(&stems, 1, super::MODEL_RATE).is_err());
         assert!(sink.begin(&stems, 2, 48_000).is_err());
         assert!(sink.begin(&stems[..3], 2, super::MODEL_RATE).is_err());
@@ -369,12 +501,12 @@ mod tests {
                         config.model.onnx.execution_provider,
                         ExecutionProvider::CoreMl
                     );
-                    Ok(())
+                    Ok(super::StemSet::Four)
                 },
             )
             .unwrap();
             assert_eq!(calls, 1);
-            assert!(warnings.is_empty());
+            assert!(warnings.warnings.is_empty());
         }
         let models = Models {
             cpu: Some(model.clone()),
@@ -387,7 +519,7 @@ mod tests {
             if provider == ExecutionProvider::CoreMl {
                 Err(Error("CoreML test failure".into()))
             } else {
-                Ok(())
+                Ok(super::StemSet::Four)
             }
         })
         .unwrap();
@@ -395,7 +527,7 @@ mod tests {
             providers,
             [ExecutionProvider::CoreMl, ExecutionProvider::Cpu]
         );
-        assert!(warnings[0].contains("CoreML test failure"));
+        assert!(warnings.warnings[0].contains("CoreML test failure"));
         let error = super::run_models(
             &Models {
                 cpu: None,
@@ -446,6 +578,9 @@ mod tests {
             .collect();
         for coreml in [None, Some(directory.join("missing.onnx"))] {
             let fallback = coreml.is_some();
+            std::fs::write(directory.join("guitar.wav"), b"failed six-stem attempt").unwrap();
+            std::fs::write(directory.join("piano.wav"), b"failed six-stem attempt").unwrap();
+            std::fs::write(directory.join("keep.txt"), b"unrelated").unwrap();
             let warnings = super::separate(
                 &samples,
                 &super::Models {
@@ -459,11 +594,18 @@ mod tests {
             if cfg!(target_os = "macos") && fallback {
                 assert!(
                     warnings
+                        .warnings
                         .iter()
                         .any(|w| w.contains("CoreML failed; used CPU"))
                 );
             }
-            for stem in super::STEMS {
+            assert!(!directory.join("guitar.wav").exists());
+            assert!(!directory.join("piano.wav").exists());
+            assert_eq!(
+                std::fs::read(directory.join("keep.txt")).unwrap(),
+                b"unrelated"
+            );
+            for stem in crate::STEMS {
                 let audio = daw_media::decode_wav_at_rate(
                     &directory.join(format!("{stem}.wav")),
                     super::MODEL_RATE,

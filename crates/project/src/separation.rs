@@ -1,5 +1,5 @@
 //! Atomic worker-side separation and import through the shared Session path.
-use crate::{Result, Session, error};
+use crate::{Result, SeparationStemSet, Session, error};
 use daw_core::{Edit, Id};
 use daw_media::{AudioEncoder, WavCodec, WavEncoder};
 pub use daw_separation::{Models as SeparationModels, Progress as SeparationProgress};
@@ -31,6 +31,7 @@ pub struct PreparedSeparation {
     session: Option<Session>,
     directory: Option<PathBuf>,
     pub warnings: Vec<String>,
+    pub stems: SeparationStemSet,
 }
 impl Drop for PreparedSeparation {
     fn drop(&mut self) {
@@ -168,7 +169,7 @@ impl Session {
         &self,
         clip_id: Id,
         progress: &SeparationProgress,
-        run: impl FnOnce(&[[f32; 2]], &Path) -> Result<Vec<String>>,
+        run: impl FnOnce(&[[f32; 2]], &Path) -> Result<daw_separation::Output>,
     ) -> Result<PreparedSeparation> {
         progress.check().map_err(error)?;
         let clip = self
@@ -223,15 +224,18 @@ impl Session {
             session: None,
             directory: Some(directory.clone()),
             warnings: Vec::new(),
+            stems: SeparationStemSet::Four,
         };
-        prepared.warnings = run(&input, &directory)?;
+        let output = run(&input, &directory)?;
+        prepared.stems = output.stems;
+        prepared.warnings = output.warnings;
         progress.check().map_err(error)?;
         let mut next = self.clone();
         if let Some(temporary) = &temporary {
             next.temporary_stems.push(temporary.clone());
         }
         let mut tracks = Vec::new();
-        for name in daw_separation::STEMS {
+        for &name in prepared.stems.names() {
             progress.check().map_err(error)?;
             let path = directory.join(format!("{name}.wav"));
             let data = prepare_stem(
@@ -418,8 +422,15 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
-    fn fake(samples: &[[f32; 2]], directory: &Path) -> Result<Vec<String>> {
-        for stem in daw_separation::STEMS {
+    fn fake(samples: &[[f32; 2]], directory: &Path) -> Result<daw_separation::Output> {
+        fake_stems(samples, directory, SeparationStemSet::Four)
+    }
+    fn fake_stems(
+        samples: &[[f32; 2]],
+        directory: &Path,
+        stems: SeparationStemSet,
+    ) -> Result<daw_separation::Output> {
+        for stem in stems.names() {
             let mut encoder = WavEncoder::at_sample_rate(
                 &directory.join(format!("{stem}.wav")),
                 WavCodec::Float32,
@@ -429,7 +440,78 @@ mod tests {
             encoder.write_frames(samples).map_err(error)?;
             encoder.finish().map_err(error)?;
         }
-        Ok(vec!["Test warning".into()])
+        Ok(daw_separation::Output {
+            stems,
+            warnings: vec!["Test warning".into()],
+        })
+    }
+
+    #[test]
+    fn six_stem_import_is_atomic_and_survives_history_and_save() {
+        for saved in [false, true] {
+            let (fixture, mut session, clip) = Fixture::new();
+            if !saved {
+                session.folder = None;
+            }
+            let before = session.project.clone();
+            let mut history = crate::SessionHistory::new(&session, false).unwrap();
+            let prepared = session
+                .separate_clip_with(clip, &SeparationProgress::default(), |input, path| {
+                    fake_stems(input, path, SeparationStemSet::Six)
+                })
+                .unwrap();
+            assert_eq!(session.project, before);
+            assert_eq!(prepared.stems, SeparationStemSet::Six);
+            let mut next = prepared.publish();
+            history.record(&next).unwrap();
+            assert_eq!(next.project.tracks.len(), 8);
+            assert!(next.project.tracks[0].clips[0].muted);
+            let tracks: Vec<_> = next
+                .project
+                .tracks
+                .iter()
+                .filter(|t| t.group_id.is_some())
+                .collect();
+            assert_eq!(
+                tracks.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+                SeparationStemSet::Six.names()
+            );
+            for track in tracks {
+                let stem = &track.clips[0];
+                assert_eq!(
+                    (stem.start_frame, stem.length_frames, stem.gain_db),
+                    (9600, 2400, -3.0)
+                );
+            }
+            let undone = history.undo(&next).unwrap();
+            assert_eq!(undone.project, before);
+            next = history.redo(&undone).unwrap();
+            let destination = fixture.0.join("six-stem-save");
+            next.save(&destination).unwrap();
+            let reopened = Session::open(&destination).unwrap();
+            assert!(reopened.warnings.is_empty());
+            assert_eq!(reopened.project.tracks.len(), 8);
+            assert_eq!(
+                reopened
+                    .project
+                    .assets
+                    .iter()
+                    .filter(|a| a.source.kind == "generated")
+                    .count(),
+                6
+            );
+            let failed =
+                session.separate_clip_with(clip, &SeparationProgress::default(), |input, path| {
+                    let mut output = fake(input, path)?;
+                    output.stems = SeparationStemSet::Six;
+                    Ok(output)
+                });
+            assert!(
+                failed.is_err(),
+                "incomplete detected six-stem output must not publish"
+            );
+            assert_eq!(session.project, before);
+        }
     }
 
     #[test]
@@ -741,7 +823,10 @@ mod tests {
                 fake(samples, path)?;
                 if cancel {
                     progress.cancel.store(true, Ordering::Relaxed);
-                    Ok(Vec::new())
+                    Ok(daw_separation::Output {
+                        stems: SeparationStemSet::Four,
+                        warnings: Vec::new(),
+                    })
                 } else {
                     Err(error("Inference failed"))
                 }
@@ -1037,6 +1122,7 @@ mod tests {
             let directory = reserve_directory(&fixture.0.join("stems"), "cancel-test").unwrap();
             fake(&vec![[0.2, -0.1]; 2205], &directory).unwrap();
             let staged = PreparedSeparation {
+                stems: SeparationStemSet::Four,
                 session: None,
                 directory: Some(directory.clone()),
                 warnings: Vec::new(),
@@ -1093,6 +1179,19 @@ mod model_smoke {
     fn local_models_separate_and_import() {
         let cpu = std::env::var_os("DAW_STEM_CPU_MODEL").expect("DAW_STEM_CPU_MODEL");
         let coreml = std::env::var_os("DAW_STEM_COREML_MODEL").map(PathBuf::from);
+        let expected = match std::env::var("DAW_STEM_COUNT").as_deref() {
+            Ok("6") => SeparationStemSet::Six,
+            Ok("4") | Err(_) => SeparationStemSet::Four,
+            other => panic!("Unsupported expected DAW_STEM_COUNT: {other:?}"),
+        };
+        let info = crate::validate_separation_model(
+            crate::SeparationModelKind::Cpu,
+            Path::new(&cpu),
+            &SeparationProgress::default(),
+        )
+        .unwrap();
+        assert_eq!(info.stems, expected);
+        assert_eq!(info.file_size_bytes, fs::metadata(&cpu).unwrap().len());
         let input = std::env::var_os("DAW_STEM_INPUT").expect("DAW_STEM_INPUT");
         let folder = std::env::temp_dir().join(format!("daw-model-smoke-{}", Id::new_v4()));
         let mut session = Session::default();
@@ -1109,12 +1208,13 @@ mod model_smoke {
                 &SeparationProgress::default(),
             )
             .unwrap();
+        assert_eq!(result.stems, expected);
         eprintln!("Model warnings: {:?}", result.warnings);
         let mut session = result.publish();
         session.save(&folder).unwrap();
         let reopened = Session::open(&folder).unwrap();
         assert!(reopened.warnings.is_empty());
-        assert_eq!(reopened.project.tracks.len(), 6);
+        assert_eq!(reopened.project.tracks.len(), expected.names().len() + 2);
         assert!(reopened.project.tracks[0].clips[0].muted);
         for track in reopened
             .project

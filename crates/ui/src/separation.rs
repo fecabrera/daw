@@ -2,6 +2,7 @@ use super::*;
 use daw_project::SeparationProgress;
 pub(super) struct Status {
     pub progress: SeparationProgress,
+    pub stems: Option<daw_project::SeparationStemSet>,
     pub state: job_report::State,
     pub warnings: Vec<String>,
     pub(super) path: PathBuf,
@@ -11,6 +12,10 @@ impl Status {
         use std::sync::atomic::Ordering;
         let total = self.progress.total.load(Ordering::Relaxed);
         let done = self.progress.done.load(Ordering::Relaxed);
+        let detail = self
+            .stems
+            .map(|stems| format!("Charon · HTDemucs · Stereo · {}", stems.description()))
+            .unwrap_or_else(|| "Charon · HTDemucs · Stereo".into());
         job_report::Report {
             title: "Stem-separation status",
             state: &self.state,
@@ -23,7 +28,7 @@ impl Status {
             },
             complete_text: "Stem separation complete",
             failed_text: "Stem separation failed",
-            detail: "Charon · HTDemucs · Stereo · Drums, Bass, Other, Vocals",
+            detail: &detail,
             path: &self.path,
             progress: (total > 0).then_some(done as f32 / total.max(1) as f32),
             warnings: &self.warnings,
@@ -69,6 +74,7 @@ impl DawUi {
         });
         self.settings_cancel = Some(progress.cancel.clone());
         self.separation_status = Some(Status {
+            stems: None,
             progress,
             state: job_report::State::Running,
             warnings: Vec::new(),

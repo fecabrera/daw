@@ -335,7 +335,7 @@ fn lower_pattern_context_menus_keep_views_and_include_midi_note_controls() {
         );
         for label in [
             "Split at playhead",
-            "Stem-separation",
+            "Stem separation",
             "Edit clip",
             "Disable clip",
             "Delete clip",

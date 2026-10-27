@@ -503,6 +503,7 @@ mod tests {
                         ui.ctx(),
                         &mut preferences,
                         &Default::default(),
+                        &Default::default(),
                         true,
                         &mut None,
                         &mut controls,

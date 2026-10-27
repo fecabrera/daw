@@ -33,7 +33,7 @@ impl ClipMenuAction {
             Self::Import => "Import clip…",
             Self::AddMidi => "Add MIDI pattern",
             Self::Split => "Split at playhead",
-            Self::Separate => "Stem-separation",
+            Self::Separate => "Stem separation",
             Self::Edit => "Edit clip",
             Self::ToggleMuted => "Disable clip",
             Self::Delete => "Delete clip",

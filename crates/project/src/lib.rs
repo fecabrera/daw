@@ -2,7 +2,8 @@ mod audition;
 pub use audition::NoteAudition;
 mod separation;
 pub use daw_separation::{
-    AVAILABLE as SEPARATION_AVAILABLE, ModelKind as SeparationModelKind,
+    AVAILABLE as SEPARATION_AVAILABLE, ModelInfo as SeparationModelInfo,
+    ModelKind as SeparationModelKind, StemSet as SeparationStemSet,
     UNAVAILABLE_REASON as SEPARATION_UNAVAILABLE_REASON,
     validate_model as validate_separation_model,
 };
