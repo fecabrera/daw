@@ -134,7 +134,7 @@ pub(super) fn fit_clip_button(ui: &mut Ui) -> Response {
 }
 
 pub(super) fn fit_width_button(ui: &mut Ui, name: &str) -> Response {
-    let image = egui::Image::new(egui::include_image!("../assets/icons/fit-clip.svg"))
+    let image = egui::Image::new(egui::include_image!("../assets/icons/fit-clip-horizontal.svg"))
         .fit_to_exact_size(Vec2::splat(TOOLBAR_ICON_SIZE))
         .tint(crate::theme::palette(ui.ctx()).text)
         .alt_text(name);
