@@ -6,6 +6,8 @@ Timeline arranges audio and MIDI clips on tracks. Use Editor for MIDI notes, Ins
 
 Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Their names use the same spacing as group headers. Master's meters align with the track meters at the right of the control column. Drag an audio or MIDI icon, track name, or blank header area to move the track. Release applies the move; Escape or focus loss cancels it.
 
+The Tracks header’s Add audio track and Duplicate track buttons stay available when another pane or non-text control has focus. Duplicate still requires a selected track. Text entry, jobs, dialogs, active gestures, and loss of window focus retain their guards.
+
 Press M to toggle Mute and S to toggle Solo on each selected track. These shortcuts work from any focused pane or control in Timeline, except while you enter text. Dialogs, blocking jobs and active drags still disable them. Release a dragged control before using M/S. Holding a key does not toggle repeatedly.
 
 Press Escape to clear selected clips or a selected clip time range first. Tracks and Master stay selected. If no clips or clip time range are selected, Escape clears track or Master selection. Text entry, open menus and active gestures take precedence. Holding Escape does not advance through these steps.

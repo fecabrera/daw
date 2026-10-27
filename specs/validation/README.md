@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Track creation and duplication with control focus — 2026-10-27
+
+Add audio track, Add MIDI track and Duplicate track now ignore general non-text keyboard focus through the shared `TrackAction` readiness check. The Tracks header buttons remain available when another pane or a non-text control has focus. Text entry, selection/view requirements, window focus, dialogs/jobs and existing gestures retain their guards. Generic egui control drags explicitly block creation and duplication until release.
+
+The focused track tests pass for Add/Duplicate clicks from an external control's focus, with and without a selected track, release-only edits, and generic control drags with/without keyboard focus. Existing text-entry, modal, job, focus-loss, selection and drag guard tests pass. All 663 UI tests pass. Formatting, strict workspace/all-target Clippy and whitespace checks pass; the macOS debug app rebuild passes. The broader workspace run passes: 1735 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. The final UI suite was rerun after adding the generic-control drag guard and passes all 663 tests. Logs use `work/track-buttons-focus-*`. Native pointer and other-platform checks were not run.
+
 ## Validated model selector details — 2026-10-27
 
 Successful CPU/CoreML model validation now returns the detected stem set and selected ONNX file byte length. The UI publishes those details with the accepted path and caches them only for the current process. Small secondary text below each selector shows the stem count, stereo/44.1 kHz format, decimal-MB file size and stem names. No file reads or model inference occur while painting. Audio format and names follow the supported HTDemucs contract, rather than optional ONNX metadata.

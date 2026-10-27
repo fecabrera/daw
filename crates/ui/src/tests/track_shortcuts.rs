@@ -1234,6 +1234,106 @@ fn failed_track_duplication_keeps_the_original_project_and_selection() {
 }
 
 #[test]
+fn timeline_add_and_duplicate_buttons_work_with_focus_outside_tracks() {
+    for action in [TrackAction::Add, TrackAction::Duplicate] {
+        for selected in [false, true] {
+            let (mut app, tracks, _) = multi_clip_fixture();
+            let ctx = context();
+            if selected {
+                app.select_track(tracks[0], false);
+            }
+            let draw = |app: &mut DawUi, events, focus: bool| {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(
+                            Pos2::ZERO,
+                            Vec2::new(1280.0, 800.0),
+                        )),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let other = ui.button("Control outside Tracks");
+                        if focus {
+                            other.request_focus();
+                        }
+                        app.show(ui);
+                    },
+                );
+                output.textures_delta.clear();
+            };
+            draw(&mut app, vec![], true);
+            assert!(ctx.egui_wants_keyboard_input());
+            assert!(!ctx.text_edit_focused());
+            let enabled = action == TrackAction::Add || selected;
+            assert_eq!(app.track_action_enabled(action, &ctx), enabled);
+            assert!(app.track_action_enabled(TrackAction::AddMidi, &ctx));
+            assert!(!app.track_action_enabled(TrackAction::Rename, &ctx));
+            let point = Pos2::new(
+                app.timeline_bounds.left()
+                    - if action == TrackAction::Duplicate {
+                        19.0
+                    } else {
+                        47.0
+                    },
+                app.lane_bounds[&tracks[0]].top() - RULER_HEIGHT / 2.0,
+            );
+            let before = app.session.project.clone();
+            draw(
+                &mut app,
+                vec![egui::Event::PointerMoved(point), button(point, true)],
+                false,
+            );
+            assert_eq!(app.session.project, before, "press must not edit");
+            draw(&mut app, vec![button(point, false)], false);
+            assert_eq!(
+                app.session.project.tracks.len(),
+                before.tracks.len() + usize::from(enabled),
+                "{action:?}, selected={selected}"
+            );
+            assert_eq!(app.dirty, enabled);
+            assert!(app.error.is_none());
+        }
+    }
+}
+
+#[test]
+fn track_creation_and_duplication_wait_for_other_control_drags() {
+    for focus in [false, true] {
+        let (mut app, tracks, _) = multi_clip_fixture();
+        let ctx = context();
+        app.select_track(tracks[0], false);
+        let before = app.session.project.clone();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                ..Default::default()
+            },
+            |ui| {
+                let control = ui.button("Another control");
+                if focus {
+                    control.request_focus();
+                }
+                ui.ctx().set_dragged_id(control.id);
+                assert_eq!(ctx.egui_wants_keyboard_input(), focus);
+                assert!(!ctx.text_edit_focused());
+                for action in [
+                    TrackAction::Add,
+                    TrackAction::AddMidi,
+                    TrackAction::Duplicate,
+                ] {
+                    assert!(!app.track_action_enabled(action, &ctx));
+                    app.perform_track_action(action, &ctx);
+                }
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
 fn copy_plus_header_button_is_disabled_without_selection_and_duplicates_the_group() {
     let (mut app, tracks, clips) = multi_clip_fixture();
     let ctx = context();

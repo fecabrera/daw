@@ -88,12 +88,17 @@ impl DawUi {
     }
 
     pub fn track_action_enabled(&self, action: TrackAction, ctx: &egui::Context) -> bool {
-        let input_available = if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
-            && matches!(action, TrackAction::Mute | TrackAction::Solo)
-        {
-            !ctx.text_edit_focused()
-        } else {
-            !ctx.egui_wants_keyboard_input()
+        // Non-text controls can retain keyboard focus outside the Tracks pane.
+        let input_available = match action {
+            TrackAction::Add | TrackAction::AddMidi | TrackAction::Duplicate => {
+                !ctx.text_edit_focused() && ctx.dragged_id().is_none()
+            }
+            TrackAction::Mute | TrackAction::Solo
+                if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument) =>
+            {
+                !ctx.text_edit_focused()
+            }
+            _ => !ctx.egui_wants_keyboard_input(),
         };
         (action != TrackAction::Ungroup || self.selected_group().is_some())
             && (action != TrackAction::AddMidi
