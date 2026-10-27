@@ -80,16 +80,54 @@ impl DawUi {
                     ),
                 ),
             ] {
-                let hit = edge.intersect(viewport);
-                if hit.is_positive() {
-                    let response = ui
-                        .add_enabled_ui(self.edit_shortcuts_available(ui.ctx()), |ui| {
-                            ui.interact(
-                                hit,
-                                ui.id().with(("midi-pattern-edge", clip.id, side)),
-                                Sense::click_and_drag(),
-                            )
+                // Remove note hit areas from the clip edges. This also keeps egui's
+                // previous-frame hit testing from capturing a fast note press.
+                let mut hits = vec![edge.intersect(viewport)];
+                for (_, note) in &self.midi_editor.note_regions {
+                    hits = hits
+                        .into_iter()
+                        .flat_map(|hit| {
+                            let overlap = hit.intersect(*note);
+                            if !overlap.is_positive() {
+                                return vec![hit];
+                            }
+                            vec![
+                                Rect::from_min_max(hit.min, Pos2::new(hit.right(), overlap.top())),
+                                Rect::from_min_max(
+                                    Pos2::new(hit.left(), overlap.bottom()),
+                                    hit.max,
+                                ),
+                                Rect::from_min_max(
+                                    Pos2::new(hit.left(), overlap.top()),
+                                    overlap.left_bottom(),
+                                ),
+                                Rect::from_min_max(
+                                    overlap.right_top(),
+                                    Pos2::new(hit.right(), overlap.bottom()),
+                                ),
+                            ]
                         })
+                        .filter(Rect::is_positive)
+                        .collect();
+                }
+                for (segment, hit) in hits
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(_, hit)| hit.is_positive())
+                {
+                    let response = ui
+                        .add_enabled_ui(
+                            self.edit_shortcuts_available(ui.ctx())
+                                && !ui.input(|i| i.modifiers.command)
+                                && !self.midi_editor.dragging(),
+                            |ui| {
+                                ui.interact(
+                                    hit,
+                                    ui.id().with(("midi-pattern-edge", clip.id, side, segment)),
+                                    Sense::click_and_drag(),
+                                )
+                            },
+                        )
                         .inner;
                     self.clip_lane_response(ui, track.id, clip, block, lane, response);
                 }

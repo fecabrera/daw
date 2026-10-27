@@ -7635,3 +7635,81 @@ fn live_note_pitch_preview_uses_stable_note_ids_and_cancels_without_an_edit() {
     assert_eq!(app.session.project, original);
     assert!(app.chords.audition.note_requests.is_empty());
 }
+
+#[test]
+fn notes_at_pattern_edges_resize_before_clips() {
+    for left in [true, false] {
+        let (mut app, track, clip, note) = fixture();
+        let mut source = pattern(&app).clone();
+        source.notes[0].start_tick = 0;
+        source.notes[0].length_ticks = source.length_ticks;
+        app.edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: source,
+        });
+        let ctx = context();
+        app.open_clip_editor(clip, track, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let original = app.session.project.tracks[0].clips[0].clone();
+        let bounds = app.midi_editor.note_bounds[&note];
+        let origin = note_edge(bounds, left);
+        let end = origin + Vec2::new(if left { 30.0 } else { -30.0 }, 0.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(origin), button(origin, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert!(
+            app.midi_editor.dragging(),
+            "note edge must own the drag: left={left}, bounds={bounds:?}, origin={origin:?}, clip_drag={:?}",
+            app.drag.as_ref().map(|d| d.mode)
+        );
+        assert!(app.drag.is_none(), "clip edge must not own the drag");
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert!(pattern(&app).notes[0].length_ticks < 3840);
+        let result = &app.session.project.tracks[0].clips[0];
+        assert_eq!(
+            (result.start_frame, result.length_frames),
+            (original.start_frame, original.length_frames)
+        );
+    }
+}
+
+#[test]
+fn drawing_at_pattern_edges_disables_clip_edge_drags() {
+    for (left, distance) in [(true, 0.0), (false, 0.0), (true, 30.0), (false, 30.0)] {
+        let (mut app, track, clip, _) = fixture();
+        let ctx = context();
+        app.open_clip_editor(clip, track, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let original = app.session.project.tracks[0].clips[0].clone();
+        let header = app.midi_editor.pattern_header_bounds[&clip];
+        let grid = app.midi_editor.grid_bounds;
+        let origin = Pos2::new(
+            if left {
+                header.left() + 2.0
+            } else {
+                header.right() - 2.0
+            },
+            grid.top() + f32::from(127 - 64u8) * 18.0 + 9.0,
+        );
+        let end = origin + Vec2::new(if left { distance } else { -distance }, 0.0);
+        draw_frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(origin), button(origin, true)],
+        );
+        assert!(app.midi_editor.dragging());
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+        assert!(app.drag.is_none());
+        assert_eq!(app.session.project.tracks[0].clips[0], original);
+        frame(&mut app, &ctx, vec![button(end, false)]);
+        assert!(pattern(&app).notes.iter().any(|note| note.pitch == 64));
+        let result = &app.session.project.tracks[0].clips[0];
+        assert_eq!(
+            (result.start_frame, result.length_frames),
+            (original.start_frame, original.length_frames)
+        );
+    }
+}

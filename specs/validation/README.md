@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## MIDI Editor note and clip-edge priority — 2026-10-27
+
+Visible note rectangles now take priority over lower pattern trim/stretch hit areas, including notes at source boundaries. Clip edge press capture respects the enabled response and its hit rectangle. The drawing modifier disables lower clip edges, so Command-click/drag on macOS or Ctrl-click/drag on Windows/Linux can create notes at either boundary. Headers and the overview retain their clip gestures.
+
+Both boundary note-resize regressions and drawing click/drag regressions pass without moving or resizing the clip. The clip context-menu test now uses the empty row beside the selected note. All 660 UI tests pass, including existing lower pattern trim, loop, stretch, cancellation, waveform and shared-boundary gestures. Formatting, strict workspace/all-target Clippy and whitespace checks pass. Logs use `work/editor-edge-*`. The earlier full workspace run remains in progress in `work/output-merge-tests.log`; full workspace completion is not claimed. Native pointer gestures and Windows/Linux execution were not checked.
+
 ## Output merge icon — 2026-10-27
 
 Output now uses the shared Lucide Merge icon rotated 90° clockwise, with its arrow pointing right. Header geometry, theme colors, selection and the fixed bus identity remain unchanged. This supersedes the earlier Keyboard Music artwork.

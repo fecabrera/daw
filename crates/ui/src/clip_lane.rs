@@ -136,7 +136,9 @@ impl DawUi {
         let edge_press = midi_editor::primary_press(ui)
             .map(|(pos, _)| pos)
             .filter(|pos| {
-                block.intersect(lane).contains(*pos)
+                response.enabled()
+                    && response.rect.contains(*pos)
+                    && block.intersect(lane).contains(*pos)
                     && ClipDragMode::at(block, *pos).resize_edge().is_some()
             });
         if self.clip_actions_available(ui.ctx())

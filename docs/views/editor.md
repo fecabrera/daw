@@ -12,6 +12,8 @@ MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Sev
 
 Each pattern has a named header below the lower ruler and one continuous outline around its header and visible note area. Click a header to select that pattern without changing zoom or scroll. Double-click a header to select and fit that clip to the lower editor width. Headers stay visible when you scroll the piano keys vertically.
 
+In the piano roll, notes take priority over clip edges. You can resize a note that reaches a clip boundary. Hold Command on macOS or Ctrl on Windows/Linux to draw in empty space at a clip edge; this disables clip-edge dragging beside the notes.
+
 Drag a header to move the selected patterns. Drag a header edge to loop them, or an edge beside the notes to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Changes preview during the drag and apply on release; Escape cancels. These gestures keep the lower editor’s zoom and scroll.
 
 Right-click a header or border for the shared clip menu, including Velocity and Delete note when a note is selected.

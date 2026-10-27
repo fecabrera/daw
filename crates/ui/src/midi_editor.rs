@@ -83,7 +83,7 @@ pub(super) struct MidiEditor {
     selected_note: Option<Id>,
     selected_notes: HashSet<(Id, Id)>,
     selection: Option<NoteSelection>,
-    note_regions: Vec<((Id, Id), Rect)>,
+    pub(super) note_regions: Vec<((Id, Id), Rect)>,
     drag: Option<NoteDrag>,
     live_pitches: Vec<LivePitchPreview>,
     pending_pitches: Vec<LivePitchPreview>,
@@ -904,12 +904,6 @@ impl DawUi {
             canvas.max,
         );
         let block = self.clip_block(lane, clip, clip.start_frame);
-        let edge_input = ui
-            .input(|i| i.pointer.press_origin().or_else(|| i.pointer.latest_pos()))
-            .is_some_and(|point| {
-                (point.x - block.left()).abs() < midi_pattern_headers::edge_width(block)
-                    || (point.x - block.right()).abs() < midi_pattern_headers::edge_width(block)
-            });
         let visible = block.intersect(viewport);
         if !visible.is_positive() {
             return;
@@ -1009,8 +1003,7 @@ impl DawUi {
             }
             let note_painter = ui.painter_at(note_viewport);
             let mut note_ui = ui.new_child(egui::UiBuilder::new());
-            if edge_input
-                || self.drag.is_some()
+            if self.drag.is_some()
                 || self.midi_editor.drag.is_some()
                 || self.midi_editor.draw.is_some()
                 || self.midi_editor.selection.is_some()
@@ -1194,8 +1187,7 @@ impl DawUi {
                     );
                 }
             }
-            if !edge_input
-                && self.drag.is_none()
+            if self.drag.is_none()
                 && !self.midi_editor.dragging()
                 && ui.is_enabled()
                 && ui.input(|i| i.focused)

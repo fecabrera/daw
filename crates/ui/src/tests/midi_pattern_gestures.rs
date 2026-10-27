@@ -313,7 +313,9 @@ fn lower_pattern_context_menus_keep_views_and_include_midi_note_controls() {
         click(&mut app, &ctx, point);
         let header = app.midi_editor.pattern_header_bounds[&id];
         let point = if body {
-            Pos2::new(header.right() - 2.0, note_y)
+            // Notes own their hit areas even at a clip edge. Open the clip
+            // menu on the empty row beside the selected note instead.
+            Pos2::new(header.right() - 2.0, note_y - 18.0)
         } else {
             header.center()
         };
