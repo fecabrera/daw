@@ -209,7 +209,7 @@ impl DawUi {
         ui.set_min_width(220.0);
         for action in TrackAction::ALL {
             if action.starts_menu_group() {
-                ui.separator();
+                crate::menus::separator(ui);
             }
             let mut button = egui::Button::new(self.track_action_label(action));
             if let Some(shortcut) = action.shortcut() {

@@ -41,6 +41,35 @@ pub fn separator(ui: &mut Ui) -> egui::Response {
     ui.add(egui::Separator::default().spacing(1.0))
 }
 
+/// A checked action keeps the shared full-row button highlight and shortcut layout.
+pub fn checked_button(
+    ui: &mut Ui,
+    selected: bool,
+    label: impl Into<WidgetText>,
+    shortcut: impl Into<WidgetText>,
+) -> egui::Response {
+    let check = egui::Id::new("menu_check");
+    let row = egui::Button::new((
+        egui::Atom::custom(check, Vec2::splat(ui.spacing().icon_width)),
+        label.into(),
+    ))
+    .shortcut_text(shortcut.into())
+    .selected(selected)
+    .atom_ui(ui);
+    if selected && let Some(slot) = row.rect(check) {
+        let mark =
+            egui::Rect::from_center_size(slot.center(), Vec2::splat(ui.spacing().icon_width_inner));
+        ui.painter().add(egui::Shape::line(
+            vec![mark.left_center(), mark.center_bottom(), mark.right_top()],
+            egui::Stroke::new(
+                ui.style().interact(&row.response).fg_stroke.width,
+                ui.visuals().selection.stroke.color,
+            ),
+        ));
+    }
+    row.response
+}
+
 /// Fill every popup row, retaining enough width for regular text and long labels.
 pub fn layout<R>(ui: &mut Ui, width: f32, content: impl FnOnce(&mut Ui) -> R) -> R {
     ui.set_width(width.max(MIN_WIDTH));

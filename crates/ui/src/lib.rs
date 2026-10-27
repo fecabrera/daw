@@ -2339,7 +2339,7 @@ impl DawUi {
             .filter(|action| *action != FileAction::Import)
         {
             if action == FileAction::CloseProject {
-                ui.separator();
+                menus::separator(ui);
                 if ui
                     .add_enabled(
                         self.project_settings_enabled(),
@@ -2350,7 +2350,7 @@ impl DawUi {
                     ui.close();
                     self.open_project_settings();
                 }
-                ui.separator();
+                menus::separator(ui);
                 let button = egui::Button::new("Settings…").shortcut_text(
                     toolbars::menu_shortcut_text(ui.ctx(), &Self::settings_shortcut()),
                 );
@@ -2363,7 +2363,7 @@ impl DawUi {
                 action,
                 FileAction::Save | FileAction::Export | FileAction::CloseProject
             ) {
-                ui.separator();
+                menus::separator(ui);
             }
             let button = egui::Button::new(action.label())
                 .shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &action.shortcut()));

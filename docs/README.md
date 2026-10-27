@@ -4,6 +4,8 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 
 Dropdown menus use consistent text, padded rows and rounded highlights. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs use the same row spacing and inset selection highlights.
 
+On Windows and Linux, open the burger menu for File, Edit, Clip, Track, and View. Its categories and submenus use the same design as dropdown menus. Keyboard shortcuts appear beside the actions that support them; unavailable actions appear dimmed.
+
 ## Views
 
 - [Timeline](views/timeline.md): browse chords, import, arrange, select, trim, loop, split, and copy clips or a time range, and edit clip settings.

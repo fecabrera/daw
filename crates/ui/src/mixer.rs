@@ -140,19 +140,16 @@ impl DawUi {
 
     pub(super) fn view_menu(&mut self, ui: &mut egui::Ui) {
         for mode in ViewMode::ALL {
-            let mut selected = self.view_mode == mode;
             if ui
-                .add_enabled(
-                    self.view_switch_enabled(),
-                    egui::Checkbox::new(
-                        &mut selected,
-                        (
-                            mode.label(),
-                            egui::Atom::grow(),
-                            toolbars::menu_shortcut_text(ui.ctx(), &mode.shortcut()).weak(),
-                        ),
-                    ),
-                )
+                .add_enabled_ui(self.view_switch_enabled(), |ui| {
+                    crate::menus::checked_button(
+                        ui,
+                        self.view_mode == mode,
+                        mode.label(),
+                        toolbars::menu_shortcut_text(ui.ctx(), &mode.shortcut()),
+                    )
+                })
+                .inner
                 .clicked()
             {
                 self.set_view_mode(mode, ui.ctx());

@@ -4,6 +4,23 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Windows and Linux application menu design — 2026-10-26
+
+The burger menu and all five application submenus now reuse the canonical dropdown popup style and layout. Submenu rows use Lucide ChevronRight arrows. Action groups use the shared unpadded separator. View choices retain one active-view checkmark inside a shared selectable button row, including its full-row highlight and shortcut layout.
+
+Completed automated checks on Windows:
+
+- `cargo test -p daw-ui --offline menu -- --nocapture`: passed. Coverage includes regular single-line text inside Small controls, minimum/full row widths, rounded highlights, shared item gaps, unpadded dividers, disabled Export, pointer dismissal, view selection from row padding, checkmarks, existing guarded menu actions, and shortcut formatting. New menu appearance checks cover Dark, Light and Mist with Windows and Linux shortcut contexts.
+- `cargo test -p daw-ui -p daw-unit-ui --offline`: passed, including both complete UI test suites and their doc tests.
+- `cargo fmt --all --check`: passed.
+- `cargo clippy --workspace --all-targets --offline -- -D warnings`: passed.
+- `cargo build -p daw-desktop --offline`: passed; rebuilt the debug executable.
+- `cargo test --workspace --offline`: failed in the unchanged `daw-output` test `devices::tests::windows_discovery_survives_initializer_worker_exit`. Its isolated child reports apartment type 3 where the simulated window thread requires STA (0). Rerunning that test with `cargo test -p daw-output --offline windows_discovery_survives_initializer_worker_exit -- --exact devices::tests::windows_discovery_survives_initializer_worker_exit --nocapture` reproduces the failure. `daw-output` has no dependency on either UI crate; its code and dependencies are unchanged. The workspace run stops at this failure, so later packages do not have complete coverage from that command.
+
+Native Windows preview: opened the burger menu with a real pointer, hovered File and View, and captured both submenus in Dark, Light and Mist at 150% display scale. The captures show the shared rounded row fills, ChevronRight arrows, compact dividers, disabled Export, shortcuts, and active-view checkmark. The preview used isolated state and no user project or audio device.
+
+Linux native rendering and pointer behavior remain unverified. Context-based egui tests do not establish native platform behavior.
+
 ## Built-in and plugin editor parity — 2026-10-26
 
 The ten newer plugin bodies had copied knob specifications, different control order and inherited horizontal Frame layouts. Fixing vertical flow alone did not restore built-in labels, column widths, footers or meter placement. All fourteen plugin editors now call the same portable `unit-ui` bodies as their built-in counterparts. DAW headers and modulation stay in the application UI; plugin adapters map actual widget responses to their frozen automation parameters.

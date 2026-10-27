@@ -15,6 +15,10 @@ Use `unit-ui::menus::Dropdown` for all selectors. It wraps egui's ComboBox, reta
 
 `menus::popup_style` and `menus::layout` also serve nested submenus. Scope these changes to popup contents; do not change button padding or text globally.
 
+## Windows and Linux application menu
+
+The burger menu and its File, Edit, Clip, Track, and View submenus reuse `menus::popup_style` and `menus::layout`. Use the same regular text, full-row rounded highlights, minimum popup width, padding, item gaps, and Lucide ChevronRight arrows as dropdown menus. Action groups use `menus::separator` without added divider padding. View choices use `menus::checked_button`, which retains the active-view checkmark inside a shared selectable button row. Preserve existing menu order, shortcuts, checked views, enabled guards, submenu navigation, dismissal, and release-only actions. Keep toolbar controls and native macOS menus unchanged.
+
 ## Catalog panels
 
 Effects, Components and Chords share `Catalog` and `ControlPanel::catalog_body` / `catalog_row`:

@@ -173,7 +173,7 @@ impl DawUi {
                 ui.close();
             }
         }
-        ui.separator();
+        crate::menus::separator(ui);
     }
 }
 

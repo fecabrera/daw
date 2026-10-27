@@ -193,7 +193,7 @@ impl DawUi {
     ) {
         for (index, group) in groups.iter().enumerate() {
             if index > 0 {
-                ui.separator();
+                menus::separator(ui);
             }
             for &action in *group {
                 let mut button = egui::Button::new(self.clip_menu_label_for(action, target));
