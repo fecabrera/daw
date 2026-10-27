@@ -663,7 +663,11 @@ fn mixer_name_editing_and_out_of_range_gain_survive_display() {
 
 #[test]
 fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+    for color_theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
         for accent in [
             settings::AccentColor::DeepOrange,
             settings::AccentColor::Yellow,
@@ -716,7 +720,7 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                     {
                         let shapes = frame_shapes(&mut app, &ctx, events, Vec2::new(1280.0, 800.0));
                         let fill = ctx.global_style().visuals.selection.bg_fill;
-                        for label in ["Timeline", "Mixer"] {
+                        for label in ViewMode::ALL.map(|mode| mode.label()) {
                             let text = shapes
                                 .iter()
                                 .find_map(|shape| match &shape.shape {
@@ -756,7 +760,7 @@ fn view_buttons_keep_the_same_style_across_titlebars_and_pointer_states() {
                             )).collect();
                             assert_eq!(
                                 hover_backgrounds.len(),
-                                usize::from(hovered == Some(label)),
+                                usize::from(hovered == Some(label) && label != selected_label),
                                 "{label}: hover phase {phase}"
                             );
                             if let Some((index, shape)) = hover_backgrounds.first() {

@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Selected view and toolbar hover — 2026-10-27
+
+Selected view and borderless toolbar buttons now retain their active background during hover and press. The shared grey overlay applies only to enabled, unselected buttons. The shared toolbar helper covers sidebar catalog/lane toggles and semantic transport controls. Text, geometry, rounded corners, borderless painting and view-switch guards retain their existing behavior.
+
+The focused pointer-state test passes for all four view labels and selected modes, Dark/Light/Mist, Deep Orange/Yellow, and both titlebar layouts. It checks retained selected fills, no grey overlay on selected hover/press, grey hover on unselected views, text colors, paint order, geometry and unchanged project state. The shared toolbar-toggle test covers selected/unselected and enabled/disabled states through hover, press and release in all three themes. Transport checks cover retained semantic active colors and unselected grey hover. The macOS debug app rebuild passes. All **658 DAW UI tests** pass after updating the sidebar test's previous selected-hover expectation. Final strict workspace/all-target Clippy, formatting and whitespace checks pass. The full locked offline workspace run passes, including documentation tests. The final 658-test UI suite was rerun after the toolbar extension. Native pointer checks were not run for this change. Logs use `work/selected-view-hover-*` and `work/selected-toolbar-*`.
+
 ## Menu hover background — 2026-10-27
 
 Shared menus, context menus and dropdown popups now use `theme::TOOLBAR_HOVER_FILL` for hovered, pressed and open submenu rows. This is the translucent grey used by the view buttons. Selected choices retain their accent fill. Row geometry, spacing, text and action dispatch stay with the existing shared components.

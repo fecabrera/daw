@@ -501,7 +501,7 @@ Both views edit the same selected track's effect instances and saved compact/col
 
 ## Timeline Library toolbar — 2026-10-14
 
-Add a 38-point vertical toolbar to Timeline's far left, spanning from the playback toolbar to the status bar and sitting left of both the effects catalog and lane. Its first control is a centered, borderless 24×24-point Lucide Library button with a 16-point icon and seven-point inset. Catalog visibility defaults on and remains UI state across view changes; it does not change project content, dirty state, saved unit presentation, zoom, or scroll. On uses the active view's background; off is transparent. Hover draws the same translucent neutral gray overlay (RGB 128, alpha 40) over either state, making dark surfaces lighter and light surfaces darker. Do not shrink the icon with the button.
+Add a 38-point vertical toolbar to Timeline's far left, spanning from the playback toolbar to the status bar and sitting left of both the effects catalog and lane. Its first control is a centered, borderless 24×24-point Lucide Library button with a 16-point icon and seven-point inset. Catalog visibility defaults on and remains UI state across view changes; it does not change project content, dirty state, saved unit presentation, zoom, or scroll. On uses the active view's background; off is transparent. Hover and press draw the shared translucent neutral gray overlay (RGB 128, alpha 40) only while off. While on, retain the active background without an overlay. Do not shrink the icon with the button.
 
 Hiding the catalog gives its 250-point width back to Timeline; lane visibility uses a separate toggle. Clear catalog selection and disable its shortcuts while hidden. Retain the separate Effects view with its catalog always visible and no vertical toolbar. Reuse existing disabled/editing/gesture guards, including active effect drags, and keep button tooltip, keyboard focus, and accessibility state.
 
@@ -526,7 +526,7 @@ Timeline's first effect unit meets the vertical toolbar with one shared thin sep
 
 ## View mode hover — 2026-10-14
 
-View mode buttons use the same muted neutral hover/press overlay as the borderless toolbar buttons: RGB 128 with alpha 40. Use one shared theme color in both dark and light modes. Keep the overlay behind the label; selected buttons retain their accent fill beneath it. Preserve idle/hover text colors, borderless framing, dimensions, rounded corners, titlebar placement, keyboard actions, tooltips, and disabled/view-switch guards. Hover alone must not switch views or modify the project.
+Unselected view mode and borderless toolbar buttons use the shared muted neutral hover/press overlay: RGB 128 with alpha 40. Use one shared theme color in both dark and light modes. Keep the overlay behind the label; selected view and toolbar buttons retain their active fill without an overlay during hover and press. Preserve idle/hover text colors, borderless framing, dimensions, rounded corners, titlebar placement, keyboard actions, tooltips, and disabled/view-switch guards. Hover alone must not switch views or modify the project.
 
 
 ## Remove the dedicated Effects view — 2026-10-14

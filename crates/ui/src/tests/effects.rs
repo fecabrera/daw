@@ -3644,9 +3644,13 @@ fn timeline_library_toolbar_spans_workspace_and_toggles_catalog_without_project_
     }
 }
 #[test]
-fn timeline_library_button_is_borderless_with_active_fill_and_shared_theme_hover_overlay() {
-    let overlay = egui::Color32::from_rgba_unmultiplied(128, 128, 128, 40);
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+fn timeline_toolbar_toggles_keep_selected_fill_and_hover_only_when_unselected() {
+    let overlay = theme::TOOLBAR_HOVER_FILL;
+    for color_theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
         let (mut app, _) = fixture();
         let ctx = context();
         app.set_settings(
@@ -3684,19 +3688,18 @@ fn timeline_library_button_is_borderless_with_active_fill_and_shared_theme_hover
                     vec![egui::Event::PointerMoved(button.center())],
                     Vec2::new(1280.0, 800.0),
                 );
-                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == surface && rect.fill == overlay && rect.stroke == Stroke::NONE)));
-                let background = if selected {
-                    fill
-                } else {
-                    theme::palette(&ctx).panel
-                };
-                for channel in &background.to_array()[..3] {
-                    let composited = 128.0 * (40.0 / 255.0) + f32::from(*channel) * (215.0 / 255.0);
-                    assert!(if color_theme == settings::ColorTheme::Dark {
-                        composited > f32::from(*channel)
-                    } else {
-                        composited < f32::from(*channel)
-                    });
+                assert_eq!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == surface && rect.fill == overlay && rect.stroke == Stroke::NONE)), !selected);
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == surface && rect.fill == fill && rect.stroke == Stroke::NONE)));
+                if !selected {
+                    for channel in &theme::palette(&ctx).panel.to_array()[..3] {
+                        let composited =
+                            128.0 * (40.0 / 255.0) + f32::from(*channel) * (215.0 / 255.0);
+                        assert!(if color_theme == settings::ColorTheme::Dark {
+                            composited > f32::from(*channel)
+                        } else {
+                            composited < f32::from(*channel)
+                        });
+                    }
                 }
             }
         }

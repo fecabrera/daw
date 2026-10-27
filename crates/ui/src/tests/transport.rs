@@ -174,7 +174,11 @@ fn end_click_sequence(app: &mut DawUi, ctx: &egui::Context) {
 
 #[test]
 fn transport_buttons_share_size_hover_and_semantic_active_colors_in_both_themes() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+    for color_theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
         let ctx = context();
         let mut app = DawUi::default();
         app.set_settings(
@@ -248,9 +252,16 @@ fn transport_buttons_share_size_hover_and_semantic_active_colors_in_both_themes(
                         vec![egui::Event::PointerMoved(rect.center())],
                         true,
                     );
+                    assert_eq!(
+                        hovered
+                            .iter()
+                            .any(|shape| matches!(&shape.shape, egui::Shape::Rect(paint)
+                        if paint.rect == rect && paint.fill == theme::TOOLBAR_HOVER_FILL
+                            && paint.stroke == Stroke::NONE)),
+                        fill == egui::Color32::TRANSPARENT
+                    );
                     assert!(hovered.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(paint)
-                        if paint.rect == rect && paint.fill == egui::Color32::from_rgba_unmultiplied(128, 128, 128, 40)
-                            && paint.stroke == Stroke::NONE)));
+                        if paint.rect == rect && paint.fill == fill && paint.stroke == Stroke::NONE)));
                 }
             }
         }

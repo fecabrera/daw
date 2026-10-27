@@ -146,7 +146,7 @@ pub fn small_button(
     draw_button(ui, icon, name, enabled, color, None, icon_size)
 }
 
-/// Borderless toolbar toggle. A shared gray overlay changes contrast in either theme.
+/// Borderless toolbar toggle. Unselected buttons use the shared gray hover overlay.
 pub fn borderless_toggle(
     ui: &mut Ui,
     icon: Lucide,
@@ -198,12 +198,11 @@ pub fn borderless_toggle_with_colors(
         (Color32::TRANSPARENT, palette.secondary)
     };
     ui.painter().rect_filled(surface, 2.0, fill);
-    if ui.is_enabled() && (response.hovered() || response.is_pointer_button_down_on()) {
+    if !selected && ui.is_enabled() && (response.hovered() || response.is_pointer_button_down_on())
+    {
         ui.painter()
             .rect_filled(surface, 2.0, crate::theme::TOOLBAR_HOVER_FILL);
-        if !selected {
-            color = palette.text;
-        }
+        color = palette.text;
     }
     if !ui.is_enabled() {
         color = palette.secondary;
@@ -399,4 +398,90 @@ fn image_button(
         }
     });
     response.on_hover_text(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toolbar_toggles_preserve_selected_fill_on_hover_and_press() {
+        for colors in [crate::theme::DARK, crate::theme::LIGHT, crate::theme::MIST] {
+            for selected in [false, true] {
+                for enabled in [false, true] {
+                    let ctx = egui::Context::default();
+                    crate::theme::configure(&ctx);
+                    daw_unit_ui::theme::apply(
+                        &ctx,
+                        if colors == crate::theme::DARK {
+                            egui::Theme::Dark
+                        } else {
+                            egui::Theme::Light
+                        },
+                        colors,
+                        crate::theme::PLUGIN_ACCENT,
+                    );
+                    configure(&ctx);
+                    let draw = |events| {
+                        let mut rect = egui::Rect::NOTHING;
+                        let mut output = ctx.run_ui(
+                            egui::RawInput {
+                                screen_rect: Some(egui::Rect::from_min_size(
+                                    egui::Pos2::ZERO,
+                                    Vec2::splat(200.0),
+                                )),
+                                focused: true,
+                                events,
+                                ..Default::default()
+                            },
+                            |ui| {
+                                rect = ui
+                                    .add_enabled_ui(enabled, |ui| {
+                                        borderless_toggle(
+                                            ui,
+                                            Lucide::Library,
+                                            "Library",
+                                            selected,
+                                            Vec2::splat(TOOLBAR_BUTTON_SIZE),
+                                        )
+                                    })
+                                    .inner
+                                    .rect;
+                            },
+                        );
+                        output.textures_delta.clear();
+                        (rect, output.shapes)
+                    };
+                    let (rect, _) = draw(vec![]);
+                    let point = rect.center();
+                    for pressed in [None, Some(true), Some(false)] {
+                        let mut events = vec![egui::Event::PointerMoved(point)];
+                        if let Some(pressed) = pressed {
+                            events.push(egui::Event::PointerButton {
+                                pos: point,
+                                button: egui::PointerButton::Primary,
+                                pressed,
+                                modifiers: Default::default(),
+                            });
+                        }
+                        let (current, shapes) = draw(events);
+                        assert_eq!(current, rect);
+                        let fill = if selected {
+                            crate::theme::toggle_colors(&ctx, true).0
+                        } else {
+                            Color32::TRANSPARENT
+                        };
+                        if enabled {
+                            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                                egui::Shape::Rect(r) if r.rect == rect && r.fill == fill && r.stroke == egui::Stroke::NONE)),
+                                "selected={selected}, enabled={enabled}, pressed={pressed:?}");
+                        }
+                        assert_eq!(shapes.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::Rect(r) if r.rect == rect && r.fill == crate::theme::TOOLBAR_HOVER_FILL)),
+                            enabled && !selected);
+                    }
+                }
+            }
+        }
+    }
 }

@@ -225,7 +225,8 @@ impl DawUi {
                         },
                     ),
                 );
-                if response.enabled()
+                if !selected
+                    && response.enabled()
                     && (response.hovered() || response.is_pointer_button_down_on())
                 {
                     ui.painter().set(
