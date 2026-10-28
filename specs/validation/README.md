@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Layer header assertion correction — 2026-10-28
+
+A subsequent 673-test UI run reported two failures in the final layer header assertions. One assertion still required a 6-point horizontal gap between Solo and collapse. The other still required collapse to share the M/S row. Both conflict with the accepted final layout. Tests now require Solo and collapse to share their right edge, with collapse at its original first-row inset. Existing assertions retain second-row knob/M/S alignment, the M/S gap, outer inset, release-only edits, and peer-layer isolation. Application code and the layout contract are unchanged.
+
+Formatting, whitespace, all 673 UI tests, and strict workspace/all-target Clippy pass. Both reported failing tests pass. The full workspace run passes: 1751 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. Logs use `work/layer-header-assertions-*`. No native UI or platform checks were run for this test-only correction. The previous entry's claim that the final UI assertions passed is superseded by this correction.
+
 ## Compact track and layer header controls — 2026-10-28
 
 Timeline/Editor track headers and instrument layer/Output headers now show adjacent gain/pan knobs without numeric text inputs. Timeline Master has only its gain knob. The shared mixing helper returns only knob bounds; layer numeric draft state and header-only parsing/cancellation paths are removed. Knobs retain their 22-point size in 28-point slots, shared adjustment/reset/tooltips, existing header heights and meter alignment. Mixer numeric controls retain their behavior and refresh from current model values on view changes. Mute and Solo now align with the knobs on the second row. Layer Solo aligns to the right edge of expand/collapse, which stays on the first row. The Editor track dropdown fills the first row up to the standard gap before the meters. This supersedes header numeric-field requirements and fixed readout/button positions in earlier entries.

@@ -935,7 +935,7 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         assert_eq!(mute.center().y, gain.center().y);
         assert_eq!(solo.center().y, pan.center().y);
         assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
-        assert_eq!(bounds.collapse.left() - solo.right(), 6.0);
+        assert_eq!(bounds.collapse.right(), solo.right());
         assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
         assert_eq!(solo.left() - mute.right(), 6.0);
         for peer in &layers[1..] {

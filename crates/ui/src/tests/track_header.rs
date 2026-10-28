@@ -274,10 +274,8 @@ fn header_mute_solo_align_with_knobs_and_layers_align_to_the_right() {
             }
             if scope == "layer" {
                 let bounds = &app.midi_editor.layer_bounds[&layer];
-                assert_eq!(
-                    bounds.collapse.center().y,
-                    bounds.mix_controls[0].center().y
-                );
+                assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
+                assert_eq!(bounds.collapse.right(), bounds.mix_controls[1].right());
             }
             assert!(app.error.is_none());
         }
