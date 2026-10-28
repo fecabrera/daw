@@ -1,27 +1,34 @@
-# Audio device preferences
+# Audio devices and project audio quality
 
-Application Settings > Playback exposes input/output device selectors. Its separate Audio quality defaults dialog controls machine-local output rate, sample format and buffer preferences. Project rate/buffer size and offline export stay under their existing project/export controls. Device stream conversion does not change project timing, prepared media, or saved processing settings.
+Application Settings > Playback owns machine-local input/output device identities and concrete defaults for new projects. Each project owns its processing sample rate, output sample format and processing buffer size. Playback and chord/note audition use the current project's quality. Offline export retains its own encoding choices.
 
-## Controls and persistence
+## New-project defaults and persistence
 
-- Output device and input device each offer System default and discovered devices from the default CPAL host. Discovery runs on a named control worker and returns one result through a bounded channel. The UI polls it without blocking. Refresh re-enumerates devices without replacing the accepted stream or quality defaults.
-- Input selection is reserved for future recording. It persists but does not open a capture stream, request microphone access, record, or monitor input.
-- Output sample rate offers supported combinations of the six project-rate choices. Automatic prefers the project rate and otherwise selects a supported device rate for the existing output converter.
-- Output bit depth selects the advertised stream sample format, distinguishing signed/unsigned integer and float formats. Do not label a float stream as integer PCM. Driver mixing/conversion can use a different physical hardware format; this control does not set export bit depth or change the internal float DSP.
-- Output buffer size offers supported power-of-two requests from 32 through 4096 samples. Automatic prefers the project buffer, clamps to the advertised range and retains the existing default-buffer retry. An explicit size is never silently clamped or retried as a different size. Unknown hardware buffer limits require a successful stream-open probe.
-- Persist preferences in application storage with backward-compatible defaults. They do not enter project manifests, undo history, or plugin state. Default preferences preserve automatic device/rate/format/buffer selection.
+- `core::AudioQuality` stores a concrete sample rate, output sample format and buffer size. Initial defaults are 48 kHz, 32-bit float and 512 samples. The dialog offers no Automatic choices and does not depend on connected devices.
+- Copy application defaults when creating the initial blank project, using New, or returning to a blank project after Close. Opening a saved project retains its saved quality. Changing defaults does not modify, rescale, stop or recreate the current project or output stream.
+- Project Settings exposes sample rate, output bit depth and buffer size alongside name and stretch engine. The existing worker prepares processing changes before atomic publication. Format-only changes also recreate output; undo/redo restores the project format and retires the stream. Name-only and unchanged edits retain their existing paths.
+- Project manifests persist `output_sample_format` with the existing rate and buffer fields. A missing legacy format defaults to F32; a missing legacy buffer remains 512. These fallbacks are independent of application preferences. Internal DSP stays floating point; this format requests an output stream type and does not choose export encoding or source recording precision.
+- Application storage keeps `audio_quality` separately from `audio` device identities. Migrate explicit legacy optional `audio.sample_rate_hz`, `audio.sample_format` and `audio.buffer_size_frames` into new-project defaults. Missing/null automatic values receive concrete defaults; invalid default rates or buffers recover to the standard quality. Device identities and unrelated preferences remain intact.
 
-CPAL 0.16 exposes names but no portable persistent device identifiers. Store name and occurrence within each direction to distinguish duplicate names. Identity depends on enumeration order among equal names. Device changes/renames can require reselection. System default follows the host default on stream creation; an already-open stream does not move automatically.
+## Device controls and stream construction
 
-## Apply and failure
+Output device and input device each offer System default and discovered devices from the default CPAL host. Discovery runs on a named control worker and returns one result through a bounded channel. Refresh does not replace the accepted stream or quality defaults. Input selection is reserved for future recording: it does not open capture, request microphone access, record or monitor input.
 
-The main Settings selectors publish device changes immediately after validation. An output change retains the existing quality defaults and probes a replacement before publishing the device choice; failure retains accepted preferences/output and displays the error in Settings. Input changes only save the preference.
+CPAL 0.16 exposes names but no portable persistent device identifiers. Store name and occurrence within each direction to distinguish duplicate names. Identity depends on enumeration order among equal names. Device changes/renames can require reselection. System default resolves at stream creation; an open stream does not move automatically.
 
-The separate Audio quality defaults dialog edits a draft of rate, format and buffer size, without device selectors. Cancel/Escape discards it; Escape closes a dropdown first. Return to application Settings after Apply or Cancel. Disable device and quality editing during device discovery. Show unavailable saved devices in the main selectors. Block quality Apply for a missing output or unsupported format/rate/buffer combination. An unavailable reserved input does not block output quality changes.
+Stream construction receives only the device identities from app preferences. Resolve quality from `RenderPlan.project`, including when probing an output device replacement. Require the project's advertised output sample format; report unsupported formats with a Project Settings/device-selection error rather than silently substituting a bit depth. Distinguish signed/unsigned integer and float labels. Driver mixing/conversion can still use a different physical hardware format.
 
-Apply probes an output replacement on the control thread before publishing it or saving preferences. Failure retains the prior stream/preferences/project and shows the error in the dialog. Success replaces the stream, stops playback, retains the playhead and keeps the project clean. No-op and input-only changes do not rebuild output. Closing the main Settings window retains accepted device choices. Playback and chord/note audition use the accepted output preferences when constructing a stream. Device failure retains the existing error path and never silently substitutes a named device.
+Prefer the project processing rate. If hardware requires another supported rate, retain the preallocated output converter without changing project timing or export rate. Request the project processing buffer size, clamp the hardware request to advertised limits, and retain the existing host-default retry for rejected fixed buffers. Hardware adaptation never rewrites the project's saved quality.
 
-No new work is added to the audio callback. Discovery, allocation, configuration and device opening happen outside it. The original rendering, prepared project audio, resampling and channel conversion remain shared. CLI export does not discover devices or read application preferences.
+## Apply, cancellation and information text
+
+Device selectors publish changes after validation. An output device change probes a replacement using the current project's quality before publishing the new device identity; failure retains the previous device/output and reports an error. Success stops playback and retains the playhead. Input-only and unchanged selections do not open a stream or edit the project.
+
+The Audio quality defaults dialog edits a separate draft. Apply validates and saves only future-project defaults. Cancel/Escape discards the draft; Escape closes an open dropdown first. Missing devices and unsupported current-device combinations do not block future defaults. Project Settings remains the place to change an existing project.
+
+Informational advice below audio quality, Playback and Project Settings controls uses `rows::advice`: Small text in the theme's secondary grey, with wrapping. Separation model summary/description rows reuse this helper. Keep error/progress messages and field-value readouts separate from advice styling.
+
+No new work is added to the audio callback. Discovery, validation, configuration and device opening happen outside it. Rendering, prepared project audio, resampling and channel conversion remain shared. CLI export does not discover devices or read application preferences.
 
 ## Windows enumerator lifetime
 
@@ -35,4 +42,4 @@ UI unit tests use a per-instance injected discovery function. Their default retu
 
 ## Validation
 
-Test automatic preference selection, explicit format/rate/buffer requests and unsupported combinations without hardware. Test preference round trips and legacy defaults, missing devices, failed stream publication, input-only/no-op changes, draft cancellation and popup Escape behavior. Run workspace regression checks. Record native hardware switching, driver format negotiation, disconnect/reconnect and Windows/Linux checks separately; unit tests do not establish those results.
+Cover concrete defaults, new/startup projects, saved-project precedence, legacy application/project migration, preference and manifest round trips, invalid values, no-op/cancel/defaults Apply, and format-only apply/undo/redo. Verify device replacements use current project quality and preserve the previous stream/preferences on rejection. Test unsupported output formats and device-rate conversion without hardware. Check Small secondary-grey advice alongside model info in the rendered UI. Run workspace and CLI checks. Record native hardware switching, format negotiation, disconnect/reconnect and Windows/Linux checks separately; automated checks do not establish those results.

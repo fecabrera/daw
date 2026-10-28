@@ -112,14 +112,12 @@ fn main() -> eframe::Result {
             daw_ui::theme::configure(&cc.egui_ctx);
             daw_ui::fonts::configure(&cc.egui_ctx);
             daw_ui::icons::configure(&cc.egui_ctx);
-            let mut ui = daw_ui::DawUi::new(project);
             let stored = cc
                 .storage
                 .and_then(|storage| storage.get_string(daw_ui::settings::STORAGE_KEY));
-            ui.set_settings(
-                &cc.egui_ctx,
-                daw_ui::settings::AppSettings::from_json(stored.as_deref()),
-            );
+            let settings = daw_ui::settings::AppSettings::from_json(stored.as_deref());
+            let mut ui = daw_ui::DawUi::new_with_audio_defaults(project, settings.audio_quality);
+            ui.set_settings(&cc.egui_ctx, settings);
             #[cfg(target_os = "macos")]
             let (ui, menu) = {
                 let mut ui = ui;

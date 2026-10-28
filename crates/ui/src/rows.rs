@@ -2,6 +2,12 @@ use egui::{Align, InnerResponse, Layout, Ui, Vec2};
 
 pub const NAME_FONT_SIZE: f32 = 13.0;
 
+/// Standard wrapped advice and model information below dialog controls.
+pub(super) fn advice(ui: &mut Ui, text: impl Into<String>) -> egui::Response {
+    let color = crate::theme::palette(ui.ctx()).secondary;
+    ui.add(egui::Label::new(egui::RichText::new(text.into()).small().color(color)).wrap())
+}
+
 /// Keep adjacent pane rows aligned even when text or frames round differently.
 pub(super) fn fixed<R>(
     ui: &mut Ui,

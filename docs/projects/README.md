@@ -14,9 +14,9 @@ Saving fails if a directory occupies the `project.json` destination. The directo
 
 ## Project Settings
 
-Use File > Project Settings to change the name, processing rate, buffer size, or [time-stretch engine](../audio/time-stretch.md). Apply accepts valid changes; Cancel or Escape discards the draft.
+Use File > Project Settings to change the name, processing rate, output bit depth, buffer size, or [time-stretch engine](../audio/time-stretch.md). Apply accepts valid changes; Cancel or Escape discards the draft.
 
-Processing rates are 44.1, 48, 88.2, 96, 176.4, and 192 kHz; the default is 48 kHz. Buffer sizes are powers of two from 32 to 4096 samples; the default is 512. Smaller buffers can reduce response time but need more frequent processing. Displayed buffer duration is not a measured end-to-end output latency.
+Each project saves its own audio quality. Processing rates are 44.1, 48, 88.2, 96, 176.4, and 192 kHz; the initial default is 48 kHz. Output bit depth selects an integer or float device-stream format; the initial default is 32-bit float. Buffer sizes are powers of two from 32 to 4096 samples; the default is 512. Smaller buffers can reduce response time but need more frequent processing. Displayed buffer duration is not a measured end-to-end output latency.
 
 Audio settings changes prepare the required audio before replacing the session. Success stops playback so you can restart it with the new settings. Failure or cancellation retains the previous project and playback.
 
@@ -43,11 +43,13 @@ The main **Settings** window exposes **Output device** and **Input device** unde
 
 Input selection is saved for future recording. The app does not yet record or monitor input.
 
-Open **Audio quality defaults…** for the separate sample rate, bit depth, and buffer size controls. Choose supported combinations for the selected output device. **Automatic** prefers the project rate and buffer size and the driver's default sample format. The bit-depth list distinguishes integer audio from floating-point audio. These choices configure the app's device stream; the driver can mix or convert it to a different hardware format. Smaller buffers can improve response time but increase processing demands.
+Open **Audio quality defaults…** to choose concrete values for new projects: sample rate, output bit depth and buffer size. Initial values are **48 kHz, 32-bit float and 512 samples**. Apply saves these defaults; Cancel or Escape discards the draft, with Escape closing an open dropdown first. Applying defaults leaves the current project and playback unchanged. You can set defaults without a connected audio device.
 
-**Apply** tests output changes before saving them. Success stops playback and keeps the playhead; press Play to resume. Failure keeps the previous output and preferences and displays an error. **Cancel** or Escape discards the draft and returns to Settings. Escape closes an open dropdown first.
+New blank projects copy these values. Opened projects use their saved **Project Settings**, including output bit depth. To change the current project, use **File > Project Settings**. Older projects without a saved output format use 32-bit float; older projects without a buffer value use 512 samples. Application defaults do not replace saved project values.
 
-These choices stay on this computer. They do not change the project processing rate, prepared recordings, export format, or project modification state. Project Settings still controls processing rate and processing buffer size. Device output uses sample-rate conversion when necessary. Some drivers only expose their shared floating-point format; use the operating system or device control panel to configure hardware options that the app cannot expose.
+The output device must support the project's output bit depth. If playback reports an unsupported format, choose another output bit depth in Project Settings or another device in Settings. Device output uses sample-rate conversion when needed and can adapt the hardware buffer size. These adaptations do not rewrite project quality. The driver may mix or convert the stream to a different physical hardware format. Internal processing remains floating point, and export encoding remains separate.
+
+Advice below these controls uses the same smaller grey text as separation model information.
 
 ## Seek cache profiles
 

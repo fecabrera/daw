@@ -32,7 +32,9 @@ pub use daw_unit_core::{
 };
 pub use midi::{MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind};
 pub use midi_options::{MidiOptions, MidiScale};
+mod audio_quality;
 mod audio_settings;
+pub use audio_quality::{AudioQuality, SampleFormat};
 mod stretch_engine;
 pub use stretch_engine::{StretchEngine, StretchEngineId};
 mod boundary;
@@ -166,6 +168,8 @@ pub struct Project {
     pub project_id: Id,
     pub name: String,
     pub sample_rate_hz: u32,
+    #[serde(default)]
+    pub output_sample_format: SampleFormat,
     #[serde(default = "default_buffer_size")]
     pub buffer_size_frames: u32,
     #[serde(default = "default_tempo_bpm")]
@@ -306,6 +310,7 @@ impl Default for Project {
             project_id: Id::new_v4(),
             name: "Untitled".into(),
             sample_rate_hz: SAMPLE_RATE,
+            output_sample_format: SampleFormat::default(),
             buffer_size_frames: default_buffer_size(),
             tempo_bpm: DEFAULT_TEMPO_BPM,
             master: Master {

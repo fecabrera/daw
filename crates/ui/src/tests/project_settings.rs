@@ -204,6 +204,12 @@ fn audio_dropdowns_stage_cancel_and_apply_as_one_worker_transaction() {
     click_dialog(&mut app, &ctx, "96000 Hz");
     click_dialog(&mut app, &ctx, "512 samples");
     click_dialog(&mut app, &ctx, "128 samples");
+    click_dialog(&mut app, &ctx, "32-bit float");
+    click_dialog(&mut app, &ctx, "24-bit signed integer");
+    assert_eq!(
+        app.project_settings.as_ref().unwrap().output_sample_format,
+        daw_core::SampleFormat::I24
+    );
     assert_eq!(
         app.project_settings.as_ref().unwrap().sample_rate_hz,
         96_000
@@ -223,6 +229,7 @@ fn audio_dropdowns_stage_cancel_and_apply_as_one_worker_transaction() {
     draft.name = "Audio settings".into();
     draft.sample_rate_hz = 96_000;
     draft.buffer_size_frames = 128;
+    draft.output_sample_format = daw_core::SampleFormat::I24;
     click_dialog(&mut app, &ctx, "Apply");
     // The worker cannot publish its result until the next poll.
     assert!(app.job.is_some());
@@ -232,6 +239,10 @@ fn audio_dropdowns_stage_cancel_and_apply_as_one_worker_transaction() {
     assert_eq!(app.session.project.sample_rate_hz, 96_000);
     assert_eq!(app.session.project.buffer_size_frames, 128);
     assert_eq!(app.session.project.name, "Audio settings");
+    assert_eq!(
+        app.session.project.output_sample_format,
+        daw_core::SampleFormat::I24
+    );
     assert!(app.dirty);
     assert_eq!(app.selected_track, Some(track));
     assert!(!app.sync_needed);
@@ -388,4 +399,47 @@ fn cancelling_settings_worker_discards_late_publication() {
     }
     assert_eq!(format!("{:?}", app.session.project), before);
     assert!(!app.dirty);
+}
+
+#[test]
+fn project_output_format_only_changes_commit_and_undo_as_audio_settings() {
+    let (mut app, _) = fixture();
+    let ctx = context();
+    let before = app.session.project.audio_quality();
+    app.open_project_settings();
+    app.project_settings.as_mut().unwrap().output_sample_format = daw_core::SampleFormat::I16;
+    frame(&mut app, &ctx, vec![]);
+    frame(&mut app, &ctx, vec![]);
+    click_dialog(&mut app, &ctx, "Apply");
+    assert!(app.job.is_some());
+    assert_eq!(app.session.project.audio_quality(), before);
+    wait_for_save(&mut app);
+    assert!(app.error.is_none());
+    assert_eq!(
+        app.session.project.output_sample_format,
+        daw_core::SampleFormat::I16
+    );
+    assert_eq!(app.session.project.sample_rate_hz, before.sample_rate_hz);
+    assert_eq!(
+        app.session.project.buffer_size_frames,
+        before.buffer_size_frames
+    );
+    assert!(app.dirty);
+    app.record_history();
+    frame(&mut app, &ctx, vec![egui::Event::PointerGone]);
+    if let Some(id) = ctx.memory(|m| m.focused()) {
+        ctx.memory_mut(|m| m.surrender_focus(id));
+    }
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project.audio_quality(), before);
+    assert!(
+        !app.sync_needed,
+        "Changing the stream format through undo must recreate output"
+    );
+    app.perform_history_action(HistoryAction::Redo, &ctx);
+    assert_eq!(
+        app.session.project.output_sample_format,
+        daw_core::SampleFormat::I16
+    );
+    assert!(!app.sync_needed);
 }

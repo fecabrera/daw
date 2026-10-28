@@ -9,6 +9,7 @@ pub struct Values {
     pub name: String,
     pub stretch_engine: daw_core::StretchEngine,
     pub sample_rate_hz: u32,
+    pub output_sample_format: daw_core::SampleFormat,
     pub buffer_size_frames: u32,
 }
 
@@ -17,6 +18,7 @@ pub struct ProjectSettings {
     pub name: String,
     pub stretch_engine: daw_core::StretchEngine,
     pub sample_rate_hz: u32,
+    pub output_sample_format: daw_core::SampleFormat,
     pub buffer_size_frames: u32,
     focus: bool,
 }
@@ -38,6 +40,7 @@ impl ProjectSettings {
             name: project.name.clone(),
             stretch_engine: project.stretch_engine,
             sample_rate_hz: project.sample_rate_hz,
+            output_sample_format: project.output_sample_format,
             buffer_size_frames: project.buffer_size_frames,
             focus: true,
         }
@@ -112,6 +115,27 @@ impl ProjectSettings {
                 ui,
                 label_width,
                 |ui| {
+                    ui.label("Output bit depth");
+                },
+                |ui| {
+                    crate::menus::Dropdown::from_id_salt("project_output_format")
+                        .selected_text(self.output_sample_format.label())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for format in daw_core::SampleFormat::ALL {
+                                ui.selectable_value(
+                                    &mut self.output_sample_format,
+                                    format,
+                                    format.label(),
+                                );
+                            }
+                        });
+                },
+            );
+            crate::rows::field(
+                ui,
+                label_width,
+                |ui| {
                     ui.label("Buffer size");
                 },
                 |ui| {
@@ -157,7 +181,7 @@ impl ProjectSettings {
                 "Buffer duration: {:.2} ms",
                 self.buffer_size_frames as f64 * 1000.0 / self.sample_rate_hz as f64
             ));
-            ui.label("Applying audio settings stops playback.");
+            crate::rows::advice(ui, "Applying audio settings stops playback.");
             if let Err(message) = valid_name(&self.name) {
                 ui.colored_label(crate::theme::palette(ctx).error, message);
             }
@@ -173,6 +197,7 @@ impl ProjectSettings {
                     name: name.to_owned(),
                     stretch_engine: self.stretch_engine,
                     sample_rate_hz: self.sample_rate_hz,
+                    output_sample_format: self.output_sample_format,
                     buffer_size_frames: self.buffer_size_frames,
                 })
             });

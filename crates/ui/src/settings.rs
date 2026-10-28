@@ -147,6 +147,7 @@ impl TitlebarStyle {
 #[serde(default)]
 pub struct AppSettings {
     pub audio: daw_output::AudioSettings,
+    pub audio_quality: daw_core::AudioQuality,
     pub separation_models: std::sync::Arc<daw_project::SeparationModels>,
     pub accent: AccentColor,
     pub theme: ColorTheme,
@@ -158,8 +159,44 @@ pub struct AppSettings {
 
 impl AppSettings {
     pub fn from_json(json: Option<&str>) -> Self {
-        json.and_then(|json| serde_json::from_str(json).ok())
-            .unwrap_or_default()
+        let Some(value) =
+            json.and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+        else {
+            return Self::default();
+        };
+        let Ok(mut settings) = serde_json::from_value::<Self>(value.clone()) else {
+            return Self::default();
+        };
+        // Earlier preferences stored optional device-quality overrides. Preserve
+        // explicit legacy values as new-project defaults, never as live overrides.
+        if value.get("audio_quality").is_none()
+            && let Some(audio) = value.get("audio")
+        {
+            if let Some(rate) = audio
+                .get("sample_rate_hz")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|v| u32::try_from(v).ok())
+            {
+                settings.audio_quality.sample_rate_hz = rate;
+            }
+            if let Some(frames) = audio
+                .get("buffer_size_frames")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|v| u32::try_from(v).ok())
+            {
+                settings.audio_quality.buffer_size_frames = frames;
+            }
+            if let Some(format) = audio
+                .get("sample_format")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+            {
+                settings.audio_quality.output_sample_format = format;
+            }
+        }
+        if settings.audio_quality.validate().is_err() {
+            settings.audio_quality = Default::default();
+        }
+        settings
     }
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self).expect("Settings contain only serializable preferences")
@@ -239,11 +276,10 @@ fn model_row(
             |_| {},
             |ui| {
                 ui.vertical(|ui| {
-                let color = crate::theme::palette(ui.ctx()).secondary;
                 let summary = format!("{} stems · 44.1 kHz · Stereo · {:.1} MB", info.stems.names().len(), info.file_size_bytes as f64 / 1_000_000.0);
-                ui.add(egui::Label::new(egui::RichText::new(summary).small().color(color)).wrap())
+                crate::rows::advice(ui, summary)
                     .on_hover_text("Stem names and audio format follow the validated HTDemucs contract. File size is shown in decimal megabytes.");
-                ui.add(egui::Label::new(egui::RichText::new(info.stems.description()).small().color(color)).wrap());
+                crate::rows::advice(ui, info.stems.description());
             });
             },
         );
@@ -397,7 +433,7 @@ pub fn show(
                     if ui.button("Refresh devices").clicked() { audio.refresh_requested = true; }
                 });
             });
-            ui.label("Changing output stops playback. Input selection is saved for future recording; input monitoring is not available.");
+            crate::rows::advice(ui, "Changing output stops playback. Input selection is saved for future recording; input monitoring is not available.");
             if !audio.enabled { ui.label("Checking audio devices…"); }
             if let Some(error) = audio.error { ui.label(error); }
             crate::rows::field(

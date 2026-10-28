@@ -516,24 +516,16 @@ impl AudioOutput {
                 .supported_output_configs()
                 .map_err(|e| e.to_string())?,
             default,
-            settings,
-            project_rate_hz,
+            plan.project.audio_quality(),
         )?;
         let format = config.sample_format();
         let rate = config.sample_rate().0;
         let mut stream_config: cpal::StreamConfig = config.clone().into();
-        let requested_buffer = settings.buffer_size_frames.unwrap_or(buffer_size_frames);
-        stream_config.buffer_size =
-            cpal::BufferSize::Fixed(if settings.buffer_size_frames.is_some() {
-                requested_buffer
-            } else {
-                match config.buffer_size() {
-                    cpal::SupportedBufferSize::Range { min, max } => {
-                        requested_buffer.clamp(*min, *max)
-                    }
-                    cpal::SupportedBufferSize::Unknown => requested_buffer,
-                }
-            });
+        let requested_buffer = buffer_size_frames;
+        stream_config.buffer_size = cpal::BufferSize::Fixed(match config.buffer_size() {
+            cpal::SupportedBufferSize::Range { min, max } => requested_buffer.clamp(*min, *max),
+            cpal::SupportedBufferSize::Unknown => requested_buffer,
+        });
         let preparation = match preparation {
             Some(p) => p,
             None => AudioPreparation::new(plan.clone())?,
@@ -587,9 +579,7 @@ impl AudioOutput {
         let (stream, commands, retired, audition) = match build(&stream_config) {
             Ok(s) => s,
             Err(first) => {
-                if settings.buffer_size_frames.is_some()
-                    || stream_config.buffer_size == cpal::BufferSize::Default
-                {
+                if stream_config.buffer_size == cpal::BufferSize::Default {
                     return Err(first);
                 }
                 stream_config.buffer_size = cpal::BufferSize::Default;
@@ -601,7 +591,7 @@ impl AudioOutput {
             "{} · {} Hz · {} · {:?} (requested {} samples)",
             device.name().unwrap_or_else(|_| "Default output".into()),
             rate,
-            SampleFormat::from_cpal(format).map_or("Unknown format", SampleFormat::label),
+            devices::sample_format_from_cpal(format).map_or("Unknown format", SampleFormat::label),
             stream_config.buffer_size,
             requested_buffer
         );
@@ -697,6 +687,7 @@ impl AudioOutput {
     pub fn sync(&mut self, plan: RenderPlan) -> Result<(), String> {
         if plan.project.sample_rate_hz != self.project_rate_hz
             || plan.project.buffer_size_frames != self.buffer_size_frames
+            || plan.project.output_sample_format != self.plan.project.output_sample_format
         {
             return Err("Recreate output after changing project audio settings".into());
         }

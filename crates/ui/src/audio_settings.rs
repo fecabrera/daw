@@ -3,8 +3,7 @@ use super::*;
 use daw_output::{AudioSettings, DeviceId, DeviceInfo, Devices};
 
 pub(super) struct AudioDialog {
-    draft: AudioSettings,
-    devices: Option<Devices>,
+    draft: daw_core::AudioQuality,
     error: Option<String>,
 }
 
@@ -94,90 +93,38 @@ pub(super) fn device_row(
     *selected != previous
 }
 impl AudioDialog {
-    fn new(settings: AudioSettings) -> Self {
+    fn new(settings: daw_core::AudioQuality) -> Self {
         Self {
             draft: settings,
-            devices: None,
             error: None,
         }
     }
-    fn selected_output(&self) -> Option<&DeviceInfo> {
-        let devices = self.devices.as_ref()?;
-        let id = self
-            .draft
-            .output_device
-            .as_ref()
-            .or(devices.default_output.as_ref())?;
-        devices.outputs.iter().find(|device| &device.id == id)
-    }
     fn valid(&self) -> bool {
-        self.selected_output().is_some_and(|device| {
-            device
-                .configurations
-                .iter()
-                .any(|config| config.supports(&self.draft))
-        })
+        self.draft.validate().is_ok()
     }
-
     fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<Action> {
         let popup_was_open = egui::Popup::is_any_open(ctx);
         let mut action = None;
         dialogs::Dialog::new("Audio quality defaults", "", &[] as &[(&str, Action)]).show_with_content(ctx, |ui| {
-            let width = ui.painter().layout_no_wrap("Output sample rate".into(), egui::TextStyle::Body.resolve(ui.style()), theme::palette(ctx).text).size().x;
+            let width = ui.painter().layout_no_wrap("Output bit depth".into(), egui::TextStyle::Body.resolve(ui.style()), theme::palette(ctx).text).size().x;
             ui.add_enabled_ui(!busy, |ui| {
-                let configurations = self.selected_output().map(|device| device.configurations.clone()).unwrap_or_default();
-                rows::field(ui, width, |ui| { ui.label("Output sample rate"); }, |ui| {
-                    crate::menus::Dropdown::from_id_salt("device_sample_rate").selected_text(self.draft.sample_rate_hz.map_or_else(|| "Automatic (prefer project)".into(), |rate| format!("{rate} Hz")))
-                        .width(ui.available_width()).show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.draft.sample_rate_hz, None, "Automatic (prefer project)");
-                            for rate in daw_core::SAMPLE_RATES {
-                                let candidate = AudioSettings { sample_rate_hz: Some(rate), ..self.draft.clone() };
-                                if configurations.iter().any(|config| config.supports(&candidate)) {
-                                    ui.selectable_value(&mut self.draft.sample_rate_hz, Some(rate), format!("{rate} Hz"));
-                                }
-                            }
-                        });
+                rows::field(ui, width, |ui| {ui.label("Sample rate");}, |ui| {
+                    crate::menus::Dropdown::from_id_salt("default_sample_rate").selected_text(format!("{} Hz", self.draft.sample_rate_hz)).width(ui.available_width()).show_ui(ui, |ui| {for rate in daw_core::SAMPLE_RATES {ui.selectable_value(&mut self.draft.sample_rate_hz, rate, format!("{rate} Hz"));}});
                 });
-                rows::field(ui, width, |ui| { ui.label("Output bit depth"); }, |ui| {
-                    crate::menus::Dropdown::from_id_salt("device_sample_format").selected_text(self.draft.sample_format.map_or("Automatic (driver default)", |format| format.label()))
-                        .width(ui.available_width()).show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.draft.sample_format, None, "Automatic (driver default)");
-                            let mut formats = Vec::new();
-                            for config in &configurations {
-                                let candidate = AudioSettings { sample_format: Some(config.format), ..self.draft.clone() };
-                                if !formats.contains(&config.format) && config.supports(&candidate) {
-                                    formats.push(config.format);
-                                }
-                            }
-                            for format in formats {
-                                ui.selectable_value(&mut self.draft.sample_format, Some(format), format.label());
-                            }
-                        });
+                rows::field(ui, width, |ui| {ui.label("Output bit depth");}, |ui| {
+                    crate::menus::Dropdown::from_id_salt("default_output_format").selected_text(self.draft.output_sample_format.label()).width(ui.available_width()).show_ui(ui, |ui| {for format in daw_core::SampleFormat::ALL {ui.selectable_value(&mut self.draft.output_sample_format, format, format.label());}});
                 });
-                rows::field(ui, width, |ui| { ui.label("Output buffer size"); }, |ui| {
-                    crate::menus::Dropdown::from_id_salt("device_buffer_size").selected_text(self.draft.buffer_size_frames.map_or_else(|| "Automatic (prefer project)".into(), |frames| format!("{frames} samples")))
-                        .width(ui.available_width()).show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.draft.buffer_size_frames, None, "Automatic (prefer project)");
-                            for frames in daw_core::BUFFER_SIZES {
-                                let candidate = AudioSettings { buffer_size_frames: Some(frames), ..self.draft.clone() };
-                                if configurations.iter().any(|config| config.supports(&candidate)) {
-                                    ui.selectable_value(&mut self.draft.buffer_size_frames, Some(frames), format!("{frames} samples"));
-                                }
-                            }
-                        });
+                rows::field(ui, width, |ui| {ui.label("Buffer size");}, |ui| {
+                    crate::menus::Dropdown::from_id_salt("default_buffer_size").selected_text(format!("{} samples", self.draft.buffer_size_frames)).width(ui.available_width()).show_ui(ui, |ui| {for frames in daw_core::BUFFER_SIZES {ui.selectable_value(&mut self.draft.buffer_size_frames, frames, format!("{frames} samples"));}});
                 });
-                ui.label("These are device stream settings. The driver can use a different hardware format. Project processing and export settings stay separate.");
-                ui.label("Applying output changes stops playback. Press Play to resume.");
-                if let Some(error) = &self.error { ui.colored_label(theme::palette(ctx).text, error); }
-                if self.devices.is_some() && !self.valid() {
-                    ui.label("Choose available devices and a supported output configuration.");
-                }
+                rows::advice(ui, "These values are copied into new projects. Use Project Settings to change the current project.");
+                rows::advice(ui, "Output bit depth selects the device stream format. The driver may use a different hardware format. Internal processing and export settings stay separate.");
+                if let Some(error) = &self.error {ui.colored_label(theme::palette(ctx).error, error);}
                 rows::wrapped(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                    if ui.add_enabled(self.valid(), egui::Button::new("Apply")).clicked() { action = Some(Action::Apply); }
-                    if ui.button("Cancel").clicked() { action = Some(Action::Cancel); }
+                    if ui.add_enabled(self.valid(), egui::Button::new("Apply")).clicked() {action = Some(Action::Apply);}
+                    if ui.button("Cancel").clicked() {action = Some(Action::Cancel);}
                 });
             });
-            if busy { ui.spinner(); ui.label("Checking audio devices…"); }
         });
         if !busy && !popup_was_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
             action = Some(Action::Cancel);
@@ -232,21 +179,28 @@ impl DawUi {
         let action = self
             .audio_settings
             .as_mut()
-            .and_then(|dialog| dialog.show(ctx, self.job.is_some() || self.audio_devices.busy()));
+            .and_then(|dialog| dialog.show(ctx, self.job.is_some()));
         match action {
             Some(Action::Cancel) => self.audio_settings = None,
             Some(Action::Apply) => {
-                let draft = self.audio_settings.as_ref().unwrap().draft.clone();
-                if let Err(error) = self.apply_audio_settings(draft, |plan, settings| {
-                    AudioOutput::with_settings(plan, None, settings)
-                }) {
+                let draft = self.audio_settings.as_ref().unwrap().draft;
+                if let Err(error) = self.apply_audio_quality_defaults(draft) {
                     self.audio_settings.as_mut().unwrap().error = Some(error);
                 }
             }
             None => {}
         }
     }
-    fn apply_audio_settings(
+    fn apply_audio_quality_defaults(
+        &mut self,
+        draft: daw_core::AudioQuality,
+    ) -> Result<(), String> {
+        draft.validate().map_err(|e| e.to_string())?;
+        self.settings.audio_quality = draft;
+        self.audio_settings = None;
+        Ok(())
+    }
+    fn apply_audio_device_settings(
         &mut self,
         draft: AudioSettings,
         open: impl FnOnce(daw_engine::RenderPlan, &AudioSettings) -> Result<AudioOutput, String>,
@@ -256,11 +210,7 @@ impl DawUi {
             return Ok(());
         }
         // Input selection has no stream yet. It must not interrupt playback.
-        if draft.output_device == self.settings.audio.output_device
-            && draft.sample_rate_hz == self.settings.audio.sample_rate_hz
-            && draft.sample_format == self.settings.audio.sample_format
-            && draft.buffer_size_frames == self.settings.audio.buffer_size_frames
-        {
+        if draft.output_device == self.settings.audio.output_device {
             self.settings.audio = draft;
             self.audio_settings = None;
             return Ok(());
@@ -289,17 +239,11 @@ impl DawUi {
         }
     }
     pub(super) fn open_audio_settings(&mut self) {
-        let mut dialog = AudioDialog::new(self.settings.audio.clone());
-        dialog.devices = self.audio_devices.catalog.clone();
-        dialog.error = self.audio_devices.error.clone();
-        self.audio_settings = Some(dialog);
-        if self.audio_devices.catalog.is_none() {
-            self.refresh_audio_devices();
-        }
+        self.audio_settings = Some(AudioDialog::new(self.settings.audio_quality));
     }
     pub(super) fn apply_audio_device_selection(&mut self, draft: AudioSettings) {
         self.audio_devices.error = self
-            .apply_audio_settings(draft, |plan, settings| {
+            .apply_audio_device_settings(draft, |plan, settings| {
                 AudioOutput::with_settings(plan, None, settings)
             })
             .err();
@@ -314,10 +258,6 @@ impl DawUi {
                 self.audio_devices.catalog = None;
                 self.audio_devices.error = Some(error);
             }
-        }
-        if let Some(dialog) = &mut self.audio_settings {
-            dialog.devices = self.audio_devices.catalog.clone();
-            dialog.error = self.audio_devices.error.clone();
         }
     }
 }
@@ -411,12 +351,23 @@ mod tests {
         output.textures_delta.clear();
         (action, output.shapes)
     }
+    fn assert_advice(ctx: &egui::Context, shapes: &[egui::epaint::ClippedShape], label: &str) {
+        let text = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == label => Some(text),
+                _ => None,
+            })
+            .expect("advice message");
+        let size = egui::TextStyle::Small.resolve(&ctx.global_style()).size;
+        let color = theme::palette(ctx).secondary;
+        assert!(text.galley.job.sections.iter().all(|section| section.format.font_id.size == size && section.format.color == color));
+    }
     #[test]
     fn dialog_exposes_controls_and_escape_closes_popup_before_discarding_draft() {
         let ctx = egui::Context::default();
         theme::configure(&ctx);
-        let mut dialog = AudioDialog::new(AudioSettings::default());
-        dialog.devices = Some(devices());
+        let mut dialog = AudioDialog::new(daw_core::AudioQuality::default());
         frame(&ctx, &mut dialog, vec![]);
         let shapes = frame(&ctx, &mut dialog, vec![]).1;
         let text_position = |label: &str| {
@@ -431,9 +382,9 @@ mod tests {
                 .unwrap_or_else(|| panic!("Missing audio setting: {label}"))
         };
         for label in [
-            "Output sample rate",
+            "Sample rate",
             "Output bit depth",
-            "Output buffer size",
+            "Buffer size",
             "Apply",
             "Cancel",
         ] {
@@ -442,7 +393,13 @@ mod tests {
         for label in ["Output device", "Input device", "Refresh devices"] {
             assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == label)));
         }
-        let point = text_position("Automatic (driver default)");
+        for message in [
+            "These values are copied into new projects. Use Project Settings to change the current project.",
+            "Output bit depth selects the device stream format. The driver may use a different hardware format. Internal processing and export settings stay separate.",
+        ] {
+            assert_advice(&ctx, &shapes, message);
+        }
+        let point = text_position("32-bit float");
         let pointer = |pressed| egui::Event::PointerButton {
             pos: point,
             button: egui::PointerButton::Primary,
@@ -477,11 +434,10 @@ mod tests {
         theme::configure(&ctx);
         let catalog = devices();
         let mut preferences = settings::AppSettings {
-            audio: AudioSettings {
-                sample_rate_hz: Some(48000),
-                sample_format: Some(SampleFormat::F32),
-                buffer_size_frames: Some(256),
-                ..Default::default()
+            audio_quality: daw_core::AudioQuality {
+                sample_rate_hz: 48000,
+                output_sample_format: SampleFormat::F32,
+                buffer_size_frames: 256,
             },
             ..Default::default()
         };
@@ -534,6 +490,11 @@ mod tests {
         ] {
             point(&shapes, label);
         }
+        assert_advice(
+            &ctx,
+            &shapes,
+            "Changing output stops playback. Input selection is saved for future recording; input monitoring is not available.",
+        );
         // The first System default dropdown belongs to Output device.
         let output_point = point(&shapes, "System default");
         let button = |position, pressed| egui::Event::PointerButton {
@@ -564,12 +525,7 @@ mod tests {
         assert!(controls.quality_requested);
         let selection = controls.selection.unwrap();
         assert_eq!(selection.output_device, Some(id("Speakers")));
-        assert_eq!(selection.sample_rate_hz, before.audio.sample_rate_hz);
-        assert_eq!(selection.sample_format, before.audio.sample_format);
-        assert_eq!(
-            selection.buffer_size_frames,
-            before.audio.buffer_size_frames
-        );
+        assert_eq!(preferences.audio_quality, before.audio_quality);
         // The caller probes the output before publishing the selection.
         assert_eq!(preferences, before);
     }
@@ -577,8 +533,8 @@ mod tests {
     fn unchanged_preferences_do_not_open_a_stream_or_edit_project() {
         let mut app = DawUi::default();
         let before = app.session.project.clone();
-        app.audio_settings = Some(AudioDialog::new(app.settings.audio.clone()));
-        app.apply_audio_settings(app.settings.audio.clone(), |_, _| {
+        app.audio_settings = Some(AudioDialog::new(app.settings.audio_quality));
+        app.apply_audio_device_settings(app.settings.audio.clone(), |_, _| {
             panic!("No-op must not open output")
         })
         .unwrap();
@@ -587,41 +543,47 @@ mod tests {
         assert!(!app.dirty);
     }
     #[test]
-    fn missing_devices_and_incompatible_formats_block_apply() {
-        let mut dialog = AudioDialog::new(AudioSettings::default());
-        assert!(!dialog.valid());
-        dialog.devices = Some(devices());
+    fn defaults_are_concrete_and_do_not_depend_on_connected_devices() {
+        let mut dialog = AudioDialog::new(Default::default());
         assert!(dialog.valid());
-        dialog.draft.sample_format = Some(SampleFormat::I16);
+        assert_eq!(dialog.draft.sample_rate_hz, 48000);
+        assert_eq!(dialog.draft.output_sample_format, SampleFormat::F32);
+        assert_eq!(dialog.draft.buffer_size_frames, 512);
+        dialog.draft.output_sample_format = SampleFormat::I24;
+        assert!(dialog.valid());
+        dialog.draft.buffer_size_frames = 33;
         assert!(!dialog.valid());
-        dialog.draft.sample_format = None;
-        dialog.draft.output_device = Some(id("Disconnected speakers"));
+        dialog.draft.buffer_size_frames = 256;
+        dialog.draft.sample_rate_hz = 12345;
         assert!(!dialog.valid());
         assert!(
-            device_label(dialog.draft.output_device.as_ref(), &devices().outputs)
+            device_label(Some(&id("Disconnected speakers")), &devices().outputs)
                 .contains("unavailable")
         );
-        dialog.draft.output_device = None;
-        dialog.draft.input_device = Some(id("Disconnected microphone"));
-        // Reserved input preferences must not block output quality changes.
-        assert!(dialog.valid());
-        dialog.draft.input_device = Some(id("Microphone"));
-        assert!(dialog.valid());
-        dialog.draft.buffer_size_frames = Some(32);
-        assert!(!dialog.valid());
     }
     #[test]
     fn rejected_stream_retains_preferences_project_and_draft() {
-        let mut app = DawUi::default();
+        let mut app = DawUi::new_with_audio_defaults(
+            None,
+            daw_core::AudioQuality {
+                sample_rate_hz: 44100,
+                output_sample_format: SampleFormat::I16,
+                buffer_size_frames: 128,
+            },
+        );
+        app.settings.audio_quality = daw_core::AudioQuality {
+            sample_rate_hz: 96000,
+            output_sample_format: SampleFormat::I24,
+            buffer_size_frames: 256,
+        };
         let before_settings = app.settings();
         let before_project = app.session.project.clone();
         let draft = AudioSettings {
-            sample_rate_hz: Some(96000),
+            output_device: Some(id("Speakers")),
             ..Default::default()
         };
-        app.audio_settings = Some(AudioDialog::new(draft.clone()));
         let error = app
-            .apply_audio_settings(draft.clone(), |plan, settings| {
+            .apply_audio_device_settings(draft.clone(), |plan, settings| {
                 assert_eq!(settings, &draft);
                 assert_eq!(plan.project, before_project);
                 Err("Test device rejected the configuration".into())
@@ -631,8 +593,6 @@ mod tests {
         assert_eq!(app.session.project, before_project);
         assert!(!app.dirty);
         assert!(app.output.is_none());
-        let dialog = app.audio_settings.as_ref().unwrap();
-        assert_eq!(dialog.draft, draft);
         assert_eq!(error, "Test device rejected the configuration");
     }
     #[test]
@@ -643,8 +603,7 @@ mod tests {
             input_device: Some(id("Microphone")),
             ..Default::default()
         };
-        app.audio_settings = Some(AudioDialog::new(draft.clone()));
-        app.apply_audio_settings(draft.clone(), |_, _| {
+        app.apply_audio_device_settings(draft.clone(), |_, _| {
             panic!("Input-only change must not open output")
         })
         .unwrap();
@@ -663,9 +622,11 @@ mod tests {
             audio: AudioSettings {
                 output_device: Some(id("Speakers")),
                 input_device: Some(id("Microphone")),
-                sample_rate_hz: Some(96000),
-                sample_format: Some(SampleFormat::I24),
-                buffer_size_frames: Some(256),
+            },
+            audio_quality: daw_core::AudioQuality {
+                sample_rate_hz: 96000,
+                output_sample_format: SampleFormat::I24,
+                buffer_size_frames: 256,
             },
             ..Default::default()
         };
@@ -677,5 +638,85 @@ mod tests {
         assert_eq!(legacy.audio, AudioSettings::default());
         assert_eq!(legacy.theme, settings::ColorTheme::Light);
         assert_eq!(legacy.accent, settings::AccentColor::Teal);
+    }
+    #[test]
+    fn changing_defaults_only_seeds_future_projects() {
+        let initial = daw_core::AudioQuality {
+            sample_rate_hz: 44100,
+            output_sample_format: SampleFormat::I16,
+            buffer_size_frames: 128,
+        };
+        let mut app = DawUi::new_with_audio_defaults(None, initial);
+        let before = app.session.project.clone();
+        let next = daw_core::AudioQuality {
+            sample_rate_hz: 96000,
+            output_sample_format: SampleFormat::I24,
+            buffer_size_frames: 256,
+        };
+        app.audio_settings = Some(AudioDialog::new(next));
+        app.apply_audio_quality_defaults(next).unwrap();
+        assert_eq!(app.settings.audio_quality, next);
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+        assert!(app.output.is_none());
+        assert!(app.audio_settings.is_none());
+        app.pending = Some(crate::Action::New);
+        app.perform_pending();
+        assert_eq!(app.session.project.audio_quality(), next);
+        assert_ne!(app.session.project.project_id, before.project_id);
+        assert!(!app.dirty);
+    }
+    #[test]
+    fn legacy_device_quality_becomes_new_project_defaults() {
+        let legacy = settings::AppSettings::from_json(Some(
+            r#"{"audio":{"output_device":{"name":"Speakers","occurrence":0},"sample_rate_hz":96000,"sample_format":"i24","buffer_size_frames":256}}"#,
+        ));
+        assert_eq!(
+            legacy.audio_quality,
+            daw_core::AudioQuality {
+                sample_rate_hz: 96000,
+                output_sample_format: SampleFormat::I24,
+                buffer_size_frames: 256
+            }
+        );
+        assert_eq!(legacy.audio.output_device, Some(id("Speakers")));
+        assert_eq!(
+            settings::AppSettings::from_json(Some(&legacy.to_json())),
+            legacy
+        );
+        let automatic = settings::AppSettings::from_json(Some(
+            r#"{"audio":{"sample_rate_hz":null,"sample_format":null,"buffer_size_frames":null}}"#,
+        ));
+        assert_eq!(automatic.audio_quality, daw_core::AudioQuality::default());
+    }
+    #[test]
+    fn opening_project_uses_saved_quality_instead_of_new_project_defaults() {
+        let folder =
+            std::env::temp_dir().join(format!("daw-project-quality-{}", daw_core::Id::new_v4()));
+        let saved = daw_core::AudioQuality {
+            sample_rate_hz: 44100,
+            output_sample_format: SampleFormat::I16,
+            buffer_size_frames: 128,
+        };
+        let mut session = Session::default();
+        session.project = daw_core::Project::new_with_audio_quality(saved).unwrap();
+        session.save(&folder).unwrap();
+        let defaults = daw_core::AudioQuality {
+            sample_rate_hz: 96000,
+            output_sample_format: SampleFormat::I24,
+            buffer_size_frames: 256,
+        };
+        let mut app = DawUi::new_with_audio_defaults(Some(folder.clone()), defaults);
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        while app.job.is_some() {
+            app.poll();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(app.error.is_none(), "{:?}", app.error);
+        assert_eq!(app.session.project.audio_quality(), saved);
+        assert_eq!(app.settings.audio_quality, defaults);
+        assert!(!app.dirty);
+        std::fs::remove_dir_all(folder).unwrap();
     }
 }

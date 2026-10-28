@@ -10,66 +10,31 @@ pub struct DeviceId {
     pub occurrence: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SampleFormat {
-    I8,
-    I16,
-    I24,
-    I32,
-    I64,
-    U8,
-    U16,
-    U32,
-    U64,
-    F32,
-    F64,
+pub use daw_core::SampleFormat;
+pub(super) fn sample_format_from_cpal(format: cpal::SampleFormat) -> Option<SampleFormat> {
+    Some(match format {
+        cpal::SampleFormat::I8 => SampleFormat::I8,
+        cpal::SampleFormat::I16 => SampleFormat::I16,
+        cpal::SampleFormat::I24 => SampleFormat::I24,
+        cpal::SampleFormat::I32 => SampleFormat::I32,
+        cpal::SampleFormat::I64 => SampleFormat::I64,
+        cpal::SampleFormat::U8 => SampleFormat::U8,
+        cpal::SampleFormat::U16 => SampleFormat::U16,
+        cpal::SampleFormat::U32 => SampleFormat::U32,
+        cpal::SampleFormat::U64 => SampleFormat::U64,
+        cpal::SampleFormat::F32 => SampleFormat::F32,
+        cpal::SampleFormat::F64 => SampleFormat::F64,
+        _ => return None,
+    })
 }
 
-impl SampleFormat {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::I8 => "8-bit signed integer",
-            Self::I16 => "16-bit signed integer",
-            Self::I24 => "24-bit signed integer",
-            Self::I32 => "32-bit signed integer",
-            Self::I64 => "64-bit signed integer",
-            Self::U8 => "8-bit unsigned integer",
-            Self::U16 => "16-bit unsigned integer",
-            Self::U32 => "32-bit unsigned integer",
-            Self::U64 => "64-bit unsigned integer",
-            Self::F32 => "32-bit float",
-            Self::F64 => "64-bit float",
-        }
-    }
-    pub(super) fn from_cpal(format: cpal::SampleFormat) -> Option<Self> {
-        Some(match format {
-            cpal::SampleFormat::I8 => Self::I8,
-            cpal::SampleFormat::I16 => Self::I16,
-            cpal::SampleFormat::I24 => Self::I24,
-            cpal::SampleFormat::I32 => Self::I32,
-            cpal::SampleFormat::I64 => Self::I64,
-            cpal::SampleFormat::U8 => Self::U8,
-            cpal::SampleFormat::U16 => Self::U16,
-            cpal::SampleFormat::U32 => Self::U32,
-            cpal::SampleFormat::U64 => Self::U64,
-            cpal::SampleFormat::F32 => Self::F32,
-            cpal::SampleFormat::F64 => Self::F64,
-            _ => return None,
-        })
-    }
-}
-
-/// Machine-local preferences. None retains automatic/project-controlled behavior.
+/// Machine-local device identities. Audio quality belongs to the project.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AudioSettings {
     pub output_device: Option<DeviceId>,
     /// Reserved selection; no input stream is opened until capture is implemented.
     pub input_device: Option<DeviceId>,
-    pub sample_rate_hz: Option<u32>,
-    pub sample_format: Option<SampleFormat>,
-    pub buffer_size_frames: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -79,23 +44,6 @@ pub struct Configuration {
     pub min_rate_hz: u32,
     pub max_rate_hz: u32,
     pub buffer_range: Option<(u32, u32)>,
-}
-impl Configuration {
-    pub fn supports(&self, settings: &AudioSettings) -> bool {
-        self.channels > 0
-            && settings
-                .sample_format
-                .is_none_or(|format| format == self.format)
-            && settings
-                .sample_rate_hz
-                .is_none_or(|rate| rate > 0 && rate >= self.min_rate_hz && rate <= self.max_rate_hz)
-            && settings.buffer_size_frames.is_none_or(|size| {
-                size > 0
-                    && self
-                        .buffer_range
-                        .is_none_or(|(min, max)| size >= min && size <= max)
-            })
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -114,7 +62,7 @@ pub struct Devices {
 fn describe(config: cpal::SupportedStreamConfigRange) -> Option<Configuration> {
     Some(Configuration {
         channels: config.channels(),
-        format: SampleFormat::from_cpal(config.sample_format())?,
+        format: sample_format_from_cpal(config.sample_format())?,
         min_rate_hz: config.min_sample_rate().0,
         max_rate_hz: config.max_sample_rate().0,
         buffer_range: match config.buffer_size() {
@@ -202,42 +150,40 @@ pub(super) fn output_device(selection: Option<&DeviceId>) -> Result<cpal::Device
         })
 }
 
-/// Select a compatible advertised range; prefer default channel layout/format and
-/// project rate when the user leaves those choices automatic.
+/// Use the project's output format and prefer its processing rate. Device-rate
+/// conversion and hardware buffer adaptation remain separate from project quality.
 pub(super) fn choose_config(
     ranges: impl Iterator<Item = cpal::SupportedStreamConfigRange>,
     default: cpal::SupportedStreamConfig,
-    settings: &AudioSettings,
-    project_rate_hz: u32,
+    quality: daw_core::AudioQuality,
 ) -> Result<cpal::SupportedStreamConfig, String> {
+    quality.validate().map_err(|e| e.to_string())?;
     let mut best = None;
     let mut best_score = 0;
     for range in ranges {
-        let Some(description) = describe(range) else {
-            continue;
-        };
-        if !description.supports(settings) {
+        if range.channels() == 0
+            || sample_format_from_cpal(range.sample_format()) != Some(quality.output_sample_format)
+        {
             continue;
         }
-        let rate = settings.sample_rate_hz.unwrap_or_else(|| {
-            if (range.min_sample_rate().0..=range.max_sample_rate().0).contains(&project_rate_hz) {
-                project_rate_hz
-            } else {
-                default
-                    .sample_rate()
-                    .0
-                    .clamp(range.min_sample_rate().0, range.max_sample_rate().0)
-            }
-        });
+        let rate = if (range.min_sample_rate().0..=range.max_sample_rate().0)
+            .contains(&quality.sample_rate_hz)
+        {
+            quality.sample_rate_hz
+        } else {
+            default
+                .sample_rate()
+                .0
+                .clamp(range.min_sample_rate().0, range.max_sample_rate().0)
+        };
         let score = u8::from(range.channels() == default.channels()) * 4
-            + u8::from(range.sample_format() == default.sample_format()) * 2
-            + u8::from(rate == project_rate_hz);
+            + u8::from(rate == quality.sample_rate_hz);
         if best.is_none() || score > best_score {
             best_score = score;
             best = Some(range.with_sample_rate(cpal::SampleRate(rate)));
         }
     }
-    best.ok_or_else(|| "The output device does not support this sample rate, bit depth and buffer size combination. Choose supported settings.".into())
+    best.ok_or_else(|| "The output device does not support this project's output bit depth. Choose another output bit depth in Project Settings or another output device in Settings.".into())
 }
 
 #[cfg(test)]
@@ -332,7 +278,7 @@ mod tests {
         )
     }
     #[test]
-    fn automatic_prefers_project_rate_and_default_format() {
+    fn project_quality_prefers_project_rate_and_output_format() {
         let ranges = [
             range(cpal::SampleFormat::I16, 44100, 96000),
             range(cpal::SampleFormat::F32, 44100, 96000),
@@ -341,51 +287,42 @@ mod tests {
         let selected = choose_config(
             ranges.into_iter(),
             default,
-            &AudioSettings::default(),
-            48000,
+            daw_core::AudioQuality::default(),
         )
         .unwrap();
         assert_eq!(selected.sample_format(), cpal::SampleFormat::F32);
         assert_eq!(selected.sample_rate().0, 48000);
     }
     #[test]
-    fn explicit_choices_are_never_silently_substituted() {
+    fn project_output_format_is_never_silently_substituted() {
         let ranges = [
             range(cpal::SampleFormat::F32, 44100, 48000),
             range(cpal::SampleFormat::I16, 44100, 96000),
         ];
         let default = ranges[0].with_sample_rate(cpal::SampleRate(48000));
-        let mut settings = AudioSettings {
-            sample_rate_hz: Some(96000),
-            sample_format: Some(SampleFormat::I16),
-            buffer_size_frames: Some(256),
-            ..Default::default()
+        let mut quality = daw_core::AudioQuality {
+            sample_rate_hz: 96000,
+            output_sample_format: SampleFormat::I16,
+            buffer_size_frames: 256,
         };
-        let selected =
-            choose_config(ranges.into_iter(), default.clone(), &settings, 48000).unwrap();
+        let selected = choose_config(ranges.into_iter(), default.clone(), quality).unwrap();
         assert_eq!(selected.sample_format(), cpal::SampleFormat::I16);
         assert_eq!(selected.sample_rate().0, 96000);
-        settings.sample_format = Some(SampleFormat::F32);
-        assert!(choose_config(ranges.into_iter(), default.clone(), &settings, 48000).is_err());
-        settings.sample_rate_hz = Some(48000);
-        settings.buffer_size_frames = Some(32);
-        assert!(choose_config(ranges.into_iter(), default, &settings, 48000).is_err());
+        quality.output_sample_format = SampleFormat::F64;
+        assert!(choose_config(ranges.into_iter(), default, quality).is_err());
     }
     #[test]
-    fn automatic_can_convert_project_rate_to_a_device_rate() {
+    fn device_rate_conversion_retains_project_quality() {
         let range = range(cpal::SampleFormat::F32, 44100, 44100);
         let default = range.with_sample_rate(cpal::SampleRate(44100));
-        assert_eq!(
-            choose_config(
-                [range].into_iter(),
-                default,
-                &AudioSettings::default(),
-                192000
-            )
-            .unwrap()
-            .sample_rate()
-            .0,
-            44100
-        );
+        let quality = daw_core::AudioQuality {
+            sample_rate_hz: 192000,
+            buffer_size_frames: 4096,
+            ..Default::default()
+        };
+        let selected = choose_config([range].into_iter(), default, quality).unwrap();
+        assert_eq!(selected.sample_rate().0, 44100);
+        assert_eq!(quality.sample_rate_hz, 192000);
+        assert_eq!(quality.buffer_size_frames, 4096);
     }
 }

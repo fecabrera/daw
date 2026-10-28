@@ -1014,6 +1014,7 @@ impl DawUi {
         let project = &self.session.project;
         if values.sample_rate_hz == project.sample_rate_hz
             && values.buffer_size_frames == project.buffer_size_frames
+            && values.output_sample_format == project.output_sample_format
             && values.stretch_engine == project.stretch_engine
         {
             self.rename_project(values.name);
@@ -1032,6 +1033,7 @@ impl DawUi {
                 )
                 .map_err(|error| error.to_string())?;
             next.project.name = project_settings::valid_name(&values.name)?.to_owned();
+            next.project.output_sample_format = values.output_sample_format;
             Ok(Job::AudioSettings(next))
         });
         self.settings_cancel = Some(cancel);
@@ -1043,7 +1045,21 @@ impl DawUi {
     }
 
     pub fn new(project: Option<PathBuf>) -> Self {
+        Self::new_with_audio_defaults(project, daw_core::AudioQuality::default())
+    }
+    /// Seed only a new blank project. Opened projects retain their saved quality.
+    pub fn new_with_audio_defaults(
+        project: Option<PathBuf>,
+        defaults: daw_core::AudioQuality,
+    ) -> Self {
         let mut app = Self::default();
+        app.settings.audio_quality = if defaults.validate().is_ok() {
+            defaults
+        } else {
+            Default::default()
+        };
+        app.session.project = daw_core::Project::new_with_audio_quality(app.settings.audio_quality)
+            .unwrap_or_default();
         if let Some(folder) = project {
             app.open(folder);
         }
@@ -1090,6 +1106,9 @@ impl DawUi {
             Some(Action::New | Action::CloseProject) => {
                 self.output = None;
                 self.session = Session::default();
+                self.session.project =
+                    daw_core::Project::new_with_audio_quality(self.settings.audio_quality)
+                        .unwrap_or_default();
                 self.history = None;
                 self.saved_navigation_revision = self.navigation_revision;
                 self.midi_editor.cancel();

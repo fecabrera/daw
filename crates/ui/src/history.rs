@@ -104,9 +104,8 @@ impl DawUi {
         let Some(session) = restored else {
             return;
         };
-        let settings_changed = self.session.project.sample_rate_hz
-            != session.project.sample_rate_hz
-            || self.session.project.buffer_size_frames != session.project.buffer_size_frames;
+        let settings_changed =
+            self.session.project.audio_quality() != session.project.audio_quality();
         if settings_changed {
             self.output = None;
             self.clip_clipboard = None;
