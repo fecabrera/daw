@@ -1983,6 +1983,270 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
     }
 }
 
+fn open_layer_menu(
+    app: &mut DawUi,
+    ctx: &egui::Context,
+    layer: Id,
+) -> Vec<egui::epaint::ClippedShape> {
+    let point = app.midi_editor.layer_bounds[&layer].label.center();
+    for pressed in [true, false] {
+        frame(
+            app,
+            ctx,
+            vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Secondary,
+                    pressed,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+    }
+    frame_shapes(app, ctx, vec![], Vec2::new(1280.0, 800.0))
+}
+
+#[test]
+fn layer_context_menu_orders_actions_and_renames_or_duplicates_on_release() {
+    for collapsed in [false, true] {
+        for action in ["Rename layer", "Duplicate layer"] {
+            let (mut app, ctx, layers) = layer_header_fixture();
+            app.session.project.tracks[0]
+                .instrument
+                .as_mut()
+                .unwrap()
+                .layers[1]
+                .collapsed = collapsed;
+            frame(&mut app, &ctx, vec![]);
+            app.history = None;
+            app.ensure_history();
+            let original = app.session.project.clone();
+            let shapes = open_layer_menu(&mut app, &ctx, layers[1].id);
+            let items: Vec<_> = ["Rename layer", "Duplicate layer", "Delete layer"]
+                .into_iter()
+                .map(|label| {
+                    shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(t) if t.galley.text() == label => {
+                                Some(t.pos + t.galley.size() * 0.5)
+                            }
+                            _ => None,
+                        })
+                        .expect("layer menu item")
+                })
+                .collect();
+            assert!(items[0].y < items[1].y && items[1].y < items[2].y);
+            let shortcut =
+                toolbars::menu_shortcut_text(&ctx, &TrackAction::Rename.shortcut().unwrap());
+            let hint = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(t) if t.galley.text() == shortcut.text() => {
+                        Some(t.pos + t.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .expect("rename shortcut hint");
+            assert!(hint.x > items[0].x);
+            assert!((hint.y - items[0].y).abs() < 1.0);
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::LineSegment { points, .. } if points[0].y == points[1].y
+                    && points[0].y > items[1].y && points[0].y < items[2].y)));
+            assert_eq!(app.session.project, original);
+            assert!(!app.dirty);
+            let point = items[usize::from(action == "Duplicate layer")];
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(point), button(point, true)],
+            );
+            assert_eq!(app.session.project, original);
+            frame(&mut app, &ctx, vec![button(point, false)]);
+            assert!(!egui::Popup::is_any_open(&ctx));
+            if action == "Rename layer" {
+                assert!(app.instrument_ui.editing_name());
+                frame(&mut app, &ctx, vec![]);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::Text("New name".into()),
+                        layer_key(egui::Key::Enter),
+                    ],
+                );
+                assert_eq!(
+                    app.session.project.tracks[0]
+                        .instrument
+                        .as_ref()
+                        .unwrap()
+                        .layers[1]
+                        .name,
+                    "New name"
+                );
+                assert!(app.track_name_edit.is_none());
+            } else {
+                let actual = &app.session.project.tracks[0]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .layers;
+                let before = &original.tracks[0].instrument.as_ref().unwrap().layers;
+                assert_eq!(actual.len(), 4);
+                assert_eq!(&actual[..2], &before[..2]);
+                assert_eq!(actual[3], before[2]);
+                assert_ne!(actual[2].id, before[1].id);
+                assert_ne!(actual[2].oscillators[0].id, before[1].oscillators[0].id);
+                assert_eq!(actual[2].name, before[1].name);
+                assert_eq!(
+                    actual[2].oscillators[0].transpose,
+                    before[1].oscillators[0].transpose
+                );
+                assert_eq!(app.instrument_ui.selected_layer, Some(actual[2].id));
+            }
+            assert!(app.dirty);
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            assert_eq!(app.session.project, original);
+        }
+    }
+}
+
+#[test]
+fn selected_layer_rename_shortcut_uses_inline_editor_and_shared_native_dispatch() {
+    for native in [false, true] {
+        for cancel in [false, true] {
+            let (mut app, ctx, layers) = layer_header_fixture();
+            app.instrument_ui.select_layer(layers[1].id);
+            let original = app.session.project.clone();
+            assert_eq!(app.track_action_label(TrackAction::Rename), "Rename layer");
+            if native {
+                app.perform_track_action(TrackAction::Rename, &ctx);
+            } else {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::R,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::COMMAND,
+                    }],
+                );
+            }
+            assert!(app.instrument_ui.editing_name());
+            assert!(app.track_name_edit.is_none());
+            assert_eq!(app.session.project, original);
+            assert!(!app.dirty);
+            frame(&mut app, &ctx, vec![]);
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::Text("Renamed".into()),
+                    layer_key(if cancel {
+                        egui::Key::Escape
+                    } else {
+                        egui::Key::Enter
+                    }),
+                ],
+            );
+            if cancel {
+                assert_eq!(app.session.project, original);
+                assert!(!app.dirty);
+            } else {
+                assert_eq!(
+                    app.session.project.tracks[0]
+                        .instrument
+                        .as_ref()
+                        .unwrap()
+                        .layers[1]
+                        .name,
+                    "Renamed"
+                );
+                assert_eq!(app.instrument_ui.selected_layer, Some(layers[1].id));
+                assert!(app.dirty);
+            }
+        }
+    }
+}
+
+#[test]
+fn layer_menu_dismissal_and_rename_shortcut_guards_preserve_the_project() {
+    for blocked in ["dismiss", "repeat", "shift", "job", "focus", "text"] {
+        let (mut app, ctx, layers) = layer_header_fixture();
+        app.instrument_ui.select_layer(layers[1].id);
+        let original = app.session.project.clone();
+        let (_sender, receiver) = mpsc::channel();
+        if blocked == "dismiss" {
+            open_layer_menu(&mut app, &ctx, layers[1].id);
+            frame(&mut app, &ctx, vec![layer_key(egui::Key::Escape)]);
+            assert!(!egui::Popup::is_any_open(&ctx));
+        } else {
+            if blocked == "job" {
+                app.job = Some(receiver);
+            }
+            if blocked == "text" {
+                begin_layer_rename(&mut app, &ctx, layers[0].id);
+            }
+            if blocked == "repeat" {
+                frame(&mut app, &ctx, vec![layer_key(egui::Key::R)]);
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                focused: blocked != "focus",
+                events: vec![egui::Event::Key {
+                    key: egui::Key::R,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: blocked == "repeat",
+                    modifiers: if blocked == "shift" {
+                        egui::Modifiers::COMMAND | egui::Modifiers::SHIFT
+                    } else {
+                        egui::Modifiers::COMMAND
+                    },
+                }],
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| app.show(ui));
+            output.textures_delta.clear();
+            if blocked == "text" {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::Text("Original editor".into()),
+                        layer_key(egui::Key::Enter),
+                    ],
+                );
+                assert_eq!(
+                    app.session.project.tracks[0]
+                        .instrument
+                        .as_ref()
+                        .unwrap()
+                        .layers[0]
+                        .name,
+                    "Original editor"
+                );
+                assert_eq!(
+                    app.session.project.tracks[0]
+                        .instrument
+                        .as_ref()
+                        .unwrap()
+                        .layers[1],
+                    layers[1]
+                );
+                continue;
+            }
+            assert!(!app.instrument_ui.editing_name(), "{blocked}");
+        }
+        assert!(app.track_name_edit.is_none());
+        assert_eq!(app.session.project, original);
+        assert!(!app.dirty);
+    }
+}
+
 #[test]
 fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
     fn menu(app: &mut DawUi, ctx: &egui::Context, point: Pos2, text: &str) -> Pos2 {
@@ -2064,7 +2328,7 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
             Some(&before)
         );
         let label = app.midi_editor.layer_bounds[&second].label.center();
-        let remove = menu(&mut app, &ctx, label, "Remove layer");
+        let remove = menu(&mut app, &ctx, label, "Delete layer");
         click_note_or_lane(&mut app, &ctx, remove);
         frame(&mut app, &ctx, vec![]);
         assert_eq!(
@@ -2076,7 +2340,7 @@ fn layer_and_envelope_removal_keep_other_layers_and_guard_the_last_layer() {
             vec![before.layers[0].clone()]
         );
         let label = app.midi_editor.layer_bounds[&first].label.center();
-        let remove = menu(&mut app, &ctx, label, "Remove layer");
+        let remove = menu(&mut app, &ctx, label, "Delete layer");
         click_note_or_lane(&mut app, &ctx, remove);
         assert_eq!(
             app.session.project.tracks[0]

@@ -90,6 +90,11 @@ impl DawUi {
     pub fn track_action_enabled(&self, action: TrackAction, ctx: &egui::Context) -> bool {
         // Non-text controls can retain keyboard focus outside the Tracks pane.
         let input_available = match action {
+            TrackAction::Rename if self.selected_rename_layer().is_some() => {
+                !ctx.text_edit_focused()
+                    && ctx.dragged_id().is_none()
+                    && !self.instrument_ui.has_layer_gesture()
+            }
             TrackAction::Add | TrackAction::AddMidi | TrackAction::Duplicate => {
                 !ctx.text_edit_focused() && ctx.dragged_id().is_none()
             }
@@ -111,6 +116,7 @@ impl DawUi {
             && input_available
             && self.selection_shortcut_environment_available(ctx)
             && (action != TrackAction::Rename
+                || self.selected_rename_layer().is_some()
                 || self
                     .session
                     .project
@@ -149,6 +155,9 @@ impl DawUi {
             return;
         }
         if action == TrackAction::Rename {
+            if self.rename_selected_layer() {
+                return;
+            }
             if let Some(track) = self
                 .session
                 .project
@@ -309,6 +318,9 @@ impl DawUi {
     }
 
     pub fn track_action_label(&self, action: TrackAction) -> &'static str {
+        if action == TrackAction::Rename && self.selected_rename_layer().is_some() {
+            return "Rename layer";
+        }
         if matches!(action, TrackAction::Delete | TrackAction::Duplicate)
             && self
                 .session

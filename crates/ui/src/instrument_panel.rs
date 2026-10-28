@@ -126,6 +126,38 @@ pub(crate) struct LayerUiBounds {
 }
 
 impl DawUi {
+    pub(super) fn selected_rename_layer(&self) -> Option<&InstrumentLayerSettings> {
+        if self.view_mode != ViewMode::Instrument
+            || self.instrument_ui.track != self.selected_track
+            || self.instrument_ui.track_effects_target
+        {
+            return None;
+        }
+        let id = self.instrument_ui.selected_layer?;
+        self.session
+            .project
+            .tracks
+            .iter()
+            .find(|track| Some(track.id) == self.selected_track)?
+            .instrument
+            .as_ref()?
+            .layers
+            .iter()
+            .find(|layer| layer.id == id)
+    }
+
+    pub(super) fn rename_selected_layer(&mut self) -> bool {
+        let Some(layer) = self.selected_rename_layer() else {
+            return false;
+        };
+        self.instrument_ui.name_edit = Some(LayerNameEdit {
+            layer: layer.id,
+            text: layer.name.clone(),
+            focus: true,
+        });
+        true
+    }
+
     pub(super) fn instrument_view(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 0.0;
         self.activate_component_drag(ui);
@@ -212,6 +244,7 @@ impl DawUi {
             .filter_map(|r| r.source)
             .collect();
         let mut remove_layer = None;
+        let mut duplicate_layer = None;
         let column_bounds = ui.max_rect();
         let control_panel = panels::ControlPanel::begin(ui, column_bounds);
         ui.spacing_mut().item_spacing.y = -1.0;
@@ -444,10 +477,27 @@ impl DawUi {
                                         let response =
                                             response.on_hover_cursor(egui::CursorIcon::Grab);
                                         crate::menus::ContextMenu::new(&response).show(|ui| {
+                                            let enabled = !self.instrument_ui.dragging()
+                                                && !self.instrument_ui.editing_name();
+                                            let rename = crate::menus::action_button("Rename layer")
+                                                .shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &TrackAction::Rename.shortcut().unwrap()));
+                                            if ui.add_enabled(enabled, rename).clicked() {
+                                                self.instrument_ui.name_edit = Some(LayerNameEdit {
+                                                    layer: layer.id,
+                                                    text: layer.name.clone(),
+                                                    focus: true,
+                                                });
+                                                ui.close();
+                                            }
+                                            if ui.add_enabled(enabled, crate::menus::action_button("Duplicate layer")).clicked() {
+                                                duplicate_layer = Some(layer.id);
+                                                ui.close();
+                                            }
+                                            crate::menus::separator(ui);
                                             if ui
                                                 .add_enabled(
-                                                    count > 1 && !self.instrument_ui.dragging(),
-                                                    egui::Button::new("Remove layer"),
+                                                    count > 1 && enabled,
+                                                    crate::menus::action_button("Delete layer"),
                                                 )
                                                 .clicked()
                                             {
@@ -795,6 +845,17 @@ impl DawUi {
             self.instrument_ui.selected_layers.clone(),
         );
         self.layer_reorder(ui, &mut settings, &reorder_rows, scroll.inner_rect);
+        if let Some(index) =
+            duplicate_layer.and_then(|id| settings.layers.iter().position(|l| l.id == id))
+        {
+            let copy = InstrumentLayerSettings::duplicate_group(&[&settings.layers[index]])
+                .pop()
+                .unwrap();
+            self.instrument_ui.selected_layer = Some(copy.id);
+            self.instrument_ui.selected_layers = HashSet::from([copy.id]);
+            self.instrument_ui.track_effects_target = false;
+            settings.layers.insert(index + 1, copy);
+        }
         if let Some(id) = remove_layer {
             if self
                 .instrument_ui

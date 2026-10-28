@@ -4,6 +4,14 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Layer context menu and rename shortcut — 2026-10-27
+
+Regular layer headers now show Rename layer, Duplicate layer, a divider, then Delete layer through the shared context-menu wrapper. Rename shows the platform-formatted Command/Ctrl+R hint, using the same action-button spacing and shortcut formatter as Rename track, and opens the existing inline editor. Duplicate copies only the clicked layer immediately after its original through the shared identity-remapping helper and instrument-edit/preparation path. Selection follows the copy after publication. Delete retains the last-layer guard. Menu opening, dismissal and press-only input leave the project unchanged.
+
+Command/Ctrl+R now renames the primary selected regular layer in Instrument. The existing shared Rename dispatch handles both egui keys and native menu actions, with a matching Rename layer menu label. Output or no regular layer retains track rename behavior. Text entry, layer/control gestures, jobs/dialogs, focus loss, extra modifiers and repeats retain their guards.
+
+Focused layer tests pass, including expanded/collapsed menu order and divider placement, release-only actions, new copy identities and unchanged originals, undo, both rename dispatch paths, commit/cancel, dismissal and shortcut guards. All 667 UI tests pass after the shortcut-hint update, including its right-aligned placement beside Rename layer. Formatting, strict workspace/all-target Clippy and the updated macOS debug app build pass. The workspace run passes: 1741 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. It started before the final shortcut-hint presentation change; the full UI suite, Clippy and app build were rerun after that change and pass. Local documentation links and whitespace checks pass. Logs use `work/layer-context-*`. Native pointer/menu-key delivery and Windows/Linux execution were not checked.
+
 ## Add track dropdown — 2026-10-27
 
 The Tracks header Plus button now opens a canonical button-anchored dropdown with Add audio track and Add MIDI track. It shares the choice renderer and guarded action dispatch with the empty-area context menu. Opening, hovering and dismissal leave the project unchanged; a menu-item release creates and selects the chosen empty track. The trigger retains its icon geometry, uses Add track for its tooltip/accessibility name, and closes its popup when disabled.
