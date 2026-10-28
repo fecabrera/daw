@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## CLI track inspection and consolidated guides — 2026-10-28
+
+Added `tracks [<track-name>] [--project <folder>]`. Tests cover current-directory defaults, explicit folders, exact Unicode names, duplicate matches, unknown names, invalid arguments, saved order across audio/MIDI/group tracks, collapsed children, saved mixer controls, clip timing, escaped terminal controls and empty projects. Shared metadata inspection tests cover damaged/missing media, unchanged manifests, invalid/missing manifests and in-memory legacy Integrated revision normalization. `validate` and `render` retain media preparation. User guides are consolidated under `docs/cli/`, with links from project, audio and overview guides.
+
+Affected CLI tests and the two metadata workflow tests pass. `cargo build --offline --locked -p daw-cli`, `python3 tools/check_cli.py`, `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`, `cargo fmt --all --check`, whitespace checks and changed Markdown local-link checks pass. The smoke test covers track inspection plus existing WAV/MP3/AAC exports. Logs use `work/cli-tracks-*`. `cargo test --offline --locked --workspace` passes: 1763 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. Windows/Linux execution has not been checked locally; CI uses the extended smoke test.
+
 ## Output gain-only header — 2026-10-28
 
 The fixed Output layer now shows only its compact gain knob. Its header height, gain position, expand/collapse control, selection and component layout stay unchanged. Stored Output pan values and audio processing remain compatible. Regression coverage checks the absence of pan artwork in compact/expanded rows, clicking its former position without edits or resetting a nonzero saved pan, gain keyboard adjustment, and fixed positioning while layers scroll.

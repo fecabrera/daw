@@ -14,7 +14,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Editing history:** [undo and redo](docs/editing/undo-redo.md) for project edits.
 - **Projects:** save and open projects, with configurable audio processing settings.
 - **Appearance:** Dark, Light, and Mist themes, accent colors, and colored clips.
-- **Export and CLI:** export stereo WAV, MP3, or AAC files; validate projects and render audio from the command line.
+- **Export and CLI:** export stereo WAV, MP3, or AAC files; inspect tracks, validate projects and render audio with the [CLI](docs/cli/README.md).
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 
 Stem separation supports four or six stems using local HTDemucs models through Charon, with CoreML on Apple Silicon macOS and CPU on supported platforms. Either validated model enables separation; CoreML takes priority, with optional CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
@@ -159,8 +159,9 @@ Workers also upload command logs as `logs-test-<OS>-<architecture>` and `logs-bu
 ## Documentation
 
 - [User guide](docs/README.md): working with clips, instruments, modulation, and effects.
+- [CLI guide](docs/cli/README.md): track inspection, project validation, export and standalone WAV processing.
 - [Features and roadmap](docs/roadmap.md), including current limits and planned capabilities.
-- [Time stretching and offline pitch changes](docs/audio/time-stretch.md) and the [standalone comparison tool guide](crates/timestretch-cli/README.md).
+- [Time stretching and offline pitch changes](docs/audio/time-stretch.md) and the [standalone comparison tool guide](docs/cli/timestretch.md).
 - [Implementation specifications](specs/README.md): architecture, data formats, requirements, and acceptance criteria.
 - [Validation records](specs/validation/README.md): completed checks and remaining verification limits.
 - [Repository instructions](AGENTS.md): contribution rules and development workflows.

@@ -5052,3 +5052,56 @@ fn catalog_chords_save_reopen_and_export_with_their_embedded_notes() {
     let audio = daw_media::decode_wav(&second).unwrap();
     assert!(audio.samples.iter().any(|frame| frame[0].abs() > 0.01));
 }
+
+#[test]
+fn metadata_inspection_retains_manifest_and_does_not_open_media() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("inspect.wav", 48_000, 2, 24, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let folder = fixture.0.join("project");
+    session.save(&folder).unwrap();
+    let path = folder.join("project.json");
+    let original = fs::read(&path).unwrap();
+    fs::write(&source, b"damaged WAV").unwrap();
+    assert!(Session::open(&folder).is_err());
+    assert_eq!(
+        daw_project::inspect_project(&folder).unwrap(),
+        session.project
+    );
+    fs::remove_file(&source).unwrap();
+    assert_eq!(
+        daw_project::inspect_project(&folder).unwrap(),
+        session.project
+    );
+    assert_eq!(fs::read(&path).unwrap(), original);
+}
+
+#[test]
+fn metadata_inspection_validates_manifest_and_normalizes_legacy_revisions_in_memory() {
+    let fixture = Fixture::new();
+    let path = fixture.0.join("project.json");
+    assert!(daw_project::inspect_project(&fixture.0).is_err());
+    fs::write(&path, "invalid JSON").unwrap();
+    assert!(daw_project::inspect_project(&fixture.0).is_err());
+    let mut project = Project {
+        sample_rate_hz: 123,
+        ..Project::default()
+    };
+    fs::write(&path, serde_json::to_vec(&project).unwrap()).unwrap();
+    assert!(daw_project::inspect_project(&fixture.0).is_err());
+    project.sample_rate_hz = 48_000;
+    project.stretch_engine = daw_core::StretchEngine::INTEGRATED;
+    for revision in [2, 3] {
+        project.stretch_engine.revision = revision;
+        let original = serde_json::to_vec(&project).unwrap();
+        fs::write(&path, &original).unwrap();
+        assert_eq!(
+            daw_project::inspect_project(&fixture.0)
+                .unwrap()
+                .stretch_engine,
+            daw_core::StretchEngine::INTEGRATED
+        );
+        assert_eq!(fs::read(&path).unwrap(), original);
+    }
+}

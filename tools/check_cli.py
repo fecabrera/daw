@@ -12,9 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 BINARY = ROOT / "target/debug" / ("daw-cli.exe" if os.name == "nt" else "daw-cli")
 
 
-def run(expected, *args):
+def run(expected, *args, cwd=None):
     env = dict(os.environ, DISPLAY="", WAYLAND_DISPLAY="")
-    result = subprocess.run([str(BINARY), *map(str, args)], capture_output=True, text=True, env=env)
+    result = subprocess.run([str(BINARY), *map(str, args)], capture_output=True, text=True, encoding="utf-8", env=env, cwd=cwd)
     assert result.returncode == expected, (args, result.returncode, result.stderr)
     return result
 
@@ -30,6 +30,27 @@ def main():
         project = folder / "project.json"
         project.write_text(json.dumps(manifest))
         run(0, "validate", "--project", folder)
+        original = project.read_bytes()
+        listed = run(0, "tracks", cwd=folder).stdout
+        assert listed == run(0, "tracks", "--project", folder).stdout
+        for track in manifest["tracks"]:
+            assert track["id"] in listed
+        name = manifest["tracks"][0]["name"]
+        details = run(0, "tracks", name, "--project", folder).stdout
+        assert manifest["tracks"][0]["id"] in details
+        assert "End (exclusive):" in details
+        assert "Track not found" in run(1, "tracks", "not a saved track", cwd=folder).stderr
+        run(2, "tracks", "extra", "argument", cwd=folder)
+        run(1, "tracks", "--project", folder / "absent")
+        assert project.read_bytes() == original
+        duplicate = copy.deepcopy(manifest)
+        for track in duplicate["tracks"]:
+            track["name"] = "Bäss synth"
+        project.write_text(json.dumps(duplicate))
+        details = run(0, "tracks", "Bäss synth", cwd=folder).stdout
+        assert details.count('Track: "Bäss synth"') == len(duplicate["tracks"])
+        run(1, "tracks", "bäss synth", cwd=folder)
+        project.write_bytes(original)
         first, second = folder / "a.wav", folder / "b.wav"
         run(0, "render", "--project", folder, "--output", first)
         run(0, "render", "--project", folder, "--output", second)
@@ -100,12 +121,17 @@ def main():
         grouped["tracks"].insert(0, group)
         project.write_text(json.dumps(grouped))
         run(0, "validate", "--project", folder)
+        listed = run(0, "tracks", cwd=folder).stdout
+        for track in grouped["tracks"]:
+            assert track["id"] in listed
+        assert f'Direct children: {len(manifest["tracks"])}' in run(0, "tracks", "Group bus", cwd=folder).stdout
         group_mix = folder / "group-mix.wav"
         run(0, "render", "--project", folder, "--output", group_mix)
         assert group_mix.read_bytes() == first.read_bytes()
         missing = copy.deepcopy(manifest)
         missing["assets"][0]["source"]["path"] = str(folder / "missing.wav")
         project.write_text(json.dumps(missing))
+        assert not run(0, "tracks", cwd=folder).stderr
         assert "Missing source" in run(0, "validate", "--project", folder).stderr
         assert "Missing source" in run(0, "render", "--project", folder, "--output", folder / "missing-mix.wav").stderr
         expanded = copy.deepcopy(manifest)
@@ -119,10 +145,15 @@ def main():
         project.write_text(json.dumps(expanded))
         run(0, "validate", "--project", folder)
         run(0, "render", "--project", folder, "--output", folder / "eight-tracks.wav")
+        empty = copy.deepcopy(manifest)
+        empty["tracks"] = []
+        project.write_text(json.dumps(empty))
+        assert "No tracks." in run(0, "tracks", cwd=folder).stdout
         project.write_text("invalid json")
+        run(1, "tracks", cwd=folder)
         run(1, "validate", "--project", folder)
         run(2, "render")
-    print("CLI smoke check passed: WAV/MP3/AAC codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
+    print("CLI smoke check passed: track inspection, WAV/MP3/AAC codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
 
 
 if __name__ == "__main__":

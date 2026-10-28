@@ -6,7 +6,7 @@ Date: 2026-10-07.
 
 Scope baseline: [MVP.md](mvp-scope.md).
 
-Build a desktop digital audio workstation (DAW) that can arrange and mix audio tracks with no fixed track-count limit. Provide a command-line interface (CLI) that validates projects and exports the same mix without graphics or an audio device. This iteration covers the complete MVP; the two-track prototype is an intermediate milestone.
+Build a desktop digital audio workstation (DAW) that can arrange and mix audio tracks with no fixed track-count limit. Provide a command-line interface (CLI) that inspects tracks, validates projects and exports the same mix without graphics or an audio device. This iteration covers the complete MVP; the two-track prototype is an intermediate milestone.
 
 Use ASD-STE100 principles and Plain Language for specifications, technical documentation, and user instructions. Use consistent terms and explicit requirements. In this specification, **must** indicates a requirement. Implementation defaults below resolve routine details within the agreed scope.
 
@@ -44,7 +44,7 @@ Use a Cargo workspace with shared libraries and separate desktop and CLI executa
 | daw-output | CPAL stream, device conversion, callback integration | Desktop device output only |
 | daw-ui | Shared panel foundation, controls, timeline, application presentation | Uses shared application commands and state |
 | daw-desktop | Desktop entry point and application coordination | Composes UI, output, and shared services |
-| daw-cli | Validation and offline export entry point | Uses shared services; excludes desktop dependencies |
+| daw-cli | Track inspection, validation and offline export entry point | Uses shared services; excludes desktop dependencies |
 
 A PCM asset contains decoded pulse-code modulation samples. Asset identity must remain separate from its source path and sample storage. Clips reference an asset ID and a range; editing must not copy the underlying samples.
 
@@ -345,6 +345,7 @@ Warn before export when sources are missing, but proceed using silence. Warn whe
 The executable name daw-cli is an internal working name:
 
 ```text
+daw-cli tracks [<track-name>] [--project <folder>]
 daw-cli validate --project <folder>
 daw-cli render --project <folder> --output <file.wav|file.mp3|file.aac> [--overwrite]
   [--format wav|mp3|aac] [--codec pcm16|pcm24|float32] [--bitrate 128|192|256|320]
@@ -353,12 +354,17 @@ daw-cli render --project <folder> --output <file.wav|file.mp3|file.aac> [--overw
 | Condition | CLI behavior |
 | --- | --- |
 | Valid project | validate returns 0. |
+| Track inspection | Return 0, including an empty list. Unknown track name returns 1. |
 | Missing sources or source shortened | Report warnings to standard error; validation and completed export return 0. |
 | Invalid manifest, unsupported audio, or processing failure | Report an error to standard error and return 1. |
 | Invalid command arguments | Return 2. |
 | Output already exists | Fail unless --overwrite is present. Desktop export requires an overwrite confirmation instead. |
 
 Infer format from the output extension when `--format` is absent. Reject a known extension that conflicts with the format. `--codec` applies to WAV; `--bitrate` applies to MP3 and AAC.
+
+`tracks` defaults to the current directory. List every saved audio, MIDI and group track in project order, including collapsed descendants. Master is not a track. An optional exact, case-sensitive name returns all matches in that order, with stable IDs. Quote/escape names for safe terminal output. Report saved mixer settings, hierarchy, clip/effect counts, instrument layer counts, and clip IDs/asset IDs/frame ranges and seconds; clip ends remain exclusive. These settings do not compute effective audibility.
+
+Metadata inspection belongs in the shared project crate. Reuse the validated manifest loader and in-memory legacy stretch revision normalization used by session opening. Do not decode media, prepare buffers, rewrite manifests or initialize devices for `tracks`. Missing/damaged media must not prevent metadata inspection; malformed/invalid manifests fail. Retain full media checks in `validate` and `render`. Consolidate user command documentation under `docs/cli/`.
 
 Validation must inspect the manifest and referenced audio, not only JSON syntax. Headless commands must not initialize graphics, dialogs, or audio devices. CLI output must identify missing sources and affected clips. Never overwrite a source file or project manifest as an export destination.
 

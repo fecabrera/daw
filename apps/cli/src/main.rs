@@ -1,3 +1,4 @@
+mod tracks;
 use clap::{Parser, Subcommand};
 use daw_media::{ExportFormat, ExportSettings, Mp3Bitrate, WavCodec};
 use std::path::PathBuf;
@@ -5,7 +6,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Validate DAW projects and render stereo WAV, MP3 or AAC without graphics or audio devices"
+    about = "Inspect tracks, validate projects and render stereo WAV, MP3 or AAC without graphics or audio devices"
 )]
 struct Args {
     #[command(subcommand)]
@@ -13,6 +14,14 @@ struct Args {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// List saved tracks or show every exact name match without loading audio.
+    Tracks {
+        /// Project folder; defaults to the current directory.
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+        /// Exact, case-sensitive track name. Quote names containing spaces.
+        track_name: Option<String>,
+    },
     Validate {
         #[arg(long)]
         project: PathBuf,
@@ -38,6 +47,19 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let result = match Args::parse().command {
+        Command::Tracks {
+            project,
+            track_name,
+        } => daw_project::inspect_project(&project)
+            .and_then(|project| tracks::describe(&project, track_name.as_deref()))
+            .and_then(|text| {
+                use std::io::Write;
+                match std::io::stdout().lock().write_all(text.as_bytes()) {
+                    Ok(()) => Ok(()),
+                    Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+                    Err(error) => Err(daw_project::Error(format!("Cannot write tracks: {error}"))),
+                }
+            }),
         Command::Validate { project } => daw_project::Session::open(&project).map(|session| {
             for warning in &session.warnings {
                 eprintln!("Warning: {warning}");
@@ -149,6 +171,34 @@ fn export_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tracks_accepts_optional_name_and_project_folder() {
+        let Command::Tracks {
+            project,
+            track_name,
+        } = Args::try_parse_from(["daw-cli", "tracks"]).unwrap().command
+        else {
+            panic!("tracks command");
+        };
+        assert_eq!(project, PathBuf::from("."));
+        assert_eq!(track_name, None);
+        for arguments in [
+            vec!["daw-cli", "tracks", "Bass synth", "--project", "song"],
+            vec!["daw-cli", "tracks", "--project", "song", "Bass synth"],
+        ] {
+            let Command::Tracks {
+                project,
+                track_name,
+            } = Args::try_parse_from(arguments).unwrap().command
+            else {
+                panic!("tracks command");
+            };
+            assert_eq!(project, PathBuf::from("song"));
+            assert_eq!(track_name.as_deref(), Some("Bass synth"));
+        }
+        assert!(Args::try_parse_from(["daw-cli", "tracks", "Bass", "Synth"]).is_err());
+    }
+
     #[test]
     fn export_arguments_use_matching_formats_and_reject_incompatible_options() {
         assert_eq!(

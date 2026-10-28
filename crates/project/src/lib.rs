@@ -8,6 +8,8 @@ pub use daw_separation::{
     validate_model as validate_separation_model,
 };
 pub use separation::{PreparedSeparation, SeparationModels, SeparationProgress};
+mod inspection;
+pub use inspection::inspect_project;
 mod history;
 pub use history::{HistoryMemory, SessionHistory};
 mod clip_audio;
@@ -169,17 +171,7 @@ impl Session {
     }
     pub fn open(folder: &Path) -> Result<Self> {
         let folder = absolute(folder)?;
-        let content = fs::read(folder.join("project.json")).map_err(error)?;
-        let mut project: Project = serde_json::from_slice(&content).map_err(error)?;
-        // Revisions 2 and 3 have an explicit one-way upgrade. Rebuild all preparation from
-        // originals below; never label old prepared samples with the new identity.
-        let upgraded_stretch = project.stretch_engine.id == daw_core::StretchEngineId::Integrated
-            && matches!(project.stretch_engine.revision, 2 | 3);
-        let previous_stretch_revision = project.stretch_engine.revision;
-        if upgraded_stretch {
-            project.stretch_engine = daw_core::StretchEngine::INTEGRATED;
-        }
-        project.validate().map_err(error)?;
+        let (project, previous_stretch_revision) = inspection::load_manifest(&folder)?;
         let mut session = Self {
             project,
             audio: HashMap::new(),
@@ -187,7 +179,7 @@ impl Session {
             stretched_audio: HashMap::new(),
             folder: Some(folder),
             temporary_stems: Vec::new(),
-            warnings: if upgraded_stretch {
+            warnings: if let Some(previous_stretch_revision) = previous_stretch_revision {
                 vec![format!(
                     "Integrated time stretch upgraded from revision {previous_stretch_revision} to {}; prepared audio rebuilt. The sound can change. Save to retain the new revision.",
                     daw_core::StretchEngine::INTEGRATED.revision

@@ -102,24 +102,7 @@ Progress and completion appear in the status dialog. An existing destination req
 
 ## Command line
 
-Validate or export without opening a window or audio device. Run these commands from the repository root after building the CLI:
-
-```sh
-cargo run -p daw-cli -- validate --project examples/demo
-cargo run -p daw-cli -- render --project examples/demo --output /tmp/daw-export.wav
-```
-
-Export AAC from the CLI with:
-
-```sh
-cargo run -p daw-cli -- render --project examples/demo --output /tmp/daw-export.aac --bitrate 192
-```
-
-The `.aac` extension selects AAC, or use `--format aac`. `--bitrate` applies to
-MP3 and AAC; `--codec` applies only to WAV. AAC export requires `.aac` rather
-than `.m4a` or `.mp4`.
-
-Choose your own output path. An existing file needs the explicit `--overwrite` option. The CLI reports warnings and export errors in the terminal. See the main [README](../../README.md#build-and-run) for setup.
+Use the [CLI guide](../cli/README.md) to inspect tracks, validate projects and export a mix without opening the desktop app.
 
 ## Stem-separation models
 

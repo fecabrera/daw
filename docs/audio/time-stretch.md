@@ -44,15 +44,4 @@ Audio clips support constant transpose in Clip settings. Live pitch automation i
 
 Preparation time and memory use depend on the original recording's length, including when a clip uses only a trimmed part of it. Matching clip requests share prepared audio.
 
-A separate command-line comparison tool can process WAV files with the Integrated engine and Rubber Band reference engines. See its [tool guide](../../crates/timestretch-cli/README.md) for commands and reports.
-
-## Offline pitch changes in the standalone tool
-
-The separate tool can raise or lower a WAV file's pitch while retaining its duration. Add `--pitch-semitones` to `process` or `compare`. Positive values raise pitch; negative values lower it. Values from −127 to +127 are supported, including fractional semitones.
-
-```sh
-timestretch process --input input.wav --engine timestretch --ratio 1 \
-  --pitch-semitones -12 --output lower.wav --report lower.json
-```
-
-Use `--ratio` to change duration at the same time. A pitch offset of 0 keeps the existing pitch-preserving behavior. Pitch changes are experimental and do not preserve vocal formants. Strong upward shifts can reduce high-frequency content. The tool writes a separate output file and retains the original recording. Timeline provides constant audio transpose in Clip settings. Sampler uses MIDI notes relative to its root note to choose pitch within the same range.
+Use the separate [command-line tool](../cli/timestretch.md) to compare engines or change the duration and pitch of a WAV file.
