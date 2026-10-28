@@ -22,6 +22,8 @@ Use Up/Down to move through visible folders and components. On a folder, Enter h
 
 ## Layers
 
+With an audio track, group, Master, or no track selected, the Layers panel remains visible. Its Add layer button is disabled, and the empty layer area shows **Select a MIDI track**. Select a MIDI track to show its instrument layers and enable the button.
+
 A new MIDI instrument starts with one empty layer. Add a source before expecting sound. A layer can contain one of Oscillator, Sampler, or Granulizer. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a layer.
 
 Layers show a waveform icon before their names. Output uses a merge icon with its arrow pointing right. Click a regular layer header to select it. Shift-click toggles layers in the selection. Each selected layer has an outline. Output is selected separately and stays pinned at the bottom.

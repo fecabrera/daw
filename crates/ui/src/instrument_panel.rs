@@ -158,6 +158,50 @@ impl DawUi {
         true
     }
 
+    fn layers_header(
+        &mut self,
+        ui: &mut egui::Ui,
+        panel: &panels::ControlPanel,
+        enabled: bool,
+    ) -> egui::InnerResponse<egui::Response> {
+        let header = panel.header(ui, "Layers", |ui| {
+            icons::button(
+                ui,
+                icons::Lucide::Plus,
+                "Add layer",
+                enabled && self.component_drag.is_none(),
+                theme::palette(ui.ctx()).text,
+            )
+        });
+        #[cfg(test)]
+        {
+            self.midi_editor.instrument_header_bounds = header.response.rect;
+            self.midi_editor.add_layer_bounds = header.inner.rect;
+        }
+        header
+    }
+
+    fn empty_instrument_panel(&mut self, ui: &mut egui::Ui, message: &str) {
+        let panel = panels::ControlPanel::begin(ui, ui.max_rect());
+        ui.spacing_mut().item_spacing.y = -1.0;
+        let header = self.layers_header(ui, &panel, false);
+        panel.padded_body(ui, |ui| {
+            rows::centered(ui, panels::ControlPanel::content_row_height(ui), |ui| {
+                ui.label(
+                    egui::RichText::new(message)
+                        .text_style(egui::TextStyle::Small)
+                        .color(theme::palette(ui.ctx()).secondary),
+                );
+            });
+        });
+        panel.finish(ui);
+        ui.painter().hline(
+            ui.max_rect().x_range(),
+            header.response.rect.bottom() - 0.5,
+            Stroke::new(1.0, theme::palette(ui.ctx()).border),
+        );
+    }
+
     pub(super) fn instrument_view(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.y = 0.0;
         self.activate_component_drag(ui);
@@ -169,7 +213,10 @@ impl DawUi {
         self.instrument_ui.inline_power_actions.clear();
         self.instrument_ui.component_viewports.clear();
         #[cfg(test)]
-        self.instrument_ui.component_bounds.clear();
+        {
+            self.instrument_ui.component_bounds.clear();
+            self.midi_editor.layer_bounds.clear();
+        }
         let Some(track) = self
             .session
             .project
@@ -178,21 +225,17 @@ impl DawUi {
             .find(|t| Some(t.id) == self.selected_track)
             .cloned()
         else {
-            ui.label("Select a MIDI track to configure its instrument.");
+            self.empty_instrument_panel(ui, "Select a MIDI track");
             return;
         };
         if track.kind != TrackKind::Midi {
-            ui.label("Select a MIDI track to configure its instrument.");
+            self.empty_instrument_panel(ui, "Select a MIDI track");
             return;
         }
         let Some(mut settings) = track.instrument.clone() else {
-            ui.label("No instrument assigned");
+            self.empty_instrument_panel(ui, "No instrument assigned");
             return;
         };
-        #[cfg(test)]
-        {
-            self.midi_editor.layer_bounds.clear();
-        }
         if self.instrument_ui.track != Some(track.id) {
             self.instrument_ui.cancel();
             self.instrument_ui.track = Some(track.id);
@@ -248,43 +291,26 @@ impl DawUi {
         let column_bounds = ui.max_rect();
         let control_panel = panels::ControlPanel::begin(ui, column_bounds);
         ui.spacing_mut().item_spacing.y = -1.0;
-        let header = control_panel.header(ui, "Layers", |ui| {
-            let add = icons::button(
-                ui,
-                icons::Lucide::Plus,
-                "Add layer",
-                self.component_drag.is_none(),
-                theme::palette(ui.ctx()).text,
-            );
-            #[cfg(test)]
-            {
-                self.midi_editor.add_layer_bounds = add.rect;
-            }
-            if add.clicked() {
-                let mut layer = InstrumentLayerSettings::default();
-                let mut number = 1;
-                loop {
-                    layer.name = format!("Layer {number}");
-                    if !settings
-                        .layers
-                        .iter()
-                        .any(|existing| existing.name == layer.name)
-                    {
-                        break;
-                    }
-                    number += 1;
+        let header = self.layers_header(ui, &control_panel, true);
+        if header.inner.clicked() {
+            let mut layer = InstrumentLayerSettings::default();
+            let mut number = 1;
+            loop {
+                layer.name = format!("Layer {number}");
+                if !settings
+                    .layers
+                    .iter()
+                    .any(|existing| existing.name == layer.name)
+                {
+                    break;
                 }
-                self.instrument_ui.select_layer(layer.id);
-                self.instrument_ui.track_effects_target = false;
-                settings.layers.push(layer);
+                number += 1;
             }
-            add.rect.width()
-        });
-        #[cfg(test)]
-        {
-            self.midi_editor.instrument_header_bounds = header.response.rect;
+            self.instrument_ui.select_layer(layer.id);
+            self.instrument_ui.track_effects_target = false;
+            settings.layers.push(layer);
         }
-        let layer_action_width = header.inner;
+        let layer_action_width = header.inner.rect.width();
         // Reserve Main outside the vertical scrolling region.
         let main_label_height = panels::unit_height(settings.main.collapsed);
         let main_height = main_label_height.min(ui.available_height());

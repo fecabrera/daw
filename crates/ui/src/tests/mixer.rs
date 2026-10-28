@@ -1202,10 +1202,7 @@ fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
                 .iter()
                 .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == name))
         };
-        assert!(has(
-            &shapes,
-            "Select a MIDI track to configure its instrument."
-        ));
+        assert!(has(&shapes, "Select a MIDI track"));
         assert!(!has(&shapes, "Add source"));
         let point = label_point(&mut app, &ctx, "Select MIDI track", None);
         click(&mut app, &ctx, point);
@@ -1244,6 +1241,128 @@ fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
 }
 
 #[test]
+fn instrument_empty_states_keep_the_layers_panel_and_disable_add_until_midi_selection() {
+    for color_theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
+        for target in ["audio", "none", "master"] {
+            let (mut app, audio) = fixture();
+            let midi = app.session.project.add_midi_track().unwrap();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.select_track(midi, false);
+            app.set_view_mode(ViewMode::Instrument, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            let header = app.midi_editor.instrument_header_bounds;
+            let add = app.midi_editor.add_layer_bounds;
+            assert!(!app.midi_editor.layer_bounds.is_empty());
+            match target {
+                "audio" => app.select_track(audio, false),
+                "master" => app.select_master(),
+                _ => {
+                    app.selected_track = None;
+                    app.selected_tracks.clear();
+                }
+            }
+            let before = app.session.project.clone();
+            let selected_clip = app.selected_clip;
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            assert_eq!(app.midi_editor.instrument_header_bounds, header);
+            assert_eq!(app.midi_editor.add_layer_bounds, add);
+            assert!(app.midi_editor.layer_bounds.is_empty());
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Text(t) if t.galley.text() == "Layers")));
+            let text = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(t) if t.galley.text() == "Select a MIDI track" => Some(t),
+                    _ => None,
+                })
+                .expect("empty layer message");
+            let bounds = text.galley.rect.translate(text.pos.to_vec2());
+            assert!(bounds.left() >= header.left() + f32::from(theme::TOOLBAR_PADDING));
+            assert!(bounds.right() < header.right());
+            assert!(bounds.top() >= header.bottom());
+            assert!(
+                text.galley
+                    .job
+                    .sections
+                    .iter()
+                    .all(
+                        |section| section.format.color == theme::palette(&ctx).secondary
+                            && section.format.font_id.size
+                                == egui::TextStyle::Small.resolve(&ctx.global_style()).size
+                    )
+            );
+            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Rect(rect) if rect.fill == theme::palette(&ctx).panel
+                    && rect.rect.left() == header.left() && rect.rect.width() == TRACK_WIDTH
+                    && rect.rect.contains(bounds.center()) && rect.rect.height() > header.height())));
+            for _ in 0..2 {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(add.center()),
+                        button(add.center(), true),
+                    ],
+                );
+                frame(&mut app, &ctx, vec![button(add.center(), false)]);
+            }
+            assert_eq!(app.session.project, before);
+            assert_eq!(app.selected_clip, selected_clip);
+            assert!(!app.dirty);
+            app.select_track(midi, false);
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.midi_editor.layer_bounds.is_empty());
+            let count = app.session.project.tracks[1]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers
+                .len();
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::PointerMoved(add.center()),
+                    button(add.center(), true),
+                ],
+            );
+            assert_eq!(
+                app.session.project.tracks[1]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .layers
+                    .len(),
+                count
+            );
+            frame(&mut app, &ctx, vec![button(add.center(), false)]);
+            assert_eq!(
+                app.session.project.tracks[1]
+                    .instrument
+                    .as_ref()
+                    .unwrap()
+                    .layers
+                    .len(),
+                count + 1
+            );
+            assert_eq!(app.session.project.tracks[0], before.tracks[0]);
+            assert!(app.dirty);
+        }
+    }
+}
+
+#[test]
 fn available_views_and_empty_states_keep_effects_in_timeline_and_instrument() {
     assert_eq!(
         ViewMode::ALL.map(ViewMode::label),
@@ -1263,7 +1382,7 @@ fn available_views_and_empty_states_keep_effects_in_timeline_and_instrument() {
                 shapes
                     .iter()
                     .any(|s| matches!(&s.shape, egui::Shape::Text(t)
-                if t.galley.text() == "Select a MIDI track to configure its instrument."))
+                if t.galley.text() == "Select a MIDI track"))
             );
         }
         assert!(!app.dirty);

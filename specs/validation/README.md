@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Instrument empty Layers panel — 2026-10-28
+
+Instrument now retains the standard Layers control panel for audio tracks, groups, Master and no selection. A shared header renderer draws the Layers heading and disabled Add layer button. Select a MIDI track appears as Small secondary text in the padded layer area, with the normal panel background/right divider and workspace header divider. A MIDI track without instrument settings keeps the same shell with No instrument assigned. Valid MIDI selection restores the layer/Output rows and enabled, release-only addition. Empty-state rendering creates no instrument settings and leaves the project and clip selection unchanged.
+
+All 669 UI tests pass. The new regression switches from MIDI to audio/no-track/Master in Dark, Light and Mist, checks matching normal/empty header and button geometry, panel fill, message placement/style, cleared stale layer bounds, inert disabled clicks, unchanged project/clip selection, and restored MIDI addition on release. Existing scope/empty-view tests use the shorter message. Formatting, strict workspace/all-target Clippy, whitespace and local documentation link checks pass. The macOS debug app rebuild passes. The full workspace run passes: 1743 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. Logs use `work/instrument-empty-panel-*`. Native pointer checks and Windows/Linux execution were not run.
+
 ## Centered mixer header groups — 2026-10-27
 
 Mixer now centers the icon and visible name together for audio, MIDI, groups and Master. The renderer measures the truncated label with the same font/wrap policy as the name control and inserts leading space for the whole group. The 16-point artwork, 4-point icon-to-label gap, vertical padding and contrasting colors remain. Long labels stay on one line inside the strip; Timeline retains its existing left-aligned geometry. This supersedes the fixed left inset in the previous mixer-header entry.
