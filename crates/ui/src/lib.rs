@@ -3160,25 +3160,6 @@ impl DawUi {
                         self.master_gain_input =
                             faders::format_gain(self.session.project.master.gain_db);
                     }
-                    let gain = numeric_input(ui, &mut self.master_gain_input, "Gain (dB)");
-                    let cancel = (gain.has_focus() || gain.lost_focus())
-                        && ui.input(|i| i.key_pressed(egui::Key::Escape));
-                    if cancel {
-                        self.master_gain_input =
-                            faders::format_gain(self.session.project.master.gain_db);
-                        gain.surrender_focus();
-                    } else if gain.lost_focus()
-                        || (gain.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
-                    {
-                        match faders::parse_gain(&self.master_gain_input) {
-                            Some(value) => {
-                                self.session.project.master.gain_db = faders::clamp_gain(value);
-                            }
-                            _ => self.fail("Gain must be a finite number or −∞"),
-                        }
-                        self.master_gain_input =
-                            faders::format_gain(self.session.project.master.gain_db);
-                    }
                     if self.session.project.master.gain_db != previous {
                         self.changed();
                     }
@@ -4039,7 +4020,7 @@ impl DawUi {
                                                     |ui| self.track_name(ui, &track),
                                                 );
                                                 let [mute_button, solo_button] =
-                                                    mix_controls::mute_solo(
+                                                    mix_controls::second_row_mute_solo(
                                                         ui,
                                                         &mut mute,
                                                         &mut solo,
@@ -4047,6 +4028,7 @@ impl DawUi {
                                                             "Mute (M toggles selected tracks)",
                                                             "Solo (S toggles selected tracks)",
                                                         ],
+                                                        0.0,
                                                     );
                                                 [
                                                     name.response.rect,
@@ -4072,19 +4054,9 @@ impl DawUi {
                                         {
                                             self.select_track_clips(track.id);
                                         }
-                                        let inputs =
-                                            self.inputs.entry(track.id).or_insert_with(|| Inputs {
-                                                gain: faders::format_gain(track.gain_db),
-                                                pan: format!("{:.2}", track.pan),
-                                            });
                                         let mut gain = track.gain_db;
                                         let mut pan = track.pan;
-                                        let controls =
-                                            mix_controls::gain_pan(ui, &mut gain, &mut pan, inputs);
-                                        let input_error = controls.error;
-                                        if let Some(e) = input_error {
-                                            self.fail(e);
-                                        }
+                                        mix_controls::gain_pan(ui, &mut gain, &mut pan);
                                         let updated = gain != track.gain_db
                                             || pan != track.pan
                                             || mute != track.muted
@@ -7901,8 +7873,8 @@ mod tests {
                     .unwrap();
                 assert_eq!(rect.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
             }
-            assert!((mute.y - name.y).abs() < 1.0);
-            assert!((solo.y - name.y).abs() < 1.0);
+            assert!((mute.y - (lane.top() + 47.0)).abs() < 1.0);
+            assert!((solo.y - mute.y).abs() < 1.0);
             assert!(name.x < mute.x && mute.x < solo.x);
             assert!((solo.x - (lane.left() - TRACK_WIDTH + 206.0)).abs() < 1.0);
             let header = Pos2::new(lane.left() - TRACK_WIDTH + 18.0, lane.top() + 18.0);
@@ -8246,12 +8218,10 @@ mod tests {
             ("bottom padding", Vec2::new(30.0, 66.0)),
             ("between rows", Vec2::new(60.0, 31.0)),
             ("name", Vec2::new(110.0, 18.0)),
-            ("mute", Vec2::new(178.0, 18.0)),
-            ("solo", Vec2::new(206.0, 18.0)),
+            ("mute", Vec2::new(178.0, 47.0)),
+            ("solo", Vec2::new(206.0, 47.0)),
             ("gain knob", Vec2::new(21.0, 47.0)),
-            ("gain input", Vec2::new(56.0, 47.0)),
-            ("pan knob", Vec2::new(93.0, 47.0)),
-            ("pan input", Vec2::new(129.0, 47.0)),
+            ("pan knob", Vec2::new(53.0, 47.0)),
             ("left meter", Vec2::new(226.0, 20.0)),
             ("right meter", Vec2::new(238.0, 20.0)),
         ] {
@@ -8528,44 +8498,6 @@ mod tests {
                 assert!(app.error.is_none());
             }
         }
-    }
-    #[test]
-    fn master_numeric_gain_commits_clamps_and_cancels() {
-        let mut app = DawUi::default();
-        let ctx = context();
-        frame(&mut app, &ctx, vec![]);
-        let input = app.master_bounds.min + Vec2::new(55.0, 47.0);
-        let key = |key| egui::Event::Key {
-            key,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: Default::default(),
-        };
-        for (text, action, expected) in [
-            ("-6.0", egui::Key::Enter, -6.0),
-            ("-3.0", egui::Key::Escape, -6.0),
-            ("-inf", egui::Key::Enter, daw_core::SILENT_GAIN_DB),
-            ("-4.0", egui::Key::Escape, daw_core::SILENT_GAIN_DB),
-            ("-4.0", egui::Key::Enter, -4.0),
-            ("99", egui::Key::Enter, 12.0),
-            ("NaN", egui::Key::Enter, 12.0),
-        ] {
-            frame(
-                &mut app,
-                &ctx,
-                vec![egui::Event::PointerMoved(input), button(input, true)],
-            );
-            frame(&mut app, &ctx, vec![button(input, false)]);
-            app.master_gain_input = text.into();
-            frame(&mut app, &ctx, vec![key(action)]);
-            assert_eq!(app.session.project.master.gain_db, expected);
-            assert_eq!(app.master_gain_input, faders::format_gain(expected));
-        }
-        assert!(app.error.is_some());
-        app.pending = Some(Action::CloseProject);
-        app.perform_pending();
-        assert_eq!(app.master_gain_input, "0.0");
     }
     fn frame(app: &mut DawUi, ctx: &egui::Context, events: Vec<egui::Event>) {
         frame_sized(app, ctx, events, Vec2::new(1280.0, 800.0));

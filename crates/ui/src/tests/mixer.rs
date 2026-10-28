@@ -1070,6 +1070,13 @@ fn fader_scales_fit_the_strips_and_silence_survives_view_changes() {
                     && (points[1].x - points[0].x).abs() <= 8.0
             )));
         }
+        assert_eq!(
+            app.session.project.tracks[0].gain_db,
+            daw_core::SILENT_GAIN_DB
+        );
+        assert_eq!(app.session.project.master.gain_db, daw_core::SILENT_GAIN_DB);
+        app.set_view_mode(ViewMode::Mixer, &ctx);
+        frame(&mut app, &ctx, vec![]);
         assert_eq!(app.inputs[&track].gain, "−∞");
         assert_eq!(app.master_gain_input, "−∞");
         assert!(app.error.is_none());

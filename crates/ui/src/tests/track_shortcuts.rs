@@ -416,7 +416,6 @@ fn track_keys_do_not_change_the_project_during_text_editing_or_blocked_interacti
     for blocked in [
         "name",
         "tempo",
-        "gain",
         "job",
         "error",
         "settings",
@@ -445,16 +444,6 @@ fn track_keys_do_not_change_the_project_during_text_editing_or_blocked_interacti
                     width: 60.0,
                     focus: true,
                 })
-            }
-            "gain" => {
-                let point = panel(&app, tracks[0]).min + Vec2::new(56.0, 47.0);
-                frame(
-                    &mut app,
-                    &ctx,
-                    vec![egui::Event::PointerMoved(point), button(point, true)],
-                );
-                frame(&mut app, &ctx, vec![button(point, false)]);
-                assert!(ctx.egui_wants_keyboard_input());
             }
             "job" => {
                 let (tx, rx) = mpsc::channel();

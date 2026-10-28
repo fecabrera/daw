@@ -8,7 +8,7 @@ pub(super) struct MainBounds {
     pub label: Rect,
     pub icon: Rect,
     pub name: Rect,
-    pub mix: [Rect; 4],
+    pub mix: [Rect; 2],
     pub collapse: Rect,
     pub envelopes: Vec<Rect>,
     pub lfos: Vec<Rect>,
@@ -21,7 +21,7 @@ impl Default for MainBounds {
             label: Rect::NOTHING,
             icon: Rect::NOTHING,
             name: Rect::NOTHING,
-            mix: [Rect::NOTHING; 4],
+            mix: [Rect::NOTHING; 2],
             collapse: Rect::NOTHING,
             envelopes: Vec::new(),
             lfos: Vec::new(),
@@ -130,19 +130,8 @@ impl DawUi {
                     bus.collapsed = !compact;
                     ui.ctx().request_repaint();
                 }
-                let inputs = self
-                    .instrument_ui
-                    .inputs
-                    .entry(bus.id)
-                    .or_insert_with(|| Inputs {
-                        gain: faders::format_gain(bus.gain_db),
-                        pan: format!("{:.2}", bus.pan),
-                    });
-                let mixing =
-                    mix_controls::gain_pan(&mut header, &mut bus.gain_db, &mut bus.pan, inputs);
-                if let Some(error) = mixing.error {
-                    self.fail(error);
-                }
+                let mixing = mix_controls::gain_pan(&mut header, &mut bus.gain_db, &mut bus.pan);
+                #[cfg(not(test))] let _ = mixing;
                 response.widget_info(|| {
                     egui::WidgetInfo::selected(
                         egui::WidgetType::Button,

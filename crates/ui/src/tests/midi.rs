@@ -929,9 +929,11 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
             app.session.project.tracks[0].soloed,
         );
         let bounds = &app.midi_editor.layer_bounds[&first];
-        let [mute, solo, gain, gain_input, pan, pan_input] = bounds.mix_controls;
+        let [mute, solo, gain, pan] = bounds.mix_controls;
         assert_eq!(mute.size(), Vec2::splat(toolbars::CONTROL_HEIGHT));
         assert_eq!(solo.size(), mute.size());
+        assert_eq!(mute.center().y, gain.center().y);
+        assert_eq!(solo.center().y, pan.center().y);
         assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
         assert_eq!(bounds.collapse.left() - solo.right(), 6.0);
         assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
@@ -944,11 +946,7 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
         assert_eq!(pan.size(), gain.size());
         assert_eq!(gain.center(), bounds.label.min + Vec2::new(21.0, 47.0));
-        assert_eq!(pan.center(), bounds.label.min + Vec2::new(93.0, 47.0));
-        assert_eq!(gain_input.width(), NUMERIC_WIDTH);
-        assert_eq!(pan_input.width(), NUMERIC_WIDTH);
-        assert_eq!(gain_input.left(), bounds.label.left() + 39.0);
-        assert_eq!(pan_input.left(), bounds.label.left() + 111.0);
+        assert_eq!(pan.center(), bounds.label.min + Vec2::new(53.0, 47.0));
         let point = mute.center();
         app.dirty = false;
         frame(
@@ -1006,48 +1004,6 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
                 .pan
                 > 0.0
         );
-        for (input, text, key, expected) in [
-            (gain_input, "-6.0", egui::Key::Enter, -6.0),
-            (gain_input, "-3.0", egui::Key::Escape, -6.0),
-            (
-                gain_input,
-                "-inf",
-                egui::Key::Enter,
-                daw_core::SILENT_GAIN_DB,
-            ),
-            (pan_input, "-0.75", egui::Key::Enter, -0.75),
-            (pan_input, "0.9", egui::Key::Escape, -0.75),
-        ] {
-            click_note_or_lane(&mut app, &ctx, input.center());
-            frame(
-                &mut app,
-                &ctx,
-                vec![egui::Event::Key {
-                    key: egui::Key::A,
-                    physical_key: None,
-                    pressed: true,
-                    repeat: false,
-                    modifiers: egui::Modifiers::COMMAND,
-                }],
-            );
-            frame(&mut app, &ctx, vec![egui::Event::Text(text.into())]);
-            app.dirty = false;
-            frame(&mut app, &ctx, vec![layer_key(key)]);
-            let layer = &app.session.project.tracks[0]
-                .instrument
-                .as_ref()
-                .unwrap()
-                .layers[0];
-            assert_eq!(
-                if input == gain_input {
-                    layer.gain_db
-                } else {
-                    layer.pan
-                },
-                expected
-            );
-            assert_eq!(app.dirty, key == egui::Key::Enter);
-        }
         let track = &app.session.project.tracks[0];
         assert_eq!(track.instrument.as_ref().unwrap().layers[1], original_peer);
         assert_eq!(
@@ -1055,32 +1011,6 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
             original_track
         );
         assert!(app.error.is_none());
-        click_note_or_lane(&mut app, &ctx, pan_input.center());
-        frame(
-            &mut app,
-            &ctx,
-            vec![egui::Event::Key {
-                key: egui::Key::A,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: egui::Modifiers::COMMAND,
-            }],
-        );
-        frame(&mut app, &ctx, vec![egui::Event::Text("1.01".into())]);
-        app.dirty = false;
-        frame(&mut app, &ctx, vec![layer_key(egui::Key::Enter)]);
-        assert_eq!(
-            app.session.project.tracks[0]
-                .instrument
-                .as_ref()
-                .unwrap()
-                .layers[0]
-                .pan,
-            -0.75
-        );
-        assert!(!app.dirty);
-        assert!(app.error.is_some());
     }
 }
 
@@ -1732,13 +1662,13 @@ fn layer_copy_modifier_can_be_released_and_invalid_drops_do_not_copy() {
 
 #[test]
 fn layer_control_and_name_editor_drags_do_not_reorder_layers() {
-    for control in 0..8 {
+    for control in 0..6 {
         let (mut app, ctx, layers) = layer_header_fixture();
         let id = layers[0].id;
-        let start = if control == 6 {
+        let start = if control == 4 {
             begin_layer_rename(&mut app, &ctx, id);
             app.midi_editor.layer_bounds[&id].name.center()
-        } else if control == 7 {
+        } else if control == 5 {
             app.midi_editor.layer_bounds[&id].collapse.center()
         } else {
             app.midi_editor.layer_bounds[&id].mix_controls[control].center()
@@ -1765,10 +1695,10 @@ fn layer_control_and_name_editor_drags_do_not_reorder_layers() {
         assert_eq!(current[1..], layers[1..]);
         if control == 2 {
             assert!(current[0].gain_db > layers[0].gain_db);
-        } else if control == 4 {
+        } else if control == 3 {
             assert!(current[0].pan > layers[0].pan);
         }
-        if control == 6 {
+        if control == 4 {
             assert!(app.instrument_ui.editing_name());
             frame(&mut app, &ctx, vec![layer_key(egui::Key::Escape)]);
         }
@@ -6906,7 +6836,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
             .collect();
         for layer in &layers {
             let bounds = &app.midi_editor.layer_bounds[&layer.id];
-            assert_eq!(bounds.collapse.left() - bounds.mix_controls[1].right(), 6.0);
+            assert_eq!(bounds.collapse.right(), bounds.mix_controls[1].right());
             assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
             assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
             assert!(bounds.label.contains_rect(bounds.collapse));
@@ -6960,7 +6890,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
                 bounds.collapse.width(),
                 app.midi_editor.add_layer_bounds.width()
             );
-            assert_eq!(bounds.collapse.left() - bounds.mix_controls[1].right(), 6.0);
+            assert_eq!(bounds.collapse.right(), bounds.mix_controls[1].right());
             assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
             assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
             assert!(bounds.label.contains_rect(bounds.collapse));

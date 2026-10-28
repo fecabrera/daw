@@ -22,7 +22,6 @@ pub(super) struct InstrumentUi {
     name_edit: Option<LayerNameEdit>,
     pub(super) macro_name_edit: Option<crate::macro_panel::NameEdit>,
     drag: Option<LayerDrag>,
-    pub(super) inputs: HashMap<Id, Inputs>,
     pub(super) oscillator_slots: Vec<(Id, Id, Rect)>,
     pub(super) samplers: Vec<crate::sampler_panel::Bounds>,
     pub(super) component_slots: Vec<(Id, daw_core::InstrumentComponent, Rect)>,
@@ -84,7 +83,6 @@ impl InstrumentUi {
         self.name_edit = None;
         self.macro_name_edit = None;
         self.drag = None;
-        self.inputs.clear();
         self.samplers.clear();
     }
     pub(super) fn dragging(&self) -> bool {
@@ -105,7 +103,7 @@ pub(crate) struct LayerUiBounds {
     pub label: Rect,
     pub icon: Rect,
     pub name: Rect,
-    pub mix_controls: [Rect; 6],
+    pub mix_controls: [Rect; 4],
     pub collapse: Rect,
     pub oscillator_panel: Rect,
     pub oscillator_header: Rect,
@@ -254,9 +252,6 @@ impl DawUi {
         {
             self.instrument_ui.name_edit = None;
         }
-        self.instrument_ui.inputs.retain(|id, _| {
-            *id == settings.main.id || settings.layers.iter().any(|layer| layer.id == *id)
-        });
         if self
             .instrument_ui
             .macro_name_edit
@@ -407,7 +402,7 @@ impl DawUi {
                                                     .inner;
                                                 let toggles = ui
                                                     .add_enabled_ui(mixing_enabled, |ui| {
-                                                        mix_controls::mute_solo(
+                                                        mix_controls::second_row_mute_solo(
                                                             ui,
                                                             &mut layer.muted,
                                                             &mut layer.soloed,
@@ -415,6 +410,7 @@ impl DawUi {
                                                                 "Mute layer",
                                                                 "Solo layer within this instrument",
                                                             ],
+                                                            layer_action_width + ui.spacing().item_spacing.x,
                                                         )
                                                     })
                                                     .inner;
@@ -448,35 +444,21 @@ impl DawUi {
                                             layer.collapsed = !compact;
                                             ui.ctx().request_repaint();
                                         }
-                                        let inputs = self
-                                            .instrument_ui
-                                            .inputs
-                                            .entry(layer.id)
-                                            .or_insert_with(|| Inputs {
-                                                gain: faders::format_gain(layer.gain_db),
-                                                pan: format!("{:.2}", layer.pan),
-                                            });
                                         let mixing = header_ui
                                             .add_enabled_ui(mixing_enabled, |ui| {
                                                 mix_controls::gain_pan(
                                                     ui,
                                                     &mut layer.gain_db,
                                                     &mut layer.pan,
-                                                    inputs,
                                                 )
                                             })
                                             .inner;
-                                        if let Some(error) = mixing.error {
-                                            self.fail(error);
-                                        }
                                         let controls = (header.0, header.1);
                                         let mixing_bounds = [
                                             header.2[0],
                                             header.2[1],
                                             mixing.bounds[0],
                                             mixing.bounds[1],
-                                            mixing.bounds[2],
-                                            mixing.bounds[3],
                                         ];
                                         // Click-only buttons can pass a drag to the background. Exclude
                                         // controls at the press origin, even when the pointer leaves them.

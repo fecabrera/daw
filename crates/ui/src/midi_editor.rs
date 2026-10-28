@@ -77,7 +77,7 @@ pub(super) struct MidiEditor {
     #[cfg(test)]
     pub(crate) track_header_bounds: Rect,
     #[cfg(test)]
-    pub(crate) track_mix_bounds: [Rect; 4],
+    pub(crate) track_mix_bounds: [Rect; 2],
     #[cfg(test)]
     pub(crate) layer_bounds: HashMap<Id, crate::instrument_panel::LayerUiBounds>,
     #[cfg(test)]
@@ -161,7 +161,7 @@ impl Default for MidiEditor {
             #[cfg(test)]
             track_header_bounds: Rect::NOTHING,
             #[cfg(test)]
-            track_mix_bounds: [Rect::NOTHING; 4],
+            track_mix_bounds: [Rect::NOTHING; 2],
             #[cfg(test)]
             layer_bounds: HashMap::new(),
             #[cfg(test)]

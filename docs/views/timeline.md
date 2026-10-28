@@ -4,7 +4,7 @@ The left toolbar lists **Clip settings**, **Effects**, and **Chords**, from top 
 
 Timeline arranges audio and MIDI clips on tracks. Use Editor for MIDI notes, Instrument for MIDI sounds, and Mixer for track levels. Its horizontal scrollbar floats over the content, like the effects lane’s scrollbar; hover near the bottom of the timeline to reveal and expand it.
 
-Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Their names use the same spacing as group headers. Track gain and pan knobs, and Master gain, use a compact size in Timeline and Editor, while the header rows and numeric fields keep their spacing. Master's meters align with the track meters at the right of the control column. Drag an audio or MIDI icon, track name, or blank header area to move the track. Release applies the move; Escape or focus loss cancels it.
+Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Their names use the same spacing as group headers. Track gain and pan, and Master gain, use compact knobs without text-entry fields. Mute and Solo sit on the second row beside the knobs. Header rows keep their height. Hover or drag a knob to see its value in the tooltip. Master's meters align with the track meters at the right of the control column. Drag an audio or MIDI icon, track name, or blank header area to move the track. Release applies the move; Escape or focus loss cancels it.
 
 The Tracks header’s Add track (Plus) button opens a dropdown with **Add audio track** and **Add MIDI track**. Choose an item to create and select a new empty track. Opening or dismissing the menu does not add a track.
 

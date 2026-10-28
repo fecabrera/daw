@@ -128,7 +128,7 @@ impl DawUi {
         // Track selection can change inside this row. Resolve it again before mixing.
         #[cfg(test)]
         {
-            self.midi_editor.track_mix_bounds = [Rect::NOTHING; 4];
+            self.midi_editor.track_mix_bounds = [Rect::NOTHING; 2];
         }
         panels::PanelStyle {
             margin: 6,
@@ -146,9 +146,13 @@ impl DawUi {
                 .map_or([(0.0, false); 2], |meter| meter.levels());
             let cleared = meters::stereo_panel(ui, ROW_HEIGHT - 14.0, levels, |ui| {
                 let mut track = self.editor_track().cloned();
+                let toggles_width = 2.0 * toolbars::CONTROL_HEIGHT + ui.spacing().item_spacing.x;
+                let toggles_slot = Rect::from_min_size(
+                    ui.cursor().min + Vec2::new(ui.available_width() - toggles_width, 0.0),
+                    Vec2::new(toggles_width, toolbars::CONTROL_HEIGHT),
+                );
                 rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                    let name_width =
-                        (ui.available_width() - 2.0 * toolbars::CONTROL_HEIGHT - 12.0).max(1.0);
+                    let name_width = ui.available_width();
                     ui.allocate_ui_with_layout(
                         Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
                         egui::Layout::left_to_right(egui::Align::Center),
@@ -168,45 +172,48 @@ impl DawUi {
                             let _ = response;
                         },
                     );
-                    track = self.editor_track().cloned();
-                    ui.add_enabled_ui(track.is_some() && !self.midi_editor.dragging(), |ui| {
-                        let mut muted = track.as_ref().is_some_and(|t| t.muted);
-                        let mut soloed = track.as_ref().is_some_and(|t| t.soloed);
-                        let buttons = mix_controls::mute_solo(
-                            ui,
-                            &mut muted,
-                            &mut soloed,
-                            ["Mute track", "Solo track"],
-                        );
-                        #[cfg(test)]
-                        {
-                            self.midi_editor.mix_bounds = buttons.map(|r| r.rect);
-                        }
-                        #[cfg(not(test))]
-                        let _ = buttons;
-                        if let Some(t) = &mut track {
-                            t.muted = muted;
-                            t.soloed = soloed;
-                        }
-                    });
+                });
+                // Keep second-row toggles in their columns without limiting the selector above.
+                let mut toggle_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt("editor-track-toggles")
+                        .max_rect(toggles_slot)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                track = self.editor_track().cloned();
+                toggle_ui.add_enabled_ui(track.is_some() && !self.midi_editor.dragging(), |ui| {
+                    let mut muted = track.as_ref().is_some_and(|t| t.muted);
+                    let mut soloed = track.as_ref().is_some_and(|t| t.soloed);
+                    let buttons = mix_controls::second_row_mute_solo(
+                        ui,
+                        &mut muted,
+                        &mut soloed,
+                        ["Mute track", "Solo track"],
+                        0.0,
+                    );
+                    #[cfg(test)]
+                    {
+                        self.midi_editor.mix_bounds = buttons.map(|r| r.rect);
+                    }
+                    #[cfg(not(test))]
+                    let _ = buttons;
+                    if let Some(t) = &mut track {
+                        t.muted = muted;
+                        t.soloed = soloed;
+                    }
                 });
                 if let Some(mut track) = track {
-                    let inputs = self.inputs.entry(track.id).or_insert_with(|| Inputs {
-                        gain: faders::format_gain(track.gain_db),
-                        pan: format!("{:.2}", track.pan),
-                    });
                     let controls = ui
                         .add_enabled_ui(!self.midi_editor.dragging(), |ui| {
-                            mix_controls::gain_pan(ui, &mut track.gain_db, &mut track.pan, inputs)
+                            mix_controls::gain_pan(ui, &mut track.gain_db, &mut track.pan)
                         })
                         .inner;
                     #[cfg(test)]
                     {
                         self.midi_editor.track_mix_bounds = controls.bounds;
                     }
-                    if let Some(error) = controls.error {
-                        self.fail(error);
-                    }
+                    #[cfg(not(test))]
+                    let _ = controls;
                     if let Some(current) = self
                         .session
                         .project

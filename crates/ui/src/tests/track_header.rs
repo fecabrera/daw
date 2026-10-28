@@ -36,7 +36,7 @@ fn header_point(app: &DawUi, track: Id) -> Pos2 {
 }
 
 #[test]
-fn smaller_track_knobs_keep_header_height_centers_and_numeric_positions() {
+fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
     for color_theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -84,7 +84,7 @@ fn smaller_track_knobs_keep_header_height_centers_and_numeric_positions() {
             for (header, has_pan) in headers {
                 assert_eq!(header.height(), 68.0);
                 for x in if has_pan {
-                    vec![21.0, 93.0]
+                    vec![21.0, 53.0]
                 } else {
                     vec![21.0]
                 } {
@@ -98,17 +98,10 @@ fn smaller_track_knobs_keep_header_height_centers_and_numeric_positions() {
                     assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
                         egui::Shape::Circle(c) if c.center.distance(center) < 1.0 && (c.radius - 9.0).abs() < 0.01)));
                 }
-                for x in if has_pan {
-                    vec![57.0, 129.0]
-                } else {
-                    vec![57.0]
-                } {
-                    let center = header.min + Vec2::new(x, 47.0);
-                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                        egui::Shape::Rect(r) if r.fill == theme::palette(&ctx).input
-                            && (r.rect.width() - NUMERIC_WIDTH).abs() < 1.0 && r.rect.center().distance(center) < 1.0)),
-                        "unchanged numeric field at {center:?}");
-                }
+                assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Rect(r) if r.fill == theme::palette(&ctx).input
+                        && (r.rect.width() - NUMERIC_WIDTH).abs() < 1.0 && header.contains_rect(r.rect))),
+                    "header numeric fields must be absent");
             }
             assert_eq!(app.session.project, before);
             assert!(!app.dirty);
@@ -117,7 +110,7 @@ fn smaller_track_knobs_keep_header_height_centers_and_numeric_positions() {
 }
 
 #[test]
-fn editor_track_knobs_match_compact_headers_without_changing_the_row_or_readouts() {
+fn editor_track_headers_have_only_compact_knobs_and_keep_their_height() {
     for color_theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -141,28 +134,22 @@ fn editor_track_knobs_match_compact_headers_without_changing_the_row_or_readouts
                 );
                 ctx.set_pixels_per_point(scale);
                 app.set_view_mode(ViewMode::Edit, &ctx);
-                frame(&mut app, &ctx, vec![]);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                 let header = app.midi_editor.track_header_bounds;
-                let [gain, gain_input, pan, pan_input] = app.midi_editor.track_mix_bounds;
+                let [gain, pan] = app.midi_editor.track_mix_bounds;
                 assert_eq!(header.height(), 68.0);
+                let selector = app.midi_editor.selector_bounds;
+                let meter_left =
+                    header.right() - 7.0 - (meters::STEREO_WIDTH - meters::SCALE_WIDTH);
+                assert!((meter_left - selector.right() - 6.0).abs() < 1.0);
+                assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Rect(r) if r.fill == theme::palette(&ctx).input
+                        && (r.rect.width() - NUMERIC_WIDTH).abs() < 1.0 && header.contains_rect(r.rect))));
                 assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
                 assert_eq!(pan.size(), gain.size());
                 assert!(gain.center().distance(header.min + Vec2::new(21.0, 47.0)) < 1.0);
-                assert!(pan.center().distance(header.min + Vec2::new(93.0, 47.0)) < 1.0);
-                assert_eq!(gain_input.width(), NUMERIC_WIDTH);
-                assert_eq!(pan_input.width(), NUMERIC_WIDTH);
-                assert!(
-                    gain_input
-                        .center()
-                        .distance(header.min + Vec2::new(57.0, 47.0))
-                        < 1.0
-                );
-                assert!(
-                    pan_input
-                        .center()
-                        .distance(header.min + Vec2::new(129.0, 47.0))
-                        < 1.0
-                );
+                assert!(pan.center().distance(header.min + Vec2::new(53.0, 47.0)) < 1.0);
+                assert!((pan.left() - gain.right() - 10.0).abs() < 1.0);
                 assert!(!app.dirty);
                 frame(
                     &mut app,
@@ -202,6 +189,159 @@ fn editor_track_knobs_match_compact_headers_without_changing_the_row_or_readouts
 }
 
 #[test]
+fn header_mute_solo_align_with_knobs_and_layers_align_to_the_right() {
+    for scope in ["timeline", "layer", "editor"] {
+        for scale in [1.0, 1.5] {
+            let (mut app, audio) = fixture();
+            let midi = app.session.project.add_midi_track().unwrap();
+            let ctx = context();
+            ctx.set_pixels_per_point(scale);
+            let target = if scope == "layer" { midi } else { audio };
+            app.selected_clip = None;
+            app.selected_clips.clear();
+            app.select_track(target, false);
+            app.set_view_mode(
+                match scope {
+                    "layer" => ViewMode::Instrument,
+                    "editor" => ViewMode::Edit,
+                    _ => ViewMode::Timeline,
+                },
+                &ctx,
+            );
+            frame(&mut app, &ctx, vec![]);
+            let layer = app.session.project.tracks[1]
+                .instrument
+                .as_ref()
+                .unwrap()
+                .layers[0]
+                .id;
+            let panel = match scope {
+                "layer" => app.midi_editor.layer_bounds[&layer].label,
+                "editor" => app.midi_editor.track_header_bounds,
+                _ => Rect::from_min_size(
+                    Pos2::new(
+                        app.lane_bounds[&target].left() - TRACK_WIDTH,
+                        app.lane_bounds[&target].top(),
+                    ),
+                    Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+                ),
+            };
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            for (index, label) in ["M", "S"].into_iter().enumerate() {
+                let text = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(t)
+                            if t.galley.text() == label
+                                && panel
+                                    .contains_rect(t.galley.rect.translate(t.pos.to_vec2())) =>
+                        {
+                            Some(t)
+                        }
+                        _ => None,
+                    })
+                    .expect("mute/solo label in header");
+                let point = text.galley.rect.translate(text.pos.to_vec2()).center();
+                let x = if scope == "layer" {
+                    app.midi_editor.layer_bounds[&layer].collapse.right() - 39.0
+                        + index as f32 * 28.0
+                } else {
+                    panel.left() + 178.0 + index as f32 * 28.0
+                };
+                assert!(
+                    point.distance(Pos2::new(x, panel.top() + 47.0)) < 1.0,
+                    "{scope} {label}: {point:?}, panel {panel:?}"
+                );
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                );
+                frame(&mut app, &ctx, vec![button(point, false)]);
+                let (muted, soloed) = if scope == "layer" {
+                    let layer = &app.session.project.tracks[1]
+                        .instrument
+                        .as_ref()
+                        .unwrap()
+                        .layers[0];
+                    (layer.muted, layer.soloed)
+                } else {
+                    let track = &app.session.project.tracks[0];
+                    (track.muted, track.soloed)
+                };
+                assert!(if index == 0 { muted } else { soloed });
+                assert!(!app.instrument_ui.dragging());
+            }
+            if scope == "layer" {
+                let bounds = &app.midi_editor.layer_bounds[&layer];
+                assert_eq!(
+                    bounds.collapse.center().y,
+                    bounds.mix_controls[0].center().y
+                );
+            }
+            assert!(app.error.is_none());
+        }
+    }
+}
+
+#[test]
+fn removed_header_fields_do_not_take_text_focus_and_knob_values_reach_the_mixer() {
+    let (mut app, track) = fixture();
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    let origin = Pos2::new(
+        app.lane_bounds[&track].left() - TRACK_WIDTH,
+        app.lane_bounds[&track].top(),
+    );
+    let former_input = origin + Vec2::new(129.0, 47.0);
+    let before = app.session.project.clone();
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            egui::Event::PointerMoved(former_input),
+            button(former_input, true),
+        ],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            button(former_input, false),
+            egui::Event::Text("-6.0".into()),
+        ],
+    );
+    assert!(!ctx.text_edit_focused());
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+    let gain = origin + Vec2::new(21.0, 47.0);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(gain), button(gain, true)],
+    );
+    frame(&mut app, &ctx, vec![button(gain, false)]);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::ArrowUp,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+    );
+    let expected = app.session.project.tracks[0].gain_db;
+    assert!(expected > 0.0);
+    app.set_view_mode(ViewMode::Mixer, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!(app.inputs[&track].gain, faders::format_gain(expected));
+    assert_eq!(app.session.project.tracks[0].gain_db, expected);
+    assert!(app.error.is_none());
+}
+
+#[test]
 fn smaller_track_and_master_knobs_keep_keyboard_editing_and_double_click_reset() {
     for control in ["gain", "pan", "master"] {
         let (mut app, audio) = fixture();
@@ -215,7 +355,7 @@ fn smaller_track_and_master_knobs_keep_keyboard_editing_and_double_click_reset()
                 app.lane_bounds[&audio].top(),
             )
         };
-        let point = origin + Vec2::new(if control == "pan" { 93.0 } else { 21.0 }, 47.0);
+        let point = origin + Vec2::new(if control == "pan" { 53.0 } else { 21.0 }, 47.0);
         frame(
             &mut app,
             &ctx,
@@ -305,7 +445,7 @@ fn header_spacing_selects_clips_but_names_and_controls_keep_their_actions() {
     double_click(&mut app, &ctx, Pos2::new(left + 110.0, y)); // Blank name area.
     assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[1]]));
     app.select_clip(ids[2], tracks[1], false);
-    double_click(&mut app, &ctx, Pos2::new(left + 178.0, y)); // Mute button.
+    double_click(&mut app, &ctx, Pos2::new(left + 178.0, y + 29.0)); // Mute button.
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
     assert!(!app.session.project.tracks[0].muted);
     double_click(&mut app, &ctx, Pos2::new(left + 50.0, y)); // Visible name text.
