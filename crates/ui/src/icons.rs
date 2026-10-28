@@ -31,6 +31,17 @@ pub(super) fn header_icon(ui: &mut Ui, icon: Lucide, sense: egui::Sense) -> Resp
     header_icon_with_rotation(ui, icon, sense, 0.0)
 }
 
+/// Use a host-supplied foreground and slot width with shared header artwork.
+pub(super) fn header_icon_tinted(
+    ui: &mut Ui,
+    icon: Lucide,
+    sense: egui::Sense,
+    color: Option<Color32>,
+    width: f32,
+) -> Response {
+    header_icon_impl(ui, icon, sense, 0.0, color, width)
+}
+
 /// Rotate header artwork clockwise without changing its layout or hit area.
 pub(super) fn header_icon_with_rotation(
     ui: &mut Ui,
@@ -38,16 +49,27 @@ pub(super) fn header_icon_with_rotation(
     sense: egui::Sense,
     angle: f32,
 ) -> Response {
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(HEADER_ICON_WIDTH, crate::toolbars::CONTROL_HEIGHT),
-        sense,
-    );
+    header_icon_impl(ui, icon, sense, angle, None, HEADER_ICON_WIDTH)
+}
+
+fn header_icon_impl(
+    ui: &mut Ui,
+    icon: Lucide,
+    sense: egui::Sense,
+    angle: f32,
+    tint: Option<Color32>,
+    width: f32,
+) -> Response {
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(width, crate::toolbars::CONTROL_HEIGHT), sense);
     let palette = crate::theme::palette(ui.ctx());
-    let color = if ui.is_enabled() && (response.hovered() || response.has_focus()) {
-        palette.text
-    } else {
-        palette.secondary
-    };
+    let color = tint.unwrap_or_else(|| {
+        if ui.is_enabled() && (response.hovered() || response.has_focus()) {
+            palette.text
+        } else {
+            palette.secondary
+        }
+    });
     let image = icon.size(TOOLBAR_ICON_SIZE).color(color).image();
     let image = if angle == 0.0 {
         image
@@ -61,9 +83,22 @@ pub(super) fn header_icon_with_rotation(
     response
 }
 
-pub(super) fn disclosure_button(ui: &mut Ui, open: bool, name: &str, enabled: bool) -> Response {
+pub(super) fn disclosure_button(
+    ui: &mut Ui,
+    open: bool,
+    name: &str,
+    enabled: bool,
+    color: Option<Color32>,
+    width: f32,
+) -> Response {
     ui.add_enabled_ui(enabled, |ui| {
-        let response = header_icon(ui, disclosure_icon(open), egui::Sense::click());
+        let response = header_icon_tinted(
+            ui,
+            disclosure_icon(open),
+            egui::Sense::click(),
+            color,
+            width,
+        );
         response.widget_info(|| {
             egui::WidgetInfo::selected(
                 egui::WidgetType::CollapsingHeader,

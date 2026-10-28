@@ -3661,7 +3661,20 @@ impl DawUi {
             rows::NAME_FONT_SIZE
         };
         rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
-            let response = icons::header_icon(ui, icons::Lucide::BoomBox, Sense::hover());
+            self.center_mixer_header(ui, "Master");
+            let tint =
+                (self.view_mode == mixer::ViewMode::Mixer).then(|| theme::palette(ui.ctx()).text);
+            let response = icons::header_icon_tinted(
+                ui,
+                icons::Lucide::BoomBox,
+                Sense::hover(),
+                tint,
+                if self.view_mode == mixer::ViewMode::Mixer {
+                    icons::TOOLBAR_ICON_SIZE
+                } else {
+                    icons::HEADER_ICON_WIDTH
+                },
+            );
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Master output")
             });
@@ -3673,7 +3686,15 @@ impl DawUi {
         });
     }
     fn track_name(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
+        let tint = (self.view_mode == mixer::ViewMode::Mixer)
+            .then(|| theme::clip_colors(track.color, None).text);
+        let icon_width = if self.view_mode == mixer::ViewMode::Mixer {
+            icons::TOOLBAR_ICON_SIZE
+        } else {
+            icons::HEADER_ICON_WIDTH
+        };
         rows::left_aligned(ui, toolbars::CONTROL_HEIGHT, |ui| {
+            self.center_mixer_header(ui, &track.name);
             if track.kind == daw_core::TrackKind::Group {
                 if icons::disclosure_button(
                     ui,
@@ -3684,6 +3705,8 @@ impl DawUi {
                         "Collapse group"
                     },
                     self.editing_enabled(),
+                    tint,
+                    icon_width,
                 )
                 .clicked()
                 {
@@ -3699,7 +3722,7 @@ impl DawUi {
                     daw_core::TrackKind::Group => unreachable!(),
                 };
                 let timeline = self.view_mode == mixer::ViewMode::Timeline;
-                let response = icons::header_icon(
+                let response = icons::header_icon_tinted(
                     ui,
                     icon,
                     if timeline {
@@ -3707,6 +3730,8 @@ impl DawUi {
                     } else {
                         Sense::hover()
                     },
+                    tint,
+                    icon_width,
                 );
                 response.widget_info(|| {
                     egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), label)
@@ -3781,19 +3806,27 @@ impl DawUi {
             let mixer_colors = (self.view_mode == mixer::ViewMode::Mixer)
                 .then(|| theme::clip_colors(track.color, None));
             let text_id = ui.make_persistent_id(("track_name_text", track.id));
-            let mut button = egui::Button::new(
+            let mut atoms = egui::Atoms::new(
                 egui::RichText::new(&track.name)
                     .font(egui::FontId::proportional(font_size))
                     .color(mixer_colors.map_or(theme::palette(ui.ctx()).text, |colors| colors.text))
                     .atom_id(text_id),
-            )
-            .sense(Sense::click_and_drag())
-            .selected(self.track_selected(track.id))
-            .frame(false)
-            .truncate();
+            );
+            if mixer_colors.is_some() {
+                atoms.push_right(egui::Atom::grow());
+            }
+            let mut button = egui::Button::new(atoms)
+                .sense(Sense::click_and_drag())
+                .selected(self.track_selected(track.id))
+                .frame(false)
+                .truncate();
             if let Some(colors) = mixer_colors {
                 // The strip already paints its header; keep the name at the row inset.
-                button = button.fill(colors.header).stroke(Stroke::NONE).frame(false);
+                button = button
+                    .fill(colors.header)
+                    .stroke(Stroke::NONE)
+                    .frame(false)
+                    .gap(0.0);
             }
             let output = button
                 .min_size(Vec2::new(width, toolbars::CONTROL_HEIGHT))

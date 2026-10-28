@@ -373,6 +373,24 @@ impl DawUi {
         }
     }
 
+    pub(super) fn center_mixer_header(&self, ui: &mut egui::Ui, name: &str) {
+        if self.view_mode != ViewMode::Mixer {
+            return;
+        }
+        let leading_width = icons::TOOLBAR_ICON_SIZE + ui.spacing().item_spacing.x;
+        let text = egui::WidgetText::from(
+            egui::RichText::new(name).font(egui::FontId::proportional(panels::HEADER_FONT_SIZE)),
+        )
+        .into_galley(
+            ui,
+            Some(egui::TextWrapMode::Truncate),
+            (ui.available_width() - leading_width).max(0.0),
+            egui::TextStyle::Button,
+        );
+        // Measure the truncated label so the icon and visible text form one centered group.
+        ui.add_space(((ui.available_width() - leading_width - text.size().x) / 2.0).max(0.0));
+    }
+
     fn mixer_strip(&mut self, ui: &mut egui::Ui, rect: Rect, track: Option<&daw_core::Track>) {
         let palette = theme::palette(ui.ctx());
         ui.painter().rect_filled(rect, 0.0, palette.panel);
@@ -406,11 +424,14 @@ impl DawUi {
                 .layout(egui::Layout::top_down(egui::Align::Center)),
         );
         content.spacing_mut().item_spacing = Vec2::splat(CONTROL_SPACING);
+        // Match the icon-to-label gap to the vertical padding around the header artwork.
+        content.spacing_mut().item_spacing.x = (HEADER_HEIGHT - icons::TOOLBAR_ICON_SIZE) / 2.0;
         if let Some(track) = track {
             self.track_name(&mut content, track);
         } else {
             self.master_name(&mut content);
         }
+        content.spacing_mut().item_spacing.x = CONTROL_SPACING;
         // Align all faders, meters, and bottom controls, including Master.
         let fader_height = (inner.height() - 154.0).clamp(24.0, 220.0);
         let controls_height =

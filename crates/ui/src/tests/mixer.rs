@@ -115,6 +115,34 @@ fn native_toolbar_burger_opens_menus_and_settings_without_project_changes() {
 }
 
 #[test]
+fn mixer_centers_icon_and_short_or_truncated_label_as_one_group() {
+    let (mut app, track) = fixture();
+    app.view_mode = ViewMode::Mixer;
+    let ctx = context();
+    for name in ["A", "Audio 1", "A longer audio track name"] {
+        app.session.project.tracks[0].name = name.into();
+        let before = app.session.project.clone();
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        let strip = app.mixer_bounds[&track];
+        let text = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(t) if t.galley.text() == name => Some(t),
+                _ => None,
+            })
+            .expect("mixer track name");
+        let bounds = text.galley.rect.translate(text.pos.to_vec2());
+        assert!(
+            ((bounds.left() - 20.0 + bounds.right()) / 2.0 - strip.center().x).abs() < 1.0,
+            "{name}: {bounds:?}"
+        );
+        assert!(bounds.right() <= strip.right());
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
 fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_states() {
     let (mut app, track) = fixture();
     let next_track = app.session.project.add_track().unwrap();
@@ -153,7 +181,37 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                     })
                     .unwrap();
                 let point = name.pos + name.galley.rect.center().to_vec2();
-                assert!((name.pos.x + name.galley.rect.left() - (strip.left() + 38.0)).abs() < 1.0);
+                let uri = icons::Lucide::AudioLines
+                    .size(16.0)
+                    .color(colors.text)
+                    .uri();
+                let egui::load::TexturePoll::Ready { texture } = ctx
+                    .try_load_texture(
+                        &uri,
+                        egui::TextureOptions::LINEAR,
+                        egui::load::SizeHint::Size {
+                            width: 16,
+                            height: 16,
+                            maintain_aspect_ratio: false,
+                        },
+                    )
+                    .unwrap()
+                else {
+                    panic!("mixer header icon must be ready");
+                };
+                assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Rect(rect) if rect.brush.as_ref().is_some_and(|brush| brush.fill_texture_id == texture.id)
+                        && rect.rect.center().distance(Pos2::new(name.pos.x + name.galley.rect.left() - 12.0, strip.top() + 12.0)) < 1.0
+                )), "Mixer icon must use the header text color");
+                assert!(
+                    ((name.pos.x + name.galley.rect.left() - 20.0
+                        + name.pos.x
+                        + name.galley.rect.right())
+                        / 2.0
+                        - strip.center().x)
+                        .abs()
+                        < 1.0
+                );
                 assert!((point.y - (strip.top() + 12.0)).abs() < 1.0);
                 assert!(
                     name.galley

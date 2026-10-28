@@ -179,7 +179,7 @@ fn pointer_track_drops_commit_on_release_and_escape_keeps_the_original_tree() {
 }
 
 #[test]
-fn group_and_master_titles_align_left_and_group_disclosures_have_no_frame() {
+fn group_and_master_titles_align_with_their_view_and_group_disclosures_have_no_frame() {
     for mode in [ViewMode::Timeline, ViewMode::Mixer] {
         for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
             let (mut app, ctx, group, _) = grouped_fixture();
@@ -227,19 +227,20 @@ fn group_and_master_titles_align_left_and_group_disclosures_have_no_frame() {
                         .unwrap()
                 };
                 let name = text_bounds("Group 1", panel.top(), panel.bottom());
-                assert!(
-                    (name.left() - (panel.left() + inset + 28.0 + 6.0)).abs() < 1.0,
-                    "{mode:?}: {name:?} {panel:?}"
-                );
+                let aligned = |name: Rect, panel: Rect| {
+                    if mode == ViewMode::Mixer {
+                        ((name.left() - 20.0 + name.right()) / 2.0 - panel.center().x).abs() < 1.0
+                    } else {
+                        (name.left() - panel.left() - inset - 34.0).abs() < 1.0
+                    }
+                };
+                assert!(aligned(name, panel), "{mode:?}: {name:?} {panel:?}");
                 let master = text_bounds(
                     "Master",
                     app.master_bounds.top(),
                     app.master_bounds.bottom(),
                 );
-                assert!(
-                    (master.left() - (app.master_bounds.left() + inset + 34.0)).abs() < 1.0,
-                    "{mode:?}: {master:?}"
-                );
+                assert!(aligned(master, app.master_bounds), "{mode:?}: {master:?}");
                 if mode == ViewMode::Timeline {
                     let gain_center = app.master_bounds.min + Vec2::new(21.0, 47.0);
                     assert!(
@@ -249,7 +250,14 @@ fn group_and_master_titles_align_left_and_group_disclosures_have_no_frame() {
                         "Master gain must retain its row position"
                     );
                 }
-                let arrow = Pos2::new(panel.left() + inset + 14.0, name.center().y);
+                let arrow = Pos2::new(
+                    if mode == ViewMode::Mixer {
+                        name.left() - 12.0
+                    } else {
+                        panel.left() + inset + 14.0
+                    },
+                    name.center().y,
+                );
                 assert!(
                     !shapes.iter().any(|shape| matches!(&shape.shape,
                         egui::Shape::Rect(rect) if rect.rect.contains(arrow)
@@ -361,11 +369,18 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                         .unwrap_or_else(|| {
                             panic!("missing track name {name_text} in {mode:?} at {scale}×")
                         });
-                    assert!(
-                        (name.left() - left - inset - 34.0).abs() < 1.0,
-                        "{mode:?} {name_text}: {name:?}"
-                    );
-                    let uri = icon.size(16.0).color(theme::palette(&ctx).secondary).uri();
+                    if mode == ViewMode::Timeline {
+                        assert!((name.left() - left - inset - 34.0).abs() < 1.0);
+                    }
+                    let color = if mode == ViewMode::Mixer {
+                        id.and_then(|id| app.session.project.tracks.iter().find(|t| t.id == id))
+                            .map_or(theme::palette(&ctx).text, |track| {
+                                theme::clip_colors(track.color, None).text
+                            })
+                    } else {
+                        theme::palette(&ctx).secondary
+                    };
+                    let uri = icon.size(16.0).color(color).uri();
                     let egui::load::TexturePoll::Ready { texture } = ctx
                         .try_load_texture(
                             &uri,
@@ -380,7 +395,14 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                     else {
                         panic!("track icon must be ready")
                     };
-                    let expected_center = Pos2::new(left + inset + 14.0, y);
+                    let expected_center = Pos2::new(
+                        if mode == ViewMode::Mixer {
+                            name.left() - 12.0
+                        } else {
+                            left + inset + 14.0
+                        },
+                        y,
+                    );
                     let icon_rect =
                         shapes
                             .iter()
@@ -401,6 +423,14 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                                 )
                             });
                     assert!((icon_rect.size() - Vec2::splat(16.0)).length() < 0.1);
+                    if mode == ViewMode::Mixer {
+                        assert!((name.left() - icon_rect.right() - 4.0).abs() < 1.0);
+                        assert!((icon_rect.top() - top - 4.0).abs() < 1.0);
+                        assert!(
+                            ((icon_rect.left() + name.right()) / 2.0 - left - 60.0).abs() < 1.0,
+                            "Mixer must center the icon and label together"
+                        );
+                    }
                     assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
                         egui::Shape::Rect(rect) if rect.rect.contains(expected_center) && rect.rect.width() <= 30.0 && rect.rect.height() <= 26.0 && rect.stroke.width > 0.0
                     )));

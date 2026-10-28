@@ -4,7 +4,7 @@ Mixer controls track levels and the final project output. It uses the same track
 
 ## Track controls
 
-Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Track names align left after the icon, matching group headers.
+Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Each track and group header centers its icon and name together. Icons use the same contrasting text color as their header names. Master’s icon matches its label. The icon-to-label gap matches the vertical padding around the icon. Master uses the same centered layout.
 
 Gain changes level. Pan positions mono audio and balances stereo audio. Use numeric fields for a precise value or drag the knobs. Shift gives finer adjustment. Double-click a knob to restore its default. Gain accepts a numeric dB value or `−∞` for exact silence. Very low finite values keep a numeric readout.
 
@@ -14,7 +14,7 @@ Meters show current output. Held peak readouts help identify the highest recent 
 
 ## Track groups
 
-[Track groups](../editing/track-groups.md) have the same controls and meters as tracks. Select a group to edit its shared effects. Group and Master labels align left. Its borderless arrow hides or shows child strips; hidden children keep playing. Create or ungroup through the Track menu or context menu. Use Timeline to drag tracks between groups.
+[Track groups](../editing/track-groups.md) have the same controls and meters as tracks. Select a group to edit its shared effects. Group and Master center their icons and labels together. Its borderless arrow hides or shows child strips; hidden children keep playing. Create or ungroup through the Track menu or context menu. Use Timeline to drag tracks between groups.
 
 ## Master
 
