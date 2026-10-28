@@ -122,6 +122,21 @@ pub struct Dropdown {
     small_items: bool,
 }
 impl Dropdown {
+    /// Open an action dropdown from a custom button without changing its geometry.
+    pub fn show_from_button<R>(
+        button: &egui::Response,
+        content: impl FnOnce(&mut Ui) -> R,
+    ) -> Option<InnerResponse<R>> {
+        if !button.enabled() {
+            egui::Popup::close_id(&button.ctx, egui::Popup::default_response_id(button));
+            return None;
+        }
+        egui::Popup::menu(button)
+            .width(MIN_WIDTH)
+            .style(popup_style)
+            .show(|ui| layout(ui, ui.available_width(), content))
+    }
+
     pub fn from_id_salt(id: impl egui::AsIdSalt) -> Self {
         Self {
             combo_box: ComboBox::from_id_salt(id),
@@ -176,6 +191,70 @@ mod context_menu_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn custom_button_dropdown_uses_regular_text_and_closes_when_disabled() {
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
+            crate::theme::configure(&ctx);
+            ctx.set_theme(theme);
+            ctx.all_styles_mut(|style| style.animation_time = 0.0);
+            let render = |events, enabled| {
+                let mut button = egui::Rect::NOTHING;
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            Vec2::new(600.0, 400.0),
+                        )),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        ui.style_mut().override_text_style = Some(TextStyle::Small);
+                        let response = ui.add_enabled(enabled, egui::Button::new("+"));
+                        button = response.rect;
+                        Dropdown::show_from_button(&response, |ui| {
+                            let _ = ui.button("Add audio track");
+                            let _ = ui.button("Add MIDI track");
+                        });
+                    },
+                );
+                output.textures_delta.clear();
+                (button, output.shapes)
+            };
+            let button = render(vec![], true).0;
+            let point = button.center();
+            let pointer = |pressed| egui::Event::PointerButton {
+                pos: point,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            };
+            render(vec![egui::Event::PointerMoved(point), pointer(true)], true);
+            render(vec![pointer(false)], true);
+            let shapes = render(vec![], true).1;
+            assert!(egui::Popup::is_any_open(&ctx));
+            for label in ["Add audio track", "Add MIDI track"] {
+                let text = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(t) if t.galley.text() == label => Some(t),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(
+                    text.galley.job.sections[0].format.font_id.size,
+                    TextStyle::Button.resolve(&ctx.style_of(theme)).size
+                );
+                assert!(text.pos.y > button.bottom());
+            }
+            let shapes = render(vec![], false).1;
+            assert!(!egui::Popup::is_any_open(&ctx));
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(t) if t.galley.text() == "Add audio track")));
+        }
+    }
+
     #[test]
     fn dropdown_popup_uses_requested_text_size_and_full_rows() {
         for small in [false, true] {

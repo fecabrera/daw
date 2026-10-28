@@ -6,6 +6,8 @@ This is the canonical dropdown presentation for the DAW and independent plugin e
 
 Use `unit-ui::menus::Dropdown` for all selectors. It wraps egui's ComboBox, retaining its interaction, popup scrolling, dismissal and accessibility. The DAW imports the module as `menus`; portable unit panels use it directly. Keep concrete choices and edits in their existing owners.
 
+Custom icon-button action dropdowns use `Dropdown::show_from_button`. Retain the trigger’s geometry, tooltip and accessibility name; anchor the popup to the button with egui’s menu opening, focus and dismissal behavior. Use the same regular popup style and full-row layout as context menus. Disabling the trigger closes its popup. Keep choice lists and action dispatch in their host.
+
 - Unit selectors use `Dropdown::small_items()` for Small popup text (11 points), including modulation source/destination menus and their layer submenus. Nested unit menus use `menus::small_popup_style`; measure their labels with Small text. Other selectors and application/context menus retain regular Button text (13 points). Selected captions retain their existing size.
 - Apply 4-point inner padding around labels and submenu arrows, 4-point outer popup margins, and 4-point vertical gaps between items.
 - Give root and child popup contents a minimum width of 140 points. Longer labels expand the popup; keep labels on one line and each row's hit area and highlight at full content width. Hover must not wrap labels or resize rows.

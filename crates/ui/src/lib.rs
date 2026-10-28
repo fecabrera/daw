@@ -3569,17 +3569,7 @@ impl DawUi {
                 {
                     self.perform_track_action(TrackAction::Duplicate, ui.ctx());
                 }
-                if icons::button(
-                    ui,
-                    icons::Lucide::Plus,
-                    TrackAction::Add.label(),
-                    self.track_action_enabled(TrackAction::Add, ui.ctx()),
-                    theme::palette(ui.ctx()).text,
-                )
-                .clicked()
-                {
-                    self.perform_track_action(TrackAction::Add, ui.ctx());
-                }
+                self.add_track_dropdown(ui);
             });
             self.time_ruler(ui);
         });
@@ -10158,6 +10148,23 @@ mod tests {
                 vec![egui::Event::PointerMoved(add), button(add, true)],
             );
             frame(&mut app, &ctx, vec![button(add, false)]);
+            assert_eq!(app.session.project.tracks.len(), expected - 1);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let item = shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == "Add audio track" => {
+                        Some(text.pos + text.galley.size() * 0.5)
+                    }
+                    _ => None,
+                })
+                .expect("add audio track dropdown item");
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::PointerMoved(item), button(item, true)],
+            );
+            frame(&mut app, &ctx, vec![button(item, false)]);
             assert_eq!(app.session.project.tracks.len(), expected);
             assert_eq!(
                 app.selected_track,

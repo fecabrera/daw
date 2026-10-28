@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Add track dropdown — 2026-10-27
+
+The Tracks header Plus button now opens a canonical button-anchored dropdown with Add audio track and Add MIDI track. It shares the choice renderer and guarded action dispatch with the empty-area context menu. Opening, hovering and dismissal leave the project unchanged; a menu-item release creates and selects the chosen empty track. The trigger retains its icon geometry, uses Add track for its tooltip/accessibility name, and closes its popup when disabled.
+
+All 664 DAW UI tests and 27 shared UI tests pass. Coverage includes both choices from both menus, empty/nonempty projects, release-only creation, dismissal, blocked opening, external control focus, and repeated creation beyond four tracks. The shared popup test checks regular text, button anchoring and closure when disabled in Dark and Light. Formatting, strict workspace/all-target Clippy, whitespace and local documentation link checks pass. The macOS debug app rebuild passes. The initial workspace run passed the preceding packages (957 tests, 9 opt-in tests ignored), then stopped at an older UI test that still expected immediate creation. That test now chooses the dropdown item; the corrected full UI suite passes. The four remaining workspace packages pass (116 tests, 2 opt-in tests ignored), and all workspace documentation tests pass (1 test). Combined final coverage is 1738 passing tests and 11 ignored tests. The initial workspace run was not repeated in full after the test-only correction. Logs use `work/add-track-dropdown-*`. Native pointer and Windows/Linux checks were not run.
+
 ## Track creation and duplication with control focus — 2026-10-27
 
 Add audio track, Add MIDI track and Duplicate track now ignore general non-text keyboard focus through the shared `TrackAction` readiness check. The Tracks header buttons remain available when another pane or a non-text control has focus. Text entry, selection/view requirements, window focus, dialogs/jobs and existing gestures retain their guards. Generic egui control drags explicitly block creation and duplication until release.

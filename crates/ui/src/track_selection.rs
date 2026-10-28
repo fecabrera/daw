@@ -328,6 +328,37 @@ impl DawUi {
         }
     }
 
+    fn add_track_menu(&self, ui: &mut egui::Ui) -> Option<TrackAction> {
+        for action in [TrackAction::Add, TrackAction::AddMidi] {
+            if ui
+                .add_enabled(
+                    self.track_action_enabled(action, ui.ctx()),
+                    menus::action_button(action.label()),
+                )
+                .clicked()
+            {
+                ui.close();
+                return Some(action);
+            }
+        }
+        None
+    }
+
+    pub(super) fn add_track_dropdown(&mut self, ui: &mut egui::Ui) {
+        let response = icons::button(
+            ui,
+            icons::Lucide::Plus,
+            "Add track",
+            self.track_action_enabled(TrackAction::Add, ui.ctx()),
+            theme::palette(ui.ctx()).text,
+        );
+        let action = menus::Dropdown::show_from_button(&response, |ui| self.add_track_menu(ui))
+            .and_then(|response| response.inner);
+        if let Some(action) = action {
+            self.perform_track_action(action, ui.ctx());
+        }
+    }
+
     pub(super) fn empty_tracks_context_menu(&mut self, ui: &mut egui::Ui) {
         if !ui.is_enabled() || !self.track_action_enabled(TrackAction::Add, ui.ctx()) {
             return;
@@ -342,21 +373,7 @@ impl DawUi {
         }
         let response = ui.interact(rect, ui.id().with("empty-tracks"), egui::Sense::click());
         let action = crate::menus::ContextMenu::new(&response)
-            .show(|ui| {
-                for action in [TrackAction::Add, TrackAction::AddMidi] {
-                    if ui
-                        .add_enabled(
-                            self.track_action_enabled(action, ui.ctx()),
-                            egui::Button::new(action.label()),
-                        )
-                        .clicked()
-                    {
-                        ui.close();
-                        return Some(action);
-                    }
-                }
-                None
-            })
+            .show(|ui| self.add_track_menu(ui))
             .and_then(|response| response.inner);
         if let Some(action) = action {
             self.perform_track_action(action, ui.ctx());
