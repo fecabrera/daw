@@ -40,7 +40,7 @@ pub(super) fn gain_pan(
     let mut error = None;
     let bounds = rows::centered(ui, knobs::SIZE, |ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        let gain_knob = knobs::gain(ui, gain);
+        let gain_knob = knobs::header_gain(ui, gain);
         if gain_knob.changed() {
             inputs.gain = faders::format_gain(*gain);
         }
@@ -57,7 +57,7 @@ pub(super) fn gain_pan(
                 }
             }
         }
-        let pan_knob = knobs::pan(ui, pan);
+        let pan_knob = knobs::header_pan(ui, pan);
         if pan_knob.changed() {
             inputs.pan = format!("{pan:.2}");
         }

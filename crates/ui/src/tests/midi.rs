@@ -941,16 +941,14 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
             assert_eq!(controls[0].x_range(), mute.x_range());
             assert_eq!(controls[1].x_range(), solo.x_range());
         }
-        assert_eq!(gain.size(), Vec2::splat(knobs::SIZE));
+        assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
         assert_eq!(pan.size(), gain.size());
-        assert_eq!(gain.left(), bounds.label.left() + 7.0);
-        assert_eq!(
-            gain.top(),
-            bounds.label.top() + 7.0 + toolbars::CONTROL_HEIGHT + 4.0
-        );
+        assert_eq!(gain.center(), bounds.label.min + Vec2::new(21.0, 47.0));
+        assert_eq!(pan.center(), bounds.label.min + Vec2::new(93.0, 47.0));
         assert_eq!(gain_input.width(), NUMERIC_WIDTH);
         assert_eq!(pan_input.width(), NUMERIC_WIDTH);
-        assert_eq!(pan.left() - gain_input.right(), 4.0);
+        assert_eq!(gain_input.left(), bounds.label.left() + 39.0);
+        assert_eq!(pan_input.left(), bounds.label.left() + 111.0);
         let point = mute.center();
         app.dirty = false;
         frame(

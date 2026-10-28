@@ -38,7 +38,7 @@ Copies keep their names, controls, components, effects, and modulation settings.
 
 Moved layers remain selected after release. If copies need sample preparation, the original layers stay selected until preparation succeeds. The copies then become selected. Failure or cancellation keeps the original layers selected. Undo restores the previous arrangement.
 
-Layer controls stay in the left column; installed components appear to their right. Use the Layers Plus button to add another layer. Each layer has gain, pan, mute, and solo controls. Solo applies among the layers of that instrument. [Output](../instruments/main.md) controls their combined output and can hold shared modulators.
+Layer controls stay in the left column; installed components appear to their right. Use the Layers Plus button to add another layer. Each layer has gain, pan, mute, and solo controls. Layer and Output gain/pan knobs use the same compact size as track-header knobs, with their row heights and numeric fields unchanged. Solo applies among the layers of that instrument. [Output](../instruments/main.md) controls their combined output and can hold shared modulators.
 
 ## Amplitude
 

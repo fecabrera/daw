@@ -36,6 +36,229 @@ fn header_point(app: &DawUi, track: Id) -> Pos2 {
 }
 
 #[test]
+fn smaller_track_knobs_keep_header_height_centers_and_numeric_positions() {
+    for color_theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
+        for scale in [1.0, 1.5] {
+            let (mut app, audio) = fixture();
+            let midi = app.session.project.add_midi_track().unwrap();
+            let before = app.session.project.clone();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            ctx.set_pixels_per_point(scale);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+            let headers = [
+                (
+                    Rect::from_min_size(
+                        Pos2::new(
+                            app.lane_bounds[&audio].left() - TRACK_WIDTH,
+                            app.lane_bounds[&audio].top(),
+                        ),
+                        Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+                    ),
+                    true,
+                ),
+                (
+                    Rect::from_min_size(
+                        Pos2::new(
+                            app.lane_bounds[&midi].left() - TRACK_WIDTH,
+                            app.lane_bounds[&midi].top(),
+                        ),
+                        Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
+                    ),
+                    true,
+                ),
+                (app.master_bounds, false),
+            ];
+            assert_eq!(app.lane_bounds[&audio].height(), 68.0);
+            assert_eq!(app.lane_bounds[&midi].height(), 68.0);
+            for (header, has_pan) in headers {
+                assert_eq!(header.height(), 68.0);
+                for x in if has_pan {
+                    vec![21.0, 93.0]
+                } else {
+                    vec![21.0]
+                } {
+                    let center = header.min + Vec2::new(x, 47.0);
+                    let radius = (knobs::SIZE / 2.0 - 5.0) * knobs::HEADER_SIZE / knobs::SIZE;
+                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Circle(c) if c.center.distance(center) < 1.0 && (c.radius - radius).abs() < 0.01)),
+                        "small knob at {center:?}: {:?}", shapes.iter().filter_map(|s| match &s.shape {
+                            egui::Shape::Circle(c) if header.contains(c.center) => Some((c.center, c.radius)), _ => None
+                        }).collect::<Vec<_>>());
+                    assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Circle(c) if c.center.distance(center) < 1.0 && (c.radius - 9.0).abs() < 0.01)));
+                }
+                for x in if has_pan {
+                    vec![57.0, 129.0]
+                } else {
+                    vec![57.0]
+                } {
+                    let center = header.min + Vec2::new(x, 47.0);
+                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Rect(r) if r.fill == theme::palette(&ctx).input
+                            && (r.rect.width() - NUMERIC_WIDTH).abs() < 1.0 && r.rect.center().distance(center) < 1.0)),
+                        "unchanged numeric field at {center:?}");
+                }
+            }
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn editor_track_knobs_match_compact_headers_without_changing_the_row_or_readouts() {
+    for color_theme in [
+        settings::ColorTheme::Dark,
+        settings::ColorTheme::Light,
+        settings::ColorTheme::Mist,
+    ] {
+        for scale in [1.0, 1.5] {
+            for midi in [false, true] {
+                let (mut app, audio) = fixture();
+                let midi_track = app.session.project.add_midi_track().unwrap();
+                let track = if midi { midi_track } else { audio };
+                app.selected_clip = None;
+                app.selected_clips.clear();
+                app.select_track(track, false);
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                ctx.set_pixels_per_point(scale);
+                app.set_view_mode(ViewMode::Edit, &ctx);
+                frame(&mut app, &ctx, vec![]);
+                let header = app.midi_editor.track_header_bounds;
+                let [gain, gain_input, pan, pan_input] = app.midi_editor.track_mix_bounds;
+                assert_eq!(header.height(), 68.0);
+                assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
+                assert_eq!(pan.size(), gain.size());
+                assert!(gain.center().distance(header.min + Vec2::new(21.0, 47.0)) < 1.0);
+                assert!(pan.center().distance(header.min + Vec2::new(93.0, 47.0)) < 1.0);
+                assert_eq!(gain_input.width(), NUMERIC_WIDTH);
+                assert_eq!(pan_input.width(), NUMERIC_WIDTH);
+                assert!(
+                    gain_input
+                        .center()
+                        .distance(header.min + Vec2::new(57.0, 47.0))
+                        < 1.0
+                );
+                assert!(
+                    pan_input
+                        .center()
+                        .distance(header.min + Vec2::new(129.0, 47.0))
+                        < 1.0
+                );
+                assert!(!app.dirty);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(gain.center()),
+                        button(gain.center(), true),
+                    ],
+                );
+                frame(&mut app, &ctx, vec![button(gain.center(), false)]);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::Key {
+                        key: egui::Key::ArrowUp,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    }],
+                );
+                assert!(
+                    app.session
+                        .project
+                        .tracks
+                        .iter()
+                        .find(|t| t.id == track)
+                        .unwrap()
+                        .gain_db
+                        > 0.0
+                );
+                assert!(app.dirty);
+                assert_eq!(app.midi_editor.track_header_bounds, header);
+            }
+        }
+    }
+}
+
+#[test]
+fn smaller_track_and_master_knobs_keep_keyboard_editing_and_double_click_reset() {
+    for control in ["gain", "pan", "master"] {
+        let (mut app, audio) = fixture();
+        let ctx = context();
+        frame(&mut app, &ctx, vec![]);
+        let origin = if control == "master" {
+            app.master_bounds.min
+        } else {
+            Pos2::new(
+                app.lane_bounds[&audio].left() - TRACK_WIDTH,
+                app.lane_bounds[&audio].top(),
+            )
+        };
+        let point = origin + Vec2::new(if control == "pan" { 93.0 } else { 21.0 }, 47.0);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+        );
+        frame(&mut app, &ctx, vec![button(point, false)]);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowUp,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        let value = |app: &DawUi| match control {
+            "gain" => app.session.project.tracks[0].gain_db,
+            "pan" => app.session.project.tracks[0].pan,
+            _ => app.session.project.master.gain_db,
+        };
+        assert!(value(&app) > 0.0, "{control} keyboard edit");
+        assert!(app.dirty);
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowUp,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        double_click(&mut app, &ctx, point);
+        assert_eq!(value(&app), 0.0);
+        assert_eq!(app.lane_bounds[&audio].height(), 68.0);
+        assert_eq!(app.master_bounds.height(), 68.0);
+    }
+}
+
+#[test]
 fn blank_track_headers_select_only_their_clips_and_allow_copy() {
     for mode in [ViewMode::Timeline, ViewMode::Mixer] {
         let (mut app, tracks, ids) = multi_clip_fixture();

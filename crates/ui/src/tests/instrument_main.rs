@@ -92,6 +92,13 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
         let label = app.instrument_ui.main_bounds.label;
         assert_eq!(main.height(), ROW_HEIGHT);
         assert_eq!(label.width(), TRACK_WIDTH);
+        let [gain, gain_input, pan, pan_input] = app.instrument_ui.main_bounds.mix;
+        assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
+        assert_eq!(pan.size(), gain.size());
+        assert_eq!(gain.center(), label.min + Vec2::new(21.0, 47.0));
+        assert_eq!(pan.center(), label.min + Vec2::new(93.0, 47.0));
+        assert_eq!(gain_input.width(), NUMERIC_WIDTH);
+        assert_eq!(pan_input.width(), NUMERIC_WIDTH);
         assert!(app.instrument_ui.main_bounds.collapse.right() < label.right());
         assert!(
             app.instrument_ui

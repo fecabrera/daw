@@ -28,6 +28,10 @@ impl DawUi {
         let title = panel.header(&mut child, "Editor", |_| {});
         panels::ControlPanel::row_dividers(&child, title.response.rect, false, true);
         let header = rows::fixed(&mut child, ROW_HEIGHT, |ui| self.editor_track_header(ui));
+        #[cfg(test)]
+        {
+            self.midi_editor.track_header_bounds = header.response.rect;
+        }
         panels::ControlPanel::row_dividers(&child, header.response.rect, false, true);
         let track_id = self
             .editor_track()
@@ -122,6 +126,10 @@ impl DawUi {
 
     fn editor_track_header(&mut self, ui: &mut egui::Ui) {
         // Track selection can change inside this row. Resolve it again before mixing.
+        #[cfg(test)]
+        {
+            self.midi_editor.track_mix_bounds = [Rect::NOTHING; 4];
+        }
         panels::PanelStyle {
             margin: 6,
             ..Default::default()
@@ -192,6 +200,10 @@ impl DawUi {
                             mix_controls::gain_pan(ui, &mut track.gain_db, &mut track.pan, inputs)
                         })
                         .inner;
+                    #[cfg(test)]
+                    {
+                        self.midi_editor.track_mix_bounds = controls.bounds;
+                    }
                     if let Some(error) = controls.error {
                         self.fail(error);
                     }

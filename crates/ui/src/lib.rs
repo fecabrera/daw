@@ -3155,7 +3155,7 @@ impl DawUi {
                 rows::centered(ui, knobs::SIZE, |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     let previous = self.session.project.master.gain_db;
-                    let knob = knobs::gain(ui, &mut self.session.project.master.gain_db);
+                    let knob = knobs::header_gain(ui, &mut self.session.project.master.gain_db);
                     if knob.changed() {
                         self.master_gain_input =
                             faders::format_gain(self.session.project.master.gain_db);

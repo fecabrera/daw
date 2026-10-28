@@ -342,7 +342,12 @@ fn pan_spec() -> KnobSpec {
 
 /// Gain has a fixed 0 dB mark at twelve o'clock; dragging covers silence to +12 dB.
 pub fn gain(ui: &mut Ui, value: &mut f32) -> Response {
-    ui.add(Knob::new(value, gain_spec()))
+    gain_scaled(ui, value, 1.0)
+}
+
+/// Scale the gain control while retaining its shared scale, reset and input behavior.
+pub fn gain_scaled(ui: &mut Ui, value: &mut f32, scale: f32) -> Response {
+    ui.add(Knob::new(value, gain_spec().display_scale(scale)))
 }
 pub fn marked_gain_spec() -> KnobSpec {
     gain_spec()
@@ -372,7 +377,12 @@ pub fn format_frequency(value: f32) -> String {
 }
 
 pub fn pan(ui: &mut Ui, value: &mut f32) -> Response {
-    ui.add(Knob::new(value, pan_spec()))
+    pan_scaled(ui, value, 1.0)
+}
+
+/// Scale the pan control while retaining its shared scale, reset and input behavior.
+pub fn pan_scaled(ui: &mut Ui, value: &mut f32, scale: f32) -> Response {
+    ui.add(Knob::new(value, pan_spec().display_scale(scale)))
 }
 pub fn pitch(ui: &mut Ui, value: &mut i8) -> Response {
     let mut scalar = f32::from(*value);
