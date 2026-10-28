@@ -24,10 +24,14 @@ fn output_header_uses_merge_icon_and_keeps_layer_spacing_and_fixed_bus_identity(
             let (mut app, ctx, _) = setup(theme);
             let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
             instrument.main.collapsed = compact;
+            instrument.main.pan = 0.35;
             let id = instrument.main.id;
             let before = instrument.clone();
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
             let bounds = &app.instrument_ui.main_bounds;
+            let former_pan = bounds.label.min + Vec2::new(53.0, 47.0);
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Circle(circle) if circle.center.distance(former_pan) < 1.0)));
             assert_eq!(
                 bounds.icon.size(),
                 Vec2::new(icons::HEADER_ICON_WIDTH, toolbars::CONTROL_HEIGHT)
@@ -73,6 +77,7 @@ fn output_header_uses_merge_icon_and_keeps_layer_spacing_and_fixed_bus_identity(
                     .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Main"))
             );
             let icon = bounds.icon.center();
+            click(&mut app, &ctx, former_pan, false);
             click(&mut app, &ctx, icon, false);
             assert_eq!(app.instrument_ui.selected_layer, Some(id));
             assert!(!app.instrument_ui.dragging());
@@ -92,11 +97,9 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
         let label = app.instrument_ui.main_bounds.label;
         assert_eq!(main.height(), ROW_HEIGHT);
         assert_eq!(label.width(), TRACK_WIDTH);
-        let [gain, pan] = app.instrument_ui.main_bounds.mix;
+        let [gain] = app.instrument_ui.main_bounds.mix;
         assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
-        assert_eq!(pan.size(), gain.size());
         assert_eq!(gain.center(), label.min + Vec2::new(21.0, 47.0));
-        assert_eq!(pan.center(), label.min + Vec2::new(53.0, 47.0));
         assert!(app.instrument_ui.main_bounds.collapse.right() < label.right());
         assert!(
             app.instrument_ui
@@ -138,8 +141,8 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
         assert!(app.instrument_catalog_bounds.layer_scroll > 0.0);
         assert_eq!(app.instrument_ui.main_bounds.row, main);
         assert!(app.instrument_catalog_bounds.layer_viewport.bottom() <= main.top() + 1.0);
-        let pan = app.instrument_ui.main_bounds.mix[1].center();
-        click(&mut app, &ctx, pan, false);
+        let gain = app.instrument_ui.main_bounds.mix[0].center();
+        click(&mut app, &ctx, gain, false);
         key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
         assert!(
             app.session.project.tracks[0]
@@ -147,7 +150,7 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
                 .as_ref()
                 .unwrap()
                 .main
-                .pan
+                .gain_db
                 > 0.0
         );
         assert!(app.dirty);

@@ -8,7 +8,7 @@ pub(super) struct MainBounds {
     pub label: Rect,
     pub icon: Rect,
     pub name: Rect,
-    pub mix: [Rect; 2],
+    pub mix: [Rect; 1],
     pub collapse: Rect,
     pub envelopes: Vec<Rect>,
     pub lfos: Vec<Rect>,
@@ -21,7 +21,7 @@ impl Default for MainBounds {
             label: Rect::NOTHING,
             icon: Rect::NOTHING,
             name: Rect::NOTHING,
-            mix: [Rect::NOTHING; 2],
+            mix: [Rect::NOTHING; 1],
             collapse: Rect::NOTHING,
             envelopes: Vec::new(),
             lfos: Vec::new(),
@@ -130,8 +130,8 @@ impl DawUi {
                     bus.collapsed = !compact;
                     ui.ctx().request_repaint();
                 }
-                let mixing = mix_controls::gain_pan(&mut header, &mut bus.gain_db, &mut bus.pan);
-                #[cfg(not(test))] let _ = mixing;
+                let gain = rows::centered(&mut header, knobs::SIZE, |ui| knobs::header_gain(ui, &mut bus.gain_db)).inner;
+                #[cfg(not(test))] let _ = gain;
                 response.widget_info(|| {
                     egui::WidgetInfo::selected(
                         egui::WidgetType::Button,
@@ -144,7 +144,7 @@ impl DawUi {
                 {
                     bounds.label = label;
                     bounds.collapse = collapse.rect;
-                    bounds.mix = mixing.bounds;
+                    bounds.mix = [gain.rect];
                 }
 
                 let components = egui::ScrollArea::horizontal()

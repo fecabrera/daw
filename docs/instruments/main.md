@@ -8,7 +8,7 @@ Layer sources pass through Amplitude, layer effects, and layer mix controls. Out
 
 Output stays at the bottom of Instrument while regular layers scroll. Its expand/collapse button shows or hides its controls. Output cannot be removed, renamed, or reordered.
 
-Use Gain to change the combined instrument level and Pan to position it. Defaults are 0 dB and center. Output has no independent mute or solo control. Its gain and pan do not accept modulation.
+Use Gain to change the combined instrument level. Its default is 0 dB. Output has no Pan, Mute, or Solo control. Gain does not accept modulation.
 
 ## Add shared controls
 

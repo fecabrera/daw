@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Output gain-only header — 2026-10-28
+
+The fixed Output layer now shows only its compact gain knob. Its header height, gain position, expand/collapse control, selection and component layout stay unchanged. Stored Output pan values and audio processing remain compatible. Regression coverage checks the absence of pan artwork in compact/expanded rows, clicking its former position without edits or resetting a nonzero saved pan, gain keyboard adjustment, and fixed positioning while layers scroll.
+
+All 673 UI tests, strict workspace/all-target Clippy, formatting, whitespace, local documentation links, and the macOS debug app rebuild pass. The full workspace run passes: 1751 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. Logs use `work/output-gain-only-*`. Native UI and Windows/Linux checks were not run.
+
 ## Track header meter spacing — 2026-10-28
 
 Scale-free Timeline/Editor/Master meter rails now use the header's full content height. This removes the extra 5-point top/bottom inset used for scale endpoint labels and leaves the standard 7-point outer inset. Horizontal meter/controls geometry and the 68-point header height stay unchanged. Scaled Mixer meters retain their label space. Regression assertions inspect painted rails in audio/MIDI/Editor/Master headers across Dark/Light/Mist themes and 1×/1.5× display scale. Existing meter tests continue to cover clipping caps, click-to-reset, disabled UI and focus guards for both scaled and header variants.
