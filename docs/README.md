@@ -8,6 +8,8 @@ On Windows and Linux, open the burger menu for File, Edit, Clip, Track, and View
 
 Right-click an item to open its available actions. Context menus for clips, tracks, unit headers, and editable strips use the same design as dropdown menus. Independent plugin editors use it for their appearance menu and EQ band actions. Escape or a click outside the menu dismisses it without applying an action.
 
+Knob tooltips show only the parameter name on the left and the current value on the right, on one line. They keep a minimum width and expand for longer values. Hover to see the value, or drag a knob to keep the tooltip visible as the value changes, even when the pointer leaves the knob. Releasing ends the drag tooltip. Drag up or right to increase a value, hold Shift for finer adjustment, use arrow keys for small steps, or double-click to reset.
+
 ## Views
 
 - [Timeline](views/timeline.md): browse chords, import, arrange, select, trim, loop, split, and copy clips or a time range, and edit clip settings.

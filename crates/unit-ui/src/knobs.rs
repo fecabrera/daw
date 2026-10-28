@@ -9,6 +9,8 @@ use std::{f32::consts::PI, ops::RangeInclusive};
 
 pub const SIZE: f32 = 28.0;
 pub const CHOICE_SIZE: f32 = 52.0;
+const TOOLTIP_MIN_WIDTH: f32 = 120.0;
+const TOOLTIP_COLUMN_GAP: f32 = 8.0;
 const DIAGRAM_SIZE: Vec2 = Vec2::new(10.0, 6.0);
 
 #[derive(Clone, Copy)]
@@ -966,16 +968,32 @@ fn base_knob(
             );
         }
     }
-    let mut tooltip = format!(
-        "{}: {}. Drag up or right to increase. Hold Shift for fine adjustment. Use arrow keys for small steps. Double-click to reset.",
-        spec.name,
-        (spec.format)(*value)
-    );
-    if let Some((marker, _)) = &modulation {
-        tooltip.push('\n');
-        tooltip.push_str(&marker.tooltip);
+    let tooltip_value = (spec.format)(*value);
+    let tooltip_ui = |ui: &mut Ui| {
+        let [name, value] = [format!("{}:", spec.name), tooltip_value].map(|text| {
+            egui::WidgetText::from(text).into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Body,
+            )
+        });
+        // A knob-sized popup must not wrap its value or retain a previous value's narrow width.
+        ui.set_width(TOOLTIP_MIN_WIDTH.max(name.size().x + TOOLTIP_COLUMN_GAP + value.size().x));
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = TOOLTIP_COLUMN_GAP;
+            ui.label(name);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(value);
+            });
+        });
+    };
+    if !marker_press && ui.is_enabled() && ui.input(|input| input.focused) && response.dragged() {
+        response.show_tooltip_ui(tooltip_ui);
+        response
+    } else {
+        response.on_hover_ui(tooltip_ui)
     }
-    response.on_hover_text(tooltip)
 }
 
 #[cfg(test)]
@@ -1019,6 +1037,320 @@ mod tests {
             button: egui::PointerButton::Primary,
             pressed,
             modifiers: Default::default(),
+        }
+    }
+
+    fn tooltip_frame(
+        ctx: &egui::Context,
+        value: &mut f32,
+        spec: KnobSpec,
+        events: Vec<egui::Event>,
+        enabled: bool,
+        focused: bool,
+        marker: Option<&ModulationMarker>,
+    ) -> (Response, Vec<egui::epaint::ClippedShape>) {
+        let mut response = None;
+        let mut open = false;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 400.0))),
+                events,
+                focused,
+                ..Default::default()
+            },
+            |ui| {
+                response = Some(
+                    ui.add_enabled(enabled, Knob::new(value, spec).modulated(marker, &mut open)),
+                );
+            },
+        );
+        output.textures_delta.clear();
+        (response.unwrap(), output.shapes)
+    }
+
+    fn tooltip_value_text<'a>(
+        shapes: &'a [egui::epaint::ClippedShape],
+        name: &egui::epaint::TextShape,
+    ) -> Option<&'a egui::epaint::TextShape> {
+        let bounds = name.galley.rect.translate(name.pos.to_vec2());
+        shapes.iter().find_map(|shape| match &shape.shape {
+            Shape::Text(t)
+                if t.pos.x >= bounds.right()
+                    && (t.galley.rect.translate(t.pos.to_vec2()).center().y
+                        - bounds.center().y)
+                        .abs()
+                        < 1.0 =>
+            {
+                Some(t)
+            }
+            _ => None,
+        })
+    }
+
+    fn knob_tooltips(shapes: &[egui::epaint::ClippedShape], name: &str) -> Vec<String> {
+        shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                Shape::Text(t) if t.galley.text() == format!("{name}:") => {
+                    tooltip_value_text(shapes, t)
+                        .map(|value| format!("{} {}", t.galley.text(), value.galley.text()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn dragging_knob_tooltips_show_live_name_and_value_outside_the_widget_until_release() {
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            for spec in [
+                gain_spec(),
+                pan_spec().display_scale(22.0 / SIZE),
+                pitch_spec(),
+                waveform_spec(),
+            ] {
+                let ctx = egui::Context::default();
+                crate::fonts::configure(&ctx);
+                ctx.set_theme(theme);
+                ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 60.0);
+                let mut value = spec.reset;
+                let rect = tooltip_frame(&ctx, &mut value, spec, vec![], true, true, None)
+                    .0
+                    .rect;
+                let point = rect.center();
+                let (_, shapes) = tooltip_frame(
+                    &ctx,
+                    &mut value,
+                    spec,
+                    vec![egui::Event::PointerMoved(point), pointer(point, true)],
+                    true,
+                    true,
+                    None,
+                );
+                assert!(knob_tooltips(&shapes, spec.name).is_empty());
+                for offset in [90.0, 35.0] {
+                    let previous = value;
+                    let outside = point + Vec2::new(offset, 0.0);
+                    assert!(!rect.contains(outside));
+                    tooltip_frame(
+                        &ctx,
+                        &mut value,
+                        spec,
+                        vec![egui::Event::PointerMoved(outside)],
+                        true,
+                        true,
+                        None,
+                    );
+                    assert_ne!(value, previous);
+                    // Allow egui's popup sizing pass, without waiting for the hover delay.
+                    let (response, shapes) =
+                        tooltip_frame(&ctx, &mut value, spec, vec![], true, true, None);
+                    assert!(response.dragged());
+                    assert_eq!(
+                        knob_tooltips(&shapes, spec.name),
+                        [format!("{}: {}", spec.name, (spec.format)(value))]
+                    );
+                }
+                let previous = value;
+                let (_, shapes) = tooltip_frame(
+                    &ctx,
+                    &mut value,
+                    spec,
+                    vec![pointer(point + Vec2::new(35.0, 0.0), false)],
+                    true,
+                    true,
+                    None,
+                );
+                assert!(knob_tooltips(&shapes, spec.name).is_empty());
+                assert_eq!(value, previous);
+            }
+        }
+    }
+
+    #[test]
+    fn knob_tooltips_keep_a_minimum_width_and_grow_for_longer_values_without_wrapping() {
+        fn rects(shape: &Shape, output: &mut Vec<Rect>) {
+            match shape {
+                Shape::Rect(r) => output.push(r.rect),
+                Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        rects(shape, output);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for dragging in [false, true] {
+            for scale in [1.0, 1.5] {
+                let ctx = egui::Context::default();
+                crate::fonts::configure(&ctx);
+                ctx.set_pixels_per_point(scale);
+                ctx.all_styles_mut(|style| {
+                    style.interaction.tooltip_delay = if dragging { 60.0 } else { 0.0 };
+                    style.interaction.tooltip_grace_time = 0.0;
+                });
+                let spec = KnobSpec::new("Value", 0.0..=1.0, 0.0, 0.01).format(|value| {
+                    if value < 0.5 {
+                        "1 ms".into()
+                    } else {
+                        "12345678901234567890.123 milliseconds".into()
+                    }
+                });
+                let mut value = 0.0;
+                let point = tooltip_frame(&ctx, &mut value, spec, vec![], true, true, None)
+                    .0
+                    .rect
+                    .center();
+                let mut events = vec![egui::Event::PointerMoved(point)];
+                if dragging {
+                    events.push(pointer(point, true));
+                }
+                tooltip_frame(&ctx, &mut value, spec, events, true, true, None);
+                let mut widths = Vec::new();
+                for (next_value, offset) in [(0.0, 35.0), (0.1, 40.0), (1.0, 120.0), (0.2, 35.0)] {
+                    if dragging {
+                        tooltip_frame(
+                            &ctx,
+                            &mut value,
+                            spec,
+                            vec![egui::Event::PointerMoved(point + Vec2::new(offset, 0.0))],
+                            true,
+                            true,
+                            None,
+                        );
+                    } else {
+                        value = next_value;
+                    }
+                    tooltip_frame(&ctx, &mut value, spec, vec![], true, true, None);
+                    let (_, shapes) =
+                        tooltip_frame(&ctx, &mut value, spec, vec![], true, true, None);
+                    let text = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            Shape::Text(t) if t.galley.text().starts_with("Value:") => Some(t),
+                            _ => None,
+                        })
+                        .expect("visible tooltip value");
+                    assert_eq!(text.galley.rows.len(), 1);
+                    let name_bounds = text.galley.rect.translate(text.pos.to_vec2());
+                    let value_text =
+                        tooltip_value_text(&shapes, text).expect("tooltip value column");
+                    assert_eq!(value_text.galley.rows.len(), 1);
+                    let value_bounds = value_text.galley.rect.translate(value_text.pos.to_vec2());
+                    assert!(value_bounds.left() - name_bounds.right() >= TOOLTIP_COLUMN_GAP - 1.0);
+                    let bounds = name_bounds.union(value_bounds);
+                    let mut frames = Vec::new();
+                    for shape in &shapes {
+                        rects(&shape.shape, &mut frames);
+                    }
+                    let popup = frames
+                        .into_iter()
+                        .filter(|rect| rect.contains_rect(bounds) && rect.height() < 80.0)
+                        .min_by(|a, b| a.area().total_cmp(&b.area()))
+                        .expect("tooltip frame");
+                    assert!(popup.width() >= TOOLTIP_MIN_WIDTH);
+                    assert!(popup.width() >= bounds.width());
+                    assert!(
+                        ((name_bounds.left() - popup.left())
+                            - (popup.right() - value_bounds.right()))
+                        .abs()
+                            < 1.0,
+                        "name and right-aligned value must have equal outer padding: {popup:?}, {name_bounds:?}, {value_bounds:?}"
+                    );
+                    widths.push(popup.width());
+                }
+                assert!((widths[0] - widths[1]).abs() < 1.0);
+                assert!(widths[2] > widths[0] + 20.0);
+                assert!((widths[0] - widths[3]).abs() < 1.0);
+            }
+        }
+    }
+
+    #[test]
+    fn hover_tooltips_are_concise_even_for_modulated_knobs() {
+        for modulated in [false, true] {
+            let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
+            ctx.all_styles_mut(|style| {
+                style.interaction.tooltip_delay = 0.0;
+                style.interaction.tooltip_grace_time = 0.0;
+            });
+            let marker = ModulationMarker {
+                active: true,
+                range: [-12.0, 0.0],
+                live: [None, None],
+                tooltip: "Envelope 1 modulation details".into(),
+            };
+            let marker = modulated.then_some(&marker);
+            let spec = gain_spec();
+            let mut value = -6.0;
+            let rect = tooltip_frame(&ctx, &mut value, spec, vec![], true, true, marker)
+                .0
+                .rect;
+            tooltip_frame(
+                &ctx,
+                &mut value,
+                spec,
+                vec![egui::Event::PointerMoved(rect.center())],
+                true,
+                true,
+                marker,
+            );
+            tooltip_frame(&ctx, &mut value, spec, vec![], true, true, marker);
+            let (_, shapes) = tooltip_frame(&ctx, &mut value, spec, vec![], true, true, marker);
+            assert_eq!(
+                knob_tooltips(&shapes, spec.name),
+                [format!("Gain: {}", (spec.format)(value))]
+            );
+            assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
+                Shape::Text(t) if t.galley.text().contains("Drag up") || t.galley.text().contains("modulation details"))));
+        }
+    }
+
+    #[test]
+    fn active_knob_tooltips_stop_when_disabled_or_the_window_loses_focus() {
+        for (enabled, focused) in [(false, true), (true, false)] {
+            let ctx = egui::Context::default();
+            crate::fonts::configure(&ctx);
+            ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 60.0);
+            let spec = gain_spec();
+            let mut value = 0.0;
+            let point = tooltip_frame(&ctx, &mut value, spec, vec![], true, true, None)
+                .0
+                .rect
+                .center();
+            tooltip_frame(
+                &ctx,
+                &mut value,
+                spec,
+                vec![egui::Event::PointerMoved(point), pointer(point, true)],
+                true,
+                true,
+                None,
+            );
+            tooltip_frame(
+                &ctx,
+                &mut value,
+                spec,
+                vec![egui::Event::PointerMoved(point + Vec2::new(90.0, 0.0))],
+                true,
+                true,
+                None,
+            );
+            let (_, shapes) = tooltip_frame(&ctx, &mut value, spec, vec![], true, true, None);
+            assert!(!knob_tooltips(&shapes, spec.name).is_empty());
+            let previous = value;
+            let (_, shapes) = tooltip_frame(
+                &ctx,
+                &mut value,
+                spec,
+                vec![egui::Event::PointerMoved(point + Vec2::new(120.0, 0.0))],
+                enabled,
+                focused,
+                None,
+            );
+            assert_eq!(value, previous);
+            assert!(knob_tooltips(&shapes, spec.name).is_empty());
         }
     }
 
