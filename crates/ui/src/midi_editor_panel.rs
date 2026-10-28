@@ -146,11 +146,6 @@ impl DawUi {
                 .map_or([(0.0, false); 2], |meter| meter.levels());
             let cleared = meters::stereo_panel(ui, ROW_HEIGHT - 14.0, levels, |ui| {
                 let mut track = self.editor_track().cloned();
-                let toggles_width = 2.0 * toolbars::CONTROL_HEIGHT + ui.spacing().item_spacing.x;
-                let toggles_slot = Rect::from_min_size(
-                    ui.cursor().min + Vec2::new(ui.available_width() - toggles_width, 0.0),
-                    Vec2::new(toggles_width, toolbars::CONTROL_HEIGHT),
-                );
                 rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
                     let name_width = ui.available_width();
                     ui.allocate_ui_with_layout(
@@ -173,47 +168,27 @@ impl DawUi {
                         },
                     );
                 });
-                // Keep second-row toggles in their columns without limiting the selector above.
-                let mut toggle_ui = ui.new_child(
-                    egui::UiBuilder::new()
-                        .id_salt("editor-track-toggles")
-                        .max_rect(toggles_slot)
-                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
-                );
                 track = self.editor_track().cloned();
-                toggle_ui.add_enabled_ui(track.is_some() && !self.midi_editor.dragging(), |ui| {
-                    let mut muted = track.as_ref().is_some_and(|t| t.muted);
-                    let mut soloed = track.as_ref().is_some_and(|t| t.soloed);
-                    let buttons = mix_controls::second_row_mute_solo(
-                        ui,
-                        &mut muted,
-                        &mut soloed,
-                        ["Mute track", "Solo track"],
-                        0.0,
-                    );
-                    #[cfg(test)]
-                    {
-                        self.midi_editor.mix_bounds = buttons.map(|r| r.rect);
-                    }
-                    #[cfg(not(test))]
-                    let _ = buttons;
-                    if let Some(t) = &mut track {
-                        t.muted = muted;
-                        t.soloed = soloed;
-                    }
-                });
                 if let Some(mut track) = track {
-                    let controls = ui
+                    let (controls, buttons) = ui
                         .add_enabled_ui(!self.midi_editor.dragging(), |ui| {
-                            mix_controls::gain_pan(ui, &mut track.gain_db, &mut track.pan)
+                            mix_controls::header_row(
+                                ui,
+                                &mut track.gain_db,
+                                &mut track.pan,
+                                &mut track.muted,
+                                &mut track.soloed,
+                                ["Mute track", "Solo track"],
+                            )
                         })
                         .inner;
                     #[cfg(test)]
                     {
                         self.midi_editor.track_mix_bounds = controls.bounds;
+                        self.midi_editor.mix_bounds = buttons.map(|r| r.rect);
                     }
                     #[cfg(not(test))]
-                    let _ = controls;
+                    let _ = (controls, buttons);
                     if let Some(current) = self
                         .session
                         .project
@@ -231,6 +206,17 @@ impl DawUi {
                         current.soloed = track.soloed;
                         self.changed();
                     }
+                } else {
+                    ui.add_enabled_ui(false, |ui| {
+                        rows::centered(ui, knobs::SIZE, |ui| {
+                            mix_controls::mute_solo(
+                                ui,
+                                &mut false,
+                                &mut false,
+                                ["Mute track", "Solo track"],
+                            );
+                        });
+                    });
                 }
             });
             meters::reset_on_click(

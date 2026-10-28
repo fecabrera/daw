@@ -1049,7 +1049,7 @@ fn fader_scales_fit_the_strips_and_silence_survives_view_changes() {
                     egui::Shape::Rect(shape)
                         if shape.fill == theme::palette(&ctx).input
                             && (shape.rect.width() - 8.0).abs() < 0.1
-                            && shape.rect.height() > 30.0
+                            && (shape.rect.height() - (panel.height() - 14.0)).abs() < 0.1
                             && panel.contains_rect(shape.rect) =>
                     {
                         Some(shape.rect)

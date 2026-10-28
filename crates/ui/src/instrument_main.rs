@@ -130,7 +130,9 @@ impl DawUi {
                     bus.collapsed = !compact;
                     ui.ctx().request_repaint();
                 }
-                let gain = rows::centered(&mut header, knobs::SIZE, |ui| knobs::header_gain(ui, &mut bus.gain_db)).inner;
+                let gain = rows::centered(&mut header, knobs::SIZE, |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| knobs::header_gain(ui, &mut bus.gain_db)).inner
+                }).inner;
                 #[cfg(not(test))] let _ = gain;
                 response.widget_info(|| {
                     egui::WidgetInfo::selected(

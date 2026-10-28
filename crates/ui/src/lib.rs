@@ -114,7 +114,7 @@ mod waveforms;
 
 const TRACK_WIDTH: f32 = panels::ControlPanel::WIDTH;
 const ROW_HEIGHT: f32 = toolbars::CONTROL_HEIGHT + 4.0 + knobs::SIZE + 14.0;
-const MASTER_HEIGHT: f32 = ROW_HEIGHT;
+const MASTER_HEIGHT: f32 = knobs::SIZE + 14.0;
 const RULER_HEIGHT: f32 = toolbars::HEIGHT;
 const SCROLLBAR_HEIGHT: f32 = 15.0;
 const MIN_ZOOM: f32 = 1.0;
@@ -3170,9 +3170,17 @@ impl DawUi {
                 .as_ref()
                 .map_or([(0.0, false); 2], |output| output.status.meter.levels());
             let cleared = meters::stereo_panel(ui, MASTER_HEIGHT - 14.0, levels, |ui| {
-                self.master_name(ui);
                 rows::centered(ui, knobs::SIZE, |ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
+                    let name_width =
+                        (ui.available_width() - knobs::SIZE - ui.spacing().item_spacing.x).max(1.0);
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(name_width, knobs::SIZE),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.set_min_width(name_width);
+                            self.master_name(ui);
+                        },
+                    );
                     let previous = self.session.project.master.gain_db;
                     let knob = knobs::header_gain(ui, &mut self.session.project.master.gain_db);
                     if knob.changed() {
@@ -4024,36 +4032,17 @@ impl DawUi {
                                         let mut solo = track.soloed;
                                         let header =
                                             rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                                                let buttons_width = 2.0 * toolbars::CONTROL_HEIGHT
-                                                    + ui.spacing().item_spacing.x;
-                                                let name_width = (ui.available_width()
-                                                    - buttons_width
-                                                    - ui.spacing().item_spacing.x)
-                                                    .max(1.0);
                                                 let name = ui.allocate_ui_with_layout(
-                                                    Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
+                                                    Vec2::new(
+                                                        ui.available_width(),
+                                                        toolbars::CONTROL_HEIGHT,
+                                                    ),
                                                     egui::Layout::left_to_right(
                                                         egui::Align::Center,
-                                                    )
-                                                    .with_main_align(egui::Align::Min),
+                                                    ),
                                                     |ui| self.track_name(ui, &track),
                                                 );
-                                                let [mute_button, solo_button] =
-                                                    mix_controls::second_row_mute_solo(
-                                                        ui,
-                                                        &mut mute,
-                                                        &mut solo,
-                                                        [
-                                                            "Mute (M toggles selected tracks)",
-                                                            "Solo (S toggles selected tracks)",
-                                                        ],
-                                                        0.0,
-                                                    );
-                                                [
-                                                    name.response.rect,
-                                                    mute_button.rect,
-                                                    solo_button.rect,
-                                                ]
+                                                [name.response.rect]
                                             });
                                         if ui.is_enabled()
                                             && self.clip_actions_available(ui.ctx())
@@ -4075,7 +4064,17 @@ impl DawUi {
                                         }
                                         let mut gain = track.gain_db;
                                         let mut pan = track.pan;
-                                        mix_controls::gain_pan(ui, &mut gain, &mut pan);
+                                        mix_controls::header_row(
+                                            ui,
+                                            &mut gain,
+                                            &mut pan,
+                                            &mut mute,
+                                            &mut solo,
+                                            [
+                                                "Mute (M toggles selected tracks)",
+                                                "Solo (S toggles selected tracks)",
+                                            ],
+                                        );
                                         let updated = gain != track.gain_db
                                             || pan != track.pan
                                             || mute != track.muted
@@ -7856,7 +7855,6 @@ mod tests {
                 })
                 .unwrap();
             let lane = app.lane_bounds[&tracks[0]];
-            let name = name_bounds.center();
             // Track names follow the same icon slot and gap as group names.
             assert!(
                 (name_bounds.left() - (lane.left() - TRACK_WIDTH + 41.0)).abs() < 1.0,
@@ -7894,8 +7892,8 @@ mod tests {
             }
             assert!((mute.y - (lane.top() + 47.0)).abs() < 1.0);
             assert!((solo.y - mute.y).abs() < 1.0);
-            assert!(name.x < mute.x && mute.x < solo.x);
-            assert!((solo.x - (lane.left() - TRACK_WIDTH + 206.0)).abs() < 1.0);
+            assert!(mute.x < solo.x);
+            assert!((solo.x - (lane.left() - TRACK_WIDTH + 46.0)).abs() < 1.0);
             let header = Pos2::new(lane.left() - TRACK_WIDTH + 18.0, lane.top() + 18.0);
             let destination = Pos2::new(header.x, app.lane_bounds[&tracks[2]].bottom() - 10.0);
             frame(
@@ -8237,10 +8235,10 @@ mod tests {
             ("bottom padding", Vec2::new(30.0, 66.0)),
             ("between rows", Vec2::new(60.0, 31.0)),
             ("name", Vec2::new(110.0, 18.0)),
-            ("mute", Vec2::new(178.0, 47.0)),
-            ("solo", Vec2::new(206.0, 47.0)),
-            ("gain knob", Vec2::new(21.0, 47.0)),
-            ("pan knob", Vec2::new(53.0, 47.0)),
+            ("mute", Vec2::new(18.0, 47.0)),
+            ("solo", Vec2::new(46.0, 47.0)),
+            ("gain knob", Vec2::new(TRACK_WIDTH - 47.0, 47.0)),
+            ("pan knob", Vec2::new(TRACK_WIDTH - 79.0, 47.0)),
             ("left meter", Vec2::new(226.0, 20.0)),
             ("right meter", Vec2::new(238.0, 20.0)),
         ] {

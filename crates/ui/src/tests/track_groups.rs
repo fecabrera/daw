@@ -242,12 +242,15 @@ fn group_and_master_titles_align_with_their_view_and_group_disclosures_have_no_f
                 );
                 assert!(aligned(master, app.master_bounds), "{mode:?}: {master:?}");
                 if mode == ViewMode::Timeline {
-                    let gain_center = app.master_bounds.min + Vec2::new(21.0, 47.0);
+                    let gain_center = Pos2::new(
+                        app.master_bounds.right() - 47.0,
+                        app.master_bounds.center().y,
+                    );
                     assert!(
                         shapes.iter().any(|shape| matches!(&shape.shape,
                             egui::Shape::Circle(circle) if circle.center.distance(gain_center) < 1.0
                         )),
-                        "Master gain must retain its row position"
+                        "Master gain must sit before the meters on the single row"
                     );
                 }
                 let arrow = Pos2::new(
@@ -340,7 +343,7 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                                 panel.top(),
                                 panel.bottom(),
                                 7.0,
-                                panel.top() + 18.0,
+                                panel.center().y,
                             )
                         }
                         (_, id) => {
@@ -441,7 +444,8 @@ fn track_and_master_icons_share_group_header_geometry_in_both_views() {
                                 egui::Shape::Rect(rect)
                                     if rect.fill == theme::palette(&ctx).input
                                         && (rect.rect.width() - 8.0).abs() < 0.1
-                                        && rect.rect.height() > 30.0
+                                        && (rect.rect.height() - (bottom - top - 14.0)).abs()
+                                            < 0.1
                                         && rect.rect.left() >= left
                                         && rect.rect.top() >= top
                                         && rect.rect.bottom() <= bottom =>

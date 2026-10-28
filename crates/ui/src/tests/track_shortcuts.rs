@@ -1736,7 +1736,10 @@ fn native_mix_dispatch_blocks_held_knobs_and_works_after_release() {
                 app.use_native_menu();
                 app.select_track(tracks[0], false);
                 frame(&mut app, &ctx, vec![]);
-                let point = panel(&app, tracks[0]).min + Vec2::new(25.0, 47.0);
+                let point = Pos2::new(
+                    panel(&app, tracks[0]).right() - 47.0,
+                    panel(&app, tracks[0]).top() + 47.0,
+                );
                 (app, ctx, point)
             };
             frame(

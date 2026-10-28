@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Timeline Master and track mixing rows — 2026-10-28
+
+Timeline Master now occupies one 42-point row, with the shared compact gain knob immediately before the stereo meters at the right. The icon/name, gain and 28-point meter rails share the row center and retain seven-point outer insets. Track headers retain their two-row geometry and place Mute/Solo at the left, then Pan/Gain at the right before the meters. Timeline, Editor and regular layers share `mix_controls::header_row` over existing knobs and mute/solo primitives. Output retains a right-aligned gain knob only. Mixer retains its layout. Tests cover all themes and display scales, rail spacing and alignment, label/knob separation, gain keyboard editing/reset, exact silence across view changes, selection, effect drops, scrolling and resizing.
+
+All 679 UI tests pass after correcting the name allocation and obsolete meter/control-position assertions. `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`, `cargo fmt --all --check`, whitespace and changed Markdown local-link checks pass. `sh tools/package_macos.sh debug` rebuilds the app. `cargo test --offline --locked --workspace` passes: 1765 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. Logs use `work/master-single-row-*`, `work/master-track-layout-*` and `work/header-mix-layout-*`. Native UI interaction and Windows/Linux checks were not run.
+
 ## Audio editor without clip selection — 2026-10-28
 
 The lower audio editor now paints all visible clips on its displayed track independently of primary clip selection. Clearing selection retains fitted or manual zoom/scroll as a manual view; missing sources and surviving linked-boundary neighbors stay visible. A nonempty audio track retains zoom/scroll controls without a selection, while Fit clip requires a selected clip. Initial unselected views use the full track navigation extent. Clip options retains its selection prompt; empty-track grids and no-track blank editors remain supported. This supersedes the earlier canvas-level Select a clip requirement.

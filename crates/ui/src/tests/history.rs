@@ -249,7 +249,7 @@ fn history_shortcut_works_with_a_focused_knob_after_a_drag() {
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let lane = app.lane_bounds[&track];
-    let point = Pos2::new(lane.left() - TRACK_WIDTH + 21.0, lane.top() + 47.0);
+    let point = Pos2::new(lane.left() - 47.0, lane.top() + 47.0);
     frame(
         &mut app,
         &ctx,

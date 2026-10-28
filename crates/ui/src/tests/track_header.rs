@@ -110,14 +110,18 @@ fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
             assert_eq!(app.lane_bounds[&audio].height(), 68.0);
             assert_eq!(app.lane_bounds[&midi].height(), 68.0);
             for (header, has_pan) in headers {
-                assert_eq!(header.height(), 68.0);
+                assert_eq!(header.height(), if has_pan { 68.0 } else { 42.0 });
                 assert_header_meter_insets(&shapes, header, &ctx);
                 for x in if has_pan {
-                    vec![21.0, 53.0]
+                    vec![47.0, 79.0]
                 } else {
                     vec![21.0]
                 } {
-                    let center = header.min + Vec2::new(x, 47.0);
+                    let center = if has_pan {
+                        Pos2::new(header.right() - x, header.top() + 47.0)
+                    } else {
+                        Pos2::new(header.right() - 47.0, header.center().y)
+                    };
                     let radius = (knobs::SIZE / 2.0 - 5.0) * knobs::HEADER_SIZE / knobs::SIZE;
                     assert!(shapes.iter().any(|shape| matches!(&shape.shape,
                         egui::Shape::Circle(c) if c.center.distance(center) < 1.0 && (c.radius - radius).abs() < 0.01)),
@@ -126,6 +130,21 @@ fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
                         }).collect::<Vec<_>>());
                     assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
                         egui::Shape::Circle(c) if c.center.distance(center) < 1.0 && (c.radius - 9.0).abs() < 0.01)));
+                }
+                if !has_pan {
+                    let name = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text)
+                                if text.galley.text() == "Master" && header.contains(text.pos) =>
+                            {
+                                Some(text.galley.rect.translate(text.pos.to_vec2()))
+                            }
+                            _ => None,
+                        })
+                        .expect("Master label");
+                    assert!((name.center().y - header.center().y).abs() < 1.0);
+                    assert!(name.right() < header.right() - 47.0 - knobs::HEADER_SIZE / 2.0);
                 }
                 assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
                     egui::Shape::Rect(r) if r.fill == theme::palette(&ctx).input
@@ -177,9 +196,17 @@ fn editor_track_headers_have_only_compact_knobs_and_keep_their_height() {
                         && (r.rect.width() - NUMERIC_WIDTH).abs() < 1.0 && header.contains_rect(r.rect))));
                 assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
                 assert_eq!(pan.size(), gain.size());
-                assert!(gain.center().distance(header.min + Vec2::new(21.0, 47.0)) < 1.0);
-                assert!(pan.center().distance(header.min + Vec2::new(53.0, 47.0)) < 1.0);
-                assert!((pan.left() - gain.right() - 10.0).abs() < 1.0);
+                assert!(
+                    gain.center()
+                        .distance(Pos2::new(header.right() - 47.0, header.top() + 47.0))
+                        < 1.0
+                );
+                assert!(
+                    pan.center()
+                        .distance(Pos2::new(header.right() - 79.0, header.top() + 47.0))
+                        < 1.0
+                );
+                assert!((gain.left() - pan.right() - 10.0).abs() < 1.0);
                 assert!(!app.dirty);
                 frame(
                     &mut app,
@@ -219,7 +246,7 @@ fn editor_track_headers_have_only_compact_knobs_and_keep_their_height() {
 }
 
 #[test]
-fn header_mute_solo_align_with_knobs_and_layers_align_to_the_right() {
+fn header_mute_solo_align_with_knobs_and_stay_on_the_left() {
     for scope in ["timeline", "layer", "editor"] {
         for scale in [1.0, 1.5] {
             let (mut app, audio) = fixture();
@@ -272,12 +299,7 @@ fn header_mute_solo_align_with_knobs_and_layers_align_to_the_right() {
                     })
                     .expect("mute/solo label in header");
                 let point = text.galley.rect.translate(text.pos.to_vec2()).center();
-                let x = if scope == "layer" {
-                    app.midi_editor.layer_bounds[&layer].collapse.right() - 39.0
-                        + index as f32 * 28.0
-                } else {
-                    panel.left() + 178.0 + index as f32 * 28.0
-                };
+                let x = panel.left() + 18.0 + index as f32 * 28.0;
                 assert!(
                     point.distance(Pos2::new(x, panel.top() + 47.0)) < 1.0,
                     "{scope} {label}: {point:?}, panel {panel:?}"
@@ -305,7 +327,9 @@ fn header_mute_solo_align_with_knobs_and_layers_align_to_the_right() {
             if scope == "layer" {
                 let bounds = &app.midi_editor.layer_bounds[&layer];
                 assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
-                assert_eq!(bounds.collapse.right(), bounds.mix_controls[1].right());
+                assert!(
+                    (bounds.collapse.right() - bounds.mix_controls[2].right() - 3.0).abs() < 0.1
+                );
             }
             assert!(app.error.is_none());
         }
@@ -342,7 +366,7 @@ fn removed_header_fields_do_not_take_text_focus_and_knob_values_reach_the_mixer(
     assert!(!ctx.text_edit_focused());
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
-    let gain = origin + Vec2::new(21.0, 47.0);
+    let gain = origin + Vec2::new(TRACK_WIDTH - 47.0, 47.0);
     frame(
         &mut app,
         &ctx,
@@ -383,7 +407,18 @@ fn smaller_track_and_master_knobs_keep_keyboard_editing_and_double_click_reset()
                 app.lane_bounds[&audio].top(),
             )
         };
-        let point = origin + Vec2::new(if control == "pan" { 53.0 } else { 21.0 }, 47.0);
+        let point = if control == "master" {
+            Pos2::new(
+                app.master_bounds.right() - 47.0,
+                app.master_bounds.center().y,
+            )
+        } else {
+            origin
+                + Vec2::new(
+                    TRACK_WIDTH - if control == "pan" { 79.0 } else { 47.0 },
+                    47.0,
+                )
+        };
         frame(
             &mut app,
             &ctx,
@@ -422,7 +457,7 @@ fn smaller_track_and_master_knobs_keep_keyboard_editing_and_double_click_reset()
         double_click(&mut app, &ctx, point);
         assert_eq!(value(&app), 0.0);
         assert_eq!(app.lane_bounds[&audio].height(), 68.0);
-        assert_eq!(app.master_bounds.height(), 68.0);
+        assert_eq!(app.master_bounds.height(), 42.0);
     }
 }
 
@@ -473,7 +508,7 @@ fn header_spacing_selects_clips_but_names_and_controls_keep_their_actions() {
     double_click(&mut app, &ctx, Pos2::new(left + 110.0, y)); // Blank name area.
     assert_eq!(app.selected_clips, HashSet::from([ids[0], ids[1]]));
     app.select_clip(ids[2], tracks[1], false);
-    double_click(&mut app, &ctx, Pos2::new(left + 178.0, y + 29.0)); // Mute button.
+    double_click(&mut app, &ctx, Pos2::new(left + 18.0, y + 29.0)); // Mute button.
     assert_eq!(app.selected_clips, HashSet::from([ids[2]]));
     assert!(!app.session.project.tracks[0].muted);
     double_click(&mut app, &ctx, Pos2::new(left + 50.0, y)); // Visible name text.

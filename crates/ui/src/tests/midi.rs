@@ -935,7 +935,7 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         assert_eq!(mute.center().y, gain.center().y);
         assert_eq!(solo.center().y, pan.center().y);
         assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
-        assert_eq!(bounds.collapse.right(), solo.right());
+        assert!((bounds.collapse.right() - gain.right() - 3.0).abs() < 0.1);
         assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
         assert_eq!(solo.left() - mute.right(), 6.0);
         for peer in &layers[1..] {
@@ -945,8 +945,14 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         }
         assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
         assert_eq!(pan.size(), gain.size());
-        assert_eq!(gain.center(), bounds.label.min + Vec2::new(21.0, 47.0));
-        assert_eq!(pan.center(), bounds.label.min + Vec2::new(53.0, 47.0));
+        assert_eq!(
+            gain.center(),
+            Pos2::new(bounds.label.right() - 21.0, bounds.label.top() + 47.0)
+        );
+        assert_eq!(
+            pan.center(),
+            Pos2::new(bounds.label.right() - 53.0, bounds.label.top() + 47.0)
+        );
         let point = mute.center();
         app.dirty = false;
         frame(
@@ -6836,7 +6842,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
             .collect();
         for layer in &layers {
             let bounds = &app.midi_editor.layer_bounds[&layer.id];
-            assert_eq!(bounds.collapse.right(), bounds.mix_controls[1].right());
+            assert!((bounds.collapse.right() - bounds.mix_controls[2].right() - 3.0).abs() < 0.1);
             assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
             assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
             assert!(bounds.label.contains_rect(bounds.collapse));
@@ -6890,7 +6896,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
                 bounds.collapse.width(),
                 app.midi_editor.add_layer_bounds.width()
             );
-            assert_eq!(bounds.collapse.right(), bounds.mix_controls[1].right());
+            assert!((bounds.collapse.right() - bounds.mix_controls[2].right() - 3.0).abs() < 0.1);
             assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
             assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
             assert!(bounds.label.contains_rect(bounds.collapse));

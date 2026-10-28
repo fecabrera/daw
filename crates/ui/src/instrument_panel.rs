@@ -372,12 +372,9 @@ impl DawUi {
                                             &mut header_ui,
                                             toolbars::CONTROL_HEIGHT,
                                             |ui| {
-                                                let buttons_width = 2.0 * toolbars::CONTROL_HEIGHT
-                                                    + layer_action_width
-                                                    + 2.0 * ui.spacing().item_spacing.x;
                                                 let name_width = (ui.available_width()
                                                     - icons::HEADER_ICON_WIDTH
-                                                    - buttons_width
+                                                    - layer_action_width
                                                     - 2.0 * ui.spacing().item_spacing.x)
                                                     .max(1.0);
                                                 let icon = icons::header_icon(ui, icons::Lucide::AudioWaveform, Sense::click_and_drag());
@@ -400,20 +397,6 @@ impl DawUi {
                                                         },
                                                     )
                                                     .inner;
-                                                let toggles = ui
-                                                    .add_enabled_ui(mixing_enabled, |ui| {
-                                                        mix_controls::second_row_mute_solo(
-                                                            ui,
-                                                            &mut layer.muted,
-                                                            &mut layer.soloed,
-                                                            [
-                                                                "Mute layer",
-                                                                "Solo layer within this instrument",
-                                                            ],
-                                                            layer_action_width + ui.spacing().item_spacing.x,
-                                                        )
-                                                    })
-                                                    .inner;
                                                 let collapse = icons::small_button(
                                                     ui,
                                                     if compact {
@@ -433,30 +416,32 @@ impl DawUi {
                                                 (
                                                     icon.rect,
                                                     name,
-                                                    toggles.map(|response| response.rect),
                                                     collapse,
                                                 )
                                             },
                                         )
                                         .inner;
-                                        let collapse = header.3;
+                                        let collapse = header.2;
                                         if collapse.clicked() {
                                             layer.collapsed = !compact;
                                             ui.ctx().request_repaint();
                                         }
-                                        let mixing = header_ui
+                                        let (mixing, toggles) = header_ui
                                             .add_enabled_ui(mixing_enabled, |ui| {
-                                                mix_controls::gain_pan(
+                                                mix_controls::header_row(
                                                     ui,
                                                     &mut layer.gain_db,
                                                     &mut layer.pan,
+                                                    &mut layer.muted,
+                                                    &mut layer.soloed,
+                                                    ["Mute layer", "Solo layer within this instrument"],
                                                 )
                                             })
                                             .inner;
                                         let controls = (header.0, header.1);
                                         let mixing_bounds = [
-                                            header.2[0],
-                                            header.2[1],
+                                            toggles[0].rect,
+                                            toggles[1].rect,
                                             mixing.bounds[0],
                                             mixing.bounds[1],
                                         ];
