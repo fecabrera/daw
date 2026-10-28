@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Track header meter spacing — 2026-10-28
+
+Scale-free Timeline/Editor/Master meter rails now use the header's full content height. This removes the extra 5-point top/bottom inset used for scale endpoint labels and leaves the standard 7-point outer inset. Horizontal meter/controls geometry and the 68-point header height stay unchanged. Scaled Mixer meters retain their label space. Regression assertions inspect painted rails in audio/MIDI/Editor/Master headers across Dark/Light/Mist themes and 1×/1.5× display scale. Existing meter tests continue to cover clipping caps, click-to-reset, disabled UI and focus guards for both scaled and header variants.
+
+All 673 UI tests, strict workspace/all-target Clippy, formatting, whitespace, local documentation links, and the macOS debug app rebuild pass. The full workspace run passes: 1751 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. Logs use `work/header-meter-spacing-*`. Native UI and Windows/Linux checks were not run.
+
 ## Layer header assertion correction — 2026-10-28
 
 A subsequent 673-test UI run reported two failures in the final layer header assertions. One assertion still required a 6-point horizontal gap between Solo and collapse. The other still required collapse to share the M/S row. Both conflict with the accepted final layout. Tests now require Solo and collapse to share their right edge, with collapse at its original first-row inset. Existing assertions retain second-row knob/M/S alignment, the M/S gap, outer inset, release-only edits, and peer-layer isolation. Application code and the layout contract are unchanged.

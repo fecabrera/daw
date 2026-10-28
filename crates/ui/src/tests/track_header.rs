@@ -35,6 +35,34 @@ fn header_point(app: &DawUi, track: Id) -> Pos2 {
     }
 }
 
+fn assert_header_meter_insets(
+    shapes: &[egui::epaint::ClippedShape],
+    header: Rect,
+    ctx: &egui::Context,
+) {
+    let mut rails: Vec<_> = shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Rect(rect)
+                if rect.fill == theme::palette(ctx).input
+                    && rect.rect.width() == 8.0
+                    && header.contains_rect(rect.rect) =>
+            {
+                Some(rect.rect)
+            }
+            _ => None,
+        })
+        .collect();
+    rails.sort_by(|a, b| a.left().total_cmp(&b.left()));
+    assert_eq!(rails.len(), 2);
+    for rail in &rails {
+        assert_eq!(rail.top() - header.top(), 7.0);
+        assert_eq!(header.bottom() - rail.bottom(), 7.0);
+    }
+    assert_eq!(header.right() - rails[1].right(), 7.0);
+    assert_eq!(rails[1].left() - rails[0].right(), 4.0);
+}
+
 #[test]
 fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
     for color_theme in [
@@ -83,6 +111,7 @@ fn track_headers_keep_compact_knobs_and_height_without_numeric_fields() {
             assert_eq!(app.lane_bounds[&midi].height(), 68.0);
             for (header, has_pan) in headers {
                 assert_eq!(header.height(), 68.0);
+                assert_header_meter_insets(&shapes, header, &ctx);
                 for x in if has_pan {
                     vec![21.0, 53.0]
                 } else {
@@ -138,6 +167,7 @@ fn editor_track_headers_have_only_compact_knobs_and_keep_their_height() {
                 let header = app.midi_editor.track_header_bounds;
                 let [gain, pan] = app.midi_editor.track_mix_bounds;
                 assert_eq!(header.height(), 68.0);
+                assert_header_meter_insets(&shapes, header, &ctx);
                 let selector = app.midi_editor.selector_bounds;
                 let meter_left =
                     header.right() - 7.0 - (meters::STEREO_WIDTH - meters::SCALE_WIDTH);

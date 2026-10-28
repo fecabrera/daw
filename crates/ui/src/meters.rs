@@ -79,9 +79,9 @@ fn stereo_with_scale(
             ui.allocate_exact_size(Vec2::new(SCALE_WIDTH, height), Sense::hover())
                 .0
         });
-        let left = channel(ui, "L", height, levels[0].0, levels[0].1);
+        let left = channel_with_inset(ui, "L", height, levels[0].0, levels[0].1, show_scale);
         ui.add_space(CHANNEL_SPACING);
-        let right = channel(ui, "R", height, levels[1].0, levels[1].1);
+        let right = channel_with_inset(ui, "R", height, levels[1].0, levels[1].1, show_scale);
         if let Some(scale) = scale {
             paint_scale(ui, scale, level_rail(left.rect));
         }
@@ -173,6 +173,17 @@ pub fn stereo_panel(
 
 /// Shared channel monitor for tracks and the master output.
 pub fn channel(ui: &mut Ui, label: &str, height: f32, peak: f32, clipped: bool) -> Response {
+    channel_with_inset(ui, label, height, peak, clipped, true)
+}
+
+fn channel_with_inset(
+    ui: &mut Ui,
+    label: &str,
+    height: f32,
+    peak: f32,
+    clipped: bool,
+    inset_for_scale: bool,
+) -> Response {
     let level = if peak > 0.0 {
         format!("{:.1} dBFS", 20.0 * peak.log10())
     } else {
@@ -187,7 +198,13 @@ pub fn channel(ui: &mut Ui, label: &str, height: f32, peak: f32, clipped: bool) 
         info
     });
     let painter = ui.painter();
-    let rail = level_rail(rect);
+    // Header frames already supply their outer padding. Only scaled meters need
+    // room for endpoint labels above and below the rail.
+    let rail = if inset_for_scale {
+        level_rail(rect)
+    } else {
+        rect
+    };
     painter.rect_filled(rail, 1.0, theme::palette(ui.ctx()).input);
     if progress > 0.0 {
         let fill = Rect::from_min_max(
@@ -621,7 +638,7 @@ mod tests {
                             0
                         };
                         let caps = output.shapes.iter().filter(|shape| matches!(&shape.shape,
-                            egui::Shape::Rect(rect) if rect.rect.height() == 3.0 && rects.iter().any(|channel| level_rail(*channel).min == rect.rect.min)
+                            egui::Shape::Rect(rect) if rect.rect.height() == 3.0 && rects.iter().any(|channel| (if show_scale { level_rail(*channel) } else { *channel }).min == rect.rect.min)
                         )).count();
                         assert_eq!(
                             caps, expected_caps,
