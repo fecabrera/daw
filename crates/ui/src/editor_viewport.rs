@@ -57,14 +57,22 @@ impl EditorViewport {
         width: f32,
         sample_rate_hz: u32,
         track_end: u64,
+        preserve_unselected: bool,
     ) {
         let Some(clip) = clip else {
             // A lower-editor edit can remove its primary clip. Keep a manually
             // retained view through empty selection; an explicit fit restores fitted mode.
-            if self.retain_on_selection || !self.fitted {
+            if preserve_unselected || self.retain_on_selection || !self.fitted {
                 self.clip = None;
                 self.fitted = false;
                 self.retain_on_selection = false;
+                if preserve_unselected {
+                    // Audio track clips remain navigable without a primary selection.
+                    self.end = (track_end as f64 / f64::from(sample_rate_hz)).max(60.0) + 30.0;
+                    self.minimum_zoom = (f64::from(width.max(1.0)) / self.end) as f32;
+                    self.maximum_zoom = self.maximum_zoom.max(self.zoom);
+                    self.clamp_to_content(width);
+                }
             } else {
                 *self = Self::default();
             }
@@ -90,6 +98,10 @@ impl EditorViewport {
         // Content selection can switch between clips of very different lengths.
         // Keep an existing close-up even when it exceeds the new clip's fit range.
         self.maximum_zoom = (self.fit_zoom * 128.0).max(self.zoom);
+        self.clamp_to_content(width);
+    }
+
+    fn clamp_to_content(&mut self, width: f32) {
         self.zoom = self.zoom.clamp(self.minimum_zoom, self.maximum_zoom);
         self.scroll = self.scroll.clamp(
             0.0,
@@ -136,11 +148,13 @@ impl DawUi {
             width,
             self.session.project.sample_rate_hz,
             track.clips.iter().map(Clip::end).max().unwrap_or(0),
+            !midi,
         );
         let toolbar = rows::fixed(ui, toolbars::HEIGHT, |ui| {
             toolbars::Toolbar::row_with_control_height(ui, icons::TOOLBAR_BUTTON_SIZE, |ui| {
-                let enabled =
-                    clip.is_some() && self.editing_enabled() && !self.midi_editor.dragging();
+                let enabled = (clip.is_some() || (!midi && !track.clips.is_empty()))
+                    && self.editing_enabled()
+                    && !self.midi_editor.dragging();
                 ui.add_enabled_ui(enabled, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let mut zoom = self.view_zoom();
@@ -158,7 +172,9 @@ impl DawUi {
                             self.set_view_zoom(zoom);
                         }
 
-                        let fit = icons::fit_clip_button(ui);
+                        let fit = ui
+                            .add_enabled_ui(clip.is_some(), icons::fit_clip_button)
+                            .inner;
                         #[cfg(test)]
                         {
                             self.midi_editor.content.fit_bounds = fit.rect;

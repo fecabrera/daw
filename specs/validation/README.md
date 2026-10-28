@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Audio editor without clip selection — 2026-10-28
+
+The lower audio editor now paints all visible clips on its displayed track independently of primary clip selection. Clearing selection retains fitted or manual zoom/scroll as a manual view; missing sources and surviving linked-boundary neighbors stay visible. A nonempty audio track retains zoom/scroll controls without a selection, while Fit clip requires a selected clip. Initial unselected views use the full track navigation extent. Clip options retains its selection prompt; empty-track grids and no-track blank editors remain supported. This supersedes the earlier canvas-level Select a clip requirement.
+
+All 13 audio-editor tests pass, covering every theme, fitted/manual deselection, waveform peaks, multiple clips, click-to-select, disabled Fit clip, enabled zoom, missing sources, linked-boundary removal, initial unselected navigation and empty/no-track states. `cargo clippy --offline --locked --workspace --all-targets -- -D warnings`, `cargo fmt --all --check`, whitespace and changed Markdown local-link checks pass. `sh tools/package_macos.sh debug` rebuilds the app. `cargo test --offline --locked --workspace` passes: 1765 tests passed (including all 679 UI tests), 11 opt-in tests ignored, no failures, including documentation tests. Logs use `work/audio-editor-selection-*`. Native UI interaction and Windows/Linux checks were not run.
+
 ## CLI track inspection and consolidated guides — 2026-10-28
 
 Added `tracks [<track-name>] [--project <folder>]`. Tests cover current-directory defaults, explicit folders, exact Unicode names, duplicate matches, unknown names, invalid arguments, saved order across audio/MIDI/group tracks, collapsed children, saved mixer controls, clip timing, escaped terminal controls and empty projects. Shared metadata inspection tests cover damaged/missing media, unchanged manifests, invalid/missing manifests and in-memory legacy Integrated revision normalization. `validate` and `render` retain media preparation. User guides are consolidated under `docs/cli/`, with links from project, audio and overview guides.

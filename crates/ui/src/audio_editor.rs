@@ -30,9 +30,8 @@ impl DawUi {
                 })
                 .unwrap_or(track)
         });
-        // A boundary preview can remove the primary clip; still paint its surviving neighbor.
-        let selected = track.filter(|_| self.selected_clip.is_some());
-        if let Some(track) = selected {
+        // Selection controls outlines and options, not which track clips are visible.
+        if let Some(track) = track {
             for clip in &track.clips {
                 let block = self.clip_block(lane, clip, clip.start_frame);
                 let visible = block.intersect(lane).intersect(ui.clip_rect());
@@ -68,14 +67,6 @@ impl DawUi {
                     );
                 }
             }
-        } else {
-            painter.text(
-                lane.center(),
-                egui::Align2::CENTER_CENTER,
-                "Select a clip",
-                egui::TextStyle::Body.resolve(ui.style()),
-                palette.secondary,
-            );
         }
         let x = lane.left()
             + (self

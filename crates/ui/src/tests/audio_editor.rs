@@ -65,12 +65,12 @@ fn waveform_body(app: &DawUi, shapes: &[egui::epaint::ClippedShape]) -> Rect {
 }
 
 fn check_peaks(app: &DawUi, shapes: &[egui::epaint::ClippedShape], body: Rect) {
+    check_clip_peaks(app, shapes, body, app.selected_clip.unwrap());
+}
+
+fn check_clip_peaks(app: &DawUi, shapes: &[egui::epaint::ClippedShape], body: Rect, clip_id: Id) {
     let track = &app.session.project.tracks[0];
-    let clip = track
-        .clips
-        .iter()
-        .find(|c| Some(c.id) == app.selected_clip)
-        .unwrap();
+    let clip = track.clips.iter().find(|c| c.id == clip_id).unwrap();
     let cached = app.session.audio_for_clip(clip);
     let audio = cached.unwrap_or(&app.session.audio[&clip.asset_id]);
     let color = theme::clip_colors(track.color, clip.color).waveform;
@@ -205,22 +205,28 @@ fn audio_editor_waveform_uses_trim_loop_phase_and_prepared_pitch_and_stretch() {
 }
 
 #[test]
-fn audio_editor_waveform_handles_missing_source_and_empty_selection() {
+fn audio_editor_keeps_missing_source_clips_visible_without_selection() {
     let (mut app, ctx, _, _) = audio_fixture();
     app.session.audio.clear();
     let painted = shapes(&mut app, &ctx);
     assert!(painted.iter().any(|shape| matches!(&shape.shape,
         egui::Shape::Text(text) if text.galley.text() == "Missing source"
             && text.pos.y > app.midi_editor.track_bounds.bottom())));
+    let view = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
     app.selected_clip = None;
     app.selected_clips.clear();
     let painted = shapes(&mut app, &ctx);
     assert!(painted.iter().any(|shape| matches!(&shape.shape,
-        egui::Shape::Text(text) if text.galley.text() == "Select a clip"
-            && text.pos.x > app.midi_editor.panel_bounds.right()
+        egui::Shape::Text(text) if text.galley.text() == "Missing source"
             && text.pos.y > app.midi_editor.track_bounds.bottom())));
     assert!(!painted.iter().any(|shape| matches!(&shape.shape,
-        egui::Shape::Text(text) if text.galley.text().contains("not available yet"))));
+        egui::Shape::Text(text) if text.galley.text() == "Select a clip"
+            && text.pos.x > app.midi_editor.panel_bounds.right())));
+    assert_eq!(
+        (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+        view
+    );
+    assert_eq!(app.selected_clip, None);
     assert!(!app.dirty);
 }
 
@@ -809,6 +815,9 @@ fn audio_content_boundary_removal_preserves_view_through_empty_selection() {
             (600.0, 0.04)
         );
     }
+    let painted = shapes(&mut app, &ctx);
+    waveform_body(&app, &painted);
+    assert_eq!(app.selected_clip, None);
     let clips = &app.session.project.tracks[0].clips;
     assert_eq!(clips.len(), 1);
     assert_eq!(
@@ -827,4 +836,126 @@ fn audio_content_boundary_removal_preserves_view_through_empty_selection() {
     assert!(
         (app.midi_editor.content.zoom * 0.075 - app.midi_editor.content.bounds.width()).abs() < 0.1
     );
+}
+
+#[test]
+fn unselected_audio_track_keeps_all_waveforms_navigation_and_selection() {
+    for color_theme in settings::ColorTheme::ALL {
+        for fitted in [false, true] {
+            let (mut app, ctx, track, first) = audio_fixture();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            let mut neighbor = app.session.project.tracks[0].clips[0].clone();
+            neighbor.id = Id::new_v4();
+            neighbor.start_frame = neighbor.end();
+            neighbor.source_offset_frame = 0;
+            neighbor.name = "Neighbor waveform".into();
+            let second = neighbor.id;
+            app.session.project.tracks[0].clips.push(neighbor);
+            app.midi_editor.content.fitted = false;
+            app.midi_editor.content.zoom = 1500.0;
+            app.midi_editor.content.scroll = 0.08;
+            frame(&mut app, &ctx, vec![]);
+            // Cover a fitted view as well as an existing manual view.
+            app.midi_editor.content.fitted = fitted;
+            let before_shapes = shapes(&mut app, &ctx);
+            let before = app.session.project.clone();
+            let content = (app.midi_editor.content.zoom, app.midi_editor.content.scroll);
+            let overview = (app.midi_editor.zoom, app.midi_editor.scroll);
+            let body = waveform_body(&app, &before_shapes);
+            check_peaks(&app, &before_shapes, body);
+            app.selected_clip = None;
+            app.selected_clips.clear();
+            for _ in 0..3 {
+                let painted = shapes(&mut app, &ctx);
+                assert_eq!(waveform_body(&app, &painted), body);
+                // Verify the same waveform peaks even with no primary selection.
+                check_clip_peaks(&app, &painted, body, first);
+                if !fitted {
+                    assert!(painted.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Text(text) if text.galley.text() == "Neighbor waveform"
+                            && text.pos.y >= app.midi_editor.content.bounds.top())));
+                }
+                assert_eq!(
+                    (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+                    content
+                );
+                assert_eq!((app.midi_editor.zoom, app.midi_editor.scroll), overview);
+                assert!(app.selected_clips.is_empty());
+            }
+            // Fit requires a selected clip. Zoom remains active without one.
+            let fit = app.midi_editor.content.fit_bounds.center();
+            click(&mut app, &ctx, fit);
+            assert_eq!(
+                (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+                content
+            );
+            let zoom = app.midi_editor.content.zoom_bounds.right_center() - Vec2::new(2.0, 0.0);
+            click(&mut app, &ctx, zoom);
+            assert_ne!(app.midi_editor.content.zoom, content.0);
+            // Restore the view to select a visible waveform with a normal click.
+            app.midi_editor.content.zoom = content.0;
+            app.midi_editor.content.scroll = content.1;
+            frame(&mut app, &ctx, vec![]);
+            let point = app.midi_editor.content.bounds.min
+                + Vec2::new(((0.125 - content.1) as f32 * content.0).max(1.0), 50.0);
+            click(&mut app, &ctx, point);
+            assert_eq!(app.selected_clip, Some(first));
+            assert_eq!(app.selected_track, Some(track));
+            assert_eq!(
+                (app.midi_editor.content.zoom, app.midi_editor.content.scroll),
+                content
+            );
+            assert!(
+                app.session.project.tracks[0]
+                    .clips
+                    .iter()
+                    .any(|clip| clip.id == second)
+            );
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+            assert!(app.job.is_none());
+        }
+    }
+}
+
+#[test]
+fn audio_track_without_initial_clip_selection_has_waveforms_and_full_scroll_extent() {
+    let (mut app, ctx, track, _) = audio_fixture();
+    let mut distant = app.session.project.tracks[0].clips[0].clone();
+    distant.id = Id::new_v4();
+    distant.start_frame = 48_000 * 120;
+    app.session.project.tracks[0].clips.push(distant);
+    app.selected_clip = None;
+    app.selected_clips.clear();
+    app.midi_editor.content = Default::default();
+    let before = app.session.project.clone();
+    let painted = shapes(&mut app, &ctx);
+    waveform_body(&app, &painted);
+    assert_eq!(app.selected_clip, None);
+    assert_eq!(app.selected_track, Some(track));
+    assert!(app.midi_editor.content.end > 120.0);
+    app.midi_editor.content.scroll = 119.9;
+    let painted = shapes(&mut app, &ctx);
+    waveform_body(&app, &painted);
+    assert_eq!(app.midi_editor.content.scroll, 119.9);
+    app.session.project.tracks[0].clips.clear();
+    let painted = shapes(&mut app, &ctx);
+    assert!(!painted.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::Text(text) if text.galley.text() == "Select a clip"
+            && text.pos.x > app.midi_editor.panel_bounds.right())));
+    app.session.project = before.clone();
+    app.selected_track = None;
+    let painted = shapes(&mut app, &ctx);
+    let color = theme::clip_colors(before.tracks[0].color, None).body;
+    assert!(!painted.iter().any(|shape| matches!(&shape.shape,
+        egui::Shape::Rect(rect) if rect.fill == color)));
+    assert_eq!(app.session.project, before);
+    assert!(!app.dirty);
+    assert!(app.job.is_none());
 }
