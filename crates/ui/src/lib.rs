@@ -94,6 +94,7 @@ mod strip_reorder;
 mod timeline_toolbar;
 mod timeline_workspace;
 mod track_overview;
+mod track_rows;
 mod track_selector;
 mod transport_controls;
 pub use mixer::ViewMode;
@@ -791,6 +792,9 @@ pub struct DawUi {
     lane_bounds: HashMap<Id, Rect>,
     timeline_bounds: Rect,
     fit_all_requested: bool,
+    track_rows_collapsed: bool,
+    #[cfg(test)]
+    track_rows_bounds: Rect,
     #[cfg(test)]
     fit_all_bounds: Rect,
     #[cfg(test)]
@@ -906,6 +910,9 @@ impl Default for DawUi {
             lane_bounds: HashMap::new(),
             timeline_bounds: Rect::NOTHING,
             fit_all_requested: false,
+            track_rows_collapsed: true,
+            #[cfg(test)]
+            track_rows_bounds: Rect::NOTHING,
             #[cfg(test)]
             fit_all_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -2829,6 +2836,10 @@ impl DawUi {
                     self.track_control(ui);
                 });
             }
+            #[cfg(test)]
+            {
+                self.track_rows_bounds = Rect::NOTHING;
+            }
             if self.view_mode.has_clip_lanes() {
                 let mut zoom = self.view_zoom();
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -2860,6 +2871,7 @@ impl DawUi {
                     if fit.clicked() {
                         self.fit_all_requested = true;
                     }
+                    self.track_rows_button(ui);
                 });
                 if self.view_mode.has_track_overview() {
                     self.midi_editor.zoom = zoom;
@@ -3951,6 +3963,7 @@ impl DawUi {
         ui.ctx().request_repaint();
     }
     fn tracks(&mut self, ui: &mut egui::Ui) -> Vec<(Id, Rect)> {
+        let row_height = self.track_row_height();
         let tracks: Vec<_> = self
             .session
             .project
@@ -3966,7 +3979,7 @@ impl DawUi {
             for (row_index, (index, id)) in tracks.into_iter().enumerate() {
                 let row = Rect::from_min_size(
                     ui.next_widget_position(),
-                    Vec2::new(ui.available_width(), ROW_HEIGHT),
+                    Vec2::new(ui.available_width(), row_height),
                 );
                 let inset = track_groups::panel_indent(self.session.project.track_depth(id));
                 let panel_width = TRACK_WIDTH - inset;
@@ -3975,18 +3988,18 @@ impl DawUi {
                     || self.marquee.is_some()
                     || self.track_name_edit.is_some()
                     || ui.ctx().egui_wants_keyboard_input();
-                if !interacting && !row.intersects(ui.clip_rect().expand(ROW_HEIGHT)) {
-                    let (panel, lane) = rows::placeholder(ui, id, TRACK_WIDTH, ROW_HEIGHT, inset);
+                if !interacting && !row.intersects(ui.clip_rect().expand(row_height)) {
+                    let (panel, lane) = rows::placeholder(ui, id, TRACK_WIDTH, row_height, inset);
                     self.lane_bounds.insert(id, lane);
                     outlines.push((id, panel));
                     continue;
                 }
                 // Only visible/interactive rows need an owned editing snapshot.
                 let track = self.session.project.tracks[index].clone();
-                rows::centered_with_id(ui, track.id, ROW_HEIGHT, |ui| {
+                rows::centered_with_id(ui, track.id, row_height, |ui| {
                     ui.add_space(inset);
                     let inner = ui.allocate_ui_with_layout(
-                        Vec2::new(panel_width, ROW_HEIGHT),
+                        Vec2::new(panel_width, row_height),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             ui.set_min_width(panel_width);
@@ -3997,7 +4010,7 @@ impl DawUi {
                             .track_frame(ui.ctx())
                             .show(ui, |ui| {
                                 ui.set_min_width(panel_width - 14.0);
-                                ui.set_min_height(ROW_HEIGHT - 14.0);
+                                ui.set_min_height(row_height - 14.0);
                                 ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                                 let levels = self
                                     .output
@@ -4005,11 +4018,21 @@ impl DawUi {
                                     .and_then(|output| output.track_meter(track.id))
                                     .map_or([(0.0, false); 2], |meter| meter.levels());
                                 let cleared =
-                                    meters::stereo_panel(ui, ROW_HEIGHT - 14.0, levels, |ui| {
+                                    meters::stereo_panel(ui, row_height - 14.0, levels, |ui| {
                                         let mut mute = track.muted;
                                         let mut solo = track.soloed;
-                                        let header =
-                                            rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
+                                        let mut header_rows = track_rows::HeaderRows::new(
+                                            ui,
+                                            self.track_rows_collapsed,
+                                        );
+                                        let header = rows::centered(
+                                            &mut header_rows.name,
+                                            if self.track_rows_collapsed {
+                                                knobs::SIZE
+                                            } else {
+                                                toolbars::CONTROL_HEIGHT
+                                            },
+                                            |ui| {
                                                 let name = ui.allocate_ui_with_layout(
                                                     Vec2::new(
                                                         ui.available_width(),
@@ -4021,7 +4044,8 @@ impl DawUi {
                                                     |ui| self.track_name(ui, &track),
                                                 );
                                                 [name.response.rect]
-                                            });
+                                            },
+                                        );
                                         if ui.is_enabled()
                                             && self.clip_actions_available(ui.ctx())
                                             && ui.rect_contains_pointer(header.response.rect)
@@ -4043,7 +4067,7 @@ impl DawUi {
                                         let mut gain = track.gain_db;
                                         let mut pan = track.pan;
                                         mix_controls::header_row(
-                                            ui,
+                                            &mut header_rows.mix,
                                             &mut gain,
                                             &mut pan,
                                             &mut mute,
@@ -4722,7 +4746,7 @@ impl DawUi {
             snap_zoom,
             lane: Rect::from_min_size(
                 Pos2::new(viewport.left(), top),
-                Vec2::new(viewport.width(), ROW_HEIGHT),
+                Vec2::new(viewport.width(), self.track_row_height()),
             ),
         })
     }
@@ -4873,9 +4897,10 @@ impl DawUi {
         Some(Rect::from_min_size(
             Pos2::new(
                 self.timeline_bounds.left(),
-                top + (preview.track_index - self.session.project.tracks.len()) as f32 * ROW_HEIGHT,
+                top + (preview.track_index - self.session.project.tracks.len()) as f32
+                    * self.track_row_height(),
             ),
-            Vec2::new(self.timeline_bounds.width(), ROW_HEIGHT),
+            Vec2::new(self.timeline_bounds.width(), self.track_row_height()),
         ))
     }
     fn paint_drag_preview(&self, ui: &egui::Ui, viewport: Rect) {
@@ -5081,8 +5106,10 @@ impl DawUi {
         count: usize,
     ) {
         let track_id = track.id;
-        let (rect, _) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width(), self.track_row_height()),
+            Sense::hover(),
+        );
         // Use the laid-out panel bounds rather than a separately centered lane height.
         let rect = Rect::from_min_max(
             Pos2::new(rect.left(), panel.top()),
@@ -5326,7 +5353,11 @@ mod tests {
     use super::*;
 
     fn fixture() -> (DawUi, Id) {
-        let mut app = DawUi::default();
+        // Existing gesture fixtures exercise expanded tracks; compact tracks have dedicated coverage.
+        let mut app = DawUi {
+            track_rows_collapsed: false,
+            ..Default::default()
+        };
         app.effects_catalog.expand_folders();
         let track = app.session.project.add_track().unwrap();
         let asset = Id::new_v4();
@@ -10897,7 +10928,7 @@ mod tests {
             assert_eq!(target.start, frames(2.0));
             let block = Rect::from_min_size(
                 Pos2::new(point.x, target.lane.top()),
-                Vec2::new(70.0, ROW_HEIGHT),
+                Vec2::new(70.0, app.track_row_height()),
             );
             let colors = theme::clip_colors(daw_core::default_track_color(index), None);
             assert!(has_preview_outline(&shapes, block, theme::ACCENT));

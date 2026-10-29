@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Timeline/Editor track row toggle — 2026-10-28
+
+Timeline and Editor share a playback-toolbar button using the supplied expand/collapse SVG masks. It switches between default 42-point one-row tracks and 68-point two-row tracks. One-row headers show icon, name/dropdown, Mute, Solo, Pan, Gain, then meters. `track_rows::HeaderRows` composes the shared controls. Lane/overview heights, offscreen placeholders, minimum view bounds and new-track drop previews follow the same UI-only flag. Master remains one row; Instrument and Mixer keep their layouts.
+
+All 690 UI tests pass, including shared state, every theme at 1×/1.5× scale, meter insets, compact control alignment, audio/MIDI headers, live mute/solo and Pan/Gain keyboard edits, file-drop targeting, selection/data preservation, expansion restoration and modal/gesture guards. Existing MIDI preview parity and edge-resize tests cover the compact default; low-pitch note markers remain inside the shorter clip body. Strict workspace/all-target Clippy, formatting, whitespace and changed Markdown local-link checks pass. `sh tools/package_macos.sh debug` rebuilds the macOS app. `cargo test --offline --locked --workspace` passes: 1776 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. Logs use `work/track-rows-*`. Native UI interaction and Windows/Linux checks have not run locally.
+
 ## Timeline right Clip settings rail — 2026-10-28
 
 Timeline Clip settings moves from the shared left catalog rail to a dedicated right rail spanning the inner timeline above the effects lane. The panel opens immediately to its left, can coexist with Effects/Chords on the left, retains shared fields and a fixed header with scrolling body, and returns canvas width when hidden. Hiding the effects lane extends the rail to status. `timeline_workspace.rs` composes the existing canvas and inspector; hit, seek, scrollbar and file-drop bounds exclude both settings regions. Other views have no right rail. The shared top-border implementation remains unchanged.

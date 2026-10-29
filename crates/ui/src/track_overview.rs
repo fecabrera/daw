@@ -2,7 +2,6 @@ use super::*;
 use daw_core::{Asset, Track};
 
 pub(super) const LABEL_WIDTH: f32 = 52.0;
-pub(super) const STRIP_HEIGHT: f32 = ROW_HEIGHT;
 
 impl DawUi {
     /// Editor follows its active clip, falling back to the selected track.
@@ -100,7 +99,7 @@ impl DawUi {
         assets: &[daw_core::Asset],
     ) {
         let (band, _) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width(), STRIP_HEIGHT),
+            Vec2::new(ui.available_width(), self.track_row_height()),
             Sense::hover(),
         );
         let lane = Rect::from_min_max(Pos2::new(band.left() + LABEL_WIDTH, band.top()), band.max);

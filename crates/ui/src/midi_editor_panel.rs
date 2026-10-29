@@ -27,7 +27,9 @@ impl DawUi {
         child.spacing_mut().item_spacing = Vec2::ZERO;
         let title = panel.header(&mut child, "Editor", |_| {});
         panels::ControlPanel::row_dividers(&child, title.response.rect, false, true);
-        let header = rows::fixed(&mut child, ROW_HEIGHT, |ui| self.editor_track_header(ui));
+        let header = rows::fixed(&mut child, self.track_row_height(), |ui| {
+            self.editor_track_header(ui)
+        });
         #[cfg(test)]
         {
             self.midi_editor.track_header_bounds = header.response.rect;
@@ -137,40 +139,51 @@ impl DawUi {
         .track_frame(ui.ctx())
         .show(ui, |ui| {
             ui.set_min_width(TRACK_WIDTH - 14.0);
-            ui.set_min_height(ROW_HEIGHT - 14.0);
+            ui.set_min_height(self.track_row_height() - 14.0);
             ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
             let track = self.editor_track().cloned();
             let levels = track
                 .as_ref()
                 .and_then(|t| self.output.as_ref()?.track_meter(t.id))
                 .map_or([(0.0, false); 2], |meter| meter.levels());
-            let cleared = meters::stereo_panel(ui, ROW_HEIGHT - 14.0, levels, |ui| {
+            let cleared = meters::stereo_panel(ui, self.track_row_height() - 14.0, levels, |ui| {
                 let mut track = self.editor_track().cloned();
-                rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                    let name_width = ui.available_width();
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            let icon = if track.as_ref().is_none_or(|t| t.kind == TrackKind::Midi) {
-                                icons::Lucide::KeyboardMusic
-                            } else {
-                                icons::Lucide::AudioLines
-                            };
-                            icons::header_icon(ui, icon, Sense::hover());
-                            let response = self.track_dropdown(ui, Some(ui.available_width()));
-                            #[cfg(test)]
-                            {
-                                self.midi_editor.selector_bounds = response.rect;
-                            }
-                            #[cfg(not(test))]
-                            let _ = response;
-                        },
-                    );
-                });
+                let mut header_rows = track_rows::HeaderRows::new(ui, self.track_rows_collapsed);
+                rows::centered(
+                    &mut header_rows.name,
+                    if self.track_rows_collapsed {
+                        knobs::SIZE
+                    } else {
+                        toolbars::CONTROL_HEIGHT
+                    },
+                    |ui| {
+                        let name_width = ui.available_width();
+                        ui.allocate_ui_with_layout(
+                            Vec2::new(name_width, toolbars::CONTROL_HEIGHT),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                let icon =
+                                    if track.as_ref().is_none_or(|t| t.kind == TrackKind::Midi) {
+                                        icons::Lucide::KeyboardMusic
+                                    } else {
+                                        icons::Lucide::AudioLines
+                                    };
+                                icons::header_icon(ui, icon, Sense::hover());
+                                let response = self.track_dropdown(ui, Some(ui.available_width()));
+                                #[cfg(test)]
+                                {
+                                    self.midi_editor.selector_bounds = response.rect;
+                                }
+                                #[cfg(not(test))]
+                                let _ = response;
+                            },
+                        );
+                    },
+                );
                 track = self.editor_track().cloned();
                 if let Some(mut track) = track {
-                    let (controls, buttons) = ui
+                    let (controls, buttons) = header_rows
+                        .mix
                         .add_enabled_ui(!self.midi_editor.dragging(), |ui| {
                             mix_controls::header_row(
                                 ui,
@@ -207,7 +220,7 @@ impl DawUi {
                         self.changed();
                     }
                 } else {
-                    ui.add_enabled_ui(false, |ui| {
+                    header_rows.mix.add_enabled_ui(false, |ui| {
                         rows::centered(ui, knobs::SIZE, |ui| {
                             mix_controls::mute_solo(
                                 ui,

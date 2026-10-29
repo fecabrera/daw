@@ -3798,7 +3798,7 @@ fn pattern_edge_resize_previews_commits_and_cancels_preserving_note_timing() {
     frame(&mut app, &ctx, vec![]);
     let original = format!("{:?}", app.session.project);
     let rect = app.midi_editor.pattern_bounds;
-    let start = Pos2::new(rect.right() - 1.0, rect.center().y);
+    let start = Pos2::new(rect.right() - 1.0, rect.top() + 24.0);
     let end = start + Vec2::new(60.0, 0.0);
     frame(
         &mut app,
@@ -3818,7 +3818,7 @@ fn pattern_edge_resize_previews_commits_and_cancels_preserving_note_timing() {
     );
     frame(&mut app, &ctx, vec![]);
     let rect = app.midi_editor.pattern_bounds;
-    let start = Pos2::new(rect.left() + 1.0, rect.center().y);
+    let start = Pos2::new(rect.left() + 1.0, rect.top() + 24.0);
     let end = start + Vec2::new(120.0, 0.0);
     frame(
         &mut app,
@@ -3834,7 +3834,7 @@ fn pattern_edge_resize_previews_commits_and_cancels_preserving_note_timing() {
     frame(&mut app, &ctx, vec![]);
     let before = format!("{:?}", app.session.project);
     let rect = app.midi_editor.pattern_bounds;
-    let start = Pos2::new(rect.right() - 1.0, rect.center().y);
+    let start = Pos2::new(rect.right() - 1.0, rect.top() + 24.0);
     let end = start + Vec2::new(60.0, 0.0);
     frame(
         &mut app,
@@ -3894,7 +3894,7 @@ fn shift_pattern_resize_is_free_and_focus_loss_cancels_the_pending_edit() {
     app.open_clip_editor(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     let rect = app.midi_editor.pattern_bounds;
-    let start = Pos2::new(rect.right() - 1.0, rect.center().y);
+    let start = Pos2::new(rect.right() - 1.0, rect.top() + 24.0);
     let end = start + Vec2::new(1.0, 0.0);
     shift_frame(
         &mut app,
@@ -3908,7 +3908,7 @@ fn shift_pattern_resize_is_free_and_focus_loss_cancels_the_pending_edit() {
     frame(&mut app, &ctx, vec![]);
     let before = format!("{:?}", app.session.project);
     let rect = app.midi_editor.pattern_bounds;
-    let start = Pos2::new(rect.right() - 1.0, rect.center().y);
+    let start = Pos2::new(rect.right() - 1.0, rect.top() + 24.0);
     let end = start + Vec2::new(60.0, 0.0);
     frame(
         &mut app,

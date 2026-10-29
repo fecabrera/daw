@@ -185,6 +185,33 @@ pub(super) fn fit_width_button(ui: &mut Ui, name: &str) -> Response {
     )
 }
 
+/// User-supplied vertical layout masks, tinted like the other toolbar icons.
+pub(super) fn track_rows_button(ui: &mut Ui, collapsed: bool) -> Response {
+    let (source, name) = if collapsed {
+        (
+            egui::include_image!("../assets/icons/expand-vertical.svg"),
+            "Expand tracks to two rows",
+        )
+    } else {
+        (
+            egui::include_image!("../assets/icons/collapse-vertical.svg"),
+            "Collapse tracks to one row",
+        )
+    };
+    let image = egui::Image::new(source)
+        .fit_to_exact_size(Vec2::splat(TOOLBAR_ICON_SIZE))
+        .tint(crate::theme::palette(ui.ctx()).text)
+        .alt_text(name);
+    image_button(
+        ui,
+        image,
+        name,
+        true,
+        Vec2::splat(TOOLBAR_BUTTON_SIZE),
+        None,
+    )
+}
+
 /// Match small-text toggles while retaining the standard button and hit area.
 pub fn small_button(
     ui: &mut Ui,

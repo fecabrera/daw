@@ -183,10 +183,12 @@ impl DawUi {
                     + finish.min(i128::from(clip.length_frames)) as f32
                         / self.session.project.sample_rate_hz as f32
                         * self.view_zoom();
-                let y = body.bottom()
+                // Keep the fixed two-point note marker inside compact track bodies.
+                let y = (body.bottom()
                     - (f32::from(note.pitch.saturating_sub(min_pitch)) + 1.0)
                         / f32::from(max_pitch - min_pitch + 2)
-                        * body.height();
+                        * body.height())
+                .min(body.bottom() - 2.0);
                 painter.rect_filled(
                     Rect::from_min_max(Pos2::new(x, y), Pos2::new(right.max(x + 1.0), y + 2.0)),
                     0.0,

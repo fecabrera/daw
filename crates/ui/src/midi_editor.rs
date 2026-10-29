@@ -395,7 +395,7 @@ impl DawUi {
             Pos2::new(ui.max_rect().left() + KEY_WIDTH, ui.max_rect().top()),
             Pos2::new(
                 ui.max_rect().right(),
-                ui.max_rect().top() + RULER_HEIGHT + ROW_HEIGHT,
+                ui.max_rect().top() + RULER_HEIGHT + self.track_row_height(),
             ),
         );
         self.apply_fit_all(viewport.width());

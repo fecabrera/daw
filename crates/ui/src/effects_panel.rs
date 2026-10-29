@@ -276,8 +276,8 @@ impl DawUi {
         let bounds = Rect::from_min_max(ui.cursor().min, ui.max_rect().max);
         let minimum_content = match self.view_mode {
             ViewMode::Instrument => toolbars::HEIGHT,
-            ViewMode::Timeline => RULER_HEIGHT + track_overview::STRIP_HEIGHT + SCROLLBAR_HEIGHT,
-            ViewMode::Edit => midi_editor::MIN_HEIGHT,
+            ViewMode::Timeline => RULER_HEIGHT + self.track_row_height() + SCROLLBAR_HEIGHT,
+            ViewMode::Edit => midi_editor::MIN_HEIGHT - ROW_HEIGHT + self.track_row_height(),
             ViewMode::Mixer => mixer::MIN_HEIGHT,
         };
         let below_track = (bounds.height() - minimum_content).max(0.0);
