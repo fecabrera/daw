@@ -162,6 +162,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - During the MVP, source audio remains external and is referenced by the manifests.
 - Reserve the assets directory for project-owned assets, including future included source audio files. External source audio is not copied into it during the MVP.
 - Future source management must support both external references and sources included in the project's assets directory.
+- [Source bundling Stage 0](../projects/source-bundling-stage0.md) adds optional storage ownership and validated included-source fixtures. Normal import/Save still uses external recordings; collection and included-source session I/O remain pending. The staged feature extends the external-source-only MVP requirement when its command ships.
 - Use an experimental project.json manifest at the project folder root and an assets/ directory for project-owned assets. The manifest schema can change substantially during MVP development.
 - Store source paths relative to the project folder where possible; otherwise store absolute paths. Resolve relative paths from the project folder, not the application's working directory.
 - When closing the application or opening another project with unsaved changes, prompt to Save, Discard, or Cancel. Continue after Save only if saving succeeds.

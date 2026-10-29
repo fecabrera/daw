@@ -3426,6 +3426,7 @@ fn sampler_plan(rate: u32, trigger: SamplerTrigger) -> RenderPlan {
         source: Source {
             kind: "external".into(),
             path: "sample.wav".into(),
+            storage: None,
             path_kind: "relative".into(),
         },
         source_metadata: metadata.clone(),

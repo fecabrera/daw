@@ -4,6 +4,14 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Project source bundling Stage 0 — 2026-10-29
+
+Added optional typed source storage with unchanged legacy external/generated/MIDI defaults and omitted-field serialization. Core validation checks ownership/provenance and portable included paths; project resolution checks filesystem containment. Worker-only SHA-256 receipts and uncached, bit-exact comparison against original project-rate audio detect changed content even when length/mtime matches the weak cache. Included fixtures support model round trips and metadata inspection; session open/save remains gated until Stage 3 can relocate all history owners. Normal import, Save, Save As and history behavior remain unchanged. The [Stage 0 contract](../projects/source-bundling-stage0.md) freezes naming, revision verification, cancellation, commit/rollback and durability rules for later stages.
+
+All 12 new regression tests pass, covering legacy storage, invalid ownership/paths, Unix symlink escapes, manifest/session gates, SHA-256 known bytes, stale-cache rejection, rate/metadata comparison, cancellation and source mutation. `cargo fmt --all --check`, `cargo clippy --offline --locked --workspace --all-targets -- -D warnings` and `cargo test --offline --locked --workspace` pass: 1796 tests passed (including all 695 UI tests), 11 opt-in tests ignored, no failures, including documentation tests. `cargo build --offline --locked -p daw-cli`, `python3 tools/check_cli.py` and `sh tools/package_macos.sh debug` pass. Whitespace and changed Markdown local-link checks pass. The macOS bundle includes the new SHA-256 dependency notices through the existing packaging rules. Logs use `work/source-bundling-stage0-*`; the complete workspace result is in `work/source-bundling-stage0-tests-final.log`.
+
+No collection command, inventory or copying backend is exposed. Native UI/device and Windows/Linux execution were not checked locally. Unix symlink tests do not establish Windows reparse-point behavior. The existing Windows manifest backup/rename gap is documented for Stage 2 atomic-replacement work; it is not fixed here. Source portability and crash/durability acceptance remain pending.
+
 ## Instrument layer stereo level meters — 2026-10-29
 
 Regular Instrument layers and Output now use the track stereo header meter, with shared rail geometry, clipping latch, held peak/reset and theme colors. Pan/Gain sit before the rails. Engine snapshots measure regular bus contributions after layer processing/mix and Output after its combined processing/mix, before track controls. The output worker prepares identity-scoped handles and binds them after pre-roll; the callback publishes atomics without allocations, locks or I/O. Monitoring leaves audio and saved project data unchanged.

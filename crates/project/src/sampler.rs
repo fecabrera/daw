@@ -80,6 +80,7 @@ impl Session {
             source: Source {
                 kind: "external".into(),
                 path: path.to_string_lossy().into_owned(),
+                storage: None,
                 path_kind: "absolute".into(),
             },
             decoded_frame_count: length_frames,

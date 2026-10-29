@@ -1189,6 +1189,7 @@ mod tests {
             source: Source {
                 kind: "external".into(),
                 path: "/test.wav".into(),
+                storage: None,
                 path_kind: "absolute".into(),
             },
             source_metadata: metadata.clone(),

@@ -5373,6 +5373,7 @@ mod tests {
                     .join(format!("daw-missing-{}.wav", Id::new_v4()))
                     .to_string_lossy()
                     .into_owned(),
+                storage: None,
                 path_kind: "absolute".into(),
             },
             source_metadata: daw_core::SourceMetadata {

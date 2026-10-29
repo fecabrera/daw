@@ -51,6 +51,7 @@ fn plan(rate: u32, mono: bool) -> RenderPlan {
         source: Source {
             kind: "external".into(),
             path: "/tone.wav".into(),
+            storage: None,
             path_kind: "absolute".into(),
         },
         source_metadata: metadata.clone(),

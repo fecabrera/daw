@@ -48,6 +48,82 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn included_storage_fixtures_validate_without_enabling_partial_session_io() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("original.wav", 48_000, 2, 24, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let folder = fixture.0.join("project");
+    session.save(&folder).unwrap();
+    let before = fs::read(folder.join("project.json")).unwrap();
+    let relative = "assets/sources/included.wav";
+    fs::create_dir_all(folder.join("assets/sources")).unwrap();
+    fs::copy(&source, folder.join(relative)).unwrap();
+    session.project.assets[0].source.storage = Some(daw_core::SourceStorage::Project);
+    session.project.assets[0].source.path_kind = "relative".into();
+    session.project.assets[0].source.path = relative.into();
+    session.project.validate().unwrap();
+    let wire = serde_json::to_vec(&session.project).unwrap();
+    let round_trip: Project = serde_json::from_slice(&wire).unwrap();
+    assert_eq!(round_trip, session.project);
+    assert_eq!(
+        session.source_path(&round_trip.assets[0]).unwrap(),
+        fs::canonicalize(folder.join(relative)).unwrap()
+    );
+    assert!(session.save(&folder).is_err());
+    let destination = fixture.0.join("copy");
+    assert!(session.save(&destination).is_err());
+    assert!(!destination.exists());
+    assert_eq!(fs::read(folder.join("project.json")).unwrap(), before);
+    // Metadata inspection understands the new contract. Session I/O remains gated
+    // until Save As and every history owner can relocate included recordings.
+    fs::write(folder.join("project.json"), &wire).unwrap();
+    assert_eq!(
+        daw_project::inspect_project(&folder).unwrap(),
+        session.project
+    );
+    assert!(
+        Session::open(&folder)
+            .err()
+            .unwrap()
+            .0
+            .contains("session integration")
+    );
+    assert_eq!(fs::read(folder.join("project.json")).unwrap(), wire);
+}
+
+#[test]
+fn included_manifest_escapes_are_rejected_before_session_preparation() {
+    let fixture = Fixture::new();
+    let source = fixture.wav("original.wav", 48_000, 1, 16, false);
+    let mut session = Session::default();
+    session.import(&source, None, 0).unwrap();
+    let folder = fixture.0.join("project");
+    session.save(&folder).unwrap();
+    let mut manifest = serde_json::to_value(&session.project).unwrap();
+    manifest["assets"][0]["source"]["storage"] = serde_json::json!("project");
+    manifest["assets"][0]["source"]["path_kind"] = serde_json::json!("relative");
+    for path in [
+        "../original.wav",
+        "assets/sources/../original.wav",
+        "assets/sources/CON.wav",
+    ] {
+        manifest["assets"][0]["source"]["path"] = serde_json::json!(path);
+        let bytes = serde_json::to_vec(&manifest).unwrap();
+        fs::write(folder.join("project.json"), &bytes).unwrap();
+        assert!(daw_project::inspect_project(&folder).is_err());
+        assert!(
+            Session::open(&folder)
+                .err()
+                .unwrap()
+                .0
+                .contains("Included recordings require")
+        );
+        assert_eq!(fs::read(folder.join("project.json")).unwrap(), bytes);
+    }
+}
+
+#[test]
 fn processing_rate_and_buffer_survive_save_reopen_import_stretch_and_render() {
     let f = Fixture::new();
     let source = f.wav("high-rate.wav", 96_000, 2, 24, false);

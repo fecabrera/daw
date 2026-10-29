@@ -5,6 +5,8 @@ use std::{fs::File, path::Path, sync::Arc};
 pub use memory::{AudioMemoryUsage, audio_memory_bytes};
 mod aac_export;
 mod cache;
+mod source_revision;
+pub use source_revision::{SourceRevision, verify_prepared_source};
 mod decode;
 pub use decode::{IMPORT_EXTENSIONS, decode_audio, decode_audio_at_rate, decode_audio_cancellable};
 mod clip_audio;

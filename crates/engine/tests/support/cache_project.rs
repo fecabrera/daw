@@ -84,6 +84,7 @@ pub fn add_audio(plan: &mut RenderPlan, count: usize, fx: usize, mono: bool) -> 
         source: Source {
             kind: "external".into(),
             path: "synthetic.wav".into(),
+            storage: None,
             path_kind: "relative".into(),
         },
         source_metadata: metadata.clone(),

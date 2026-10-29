@@ -1,6 +1,6 @@
 # Project media source bundling
 
-Status: staged implementation plan. No collection command or storage-model change is implemented by this document.
+Status: Stage 0 storage and verification foundations are implemented. See the [frozen Stage 0 contract](source-bundling-stage0.md). Stages 1–5 and the collection command remain pending.
 
 Date: 2026-10-29.
 
@@ -27,11 +27,11 @@ The first version follows these rules:
 | [`Session::source_path`](../../crates/project/src/lib.rs) resolves absolute paths and paths relative to `Session::folder`. Relative paths can contain `..`. | Internal paths are supported, but a relative path alone does not establish project ownership or portability. |
 | `Session::save` creates `assets/`, writes a temporary manifest and replaces `project.json` after success. | Reuse the manifest publication path; stage media before its commit point. |
 | [`separation::copy_generated`](../../crates/project/src/separation.rs) copies generated stems on Save As. | Generalize project-owned source handling without duplicating stem copying or cleanup. |
-| [`Source`](../../crates/core/src/lib.rs) stores `kind`, `path` and `path_kind`; validation accepts external/generated audio and embedded MIDI. | Add an explicit ownership/storage contract while preserving provenance and legacy defaults. |
+| [`Source`](../../crates/core/src/lib.rs) retains `kind`, `path` and `path_kind`; Stage 0 adds optional typed `storage` with legacy ownership defaults. | Preserve provenance and path semantics; use explicit ownership for subsequent inventory/copying. |
 | [`sampler.rs`](../../crates/project/src/sampler.rs) imports sample files into the asset table. | Inventory assets rather than only scanning timeline clips. |
-| [`SessionHistory`](../../crates/project/src/history.rs) retains complete sessions with absolute source paths. `mark_saved` currently retargets generated sources. | Retarget all collected source locations across retained snapshots without clearing Redo or replacing newer edits. |
+| [`SessionHistory`](../../crates/project/src/history.rs) retains complete sessions with absolute source paths. `mark_saved` currently retargets generated sources. | Retarget all collected source locations across retained snapshots without clearing Redo or replacing newer edits. Included fixtures remain gated from session I/O until this integration is ready. |
 | [`regular_save.rs`](../../crates/ui/src/regular_save.rs) saves a snapshot while the live project stays editable. | Keep this behavior; ordinary Save must not silently become a blocking collection operation. |
-| [`media::cache`](../../crates/media/src/cache.rs) checks file length/mtime around decoding, but [`AudioData`](../../crates/media/src/lib.rs) does not expose that source revision receipt. | Establish how to prove that copied bytes correspond to the audio already prepared in the session. |
+| [`media::cache`](../../crates/media/src/cache.rs) checks file length/mtime around decoding; [`AudioData`](../../crates/media/src/lib.rs) has no bound content receipt. | Stage 0 supplies streaming SHA-256 receipts and uncached worker revalidation; Stage 2 must verify staged bytes against prepared audio. |
 
 The initial external-source-only requirements in [MVP storage](../architecture/mvp-scope.md#project-storage) and [iteration 1](../architecture/iteration-1.md) describe current behavior. This plan extends that scope. Update those current requirements when the feature is implemented; retain historical validation evidence.
 
@@ -50,16 +50,18 @@ Automatic collection, selective source-management UI, a separate portable-copy a
 
 Each stage has an exit gate. A gate records evidence for that stage; it does not imply that later stages or native platform acceptance have passed.
 
-| Stage | Deliverable | Exit gate |
-| --- | --- | --- |
-| 0 | Storage, revision and transaction contract | Model/migration rules, failure cases and fixture matrix are explicit. |
-| 1 | Shared source inventory and preflight | All live/history roots are covered and diagnostics are deterministic. |
-| 2 | Transactional collection backend | Copies and manifest publication survive cancellation and injected failures. |
-| 3 | Save, Save As and history integration | Reopen, relocation and history remain independent of originals. |
-| 4 | Desktop command and job UI | Guarded menu dispatch, progress, cancellation and completion use the shared backend. |
-| 5 | Portability acceptance and documentation | Required automated/native evidence and current docs match the delivered feature. |
+| Stage | Status | Deliverable | Exit gate |
+| --- | --- | --- | --- |
+| 0 | Complete | Storage, revision and transaction contract | Model/migration rules, failure cases and fixture matrix are explicit. |
+| 1 | Pending | Shared source inventory and preflight | All live/history roots are covered and diagnostics are deterministic. |
+| 2 | Pending | Transactional collection backend | Copies and manifest publication survive cancellation and injected failures. |
+| 3 | Pending | Save, Save As and history integration | Reopen, relocation and history remain independent of originals. |
+| 4 | Pending | Desktop command and job UI | Guarded menu dispatch, progress, cancellation and completion use the shared backend. |
+| 5 | Pending | Portability acceptance and documentation | Required automated/native evidence and current docs match the delivered feature. |
 
 ## Stage 0 — Define storage and source revisions
+
+Implemented contract and compatibility decisions: [Stage 0](source-bundling-stage0.md). No application collection action is exposed. Current imports remain external; included-source fixtures remain gated from session I/O until Stage 3.
 
 Work:
 
@@ -101,7 +103,7 @@ Work:
 2. Stream bytes into a uniquely reserved staging directory on the project filesystem. Check cancellation between chunks and verify size/content and source stability before accepting a copy. Keep memory bounded independently of total media size.
 3. Reserve final filenames without replacing existing or unrelated files. Reuse an existing collected file only after verifying that it is the intended content. Copy repeated references once.
 4. Build a candidate manifest and a relocation receipt mapping original asset/source identities and revisions to their new locations. Preserve prepared audio and all editing metadata.
-5. Publish complete media before atomically replacing the manifest. Apply the Stage 0 durability contract. Never publish references to incomplete copies.
+5. Publish complete media before atomically replacing the manifest. Apply the Stage 0 durability contract, including replacing the current Windows backup/rename gap with native atomic manifest replacement. Never publish references to incomplete copies.
 6. Before commit, remove only this operation's staging/new files on failure; preserve originals, pre-existing media, unrelated files and the prior manifest. After commit, retain referenced media even if a later notification fails.
 7. Define safe crash/retry handling. An interruption before manifest replacement may leave unreferenced complete files, but the old project must remain valid. Do not add automatic garbage collection or guess that an orphan file is safe to delete/reuse.
 

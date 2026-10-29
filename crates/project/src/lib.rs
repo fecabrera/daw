@@ -14,6 +14,7 @@ mod history;
 pub use history::{HistoryMemory, SessionHistory};
 mod clip_audio;
 mod sampler;
+mod source_storage;
 use daw_core::{Asset, Clip, Id, Project, Source};
 use daw_engine::RenderPlan;
 use daw_media::{AudioData, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec};
@@ -172,6 +173,7 @@ impl Session {
     pub fn open(folder: &Path) -> Result<Self> {
         let folder = absolute(folder)?;
         let (project, previous_stretch_revision) = inspection::load_manifest(&folder)?;
+        source_storage::require_session_support(&project)?;
         let mut session = Self {
             project,
             audio: HashMap::new(),
@@ -260,6 +262,15 @@ impl Session {
         Ok(session)
     }
     pub fn source_path(&self, asset: &Asset) -> Result<PathBuf> {
+        asset.source.validate_storage().map_err(error)?;
+        if asset.source.is_included_recording() {
+            return source_storage::included_path(
+                self.folder
+                    .as_deref()
+                    .ok_or_else(|| error("Included source requires project folder"))?,
+                &asset.source.path,
+            );
+        }
         let p = PathBuf::from(&asset.source.path);
         if asset.source.path_kind == "absolute" {
             if !p.is_absolute() {
@@ -363,6 +374,7 @@ impl Session {
             source: Source {
                 kind: "external".into(),
                 path: path.to_string_lossy().into_owned(),
+                storage: None,
                 path_kind: "absolute".into(),
             },
             source_metadata: data.metadata.clone(),
@@ -408,6 +420,7 @@ impl Session {
     }
     pub fn save(&mut self, folder: &Path) -> Result<()> {
         let folder = absolute(folder)?;
+        source_storage::require_session_support(&self.project)?;
         fs::create_dir_all(folder.join("assets")).map_err(error)?;
         let mut next = self.project.clone();
         let mut generated = separation::copy_generated(self, &mut next, &folder)?;
