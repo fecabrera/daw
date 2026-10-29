@@ -5,6 +5,7 @@ pub(super) const WIDTH: f32 = toolbars::HEIGHT;
 pub(super) const BUTTON_SIZE: f32 = icons::TOOLBAR_BUTTON_SIZE;
 
 pub(super) struct Buttons {
+    pub tracks: Option<egui::Response>,
     pub library: egui::Response,
     pub components: Option<egui::Response>,
     pub lane: egui::Response,
@@ -12,6 +13,7 @@ pub(super) struct Buttons {
 }
 
 pub(super) struct Catalogs {
+    pub tracks: Option<bool>,
     pub effects: bool,
     pub components: Option<bool>,
     pub chords: Option<bool>,
@@ -34,7 +36,8 @@ pub(super) fn show(
     let padding = (WIDTH - BUTTON_SIZE) * 0.5;
     let top = bounds.min + Vec2::splat(padding);
     let step = BUTTON_SIZE + padding;
-    let effects_at = top
+    let catalog_top = top + Vec2::new(0., if catalogs.tracks.is_some() { step } else { 0. });
+    let effects_at = catalog_top
         + Vec2::new(
             0.0,
             if catalogs.components.is_some() {
@@ -51,10 +54,21 @@ pub(super) fn show(
     );
     rail.set_clip_rect(bounds.intersect(ui.clip_rect()));
     Buttons {
-        components: catalogs.components.map(|selected| {
+        tracks: catalogs.tracks.map(|selected| {
             toggle_at(
                 &mut rail,
                 top,
+                "project-tracks",
+                icons::Lucide::ListTree,
+                "Show project tracks",
+                selected,
+                enabled,
+            )
+        }),
+        components: catalogs.components.map(|selected| {
+            toggle_at(
+                &mut rail,
+                catalog_top,
                 "instrument-components",
                 icons::Lucide::KeyboardMusic,
                 "Show instrument components catalog",
@@ -74,14 +88,15 @@ pub(super) fn show(
         chords: catalogs.chords.map(|selected| {
             toggle_at(
                 &mut rail,
-                top + Vec2::new(
-                    0.0,
-                    if catalogs.components.is_some() {
-                        2.0 * step
-                    } else {
-                        step
-                    },
-                ),
+                catalog_top
+                    + Vec2::new(
+                        0.0,
+                        if catalogs.components.is_some() {
+                            2.0 * step
+                        } else {
+                            step
+                        },
+                    ),
                 "chords",
                 icons::Lucide::Piano,
                 "Show chords catalog",

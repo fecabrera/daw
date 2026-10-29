@@ -186,7 +186,7 @@ impl DawUi {
                         .project
                         .tracks
                         .iter()
-                        .any(|track| track.id == *id && track.kind == daw_core::TrackKind::Midi)
+                        .any(|track| track.id == *id)
                 })
                 .map(EffectTarget::Track);
         }
@@ -298,8 +298,11 @@ impl DawUi {
             && self.instrument_catalog_visible
             && !clip_settings_visible;
         let chords_visible = self.chords_visible();
-        let catalog_visible =
-            self.effects_catalog_visible() || components_visible || chords_visible;
+        let tracks_visible = self.view_mode == ViewMode::Instrument && self.track_browser.visible;
+        let catalog_visible = self.effects_catalog_visible()
+            || components_visible
+            || chords_visible
+            || tracks_visible;
         if !clip_settings_visible && self.view_mode != ViewMode::Edit {
             self.clear_clip_settings_edits();
         }
@@ -336,7 +339,9 @@ impl DawUi {
                         ui.set_min_height(upper.height());
                         let catalog_rect =
                             Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, upper.height()));
-                        if chords_visible {
+                        if tracks_visible {
+                            self.project_tracks_panel(ui, library, catalog_rect, allowed);
+                        } else if chords_visible {
                             self.chords_catalog_panel(ui, library, catalog_rect);
                         } else if components_visible {
                             self.instrument_catalog_panel(

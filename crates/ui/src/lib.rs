@@ -93,6 +93,7 @@ mod stereo_spread_panel;
 mod strip_reorder;
 mod timeline_toolbar;
 mod timeline_workspace;
+mod track_browser;
 mod track_overview;
 mod track_rows;
 mod track_selector;
@@ -732,6 +733,7 @@ pub struct DawUi {
     chords: chords_catalog::Chords,
     instrument_catalog: catalog::Catalog,
     instrument_catalog_visible: bool,
+    track_browser: track_browser::State,
     component_drag: Option<instrument_component_drag::ComponentDrag>,
     strip_dragging: bool,
     #[cfg(test)]
@@ -848,6 +850,7 @@ impl Default for DawUi {
             effects_catalog: effects_catalog::catalog(),
             instrument_catalog: instrument_catalog::catalog(),
             instrument_catalog_visible: false,
+            track_browser: Default::default(),
             component_drag: None,
             strip_dragging: false,
             #[cfg(test)]
@@ -2903,6 +2906,8 @@ impl DawUi {
             ui,
             rail,
             timeline_toolbar::Catalogs {
+                tracks: (self.view_mode == ViewMode::Instrument)
+                    .then_some(self.track_browser.visible),
                 effects: self.effects_catalog_visible(),
                 components: (self.view_mode == ViewMode::Instrument)
                     .then_some(self.instrument_catalog_visible),
@@ -2914,6 +2919,16 @@ impl DawUi {
             self.effects_lane_visible(),
             enabled,
         );
+        if toggles.tracks.as_ref().is_some_and(|r| r.clicked()) {
+            self.track_browser.visible = !self.track_browser.visible;
+            if self.track_browser.visible {
+                self.instrument_catalog_visible = false;
+                self.instrument_catalog.clear();
+                self.set_effects_catalog_visible(false);
+                self.effects_catalog.clear();
+            }
+            ui.ctx().request_repaint();
+        }
         if toggles.chords.as_ref().is_some_and(|r| r.clicked()) {
             self.set_chords_visible(!self.chords_visible());
             self.chords.catalog.clear();
@@ -2927,6 +2942,9 @@ impl DawUi {
             self.set_effects_catalog_visible(!self.effects_catalog_visible());
             self.effects_catalog.clear();
             if self.effects_catalog_visible() {
+                if self.view_mode == ViewMode::Instrument {
+                    self.track_browser.visible = false;
+                }
                 self.set_chords_visible(false);
                 self.chords.catalog.clear();
                 self.instrument_catalog_visible = false;
@@ -2942,6 +2960,7 @@ impl DawUi {
             self.instrument_catalog_visible = !self.instrument_catalog_visible;
             self.instrument_catalog.clear();
             if self.instrument_catalog_visible {
+                self.track_browser.visible = false;
                 self.set_effects_catalog_visible(false);
                 self.effects_catalog.clear();
             }
@@ -2960,6 +2979,8 @@ impl DawUi {
             if let Some(response) = &toggles.components {
                 self.instrument_catalog_bounds.toggle = response.rect;
             }
+            self.track_browser.bounds.toggle =
+                toggles.tracks.as_ref().map_or(Rect::NOTHING, |r| r.rect);
             self.effects_bounds.toolbar = rail;
             self.effects_bounds.library_toggle = toggles.library.rect;
             self.effects_bounds.clip_settings_toggle = Rect::NOTHING;

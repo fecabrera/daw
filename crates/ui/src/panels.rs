@@ -59,6 +59,13 @@ pub(super) struct ControlPanel {
     rect: Rect,
 }
 
+enum CatalogIcon {
+    None,
+    Folder(bool),
+    Track(crate::icons::Lucide),
+    Group(bool),
+}
+
 impl ControlPanel {
     pub(super) const WIDTH: f32 = 250.0;
 
@@ -101,15 +108,41 @@ impl ControlPanel {
         selected: bool,
         indented: bool,
     ) -> Response {
-        self.catalog_row(ui, name, selected, indented, None)
+        self.catalog_row(
+            ui,
+            name,
+            selected,
+            usize::from(indented) * 2,
+            CatalogIcon::None,
+        )
     }
 
     pub(super) fn catalog_folder(&self, ui: &mut Ui, name: &str, open: bool) -> Response {
-        self.catalog_row(ui, name, false, false, Some(open))
+        self.catalog_row(ui, name, false, 0, CatalogIcon::Folder(open))
             .on_hover_text(format!(
                 "{} {name}",
                 if open { "Collapse" } else { "Expand" }
             ))
+    }
+
+    /// Project navigation shares catalog painting while retaining dynamic IDs/names.
+    pub(super) fn project_track(
+        &self,
+        ui: &mut Ui,
+        name: &str,
+        selected: bool,
+        depth: usize,
+        leading: (crate::icons::Lucide, Option<bool>),
+    ) -> Response {
+        self.catalog_row(
+            ui,
+            name,
+            selected,
+            depth,
+            leading
+                .1
+                .map_or(CatalogIcon::Track(leading.0), CatalogIcon::Group),
+        )
     }
 
     /// Catalog lists share dropdown margins, item padding and row gaps.
@@ -188,9 +221,13 @@ impl ControlPanel {
         ui: &mut Ui,
         name: &str,
         selected: bool,
-        indented: bool,
-        folder: Option<bool>,
+        depth: usize,
+        leading: CatalogIcon,
     ) -> Response {
+        let folder = match leading {
+            CatalogIcon::Folder(open) | CatalogIcon::Group(open) => Some(open),
+            _ => None,
+        };
         let padding = f32::from(crate::menus::ITEM_PADDING);
         let palette = crate::theme::palette(ui.ctx());
         let galley = ui.painter().layout_no_wrap(
@@ -203,7 +240,7 @@ impl ControlPanel {
                 ui.available_width(),
                 galley.size().y.max(crate::icons::TOOLBAR_ICON_SIZE) + 2.0 * padding,
             ),
-            if folder.is_some() {
+            if !matches!(leading, CatalogIcon::None) {
                 egui::Sense::click()
             } else {
                 egui::Sense::click_and_drag()
@@ -234,37 +271,45 @@ impl ControlPanel {
             );
         }
         let icon_size = crate::icons::TOOLBAR_ICON_SIZE;
-        let indent = if indented {
-            2.0 * (icon_size + padding)
-        } else {
-            0.0
+        let step = icon_size + padding;
+        let indent = depth as f32 * step;
+        let icon_rect = |index: usize| {
+            Rect::from_center_size(
+                egui::pos2(
+                    rect.left() + padding + indent + icon_size * 0.5 + index as f32 * step,
+                    rect.center().y,
+                ),
+                Vec2::splat(icon_size),
+            )
         };
-        let text_offset = folder.map_or(indent, |_| 2.0 * (icon_size + padding));
-        if let Some(open) = folder {
-            let icon_rect = |index: usize| {
-                Rect::from_center_size(
-                    egui::pos2(
-                        rect.left()
-                            + padding
-                            + icon_size * 0.5
-                            + index as f32 * (icon_size + padding),
-                        rect.center().y,
-                    ),
-                    Vec2::splat(icon_size),
-                )
-            };
-            crate::icons::paint_disclosure(ui, icon_rect(0), open, color);
-            let folder_icon = if open {
-                crate::icons::Lucide::FolderOpen
-            } else {
-                crate::icons::Lucide::Folder
-            };
-            folder_icon
-                .size(icon_size)
-                .color(color)
-                .image()
-                .paint_at(ui, icon_rect(1));
-        }
+        let slots = match leading {
+            CatalogIcon::None => 0.,
+            CatalogIcon::Track(icon) => {
+                icon.size(icon_size)
+                    .color(color)
+                    .image()
+                    .paint_at(ui, icon_rect(0));
+                1.
+            }
+            CatalogIcon::Group(open) => {
+                crate::icons::paint_disclosure(ui, icon_rect(0), open, color);
+                1.
+            }
+            CatalogIcon::Folder(open) => {
+                crate::icons::paint_disclosure(ui, icon_rect(0), open, color);
+                let icon = if open {
+                    crate::icons::Lucide::FolderOpen
+                } else {
+                    crate::icons::Lucide::Folder
+                };
+                icon.size(icon_size)
+                    .color(color)
+                    .image()
+                    .paint_at(ui, icon_rect(1));
+                2.
+            }
+        };
+        let text_offset = indent + slots * step;
         ui.painter().galley_with_override_text_color(
             egui::pos2(
                 rect.left() + padding + text_offset,
