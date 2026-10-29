@@ -188,7 +188,7 @@ impl NativeMenu {
             .enumerate()
             .filter(|(_, action)| *action != FileAction::Import)
         {
-            if action == FileAction::CloseProject {
+            if action == FileAction::CollectSources {
                 file_menu.addItem(&NSMenuItem::separatorItem(mtm));
                 // SAFETY: The selector is defined above, with an NSMenuItem argument.
                 let item = unsafe {

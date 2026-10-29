@@ -4,6 +4,16 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Immediate desktop source collection — 2026-10-29
+
+Replaced the initial Stage 4 review/confirmation and running/success dialogs. Both File menus now use **Collect project sources** without an ellipsis, in the Project Settings group after Export. Ready preflight continues automatically into transactional collection and saves current changes without a save prompt. Checking, copy/verification/save phases, file/byte counts, completion, cancellation and warnings appear in the status bar. Only errors/recovery open a dialog. Completion/cancellation release guards and restore focus automatically; subsequent edits/jobs clear completion text. Source/history coverage, cancellation acknowledgement, commit rules and prepared playback remain unchanged.
+
+All 17 focused `daw-ui` collection tests pass. They cover immediate dirty/no-copy saves, menu ordering/dispatch, no running/success/cancel dialogs, source diagnostics, copied/verified/published status, worker disconnects, late-commit warnings, stale lifecycle guards, recovery, status-bar cancellation and effect/component selection. `cargo fmt --all --check`, strict locked/offline workspace/all-target Clippy and `sh tools/package_macos.sh debug` pass. The updated macOS app is `target/debug/DAW.app`. Logs use `work/collection-immediate-*`.
+
+`cargo test --offline --locked --workspace` passes: 1871 tests passed, 11 opt-in tests ignored, no failures, including all 713 UI tests and documentation tests. Changed Markdown local links/anchors and `git diff HEAD --check` pass.
+
+Native app inventory failed with `Sky Computer Use native pipe startup failed`; no native menu, window or device interaction is claimed. Windows/Linux execution and Stage 5 native acceptance remain open.
+
 ## CLI source collection — 2026-10-29
 
 Added `daw-cli collect-sources [--project <folder>] [--dry-run]` over the shared verified snapshot/preflight/execution API. It defaults to the current directory, reports all available source diagnostics, blocks partial collection, and confirms success only after manifest commit. Saved asset coverage includes unused/sample inputs; desktop history is unavailable. No device, graphics, signal handler or dependency is added. See the [CLI contract](../projects/source-bundling-cli.md).

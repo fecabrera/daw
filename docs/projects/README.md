@@ -18,17 +18,16 @@ For headless collection, save and close the desktop project, then use the [colle
 
 Collect sources before sharing or moving a project:
 
-1. Save the project first.
-2. Choose **File > Collect project sources…**.
-3. Review the destination folder, files to copy, files already included, additional bytes and sources retained only by Undo/Redo. If sources are missing or changed, close the report and restore the required originals. Reopen the project if its audio could not be prepared, then check again.
-4. Choose **Collect and save**. This also saves the current project state.
-5. Wait for completion, review any warnings, then close the report.
+1. Save the project first if it has no project folder yet.
+2. Choose **File > Collect project sources**, in the same File menu group as **Project Settings**.
+3. Watch the status bar for checking, copying and saving progress. Collection starts immediately and also saves current changes, without a confirmation prompt.
+4. Wait for **Project sources collected and saved** in the status bar. Any warnings appear there too. A dialog opens only if an error occurs. Restore missing or changed originals before retrying.
 
 Collection copies complete original WAV, MP3 and AAC files without trimming, resampling or re-encoding. It includes unused assets, Sampler/Granulizer inputs and sources retained by the active Undo/Redo history. Original files stay unchanged. Undo/Redo history itself is not stored in the project.
 
-The byte estimate covers new media files. Temporary copies need additional space; free space is not measured. When no new copies are needed, confirmation still saves the project.
+Temporary copies need additional space; free space is not measured. When no new copies are needed, collection still saves the project.
 
-Editing and file actions remain blocked until you close the report. Playback can continue from prepared audio. Cancel can stop collection before the project is saved. After saving succeeds, cancellation does not undo collection; the report shows completion and any warnings.
+Editing and file actions remain blocked while collection runs. They become available again automatically after completion or cancellation. Playback can continue from prepared audio. Use **Cancel** in the status bar to stop collection before saving. After saving succeeds, cancellation does not undo collection; the status bar shows completion and any warnings. Errors stay in a dialog until you close it.
 
 Move the whole project folder, including `assets/` and `stems/`, rather than only `project.json`. Later imports stay external until you collect again. Regular Save does not collect them automatically. Save As copies media already included in the project and protects sources retained only by the active Undo/Redo history.
 

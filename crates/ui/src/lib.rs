@@ -359,8 +359,8 @@ impl FileAction {
         Self::Import,
         Self::Save,
         Self::SaveAs,
-        Self::CollectSources,
         Self::Export,
+        Self::CollectSources,
         Self::CloseProject,
     ];
 
@@ -371,7 +371,7 @@ impl FileAction {
             Self::Import => "Import WAV…",
             Self::Save => "Save",
             Self::SaveAs => "Save as…",
-            Self::CollectSources => "Collect project sources…",
+            Self::CollectSources => "Collect project sources",
             Self::Export => "Export…",
             Self::CloseProject => "Close project",
         }
@@ -844,6 +844,7 @@ pub struct DawUi {
     export_dialog: Option<ExportSettings>,
     export_status: Option<export_status::ExportStatus>,
     collection_status: Option<collection::Status>,
+    collection_message: Option<String>,
     collection_input_ready: bool,
     collection_focus: Option<egui::Id>,
     separation_status: Option<separation::Status>,
@@ -965,6 +966,7 @@ impl Default for DawUi {
             export_dialog: None,
             export_status: None,
             collection_status: None,
+            collection_message: None,
             collection_input_ready: true,
             collection_focus: None,
             separation_status: None,
@@ -1120,6 +1122,7 @@ impl DawUi {
         let (tx, rx) = mpsc::channel();
         self.job = Some(rx);
         self.busy = label.into();
+        self.collection_message = None;
         std::thread::spawn(move || {
             let _ = tx.send(job());
         });
@@ -1186,6 +1189,7 @@ impl DawUi {
                 self.export_dialog = None;
                 self.export_status = None;
                 self.collection_status = None;
+                self.collection_message = None;
                 self.project_name_dialog = None;
                 self.project_settings = None;
                 self.overwrite = None;
@@ -1532,6 +1536,7 @@ impl DawUi {
                         self.finish_model_validation(Err(e));
                     } else if let Some(status) = &mut self.collection_status {
                         Self::collection_error(status, e);
+                        self.update_collection_message();
                     } else if let Some(status) = &mut self.separation_status {
                         status.state = if status
                             .progress
@@ -2189,7 +2194,10 @@ impl DawUi {
             rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
                 if self.job.is_some() {
                     ui.spinner();
-                    ui.label(&self.busy);
+                    ui.label(
+                        self.collection_status_text()
+                            .unwrap_or_else(|| self.busy.clone()),
+                    );
                     if self.settings_cancel.is_some() && ui.button("Cancel").clicked() {
                         if let Some(cancel) = &self.settings_cancel {
                             cancel.store(true, Ordering::Relaxed);
@@ -2209,6 +2217,8 @@ impl DawUi {
                 } else if self.regular_save.is_some() {
                     ui.spinner();
                     ui.label("Saving project");
+                } else if let Some(message) = self.collection_status_text() {
+                    ui.label(message);
                 } else {
                     ui.label(if self.dirty {
                         "Unsaved changes"
@@ -2432,7 +2442,7 @@ impl DawUi {
             .into_iter()
             .filter(|action| *action != FileAction::Import)
         {
-            if action == FileAction::CloseProject {
+            if action == FileAction::CollectSources {
                 menus::separator(ui);
                 if ui
                     .add_enabled(
@@ -2444,6 +2454,8 @@ impl DawUi {
                     ui.close();
                     self.open_project_settings();
                 }
+            }
+            if action == FileAction::CloseProject {
                 menus::separator(ui);
                 let button = egui::Button::new("Settings…").shortcut_text(
                     toolbars::menu_shortcut_text(ui.ctx(), &Self::settings_shortcut()),

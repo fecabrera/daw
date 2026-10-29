@@ -6,7 +6,7 @@ Date: 2026-10-29.
 
 ## Goal and first-version scope
 
-Make a saved project portable by copying its media sources into its project folder, preserving the original files and all editing/audio behavior. Start with an explicit **File > Collect project sources…** action. Normal imports and saves continue to reference external media until the user collects it.
+Make a saved project portable by copying its media sources into its project folder, preserving the original files and all editing/audio behavior. Start with an explicit **File > Collect project sources** action. Normal imports and saves continue to reference external media until the user collects it.
 
 The first version follows these rules:
 
@@ -38,8 +38,8 @@ This feature extends the initial external-source-only MVP. Current requirements 
 ## Planned user behavior
 
 1. Save the project before collection. For the first version, disable Collect on an unsaved project and explain that it must be saved first. Keep the existing first-Save dialog flow unchanged.
-2. Collect shows a preflight summary: files already included, files to copy, additional bytes, history-only sources, and any missing or changed sources. It states that successful collection also saves the current project state.
-3. The user starts a worker job with byte/file progress and cancellation. Block project edits and competing file jobs during this operation, using existing guards. Playback can continue from the existing prepared buffers.
+2. Collect starts immediately without a save-changes prompt or review dialog. Worker preflight verifies every required source; a ready report proceeds automatically to collection. Successful collection also saves the current project state.
+3. Show checking, copy/verification and save phases with byte/file counts and cancellation in the status bar. Open a dialog only for errors. Block project edits and competing file jobs during this operation, using existing guards. Playback can continue from the existing prepared buffers.
 4. Success saves the new source locations, updates live/history references, and reports the result. Do not add a path-relocation Undo entry or clear Redo. The written snapshot becomes the saved checkpoint.
 5. Missing, unreadable or mismatched required sources prevent collection. Report affected files/assets and retain the project. Do not silently omit files or claim a partial result is portable.
 6. Later imports remain external until the next collection. Compute collection status from the source inventory; do not persist a flag that claims all future imports are bundled.
@@ -145,7 +145,7 @@ Work:
 
 1. Add Collect project sources to the shared File action model, native desktop menus and application-drawn menus. All entry points dispatch the same guarded action.
 2. Require a saved project, focus and settled editing state. Disable during ordinary Save, conflicting jobs, dialogs and active gestures. Allow a no-copy result to explain that the project is already collected.
-3. Present the Stage 1 summary through shared dialogs, then run the Stage 2 backend through the existing job/progress/cancellation paths. Keep discovery, hashing and copying out of paint/input handlers.
+3. Run Stage 1 preflight and continue automatically into the Stage 2 backend through existing job/progress/cancellation paths. Use status-bar progress and error-only dialogs. Keep discovery, hashing and copying out of paint/input handlers.
 4. Publish successful relocation through Stage 3 and show file/byte totals. Distinguish cancellation, pre-commit failure and a confirmed commit with a later durability/reporting issue.
 5. Keep playback on its existing prepared buffers and preserve view/track/clip/unit selection. A failed collection must not stop or replace a working session.
 

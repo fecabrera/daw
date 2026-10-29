@@ -25,6 +25,7 @@ impl DawUi {
         Ok(())
     }
     pub(super) fn mark_dirty(&mut self) {
+        self.collection_message = None;
         self.change_revision = self.change_revision.wrapping_add(1);
         self.dirty = true;
         self.record_history();

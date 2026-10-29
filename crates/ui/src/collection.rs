@@ -14,7 +14,7 @@ use std::sync::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Stage {
     Checking,
-    Review,
+    Ready,
     Copying,
     Done,
 }
@@ -46,97 +46,27 @@ impl Drop for Status {
     }
 }
 impl Status {
-    fn show(&self, ctx: &egui::Context) -> Option<bool> {
-        if self.stage == Stage::Review {
-            let ready = self
-                .preflight
-                .as_ref()
-                .is_some_and(CollectionPreflight::is_ready);
-            let actions: &[(&str, bool)] = if ready {
-                &[("Collect and save", true), ("Cancel", false)]
-            } else {
-                &[("Close", false)]
-            };
-            return dialogs::Dialog::new("Collect project sources", "", actions)
-                .show_with_content(ctx, |ui| {
-                    ui.add(egui::Label::new(&self.detail).wrap());
-                    ui.label("Project folder");
-                    ui.add(egui::Label::new(self.path.display().to_string()).wrap());
-                    egui::ScrollArea::vertical()
-                        .max_height(300.)
-                        .show(ui, |ui| {
-                            if let Some(report) = &self.preflight {
-                                for diagnostic in report.diagnostics() {
-                                    ui.colored_label(
-                                        theme::palette(ctx).error,
-                                        diagnostic.path.display().to_string(),
-                                    );
-                                    ui.add(egui::Label::new(&diagnostic.message).wrap());
-                                    let owners = diagnostic
-                                        .owners
-                                        .iter()
-                                        .map(|&i| &report.snapshot().owners()[i].asset_name)
-                                        .cloned()
-                                        .collect::<std::collections::BTreeSet<_>>()
-                                        .into_iter()
-                                        .collect::<Vec<_>>()
-                                        .join(", ");
-                                    ui.add(egui::Label::new(format!("Assets: {owners}")).wrap());
-                                }
-                            }
-                        });
-                })
-                .or_else(|| {
-                    ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
-                        .then_some(false)
-                });
+    fn show_error(&self, ctx: &egui::Context) -> bool {
+        if !matches!(self.report, job_report::State::Failed(_)) {
+            return false;
         }
-        let phase = self.progress.map(|p| p.phase);
-        let running = if self.stage == Stage::Checking {
-            "Checking project sources…"
-        } else {
-            match phase {
-                Some(CollectionPhase::Validating) => "Checking source revisions…",
-                Some(CollectionPhase::Verifying) => "Verifying sources…",
-                Some(CollectionPhase::Publishing) => "Saving collected project…",
-                _ => "Copying project sources…",
-            }
-        };
-        let progress = self.progress.map(|p| {
-            let total = u128::from(p.total_staging_bytes) + u128::from(p.total_copy_bytes);
-            let done = u128::from(p.staged_bytes) + u128::from(p.copied_bytes);
-            if total == 0 {
-                0.
-            } else {
-                done as f32 / total as f32
-            }
-        });
-        let detail = if let Some(p) = self.progress {
-            format!(
-                "{}\nCopied {} of {} files · {} of {} bytes",
-                self.detail, p.files_copied, p.total_files, p.copied_bytes, p.total_copy_bytes
-            )
-        } else {
-            self.detail.clone()
-        };
         job_report::Report {
-            title: "Source-collection status",
+            title: "Collect project sources",
             state: &self.report,
-            running_text: running,
-            complete_text: "Project sources collected and saved",
+            running_text: "",
+            complete_text: "",
             failed_text: if self.recovery {
                 "Collection needs recovery"
             } else {
                 "Source collection failed"
             },
-            detail: &detail,
+            detail: &self.detail,
             path: &self.path,
-            progress,
+            progress: None,
             warnings: &self.warnings,
-            cancel: Some(&self.lease.cancel),
+            cancel: None,
         }
         .show(ctx)
-        .then_some(false)
     }
 }
 impl DawUi {
@@ -204,6 +134,7 @@ impl DawUi {
             current: AtomicBool::new(true),
             cancel: Arc::new(AtomicBool::new(false)),
         });
+        self.collection_message = None;
         self.collection_status = Some(Status {
             ticket,
             snapshot: snapshot.clone(),
@@ -252,6 +183,7 @@ impl DawUi {
                 status,
                 "Project or view changed during source discovery".into(),
             );
+            self.update_collection_message();
             return;
         }
         match result {
@@ -271,8 +203,30 @@ impl DawUi {
                         "All required sources are ready to collect."
                     }
                 );
-                status.preflight = Some(report);
-                status.stage = Stage::Review;
+                if report.is_ready() {
+                    status.preflight = Some(report);
+                    status.stage = Stage::Ready;
+                } else {
+                    for diagnostic in report.diagnostics() {
+                        let owners = diagnostic
+                            .owners
+                            .iter()
+                            .map(|&i| report.snapshot().owners()[i].asset_name.as_str())
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        status.detail.push_str(&format!(
+                            "\n\n{}\n{}\nAssets: {owners}",
+                            diagnostic.path.display(),
+                            diagnostic.message
+                        ));
+                    }
+                    Self::collection_error(
+                        status,
+                        "Required sources could not be verified. No sources were collected.".into(),
+                    );
+                }
             }
             Ok(_) => {
                 status.report = job_report::State::Cancelled;
@@ -280,6 +234,8 @@ impl DawUi {
             }
             Err(e) => Self::collection_error(status, e),
         }
+        self.start_collection();
+        self.update_collection_message();
     }
     pub(super) fn collection_error(status: &mut Status, error: String) {
         status.stage = Stage::Done;
@@ -291,7 +247,7 @@ impl DawUi {
             job_report::State::Failed(error)
         };
     }
-    pub(super) fn confirm_collection(&mut self) {
+    fn start_collection(&mut self) {
         if self.job.is_some()
             || self.regular_save.is_some()
             || self.error.is_some()
@@ -304,16 +260,19 @@ impl DawUi {
             || self.export_status.is_some()
             || self.separation_status.is_some()
         {
+            if let Some(status) = &mut self.collection_status {
+                Self::collection_error(status, "Source collection could not continue because another operation or dialog is active.".into());
+            }
             return;
         }
         self.refresh_collection();
         let Some(status) = &mut self.collection_status else {
             return;
         };
-        if status.stage != Stage::Review {
+        if status.stage != Stage::Ready {
             return;
         }
-        if !status.lease.current.load(Ordering::Acquire) || !self.collection_input_ready {
+        if !status.lease.current.load(Ordering::Acquire) {
             Self::collection_error(
                 status,
                 "Project or view changed; check sources again before collecting".into(),
@@ -408,21 +367,69 @@ impl DawUi {
             Err(e) => Self::collection_error(&mut status, e),
         }
         self.collection_status = Some(status);
+        self.update_collection_message();
+    }
+    pub(super) fn update_collection_message(&mut self) {
+        let Some(status) = &self.collection_status else {
+            return;
+        };
+        self.collection_message = match &status.report {
+            job_report::State::Complete => {
+                for warning in &status.warnings {
+                    if !self.notices.contains(warning) {
+                        self.notices.push(warning.clone());
+                    }
+                }
+                let progress = status.progress.unwrap();
+                Some(format!(
+                    "Project sources collected and saved · {} files · {} bytes",
+                    progress.files_copied, progress.copied_bytes
+                ))
+            }
+            job_report::State::Cancelled => Some("Source collection cancelled".into()),
+            job_report::State::Failed(_) => Some("Source collection failed".into()),
+            job_report::State::Running => None,
+        };
+    }
+    pub(super) fn collection_status_text(&self) -> Option<String> {
+        self.collection_status
+            .as_ref()
+            .filter(|s| s.report == job_report::State::Running)
+            .map(|s| {
+                if s.lease.cancel.load(Ordering::Relaxed) {
+                    return "Cancelling source collection…".into();
+                }
+                let phase = match s.progress.map(|p| p.phase) {
+                    Some(CollectionPhase::Validating) => "Checking source revisions…",
+                    Some(CollectionPhase::Verifying) => "Verifying sources…",
+                    Some(CollectionPhase::Publishing) => "Saving collected project…",
+                    _ if s.stage == Stage::Checking => "Checking project sources…",
+                    _ => "Copying project sources…",
+                };
+                if let Some(p) = s.progress {
+                    format!(
+                        "{phase} {} of {} files · {} of {} bytes",
+                        p.files_copied, p.total_files, p.copied_bytes, p.total_copy_bytes
+                    )
+                } else {
+                    phase.into()
+                }
+            })
+            .or_else(|| self.collection_message.clone())
     }
     pub(super) fn show_collection(&mut self, ctx: &egui::Context) {
-        let action = self.collection_status.as_ref().and_then(|s| s.show(ctx));
-        match action {
-            Some(true) => self.confirm_collection(),
-            Some(false) => {
-                let restore = self.collection_preserves_selection();
-                if let Some(status) = self.collection_status.take()
-                    && restore
-                    && let Some(focus) = status.focus
-                {
-                    crate::unit_power::schedule_focus_id(ctx, focus);
-                }
+        let dismiss = self.collection_status.as_ref().is_some_and(|s| {
+            s.stage == Stage::Done
+                && (!matches!(s.report, job_report::State::Failed(_)) || s.show_error(ctx))
+        });
+        if dismiss {
+            let restore = self.collection_preserves_selection();
+            if let Some(status) = self.collection_status.take()
+                && restore
+                && let Some(focus) = status.focus
+            {
+                crate::unit_power::schedule_focus_id(ctx, focus);
             }
-            None => {}
         }
     }
 }
