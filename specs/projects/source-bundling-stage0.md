@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: storage and verification foundations implemented. [Stage 1 inventory/preflight](source-bundling-stage1.md) is also implemented. [Stage 2 copying/publication](source-bundling-stage2.md) is implemented; [Stage 3 session integration](source-bundling-stage3.md) is implemented; desktop controls remain pending in the [staged plan](source-bundling.md).
+Status: storage and verification foundations implemented. [Stage 1 inventory/preflight](source-bundling-stage1.md) is also implemented. [Stage 2 copying/publication](source-bundling-stage2.md) is implemented; [Stage 3 session integration](source-bundling-stage3.md) is implemented; [Stage 4 desktop controls](source-bundling-stage4.md) are implemented in the [staged plan](source-bundling.md).
 
 ## Storage model and compatibility
 
@@ -20,7 +20,7 @@ This is an additive field in the experimental manifest. Do not change `schema_ve
 
 Older clients ignore this field, can drop it when saving, and treat a collected imported recording as an external reference. They cannot preserve its ownership or guarantee a portable Save As. Editing an included-source project with an older client is unsupported. A future enforced manifest version must introduce an actual loader gate; a version number alone is insufficient.
 
-Stage 3 now enables included-source session open/save and relocates all protected owners for Save As. Normal imports remain external; no collection menu action is exposed. See the [Stage 3 session contract](source-bundling-stage3.md).
+Stage 3 now enables included-source session open/save and relocates all protected owners for Save As. Normal imports remain external; Stage 4 now exposes the guarded desktop command. See the [Stage 3 session contract](source-bundling-stage3.md).
 
 ## Included-path containment
 

@@ -28,6 +28,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Source bundling Stage 1](projects/source-bundling-stage1.md): history-aware snapshots, read-only inventory/preflight, typed diagnostics, destination proposals and byte totals.
 - [Source bundling Stage 2](projects/source-bundling-stage2.md): worker copying, exclusive reservations, relocation receipts, manifest commit, rollback and recovery.
 - [Source bundling Stage 3](projects/source-bundling-stage3.md): included-source session I/O, protected-history save snapshots and source receipt application.
+- [Source bundling Stage 4](projects/source-bundling-stage4.md): guarded desktop command, preflight dialogs, cancellable progress and lifecycle-safe completion.
 
 ## Instruments and editing
 

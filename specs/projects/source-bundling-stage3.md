@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: included-source open/Save/Save As, collection receipt application and protected-history saves implemented. The desktop collection command remains pending in [Stage 4](source-bundling.md). Native platform and crash/durability acceptance remain separate.
+Status: included-source open/Save/Save As, collection receipt application and protected-history saves implemented. [Stage 4](source-bundling-stage4.md) now exposes the desktop collection command. Native platform and crash/durability acceptance remain separate.
 
 ## Save snapshots and publication
 
@@ -30,10 +30,10 @@ History normalizes external/generated references to absolute paths using pure pa
 
 [`CollectionOutcome::apply`](../../crates/project/src/source_collection/execute.rs) accepts only a confirmed commit. It checks the captured project/job revision, live/history models, owner identities and root ordering through `SourceCollectionSnapshot::is_current`. Playback-only playhead changes remain allowed. Recovery-required, foreign and stale outcomes do not mutate live/history state.
 
-The executor prevalidates retained relocated models before filesystem commit. Apply uses the same pure relocation path as save completion; it performs no file I/O, decoding or DSP preparation. Keep the host's edit/job exclusion active through apply. Preserve UI selections and control state; path relocation does not request renderer synchronization. Stage 4 must connect this API to menu/job dispatch and surface commit/recovery warnings.
+The executor prevalidates retained relocated models before filesystem commit. Apply uses the same pure relocation path as save completion; it performs no file I/O, decoding or DSP preparation. Keep the host's edit/job exclusion active through apply. Preserve UI selections and control state; path relocation does not request renderer synchronization. Stage 4 connects this API to guarded menu/job dispatch and surfaces commit/recovery warnings.
 
 ## Acceptance and limits
 
 [Source-bundling integration tests](../../crates/project/tests/source_bundling.rs) cover collection and Save As with original files and the old folder removed; imported and generated Redo-only media; pending and Undo owners; dirty checkpoints; stable PCM/cache Arcs and navigation; stale/foreign receipts; uncaptured owners; missing included media; later external imports; failed destinations and changed encoded bytes. Sampler and Granulizer inputs are covered without timeline clips. Collected MP3/AAC/MP4 sources retain their full encoded bytes through Save As; output extensions come from verified codec/container metadata. Trimmed, repeated, stretched and pitched clips retain their mappings, prepared buffers, deterministic render and byte-identical WAV export across collected Save As/reopen, using both saved stretch engines.
 
-Existing generated-stem lifetime, Save As failure cleanup, editable background-save and UI selection/history tests remain required. See [validation history](../validation/README.md) for executed checks. Automated local filesystem tests do not establish native Windows/Linux, device/UI, network filesystem, process-interruption or power-loss acceptance. The desktop collection command and complete portability release gate remain pending.
+Existing generated-stem lifetime, Save As failure cleanup, editable background-save and UI selection/history tests remain required. See [validation history](../validation/README.md) for executed checks. Automated local filesystem tests do not establish native Windows/Linux, device/UI, network filesystem, process-interruption or power-loss acceptance. Stage 4 exposes the desktop command; the complete portability release gate remains pending.

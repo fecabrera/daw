@@ -90,7 +90,7 @@ Project/
   assets/
 ```
 
-Normal imports reference external sources without copying them. Source-bundling Stage 3 extends storage with included recordings under assets/sources/ and history-aware Save As. Explicit collection uses the shared backend; its desktop command remains pending. Waveforms and decoded PCM are session data and are not stored in the manifest.
+Normal imports reference external sources without copying them. Source-bundling Stage 3 extends storage with included recordings under assets/sources/ and history-aware Save As. Explicit collection uses the shared backend; Stage 4 now exposes its guarded desktop command. Waveforms and decoded PCM are session data and are not stored in the manifest.
 
 Use the initial JSON structure in MVP.md. The following fields form the MVP data contract:
 

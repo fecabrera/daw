@@ -162,7 +162,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - Normal imports retain external references. Explicit project-owned imported recordings use `storage: project` and `assets/sources/` paths; generated stems retain their separate lifecycle.
 - Reserve the assets directory for project-owned assets, including future included source audio files. External source audio is not copied into it during the MVP.
 - Session I/O supports external references and included recordings. Save As copies project-owned sources and protected history owners; normal Save does not collect later imports.
-- [Source bundling Stage 3](../projects/source-bundling-stage3.md) enables included-source open/save and history-aware Save As. The desktop collection command remains pending.
+- [Source bundling Stage 3](../projects/source-bundling-stage3.md) enables included-source open/save and history-aware Save As. [Stage 4](../projects/source-bundling-stage4.md) adds the guarded desktop collection command.
 - Use an experimental project.json manifest at the project folder root and an assets/ directory for project-owned assets. The manifest schema can change substantially during MVP development.
 - Store source paths relative to the project folder where possible; otherwise store absolute paths. Resolve relative paths from the project folder, not the application's working directory.
 - When closing the application or opening another project with unsaved changes, prompt to Save, Discard, or Cancel. Continue after Save only if saving succeeds.

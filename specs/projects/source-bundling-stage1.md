@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: shared snapshot, inventory and preflight APIs implemented. The [Stage 2 copying backend](source-bundling-stage2.md) is implemented; no collection command is exposed. [Stage 3](source-bundling-stage3.md) enables included-source session open/save and history relocation. See the [staged plan](source-bundling.md) and [Stage 0 contract](source-bundling-stage0.md).
+Status: shared snapshot, inventory and preflight APIs implemented. The [Stage 2 copying backend](source-bundling-stage2.md) is implemented; [Stage 4](source-bundling-stage4.md) now exposes the desktop command. [Stage 3](source-bundling-stage3.md) enables included-source session open/save and history relocation. See the [staged plan](source-bundling.md) and [Stage 0 contract](source-bundling-stage0.md).
 
 ## Ownership and entry points
 
@@ -18,7 +18,7 @@ Status: shared snapshot, inventory and preflight APIs implemented. The [Stage 2 
 | `CollectionPreflight::into_plan()` | Produce `SourceCollectionPlan` only when no diagnostics remain. Plan fields are private; accessors return immutable views. |
 | `SourceCollectionPlan` | Retain the captured owners, project/folder/revision, manifest content receipt, verified source receipts, proposed targets and totals for Stage 2. The staging-directory accessor returns a proposal, not a reservation. |
 
-The host supplies its `u64` edit/job revision. Capture once for a job, retain the snapshot through preflight, and use `is_current` before execution/publication. Folder values come from the normal absolute-folder Session save/open lifecycle. Perform capture, stale checks and preflight outside painting and the audio callback. There is no desktop or CLI dispatch in this stage.
+The host supplies its `u64` edit/job revision. Capture once for a job, retain the snapshot through preflight, and use `is_current` before execution/publication. Folder values come from the normal absolute-folder Session save/open lifecycle. Perform capture, stale checks and preflight outside painting and the audio callback. Stage 4 adds desktop dispatch; CLI collection remains outside scope.
 
 ## Inventory roots
 

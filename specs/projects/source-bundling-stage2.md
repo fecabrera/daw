@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: worker execution, relocation receipts and transactional publication implemented. [Stage 3](source-bundling-stage3.md) supplies session/history relocation and enables included-source session I/O. The desktop command remains pending in Stage 4. This backend alone does not establish project portability.
+Status: worker execution, relocation receipts and transactional publication implemented. [Stage 3](source-bundling-stage3.md) supplies session/history relocation and enables included-source session I/O. [Stage 4](source-bundling-stage4.md) now exposes the desktop command. This backend alone does not establish project portability.
 
 ## Worker API and ownership
 

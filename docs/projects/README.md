@@ -1,6 +1,6 @@
 # Projects and export
 
-Projects store the arrangement, instruments, effects, and settings. Normal imports reference external audio files. Keep those recordings available when sharing or moving a project. Included recordings, when present, travel inside the project folder. The desktop source-collection command is not available yet.
+Projects store the arrangement, instruments, effects, and settings. Normal imports reference external audio files. Keep those recordings available when sharing or moving a project. Included recordings, when present, travel inside the project folder. Use source collection to include external recordings.
 
 ## Save and open
 
@@ -11,6 +11,26 @@ When leaving a modified project, choose Save, Discard, or Cancel. A cancelled or
 If Save As fails because an included recording or generated stem is missing, restore that file and retry the same project name and location. A failed Save As removes its empty new project folders and retains unrelated contents.
 
 Saving fails if a directory occupies the `project.json` destination. The directory and its contents remain intact. Move that directory out of the project folder or choose another save location, then retry.
+
+## Collect project sources
+
+Collect sources before sharing or moving a project:
+
+1. Save the project first.
+2. Choose **File > Collect project sources…**.
+3. Review the destination folder, files to copy, files already included, additional bytes and sources retained only by Undo/Redo. If sources are missing or changed, close the report and restore the required originals. Reopen the project if its audio could not be prepared, then check again.
+4. Choose **Collect and save**. This also saves the current project state.
+5. Wait for completion, review any warnings, then close the report.
+
+Collection copies complete original WAV, MP3 and AAC files without trimming, resampling or re-encoding. It includes unused assets, Sampler/Granulizer inputs and sources retained by the active Undo/Redo history. Original files stay unchanged. Undo/Redo history itself is not stored in the project.
+
+The byte estimate covers new media files. Temporary copies need additional space; free space is not measured. When no new copies are needed, confirmation still saves the project.
+
+Editing and file actions remain blocked until you close the report. Playback can continue from prepared audio. Cancel can stop collection before the project is saved. After saving succeeds, cancellation does not undo collection; the report shows completion and any warnings.
+
+Move the whole project folder, including `assets/` and `stems/`, rather than only `project.json`. Later imports stay external until you collect again. Regular Save does not collect them automatically. Save As copies media already included in the project and protects sources retained only by the active Undo/Redo history.
+
+A failure before saving retains the previous project and playback. If the report says sources were saved but active state was retained, close the report and reopen the saved destination. If commit could not be confirmed, keep all destination files and the candidate manifest named in the report. Recovery is not automatic. Collection does not remove unused media or crash leftovers.
 
 ## Project Settings
 
