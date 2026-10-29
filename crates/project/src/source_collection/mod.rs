@@ -1,4 +1,4 @@
-//! Read-only, worker-side source collection planning. No files are created or reserved here.
+//! Worker-side source collection planning and transactional execution.
 use crate::{Result, Session, SessionHistory, error};
 use daw_core::{Id, Project, Source};
 use daw_media::{AudioData, SourceRevision};
@@ -6,9 +6,15 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+mod execute;
+mod owned_fs;
 mod paths;
 mod preflight;
 mod targets;
+pub use execute::{
+    CollectionOutcome, CollectionPhase, CollectionProgress, CollectionStatus, RelocatedSource,
+    RelocationReceipt,
+};
 #[cfg(test)]
 mod tests;
 

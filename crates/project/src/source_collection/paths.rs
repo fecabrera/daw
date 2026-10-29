@@ -55,18 +55,6 @@ impl DestinationTree {
     }
 }
 
-fn reparse(metadata: &fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x400 != 0
-    }
-    #[cfg(not(windows))]
-    {
-        metadata.file_type().is_symlink()
-    }
-}
-
 /// Check every component below the canonical project folder. Missing paths are
 /// allowed for proposals; neither discovery nor collision checks reserve them.
 pub(super) fn ordinary(root: &Path, relative: &Path, file: bool) -> Result<()> {
@@ -87,7 +75,7 @@ pub(super) fn ordinary(root: &Path, relative: &Path, file: bool) -> Result<()> {
         path.push(name);
         match fs::symlink_metadata(&path) {
             Ok(metadata) => {
-                if reparse(&metadata) {
+                if crate::file_publish::is_reparse(&metadata) {
                     return Err(error(format!(
                         "Project media path contains a symlink/reparse point: {}",
                         path.display()

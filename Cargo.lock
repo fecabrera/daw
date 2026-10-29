@@ -2083,6 +2083,7 @@ dependencies = [
  "serde_json",
  "symphonia",
  "thiserror 2.0.21",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

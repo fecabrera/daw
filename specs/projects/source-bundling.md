@@ -1,6 +1,6 @@
 # Project media source bundling
 
-Status: Stage 0 storage/verification foundations and Stage 1 inventory/preflight are implemented. See the [Stage 0 contract](source-bundling-stage0.md) and [Stage 1 API and acceptance](source-bundling-stage1.md). Stages 2–5 and the collection command remain pending.
+Status: Stages 0–2 are implemented. See the [Stage 0 contract](source-bundling-stage0.md), [Stage 1 inventory/preflight](source-bundling-stage1.md) and [Stage 2 transactional backend](source-bundling-stage2.md). Stages 3–5 and the collection command remain pending.
 
 Date: 2026-10-29.
 
@@ -54,7 +54,7 @@ Each stage has an exit gate. A gate records evidence for that stage; it does not
 | --- | --- | --- | --- |
 | 0 | Complete | Storage, revision and transaction contract | Model/migration rules, failure cases and fixture matrix are explicit. |
 | 1 | Complete | Shared source inventory and preflight | All live/history roots are covered and diagnostics are deterministic. |
-| 2 | Pending | Transactional collection backend | Copies and manifest publication survive cancellation and injected failures. |
+| 2 | Complete | Transactional collection backend | Copies and manifest publication survive cancellation and injected failures. |
 | 3 | Pending | Save, Save As and history integration | Reopen, relocation and history remain independent of originals. |
 | 4 | Pending | Desktop command and job UI | Guarded menu dispatch, progress, cancellation and completion use the shared backend. |
 | 5 | Pending | Portability acceptance and documentation | Required automated/native evidence and current docs match the delivered feature. |
@@ -98,6 +98,8 @@ Exit gate:
 - Repeated preflight on the same snapshot produces the same plan and leaves the working tree/session unchanged.
 
 ## Stage 2 — Transactional collection backend
+
+Implemented worker API, commit/cleanup rules and failure coverage: [Stage 2](source-bundling-stage2.md). Native Windows and crash/power-loss acceptance remain open. Session/history integration and application dispatch remain gated.
 
 Work:
 

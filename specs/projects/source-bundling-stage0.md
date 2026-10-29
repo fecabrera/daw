@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: storage and verification foundations implemented. [Stage 1 inventory/preflight](source-bundling-stage1.md) is also implemented. Media copying, session integration and desktop controls remain pending in the [staged plan](source-bundling.md).
+Status: storage and verification foundations implemented. [Stage 1 inventory/preflight](source-bundling-stage1.md) is also implemented. [Stage 2 copying/publication](source-bundling-stage2.md) is implemented; session integration and desktop controls remain pending in the [staged plan](source-bundling.md).
 
 ## Storage model and compatibility
 
@@ -66,7 +66,7 @@ Two retained owners that require different revisions at one current external pat
 
 ## Frozen copying and transaction rules
 
-The following rules specify Stage 2. They are not an implemented copying API in Stage 0.
+The following rules define the [Stage 2 copying backend](source-bundling-stage2.md). Stage 0 supplied the model and verification foundations.
 
 ### Naming, reservation and retry
 
@@ -89,9 +89,9 @@ The following rules specify Stage 2. They are not an implemented copying API in 
 
 Retain a cleanup guard that is disarmed immediately after successful replacement, before any fallible notification. Filesystem commit and live/history publication must use a prevalidated relocation receipt so UI publication cannot become an independent partial transaction. No edit or conflicting job may invalidate that receipt during the collection commit.
 
-On Unix, sync containing directories after creating/publishing media and after manifest replacement when supported; failures before commit abort, while failures after replacement report a committed result with uncertain crash durability. The current Windows `replace_file` helper renames the old manifest to a backup before renaming the new one into place. That leaves a crash window with no `project.json` and does **not** meet the collection contract. Stage 2 must replace this shared path with native atomic replacement for existing manifests and no-replace publication where appropriate, with native failure tests. Retain file flushing and record remaining Windows directory/power-loss durability limits in acceptance.
+On Unix, sync containing directories after creating/publishing media and after manifest replacement when supported; failures before commit abort, while failures after replacement report a committed result with uncertain crash durability. Stage 2 now replaces the former Windows backup/rename gap with the shared native replacement helper. See [Stage 2 replacement and durability](source-bundling-stage2.md#native-manifest-replacement-and-durability) for the implemented API, failure reconciliation and remaining native/durability gates.
 
-No platform may claim multi-file atomicity or unconditional power-loss safety. A crash before commit leaves the previous manifest valid; a crash after commit must never trigger rollback cleanup on reopen. Stage 0 freezes this requirement; it does not change the current save replacement helper.
+No platform may claim multi-file atomicity or unconditional power-loss safety. A crash before commit leaves the previous manifest valid; a crash after commit must never trigger rollback cleanup on reopen. Stage 0 froze this requirement; Stage 2 implements the shared replacement helper. Native crash/durability acceptance remains separate.
 
 ## Fixtures and later acceptance
 
@@ -103,6 +103,6 @@ Implemented checks cover:
 - Contained/missing paths plus external directory, file and dangling symlinks on Unix.
 - SHA-256 known bytes, relocation-independent revisions, same-length/same-mtime changed audio, cache bypass, project-rate comparison, metadata mismatch, cancellation, concurrent mutation and missing/non-regular sources.
 
-Stage 2 must add deterministic fault injection for read/write/flush/sync failures, occupied destinations, disk exhaustion, cancellation at each commit boundary, manifest replacement failure and post-commit notification failure. Stage 3 adds collected Save As and complete history-owner relocation. Native Windows reparse-point/rename checks and platform durability acceptance remain open. Stage 0 does not establish project portability.
+Stage 2 adds deterministic fault injection for read/write/flush/sync failures, occupied destinations, disk exhaustion, cancellation at each commit boundary, manifest replacement failure and post-commit notification failure. Stage 3 adds collected Save As and complete history-owner relocation. Native Windows reparse-point/rename checks and platform durability acceptance remain open. Stage 0 does not establish project portability.
 
 Completed development checks and remaining native limits are recorded in [validation history](../validation/README.md).

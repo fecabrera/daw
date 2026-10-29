@@ -13,6 +13,7 @@ pub use inspection::inspect_project;
 mod history;
 pub use history::{HistoryMemory, SessionHistory};
 mod clip_audio;
+mod file_publish;
 mod sampler;
 pub mod source_collection;
 mod source_storage;
@@ -611,34 +612,5 @@ fn same_file(a: &Path, b: &Path) -> bool {
             .is_some_and(|(a, b)| a == b)
 }
 fn replace_file(temp: &Path, target: &Path) -> Result<()> {
-    match fs::metadata(target) {
-        Ok(metadata) if !metadata.is_file() => {
-            return Err(error("Output destination is not a regular file"));
-        }
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(error(e)),
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        fs::rename(temp, target).map_err(error)
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let backup = target.with_extension(format!("backup-{}", Id::new_v4()));
-        let exists = target.exists();
-        if exists {
-            fs::rename(target, &backup).map_err(error)?;
-        }
-        if let Err(e) = fs::rename(temp, target) {
-            if exists {
-                let _ = fs::rename(&backup, target);
-            }
-            return Err(error(e));
-        }
-        if exists {
-            let _ = fs::remove_file(backup);
-        }
-        Ok(())
-    }
+    file_publish::replace(temp, target).map_err(error)
 }

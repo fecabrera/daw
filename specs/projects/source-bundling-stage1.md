@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: shared snapshot, inventory and preflight APIs implemented. No collection command or copying backend is exposed. Included-source session open/save remains gated until Stage 3. See the [staged plan](source-bundling.md) and [Stage 0 contract](source-bundling-stage0.md).
+Status: shared snapshot, inventory and preflight APIs implemented. The [Stage 2 copying backend](source-bundling-stage2.md) is implemented; no collection command is exposed. Included-source session open/save remains gated until Stage 3. See the [staged plan](source-bundling.md) and [Stage 0 contract](source-bundling-stage0.md).
 
 ## Ownership and entry points
 
@@ -80,4 +80,4 @@ Stage 1 adds no native capacity-query dependency and claims no available-space m
 
 Automated coverage includes repeated read-only preflight; unused, sampler-only, granular and embedded MIDI assets; duplicate references/basenames and identical bytes at unrelated paths; current/pending/Undo/Redo ownership; saved-only metadata; old-folder resolution; temporary stem lifetime; compatible processing rates; stale revisions/model/history/audio owners; missing, unreadable, non-regular, unprepared and mismatched sources; source mutation/cancellation; included/stem reuse; storage-class targets; occupied/case-colliding destinations; symlinks; checked totals; and MP3/AAC/MP4 container verification.
 
-See [validation history](../validation/README.md) for executed checks. Native Windows/Linux execution, Windows reparse behavior, copy/rollback fault injection and portable reopen acceptance remain pending. This stage does not create files, alter manifests, mark the project dirty, clear history, reload live audio or establish project portability.
+See [validation history](../validation/README.md) for executed checks. Stage 2 supplies copy/rollback fault injection. Native Windows/Linux execution, Windows reparse behavior and portable reopen acceptance remain pending. This stage does not create files, alter manifests, mark the project dirty, clear history, reload live audio or establish project portability.
