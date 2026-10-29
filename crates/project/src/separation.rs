@@ -91,38 +91,6 @@ fn reserve_directory(parent: &Path, name: &str) -> Result<PathBuf> {
     Err(error("No unused stem folder name available"))
 }
 impl Session {
-    /// Merge saved generated-source locations without replacing newer edits or
-    /// transport. Resolve paths against the written session before changing self.
-    pub fn retarget_generated_sources(&mut self, written: &Session) -> Result<()> {
-        if self.project.project_id != written.project.project_id {
-            return Err(error("Saved sources belong to a different project"));
-        }
-        let sources = written
-            .project
-            .assets
-            .iter()
-            .filter(|asset| asset.source.kind == "generated")
-            .map(|asset| {
-                let mut source = asset.source.clone();
-                source.path = written.source_path(asset)?.to_string_lossy().into_owned();
-                source.path_kind = "absolute".into();
-                Ok((asset.id, source))
-            })
-            .collect::<Result<std::collections::HashMap<_, _>>>()?;
-        for asset in self
-            .project
-            .assets
-            .iter_mut()
-            .filter(|asset| asset.source.kind == "generated")
-        {
-            if let Some(source) = sources.get(&asset.id) {
-                asset.source = source.clone();
-            }
-        }
-        self.retain_temporary_stems();
-        Ok(())
-    }
-
     /// Release only storage no longer referenced by this session. Other worker
     /// and history snapshots retain their own shared owners until retargeted.
     pub(crate) fn retain_temporary_stems(&mut self) {
@@ -133,7 +101,7 @@ impl Session {
             .project
             .assets
             .iter()
-            .filter_map(|asset| self.source_path(asset).ok())
+            .filter_map(|asset| self.source_path_unchecked(asset).ok())
             .collect();
         self.temporary_stems.retain(|directory| {
             sources
@@ -327,66 +295,6 @@ fn prepare_stem(
     }
     encoder.finish().map_err(error)?;
     daw_media::decode_wav_cancellable(path, sample_rate_hz, cancelled).map_err(error)
-}
-
-/// Copy only project-owned generated audio on Save As. External recordings stay
-/// referenced. Each destination is reserved without replacing existing files.
-pub(crate) struct GeneratedCopies(pub Vec<PathBuf>);
-impl Drop for GeneratedCopies {
-    fn drop(&mut self) {
-        for path in &self.0 {
-            let _ = fs::remove_dir_all(path);
-        }
-    }
-}
-pub(crate) fn copy_generated(
-    session: &Session,
-    next: &mut daw_core::Project,
-    folder: &Path,
-) -> Result<GeneratedCopies> {
-    let mut cleanup = GeneratedCopies(Vec::new());
-    let mut directories: std::collections::HashMap<PathBuf, PathBuf> =
-        std::collections::HashMap::new();
-    for asset in next
-        .assets
-        .iter_mut()
-        .filter(|a| a.source.kind == "generated")
-    {
-        let original = session
-            .project
-            .assets
-            .iter()
-            .find(|a| a.id == asset.id)
-            .unwrap();
-        let source = session.source_path(original)?;
-        if source.starts_with(folder.join("stems")) {
-            continue;
-        }
-
-        let parent = source
-            .parent()
-            .ok_or_else(|| error("Stem folder is missing"))?;
-        let target_dir = if let Some(path) = directories.get(parent) {
-            path.clone()
-        } else {
-            let path = reserve_directory(
-                &folder.join("stems"),
-                &parent.file_name().unwrap_or_default().to_string_lossy(),
-            )?;
-            cleanup.0.push(path.clone());
-            directories.insert(parent.to_path_buf(), path.clone());
-            path
-        };
-        let target = target_dir.join(
-            source
-                .file_name()
-                .ok_or_else(|| error("Stem file name is missing"))?,
-        );
-        fs::copy(&source, &target).map_err(error)?;
-        asset.source.path = target.to_string_lossy().into_owned();
-        asset.source.path_kind = "absolute".into();
-    }
-    Ok(cleanup)
 }
 
 #[cfg(test)]
@@ -776,7 +684,7 @@ mod tests {
         live.project.transport.playhead_frame = 1234;
         history.record(&live).unwrap();
         // The actual ordinary-save completion merges only saved source locations.
-        live.retarget_generated_sources(&written).unwrap();
+        live.retarget_project_sources(&written).unwrap();
         history.mark_saved(&written).unwrap();
         assert!(!temporary.exists());
         assert_eq!(live.project.tracks[0].name, "Newer grouped edit");
@@ -832,7 +740,7 @@ mod tests {
         assert!(next.folder.is_none());
         assert_eq!(next.project, before);
         assert!(directory.join("drums.wav").is_file());
-        assert_eq!(fs::read_dir(blocked.join("stems")).unwrap().count(), 0);
+        assert!(fs::read_dir(blocked.join("stems")).map_or(true, |entries| entries.count() == 0));
         let saved = fixture.0.join("retry-save");
         next.save(&saved).unwrap();
         assert!(!directory.exists());

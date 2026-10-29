@@ -370,7 +370,7 @@ fn existing_included_recordings_and_stems_are_retained_and_temporary_stems_get_s
     assert!(retained.is_ready());
     assert_eq!(retained.summary().files_already_included, 2);
     assert_eq!(retained.summary().additional_bytes, 0);
-    assert!(live.save(&root).is_err()); // Stage 0 session I/O gate stays in place.
+    live.save(&root).unwrap();
 }
 
 #[test]

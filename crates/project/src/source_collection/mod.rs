@@ -6,8 +6,8 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-mod execute;
-mod owned_fs;
+pub(crate) mod execute;
+pub(crate) mod owned_fs;
 mod paths;
 mod preflight;
 mod targets;
@@ -353,4 +353,8 @@ impl SourceCollectionPlan {
     pub fn summary(&self) -> CollectionSummary {
         self.preflight.summary
     }
+}
+
+pub(crate) fn check_included_components(folder: &Path, path: &str) -> Result<()> {
+    paths::ordinary(folder, Path::new(path), true)
 }

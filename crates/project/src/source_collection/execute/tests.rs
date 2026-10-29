@@ -142,7 +142,7 @@ fn complete_original_bytes_shared_sources_metadata_pcm_and_live_state_are_preser
         asset.source = old.source.clone();
     }
     assert_eq!(restored, original);
-    assert!(Session::open(live.folder.as_ref().unwrap()).is_err()); // Stage 3 gate remains.
+    assert!(Session::open(live.folder.as_ref().unwrap()).is_ok());
     assert_eq!(
         result.receipt().entries().len(),
         p.snapshot().owners().len()

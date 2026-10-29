@@ -229,7 +229,13 @@ fn edit_menu_clicks_undo_and_redo_and_save_completion_keeps_the_right_checkpoint
     });
     app.perform_history_action(HistoryAction::Undo, &ctx);
     assert!(!app.dirty);
-    sender.send(Ok(written)).unwrap();
+    let location = SaveLocation::new();
+    let saved = written
+        .save_snapshot(None)
+        .unwrap()
+        .save(&location.0)
+        .unwrap();
+    sender.send(Ok(saved)).unwrap();
     app.poll_regular_save();
     assert!(
         app.dirty,

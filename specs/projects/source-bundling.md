@@ -1,6 +1,6 @@
 # Project media source bundling
 
-Status: Stages 0–2 are implemented. See the [Stage 0 contract](source-bundling-stage0.md), [Stage 1 inventory/preflight](source-bundling-stage1.md) and [Stage 2 transactional backend](source-bundling-stage2.md). Stages 3–5 and the collection command remain pending.
+Status: Stages 0–3 are implemented. See the [Stage 0 contract](source-bundling-stage0.md), [Stage 1 inventory/preflight](source-bundling-stage1.md) and [Stage 2 transactional backend](source-bundling-stage2.md). [Stage 3 save/history integration](source-bundling-stage3.md) is available to shared callers. Stages 4–5 and the collection command remain pending.
 
 Date: 2026-10-29.
 
@@ -29,7 +29,7 @@ The first version follows these rules:
 | [`separation::copy_generated`](../../crates/project/src/separation.rs) copies generated stems on Save As. | Generalize project-owned source handling without duplicating stem copying or cleanup. |
 | [`Source`](../../crates/core/src/lib.rs) retains `kind`, `path` and `path_kind`; Stage 0 adds optional typed `storage` with legacy ownership defaults. | Preserve provenance and path semantics; use explicit ownership for subsequent inventory/copying. |
 | [`sampler.rs`](../../crates/project/src/sampler.rs) imports sample files into the asset table. | Inventory assets rather than only scanning timeline clips. |
-| [`SessionHistory`](../../crates/project/src/history.rs) retains complete sessions with absolute source paths. `mark_saved` currently retargets generated sources. | Retarget all collected source locations across retained snapshots without clearing Redo or replacing newer edits. Included fixtures remain gated from session I/O until this integration is ready. |
+| [`SessionHistory`](../../crates/project/src/history.rs) retains complete sessions with absolute source paths. `mark_saved` currently retargets generated sources. | Retarget all collected source locations across retained snapshots without clearing Redo or replacing newer edits. Stage 3 now retargets all captured owners and enables included-source session I/O. |
 | [`regular_save.rs`](../../crates/ui/src/regular_save.rs) saves a snapshot while the live project stays editable. | Keep this behavior; ordinary Save must not silently become a blocking collection operation. |
 | [`media::cache`](../../crates/media/src/cache.rs) checks file length/mtime around decoding; [`AudioData`](../../crates/media/src/lib.rs) has no bound content receipt. | Stage 0 supplies streaming SHA-256 receipts and uncached worker revalidation; Stage 2 must verify staged bytes against prepared audio. |
 
@@ -55,13 +55,13 @@ Each stage has an exit gate. A gate records evidence for that stage; it does not
 | 0 | Complete | Storage, revision and transaction contract | Model/migration rules, failure cases and fixture matrix are explicit. |
 | 1 | Complete | Shared source inventory and preflight | All live/history roots are covered and diagnostics are deterministic. |
 | 2 | Complete | Transactional collection backend | Copies and manifest publication survive cancellation and injected failures. |
-| 3 | Pending | Save, Save As and history integration | Reopen, relocation and history remain independent of originals. |
+| 3 | Complete | Save, Save As and history integration | Reopen, relocation and history remain independent of originals. |
 | 4 | Pending | Desktop command and job UI | Guarded menu dispatch, progress, cancellation and completion use the shared backend. |
 | 5 | Pending | Portability acceptance and documentation | Required automated/native evidence and current docs match the delivered feature. |
 
 ## Stage 0 — Define storage and source revisions
 
-Implemented contract and compatibility decisions: [Stage 0](source-bundling-stage0.md). No application collection action is exposed. Current imports remain external; included-source fixtures remain gated from session I/O until Stage 3.
+Implemented contract and compatibility decisions: [Stage 0](source-bundling-stage0.md). No application collection action is exposed. Current imports remain external; Stage 3 now enables included-source session I/O.
 
 Work:
 
@@ -99,7 +99,7 @@ Exit gate:
 
 ## Stage 2 — Transactional collection backend
 
-Implemented worker API, commit/cleanup rules and failure coverage: [Stage 2](source-bundling-stage2.md). Native Windows and crash/power-loss acceptance remain open. Session/history integration and application dispatch remain gated.
+Implemented worker API, commit/cleanup rules and failure coverage: [Stage 2](source-bundling-stage2.md). Native Windows and crash/power-loss acceptance remain open. Stage 3 supplies session/history integration; application dispatch remains pending.
 
 Work:
 
@@ -118,6 +118,8 @@ Exit gate:
 - Post-commit failure tests prove that a valid manifest never loses its media through rollback cleanup.
 
 ## Stage 3 — Save, Save As and history
+
+Implemented save snapshots, receipt application and acceptance: [Stage 3](source-bundling-stage3.md). The desktop collection command remains pending.
 
 Work:
 

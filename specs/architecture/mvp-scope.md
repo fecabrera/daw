@@ -159,10 +159,10 @@ Use the supplied Audacity 4 screenshots as layout references.
 
 - Store each project in its own folder with manifest files and an assets directory.
 - Manifest files store project state, asset identities, metadata, and source references.
-- During the MVP, source audio remains external and is referenced by the manifests.
+- Normal imports retain external references. Explicit project-owned imported recordings use `storage: project` and `assets/sources/` paths; generated stems retain their separate lifecycle.
 - Reserve the assets directory for project-owned assets, including future included source audio files. External source audio is not copied into it during the MVP.
-- Future source management must support both external references and sources included in the project's assets directory.
-- [Source bundling Stage 0](../projects/source-bundling-stage0.md) adds optional storage ownership and validated included-source fixtures. Normal import/Save still uses external recordings; collection and included-source session I/O remain pending. The staged feature extends the external-source-only MVP requirement when its command ships.
+- Session I/O supports external references and included recordings. Save As copies project-owned sources and protected history owners; normal Save does not collect later imports.
+- [Source bundling Stage 3](../projects/source-bundling-stage3.md) enables included-source open/save and history-aware Save As. The desktop collection command remains pending.
 - Use an experimental project.json manifest at the project folder root and an assets/ directory for project-owned assets. The manifest schema can change substantially during MVP development.
 - Store source paths relative to the project folder where possible; otherwise store absolute paths. Resolve relative paths from the project folder, not the application's working directory.
 - When closing the application or opening another project with unsaved changes, prompt to Save, Discard, or Cancel. Continue after Save only if saving succeeds.
@@ -242,7 +242,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - All frame positions, offsets, and lengths use the project's selected-rate timeline, including source offsets after resampling. One frame contains one sample per channel; at 48 kHz, five minutes equals 14,400,000 frames.
 - Source metadata describes the original file. decoded_frame_count describes its length after conversion to the project sample rate. Use pcm_int or ieee_float for sample_format.
 - pan ranges from -1.0 (left) to 1.0 (right); 0.0 is center. Gain values are finite decibel values; mute is a separate boolean.
-- source.kind is external for the MVP. Reserve an included variant for future project-owned sources. path_kind distinguishes relative and absolute paths; resolve relative paths from the project folder.
+- source.kind retains external/generated/MIDI provenance. The optional storage field distinguishes external/project/embedded ownership; collection preserves imported provenance. path_kind distinguishes relative and absolute paths; resolve relative paths from the project folder.
 - Clips reference assets by ID. More than one clip can use the same asset without duplicating its source record.
 - Preserve asset metadata and clip ranges when sources are missing. Calculate missing-source status when opening the project; do not persist it as a flag.
 - Clip ranges use an inclusive start and exclusive end. Require nonnegative integer positions, positive clip lengths, and checked timeline ends. Normal clips require source_offset_frame + length_frames no greater than decoded_frame_count. Looped clips store an optional `repeat` object with positive `length_frames` and `phase_frame` less than that length. The source offset plus repeat length must fit saved decoded bounds; the visible clip length can extend beyond them. Map local frames through the saved repeat phase and length. Missing or null `repeat` fields retain normal clip behavior; omit unset repeats when saving. Moves and splits preserve the repeat base, with splits advancing the right piece's phase.

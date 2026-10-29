@@ -76,6 +76,34 @@ pub struct CollectionOutcome {
     recovery_manifest: Option<PathBuf>,
 }
 impl CollectionOutcome {
+    /// Apply a confirmed commit without an edit entry, DSP preparation or file I/O.
+    /// The host must retain its collection edit/job exclusion through this call.
+    pub fn apply(
+        &self,
+        live: &mut Session,
+        history: Option<&mut SessionHistory>,
+        revision: u64,
+    ) -> Result<()> {
+        if self.status != CollectionStatus::Committed {
+            return Err(error(
+                "Unconfirmed collection requires recovery before publication",
+            ));
+        }
+        if !self.snapshot.is_current(live, history.as_deref(), revision) {
+            return Err(error(
+                "Committed collection no longer matches the active session",
+            ));
+        }
+        let relocations = receipt_entries(&self.snapshot, &self.receipt)?;
+        let mut written = self.snapshot.roots[0].session.clone();
+        written.project = self.project.clone();
+        written.folder = Some(self.receipt.folder.clone());
+        crate::SavedSession {
+            session: written,
+            relocations,
+        }
+        .apply(live, history)
+    }
     pub fn status(&self) -> CollectionStatus {
         self.status
     }
@@ -102,7 +130,7 @@ impl CollectionOutcome {
 
 /// Deterministic fault injection around real I/O, not a replacement filesystem.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum IoStep {
+pub(crate) enum IoStep {
     CreateDirectory,
     ReserveFile,
     Read,
@@ -360,6 +388,10 @@ fn run(store: &mut Store, control: &mut Control<'_>) -> Result<CollectionOutcome
         }
     }
     let (project, receipt) = build_receipt(control.plan, &destinations)?;
+    let relocations = receipt_entries(control.plan.snapshot(), &receipt)?;
+    for root in &control.plan.snapshot().roots {
+        crate::source_save::relocated_project(&root.session, &relocations, &receipt.folder)?;
+    }
     let bytes = serde_json::to_vec_pretty(&project).map_err(error)?;
     let mut manifest_name = PathBuf::from(format!(
         ".project-{}.tmp",
@@ -592,4 +624,26 @@ fn saved_reference_paths(plan: &SourceCollectionPlan, root: &Path) -> Result<BTr
         }
     }
     Ok(paths)
+}
+
+fn receipt_entries(
+    snapshot: &SourceCollectionSnapshot,
+    receipt: &RelocationReceipt,
+) -> Result<Vec<crate::source_save::Relocation>> {
+    receipt
+        .entries
+        .iter()
+        .map(|entry| {
+            let owner = &snapshot.owners[entry.owner];
+            let session = &snapshot.roots[owner.root_index].session;
+            Ok(crate::source_save::Relocation {
+                asset_id: entry.asset_id,
+                original: session
+                    .source_path_unchecked(&session.project.assets[owner.asset_index])?,
+                original_source: entry.original_source.clone(),
+                audio: owner.prepared.clone(),
+                source: entry.source.clone(),
+            })
+        })
+        .collect()
 }

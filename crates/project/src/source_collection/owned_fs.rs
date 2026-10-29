@@ -9,7 +9,7 @@ use std::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Identity(u64, u64);
+pub(crate) struct Identity(u64, u64);
 impl Identity {
     pub fn read(file: &File) -> io::Result<Self> {
         #[cfg(unix)]
@@ -83,7 +83,7 @@ fn open_entry(path: &Path, directory: bool) -> io::Result<File> {
     options.open(path)
 }
 
-pub(super) struct OwnedFile {
+pub(crate) struct OwnedFile {
     pub path: PathBuf,
     pub file: File,
     identity: Identity,
@@ -97,13 +97,13 @@ struct OwnedDir {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum CleanupMode {
+pub(crate) enum CleanupMode {
     Rollback,
     Committed,
     KeepAll,
 }
 
-pub(super) struct Store {
+pub(crate) struct Store {
     pub root: PathBuf,
     _root_file: File,
     root_identity: Identity,

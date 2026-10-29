@@ -1,6 +1,6 @@
 use super::*;
 
-fn hold_save(app: &mut DawUi) -> mpsc::Sender<Result<Session, String>> {
+fn hold_save(app: &mut DawUi) -> mpsc::Sender<Result<daw_project::SavedSession, String>> {
     let (sender, receiver) = mpsc::channel();
     app.regular_save = Some(regular_save::PendingSave {
         receiver,
@@ -110,7 +110,7 @@ fn regular_save_keeps_workspace_paint_and_effect_selection_stable() {
                     .contains(&egui::ViewportCommand::CancelClose)
             );
             assert!(!app.allow_close && !app.unsaved_prompt && app.pending.is_none());
-            sender.send(Ok(app.session.clone())).unwrap();
+            sender.send(Ok(write_snapshot(&app.session))).unwrap();
             app.poll();
             assert!(!app.dirty && app.regular_save.is_none());
         }
@@ -154,7 +154,7 @@ fn regular_save_writes_a_snapshot_and_keeps_later_edits_and_transport() {
     tx.send(Ok(Job::Loaded(prepared, true))).unwrap();
     app.poll();
     assert!(app.dirty);
-    sender.send(Ok(written)).unwrap();
+    sender.send(Ok(write_snapshot(&written))).unwrap();
     app.poll();
     assert!(app.dirty);
     assert_eq!(app.session.project.tracks[0].name, "Worker edit");
@@ -173,7 +173,7 @@ fn regular_save_failure_disconnect_and_replaced_project_do_not_publish_old_state
         let original = serde_json::to_value(&app.session.project).unwrap();
         match outcome {
             "failure" => sender.send(Err("test save failure".into())).unwrap(),
-            "replacement" => sender.send(Ok(written)).unwrap(),
+            "replacement" => sender.send(Ok(write_snapshot(&written))).unwrap(),
             _ => {}
         }
         drop(sender);
@@ -279,4 +279,62 @@ fn regular_save_retargets_generated_sources_without_replacing_newer_edits() {
         assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
         assert_eq!(reopened.project.tracks[0].name, "Newer grouped edit");
     }
+}
+
+fn write_snapshot(session: &Session) -> daw_project::SavedSession {
+    let folder = SaveLocation::new();
+    session
+        .save_snapshot(None)
+        .unwrap()
+        .save(&folder.0)
+        .unwrap()
+}
+
+#[test]
+fn save_as_completion_keeps_live_transport_selection_audio_and_reports_warnings() {
+    let location = SaveLocation::new();
+    let wav = TestWav::new();
+    let mut app = DawUi::default();
+    let clip = app.session.import(&wav.0, None, 0).unwrap();
+    app.selected_clip = Some(clip);
+    app.selected_clips.insert(clip);
+    let track = app.session.project.tracks[0].id;
+    app.select_track(track, false);
+    app.ensure_history();
+    app.session.project.transport.playhead_frame = 120;
+    let asset = app.session.project.assets[0].id;
+    let pcm = app.session.audio[&asset].samples.clone();
+    let mut written = app
+        .session
+        .save_snapshot(app.history.as_ref())
+        .unwrap()
+        .save_new(&location.0, "Copy")
+        .unwrap();
+    written
+        .session
+        .warnings
+        .push("Directory durability is uncertain".into());
+    app.session.project.transport.playhead_frame = 960;
+    app.sync_needed = false;
+    let (sender, receiver) = mpsc::channel();
+    app.job = Some(receiver);
+    sender.send(Ok(Job::Saved(written))).unwrap();
+    app.poll();
+    assert!(app.error.is_none(), "{:?}", app.error);
+    assert_eq!(app.session.project.name, "Copy");
+    assert_eq!(app.session.project.transport.playhead_frame, 960);
+    assert_eq!(app.selected_clip, Some(clip));
+    assert!(app.selected_clips.contains(&clip));
+    assert_eq!(app.selected_track, Some(track));
+    assert!(std::sync::Arc::ptr_eq(
+        &pcm,
+        &app.session.audio[&asset].samples
+    ));
+    assert!(!app.sync_needed);
+    assert!(
+        app.notices
+            .iter()
+            .any(|s| s == "Directory durability is uncertain")
+    );
+    assert!(!app.dirty);
 }

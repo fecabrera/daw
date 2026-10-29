@@ -23,9 +23,9 @@ Stem separation supports four or six stems using local HTDemucs models through C
 
 Audio and MIDI workflows are available in four views: **Timeline**, **Instrument**, **Editor**, and **Mixer**.
 
-The project format is experimental. Saved projects reference external recordings. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
+The project format is experimental. Normal imports retain external references; included recordings stay inside the project folder. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
 
-Planned work includes collecting media into project folders for portability, audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
+The shared source-collection backend and included-source save/history support are implemented; the desktop collection command remains pending. Other planned work includes audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
 
 ## Documentation
 

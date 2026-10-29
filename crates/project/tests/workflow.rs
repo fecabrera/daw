@@ -48,7 +48,7 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn included_storage_fixtures_validate_without_enabling_partial_session_io() {
+fn included_storage_roundtrips_save_save_as_and_session_open() {
     let fixture = Fixture::new();
     let source = fixture.wav("original.wav", 48_000, 2, 24, false);
     let mut session = Session::default();
@@ -70,26 +70,19 @@ fn included_storage_fixtures_validate_without_enabling_partial_session_io() {
         session.source_path(&round_trip.assets[0]).unwrap(),
         fs::canonicalize(folder.join(relative)).unwrap()
     );
-    assert!(session.save(&folder).is_err());
+    session.save(&folder).unwrap();
+    assert_ne!(fs::read(folder.join("project.json")).unwrap(), before);
     let destination = fixture.0.join("copy");
-    assert!(session.save(&destination).is_err());
-    assert!(!destination.exists());
-    assert_eq!(fs::read(folder.join("project.json")).unwrap(), before);
-    // Metadata inspection understands the new contract. Session I/O remains gated
-    // until Save As and every history owner can relocate included recordings.
-    fs::write(folder.join("project.json"), &wire).unwrap();
+    session.save(&destination).unwrap();
+    fs::remove_file(&source).unwrap();
+    fs::remove_dir_all(&folder).unwrap();
+    let reopened = Session::open(&destination).unwrap();
+    assert!(reopened.warnings.is_empty());
+    assert!(reopened.project.assets[0].source.is_included_recording());
     assert_eq!(
-        daw_project::inspect_project(&folder).unwrap(),
-        session.project
+        reopened.audio[&reopened.project.assets[0].id].samples,
+        session.audio[&session.project.assets[0].id].samples
     );
-    assert!(
-        Session::open(&folder)
-            .err()
-            .unwrap()
-            .0
-            .contains("session integration")
-    );
-    assert_eq!(fs::read(folder.join("project.json")).unwrap(), wire);
 }
 
 #[test]

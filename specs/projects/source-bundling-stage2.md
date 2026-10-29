@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: worker execution, relocation receipts and transactional publication implemented. Session/history relocation and the desktop command remain pending in [Stages 3–4](source-bundling.md). Included-source session open/save remains gated. This backend alone does not establish project portability.
+Status: worker execution, relocation receipts and transactional publication implemented. [Stage 3](source-bundling-stage3.md) supplies session/history relocation and enables included-source session I/O. The desktop command remains pending in Stage 4. This backend alone does not establish project portability.
 
 ## Worker API and ownership
 
@@ -46,4 +46,4 @@ Files are synced before commit. Unix containing-directory sync is attempted befo
 
 [Execution tests](../../crates/project/src/source_collection/execute/tests.rs) cover byte-identical WAV/MP3/AAC/MP4 copies, complete originals despite trimmed clips, shared references, history-only owners, generated groups and independent imported/generated copies. They also cover stale jobs/manifests, source mutation, occupied reservations, already-included reuse, arithmetic overflow, cancellation across phases, read/write/flush/sync failures, disk exhaustion, rollback identity checks, unrelated staging contents, confirmed commit after a reported replacement error, uncertain commit recovery and post-commit failures.
 
-[Publication tests](../../crates/project/src/file_publish.rs) check replacement without backup artifacts, an open old-file reader, invalid destinations, Unix symlink rejection and Windows sharing failure. Results and platform limits are recorded in [validation history](../validation/README.md). Stage 3 still must prove reopen, Save As, complete history relocation and render equivalence with originals unavailable.
+[Publication tests](../../crates/project/src/file_publish.rs) check replacement without backup artifacts, an open old-file reader, invalid destinations, Unix symlink rejection and Windows sharing failure. Results and platform limits are recorded in [validation history](../validation/README.md). Stage 3 adds local reopen, Save As, history relocation and render-equivalence tests with originals unavailable; native release acceptance remains separate.

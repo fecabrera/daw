@@ -5,24 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Stage 0 defines the model without enabling partial Save As/history support.
-/// Remove this gate when Stage 3 can relocate all retained source owners safely.
-pub(crate) fn require_session_support(project: &daw_core::Project) -> Result<()> {
-    if project
-        .assets
-        .iter()
-        .any(|a| a.source.is_included_recording())
-    {
-        return Err(error(
-            "Included recordings require source-bundling session integration",
-        ));
-    }
-    Ok(())
-}
-
 pub(crate) fn included_path(folder: &Path, path: &str) -> Result<PathBuf> {
     daw_core::validate_included_source_path(path).map_err(error)?;
     let folder = fs::canonicalize(folder).map_err(error)?;
+    crate::source_collection::check_included_components(&folder, path)?;
     let media = contained(&folder, &folder.join("assets/sources"))?;
     contained(&media, &folder.join(path))
 }

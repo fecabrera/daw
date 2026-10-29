@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: storage and verification foundations implemented. [Stage 1 inventory/preflight](source-bundling-stage1.md) is also implemented. [Stage 2 copying/publication](source-bundling-stage2.md) is implemented; session integration and desktop controls remain pending in the [staged plan](source-bundling.md).
+Status: storage and verification foundations implemented. [Stage 1 inventory/preflight](source-bundling-stage1.md) is also implemented. [Stage 2 copying/publication](source-bundling-stage2.md) is implemented; [Stage 3 session integration](source-bundling-stage3.md) is implemented; desktop controls remain pending in the [staged plan](source-bundling.md).
 
 ## Storage model and compatibility
 
@@ -20,7 +20,7 @@ This is an additive field in the experimental manifest. Do not change `schema_ve
 
 Older clients ignore this field, can drop it when saving, and treat a collected imported recording as an external reference. They cannot preserve its ownership or guarantee a portable Save As. Editing an included-source project with an older client is unsupported. A future enforced manifest version must introduce an actual loader gate; a version number alone is insufficient.
 
-The foundation can deserialize, validate, inspect and resolve included-source fixtures. No normal import or menu action creates included recordings yet. Session open/save rejects these fixtures with an integration error before media preparation or save output. Keep this gate until Stage 3 can relocate all retained owners: guarding only the current asset table would miss included media restored by Undo/Redo after Save As. Existing external/generated session I/O and history behavior remain unchanged.
+Stage 3 now enables included-source session open/save and relocates all protected owners for Save As. Normal imports remain external; no collection menu action is exposed. See the [Stage 3 session contract](source-bundling-stage3.md).
 
 ## Included-path containment
 
@@ -28,8 +28,8 @@ The foundation can deserialize, validate, inspect and resolve included-source fi
 
 1. Require the exact `assets/sources/` prefix and one filename. Reject nested paths, `..`, absolute/drive/UNC paths and backslashes.
 2. Limit the filename to 255 UTF-8 bytes. Reject control characters, Windows-forbidden characters, leading/trailing spaces, trailing periods and reserved device names, including superscript COM/LPT suffixes. Unicode filenames remain valid.
-3. Resolve the project folder and existing ancestors with filesystem canonicalization. The approved source directory must resolve inside the project; a source must resolve inside that directory. Reject external and dangling symlinks. An internal directory alias is allowed only while both containment checks pass.
-4. Missing ordinary files or directories retain their safe lexical destination. Path inspection does not create files. Stage 3 session integration must retain the existing missing-source warning/silence behavior; Stage 0 keeps included fixtures gated from session open.
+3. Resolve the project folder and existing ancestors with filesystem canonicalization. The approved source directory must resolve inside the project; a source must resolve inside that directory. Reject symlink/reparse aliases, including internal directory/file aliases, as required by Stage 3 portable session I/O.
+4. Missing ordinary files or directories retain their safe lexical destination. Path inspection does not create files. Stage 3 retains the existing missing-source warning/silence behavior.
 
 These checks detect static path escapes. They do not lock directories against another process replacing files or symlinks. Stages 1/2 must repeat containment and revision checks before reading and publication, reserve operation-owned destinations and validate staged bytes. Do not treat path validation as a filesystem transaction or an adversarial file-mutation sandbox.
 
@@ -99,7 +99,7 @@ Implemented checks cover:
 
 - Legacy external/generated/MIDI ownership and unchanged omission of the storage field.
 - Explicit included storage round trips, invalid ownership, unknown wire values and portable path rejection.
-- Included manifest validation, metadata round trips/inspection, path resolution and session open/save gates that preserve existing files.
+- Included manifest validation, metadata round trips/inspection, path resolution and session round trips that preserve existing files; the original Stage 0 gate is superseded by Stage 3.
 - Contained/missing paths plus external directory, file and dangling symlinks on Unix.
 - SHA-256 known bytes, relocation-independent revisions, same-length/same-mtime changed audio, cache bypass, project-rate comparison, metadata mismatch, cancellation, concurrent mutation and missing/non-regular sources.
 

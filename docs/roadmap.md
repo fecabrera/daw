@@ -13,7 +13,7 @@ DAW provides audio and MIDI arrangement, layered instruments, effects, mixing, a
 
 ## Current limits
 
-Projects reference external audio recordings. Saving does not bundle those files. Missing recordings remain visible and play as silence. Keep recordings available when moving a project to another computer.
+Normal imports reference external audio recordings. Save does not automatically bundle them. Shared collection, included-source Save As and history support are implemented; the desktop collection command remains pending. Missing recordings remain visible and play as silence. Keep recordings available when moving a project to another computer.
 
 [Undo and redo](editing/undo-redo.md) retain up to 100 project edits for the current session. Sampler supports root-relative playback across the full MIDI note range. Export ends at the arranged project duration and does not append effect tails. Mobile delivery is outside the current release scope.
 

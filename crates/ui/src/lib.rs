@@ -319,7 +319,7 @@ enum Job {
         layer_selection: Option<(Id, Id, HashSet<Id>)>,
     },
     Loaded(Session, bool),
-    Saved(Session),
+    Saved(daw_project::SavedSession),
     Exported(Vec<String>),
     Separated(daw_project::PreparedSeparation),
     ModelValidated(Result<daw_project::SeparationModelInfo, String>),
@@ -1184,11 +1184,17 @@ impl DawUi {
             self.save_snapshot(folder);
             return;
         }
-        let mut session = self.session.clone();
+        let snapshot = match self.session.save_snapshot(self.history.as_ref()) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.fail(error);
+                return;
+            }
+        };
         self.run_job("Saving project", move || {
-            session
+            snapshot
                 .save(&folder)
-                .map(|()| Job::Saved(session))
+                .map(Job::Saved)
                 .map_err(|e| e.to_string())
         });
     }
@@ -1199,11 +1205,17 @@ impl DawUi {
             self.unsaved_prompt = false;
             return;
         };
-        let mut session = self.session.clone();
+        let snapshot = match self.session.save_snapshot(self.history.as_ref()) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.fail(error);
+                return;
+            }
+        };
         self.run_job("Saving project", move || {
-            session
+            snapshot
                 .save_new(&parent, &name)
-                .map(|()| Job::Saved(session))
+                .map(Job::Saved)
                 .map_err(|e| e.to_string())
         });
     }
@@ -1439,9 +1451,15 @@ impl DawUi {
                     self.ensure_history();
                     self.sync_needed = true;
                 }
-                Ok(Job::Saved(session)) => {
+                Ok(Job::Saved(saved)) => {
+                    if let Err(error) = self.apply_saved_sources(&saved) {
+                        self.fail(error);
+                        return;
+                    }
                     self.project_name_dialog = None;
-                    self.session = session;
+                    // File relocation preserves live transport, prepared audio,
+                    // selections and control state. Save As also accepts its name.
+                    self.session.project.name = saved.session.project.name.clone();
                     self.saved_navigation_revision = self.navigation_revision;
                     // Relocation is not an edit. Retarget retained sources before
                     // recording any real name change, so path-only saves keep Redo.
@@ -9191,7 +9209,10 @@ mod tests {
         let saved = app.session.clone();
         let (tx, rx) = mpsc::channel();
         app.job = Some(rx);
-        tx.send(Ok(Job::Saved(saved))).unwrap();
+        let folder = std::env::temp_dir().join(format!("daw-ui-saved-{}", Id::new_v4()));
+        let written = saved.save_snapshot(None).unwrap().save(&folder).unwrap();
+        tx.send(Ok(Job::Saved(written))).unwrap();
+        let _ = std::fs::remove_dir_all(&folder);
         app.poll();
         assert!(!app.unsaved_prompt);
         assert!(!app.dirty);

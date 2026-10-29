@@ -88,6 +88,37 @@ impl SessionHistory {
         Ok(history)
     }
 
+    pub(crate) fn prepare_source_relocation(
+        &self,
+        entries: &[crate::source_save::Relocation],
+        folder: &std::path::Path,
+    ) -> Result<Vec<Project>> {
+        self.collection_roots()
+            .map(|(_, s)| crate::source_save::relocated_project(s, entries, folder))
+            .collect()
+    }
+    pub(crate) fn publish_source_relocation(
+        &mut self,
+        models: Vec<Project>,
+        saved: &Project,
+        folder: &std::path::Path,
+    ) {
+        for (entry, project) in std::iter::once(&mut self.current)
+            .chain(self.pending.iter_mut())
+            .chain(self.undo.iter_mut())
+            .chain(self.redo.iter_mut())
+            .zip(models)
+        {
+            entry.session.project = project;
+            entry.session.folder = Some(folder.to_owned());
+            entry.session.retain_temporary_stems();
+            entry.model_bytes = snapshot_model_bytes(&entry.session);
+        }
+        let mut saved = saved.clone();
+        saved.transport.playhead_frame = 0;
+        self.saved = Some(saved);
+        self.memory = self.calculate_memory();
+    }
     pub fn project_id(&self) -> daw_core::Id {
         self.current.project.project_id
     }
@@ -206,16 +237,27 @@ impl SessionHistory {
         // Save As relocates project-owned files, not edits. Update every retained
         // snapshot so a later save without these assets cannot erase their locations.
         // Keep this state within bounded history rather than a separate path cache.
-        for entry in std::iter::once(&mut self.current)
+        let prepared = self
+            .collection_roots()
+            .map(|(_, session)| {
+                let mut session = session.clone();
+                session.retarget_project_sources(&saved)?;
+                Ok(session)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for (entry, session) in std::iter::once(&mut self.current)
             .chain(self.pending.iter_mut())
             .chain(self.undo.iter_mut())
             .chain(self.redo.iter_mut())
+            .zip(prepared)
         {
-            entry.session.retarget_generated_sources(&saved)?;
+            entry.session = session;
             entry.model_bytes = snapshot_model_bytes(&entry.session);
         }
         self.saved = Some(saved.project);
-        self.enforce_memory_limit();
+        // Path publication cannot evict or reorder history. Ordinary edit and
+        // preparation-pressure boundaries still enforce the history budget.
+        self.memory = self.calculate_memory();
         Ok(())
     }
 
@@ -250,14 +292,21 @@ impl SessionHistory {
     }
 }
 
+pub(crate) fn saved_project(session: &Session) -> Result<Project> {
+    Ok(snapshot(session)?.session.project)
+}
+
 fn snapshot(session: &Session) -> Result<Snapshot> {
     let mut next = session.clone();
     next.project.transport.playhead_frame = 0;
     // History can outlive Save As. Resolve references against their original folder,
     // without touching source files or retaining a stale relative-path base.
     for asset in &mut next.project.assets {
-        if asset.midi_pattern.is_none() {
-            asset.source.path = session.source_path(asset)?.to_string_lossy().into_owned();
+        if asset.midi_pattern.is_none() && !asset.source.is_included_recording() {
+            asset.source.path = session
+                .source_path_unchecked(asset)?
+                .to_string_lossy()
+                .into_owned();
             asset.source.path_kind = "absolute".into();
         }
     }
