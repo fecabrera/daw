@@ -4,6 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(windows)]
+#[path = "file_publish/windows.rs"]
+mod windows;
+
 pub(crate) fn is_reparse(metadata: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {
@@ -54,38 +58,7 @@ pub(crate) fn replace(source: &Path, target: &Path) -> io::Result<()> {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::Storage::FileSystem::{
-            MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-        };
-        fn wide(path: &Path) -> io::Result<Vec<u16>> {
-            let mut value = path.as_os_str().encode_wide().collect::<Vec<_>>();
-            if value.contains(&0) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "NUL in publication path",
-                ));
-            }
-            value.push(0);
-            Ok(value)
-        }
-        let source = wide(&source)?;
-        let target = wide(&target)?;
-        // Both paths have one canonical parent. Do not permit a cross-volume
-        // copy/delete fallback or a backup/rename gap. The UTF-16 arrays live
-        // through this synchronous call and both have one terminating NUL.
-        let success = unsafe {
-            MoveFileExW(
-                source.as_ptr(),
-                target.as_ptr(),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-            )
-        };
-        if success == 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(())
-        }
+        windows::replace(&source, &target)
     }
 }
 
@@ -121,6 +94,43 @@ mod tests {
         old.read_to_end(&mut bytes).unwrap();
         assert_eq!(bytes, b"old");
         assert_eq!(fs::read(&target).unwrap(), b"new");
+        assert_eq!(fs::read_dir(&f.0).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn replacement_keeps_the_pinned_candidate_handle_valid_with_unicode_paths() {
+        use std::io::{Seek, SeekFrom};
+        let f = Fixture::new();
+        let source = f.0.join("candidate café.tmp");
+        let target = f.0.join("project 移動.json");
+        fs::write(&source, b"complete candidate").unwrap();
+        fs::write(&target, b"old manifest").unwrap();
+        let mut candidate = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&source)
+            .unwrap();
+        let mut old = fs::File::open(&target).unwrap();
+        replace(&source, &target).unwrap();
+        let mut bytes = Vec::new();
+        old.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"old manifest");
+        candidate.seek(SeekFrom::Start(0)).unwrap();
+        bytes.clear();
+        candidate.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"complete candidate");
+        assert_eq!(fs::read(target).unwrap(), bytes);
+        assert!(!source.exists());
+        assert_eq!(fs::read_dir(&f.0).unwrap().count(), 1);
+    }
+    #[test]
+    fn replacement_can_publish_the_first_manifest() {
+        let f = Fixture::new();
+        let source = f.0.join("candidate.tmp");
+        let target = f.0.join("project.json");
+        fs::write(&source, b"first manifest").unwrap();
+        replace(&source, &target).unwrap();
+        assert_eq!(fs::read(target).unwrap(), b"first manifest");
         assert_eq!(fs::read_dir(&f.0).unwrap().count(), 1);
     }
     #[test]

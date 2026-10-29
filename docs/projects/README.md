@@ -6,6 +6,8 @@ Projects store the arrangement, instruments, effects, and settings. Normal impor
 
 First Save and Save As ask for a project name and a parent folder. They create a new named project folder. Regular Save uses the current location. It writes the project state from when you pressed Save in the background. The workspace stays visible and editable, and the status bar shows Saving project. Changes made during the write remain marked as unsaved; save again to include them. File menu actions are unavailable until the write finishes. Save As keeps external recordings as references and copies already-included recordings into the new project. It also copies project-owned sources retained only by Undo/Redo. Generated [stems](../audio/stem-separation.md) are copied into the new project folder, including temporary stems created before the first save.
 
+Saving through a project-folder alias retains external source locations. External references use relative paths when safe and absolute paths when needed.
+
 When leaving a modified project, choose Save, Discard, or Cancel. A cancelled or failed operation retains the current project. Missing recordings remain visible and play as silence. Files that became shorter supply silence for unavailable sections.
 
 If Save As fails because an included recording or generated stem is missing, restore that file and retry the same project name and location. A failed Save As removes its empty new project folders and retains unrelated contents.

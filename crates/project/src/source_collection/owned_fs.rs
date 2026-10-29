@@ -413,7 +413,7 @@ impl Store {
                 let _ = path;
             }
         }
-        #[cfg(windows)] warnings.push("Windows directory flush is unavailable; file sync and native write-through replacement do not guarantee power-loss durability".into());
+        #[cfg(windows)] warnings.push("Windows directory flush is unavailable; file sync and native replacement do not guarantee power-loss durability".into());
         Ok(())
     }
     pub fn cleanup(&mut self) -> Vec<String> {

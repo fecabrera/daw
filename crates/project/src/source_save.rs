@@ -206,7 +206,7 @@ impl SaveSnapshot {
         let canonical_folder = fs::canonicalize(&folder).map_err(error)?;
         let mut store = Store::new(&canonical_folder)?;
         store.ensure_directory(Path::new("assets"), &mut |_, _| Ok(()))?;
-        let result = self.write(&canonical_folder, &mut store);
+        let result = self.write(&canonical_folder, &folder, &mut store);
         let cleanup = store.cleanup();
         match result {
             Ok(mut saved) => {
@@ -230,7 +230,12 @@ impl SaveSnapshot {
             ))),
         }
     }
-    fn write(self, folder: &Path, store: &mut Store) -> Result<SavedSession> {
+    fn write(
+        self,
+        folder: &Path,
+        requested_folder: &Path,
+        store: &mut Store,
+    ) -> Result<SavedSession> {
         self.session.project.validate().map_err(error)?;
         let canonical_folder = fs::canonicalize(folder).map_err(error)?;
         match fs::symlink_metadata(folder.join("project.json")) {
@@ -415,7 +420,16 @@ impl SaveSnapshot {
                 continue;
             }
             let path = PathBuf::from(&asset.source.path);
-            if let Some(relative) = crate::relative_path(folder, &path) {
+            if let Some(relative) = crate::relative_path(folder, &path).filter(|relative| {
+                // External references may use '..'. Preserve a relative spelling
+                // only when it resolves identically from the retained caller base.
+                asset.source.kind == "generated"
+                    || crate::relative_path(
+                        &crate::normalize(&requested_folder.join(relative)),
+                        &path,
+                    )
+                    .is_some_and(|difference| difference.as_os_str().is_empty())
+            }) {
                 asset.source.path = relative.to_string_lossy().into_owned();
                 if asset.source.kind == "generated" {
                     // Project-owned paths must reopen on hosts with a different

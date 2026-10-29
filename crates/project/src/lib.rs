@@ -14,6 +14,8 @@ mod history;
 pub use history::{HistoryMemory, SessionHistory};
 mod clip_audio;
 mod file_publish;
+mod relative_path;
+use relative_path::relative_path;
 mod sampler;
 pub mod source_collection;
 mod source_save;
@@ -543,22 +545,7 @@ fn normalize(path: &Path) -> PathBuf {
     }
     out
 }
-fn relative_path(base: &Path, path: &Path) -> Option<PathBuf> {
-    let a = base.components().collect::<Vec<_>>();
-    let b = path.components().collect::<Vec<_>>();
-    if a.first() != b.first() {
-        return None;
-    }
-    let common = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
-    let mut out = PathBuf::new();
-    for _ in common..a.len() {
-        out.push("..");
-    }
-    for c in &b[common..] {
-        out.push(c.as_os_str());
-    }
-    Some(out)
-}
+
 fn same_file(a: &Path, b: &Path) -> bool {
     a == b
         || a.canonicalize()

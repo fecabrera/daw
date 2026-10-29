@@ -903,3 +903,30 @@ fn history_heavy_save_as_reuses_shared_pcm_and_rejects_a_distinct_retained_versi
         }
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn external_references_survive_saving_through_an_alias_at_a_different_depth() {
+    let f = Fixture::new();
+    let original = f.wav("external.wav", 0.2);
+    let physical = f.0.join("nested/deeper/project");
+    fs::create_dir_all(&physical).unwrap();
+    let alias = f.0.join("alias");
+    std::os::unix::fs::symlink(&physical, &alias).unwrap();
+    let mut live = Session::default();
+    live.import(&original, None, 0).unwrap();
+    live.save(&alias).unwrap();
+    assert_eq!(
+        fs::canonicalize(live.source_path(&live.project.assets[0]).unwrap()).unwrap(),
+        fs::canonicalize(&original).unwrap()
+    );
+    for folder in [alias, physical] {
+        let opened = Session::open(&folder).unwrap();
+        assert!(opened.warnings.is_empty(), "{:?}", opened.warnings);
+        assert_eq!(
+            fs::canonicalize(opened.source_path(&opened.project.assets[0]).unwrap()).unwrap(),
+            fs::canonicalize(&original).unwrap()
+        );
+        assert_eq!(render(&opened), render(&live));
+    }
+}

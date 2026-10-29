@@ -4,6 +4,14 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Windows source publication and relative paths — 2026-10-29
+
+Windows manifest publication now uses handle-based replacement that permits delete-sharing readers to retain old data. Sharing failures still retain both original files. Relative source calculation recognizes ordinary and verbatim Windows drive/UNC prefixes without changing filesystem paths. External references stay absolute when a caller folder alias would change a relative parent traversal.
+
+The focused `cargo test --offline --locked -p daw-project` run passes 172 tests, with one ignored. Regression tests cover a pinned candidate, an open old reader, Unicode names, first publication and saving/reopening through a folder alias at a different depth. The existing history Save As relative-reference assertion remains intact.
+
+`cargo test --offline --locked --workspace` passes 1,891 tests, with 11 ignored and no failures, including all 720 UI tests and documentation tests. `cargo fmt --all --check`, strict offline locked workspace Clippy, the locked offline CLI build, `python3 tools/check_cli.py` and `sh tools/package_macos.sh debug` pass. Changed Markdown local links and `git diff HEAD --check` also pass. An isolated harness compiles the actual Windows publication helper and Windows relative-path tests with strict Clippy for `x86_64-pc-windows-msvc`, using the pinned toolchain and existing `windows-sys` version. It performs no Windows linking or execution. Native Windows replacement, sharing and source-history behavior still require CI; no native UI/device or power-loss acceptance is claimed.
+
 ## Standalone timestretch CLI extraction fix — 2026-10-29
 
 Restored the explicit `sha2 = "0.10"` declaration in the portable CLI manifest. Extracting sibling `timestretch` and `timestretch-cli` packages no longer requires the DAW workspace (TT-09). The resolved workspace lockfile is unchanged.
