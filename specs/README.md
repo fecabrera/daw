@@ -21,6 +21,17 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Parallel cache preparation validation — 2026-10-19](validation/parallel-cache-preparation-2026-10-19.md).
 - [Architecture review — 2026-10-19](architecture/review-2026-10-19/README.md): current architecture, pipelines, workflow stages, cache ownership, findings and review decisions.
 
+## Projects and storage
+
+- [Project media source bundling](projects/source-bundling.md): staged plan for explicit collection, source verification, transactional copying, Save As, history and portability acceptance.
+- [Source bundling Stage 0](projects/source-bundling-stage0.md): storage compatibility, included-path containment, content verification and frozen copying/commit rules.
+- [Source bundling Stage 1](projects/source-bundling-stage1.md): history-aware snapshots, read-only inventory/preflight, typed diagnostics, destination proposals and byte totals.
+- [Source bundling Stage 2](projects/source-bundling-stage2.md): worker copying, exclusive reservations, relocation receipts, manifest commit, rollback and recovery.
+- [Source bundling Stage 3](projects/source-bundling-stage3.md): included-source session I/O, protected-history save snapshots and source receipt application.
+- [Source bundling Stage 4](projects/source-bundling-stage4.md): guarded immediate desktop command, worker preflight, status-bar progress, error-only dialogs and lifecycle-safe completion.
+- [CLI source collection](projects/source-bundling-cli.md): headless collection and read-only preflight over the shared backend.
+- [Source bundling Stage 5](projects/source-bundling-stage5.md): portability/interruption tests, native acceptance matrix and open release gates.
+
 ## Instruments and editing
 
 - [MIDI patterns, Oscillator, Envelope, and rendering](instruments/midi-patterns.md).

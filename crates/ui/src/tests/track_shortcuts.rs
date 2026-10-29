@@ -792,7 +792,14 @@ fn track_selection_survives_reordering_and_save_but_prunes_deleted_tracks_and_re
     let loaded = app.session.clone();
     let (tx, rx) = mpsc::channel();
     app.job = Some(rx);
-    tx.send(Ok(Job::Saved(loaded.clone()))).unwrap();
+    let saved_folder = std::env::temp_dir().join(format!("daw-ui-save-{}", Id::new_v4()));
+    let saved = loaded
+        .save_snapshot(None)
+        .unwrap()
+        .save(&saved_folder)
+        .unwrap();
+    tx.send(Ok(Job::Saved(saved))).unwrap();
+    let _ = std::fs::remove_dir_all(saved_folder);
     app.poll();
     assert_eq!(app.selected_tracks, HashSet::from([tracks[0]]));
     app.select_track(tracks[1], true);

@@ -281,6 +281,7 @@ fn audio_plan(rate: u32, tracks: usize, clips: usize) -> RenderPlan {
         source: Source {
             kind: "external".into(),
             path: "synthetic.wav".into(),
+            storage: None,
             path_kind: "relative".into(),
         },
         source_metadata: metadata.clone(),

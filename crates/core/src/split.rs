@@ -443,6 +443,7 @@ mod tests {
             source: Source {
                 kind: "external".into(),
                 path: "source.wav".into(),
+                storage: None,
                 path_kind: "relative".into(),
             },
             source_metadata: SourceMetadata {

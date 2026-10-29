@@ -13,14 +13,20 @@ pub use inspection::inspect_project;
 mod history;
 pub use history::{HistoryMemory, SessionHistory};
 mod clip_audio;
+mod file_publish;
+mod relative_path;
+use relative_path::relative_path;
 mod sampler;
+pub mod source_collection;
+mod source_save;
+mod source_storage;
 use daw_core::{Asset, Clip, Id, Project, Source};
 use daw_engine::RenderPlan;
 use daw_media::{AudioData, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec};
+pub use source_save::{SaveSnapshot, SavedSession};
 use std::{
     collections::HashMap,
     fs,
-    io::Write,
     path::{Component, Path, PathBuf},
 };
 
@@ -260,6 +266,20 @@ impl Session {
         Ok(session)
     }
     pub fn source_path(&self, asset: &Asset) -> Result<PathBuf> {
+        asset.source.validate_storage().map_err(error)?;
+        if asset.source.is_included_recording() {
+            return source_storage::included_path(
+                self.folder
+                    .as_deref()
+                    .ok_or_else(|| error("Included source requires project folder"))?,
+                &asset.source.path,
+            );
+        }
+        self.source_path_unchecked(asset)
+    }
+    /// Pure path resolution for captured/validated owners; no filesystem access.
+    pub(crate) fn source_path_unchecked(&self, asset: &Asset) -> Result<PathBuf> {
+        asset.source.validate_storage().map_err(error)?;
         let p = PathBuf::from(&asset.source.path);
         if asset.source.path_kind == "absolute" {
             if !p.is_absolute() {
@@ -363,6 +383,7 @@ impl Session {
             source: Source {
                 kind: "external".into(),
                 path: path.to_string_lossy().into_owned(),
+                storage: None,
                 path_kind: "absolute".into(),
             },
             source_metadata: data.metadata.clone(),
@@ -407,57 +428,8 @@ impl Session {
         Ok(())
     }
     pub fn save(&mut self, folder: &Path) -> Result<()> {
-        let folder = absolute(folder)?;
-        fs::create_dir_all(folder.join("assets")).map_err(error)?;
-        let mut next = self.project.clone();
-        let mut generated = separation::copy_generated(self, &mut next, &folder)?;
-        for asset in &mut next.assets {
-            if asset.midi_pattern.is_some() {
-                continue;
-            }
-            let original = self
-                .project
-                .assets
-                .iter()
-                .find(|a| a.id == asset.id)
-                .unwrap();
-            let path = if asset.source.kind == "generated" && asset.source.path_kind == "absolute" {
-                PathBuf::from(&asset.source.path)
-            } else {
-                self.source_path(original)?
-            };
-            if let Some(relative) = relative_path(&folder, &path) {
-                asset.source.path = relative.to_string_lossy().into_owned();
-                asset.source.path_kind = "relative".into();
-            } else {
-                asset.source.path = path.to_string_lossy().into_owned();
-                asset.source.path_kind = "absolute".into();
-            }
-        }
-        next.validate().map_err(error)?;
-        let bytes = serde_json::to_vec_pretty(&next).map_err(error)?;
-        let target = folder.join("project.json");
-        let temp = folder.join(format!(".project-{}.tmp", Id::new_v4()));
-        let result = (|| {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temp)
-                .map_err(error)?;
-            file.write_all(&bytes).map_err(error)?;
-            file.sync_all().map_err(error)?;
-            drop(file);
-            replace_file(&temp, &target)?;
-            Ok(())
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(&temp);
-        }
-        result?;
-        generated.0.clear();
-        self.project = next;
-        self.folder = Some(folder);
-        self.retain_temporary_stems();
+        let saved = self.save_snapshot(None)?.save(folder)?;
+        *self = saved.session;
         Ok(())
     }
     pub fn export(&self, path: &Path, overwrite: bool) -> Result<Vec<String>> {
@@ -573,22 +545,7 @@ fn normalize(path: &Path) -> PathBuf {
     }
     out
 }
-fn relative_path(base: &Path, path: &Path) -> Option<PathBuf> {
-    let a = base.components().collect::<Vec<_>>();
-    let b = path.components().collect::<Vec<_>>();
-    if a.first() != b.first() {
-        return None;
-    }
-    let common = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
-    let mut out = PathBuf::new();
-    for _ in common..a.len() {
-        out.push("..");
-    }
-    for c in &b[common..] {
-        out.push(c.as_os_str());
-    }
-    Some(out)
-}
+
 fn same_file(a: &Path, b: &Path) -> bool {
     a == b
         || a.canonicalize()
@@ -597,34 +554,5 @@ fn same_file(a: &Path, b: &Path) -> bool {
             .is_some_and(|(a, b)| a == b)
 }
 fn replace_file(temp: &Path, target: &Path) -> Result<()> {
-    match fs::metadata(target) {
-        Ok(metadata) if !metadata.is_file() => {
-            return Err(error("Output destination is not a regular file"));
-        }
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(error(e)),
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        fs::rename(temp, target).map_err(error)
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let backup = target.with_extension(format!("backup-{}", Id::new_v4()));
-        let exists = target.exists();
-        if exists {
-            fs::rename(target, &backup).map_err(error)?;
-        }
-        if let Err(e) = fs::rename(temp, target) {
-            if exists {
-                let _ = fs::rename(&backup, target);
-            }
-            return Err(error(e));
-        }
-        if exists {
-            let _ = fs::remove_file(backup);
-        }
-        Ok(())
-    }
+    file_publish::replace(temp, target).map_err(error)
 }

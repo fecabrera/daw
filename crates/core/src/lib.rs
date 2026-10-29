@@ -3,6 +3,8 @@ pub use daw_unit_core::{EqBandMode, MULTIBAND_EQ_TYPE_ID, MultibandEqBand, Multi
 pub use daw_unit_core::{GrainWindow, GranulizerSettings};
 pub use daw_unit_core::{SATURATOR_TYPE_ID, SaturatorClipMode, SaturatorSettings, SaturatorShape};
 mod memory;
+mod source_storage;
+pub use source_storage::{SourceStorage, validate_included_source_path};
 mod sampler;
 pub use daw_unit_core::{BITCRUSHER_TYPE_ID, BitcrusherSettings};
 pub use daw_unit_core::{CHORUS_TYPE_ID, ChorusSettings};
@@ -201,6 +203,9 @@ pub struct Asset {
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Source {
+    /// None retains legacy ownership inferred from provenance; paths do not imply ownership.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage: Option<SourceStorage>,
     pub kind: String,
     pub path: String,
     pub path_kind: String,
@@ -477,6 +482,7 @@ impl Project {
             if !ids.insert(a.id) {
                 return Err(invalid("Duplicate asset ID"));
             }
+            a.source.validate_storage()?;
             if let Some(pattern) = &a.midi_pattern {
                 pattern.validate()?;
                 if a.source.kind != "midi_pattern"
@@ -1547,6 +1553,7 @@ mod tests {
             source: Source {
                 kind: "external".into(),
                 path: "/music/take.wav".into(),
+                storage: None,
                 path_kind: "absolute".into(),
             },
             source_metadata: SourceMetadata {

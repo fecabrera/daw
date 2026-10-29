@@ -51,6 +51,7 @@ mod catalog;
 mod chord_audition;
 mod chords_catalog;
 mod chorus_panel;
+mod collection;
 mod compressor_panel;
 pub mod dialogs;
 mod direction_mixer_panel;
@@ -320,10 +321,18 @@ enum Job {
         layer_selection: Option<(Id, Id, HashSet<Id>)>,
     },
     Loaded(Session, bool),
-    Saved(Session),
+    Saved(daw_project::SavedSession),
     Exported(Vec<String>),
     Separated(daw_project::PreparedSeparation),
     ModelValidated(Result<daw_project::SeparationModelInfo, String>),
+    CollectionPreflight(
+        Id,
+        Result<daw_project::source_collection::CollectionPreflight, String>,
+    ),
+    Collected(
+        Id,
+        Result<daw_project::source_collection::CollectionOutcome, String>,
+    ),
 }
 
 enum Action {
@@ -340,17 +349,19 @@ pub enum FileAction {
     Import,
     Save,
     SaveAs,
+    CollectSources,
     Export,
     CloseProject,
 }
 impl FileAction {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::New,
         Self::Open,
         Self::Import,
         Self::Save,
         Self::SaveAs,
         Self::Export,
+        Self::CollectSources,
         Self::CloseProject,
     ];
 
@@ -361,28 +372,30 @@ impl FileAction {
             Self::Import => "Import WAV…",
             Self::Save => "Save",
             Self::SaveAs => "Save as…",
+            Self::CollectSources => "Collect project sources",
             Self::Export => "Export…",
             Self::CloseProject => "Close project",
         }
     }
 
-    pub fn shortcut(self) -> egui::KeyboardShortcut {
+    pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
         let (key, shift) = match self {
             Self::New => (egui::Key::N, false),
             Self::Open => (egui::Key::O, false),
             Self::Import => (egui::Key::I, true),
             Self::Save => (egui::Key::S, false),
             Self::SaveAs => (egui::Key::S, true),
+            Self::CollectSources => return None,
             Self::Export => (egui::Key::E, true),
             Self::CloseProject => (egui::Key::W, false),
         };
-        egui::KeyboardShortcut::new(
+        Some(egui::KeyboardShortcut::new(
             egui::Modifiers {
                 shift,
                 ..egui::Modifiers::COMMAND
             },
             key,
-        )
+        ))
     }
 }
 
@@ -832,6 +845,10 @@ pub struct DawUi {
     export_settings: ExportSettings,
     export_dialog: Option<ExportSettings>,
     export_status: Option<export_status::ExportStatus>,
+    collection_status: Option<collection::Status>,
+    collection_message: Option<String>,
+    collection_input_ready: bool,
+    collection_focus: Option<egui::Id>,
     separation_status: Option<separation::Status>,
     overwrite_settings: ExportSettings,
     allow_close: bool,
@@ -951,6 +968,10 @@ impl Default for DawUi {
             export_settings: ExportSettings::default(),
             export_dialog: None,
             export_status: None,
+            collection_status: None,
+            collection_message: None,
+            collection_input_ready: true,
+            collection_focus: None,
             separation_status: None,
             overwrite_settings: ExportSettings::default(),
             allow_close: false,
@@ -1094,9 +1115,17 @@ impl DawUi {
         if let Some(cancel) = self.settings_cancel.take() {
             cancel.store(true, Ordering::Relaxed);
         }
+        self.run_captured_job(label, job);
+    }
+    fn run_captured_job(
+        &mut self,
+        label: &str,
+        job: impl FnOnce() -> Result<Job, String> + Send + 'static,
+    ) {
         let (tx, rx) = mpsc::channel();
         self.job = Some(rx);
         self.busy = label.into();
+        self.collection_message = None;
         std::thread::spawn(move || {
             let _ = tx.send(job());
         });
@@ -1162,6 +1191,8 @@ impl DawUi {
                 self.lane_bounds.clear();
                 self.export_dialog = None;
                 self.export_status = None;
+                self.collection_status = None;
+                self.collection_message = None;
                 self.project_name_dialog = None;
                 self.project_settings = None;
                 self.overwrite = None;
@@ -1187,11 +1218,17 @@ impl DawUi {
             self.save_snapshot(folder);
             return;
         }
-        let mut session = self.session.clone();
+        let snapshot = match self.session.save_snapshot(self.history.as_ref()) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.fail(error);
+                return;
+            }
+        };
         self.run_job("Saving project", move || {
-            session
+            snapshot
                 .save(&folder)
-                .map(|()| Job::Saved(session))
+                .map(Job::Saved)
                 .map_err(|e| e.to_string())
         });
     }
@@ -1202,11 +1239,17 @@ impl DawUi {
             self.unsaved_prompt = false;
             return;
         };
-        let mut session = self.session.clone();
+        let snapshot = match self.session.save_snapshot(self.history.as_ref()) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.fail(error);
+                return;
+            }
+        };
         self.run_job("Saving project", move || {
-            session
+            snapshot
                 .save_new(&parent, &name)
-                .map(|()| Job::Saved(session))
+                .map(Job::Saved)
                 .map_err(|e| e.to_string())
         });
     }
@@ -1330,6 +1373,7 @@ impl DawUi {
         }
     }
     fn poll(&mut self) {
+        self.refresh_collection();
         self.poll_regular_save();
         let message = self.job.as_ref().and_then(|rx| match rx.try_recv() {
             Ok(m) => Some(m),
@@ -1343,6 +1387,10 @@ impl DawUi {
             self.busy.clear();
             self.settings_cancel = None;
             match message {
+                Ok(Job::CollectionPreflight(ticket, result)) => {
+                    self.finish_collection_preflight(ticket, result)
+                }
+                Ok(Job::Collected(ticket, result)) => self.finish_collection(ticket, result),
                 Ok(Job::ModelValidated(result)) => self.finish_model_validation(result),
                 Ok(Job::AudioSettings(mut session)) => {
                     let old_rate = self.session.project.sample_rate_hz;
@@ -1442,9 +1490,15 @@ impl DawUi {
                     self.ensure_history();
                     self.sync_needed = true;
                 }
-                Ok(Job::Saved(session)) => {
+                Ok(Job::Saved(saved)) => {
+                    if let Err(error) = self.apply_saved_sources(&saved) {
+                        self.fail(error);
+                        return;
+                    }
                     self.project_name_dialog = None;
-                    self.session = session;
+                    // File relocation preserves live transport, prepared audio,
+                    // selections and control state. Save As also accepts its name.
+                    self.session.project.name = saved.session.project.name.clone();
                     self.saved_navigation_revision = self.navigation_revision;
                     // Relocation is not an edit. Retarget retained sources before
                     // recording any real name change, so path-only saves keep Redo.
@@ -1483,6 +1537,9 @@ impl DawUi {
                 Err(e) => {
                     if self.separation_models.running() {
                         self.finish_model_validation(Err(e));
+                    } else if let Some(status) = &mut self.collection_status {
+                        Self::collection_error(status, e);
+                        self.update_collection_message();
                     } else if let Some(status) = &mut self.separation_status {
                         status.state = if status
                             .progress
@@ -1991,7 +2048,13 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.collection_input_ready =
+            ui.is_enabled() && ui.ctx().input(|i| i.focused) && !ui.ctx().text_edit_focused();
         crate::unit_power::restore_focus(ui.ctx());
+        let collection_modal = self.collection_preserves_selection();
+        if self.collection_status.is_none() && !egui::Popup::is_any_open(ui.ctx()) {
+            self.collection_focus = ui.ctx().memory(|m| m.focused());
+        }
         // Cancellation below can retire a gesture before Escape reaches selection.
         let selection_escape_available = self.selection_escape_available(ui.ctx());
         self.ensure_history();
@@ -2008,11 +2071,12 @@ impl DawUi {
         self.update_chord_drag(ui);
         self.cancel_unavailable_effect_drag(ui);
         self.cancel_unavailable_component_drag(ui);
-        if self.view_mode != mixer::ViewMode::Instrument
-            || !self.edit_environment_available()
-            || !ui.is_enabled()
-            || ui.input(|input| !input.focused)
-            || self.instrument_ui.track != self.selected_track
+        if !collection_modal
+            && (self.view_mode != mixer::ViewMode::Instrument
+                || !self.edit_environment_available()
+                || !ui.is_enabled()
+                || ui.input(|input| !input.focused)
+                || self.instrument_ui.track != self.selected_track)
         {
             self.instrument_ui.cancel();
         }
@@ -2078,7 +2142,8 @@ impl DawUi {
         }
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            if self.job.is_none() && self.regular_save.is_none() {
+            if self.job.is_none() && self.regular_save.is_none() && self.collection_status.is_none()
+            {
                 self.project_name_dialog = None;
                 self.settings_open = false;
                 self.audio_settings = None;
@@ -2121,6 +2186,7 @@ impl DawUi {
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
                         && self.separation_status.is_none()
+                        && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
                         && !self.settings_open,
@@ -2131,14 +2197,20 @@ impl DawUi {
             rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
                 if self.job.is_some() {
                     ui.spinner();
-                    ui.label(&self.busy);
+                    ui.label(
+                        self.collection_status_text()
+                            .unwrap_or_else(|| self.busy.clone()),
+                    );
                     if self.settings_cancel.is_some() && ui.button("Cancel").clicked() {
                         if let Some(cancel) = &self.settings_cancel {
                             cancel.store(true, Ordering::Relaxed);
                         }
                         // Keep separation and model-check receivers until acknowledgement.
                         // Both publication paths reject cancelled results.
-                        if self.separation_status.is_none() && !self.separation_models.running() {
+                        if self.separation_status.is_none()
+                            && self.collection_status.is_none()
+                            && !self.separation_models.running()
+                        {
                             self.settings_cancel = None;
                             // Other preparation jobs reject late publication.
                             self.job = None;
@@ -2148,6 +2220,8 @@ impl DawUi {
                 } else if self.regular_save.is_some() {
                     ui.spinner();
                     ui.label("Saving project");
+                } else if let Some(message) = self.collection_status_text() {
+                    ui.label(message);
                 } else {
                     ui.label(if self.dirty {
                         "Unsaved changes"
@@ -2173,6 +2247,7 @@ impl DawUi {
                             && self.overwrite.is_none()
                             && self.export_status.is_none()
                             && self.separation_status.is_none()
+                            && self.collection_status.is_none()
                             && self.project_name_dialog.is_none()
                             && self.project_settings.is_none()
                             && !self.settings_open,
@@ -2197,6 +2272,7 @@ impl DawUi {
                         && self.overwrite.is_none()
                         && self.export_status.is_none()
                         && self.separation_status.is_none()
+                        && self.collection_status.is_none()
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
                         && !self.settings_open,
@@ -2220,43 +2296,45 @@ impl DawUi {
         self.poll_chord_audition(&ctx, ui.is_enabled());
         self.prepare_idle_audio();
         self.dialogs(&ctx);
-        self.effects_catalog.clear_if_unfocused(
-            &ctx,
-            (self.view_mode.has_effects() && self.effects_catalog_visible())
-                && ui.is_enabled()
-                && self.edit_environment_available(),
-            self.effects_drag
-                .as_ref()
-                .is_some_and(|drag| drag.is_library()),
-        );
-        self.chords.catalog.clear_if_unfocused(
-            &ctx,
-            self.chords_visible() && ui.is_enabled() && self.edit_environment_available(),
-            self.chords.drag.is_some(),
-        );
-        self.instrument_catalog.clear_if_unfocused(
-            &ctx,
-            self.view_mode == ViewMode::Instrument
-                && self.instrument_catalog_visible
-                && ui.is_enabled()
-                && self.edit_environment_available(),
-            self.component_drag.is_some(),
-        );
-        if !self.selected_effects.is_empty()
-            && !(self.edit_environment_available() && crate::unit_power::keeps_selection(ui))
-            && self.effects_lane_focus.lost(
+        if !collection_modal && !self.collection_preserves_selection() {
+            self.effects_catalog.clear_if_unfocused(
                 &ctx,
-                self.view_mode.has_effects()
-                    && (self.effects_lane_visible() || self.view_mode == ViewMode::Instrument)
+                (self.view_mode.has_effects() && self.effects_catalog_visible())
                     && ui.is_enabled()
                     && self.edit_environment_available(),
                 self.effects_drag
                     .as_ref()
-                    .is_some_and(|drag| !drag.is_library()),
-            )
-        {
-            self.selected_effects.clear();
-            ctx.request_repaint();
+                    .is_some_and(|drag| drag.is_library()),
+            );
+            self.chords.catalog.clear_if_unfocused(
+                &ctx,
+                self.chords_visible() && ui.is_enabled() && self.edit_environment_available(),
+                self.chords.drag.is_some(),
+            );
+            self.instrument_catalog.clear_if_unfocused(
+                &ctx,
+                self.view_mode == ViewMode::Instrument
+                    && self.instrument_catalog_visible
+                    && ui.is_enabled()
+                    && self.edit_environment_available(),
+                self.component_drag.is_some(),
+            );
+            if !self.selected_effects.is_empty()
+                && !(self.edit_environment_available() && crate::unit_power::keeps_selection(ui))
+                && self.effects_lane_focus.lost(
+                    &ctx,
+                    self.view_mode.has_effects()
+                        && (self.effects_lane_visible() || self.view_mode == ViewMode::Instrument)
+                        && ui.is_enabled()
+                        && self.edit_environment_available(),
+                    self.effects_drag
+                        .as_ref()
+                        .is_some_and(|drag| !drag.is_library()),
+                )
+            {
+                self.selected_effects.clear();
+                ctx.request_repaint();
+            }
         }
         if self.view_mode == ViewMode::Instrument {
             self.finish_clip_drag(ui);
@@ -2268,6 +2346,7 @@ impl DawUi {
         if self.job.is_none()
             && self.export_status.is_none()
             && self.separation_status.is_none()
+            && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
             && !self.settings_open
@@ -2348,6 +2427,12 @@ impl DawUi {
         if self.repaint_until.is_some_and(|until| now < until) {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
+        self.collection_input_ready =
+            ui.is_enabled() && ctx.input(|i| i.focused) && !ctx.text_edit_focused();
+        if !collection_modal && self.collection_status.is_none() && !egui::Popup::is_any_open(&ctx)
+        {
+            self.collection_focus = ctx.memory(|m| m.focused());
+        }
         // egui may release text focus at frame start when Escape is pressed.
         self.selection_text_focus = ctx.memory(|memory| memory.focused()).filter(|_| {
             matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
@@ -2360,7 +2445,7 @@ impl DawUi {
             .into_iter()
             .filter(|action| *action != FileAction::Import)
         {
-            if action == FileAction::CloseProject {
+            if action == FileAction::CollectSources {
                 menus::separator(ui);
                 if ui
                     .add_enabled(
@@ -2372,6 +2457,8 @@ impl DawUi {
                     ui.close();
                     self.open_project_settings();
                 }
+            }
+            if action == FileAction::CloseProject {
                 menus::separator(ui);
                 let button = egui::Button::new("Settings…").shortcut_text(
                     toolbars::menu_shortcut_text(ui.ctx(), &Self::settings_shortcut()),
@@ -2387,12 +2474,17 @@ impl DawUi {
             ) {
                 menus::separator(ui);
             }
-            let button = egui::Button::new(action.label())
-                .shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &action.shortcut()));
-            if ui
-                .add_enabled(self.file_action_enabled(action), button)
-                .clicked()
-            {
+            let mut button = egui::Button::new(action.label());
+            if let Some(shortcut) = action.shortcut() {
+                button = button.shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &shortcut));
+            }
+            let response = ui.add_enabled(self.file_action_enabled(action), button);
+            let response = if let Some(hint) = self.file_action_disabled_hint(action) {
+                response.on_disabled_hover_text(hint)
+            } else {
+                response
+            };
+            if response.clicked() {
                 ui.close();
                 self.perform_file_action(action);
             }
@@ -2415,10 +2507,16 @@ impl DawUi {
         }
     }
 
+    pub fn file_action_disabled_hint(&self, action: FileAction) -> Option<&'static str> {
+        (action == FileAction::CollectSources && self.session.folder.is_none())
+            .then_some("Save the project before collecting its sources")
+    }
+
     pub fn file_action_enabled(&self, action: FileAction) -> bool {
         self.regular_save.is_none()
             && self.editing_enabled()
             && (action != FileAction::Export || self.session.project.end() > 0)
+            && (action != FileAction::CollectSources || self.collection_enabled())
     }
 
     fn editing_enabled(&self) -> bool {
@@ -2443,6 +2541,7 @@ impl DawUi {
             && self.export_dialog.is_none()
             && self.export_status.is_none()
             && self.separation_status.is_none()
+            && self.collection_status.is_none()
             && self.project_name_dialog.is_none()
             && self.project_settings.is_none()
             && !self.settings_open
@@ -2453,7 +2552,9 @@ impl DawUi {
         // Match Save as before Save because egui permits extra Shift modifiers.
         FileAction::ALL.into_iter().rev().find(|action| {
             self.file_action_enabled(*action)
-                && ctx.input_mut(|input| input.consume_shortcut(&action.shortcut()))
+                && action.shortcut().is_some_and(|shortcut| {
+                    ctx.input_mut(|input| input.consume_shortcut(&shortcut))
+                })
         })
     }
 
@@ -2479,6 +2580,7 @@ impl DawUi {
             }
             FileAction::Save => self.save(false),
             FileAction::SaveAs => self.save(true),
+            FileAction::CollectSources => self.collect_sources(),
             FileAction::Export => {
                 self.export_dialog = Some(self.export_settings);
             }
@@ -5318,6 +5420,7 @@ impl DawUi {
         {
             self.error = None;
         }
+        self.show_collection(ctx);
         if let Some(status) = &self.separation_status
             && status.show(ctx)
         {
@@ -5394,6 +5497,7 @@ mod tests {
                     .join(format!("daw-missing-{}.wav", Id::new_v4()))
                     .to_string_lossy()
                     .into_owned(),
+                storage: None,
                 path_kind: "absolute".into(),
             },
             source_metadata: daw_core::SourceMetadata {
@@ -8810,7 +8914,7 @@ mod tests {
         assert_eq!(app.snap_frame(100, 0..=99, [98], false), 99);
     }
     fn shortcut_event(action: FileAction) -> egui::Event {
-        let shortcut = action.shortcut();
+        let shortcut = action.shortcut().unwrap();
         egui::Event::Key {
             key: shortcut.logical_key,
             physical_key: None,
@@ -9211,7 +9315,10 @@ mod tests {
         let saved = app.session.clone();
         let (tx, rx) = mpsc::channel();
         app.job = Some(rx);
-        tx.send(Ok(Job::Saved(saved))).unwrap();
+        let folder = std::env::temp_dir().join(format!("daw-ui-saved-{}", Id::new_v4()));
+        let written = saved.save_snapshot(None).unwrap().save(&folder).unwrap();
+        tx.send(Ok(Job::Saved(written))).unwrap();
+        let _ = std::fs::remove_dir_all(&folder);
         app.poll();
         assert!(!app.unsaved_prompt);
         assert!(!app.dirty);

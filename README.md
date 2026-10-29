@@ -12,9 +12,9 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Mixer:** track gain, pan, mute, and solo controls, [track group buses](docs/editing/track-groups.md) with shared effects, and master gain.
 - **Playback:** tempo controls, loop playback, stereo level meters, and [audio device settings](docs/projects/README.md#audio-devices) for device selection and new-project quality defaults. Each project saves its own sample rate, output bit depth and buffer size. Input-device selection is saved for future recording.
 - **Editing history:** [undo and redo](docs/editing/undo-redo.md) for project edits.
-- **Projects:** save and open projects, with configurable audio processing settings.
+- **Projects:** save and open projects, [collect media sources](docs/projects/README.md#collect-project-sources), and configure audio processing settings.
 - **Appearance:** Dark, Light, and Mist themes, accent colors, and colored clips.
-- **Export and CLI:** export stereo WAV, MP3, or AAC files; inspect tracks, validate projects and render audio with the [CLI](docs/cli/README.md).
+- **Export and CLI:** export stereo WAV, MP3, or AAC files; inspect tracks, validate projects, collect sources and render audio with the [CLI](docs/cli/README.md).
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 
 Stem separation supports four or six stems using local HTDemucs models through Charon, with CoreML on Apple Silicon macOS and CPU on supported platforms. Either validated model enables separation; CoreML takes priority, with optional CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
@@ -23,14 +23,14 @@ Stem separation supports four or six stems using local HTDemucs models through C
 
 Audio and MIDI workflows are available in four views: **Timeline**, **Instrument**, **Editor**, and **Mixer**.
 
-The project format is experimental. Saved projects reference external recordings. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
+The project format is experimental. Normal imports retain external references; included recordings stay inside the project folder. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
 
 Planned work includes audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
 
 ## Documentation
 
 - [User guide](docs/README.md): working with clips, instruments, modulation, and effects.
-- [CLI guide](docs/cli/README.md): track inspection, project validation, export and standalone WAV processing.
+- [CLI guide](docs/cli/README.md): track inspection, project validation, source collection, export and standalone WAV processing.
 - [Development guides](docs/development/README.md): platform setup, build and run steps, packaging, plugin builds, and CI downloads.
 - [Features and roadmap](docs/roadmap.md), including current limits and planned capabilities.
 - [Time stretching and offline pitch changes](docs/audio/time-stretch.md) and the [standalone comparison tool guide](docs/cli/timestretch.md).

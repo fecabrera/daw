@@ -188,7 +188,7 @@ impl NativeMenu {
             .enumerate()
             .filter(|(_, action)| *action != FileAction::Import)
         {
-            if action == FileAction::CloseProject {
+            if action == FileAction::CollectSources {
                 file_menu.addItem(&NSMenuItem::separatorItem(mtm));
                 // SAFETY: The selector is defined above, with an NSMenuItem argument.
                 let item = unsafe {
@@ -211,7 +211,9 @@ impl NativeMenu {
                 file_menu.addItem(&NSMenuItem::separatorItem(mtm));
             }
             let shortcut = action.shortcut();
-            let key = shortcut.logical_key.name().to_lowercase();
+            let key = shortcut
+                .map(|s| s.logical_key.name().to_lowercase())
+                .unwrap_or_default();
             // SAFETY: The selector is defined above, with an NSMenuItem argument.
             let item = unsafe {
                 NSMenuItem::initWithTitle_action_keyEquivalent(
@@ -222,7 +224,7 @@ impl NativeMenu {
                 )
             };
             let mut modifiers = NSEventModifierFlags::Command;
-            if shortcut.modifiers.shift {
+            if shortcut.is_some_and(|s| s.modifiers.shift) {
                 modifiers |= NSEventModifierFlags::Shift;
             }
             item.setKeyEquivalentModifierMask(modifiers);
@@ -459,6 +461,12 @@ impl NativeMenu {
 
     pub fn update_enabled(&self, ui: &DawUi, ctx: &egui::Context) {
         for (action, item) in &self.items {
+            if let MenuAction::File(action) = action {
+                let hint = ui
+                    .file_action_disabled_hint(*action)
+                    .map(NSString::from_str);
+                item.setToolTip(hint.as_deref());
+            }
             if let MenuAction::ClipMenu(action) = action {
                 item.setTitle(&NSString::from_str(ui.clip_menu_action_label(*action)));
             }

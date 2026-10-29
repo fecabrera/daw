@@ -1,3 +1,4 @@
+mod collect_sources;
 mod tracks;
 use clap::{Parser, Subcommand};
 use daw_media::{ExportFormat, ExportSettings, Mp3Bitrate, WavCodec};
@@ -6,7 +7,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Inspect tracks, validate projects and render stereo WAV, MP3 or AAC without graphics or audio devices"
+    about = "Inspect tracks, validate projects, collect sources and render audio without graphics or audio devices"
 )]
 struct Args {
     #[command(subcommand)]
@@ -21,6 +22,18 @@ enum Command {
         project: PathBuf,
         /// Exact, case-sensitive track name. Quote names containing spaces.
         track_name: Option<String>,
+    },
+    /// Copy original media into a saved project and save its source locations.
+    #[command(
+        long_about = "Copy complete original media into a saved project using verified transactional collection. Save and close the desktop project first. The command runs without a confirmation prompt and uses only saved assets, including unused assets and sample inputs. Desktop Undo/Redo history is not available to this process."
+    )]
+    CollectSources {
+        /// Project folder; defaults to the current directory.
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+        /// Check sources and report totals without copying files or saving changes.
+        #[arg(long)]
+        dry_run: bool,
     },
     Validate {
         #[arg(long)]
@@ -60,6 +73,7 @@ fn main() {
                     Err(error) => Err(daw_project::Error(format!("Cannot write tracks: {error}"))),
                 }
             }),
+        Command::CollectSources { project, dry_run } => collect_sources::run(&project, dry_run),
         Command::Validate { project } => daw_project::Session::open(&project).map(|session| {
             for warning in &session.warnings {
                 eprintln!("Warning: {warning}");
@@ -197,6 +211,33 @@ mod tests {
             assert_eq!(track_name.as_deref(), Some("Bass synth"));
         }
         assert!(Args::try_parse_from(["daw-cli", "tracks", "Bass", "Synth"]).is_err());
+    }
+
+    #[test]
+    fn collect_sources_accepts_default_project_and_read_only_preflight() {
+        for (args, expected_project, expected_dry_run) in [
+            (vec!["daw-cli", "collect-sources"], ".", false),
+            (
+                vec![
+                    "daw-cli",
+                    "collect-sources",
+                    "--project",
+                    "My song",
+                    "--dry-run",
+                ],
+                "My song",
+                true,
+            ),
+        ] {
+            let Command::CollectSources { project, dry_run } =
+                Args::try_parse_from(args).unwrap().command
+            else {
+                panic!("collect-sources command");
+            };
+            assert_eq!(project, PathBuf::from(expected_project));
+            assert_eq!(dry_run, expected_dry_run);
+        }
+        assert!(Args::try_parse_from(["daw-cli", "collect-sources", "unexpected-folder"]).is_err());
     }
 
     #[test]

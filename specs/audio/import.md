@@ -38,6 +38,13 @@ use the shared cache. Menu selection exposes WAV/MP3/AAC/M4A/MP4. Publication,
 placement, source references, failure rollback and overwrite behavior use the
 existing session transactions. Playback and CLI export use the same prepared PCM.
 
+The weak cache's length/mtime key is not a content receipt. The [source bundling
+Stage 0 contract](../projects/source-bundling-stage0.md#source-revisions-and-prepared-audio)
+defines worker-only SHA-256 receipts and uncached comparisons against original
+project-rate PCM. Normal import/open does not hash files in this stage. Later
+collection must verify its private staged file before publication; it must not
+assume cached PCM still matches the current source path.
+
 Symphonia source and MPL 2.0 notices are in `crates/media/assets/licenses`; all
 native package scripts copy this directory. No runtime FFmpeg or system codec is
 required. Synthetic fixture generation uses FFmpeg separately; tests consume

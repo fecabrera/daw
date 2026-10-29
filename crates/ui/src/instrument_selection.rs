@@ -121,7 +121,8 @@ impl DawUi {
                 );
             }
         }
-        if !(available && crate::unit_power::keeps_selection(ui))
+        if !self.collection_preserves_selection()
+            && !(available && crate::unit_power::keeps_selection(ui))
             && self
                 .instrument_ui
                 .component_focus

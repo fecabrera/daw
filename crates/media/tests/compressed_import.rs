@@ -8,6 +8,24 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 #[test]
+fn collection_verification_preserves_compressed_container_identity() {
+    for (extension, expected) in [("mp3", "mp3"), ("aac", "aac"), ("m4a", "mp4")] {
+        let path = fixture(&format!("tone-2.{extension}"));
+        let audio = decode_audio_at_rate(&path, 48000).unwrap();
+        let result = daw_media::check_prepared_source(&path, &audio, &|| false).unwrap();
+        assert!(result.matches_audio);
+        assert_eq!(
+            daw_media::source_file_extension(&path, &audio.metadata).unwrap(),
+            expected
+        );
+        assert_eq!(
+            result.revision.byte_length,
+            std::fs::metadata(&path).unwrap().len()
+        );
+    }
+}
+
+#[test]
 fn compressed_sources_decode_resample_keep_channels_and_share_cached_audio() {
     for channels in [1, 2] {
         for extension in ["mp3", "aac", "m4a"] {

@@ -117,9 +117,11 @@ pub(super) fn bus_enabled(
 /// Popup closure clears focus at the end of its frame. Restore the owning header
 /// on the next frame so the lane keeps its selection and keyboard actions.
 pub(super) fn schedule_focus(ui: &egui::Ui, header: &egui::Response) {
-    ui.ctx()
-        .data_mut(|data| data.insert_temp(egui::Id::new("unit-menu-refocus"), Some(header.id)));
-    ui.ctx().request_repaint();
+    schedule_focus_id(ui.ctx(), header.id);
+}
+pub(super) fn schedule_focus_id(ctx: &egui::Context, id: egui::Id) {
+    ctx.data_mut(|data| data.insert_temp(egui::Id::new("unit-menu-refocus"), Some(id)));
+    ctx.request_repaint();
 }
 pub(super) fn restore_focus(ctx: &egui::Context) {
     if let Some(id) = ctx.data_mut(|data| {

@@ -458,6 +458,7 @@ impl Project {
             source: Source {
                 kind: "midi_pattern".into(),
                 path: String::new(),
+                storage: None,
                 path_kind: "embedded".into(),
             },
             source_metadata: SourceMetadata {

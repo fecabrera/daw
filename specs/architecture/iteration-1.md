@@ -6,7 +6,7 @@ Date: 2026-10-07.
 
 Scope baseline: [MVP.md](mvp-scope.md).
 
-Build a desktop digital audio workstation (DAW) that can arrange and mix audio tracks with no fixed track-count limit. Provide a command-line interface (CLI) that inspects tracks, validates projects and exports the same mix without graphics or an audio device. This iteration covers the complete MVP; the two-track prototype is an intermediate milestone.
+Build a desktop digital audio workstation (DAW) that can arrange and mix audio tracks with no fixed track-count limit. Provide a command-line interface (CLI) that inspects tracks, validates projects, collects sources and exports the same mix without graphics or an audio device. This iteration covers the complete MVP; the two-track prototype is an intermediate milestone.
 
 Use ASD-STE100 principles and Plain Language for specifications, technical documentation, and user instructions. Use consistent terms and explicit requirements. In this specification, **must** indicates a requirement. Implementation defaults below resolve routine details within the agreed scope.
 
@@ -90,7 +90,7 @@ Project/
   assets/
 ```
 
-The MVP must reference external sources. It must not copy them into assets/. This directory is reserved for future project-owned files. Waveforms and decoded PCM are session data and are not stored in the manifest.
+Normal imports reference external sources without copying them. Source-bundling Stage 3 extends storage with included recordings under assets/sources/ and history-aware Save As. Explicit collection uses the shared backend; Stage 4 now exposes its guarded desktop command. Waveforms and decoded PCM are session data and are not stored in the manifest.
 
 Use the initial JSON structure in MVP.md. The following fields form the MVP data contract:
 
@@ -116,7 +116,7 @@ schema_version is optional and ignored. Do not branch on its value or reject a f
 - Store project tempo in tempo_bpm as a positive finite number. Default new projects and older manifests without this field to 120.0 BPM. Use tempo for the musical ruler, grid, and playhead monitor in 4/4. Changing it moves clip starts to preserve their beat positions. Clip durations and source audio stay unchanged. Reject the change if it would make clips overlap on the same track or exceed timeline bounds.
 - Store time values as nonnegative integer frames, using checked arithmetic. One frame contains one sample per channel. All clip offsets and lengths refer to decoded audio at the selected project rate.
 - Require finite gain values and pan within [-1, 1]. Validate numeric types without coercing strings into numbers.
-- Require source.kind to equal external. Accept relative or absolute path_kind values. Accept pcm_int and ieee_float source sample formats in the supported WAV combinations, plus mp3/aac with bits_per_sample equal to zero.
+- Source provenance uses external/generated/midi_pattern. Optional storage records external/project/embedded ownership; included recordings require validated relative assets/sources/ paths. External references accept relative or absolute path_kind values. Accept pcm_int and ieee_float source sample formats in the supported WAV combinations, plus mp3/aac with bits_per_sample equal to zero.
 - Require each clip to reference an asset record. Missing asset records are invalid manifests; missing source files are warnings.
 - Require positive clip lengths and checked timeline ends. Normal clips require source_offset_frame + length_frames to fit the asset's saved decoded_frame_count. Looped clips store an optional `repeat` with positive length_frames and phase_frame less than that length. Their source offset plus repeat length must fit saved decoded bounds; their visible clip length can be longer. Omitted or null repeat fields retain normal clip behavior. Omit unset repeats when saving and default an omitted phase to zero.
 - Permit zero or more tracks with no fixed track-count limit in editing or project loading. Track capacity depends on available memory; playback capacity also depends on CPU performance and audio buffer settings.
@@ -352,6 +352,7 @@ The executable name daw-cli is an internal working name:
 
 ```text
 daw-cli tracks [<track-name>] [--project <folder>]
+daw-cli collect-sources [--project <folder>] [--dry-run]
 daw-cli validate --project <folder>
 daw-cli render --project <folder> --output <file.wav|file.mp3|file.aac> [--overwrite]
   [--format wav|mp3|aac] [--codec pcm16|pcm24|float32] [--bitrate 128|192|256|320]
@@ -360,6 +361,7 @@ daw-cli render --project <folder> --output <file.wav|file.mp3|file.aac> [--overw
 | Condition | CLI behavior |
 | --- | --- |
 | Valid project | validate returns 0. |
+| Source collection | Return 0 after confirmed save or a ready read-only dry run; blocked sources, failed execution or uncertain commit return 1. See [CLI source collection](../projects/source-bundling-cli.md). |
 | Track inspection | Return 0, including an empty list. Unknown track name returns 1. |
 | Missing sources or source shortened | Report warnings to standard error; validation and completed export return 0. |
 | Invalid manifest, unsupported audio, or processing failure | Report an error to standard error and return 1. |

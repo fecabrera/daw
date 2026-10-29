@@ -42,7 +42,7 @@ impl ClipMenuAction {
 
     pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
         match self {
-            Self::Import => Some(FileAction::Import.shortcut()),
+            Self::Import => FileAction::Import.shortcut(),
             Self::Split => Some(ClipAction::Split.shortcut()),
             _ => None,
         }
