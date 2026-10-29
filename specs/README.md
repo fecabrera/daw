@@ -48,6 +48,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Clip settings](editing/clip-settings.md).
 - [Chord catalog](editing/chords.md).
 - [Canonical dropdowns and catalog spacing](views/dropdowns.md).
+- [Instrument project track browser](views/instrument-tracks.md).
 - [Beat editor design](views/beat-editor.md), pending implementation.
 
 ## Effects

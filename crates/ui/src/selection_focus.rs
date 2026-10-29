@@ -48,3 +48,18 @@ impl SelectionFocus {
         !focused || !available || (!dragging && (outside_press || !self.owns(ctx)))
     }
 }
+
+/// Keep egui's implicit arrow navigation from moving focus before a list handles it.
+pub(super) fn retain_list_navigation(ui: &Ui, id: egui::Id, horizontal: bool) {
+    ui.memory_mut(|memory| {
+        memory.set_focus_lock_filter(
+            id,
+            egui::EventFilter {
+                vertical_arrows: true,
+                horizontal_arrows: horizontal,
+                escape: true,
+                ..Default::default()
+            },
+        )
+    });
+}

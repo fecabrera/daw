@@ -29,7 +29,7 @@ Use the component for clip, MIDI note, track and empty-track areas; effect and i
 
 ## Catalog panels
 
-Effects, Components and Chords share `Catalog` and `ControlPanel::catalog_body` / `catalog_row`:
+Effects, Components and Chords share `Catalog` and `ControlPanel::catalog_body` / `catalog_row`. The [Instrument track browser](instrument-tracks.md) reuses the same body and row painter with dynamic track UUIDs, track icons and nested group disclosures; project navigation stays separate from library selection:
 
 - Reuse `menus::ITEM_PADDING`, `OUTER_MARGIN` and `ITEM_SPACING`: 4-point row padding, outer list margins and gaps between visible rows.
 - Apply outer margins once around the scrollable list. Selected row highlights fit inside these margins; keep the fixed header and panel border unchanged.

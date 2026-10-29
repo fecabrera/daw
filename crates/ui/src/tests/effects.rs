@@ -4247,7 +4247,10 @@ fn instrument_reuses_the_effects_toolbar_catalog_and_lane_with_shared_visibility
         let audio = app.session.project.add_track().unwrap();
         app.select_track(audio, false);
         frame(&mut app, &ctx, vec![]);
-        assert_eq!(app.effects_target(), None);
+        assert_eq!(
+            app.effects_target(),
+            Some(effects_panel::EffectTarget::Track(audio))
+        );
         assert!(app.effects_bounds.chain.is_empty());
     }
 }

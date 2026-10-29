@@ -402,9 +402,9 @@ def markdown(run, reports, document, findings, counts, coordinator_model):
         lines += ["", "Uncommitted working-tree changes were excluded."]
     lines += ["", "## Findings"]
     for category in CATEGORIES:
-        lines += ["", f"### {CATEGORY_LABELS[category]}"]
+        lines += ["", "<details>", f"<summary>{CATEGORY_LABELS[category]}</summary>", ""]
         if counts[category]["status"] == "SKIPPED":
-            lines += ["", "SKIPPED — " + scope_reason(run, category) + " This category is excluded from counts and verdict."]
+            lines += ["SKIPPED — " + scope_reason(run, category) + " This category is excluded from counts and verdict.", "", "</details>"]
             continue
         selected = [f for f in findings if f["category"] == category]
         if not selected:
@@ -415,7 +415,8 @@ def markdown(run, reports, document, findings, counts, coordinator_model):
                       finding["description"], "", "**Evidence:**", ""]
             lines.extend(f"- {entry}" for entry in finding["evidence"])
             lines += ["", "**Suggestion:** " + finding["suggestion"]]
-    lines += ["", "## Coverage and checks", ""]
+        lines += ["", "</details>"]
+    lines += ["", "<details>", "<summary>Coverage and checks</summary>", ""]
     for key, entry in document["coverage"].items():
         category, area = key.split(".", 1)
         label = f"{CATEGORY_LABELS[category]}.{area}"
@@ -431,7 +432,7 @@ def markdown(run, reports, document, findings, counts, coordinator_model):
             lines.append(f"- {owner}: **{check['result']}** — {inline(check['command'])}. {check['notes']}")
         for limit in report["limitations"]:
             lines.append(f"- {owner} limitation: {limit}")
-    lines += ["", "## AI disclaimer", "", f"- Coordinator model: {inline(coordinator_model)}."]
+    lines += ["", "</details>", "", "## AI disclaimer", "", f"- Coordinator model: {inline(coordinator_model)}."]
     for report in reports:
         lines.append(f"- {report['reviewer_id']} model: {inline(report['model'])}.")
     lines += [f"- Adjudicator model: {inline(document['model'])}.", "",

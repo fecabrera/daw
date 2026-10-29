@@ -4,6 +4,16 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Instrument project track browser — 2026-10-29
+
+Added an Instrument-only Tracks toggle above Components/Effects in the existing left toolbar. The project browser lists audio/MIDI tracks and expandable nested groups in saved order. It reuses shared catalog row painting, spacing, selection, icons and list focus filtering. Browser disclosures stay independent of saved Timeline/Mixer collapse state. Single-track navigation retains Instrument view and clip selection, retires stale layer/component state and updates the shared track effects lane, including audio tracks. No project edits, source construction or DSP changes occur while browsing. See the [track browser contract](../views/instrument-tracks.md).
+
+All six focused browser tests and the complete 701-test UI suite pass. Coverage includes independent nested groups, toolbar/panel switching, MIDI/audio selection and effect targets, unchanged project state, visible-row keyboard navigation, renames/removal, job guards and shared geometry in Dark/Light/Mist at 1×/1.5× scale. Formatting, strict locked/offline workspace/all-target Clippy, local Markdown link/anchor checks and `sh tools/package_macos.sh debug` pass. The updated app is `target/debug/DAW.app`. Logs use `work/track-browser-*`.
+
+`cargo test --offline --locked --workspace` passes: 1790 tests passed, 11 opt-in tests ignored, no failures, including all 701 UI tests and documentation tests. Changed Markdown local links/anchors and `git diff HEAD --check` pass.
+
+Native window/device and Windows/Linux execution remain unverified. Automated egui tests do not establish native pointer or keyboard behavior.
+
 ## Source bundling PR review fixes — 2026-10-29
 
 Addressed F001–F007 and F009–F011 from [PR #3 comment 6501876175](https://github.com/fecabrera/daw/pull/3#issuecomment-6501876175). The store now retains a bounded 32 entry handles plus its canonical root, retires each private proof after target verification, and conservatively retains released reservations with warnings on rollback. Active proofs, the candidate manifest and private staging remain pinned; replacement/identity checks, exclusive reservations and commit ordering remain intact. Unix private directory permissions stay 0700 while Windows avoids the unused mutable builder. Save binds writes to a physical root, preserves valid caller alias spelling, and resolves missing owned paths through existing ancestors for same-folder reuse. A per-save verification cache reuses matching destination/revision/rate/metadata/PCM owners without accepting distinct mismatched history versions. Desktop cancellation keeps cleanup warnings in status notices.

@@ -1,5 +1,5 @@
 //! Shared catalog painting, selection, keyboard navigation, and pane focus.
-use egui::{EventFilter, Key, Modifiers, Response, Ui};
+use egui::{Key, Modifiers, Response, Ui};
 use std::collections::HashSet;
 
 /// Library selection is UI state, separate from installed units and project data.
@@ -498,16 +498,6 @@ impl Catalog {
 
     pub fn retain_focus_filter(&self, ui: &Ui) {
         let Some(id) = self.focus else { return };
-        ui.memory_mut(|memory| {
-            memory.set_focus_lock_filter(
-                id,
-                EventFilter {
-                    vertical_arrows: true,
-                    horizontal_arrows: !self.folders.is_empty(),
-                    escape: true,
-                    ..Default::default()
-                },
-            )
-        });
+        crate::selection_focus::retain_list_navigation(ui, id, !self.folders.is_empty());
     }
 }

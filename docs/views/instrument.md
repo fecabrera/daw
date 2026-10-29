@@ -1,8 +1,18 @@
 # Instruments and effects
 
-The left toolbar lists **Instrument components** above **Effects**. The Instrument components button shows a keyboard with a music note.
+The left toolbar lists **Tracks**, **Instrument components**, and **Effects**. The Instrument components button shows a keyboard with a music note.
 
 An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline, Instrument, Editor or Mixer to add effects.
+
+## Project tracks
+
+Use **Tracks** in the left toolbar to open the project track list. It shows audio and MIDI icons, with group chevrons and indented children in project order. Tracks, Instrument components and Effects share the same panel space; opening one hides the other.
+
+Click a group row to expand or collapse it. Groups start collapsed and retain their browser choices while the project is open. These choices do not change group collapse state in Timeline or Mixer. Nested groups are supported.
+
+Click an audio or MIDI track to select it without leaving Instrument. MIDI tracks show their instrument layers; audio tracks have no MIDI instrument, but their track effects remain available in the bottom lane. Existing clip selection stays unchanged. The top track dropdown remains a shortcut for MIDI tracks.
+
+With focus in the list, use Up/Down to move through visible rows without wrapping. Left/Right collapse or expand groups; Left on a child moves focus to its group. Enter toggles a group or selects a track. Scroll when the list does not fit. Browsing and expanding groups do not change project data.
 
 ## Instrument components
 
