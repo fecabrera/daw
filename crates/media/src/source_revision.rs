@@ -89,6 +89,28 @@ pub fn verify_prepared_source(
     prepared: &AudioData,
     cancelled: &impl Fn() -> bool,
 ) -> Result<SourceRevision> {
+    let check = check_prepared_source(path, prepared, cancelled)?;
+    if !check.matches_audio {
+        return Err(Error(format!(
+            "{}: source differs from prepared audio; collection requires the original recording",
+            path.display()
+        )));
+    }
+    Ok(check.revision)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PreparedSourceCheck {
+    pub revision: SourceRevision,
+    pub matches_audio: bool,
+}
+
+/// Like verification, but exposes a mismatch without parsing diagnostic text.
+pub fn check_prepared_source(
+    path: &Path,
+    prepared: &AudioData,
+    cancelled: &impl Fn() -> bool,
+) -> Result<PreparedSourceCheck> {
     let before = SourceRevision::read(path, cancelled)?;
     let current = crate::decode_audio_cancellable(path, prepared.sample_rate_hz, cancelled)?;
     let mut matches =
@@ -117,13 +139,32 @@ pub fn verify_prepared_source(
             path.display()
         )));
     }
-    if !matches {
-        return Err(Error(format!(
-            "{}: source differs from prepared audio; collection requires the original recording",
-            path.display()
-        )));
+    Ok(PreparedSourceCheck {
+        revision: after,
+        matches_audio: matches,
+    })
+}
+
+/// Worker-side naming hint for an already verified source. Preserve MP4 containers
+/// even when they contain AAC/MP3 or the original filename has a misleading extension.
+pub fn source_file_extension(
+    path: &Path,
+    metadata: &daw_core::SourceMetadata,
+) -> Result<&'static str> {
+    stamp(fs::metadata(path).map_err(|e| Error(e.to_string()))?)?;
+    let mut header = [0_u8; 12];
+    let mut file = File::open(path).map_err(|e| Error(e.to_string()))?;
+    file.read_exact(&mut header)
+        .map_err(|e| Error(e.to_string()))?;
+    match metadata.sample_format.as_str() {
+        "pcm_int" | "ieee_float" if &header[..4] == b"RIFF" && &header[8..] == b"WAVE" => Ok("wav"),
+        "mp3" | "aac" if &header[4..8] == b"ftyp" => Ok("mp4"),
+        "mp3" => Ok("mp3"),
+        "aac" => Ok("aac"),
+        _ => Err(Error(
+            "Cannot determine a supported source container".into(),
+        )),
     }
-    Ok(after)
 }
 
 #[cfg(test)]

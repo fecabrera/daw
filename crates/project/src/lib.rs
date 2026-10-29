@@ -14,6 +14,7 @@ mod history;
 pub use history::{HistoryMemory, SessionHistory};
 mod clip_audio;
 mod sampler;
+pub mod source_collection;
 mod source_storage;
 use daw_core::{Asset, Clip, Id, Project, Source};
 use daw_engine::RenderPlan;

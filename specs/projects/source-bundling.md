@@ -1,6 +1,6 @@
 # Project media source bundling
 
-Status: Stage 0 storage and verification foundations are implemented. See the [frozen Stage 0 contract](source-bundling-stage0.md). Stages 1–5 and the collection command remain pending.
+Status: Stage 0 storage/verification foundations and Stage 1 inventory/preflight are implemented. See the [Stage 0 contract](source-bundling-stage0.md) and [Stage 1 API and acceptance](source-bundling-stage1.md). Stages 2–5 and the collection command remain pending.
 
 Date: 2026-10-29.
 
@@ -53,7 +53,7 @@ Each stage has an exit gate. A gate records evidence for that stage; it does not
 | Stage | Status | Deliverable | Exit gate |
 | --- | --- | --- | --- |
 | 0 | Complete | Storage, revision and transaction contract | Model/migration rules, failure cases and fixture matrix are explicit. |
-| 1 | Pending | Shared source inventory and preflight | All live/history roots are covered and diagnostics are deterministic. |
+| 1 | Complete | Shared source inventory and preflight | All live/history roots are covered and diagnostics are deterministic. |
 | 2 | Pending | Transactional collection backend | Copies and manifest publication survive cancellation and injected failures. |
 | 3 | Pending | Save, Save As and history integration | Reopen, relocation and history remain independent of originals. |
 | 4 | Pending | Desktop command and job UI | Guarded menu dispatch, progress, cancellation and completion use the shared backend. |
@@ -79,6 +79,8 @@ Exit gate:
 - No application command is exposed yet.
 
 ## Stage 1 — Inventory and preflight
+
+Implemented API, ownership, diagnostics and destination rules: [Stage 1](source-bundling-stage1.md). Preflight is read-only and does not expose an application command. A verified source can have separate imported/generated targets when their storage contracts differ; compatible references share a target.
 
 Work:
 

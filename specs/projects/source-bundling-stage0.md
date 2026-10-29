@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: storage and verification foundations implemented. Collection, inventory, media copying and desktop controls remain pending in the [staged plan](source-bundling.md).
+Status: storage and verification foundations implemented. [Stage 1 inventory/preflight](source-bundling-stage1.md) is also implemented. Media copying, session integration and desktop controls remain pending in the [staged plan](source-bundling.md).
 
 ## Storage model and compatibility
 

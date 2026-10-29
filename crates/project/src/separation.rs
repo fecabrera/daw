@@ -671,6 +671,35 @@ mod tests {
     }
 
     #[test]
+    fn source_collection_snapshot_keeps_history_only_temporary_stems_alive() {
+        let (fixture, mut session, clip) = Fixture::new();
+        session.folder = None;
+        let mut history = crate::SessionHistory::new(&session, false).unwrap();
+        let prepared = session
+            .separate_clip_with(clip, &SeparationProgress::default(), fake)
+            .unwrap();
+        let directory = prepared.directory().to_owned();
+        let temporary = directory.parent().unwrap().parent().unwrap().to_owned();
+        let published = prepared.publish();
+        history.record(&published).unwrap();
+        let mut live = history.undo(&published).unwrap();
+        drop(published);
+        live.save(&fixture.0.join("collected-plan")).unwrap();
+        history.mark_saved(&live).unwrap();
+        let snapshot = live.source_collection_snapshot(Some(&history), 10).unwrap();
+        history.release_optional_memory();
+        drop(history);
+        drop(live);
+        assert!(directory.join("drums.wav").is_file());
+        let report = snapshot.preflight(None, &|| false).unwrap();
+        assert!(report.is_ready());
+        assert_eq!(report.summary().history_only_sources, 4);
+        drop(report);
+        drop(snapshot);
+        assert!(!temporary.exists());
+    }
+
+    #[test]
     fn temporary_stems_are_shared_until_the_last_session_is_released() {
         let (_fixture, mut session, clip) = Fixture::new();
         session.folder = None;

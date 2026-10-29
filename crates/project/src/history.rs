@@ -43,6 +43,34 @@ pub struct SessionHistory {
 }
 
 impl SessionHistory {
+    pub(crate) fn collection_roots(
+        &self,
+    ) -> impl Iterator<Item = (crate::source_collection::SourceScope, &Session)> {
+        use crate::source_collection::SourceScope;
+        std::iter::once((SourceScope::HistoryCurrent, &self.current.session))
+            .chain(
+                self.pending
+                    .iter()
+                    .map(|s| (SourceScope::Pending, &s.session)),
+            )
+            .chain(
+                self.undo
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| (SourceScope::Undo(i), &s.session)),
+            )
+            .chain(
+                self.redo
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| (SourceScope::Redo(i), &s.session)),
+            )
+    }
+
+    pub(crate) fn saved_collection_metadata(&self) -> Option<&Project> {
+        self.saved.as_ref()
+    }
+
     pub fn new(session: &Session, saved: bool) -> Result<Self> {
         let current = snapshot(session)?;
         let mut history = Self {

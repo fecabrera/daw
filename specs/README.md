@@ -25,6 +25,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 - [Project media source bundling](projects/source-bundling.md): staged plan for explicit collection, source verification, transactional copying, Save As, history and portability acceptance.
 - [Source bundling Stage 0](projects/source-bundling-stage0.md): storage compatibility, included-path containment, content verification and frozen copying/commit rules.
+- [Source bundling Stage 1](projects/source-bundling-stage1.md): history-aware snapshots, read-only inventory/preflight, typed diagnostics, destination proposals and byte totals.
 
 ## Instruments and editing
 
