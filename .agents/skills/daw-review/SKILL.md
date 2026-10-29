@@ -72,7 +72,8 @@ The helper rejects missing/duplicate reviewers, mixed revisions, invalid levels/
 1. **Type:** branch or PR, target, pinned base/head and merge base.
 2. **Summary:** counts of critical, major, minor, nit, and total findings for Documentation, Code Quality, Dependencies, and Total; PASS/FAIL for active rows and SKIPPED for inactive Code Quality and unchanged Dependencies.
 3. **Verdict:** PASS or FAIL. Explain any failure caused by incomplete coverage even if counts are zero.
-4. **Findings:** grouped Documentation → Code Quality → Dependencies, sorted critical → major → minor → nit; each has a brief title, severity, description, evidence, and suggestion.
-5. **AI disclaimer:** actual/configured model information for coordinator, every reviewer, and adjudicator, plus the possibility of errors and missed issues. If exact model identity is not exposed, state that; never invent it.
+4. **Findings:** expandable Documentation → Code Quality → Dependencies groups, sorted critical → major → minor → nit; each finding has a brief title, severity, description, evidence, and suggestion.
+5. **Coverage and checks:** an expandable section with coverage evidence, completed and unrun checks, and remaining limits.
+6. **AI disclaimer:** actual/configured model information for coordinator, every reviewer, and adjudicator, plus the possibility of errors and missed issues. If exact model identity is not exposed, state that; never invent it.
 
 Keep PASS narrowly defined: no validated blocking finding and adequate declared coverage for active categories in this pinned scope. Inactive Code Quality and unchanged Dependencies are SKIPPED and excluded from that decision. It does not certify security, legal compliance, performance on untested devices, or native cross-platform behavior. Include concise coverage limits and checks actually completed; do not inflate findings to account for missing verification.

@@ -246,7 +246,7 @@ class Reports(unittest.TestCase):
             args = SimpleNamespace(run=tmp, adjudication=root / "adjudication.json", coordinator_model="not exposed by runtime")
             review.render(args)
             text = (root / "report.md").read_text()
-            for content in ["**Type:** branch", "## Summary", "**Verdict: PASS**", "## Findings", "### Documentation", "### Code Quality", "### Dependencies", "## AI disclaimer", "not exposed by runtime", "can report false positives"]:
+            for content in ["**Type:** branch", "## Summary", "**Verdict: PASS**", "## Findings", "<summary>Documentation</summary>", "<summary>Code Quality</summary>", "<summary>Dependencies</summary>", "<summary>Coverage and checks</summary>", "## AI disclaimer", "not exposed by runtime", "can report false positives"]:
                 self.assertIn(content, text)
             with self.assertRaises(ValueError):
                 review.render(args)
