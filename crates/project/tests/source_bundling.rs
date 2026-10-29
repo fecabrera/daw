@@ -17,6 +17,7 @@ impl Fixture {
     }
     fn wav(&self, name: &str, value: f32) -> PathBuf {
         let path = self.0.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
         let mut writer = hound::WavWriter::create(
             &path,
             hound::WavSpec {
@@ -404,7 +405,9 @@ fn trimmed_repeated_stretched_and_pitched_clips_keep_prepared_audio_and_exports(
         ));
         fs::remove_file(f.0.join("a.wav")).unwrap();
         fs::remove_dir_all(f.0.join("original")).unwrap();
-        let reopened = Session::open(&destination).unwrap();
+        let moved = f.0.join("moved stretched project");
+        fs::rename(&destination, &moved).unwrap();
+        let reopened = Session::open(&moved).unwrap();
         assert!(reopened.warnings.is_empty());
         assert_eq!(reopened.project.tracks[0].clips[0], original_clip);
         assert_eq!(render(&reopened), before);
@@ -453,4 +456,222 @@ fn collected_compressed_media_keeps_full_original_bytes_through_save_as() {
             fs::read(fixtures.join(name)).unwrap()
         );
     }
+}
+
+#[test]
+fn moved_collected_project_reopens_mixed_sources_and_restored_history_without_originals() {
+    use daw_core::{Edit, MidiNote, MidiPattern};
+    let f = Fixture::new();
+    let a = f.wav("inputs/audio.wav", 0.15);
+    let stem = f.wav("inputs/stem.wav", 0.1);
+    let sample = f.wav("inputs/sample.wav", 0.2);
+    let mut live = Session::default();
+    live.import(&a, None, 0).unwrap();
+    live.import(&stem, None, 0).unwrap();
+    live.project.assets[1].source.kind = "generated".into();
+    for granular in [false, true] {
+        let track = live.project.add_midi_track().unwrap();
+        let layer = &mut live
+            .project
+            .tracks
+            .last_mut()
+            .unwrap()
+            .instrument
+            .as_mut()
+            .unwrap()
+            .layers[0];
+        let owner = layer.id;
+        layer.sampler = Some(if granular {
+            SamplerSettings::granular()
+        } else {
+            SamplerSettings::default()
+        });
+        live = live.with_sampler_file(track, owner, &sample).unwrap();
+        let clip = live.project.add_midi_pattern(track, 0).unwrap();
+        live.project
+            .edit(Edit::ReplaceMidiPattern {
+                clip_id: clip,
+                pattern: MidiPattern {
+                    length_ticks: 960,
+                    notes: vec![MidiNote {
+                        id: Id::new_v4(),
+                        start_tick: 0,
+                        length_ticks: 960,
+                        pitch: 60,
+                        velocity: 100,
+                    }],
+                },
+            })
+            .unwrap();
+    }
+    live.prepare_stretches().unwrap();
+    let project = f.0.join("collected");
+    live.save(&project).unwrap();
+    let mut history = SessionHistory::new(&live, true).unwrap();
+    let extra = f.wav("inputs/history-only.wav", 0.12);
+    live.import(&extra, None, 0).unwrap();
+    history.record(&live).unwrap();
+    let expected = render(&live);
+    assert!(expected.iter().any(|frame| frame[0] != 0.));
+    live = history.undo(&live).unwrap();
+    let outcome = collect(&live, Some(&history));
+    assert_eq!(outcome.progress().files_copied, 3); // First Save already owns the generated source.
+    outcome.apply(&mut live, Some(&mut history), 7).unwrap();
+    assert!(history.can_redo());
+    live = history.redo(&live).unwrap();
+    sources_inside(&live, &project);
+    assert_eq!(render(&live), expected);
+    let saved = live
+        .save_snapshot(Some(&history))
+        .unwrap()
+        .save(&project)
+        .unwrap();
+    saved.apply(&mut live, Some(&mut history)).unwrap();
+    let model = saved.session.project.clone();
+    let original_bytes = fs::read(&a).unwrap();
+    let before = f.0.join("before.wav");
+    live.export(&before, false).unwrap();
+    drop(saved);
+    drop(outcome);
+    drop(history);
+    drop(live);
+    let moved = f.0.join("移動 café project");
+    fs::rename(&project, &moved).unwrap();
+    fs::rename(f.0.join("inputs"), f.0.join("offline-inputs")).unwrap();
+    assert!(!a.exists() && !stem.exists() && !sample.exists() && !extra.exists());
+    let reopened = Session::open(&moved).unwrap();
+    assert!(reopened.warnings.is_empty(), "{:?}", reopened.warnings);
+    assert_eq!(reopened.project, model);
+    sources_inside(&reopened, &moved);
+    assert_eq!(render(&reopened), expected);
+    for track in reopened
+        .project
+        .tracks
+        .iter()
+        .filter(|t| t.instrument.is_some())
+    {
+        let mut isolated = reopened.clone();
+        for other in &mut isolated.project.tracks {
+            other.muted = other.id != track.id;
+        }
+        assert!(
+            render(&isolated).iter().any(|frame| frame[0] != 0.),
+            "moved sample instrument must remain audible"
+        );
+    }
+    let after = f.0.join("after.wav");
+    reopened.export(&after, false).unwrap();
+    assert_eq!(fs::read(before).unwrap(), fs::read(after).unwrap());
+    assert_eq!(
+        fs::read(f.0.join("offline-inputs/audio.wav")).unwrap(),
+        original_bytes
+    );
+}
+#[test]
+fn incremental_collection_retains_existing_paths_and_distinguishes_case_and_unicode_basenames() {
+    let f = Fixture::new();
+    let a = f.wav("one/Café Tone.wav", 0.2);
+    let b = f.wav("two/café tone.wav", 0.4);
+    let mut live = Session::default();
+    for input in [&a, &a, &b] {
+        live.import(input, None, 0).unwrap();
+    }
+    live.save(&f.0.join("project")).unwrap();
+    let before_a = fs::read(&a).unwrap();
+    let before_b = fs::read(&b).unwrap();
+    let first = collect(&live, None);
+    assert_eq!(first.progress().files_copied, 2);
+    first.apply(&mut live, None, 7).unwrap();
+    let retained = live
+        .project
+        .assets
+        .iter()
+        .map(|a| a.source.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(retained[0].path, retained[1].path);
+    assert_ne!(retained[0].path, retained[2].path);
+    let ids = live.project.assets.iter().map(|a| a.id).collect::<Vec<_>>();
+    let later = f.wav("three/Café Tone.wav", 0.1);
+    live.import(&later, None, 0).unwrap();
+    assert!(!live.project.assets[3].source.is_included_recording());
+    let expected = render(&live);
+    let second = collect(&live, None);
+    assert_eq!(second.progress().files_copied, 1);
+    second.apply(&mut live, None, 7).unwrap();
+    assert_eq!(
+        live.project.assets[..3]
+            .iter()
+            .map(|a| a.source.clone())
+            .collect::<Vec<_>>(),
+        retained
+    );
+    assert_eq!(
+        live.project.assets[..3]
+            .iter()
+            .map(|a| a.id)
+            .collect::<Vec<_>>(),
+        ids
+    );
+    assert_eq!(fs::read(&a).unwrap(), before_a);
+    assert_eq!(fs::read(&b).unwrap(), before_b);
+    let third = collect(&live, None);
+    assert_eq!(third.progress().files_copied, 0);
+    third.apply(&mut live, None, 7).unwrap();
+    fs::rename(f.0.join("one"), f.0.join("offline-one")).unwrap();
+    fs::rename(f.0.join("two"), f.0.join("offline-two")).unwrap();
+    fs::rename(f.0.join("three"), f.0.join("offline-three")).unwrap();
+    let moved = f.0.join("移動 incremental");
+    fs::rename(live.folder.as_ref().unwrap(), &moved).unwrap();
+    let reopened = Session::open(&moved).unwrap();
+    assert!(reopened.warnings.is_empty());
+    assert_eq!(render(&reopened), expected);
+    assert_eq!(
+        fs::read_dir(moved.join("assets/sources")).unwrap().count(),
+        3
+    );
+}
+#[cfg(windows)]
+#[test]
+fn windows_junctions_cannot_redirect_included_reads_collection_or_save_as() {
+    use std::os::windows::fs::MetadataExt;
+    let f = Fixture::new();
+    let live = f.session();
+    let root = live.folder.as_ref().unwrap();
+    let outside = f.0.join("outside");
+    fs::create_dir(&outside).unwrap();
+    fs::copy(f.0.join("a.wav"), outside.join("source.wav")).unwrap();
+    fs::write(outside.join("keep"), b"unrelated").unwrap();
+    let link = root.join("assets/sources");
+    // Constant PowerShell code; paths remain environment data, never script text.
+    // No execution-policy change, profile, overwrite flag or privilege request.
+    let output=std::process::Command::new("powershell.exe").args(["-NoProfile","-NonInteractive","-Command","$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:DAW_TEST_JUNCTION -Target $env:DAW_TEST_TARGET | Out-Null"]).env("DAW_TEST_JUNCTION",&link).env("DAW_TEST_TARGET",&outside).output().unwrap();
+    assert!(
+        output.status.success(),
+        "junction fixture failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_ne!(
+        fs::symlink_metadata(&link).unwrap().file_attributes() & 0x400,
+        0
+    );
+    let before = fs::read(outside.join("source.wav")).unwrap();
+    let report = live
+        .source_collection_snapshot(None, 7)
+        .unwrap()
+        .preflight(None, &|| false)
+        .unwrap();
+    assert!(!report.is_ready());
+    let mut included = live.clone();
+    included.project.assets[0].source.storage = Some(daw_core::SourceStorage::Project);
+    included.project.assets[0].source.path_kind = "relative".into();
+    included.project.assets[0].source.path = "assets/sources/source.wav".into();
+    let manifest = serde_json::to_vec_pretty(&included.project).unwrap();
+    fs::write(root.join("project.json"), &manifest).unwrap();
+    assert!(Session::open(root).is_err());
+    assert!(included.save(&f.0.join("copy")).is_err());
+    assert!(included.save(root).is_err());
+    assert_eq!(fs::read(root.join("project.json")).unwrap(), manifest);
+    assert_eq!(fs::read(outside.join("source.wav")).unwrap(), before);
+    assert_eq!(fs::read(outside.join("keep")).unwrap(), b"unrelated");
+    fs::remove_dir(&link).unwrap();
 }

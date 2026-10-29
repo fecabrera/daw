@@ -679,3 +679,105 @@ fn a_missing_saved_reference_is_not_filled_before_commit() {
     assert_committed(&result, &live);
     assert!(!protected.exists());
 }
+
+#[test]
+fn process_interruption_preserves_commit_boundary_and_retry_does_not_reuse_orphans() {
+    const CHILD_ROOT: &str = "DAW_COLLECTION_INTERRUPTION_ROOT";
+    if let Some(root) = std::env::var_os(CHILD_ROOT) {
+        let root = PathBuf::from(root);
+        assert!(
+            root.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("daw-collection-execute-")
+        );
+        let live = Session::open(&root.join("project")).unwrap();
+        assert_eq!(
+            live.project.project_id.to_string(),
+            std::env::var("DAW_COLLECTION_INTERRUPTION_PROJECT").unwrap()
+        );
+        assert_eq!(live.project.assets.len(), 1);
+        assert_eq!(
+            fs::canonicalize(live.source_path(&live.project.assets[0]).unwrap()).unwrap(),
+            fs::canonicalize(root.join("input.wav")).unwrap()
+        );
+        let after = std::env::var("DAW_COLLECTION_INTERRUPTION_PHASE").unwrap() == "after";
+        let p = plan(&live, None);
+        let _ = execute_with(&p, &|_| true, &|| false, &mut |_| Ok(()), &mut |step, _| {
+            if (!after && step == IoStep::BeforeCommit) || (after && step == IoStep::AfterReplace) {
+                std::process::exit(73);
+            }
+            Ok(())
+        });
+        panic!("interruption hook was not reached");
+    }
+    for phase in ["before", "after"] {
+        let f = Fixture::new();
+        let input = f.wav("input.wav", 0.2);
+        let mut live = f.session(&[&input]);
+        let root = live.folder.clone().unwrap();
+        let original = fs::read(&input).unwrap();
+        let manifest = old_manifest(&live);
+        let mut baseline = vec![[0.; 2]; live.project.end() as usize];
+        live.plan().render(0, &mut baseline);
+        let mut child=std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact","source_collection::execute::tests::process_interruption_preserves_commit_boundary_and_retry_does_not_reuse_orphans","--nocapture"]).env(CHILD_ROOT,&f.0).env("DAW_COLLECTION_INTERRUPTION_PROJECT",live.project.project_id.to_string()).env("DAW_COLLECTION_INTERRUPTION_PHASE",phase).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while child.try_wait().unwrap().is_none() {
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("interruption child timed out at {phase}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let output = child.wait_with_output().unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(73),
+            "{} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read(&input).unwrap(), original);
+        let orphans = fs::read_dir(root.join("assets/sources"))
+            .unwrap()
+            .map(|p| fs::canonicalize(p.unwrap().path()).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(fs::read(&orphans[0]).unwrap(), original);
+        let stages = fs::read_dir(root.join("assets"))
+            .unwrap()
+            .filter_map(|e| {
+                let e = e.unwrap();
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".collect-")
+                    .then_some(e.path())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(stages.len(), 1);
+        if phase == "before" {
+            assert_eq!(old_manifest(&live), manifest);
+            let reopened = Session::open(&root).unwrap();
+            assert!(reopened.warnings.is_empty());
+            let mut rendered = vec![[0.; 2]; baseline.len()];
+            reopened.plan().render(0, &mut rendered);
+            assert_eq!(rendered, baseline);
+            let retry = collect(&plan(&live, None), &live, None);
+            retry.apply(&mut live, None, 9).unwrap();
+            let path = live.source_path(&live.project.assets[0]).unwrap();
+            assert!(!orphans.contains(&path));
+            assert!(stages[0].exists());
+            assert_eq!(fs::read(&orphans[0]).unwrap(), original);
+        } else {
+            fs::rename(&input, f.0.join("offline-input.wav")).unwrap();
+            assert_ne!(old_manifest(&live), manifest);
+        }
+        let reopened = Session::open(&root).unwrap();
+        assert!(reopened.warnings.is_empty());
+        let mut rendered = vec![[0.; 2]; baseline.len()];
+        reopened.plan().render(0, &mut rendered);
+        assert_eq!(rendered, baseline);
+        assert!(reopened.project.assets[0].source.is_included_recording());
+    }
+}

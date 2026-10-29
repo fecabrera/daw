@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: desktop action, preflight confirmation, bounded progress, cancellation and receipt publication implemented. [Stage 5](source-bundling.md) still owns full native portability and release acceptance.
+Status: desktop action, preflight confirmation, bounded progress, cancellation and receipt publication implemented. [Stage 5](source-bundling-stage5.md) still owns full native portability and release acceptance.
 
 ## Command and guards
 

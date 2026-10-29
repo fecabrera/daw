@@ -1,6 +1,6 @@
 # Project media source bundling
 
-Status: Stages 0–4 are implemented. Stage 5 native portability/release acceptance remains pending. Contracts: [Stage 0](source-bundling-stage0.md), [Stage 1](source-bundling-stage1.md), [Stage 2](source-bundling-stage2.md), [Stage 3](source-bundling-stage3.md) and [Stage 4](source-bundling-stage4.md).
+Status: Stages 0–4 are implemented. Stage 5 automated acceptance is expanded; native portability/release acceptance remains open. See the [Stage 5 matrix](source-bundling-stage5.md). Contracts: [Stage 0](source-bundling-stage0.md), [Stage 1](source-bundling-stage1.md), [Stage 2](source-bundling-stage2.md), [Stage 3](source-bundling-stage3.md) and [Stage 4](source-bundling-stage4.md).
 
 Date: 2026-10-29.
 
@@ -57,7 +57,7 @@ Each stage has an exit gate. A gate records evidence for that stage; it does not
 | 2 | Complete | Transactional collection backend | Copies and manifest publication survive cancellation and injected failures. |
 | 3 | Complete | Save, Save As and history integration | Reopen, relocation and history remain independent of originals. |
 | 4 | Complete | Desktop command and job UI | Guarded menu dispatch, progress, cancellation and completion use the shared backend. |
-| 5 | Pending | Portability acceptance and documentation | Required automated/native evidence and current docs match the delivered feature. |
+| 5 | In progress | Portability acceptance and documentation | Required automated/native evidence and current docs match the delivered feature. |
 
 ## Stage 0 — Define storage and source revisions
 
@@ -156,6 +156,8 @@ Exit gate:
 - Native menu and large-copy interaction checks are recorded separately from automated UI tests.
 
 ## Stage 5 — Portability acceptance and documentation
+
+Automated coverage, native procedures and remaining evidence: [Stage 5](source-bundling-stage5.md). The release gate is open; local automated results do not establish native platform/device acceptance.
 
 Acceptance matrix:
 
