@@ -14,6 +14,8 @@ Saving fails if a directory occupies the `project.json` destination. The directo
 
 ## Collect project sources
 
+For headless collection, save and close the desktop project, then use the [collect-sources CLI command](../cli/collect-sources.md). It collects saved assets without desktop Undo/Redo history.
+
 Collect sources before sharing or moving a project:
 
 1. Save the project first.
@@ -122,7 +124,7 @@ Progress and completion appear in the status dialog. An existing destination req
 
 ## Command line
 
-Use the [CLI guide](../cli/README.md) to inspect tracks, validate projects and export a mix without opening the desktop app.
+Use the [CLI guide](../cli/README.md) to inspect tracks, validate projects, collect sources and export a mix without opening the desktop app.
 
 ## Stem-separation models
 

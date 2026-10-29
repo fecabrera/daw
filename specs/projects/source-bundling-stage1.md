@@ -18,7 +18,7 @@ Status: shared snapshot, inventory and preflight APIs implemented. The [Stage 2 
 | `CollectionPreflight::into_plan()` | Produce `SourceCollectionPlan` only when no diagnostics remain. Plan fields are private; accessors return immutable views. |
 | `SourceCollectionPlan` | Retain the captured owners, project/folder/revision, manifest content receipt, verified source receipts, proposed targets and totals for Stage 2. The staging-directory accessor returns a proposal, not a reservation. |
 
-The host supplies its `u64` edit/job revision. Capture once for a job, retain the snapshot through preflight, and use `is_current` before execution/publication. Folder values come from the normal absolute-folder Session save/open lifecycle. Perform capture, stale checks and preflight outside painting and the audio callback. Stage 4 adds desktop dispatch; CLI collection remains outside scope.
+The host supplies its `u64` edit/job revision. Capture once for a job, retain the snapshot through preflight, and use `is_current` before execution/publication. Folder values come from the normal absolute-folder Session save/open lifecycle. Perform capture, stale checks and preflight outside painting and the audio callback. Stage 4 adds desktop dispatch; the later [CLI frontend](source-bundling-cli.md) reuses this API without desktop history.
 
 ## Inventory roots
 

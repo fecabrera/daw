@@ -4,6 +4,16 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## CLI source collection — 2026-10-29
+
+Added `daw-cli collect-sources [--project <folder>] [--dry-run]` over the shared verified snapshot/preflight/execution API. It defaults to the current directory, reports all available source diagnostics, blocks partial collection, and confirms success only after manifest commit. Saved asset coverage includes unused/sample inputs; desktop history is unavailable. No device, graphics, signal handler or dependency is added. See the [CLI contract](../projects/source-bundling-cli.md).
+
+`cargo test --offline --locked -p daw-cli` passes: six command/report unit tests and three executable integration tests. The executable tests verify read-only preflight, default/explicit paths, unchanged original bytes, moved Unicode folders with unavailable originals, identical WAV exports, no-copy retries, atomic missing-source blocking, help and exit codes. `cargo build --offline --locked -p daw-cli` and `python3 tools/check_cli.py` pass, including the new collection checks over private generated-demo copies. `cargo fmt --all --check` and strict locked/offline workspace/all-target Clippy pass. Logs use `work/cli-collect-sources-*`.
+
+`cargo test --offline --locked --workspace` passes: 1869 tests passed, 11 opt-in tests ignored, no failures, including all 711 UI tests and documentation tests. Changed Markdown local links/anchors and `git diff HEAD --check` pass.
+
+Windows/Linux execution and native Stage 5 UI/device gates remain open. CLI-only inputs do not require a new macOS desktop bundle; packaging builds the unchanged desktop target. No native interaction or device continuity is claimed.
+
 ## Project source bundling Stage 5 — 2026-10-29
 
 Expanded automated acceptance with real collected-folder moves, offline originals, audible Sampler/Granulizer/MIDI inputs, generated media, restored Redo-only sources, full manifest equality and byte-identical renders/exports. Incremental collection now covers duplicate references, distinct case/Unicode basenames, stable included paths/IDs, one-file updates and no-copy retries. Both stretch engines' trim/loop/pitch acceptance also moves the folder before reopening. A subprocess test exits without Rust cleanup before/after manifest replacement, then checks old/new project validity and retry without orphan deletion/reuse. A Windows-only junction fixture is added to the ordinary workspace tests, with no silent skip. See the [Stage 5 matrix](../projects/source-bundling-stage5.md).

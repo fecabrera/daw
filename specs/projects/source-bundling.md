@@ -44,7 +44,7 @@ This feature extends the initial external-source-only MVP. Current requirements 
 5. Missing, unreadable or mismatched required sources prevent collection. Report affected files/assets and retain the project. Do not silently omit files or claim a partial result is portable.
 6. Later imports remain external until the next collection. Compute collection status from the source inventory; do not persist a flag that claims all future imports are bundled.
 
-Automatic collection, selective source-management UI, a separate portable-copy action, ZIP archives and a CLI collection command are follow-up work. The shared backend must permit those callers without duplicating file or manifest logic.
+Automatic collection, selective source-management UI, a separate portable-copy action and ZIP archives are follow-up work. [CLI collection](source-bundling-cli.md) is implemented over the shared backend. The shared backend must permit those callers without duplicating file or manifest logic.
 
 ## Stage sequence
 
@@ -184,7 +184,7 @@ The first release gate is a saved project collected, moved and reopened with ori
 - A persistent project policy to collect media on import/save.
 - A source manager for selective inclusion, relinking and explicit unused-file cleanup.
 - Save portable copy without changing the current project location.
-- Optional ZIP distribution and a CLI collection command over the same backend.
+- Optional ZIP distribution over the same backend.
 - Content-based deduplication across different source files.
 
 These items do not block the explicit collection command and are not implicit first-version requirements.

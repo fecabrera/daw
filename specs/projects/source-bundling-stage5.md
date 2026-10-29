@@ -20,6 +20,10 @@ Status: automated portability and process-interruption coverage added. **Native 
 
 Project integration cases live in [`source_bundling.rs`](../../crates/project/tests/source_bundling.rs). Interruption/fault tests live in [`execute/tests.rs`](../../crates/project/src/source_collection/execute/tests.rs). UI cases live in [`collection/tests.rs`](../../crates/ui/src/collection/tests.rs). Stage 1's complete owner/conflict coverage remains in [`source_collection/tests.rs`](../../crates/project/src/source_collection/tests.rs).
 
+## CLI acceptance extension
+
+The [collect-sources command](source-bundling-cli.md) now exposes shared collection without a desktop window. Executable tests and the existing CLI smoke step check read-only preflight, missing-source blocking, moved folders, unavailable originals and identical exports. This provides a headless portability path; it does not establish native menu, device or large-copy responsiveness acceptance. Native gates below remain open.
+
 ## Test execution and CI
 
 Run from the repository root with the pinned toolchain and native prerequisites:

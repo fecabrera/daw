@@ -6,7 +6,7 @@ Date: 2026-10-07.
 
 Scope baseline: [MVP.md](mvp-scope.md).
 
-Build a desktop digital audio workstation (DAW) that can arrange and mix audio tracks with no fixed track-count limit. Provide a command-line interface (CLI) that inspects tracks, validates projects and exports the same mix without graphics or an audio device. This iteration covers the complete MVP; the two-track prototype is an intermediate milestone.
+Build a desktop digital audio workstation (DAW) that can arrange and mix audio tracks with no fixed track-count limit. Provide a command-line interface (CLI) that inspects tracks, validates projects, collects sources and exports the same mix without graphics or an audio device. This iteration covers the complete MVP; the two-track prototype is an intermediate milestone.
 
 Use ASD-STE100 principles and Plain Language for specifications, technical documentation, and user instructions. Use consistent terms and explicit requirements. In this specification, **must** indicates a requirement. Implementation defaults below resolve routine details within the agreed scope.
 
@@ -352,6 +352,7 @@ The executable name daw-cli is an internal working name:
 
 ```text
 daw-cli tracks [<track-name>] [--project <folder>]
+daw-cli collect-sources [--project <folder>] [--dry-run]
 daw-cli validate --project <folder>
 daw-cli render --project <folder> --output <file.wav|file.mp3|file.aac> [--overwrite]
   [--format wav|mp3|aac] [--codec pcm16|pcm24|float32] [--bitrate 128|192|256|320]
@@ -360,6 +361,7 @@ daw-cli render --project <folder> --output <file.wav|file.mp3|file.aac> [--overw
 | Condition | CLI behavior |
 | --- | --- |
 | Valid project | validate returns 0. |
+| Source collection | Return 0 after confirmed save or a ready read-only dry run; blocked sources, failed execution or uncertain commit return 1. See [CLI source collection](../projects/source-bundling-cli.md). |
 | Track inspection | Return 0, including an empty list. Unknown track name returns 1. |
 | Missing sources or source shortened | Report warnings to standard error; validation and completed export return 0. |
 | Invalid manifest, unsupported audio, or processing failure | Report an error to standard error and return 1. |

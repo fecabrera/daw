@@ -2,6 +2,7 @@
 import copy
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -19,6 +20,54 @@ def run(expected, *args, cwd=None):
     return result
 
 
+def check_collect_sources(parent, manifest):
+    # Use private copies: collection must never change tracked demo sources.
+    root = parent / "collection"
+    originals = root / "originals"
+    folder = root / "Saved project"
+    originals.mkdir(parents=True)
+    folder.mkdir()
+    collected = copy.deepcopy(manifest)
+    for index, asset in enumerate(collected["assets"]):
+        source = Path(asset["source"]["path"])
+        target = originals / f"{index}-café{source.suffix}"
+        shutil.copyfile(source, target)
+        asset["source"]["path"] = str(target)
+    project = folder / "project.json"
+    project.write_text(json.dumps(collected), encoding="utf-8")
+    before = project.read_bytes()
+    source_bytes = {p.name: p.read_bytes() for p in originals.iterdir()}
+    reference = root / "before.wav"
+    run(0, "render", "--project", folder, "--output", reference)
+    assert "Files to copy:" in run(0, "collect-sources", "--dry-run", cwd=folder).stdout
+    assert project.read_bytes() == before
+    assert sorted(p.name for p in folder.iterdir()) == ["project.json"]
+    run(0, "collect-sources", "--project", folder)
+    assert {p.name: p.read_bytes() for p in originals.iterdir()} == source_bytes
+    originals.rename(root / "originals-offline")
+    moved = root / "移動 project"
+    folder.rename(moved)
+    run(0, "validate", "--project", moved)
+    rendered = root / "after.wav"
+    run(0, "render", "--project", moved, "--output", rendered)
+    assert reference.read_bytes() == rendered.read_bytes()
+    assert "Collected files: 0" in run(0, "collect-sources", cwd=moved).stdout
+    assert "--dry-run" in run(0, "collect-sources", "--help").stdout
+    run(2, "collect-sources", "--unknown")
+    absent = root / "absent"
+    run(1, "collect-sources", "--project", absent)
+    assert not absent.exists()
+    blocked = root / "blocked"
+    blocked.mkdir()
+    blocked_manifest = blocked / "project.json"
+    blocked_manifest.write_bytes(before)
+    for options in [(), ("--dry-run",)]:
+        result = run(1, "collect-sources", "--project", blocked, *options)
+        assert "Collection blocked" in result.stderr
+        assert blocked_manifest.read_bytes() == before
+        assert sorted(p.name for p in blocked.iterdir()) == ["project.json"]
+
+
 def main():
     assert BINARY.exists(), "Build daw-cli first"
     manifest = json.loads((ROOT / "examples/demo/project.json").read_text())
@@ -27,6 +76,7 @@ def main():
         asset["source"]["path_kind"] = "absolute"
     with tempfile.TemporaryDirectory(prefix="daw-cli-check-") as temp:
         folder = Path(temp)
+        check_collect_sources(folder, manifest)
         project = folder / "project.json"
         project.write_text(json.dumps(manifest))
         run(0, "validate", "--project", folder)
@@ -153,7 +203,7 @@ def main():
         run(1, "tracks", cwd=folder)
         run(1, "validate", "--project", folder)
         run(2, "render")
-    print("CLI smoke check passed: track inspection, WAV/MP3/AAC codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
+    print("CLI smoke check passed: source collection, track inspection, WAV/MP3/AAC codecs and bitrates, repeatability, missing sources, eight-track projects, group buses, overwrite, and exit codes")
 
 
 if __name__ == "__main__":

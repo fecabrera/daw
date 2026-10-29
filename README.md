@@ -14,7 +14,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Editing history:** [undo and redo](docs/editing/undo-redo.md) for project edits.
 - **Projects:** save and open projects, [collect media sources](docs/projects/README.md#collect-project-sources), and configure audio processing settings.
 - **Appearance:** Dark, Light, and Mist themes, accent colors, and colored clips.
-- **Export and CLI:** export stereo WAV, MP3, or AAC files; inspect tracks, validate projects and render audio with the [CLI](docs/cli/README.md).
+- **Export and CLI:** export stereo WAV, MP3, or AAC files; inspect tracks, validate projects, collect sources and render audio with the [CLI](docs/cli/README.md).
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 
 Stem separation supports four or six stems using local HTDemucs models through Charon, with CoreML on Apple Silicon macOS and CPU on supported platforms. Either validated model enables separation; CoreML takes priority, with optional CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
@@ -30,7 +30,7 @@ Planned work includes audio and beat editors, beat tracks, more effects, effects
 ## Documentation
 
 - [User guide](docs/README.md): working with clips, instruments, modulation, and effects.
-- [CLI guide](docs/cli/README.md): track inspection, project validation, export and standalone WAV processing.
+- [CLI guide](docs/cli/README.md): track inspection, project validation, source collection, export and standalone WAV processing.
 - [Development guides](docs/development/README.md): platform setup, build and run steps, packaging, plugin builds, and CI downloads.
 - [Features and roadmap](docs/roadmap.md), including current limits and planned capabilities.
 - [Time stretching and offline pitch changes](docs/audio/time-stretch.md) and the [standalone comparison tool guide](docs/cli/timestretch.md).
