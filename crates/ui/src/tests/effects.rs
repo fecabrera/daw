@@ -6872,3 +6872,282 @@ fn effect_out_strips_share_the_output_rail_without_moving_controls_or_editing_se
         }
     }
 }
+
+#[test]
+fn editor_and_mixer_share_workspace_toolbar_and_remember_independent_visibility() {
+    for mode in [ViewMode::Edit, ViewMode::Mixer] {
+        for color_theme in settings::ColorTheme::ALL {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            app.select_track(track, false);
+            app.set_view_mode(mode, &ctx);
+            let before = app.session.project.clone();
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.effects_catalog_visible() && !app.effects_lane_visible());
+            assert!(app.effects_bounds.toolbar.is_positive());
+            assert_eq!(app.effects_bounds.toolbar.width(), timeline_toolbar::WIDTH);
+            assert!(!app.effects_bounds.clip_settings_toggle.is_positive());
+            assert!(!app.instrument_catalog_bounds.toggle.is_positive());
+            assert_eq!(
+                app.chords.bounds.toggle.is_positive(),
+                mode == ViewMode::Edit
+            );
+            let library = app.effects_bounds.library_toggle.center();
+            let lane = app.effects_bounds.lane_toggle.center();
+            click(&mut app, &ctx, library);
+            click(&mut app, &ctx, lane);
+            for size in [Vec2::new(1280.0, 800.0), Vec2::new(900.0, 500.0)] {
+                frame_sized(&mut app, &ctx, vec![], size);
+                let rail = app.effects_bounds.toolbar;
+                let catalog = app.effects_bounds.library;
+                let strip = app.effects_bounds.strip;
+                assert!(catalog.is_positive() && strip.is_positive());
+                assert_eq!(rail.right(), catalog.left());
+                assert_eq!(rail.right(), strip.left());
+                assert_eq!(rail.bottom(), strip.bottom());
+                assert!(rail.contains_rect(app.effects_bounds.library_toggle));
+                assert!(rail.contains_rect(app.effects_bounds.lane_toggle));
+                if mode == ViewMode::Mixer {
+                    assert!(app.master_bounds.left() >= catalog.right());
+                    assert!(app.master_bounds.bottom() <= strip.top());
+                } else {
+                    assert!(app.midi_editor.content.bounds.height() > 0.0);
+                }
+            }
+            app.set_view_mode(ViewMode::Timeline, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            assert!(app.timeline_catalog_visible && app.timeline_effects_visible);
+            let other = if mode == ViewMode::Edit {
+                ViewMode::Mixer
+            } else {
+                ViewMode::Edit
+            };
+            app.set_view_mode(other, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            assert!(!app.effects_catalog_visible() && !app.effects_lane_visible());
+            app.set_view_mode(mode, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            assert!(app.effects_catalog_visible() && app.effects_lane_visible());
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+        }
+    }
+}
+
+#[test]
+fn editor_and_mixer_catalog_add_and_lane_controls_use_the_selected_effect_chain() {
+    for mode in [ViewMode::Edit, ViewMode::Mixer] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.select_track(track, false);
+        app.effects_catalog.expand_folders();
+        app.set_view_mode(mode, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let library = app.effects_bounds.library_toggle.center();
+        click(&mut app, &ctx, library);
+        let lane = app.effects_bounds.lane_toggle.center();
+        click(&mut app, &ctx, lane);
+        assert!(
+            app.effects_bounds.entry.is_positive(),
+            "{mode:?}: catalog entry"
+        );
+        end_click_sequence(&mut app, &ctx);
+        let entry = app.effects_bounds.entry.center();
+        click(&mut app, &ctx, entry);
+        assert!(
+            !app.effects_catalog.selection.is_empty(),
+            "{mode:?}: first entry click at {entry:?}, library {:?}, editor {:?}",
+            app.effects_bounds.library,
+            app.midi_editor.panel_bounds
+        );
+        click(&mut app, &ctx, entry);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(
+            app.session.project.tracks[0].effects.len(),
+            1,
+            "{mode:?}: target {:?}, error {:?}",
+            app.effects_target(),
+            app.error
+        );
+        assert_eq!(app.effects_bounds.units.len(), 1);
+        assert_eq!(
+            app.effects_target(),
+            Some(effects_panel::EffectTarget::Track(track))
+        );
+        let saved = app.session.project.clone();
+        click(&mut app, &ctx, lane);
+        frame(&mut app, &ctx, vec![]);
+        assert!(app.effects_bounds.units.is_empty());
+        assert_eq!(app.session.project, saved);
+        click(&mut app, &ctx, lane);
+        frame(&mut app, &ctx, vec![]);
+        assert_eq!(app.effects_bounds.units.len(), 1);
+        if mode == ViewMode::Mixer {
+            let point = app.master_bounds.center_top() + Vec2::new(0.0, 12.0);
+            click(&mut app, &ctx, point);
+            frame(&mut app, &ctx, vec![]);
+            assert_eq!(
+                app.effects_target(),
+                Some(effects_panel::EffectTarget::Master)
+            );
+            assert!(app.effects_bounds.units.is_empty());
+            assert_eq!(app.session.project, saved);
+        }
+    }
+}
+
+#[test]
+fn editor_and_mixer_toolbar_toggles_respect_blocked_editing() {
+    for mode in [ViewMode::Edit, ViewMode::Mixer] {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        app.select_track(track, false);
+        app.set_view_mode(mode, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let library = app.effects_bounds.library_toggle.center();
+        let lane = app.effects_bounds.lane_toggle.center();
+        app.settings_open = true;
+        click(&mut app, &ctx, library);
+        click(&mut app, &ctx, lane);
+        assert!(!app.effects_catalog_visible() && !app.effects_lane_visible());
+        app.settings_open = false;
+        frame(&mut app, &ctx, vec![]);
+        click(&mut app, &ctx, library);
+        assert!(app.effects_catalog_visible());
+        assert!(!app.dirty);
+    }
+}
+
+#[test]
+fn editor_effect_delete_preserves_selected_midi_notes_and_clip_data() {
+    let mut app = DawUi::default();
+    let track = app.session.project.add_midi_track().unwrap();
+    let clip = app.session.project.add_midi_pattern(track, 0).unwrap();
+    let note = daw_core::MidiNote {
+        id: Id::new_v4(),
+        start_tick: 0,
+        length_ticks: 960,
+        pitch: 69,
+        velocity: 100,
+    };
+    app.session
+        .project
+        .edit(Edit::ReplaceMidiPattern {
+            clip_id: clip,
+            pattern: daw_core::MidiPattern {
+                length_ticks: 3840,
+                notes: vec![note.clone()],
+            },
+        })
+        .unwrap();
+    app.session.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::equalizer());
+    let ctx = context();
+    app.open_clip_editor(clip, track, &ctx);
+    app.set_effects_lane_visible(true);
+    frame(&mut app, &ctx, vec![]);
+    let assets = app.session.project.assets.clone();
+    let clips = app.session.project.tracks[0].clips.clone();
+    let note_point = app.midi_editor.track_note_bounds[&(clip, note.id)][0].center();
+    click(&mut app, &ctx, note_point);
+    assert!(app.midi_editor.selected_notes().contains(&(clip, note.id)));
+    let point = app.effects_bounds.units[0].header.center();
+    click(&mut app, &ctx, point);
+    assert_eq!(app.selected_effects.len(), 1);
+    assert!(app.midi_editor.selected_notes().contains(&(clip, note.id)));
+    frame(
+        &mut app,
+        &ctx,
+        vec![effect_delete_key(
+            egui::Key::Delete,
+            false,
+            egui::Modifiers::NONE,
+        )],
+    );
+    assert!(app.session.project.tracks[0].effects.is_empty());
+    assert_eq!(app.session.project.assets, assets);
+    assert_eq!(app.session.project.tracks[0].clips, clips);
+}
+
+#[test]
+fn workspace_top_separator_remains_visible_across_rail_catalog_and_content_in_every_view() {
+    for mode in ViewMode::ALL {
+        for color_theme in settings::ColorTheme::ALL {
+            for scale in [1.0, 1.5] {
+                let (mut app, _) = fixture();
+                let track = app.session.project.add_midi_track().unwrap();
+                app.session.project.add_midi_pattern(track, 0).unwrap();
+                app.select_track(track, false);
+                let ctx = context();
+                app.set_settings(
+                    &ctx,
+                    settings::AppSettings {
+                        theme: color_theme,
+                        ..Default::default()
+                    },
+                );
+                ctx.set_pixels_per_point(scale);
+                app.set_view_mode(mode, &ctx);
+                app.instrument_catalog_visible = false;
+                app.set_effects_catalog_visible(true);
+                app.set_effects_lane_visible(true);
+                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                let rail = app.effects_bounds.toolbar;
+                let y = rail.top() + 0.5;
+                let expected = [
+                    Pos2::new(rail.left(), y),
+                    Pos2::new(app.effects_bounds.strip.right(), y),
+                ];
+                let lines: Vec<_> = shapes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, shape)| {
+                        matches!(shape.shape,
+                    egui::Shape::LineSegment { points, stroke } if points[0].distance(expected[0]) < 1.0 && points[1].distance(expected[1]) < 1.0
+                        && stroke == Stroke::new(1.0, theme::palette(&ctx).border))
+                    })
+                    .collect();
+                assert_eq!(lines.len(), 1, "{mode:?} {color_theme:?} {scale}");
+                let adjacent = shapes
+                    .iter()
+                    .filter(|shape| {
+                        matches!(shape.shape,
+                    egui::Shape::LineSegment { points, stroke }
+                        if (points[0].y - points[1].y).abs() < 0.1
+                            && (points[0].y - rail.top()).abs() < 1.5
+                            && (points[0].x - rail.left()).abs() < 1.0
+                            && (points[1].x - app.effects_bounds.strip.right()).abs() < 1.0
+                            && stroke.width > 0.0 && stroke.color.a() > 0)
+                    })
+                    .count();
+                assert_eq!(
+                    adjacent, 1,
+                    "{mode:?}: no adjacent playback-panel separator"
+                );
+                let index = lines[0].0;
+                for x in [
+                    rail.center().x,
+                    app.effects_bounds.library.center().x,
+                    app.effects_bounds.strip.right() - 20.0,
+                ] {
+                    assert!(
+                        !shapes[index + 1..]
+                            .iter()
+                            .any(|shape| matches!(&shape.shape,
+                        egui::Shape::Rect(rect) if rect.fill.a() == 255
+                            && rect.rect.intersect(shape.clip_rect).contains(Pos2::new(x, y)))),
+                        "{mode:?}: later background covers the separator at {x}"
+                    );
+                }
+            }
+        }
+    }
+}

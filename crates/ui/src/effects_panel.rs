@@ -119,7 +119,62 @@ impl Default for EffectsUiBounds {
     }
 }
 
+#[derive(Default)]
+pub(super) struct Visibility {
+    pub catalog: bool,
+    pub lane: bool,
+    pub chords: bool,
+}
+
 impl DawUi {
+    pub(super) fn effects_catalog_visible(&self) -> bool {
+        match self.view_mode {
+            ViewMode::Edit => self.editor_effects.catalog,
+            ViewMode::Mixer => self.mixer_effects.catalog,
+            _ => self.timeline_catalog_visible,
+        }
+    }
+
+    pub(super) fn set_effects_catalog_visible(&mut self, visible: bool) {
+        match self.view_mode {
+            ViewMode::Edit => self.editor_effects.catalog = visible,
+            ViewMode::Mixer => self.mixer_effects.catalog = visible,
+            _ => self.timeline_catalog_visible = visible,
+        }
+    }
+
+    pub(super) fn effects_lane_visible(&self) -> bool {
+        match self.view_mode {
+            ViewMode::Edit => self.editor_effects.lane,
+            ViewMode::Mixer => self.mixer_effects.lane,
+            _ => self.timeline_effects_visible,
+        }
+    }
+
+    pub(super) fn set_effects_lane_visible(&mut self, visible: bool) {
+        match self.view_mode {
+            ViewMode::Edit => self.editor_effects.lane = visible,
+            ViewMode::Mixer => self.mixer_effects.lane = visible,
+            _ => self.timeline_effects_visible = visible,
+        }
+    }
+
+    pub(super) fn chords_visible(&self) -> bool {
+        match self.view_mode {
+            ViewMode::Edit => self.editor_effects.chords,
+            ViewMode::Timeline => self.chords.visible,
+            _ => false,
+        }
+    }
+
+    pub(super) fn set_chords_visible(&mut self, visible: bool) {
+        if self.view_mode == ViewMode::Edit {
+            self.editor_effects.chords = visible;
+        } else {
+            self.chords.visible = visible;
+        }
+    }
+
     pub(super) fn effects_target(&self) -> Option<EffectTarget> {
         if self.view_mode == ViewMode::Instrument {
             return self
@@ -132,6 +187,11 @@ impl DawUi {
                         .any(|track| track.id == *id && track.kind == daw_core::TrackKind::Midi)
                 })
                 .map(EffectTarget::Track);
+        }
+        if self.view_mode == ViewMode::Edit {
+            return self
+                .editor_track()
+                .map(|track| EffectTarget::Track(track.id));
         }
         if self.master_selected {
             Some(EffectTarget::Master)
@@ -209,18 +269,17 @@ impl DawUi {
             self.effects_bounds.bitcrusher_units.clear();
             self.effects_bounds.chorus_units.clear();
         }
-        let border = Stroke::new(1.0, theme::palette(ui.ctx()).border);
-        ui.painter()
-            .hline(ui.max_rect().x_range(), ui.max_rect().top() + 0.5, border);
+        // Keep child fills below the workspace's shared top separator.
         ui.add_space(1.0);
         let bounds = Rect::from_min_max(ui.cursor().min, ui.max_rect().max);
-        let below_track = if self.view_mode == ViewMode::Instrument {
-            (bounds.height() - toolbars::HEIGHT).max(0.0)
-        } else {
-            (bounds.height() - RULER_HEIGHT - track_overview::STRIP_HEIGHT - SCROLLBAR_HEIGHT)
-                .max(0.0)
+        let minimum_content = match self.view_mode {
+            ViewMode::Instrument => toolbars::HEIGHT,
+            ViewMode::Timeline => RULER_HEIGHT + track_overview::STRIP_HEIGHT + SCROLLBAR_HEIGHT,
+            ViewMode::Edit => midi_editor::MIN_HEIGHT,
+            ViewMode::Mixer => mixer::MIN_HEIGHT,
         };
-        let lane_visible = self.timeline_effects_visible;
+        let below_track = (bounds.height() - minimum_content).max(0.0);
+        let lane_visible = self.effects_lane_visible();
         let strip_height = if lane_visible {
             panels::unit_height(compact).min(below_track)
         } else {
@@ -236,12 +295,12 @@ impl DawUi {
         let components_visible = self.view_mode == ViewMode::Instrument
             && self.instrument_catalog_visible
             && !clip_settings_visible;
-        let chords_visible = self.view_mode == ViewMode::Timeline && self.chords.visible;
+        let chords_visible = self.chords_visible();
         let catalog_visible = clip_settings_visible
-            || self.timeline_catalog_visible
+            || self.effects_catalog_visible()
             || components_visible
             || chords_visible;
-        if !clip_settings_visible {
+        if !clip_settings_visible && self.view_mode != ViewMode::Edit {
             self.clear_clip_settings_edits();
         }
         let library = catalog_visible.then(|| panels::ControlPanel::begin(ui, upper));
@@ -413,23 +472,24 @@ impl DawUi {
                     content_ui.add_enabled_ui(
                         (self.effects_drag.is_none() && self.chords.drag.is_none())
                             || self.view_mode == ViewMode::Instrument,
-                        |ui| {
-                            if self.view_mode == ViewMode::Instrument {
+                        |ui| match self.view_mode {
+                            ViewMode::Instrument => {
                                 self.timeline_bounds = Rect::NOTHING;
                                 self.lane_bounds.clear();
                                 self.file_drop_target = None;
                                 self.instrument_view(ui);
-                            } else {
-                                timeline_drop = self.timeline_workspace(ui);
                             }
+                            ViewMode::Timeline => timeline_drop = self.timeline_workspace(ui),
+                            ViewMode::Edit => self.edit_view(ui),
+                            ViewMode::Mixer => self.mixer(ui),
                         },
                     );
                     #[cfg(test)]
                     {
-                        self.effects_bounds.scrollbar = if self.view_mode == ViewMode::Instrument {
-                            Rect::NOTHING
-                        } else {
+                        self.effects_bounds.scrollbar = if self.view_mode == ViewMode::Timeline {
                             self.scrollbar_bounds
+                        } else {
+                            Rect::NOTHING
                         };
                     }
                 },

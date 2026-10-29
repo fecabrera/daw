@@ -175,13 +175,7 @@ impl DawUi {
     }
 
     fn request_midi_audition(&mut self, sound: Sound) {
-        let Some(track) = self.selected_track.filter(|id| {
-            self.session
-                .project
-                .tracks
-                .iter()
-                .any(|t| t.id == *id && t.kind == daw_core::TrackKind::Midi)
-        }) else {
+        let Some(track) = self.active_midi_track() else {
             return;
         };
         if let Some(output) = &self.output {
@@ -227,7 +221,7 @@ impl DawUi {
             && self.job.is_none()
             && let Some((project, track, _)) = self.chords.audition.scope
             && project == self.session.project.project_id
-            && Some(track) == self.selected_track
+            && Some(track) == self.active_midi_track()
         {
             self.chords.audition.scope = Some((project, track, self.change_revision));
             if let Some(pending) = &mut self.chords.audition.pending {
@@ -244,7 +238,7 @@ impl DawUi {
             && if self.chords.audition.editor {
                 self.view_mode == ViewMode::Edit && self.midi_editor.audition_enabled
             } else {
-                self.view_mode == ViewMode::Timeline && self.chords.visible
+                self.chords_visible()
             }
             && ctx.input(|i| i.focused && !i.key_pressed(egui::Key::Escape))
             && self.edit_environment_available_with_job(self.chords.audition.allow_note_commit)
@@ -254,7 +248,7 @@ impl DawUi {
                 .scope
                 .is_none_or(|(project, track, revision)| {
                     project == self.session.project.project_id
-                        && Some(track) == self.selected_track
+                        && Some(track) == self.active_midi_track()
                         && revision == self.change_revision
                 });
         if !valid {

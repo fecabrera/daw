@@ -493,3 +493,73 @@ fn chord_audition_prepares_sampler_pitches_without_publishing_them() {
         );
     }
 }
+
+#[test]
+fn editor_chords_share_catalog_actions_target_and_overview_drag_clock() {
+    let (mut app, ctx, midi, audio) = setup();
+    let clip = app.session.project.add_midi_pattern(midi, 0).unwrap();
+    app.open_clip_editor(clip, midi, &ctx);
+    // Editor follows the active clip even if another view changed track selection.
+    app.selected_track = Some(audio);
+    frame(&mut app, &ctx, vec![]);
+    app.midi_editor.zoom = 80.0;
+    app.midi_editor.scroll = 3.0;
+    app.zoom = 240.0;
+    app.scroll = 0.0;
+    frame(&mut app, &ctx, vec![]);
+    let point = app.chords.bounds.toggle.center();
+    click(&mut app, &ctx, point, false);
+    assert!(app.chords_visible());
+    assert!(!app.effects_catalog_visible());
+    assert!(!app.effects_bounds.clip_settings_toggle.is_positive());
+    assert_eq!(
+        app.chords.bounds.toggle.top() - app.effects_bounds.library_toggle.bottom(),
+        7.0
+    );
+    let before = app.session.project.clone();
+    let target = app.timeline_bounds.min + Vec2::new(80.0, 30.0);
+    begin(&mut app, &ctx, 0, target);
+    assert_eq!(app.session.project, before);
+    assert!(!app.chords.bounds.preview.is_empty());
+    release(&mut app, &ctx, target);
+    assert_eq!(
+        app.session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == midi)
+            .unwrap()
+            .clips
+            .len(),
+        2
+    );
+    let added = app
+        .session
+        .project
+        .tracks
+        .iter()
+        .find(|t| t.id == midi)
+        .unwrap()
+        .clips
+        .iter()
+        .find(|c| c.id != clip)
+        .unwrap();
+    assert_eq!(added.start_frame, 192_000); // 3 seconds scroll + 1 second at 80 px/s.
+    assert!(
+        app.session
+            .project
+            .tracks
+            .iter()
+            .find(|t| t.id == audio)
+            .unwrap()
+            .clips
+            .is_empty()
+    );
+    frame(&mut app, &ctx, vec![]);
+    let library = app.effects_bounds.library_toggle.center();
+    click(&mut app, &ctx, library, false);
+    assert!(!app.chords_visible() && app.effects_catalog_visible());
+    app.set_view_mode(ViewMode::Mixer, &ctx);
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.chords.bounds.toggle.is_positive());
+}

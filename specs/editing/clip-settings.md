@@ -10,7 +10,7 @@ Clip settings occupies the shared 250-point catalog column in Timeline. Editor r
 - `clip_settings_visible` defaults to false. The Effects catalog stays the default open panel.
 - Opening Clip settings closes the catalogs and clears their selections. Opening a catalog closes Clip settings. All panels can be closed.
 - Toggling is UI state and does not mark the project modified.
-- The Clip settings rail is available only in Timeline. Editor displays the shared body below its existing Clip options header for audio tracks, with its own scroll region and the same editing guards. Instrument/Mixer do not display these fields. Switching views discards field drafts and audio transpose previews without a project edit. Editor track/clip selection changes discard drafts for the old selection; entering MIDI options clears clip field state. Reuse `clear_clip_settings_edits` for lifecycle cleanup.
+- The Clip settings rail is available only in Timeline. Editor displays the shared body below its existing Clip options header for audio tracks, with its own scroll region and the same editing guards. Editor’s new left rail omits the Clip settings button and retains its existing options column. Instrument/Mixer do not display these fields. The shared effects workspace must not clear Editor field drafts during ordinary repainting; retain the existing selection/view-change cleanup. Switching views discards field drafts and audio transpose previews without a project edit. Editor track/clip selection changes discard drafts for the old selection; entering MIDI options clears clip field state. Reuse `clear_clip_settings_edits` for lifecycle cleanup.
 - Hiding the panel returns the column width to the workspace.
 
 ## Fields

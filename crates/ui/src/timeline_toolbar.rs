@@ -33,11 +33,6 @@ pub(super) fn show(
         bounds.y_range(),
         Stroke::new(1.0, palette.border),
     );
-    ui.painter().hline(
-        bounds.x_range(),
-        bounds.top() + 0.5,
-        Stroke::new(1.0, palette.border),
-    );
     let padding = (WIDTH - BUTTON_SIZE) * 0.5;
     let top = bounds.min + Vec2::splat(padding);
     let step = BUTTON_SIZE + padding;
@@ -92,7 +87,14 @@ pub(super) fn show(
         chords: catalogs.chords.map(|selected| {
             toggle_at(
                 &mut rail,
-                top + Vec2::new(0.0, 2.0 * step),
+                top + Vec2::new(
+                    0.0,
+                    if catalogs.clip_settings.is_some() || catalogs.components.is_some() {
+                        2.0 * step
+                    } else {
+                        step
+                    },
+                ),
                 "chords",
                 icons::Lucide::Piano,
                 "Show chords catalog",

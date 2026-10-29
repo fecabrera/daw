@@ -17,6 +17,21 @@ impl DawUi {
             })
     }
 
+    pub(super) fn active_midi_track(&self) -> Option<Id> {
+        let track = if self.view_mode == ViewMode::Edit {
+            self.editor_track()
+        } else {
+            self.session
+                .project
+                .tracks
+                .iter()
+                .find(|track| Some(track.id) == self.selected_track)
+        };
+        track
+            .filter(|track| track.kind == TrackKind::Midi)
+            .map(|track| track.id)
+    }
+
     pub(super) fn track_control(&mut self, ui: &mut egui::Ui) {
         self.track_dropdown(ui, None);
     }

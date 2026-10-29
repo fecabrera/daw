@@ -1,5 +1,9 @@
 # Editor
 
+The left toolbar provides **Effects**, **Chords**, and the bottom **Effects lane** toggle. Editor has no Clip settings toolbar button; its existing track and options column stays visible. Effects panels start closed and remember their visibility separately from other views.
+
+Select the displayed track to work with its effects. The Effects catalog and lane use the same controls as Timeline. Open Chords to browse, audition or add MIDI chords; drag them onto the track overview using its zoom and scroll.
+
 MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
 
 ## Create and edit a pattern

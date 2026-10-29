@@ -2,6 +2,12 @@
 
 Mixer controls track levels and the final project output. It uses the same track settings as Timeline, so edits in either view apply to playback and export.
 
+## Effects toolbar
+
+Use the left **Effects** button to show the effects catalog and the bottom **Effects lane** button to show the selected track’s or Master’s effect chain. These panels start closed and remember their visibility independently of Editor and Timeline. Mixer has no Clip settings, Chords or Instrument components button.
+
+Select a track, group or Master to change the effect target. Add effects from the catalog and use the same unit controls, reordering and compact mode as Timeline. The lane sits below the mixer; Master stays pinned at the right of the mixer area. Toggling panels changes only the workspace layout.
+
 ## Track controls
 
 Audio track headers show a waveform icon; MIDI track headers show a keyboard icon. Master shows a boom box icon. Each track and group header centers its icon and name together. Icons use the same contrasting text color as their header names. Master’s icon matches its label. The icon-to-label gap matches the vertical padding around the icon. Master uses the same centered layout.

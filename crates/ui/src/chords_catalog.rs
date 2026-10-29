@@ -186,13 +186,7 @@ impl DawUi {
                 || selected(&self.chords.catalog.selected_types()),
                 |index| vec![chord(index)],
             );
-            let track = self.selected_track.filter(|id| {
-                self.session
-                    .project
-                    .tracks
-                    .iter()
-                    .any(|t| t.id == *id && t.kind == TrackKind::Midi)
-            });
+            let track = self.active_midi_track();
             if let Some(track) = track {
                 self.commit_chords(
                     Some(track),
@@ -220,8 +214,8 @@ impl DawUi {
 
     pub(super) fn update_chord_drag(&mut self, ui: &egui::Ui) {
         let invalid = self.chords.drag.as_ref().is_some_and(|d| {
-            self.view_mode != ViewMode::Timeline
-                || !self.chords.visible
+            !self.view_mode.has_clip_lanes()
+                || !self.chords_visible()
                 || drag::cancelled(ui)
                 || !self.edit_environment_available()
                 || self.session.project.project_id != d.project
@@ -274,8 +268,9 @@ impl DawUi {
             0
         } else {
             self.session.project.frames(
-                (self.scroll + f64::from((pointer.x - self.timeline_bounds.left()) / self.zoom))
-                    .max(0.0),
+                (self.view_scroll()
+                    + f64::from((pointer.x - self.timeline_bounds.left()) / self.view_zoom()))
+                .max(0.0),
             )
         };
         let start = placement_start(
@@ -284,7 +279,7 @@ impl DawUi {
             length,
             track,
             None,
-            (!over_header && !musical_time::snap_bypassed(ui)).then_some(self.zoom),
+            (!over_header && !musical_time::snap_bypassed(ui)).then_some(self.view_zoom()),
         );
         start.checked_add(length)?;
         Some((track, start))

@@ -2,7 +2,7 @@
 
 The left toolbar lists **Instrument components** above **Effects**. The Instrument components button shows a keyboard with a music note.
 
-An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline or Instrument to add effects.
+An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline, Instrument, Editor or Mixer to add effects.
 
 ## Instrument components
 
@@ -46,7 +46,7 @@ Layer controls stay in the left column; installed components appear to their rig
 
 ## Effects
 
-The Effects catalog has four folders in Timeline and Instrument:
+The Effects catalog has the same four folders in every view:
 
 | Folder | Effects |
 | --- | --- |
@@ -61,7 +61,7 @@ Select the destination track or Master before adding an effect. Double-click an 
 
 In Instrument, click a layer or Output to select it, then add effects from the Effects catalog. New effects append to that same layer lane. Drag effect headers or catalog effects between control components, including into an empty layer. Only audio sources stay pinned first. Collapse or expand the layer to change the size of the whole row. Drag effect headers between regular layers, Output, and the track effects lane to move them; hold Option on macOS or Ctrl on Windows/Linux to duplicate them. Selected effects transfer together. Layer effect settings save with the project.
 
-Output effects share the pinned Output lane with its control components. You can place an effect before Macro, LFO, or Envelope. Click the separate bottom effects lane to target track effects, or edit track effects in Timeline.
+Output effects share the pinned Output lane with its control components. You can place an effect before Macro, LFO, or Envelope. Click the separate bottom effects lane to target track effects, or edit track effects in Timeline, Editor or Mixer.
 
 Layer effects process that layer's notes together, after Amplitude and before layer gain/pan. Output effects process the combined layer sum before Output gain/pan. Track output effects process the instrument after Output. This lets you distort one layer while keeping another layer clean.
 

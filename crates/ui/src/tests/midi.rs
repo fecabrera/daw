@@ -3757,13 +3757,15 @@ fn edit_reuses_timeline_ruler_loop_seek_and_toolbar_zoom() {
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
     let timeline_zoom = app.midi_editor.zoom_bounds;
-    let ruler_top = app.lane_bounds[&track].top() - RULER_HEIGHT;
     let timeline_transform = (app.zoom, app.scroll);
     app.open_clip_editor(clip, track, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.midi_editor.zoom_bounds, timeline_zoom);
     let ruler = app.midi_editor.ruler_bounds;
-    assert!((ruler.top() - ruler_top).abs() < 0.1);
+    assert!(
+        (ruler.top() - app.midi_editor.panel_bounds.top()).abs() < 0.1,
+        "The overview ruler must align with the Editor options header"
+    );
     assert!((ruler.height() - RULER_HEIGHT).abs() < 0.1);
     assert!((ruler.left() - app.midi_editor.grid_bounds.left()).abs() < 0.1);
     let seek = Pos2::new(ruler.left() + 180.0, ruler.bottom() - 6.0);
@@ -5906,6 +5908,10 @@ fn group_note_resize_handles_stretch_and_repeats_per_clip_atomically() {
         let ctx = context();
         app.open_clip_editor(first, track, &ctx);
         frame(&mut app, &ctx, vec![]);
+        // Keep both clips visible instead of relying on a note at the viewport edge.
+        app.midi_editor.content.fitted = false;
+        app.midi_editor.content.zoom *= 0.5;
+        frame(&mut app, &ctx, vec![]);
         let a = app.midi_editor.track_note_bounds[&(first, note)][0];
         let b = app.midi_editor.track_note_bounds[&(second.id, note)][0];
         assert_eq!(app.midi_editor.track_note_bounds[&(first, note)].len(), 2);
@@ -5914,7 +5920,7 @@ fn group_note_resize_handles_stretch_and_repeats_per_clip_atomically() {
         let before = format!("{:?}", app.session.project);
         let assets = app.session.project.assets.len();
         let start = note_edge(b, left);
-        let end = start + Vec2::new(30.0, 0.0);
+        let end = start + Vec2::new(15.0, 0.0);
         frame(
             &mut app,
             &ctx,

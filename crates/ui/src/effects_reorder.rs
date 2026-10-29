@@ -55,7 +55,7 @@ impl DawUi {
     pub(super) fn cancel_unavailable_effect_drag(&mut self, ui: &egui::Ui) {
         if self.effects_drag.as_ref().is_some_and(|drag| {
             !self.view_mode.has_effects()
-                || (!self.timeline_effects_visible
+                || (!self.effects_lane_visible()
                     && !matches!(drag.target, EffectTarget::Layer { .. })
                     && !(self.view_mode == ViewMode::Instrument && drag.is_library()))
                 || self.view_mode != drag.view

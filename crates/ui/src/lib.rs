@@ -736,6 +736,8 @@ pub struct DawUi {
     instrument_catalog_bounds: instrument_catalog::Bounds,
     master_selected: bool,
     timeline_catalog_visible: bool,
+    editor_effects: effects_panel::Visibility,
+    mixer_effects: effects_panel::Visibility,
     clip_settings_visible: bool,
     clip_settings_draft: Option<clip_settings::FieldEdit>,
     clip_transpose_drag: Option<clip_settings::TransposeDrag>,
@@ -846,6 +848,8 @@ impl Default for DawUi {
             #[cfg(test)]
             instrument_catalog_bounds: Default::default(),
             timeline_catalog_visible: true,
+            editor_effects: Default::default(),
+            mixer_effects: Default::default(),
             clip_settings_visible: false,
             clip_settings_draft: None,
             clip_transpose_drag: None,
@@ -2097,10 +2101,8 @@ impl DawUi {
                     theme::palette(ui.ctx()).panel
                 },
             ))
-            .show_separator_line(!matches!(
-                self.view_mode,
-                ViewMode::Timeline | ViewMode::Mixer | ViewMode::Instrument
-            ))
+            // The shared workspace owns this edge in every view.
+            .show_separator_line(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.add_enabled_ui(
@@ -2114,70 +2116,67 @@ impl DawUi {
                     |ui| self.toolbar(ui),
                 );
             });
-        egui::Panel::bottom("status")
-            .show_separator_line(self.view_mode != mixer::ViewMode::Mixer)
-            .show(ui, |ui| {
-                rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                    if self.job.is_some() {
-                        ui.spinner();
-                        ui.label(&self.busy);
-                        if self.settings_cancel.is_some() && ui.button("Cancel").clicked() {
-                            if let Some(cancel) = &self.settings_cancel {
-                                cancel.store(true, Ordering::Relaxed);
-                            }
-                            // Keep separation and model-check receivers until acknowledgement.
-                            // Both publication paths reject cancelled results.
-                            if self.separation_status.is_none() && !self.separation_models.running()
-                            {
-                                self.settings_cancel = None;
-                                // Other preparation jobs reject late publication.
-                                self.job = None;
-                                self.busy.clear();
-                            }
+        egui::Panel::bottom("status").show(ui, |ui| {
+            rows::centered(ui, toolbars::CONTROL_HEIGHT, |ui| {
+                if self.job.is_some() {
+                    ui.spinner();
+                    ui.label(&self.busy);
+                    if self.settings_cancel.is_some() && ui.button("Cancel").clicked() {
+                        if let Some(cancel) = &self.settings_cancel {
+                            cancel.store(true, Ordering::Relaxed);
                         }
-                    } else if self.regular_save.is_some() {
-                        ui.spinner();
-                        ui.label("Saving project");
+                        // Keep separation and model-check receivers until acknowledgement.
+                        // Both publication paths reject cancelled results.
+                        if self.separation_status.is_none() && !self.separation_models.running() {
+                            self.settings_cancel = None;
+                            // Other preparation jobs reject late publication.
+                            self.job = None;
+                            self.busy.clear();
+                        }
+                    }
+                } else if self.regular_save.is_some() {
+                    ui.spinner();
+                    ui.label("Saving project");
+                } else {
+                    ui.label(if self.dirty {
+                        "Unsaved changes"
                     } else {
-                        ui.label(if self.dirty {
-                            "Unsaved changes"
-                        } else {
-                            "Ready"
-                        });
-                    }
-                    ui.separator();
-                    ui.label(format!(
-                        "{} kHz · {} samples · WAV",
-                        self.session.project.sample_rate_hz as f32 / 1000.0,
-                        self.session.project.buffer_size_frames
-                    ))
-                    .on_hover_ui(|ui| self.memory_tooltip(ui));
-                    if let Some(output) = &self.output {
-                        ui.separator();
-                        ui.label(&output.description);
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_enabled_ui(
-                            self.job.is_none()
-                                && self.export_dialog.is_none()
-                                && self.overwrite.is_none()
-                                && self.export_status.is_none()
-                                && self.separation_status.is_none()
-                                && self.project_name_dialog.is_none()
-                                && self.project_settings.is_none()
-                                && !self.settings_open,
-                            |ui| self.selection_control(ui),
-                        );
-                        ui.label("Selection");
+                        "Ready"
                     });
+                }
+                ui.separator();
+                ui.label(format!(
+                    "{} kHz · {} samples · WAV",
+                    self.session.project.sample_rate_hz as f32 / 1000.0,
+                    self.session.project.buffer_size_frames
+                ))
+                .on_hover_ui(|ui| self.memory_tooltip(ui));
+                if let Some(output) = &self.output {
+                    ui.separator();
+                    ui.label(&output.description);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_enabled_ui(
+                        self.job.is_none()
+                            && self.export_dialog.is_none()
+                            && self.overwrite.is_none()
+                            && self.export_status.is_none()
+                            && self.separation_status.is_none()
+                            && self.project_name_dialog.is_none()
+                            && self.project_settings.is_none()
+                            && !self.settings_open,
+                        |ui| self.selection_control(ui),
+                    );
+                    ui.label("Selection");
                 });
-                for notice in &self.notices {
-                    ui.colored_label(theme::palette(ui.ctx()).warning, notice);
-                }
-                if !self.notices.is_empty() && ui.small_button("Dismiss notices").clicked() {
-                    self.notices.clear();
-                }
             });
+            for notice in &self.notices {
+                ui.colored_label(theme::palette(ui.ctx()).warning, notice);
+            }
+            if !self.notices.is_empty() && ui.small_button("Dismiss notices").clicked() {
+                self.notices.clear();
+            }
+        });
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::palette(ui.ctx()).background))
             .show(ui, |ui| {
@@ -2190,12 +2189,7 @@ impl DawUi {
                         && self.project_name_dialog.is_none()
                         && self.project_settings.is_none()
                         && !self.settings_open,
-                    |ui| match self.view_mode {
-                        mixer::ViewMode::Timeline => self.workspace(ui),
-                        mixer::ViewMode::Mixer => self.mixer(ui),
-                        mixer::ViewMode::Instrument => self.workspace(ui),
-                        mixer::ViewMode::Edit => self.edit_view(ui),
-                    },
+                    |ui| self.workspace(ui),
                 );
             });
         self.sync_live_note_pitches(&ctx, self.is_playing());
@@ -2217,7 +2211,7 @@ impl DawUi {
         self.dialogs(&ctx);
         self.effects_catalog.clear_if_unfocused(
             &ctx,
-            (self.view_mode.has_effects() && self.timeline_catalog_visible)
+            (self.view_mode.has_effects() && self.effects_catalog_visible())
                 && ui.is_enabled()
                 && self.edit_environment_available(),
             self.effects_drag
@@ -2226,10 +2220,7 @@ impl DawUi {
         );
         self.chords.catalog.clear_if_unfocused(
             &ctx,
-            self.view_mode == ViewMode::Timeline
-                && self.chords.visible
-                && ui.is_enabled()
-                && self.edit_environment_available(),
+            self.chords_visible() && ui.is_enabled() && self.edit_environment_available(),
             self.chords.drag.is_some(),
         );
         self.instrument_catalog.clear_if_unfocused(
@@ -2245,7 +2236,7 @@ impl DawUi {
             && self.effects_lane_focus.lost(
                 &ctx,
                 self.view_mode.has_effects()
-                    && (self.timeline_effects_visible || self.view_mode == ViewMode::Instrument)
+                    && (self.effects_lane_visible() || self.view_mode == ViewMode::Instrument)
                     && ui.is_enabled()
                     && self.edit_environment_available(),
                 self.effects_drag
@@ -2899,31 +2890,34 @@ impl DawUi {
             ui,
             rail,
             timeline_toolbar::Catalogs {
-                effects: self.timeline_catalog_visible,
+                effects: self.effects_catalog_visible(),
                 components: (self.view_mode == ViewMode::Instrument)
                     .then_some(self.instrument_catalog_visible),
                 clip_settings: (self.view_mode == ViewMode::Timeline)
                     .then_some(self.clip_settings_visible),
-                chords: (self.view_mode == ViewMode::Timeline).then_some(self.chords.visible),
+                chords: self
+                    .view_mode
+                    .has_clip_lanes()
+                    .then_some(self.chords_visible()),
             },
-            self.timeline_effects_visible,
+            self.effects_lane_visible(),
             enabled,
         );
         if toggles.chords.as_ref().is_some_and(|r| r.clicked()) {
-            self.chords.visible = !self.chords.visible;
+            self.set_chords_visible(!self.chords_visible());
             self.chords.catalog.clear();
-            if self.chords.visible {
-                self.timeline_catalog_visible = false;
+            if self.chords_visible() {
+                self.set_effects_catalog_visible(false);
                 self.clip_settings_visible = false;
                 self.effects_catalog.clear();
             }
             ui.ctx().request_repaint();
         }
         if toggles.library.clicked() {
-            self.timeline_catalog_visible = !self.timeline_catalog_visible;
+            self.set_effects_catalog_visible(!self.effects_catalog_visible());
             self.effects_catalog.clear();
-            if self.timeline_catalog_visible {
-                self.chords.visible = false;
+            if self.effects_catalog_visible() {
+                self.set_chords_visible(false);
                 self.chords.catalog.clear();
                 self.instrument_catalog_visible = false;
                 self.instrument_catalog.clear();
@@ -2939,7 +2933,7 @@ impl DawUi {
             self.instrument_catalog_visible = !self.instrument_catalog_visible;
             self.instrument_catalog.clear();
             if self.instrument_catalog_visible {
-                self.timeline_catalog_visible = false;
+                self.set_effects_catalog_visible(false);
                 self.effects_catalog.clear();
                 self.clip_settings_visible = false;
             }
@@ -2952,9 +2946,9 @@ impl DawUi {
         {
             self.clip_settings_visible = !self.clip_settings_visible;
             if self.clip_settings_visible {
-                self.chords.visible = false;
+                self.set_chords_visible(false);
                 self.chords.catalog.clear();
-                self.timeline_catalog_visible = false;
+                self.set_effects_catalog_visible(false);
                 self.instrument_catalog_visible = false;
                 self.effects_catalog.clear();
                 self.instrument_catalog.clear();
@@ -2962,7 +2956,7 @@ impl DawUi {
             ui.ctx().request_repaint();
         }
         if toggles.lane.clicked() {
-            self.timeline_effects_visible = !self.timeline_effects_visible;
+            self.set_effects_lane_visible(!self.effects_lane_visible());
             self.selected_effects.clear();
             self.effects_drag = None;
             ui.ctx().request_repaint();
@@ -2991,6 +2985,12 @@ impl DawUi {
         );
         workspace.set_clip_rect(content.intersect(ui.clip_rect()));
         self.effects_workspace(&mut workspace);
+        // Paint last so toolbar/catalog fills cannot cover the shared top edge.
+        ui.painter().hline(
+            bounds.x_range(),
+            bounds.top() + 0.5,
+            Stroke::new(1.0, theme::palette(ui.ctx()).border),
+        );
     }
 
     fn timeline_workspace(

@@ -239,7 +239,7 @@ fn mixer_headers_match_inherited_clip_headers_in_both_themes_and_selection_state
                 assert!(
                     shapes.iter().any(|shape| matches!(&shape.shape,
                         egui::Shape::Rect(rect) if rect.fill == theme::palette(&ctx).panel
-                            && rect.rect.width() == 1280.0 && rect.rect.bottom() == strip.top()
+                            && rect.rect.width() == 1280.0 && rect.rect.bottom() + 1.0 == strip.top()
                     )),
                     "Mixer must meet the toolbar without a gap"
                 );
@@ -583,7 +583,8 @@ fn strips_scroll_in_project_order_with_master_pinned_during_resize() {
                 _ => None,
             })
             .expect("Status bar background");
-        assert_eq!(app.master_bounds.bottom(), status.top());
+        // The shared status separator owns the final point.
+        assert_eq!(app.master_bounds.bottom() + 1.0, status.top());
         assert_eq!(
             app.mixer_bounds[&tracks[0]].bottom(),
             app.master_bounds.bottom()
@@ -1370,7 +1371,7 @@ fn instrument_empty_states_keep_the_layers_panel_and_disable_add_until_midi_sele
 }
 
 #[test]
-fn available_views_and_empty_states_keep_effects_in_timeline_and_instrument() {
+fn available_views_and_empty_states_support_the_shared_effects_workspace() {
     assert_eq!(
         ViewMode::ALL.map(ViewMode::label),
         ["Timeline", "Instrument", "Editor", "Mixer"]
@@ -1380,10 +1381,15 @@ fn available_views_and_empty_states_keep_effects_in_timeline_and_instrument() {
     for mode in ViewMode::ALL {
         app.set_view_mode(mode, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        if mode.has_effects() {
-            assert!(app.effects_bounds.library.is_positive());
-            assert!(app.effects_bounds.strip.is_positive());
-        }
+        assert_eq!(
+            app.effects_bounds.library.is_positive(),
+            app.effects_catalog_visible()
+        );
+        assert_eq!(
+            app.effects_bounds.strip.is_positive(),
+            app.effects_lane_visible()
+        );
+        assert!(app.effects_bounds.toolbar.is_positive());
         if mode == ViewMode::Instrument {
             assert!(
                 shapes

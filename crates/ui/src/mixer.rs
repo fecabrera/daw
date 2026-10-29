@@ -5,6 +5,9 @@ const STRIP_WIDTH: f32 = 120.0;
 const STRIP_PADDING: Vec2 = Vec2::new(4.0, 7.0);
 const CONTROL_SPACING: f32 = 6.0;
 const METER_COLUMN_SPACING: f32 = 1.0;
+const FIXED_CONTROL_HEIGHT: f32 = 154.0;
+const MIN_FADER_HEIGHT: f32 = 24.0;
+pub(super) const MIN_HEIGHT: f32 = 2.0 * STRIP_PADDING.y + FIXED_CONTROL_HEIGHT + MIN_FADER_HEIGHT;
 
 // Leave the bottom edge to the single mixer/status separator.
 fn strip_edges(ui: &egui::Ui, rect: Rect, stroke: Stroke) {
@@ -45,7 +48,10 @@ impl ViewMode {
     }
 
     pub(super) fn has_effects(self) -> bool {
-        matches!(self, Self::Timeline | Self::Instrument)
+        matches!(
+            self,
+            Self::Timeline | Self::Instrument | Self::Edit | Self::Mixer
+        )
     }
 
     pub(super) fn has_track_overview(self) -> bool {
@@ -345,14 +351,7 @@ impl DawUi {
                 Stroke::new(1.0, theme::palette(ui.ctx()).border),
             );
         }
-        // Shared horizontal borders replace stacked toolbar/strip/status borders.
-        for y in [bounds.top() + 0.5, bounds.bottom() - 0.5] {
-            ui.painter().hline(
-                bounds.x_range(),
-                y,
-                Stroke::new(1.0, theme::palette(ui.ctx()).border),
-            );
-        }
+        // The workspace and status panel own the shared horizontal borders.
         for (id, rect) in outlines {
             if self.track_selected(id) {
                 let outline = theme::selection_outline(ui.ctx());
@@ -433,7 +432,7 @@ impl DawUi {
         }
         content.spacing_mut().item_spacing.x = CONTROL_SPACING;
         // Align all faders, meters, and bottom controls, including Master.
-        let fader_height = (inner.height() - 154.0).clamp(24.0, 220.0);
+        let fader_height = (inner.height() - FIXED_CONTROL_HEIGHT).clamp(MIN_FADER_HEIGHT, 220.0);
         let controls_height =
             knobs::SIZE + 3.0 * toolbars::CONTROL_HEIGHT + fader_height + 4.0 * CONTROL_SPACING;
         content.add_space((inner.bottom() - content.cursor().top() - controls_height).max(0.0));
