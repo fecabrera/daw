@@ -1,6 +1,6 @@
 # Plugin development tools
 
-For current product builds and packaging, see [README: Plugins](../../README.md#plugins). This reference retains Drive-specific contract, validator, feasibility, and native-editor commands. The validator results below are recorded phase baselines, not new validation runs. These tools do not install plugins. See the [plugin architecture](unit-plugin-builds.md) for requirements and the [validation history](../validation/README.md) for executed checks.
+For current product builds and packaging, see [plugin development guide](../../docs/development/plugins.md). This reference retains Drive-specific contract, validator, feasibility, and native-editor commands. The validator results below are recorded phase baselines, not new validation runs. These tools do not install plugins. See the [plugin architecture](unit-plugin-builds.md) for requirements and the [validation history](../validation/README.md) for executed checks.
 
 ## Shared Drive contract
 

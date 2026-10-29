@@ -2,7 +2,7 @@
 
 Saturator and Bitcrusher are available as separate CLAP and VST3 development previews. Each uses the same processor and controls as its built-in DAW effect. They have separate plugin identities and presets.
 
-Download the product and platform artifact from the [plugin build workflow](../../.github/workflows/plugins.yml). Extract the inner ZIP, keep the included licenses, copy the plugin file or bundle to a folder your host scans, and rescan. Build and package instructions are in the [main README](../../README.md#plugins). Close the host before replacing or removing an installed copy.
+Download the product and platform artifact from the [plugin build workflow](../../.github/workflows/plugins.yml). Extract the inner ZIP, keep the included licenses, copy the plugin file or bundle to a folder your host scans, and rescan. Build and package instructions are in the [development guide](../development/plugins.md). Close the host before replacing or removing an installed copy.
 
 | Product | Left strip | Output strip |
 | --- | --- | --- |

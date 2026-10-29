@@ -22,7 +22,8 @@ Read the documents relevant to the task:
 
 | File | Purpose |
 | --- | --- |
-| [README.md](README.md) | Project overview, current features, limitations, planned work, and platform setup/build instructions. |
+| [README.md](README.md) | Project overview, current features, limitations, planned work, and documentation links. |
+| [docs/development/README.md](docs/development/README.md) | Platform prerequisites, build/run instructions, packaging, plugins, and CI downloads. |
 | [docs/README.md](docs/README.md) | User guide index. Read relevant guides for user-visible changes. |
 | [specs/README.md](specs/README.md) | Implementation specification index and topic folders. |
 | [specs/architecture/mvp-scope.md](specs/architecture/mvp-scope.md) | Agreed scope and architecture baseline. |
@@ -90,7 +91,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `tools` | Demo generation, CLI smoke checks, CI summaries, and macOS/Windows/Linux packaging. |
 | `.github/workflows` | Native platform tests and release-package artifact uploads. |
 | `examples` | Tracked generated audio and demo project fixtures. |
-| `docs` | User guides: tasks, controls, observable behavior, and practical limits. |
+| `docs` | User guides: tasks, controls, observable behavior, and practical limits; `docs/development` contains developer setup/build/package guides. |
 | `specs` | Implementation requirements, architecture, data formats, acceptance criteria, and validation history. |
 | `work`, `target` | Ignored scratch files, dependency cache, logs, and build outputs. |
 
@@ -226,7 +227,7 @@ The audio callback must remain nonblocking and must not allocate or perform file
 
 ## Build and validation workflow
 
-Follow the platform prerequisites, build steps, troubleshooting, and packaging instructions in [README.md](README.md#build-and-run). Run the commands below from the repository root with the pinned toolchain.
+Follow the platform prerequisites, build steps, troubleshooting, and packaging instructions in the [development guides](docs/development/README.md). Run the commands below from the repository root with the pinned toolchain.
 
 ### Run and headless commands
 
@@ -269,10 +270,10 @@ cargo test --workspace
 ## Documentation and dependency licenses
 
 - Timestretch has a mandatory independent implementation rule: under no circumstances take code directly from Rubber Band. Do not copy, translate, port, adapt, or mechanically rewrite its implementation code, tests, comments, tables, or implementation-specific pseudocode, including through AI tools or intermediary projects. Do not inspect its implementation source to guide the new engine. Use public papers, mathematical descriptions, and documented behavior, and record provenance and prior exposure honestly. Independently written adapters may call the separately licensed Rubber Band library through its public API for comparison and the existing backend; keep it outside the BSD engine's dependency graph. No licensing offer, deadline, or acceptance result waives this rule. Follow [the full rule](specs/audio/timestretch.md#mandatory-independent-implementation-rule) and [independent implementation gate](specs/acceptance/timestretch.md#independent-implementation-gate).
-- Keep README focused on the project: its purpose, current features, limitations, planned work, platform setup/build instructions, and documentation/license links. Keep Windows, macOS, and Linux prerequisites, build steps, packaging, and build troubleshooting in README. Put contribution rules, architecture guidance, and validation workflows in AGENTS.md. Put user instructions in `docs/` and implementation requirements and acceptance criteria in `specs/`; update the appropriate files when behavior or architecture changes.
+- Keep README focused on the project: its purpose, current features, limitations, planned work, and documentation/license links. Keep Windows, macOS, and Linux prerequisites, build steps, packaging, plugin builds, CI downloads, and build troubleshooting in `docs/development/`, with a short link from README. Put contribution rules, architecture guidance, and validation workflows in AGENTS.md. Put user instructions in `docs/` and implementation requirements and acceptance criteria in `specs/`; update the appropriate files when behavior or architecture changes.
 - Keep README's **Current features** section at a high level. Summarize user-facing capabilities and list all available instrument components and effects. Link to detailed documentation instead of describing individual controls, gestures, shortcuts, parameter ranges, UI dimensions/colors, or implementation rules.
 - Keep README's **Status and planned work** section at a high level. Summarize the current state, important limitations, and planned capabilities. Put task-oriented interaction guidance in `docs/`. Put exact UI layout rules and internal architecture in `specs/`.
-- Treat `docs/` as user-facing documentation only. Explain how to complete tasks, use controls, interpret results, and handle practical limits or failures. Include defaults, units, and ranges when they help a user operate the application. Describe current behavior in the present tense and clearly label planned features.
+- Treat `docs/` outside `docs/development/` as user-facing documentation only. Keep practical build, setup, packaging, and CI guides for developers in `docs/development/`; contributor rules stay in this file and implementation contracts stay in `specs/`. Explain how to complete tasks, use controls, interpret results, and handle practical limits or failures. Include defaults, units, and ranges when they help a user operate the application. Describe current behavior in the present tense and clearly label planned features.
 - Put implementation material exclusively in `specs/`: crate/module ownership, APIs and symbols, algorithms, schemas and migrations, stable IDs, callback/threading rules, exact widget geometry or paint rules, dependency research, implementation plans, acceptance matrices, commands/results from development checks, and validation history. Keep contributor instructions in `AGENTS.md`. A parameter range or audible limitation belongs in a user guide; the code and test contract that enforces it belongs in a specification.
 - For user-visible changes, update the relevant user guide and implementation specification separately. Write each for its audience; do not copy implementation paragraphs into `docs/` or append dated engineering change logs there. For internal-only changes, update only the relevant specification and validation record. User guides do not need changes merely because an internal API changed.
 - Organize both trees by topic. Put effect-unit guides/specifications in `docs/effects/` and `specs/effects/`, view guides/contracts in `docs/views/` and `specs/views/`, and instrument components in each tree’s `instruments/` folder. Use `modulation/`, `editing/`, and `audio/` for those topics. Put project/save/export guides in `docs/projects/`; keep global architecture in `specs/architecture/`, acceptance plans in `specs/acceptance/`, and executed-check history in `specs/validation/`. Keep topic documents out of the tree roots; reserve roots for indexes and high-level overviews. Reuse existing topic folders before creating another category.

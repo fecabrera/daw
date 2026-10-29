@@ -19,7 +19,7 @@ Every built-in effect has a separate CLAP and VST3 development preview. Each use
 | Stereo Spread | `stereo-spread` | Lower/Upper Intensity and Frequency, Order |
 | Chorus | `chorus` | Delay, Depth, Feedback, Voices, Hz/Note rate, Stereo Phase, Width, Level, Dry/Wet |
 
-[Build, package, and download instructions](../../README.md#plugins) apply to all products. The packager accepts one slug, a comma-separated list, or `--units all`. Build both formats for all selected units first. Extract the downloaded ZIP and keep the included licenses beside the plugin. Close your host before replacing or removing it.
+[Build, package, and download instructions](../development/plugins.md) apply to all products. The packager accepts one slug, a comma-separated list, or `--units all`. Build both formats for all selected units first. Extract the downloaded ZIP and keep the included licenses beside the plugin. Close your host before replacing or removing it.
 
 Meters follow each built-in effect. Effects with an output rail use the [shared level meter and held sample peak](output-meter.md). Limiter shows reduction on its left strip and output level on its right strip. Compressor also shows reduction, and OTT shows signed band gain changes. Click a held reading to reset it. Reset does not change audio or saved parameters. Right-click the background to choose Dark, Light, or Mist; Deep Orange is the default accent.
 

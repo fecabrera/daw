@@ -1,6 +1,6 @@
 # User guide
 
-Use these guides to arrange audio, build MIDI instruments, and export a mix. For installation and platform setup, see the main [README](../README.md#build-and-run).
+Use these guides to arrange audio, build MIDI instruments, and export a mix. For builds, packaging, and platform setup, see the [development guides](development/README.md).
 
 Dropdown and context menus use padded rows and rounded highlights. Unit selectors, including modulation sources, layer submenus and destinations, use smaller text. Their hover background matches unselected view buttons. Selected view and toolbar buttons keep their active background when hovered or pressed. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs use the same row spacing and inset selection highlights.
 

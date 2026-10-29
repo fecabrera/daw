@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Development guide relocation — 2026-10-28
+
+Moved README’s Build and run section to `docs/development/`, with an index and separate Windows, macOS, Linux, plugin, and GitHub Actions guides. The root README retains a short development link. Updated incoming setup/plugin links and repository documentation rules for the developer-guide directory. Existing commands and platform/distribution limits are retained.
+
+All 299 local links and anchors in changed documentation pass. Moved section content and fenced command blocks match the original after heading/link relocation and the explicit repository-root context added to standalone guides. Commands, package outputs and CI claims were checked against the existing manifests, packaging scripts and workflows. `git diff --check` passes. No code or dependency inputs change; builds, tests, native platform/device checks and external-site verification are not repeated for this documentation move.
+
 ## Timeline/Editor track row toggle — 2026-10-28
 
 Timeline and Editor share a playback-toolbar button using the supplied expand/collapse SVG masks. It switches between default 42-point one-row tracks and 68-point two-row tracks. One-row headers show icon, name/dropdown, Mute, Solo, Pan, Gain, then meters. `track_rows::HeaderRows` composes the shared controls. Lane/overview heights, offscreen placeholders, minimum view bounds and new-track drop previews follow the same UI-only flag. Master remains one row; Instrument and Mixer keep their layouts.

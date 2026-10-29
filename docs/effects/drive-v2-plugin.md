@@ -4,7 +4,7 @@ Drive v2 has separate CLAP and VST3 development plugins. Both use the built-in [
 
 ## Build and package
 
-Use the native platform prerequisites in the [README](../../README.md). On macOS Apple Silicon:
+Use the native platform prerequisites in the [development guides](../development/README.md). On macOS Apple Silicon:
 
 ```sh
 cargo build --release --locked --target aarch64-apple-darwin \
