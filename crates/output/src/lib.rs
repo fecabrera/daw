@@ -21,6 +21,7 @@ use std::sync::{
 
 type ModulationMeter = Arc<[AtomicU32; daw_engine::MODULATION_SNAPSHOT_SIZE]>;
 
+mod layer_meters;
 mod meters;
 mod performance;
 mod preparation;
@@ -93,6 +94,7 @@ struct PreparedRenderer {
     ready_at: Option<std::time::Instant>,
     requested_at: Option<std::time::Instant>,
     meters: Vec<Arc<StereoMeter>>,
+    layer_meters: layer_meters::Layers,
     modulation: Vec<(ModulationTarget, ModulationMeter)>,
 }
 impl PreparedRenderer {
@@ -121,6 +123,7 @@ impl PreparedRenderer {
             ready_at: None,
             requested_at: None,
             meters: handles,
+            layer_meters: Default::default(),
             modulation: Vec::new(),
         })
     }
@@ -131,6 +134,11 @@ impl PreparedRenderer {
             .collect();
     }
     fn publish_track_peaks(&self) {
+        for (key, peaks) in self.renderer.layer_peaks() {
+            if let Some(meter) = self.layer_meters.get(&key) {
+                meter.publish_peaks(peaks);
+            }
+        }
         for (key, meter) in &self.modulation {
             let values = self
                 .renderer
@@ -437,6 +445,7 @@ pub struct AudioOutput {
     pub status: Arc<Status>,
     pub description: String,
     track_meters: HashMap<Id, Arc<StereoMeter>>,
+    layer_meters: layer_meters::Layers,
     effect_meters: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
     output_meters: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
     band_meters: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
@@ -532,6 +541,7 @@ impl AudioOutput {
         };
         let status = preparation.status.clone();
         let meters = track_meters(&plan, &HashMap::new());
+        let layers = layer_meters::prepare(&plan, &Default::default());
         let reductions = effect_meters(&plan, &HashMap::new());
         let outputs = output_meters(&plan, &HashMap::new());
         let changes = band_meters(&plan, &HashMap::new());
@@ -553,6 +563,7 @@ impl AudioOutput {
             bind_effect_meters(&mut state.renderer, &reductions);
             bind_band_meters(&mut state.renderer, &changes);
             bind_output_meters(&mut state.renderer, &outputs);
+            state.renderer.layer_meters = layers.clone();
             state.renderer.bind_modulation(&modulation);
             state.renderer.bind_live_midi_pitches(&live_pitches);
             macro_rules! stream {
@@ -613,6 +624,7 @@ impl AudioOutput {
             status,
             description,
             track_meters: meters,
+            layer_meters: layers,
             effect_meters: reductions,
             band_meters: changes,
             output_meters: outputs,
@@ -629,6 +641,7 @@ impl AudioOutput {
     fn bindings(&self) -> preparation::Bindings {
         preparation::Bindings {
             tracks: self.track_meters.clone(),
+            layers: self.layer_meters.clone(),
             effects: self.effect_meters.clone(),
             bands: self.band_meters.clone(),
             outputs: self.output_meters.clone(),
@@ -706,6 +719,10 @@ impl AudioOutput {
     }
     pub fn track_meter(&self, id: Id) -> Option<&StereoMeter> {
         self.track_meters.get(&id).map(AsRef::as_ref)
+    }
+    /// Post-fader instrument bus monitor, scoped by track and layer/Output identity.
+    pub fn layer_meter(&self, track: Id, layer: Id) -> Option<&StereoMeter> {
+        self.layer_meters.get(&(track, layer)).map(AsRef::as_ref)
     }
     /// Display-only block snapshots. No synthetic animation when playback is stopped.
     pub fn modulation_values(&self, key: ModulationTarget) -> Option<[f32; 5]> {
@@ -876,6 +893,7 @@ impl AudioOutput {
             match self.commands.push(Command::Plan(ready.renderer)) {
                 Ok(()) => {
                     self.track_meters = ready.bindings.tracks;
+                    self.layer_meters = ready.bindings.layers;
                     self.effect_meters = ready.bindings.effects;
                     self.band_meters = ready.bindings.bands;
                     self.output_meters = ready.bindings.outputs;

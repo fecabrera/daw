@@ -5331,6 +5331,7 @@ mod tests {
     mod instrument_catalog;
     mod instrument_lane_toolbar;
     mod instrument_main;
+    mod layer_meters;
     mod lfo;
     mod macros;
     mod menu_shortcuts;

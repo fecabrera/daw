@@ -32,6 +32,9 @@ struct NotePitch {
 }
 #[derive(Clone)]
 struct LayerVoice {
+    // Display-only contribution for the legacy voice-mix path, including its post-gain transition.
+    mixed_output: [f32; 2],
+    mixed_transition_from: [f32; 2],
     previous: [f32; 2],
     transition_from: [f32; 2],
     output: [f32; 2],
@@ -110,6 +113,7 @@ impl Voice {
         self.transition_from = self.previous;
         for layer in &mut self.layers {
             layer.transition_from = layer.previous;
+            layer.mixed_transition_from = layer.mixed_output;
         }
         self.transition = self.fade_frames;
         self.current = Some(id);
@@ -179,6 +183,7 @@ impl Voice {
         for layer in &mut self.layers {
             layer.previous = [0.0; 2];
             layer.output = [0.0; 2];
+            layer.mixed_output = [0.0; 2];
             layer.gate.reset();
             if let Some(s) = &mut layer.sampler {
                 s.reset();
@@ -250,6 +255,7 @@ impl Voice {
             self.previous = [0.0; 2];
             for layer in &mut self.layers {
                 layer.output = [0.0; 2];
+                layer.mixed_output = [0.0; 2];
                 layer.previous = [0.0; 2];
             }
             return [0.0; 2];
@@ -280,6 +286,15 @@ impl Voice {
                     None
                 },
             );
+            layer.mixed_output = std::array::from_fn(|ch| {
+                let sample = value[ch] * layer.gain[ch] * self.velocity;
+                if self.transition > 0 {
+                    let progress = 1.0 - self.transition as f32 / self.fade_frames as f32;
+                    layer.mixed_transition_from[ch] * (1.0 - progress) + sample * progress
+                } else {
+                    sample
+                }
+            });
             layer.output = value.map(|v| v * self.velocity);
             if self.transition > 0 {
                 let progress = 1.0 - self.transition as f32 / self.fade_frames as f32;
@@ -824,6 +839,8 @@ impl MidiTrackRuntime {
                         .iter()
                         .zip(&banks)
                         .map(|(layer, bank)| LayerVoice {
+                            mixed_output: [0.0; 2],
+                            mixed_transition_from: [0.0; 2],
                             previous: [0.0; 2],
                             transition_from: [0.0; 2],
                             output: [0.0; 2],
@@ -1254,6 +1271,9 @@ impl MidiTrackRuntime {
     fn voice_sample(&mut self, frame: u64, loop_region: Option<(u64, u64)>, fade: f32) -> [f32; 2] {
         let mut sum = [0.0; 2];
         self.layer_samples.fill([0.0; 2]);
+        for bus in &mut self.layer_effects {
+            bus.meter_sample = [0.0; 2];
+        }
         self.shared
             .tick(self.lfo_notes.context(frame, self.tempo_bpm));
         let shared_release = self
@@ -1264,9 +1284,15 @@ impl MidiTrackRuntime {
             .and_then(|v| v.release_age);
         for voice in &mut self.voices {
             let sample = voice.sample(&self.shared.values, &self.shared.index, shared_release);
-            for (sum, layer) in self.layer_samples.iter_mut().zip(&voice.layers) {
-                for (sum, value) in sum.iter_mut().zip(layer.output) {
-                    *sum += value;
+            for ((sum, bus), layer) in self
+                .layer_samples
+                .iter_mut()
+                .zip(&mut self.layer_effects)
+                .zip(&voice.layers)
+            {
+                for (ch, sum) in sum.iter_mut().enumerate() {
+                    *sum += layer.output[ch];
+                    bus.meter_sample[ch] += layer.mixed_output[ch];
                 }
             }
             for ch in 0..2 {
@@ -1286,12 +1312,16 @@ impl MidiTrackRuntime {
                 );
                 let (sample, _) = bus.delay.tick((sample, mono));
                 let sample = bus.mix(sample);
+                bus.meter_sample = sample;
                 for ch in 0..2 {
                     sum[ch] += sample[ch];
                 }
             }
         } else {
             sum = sum.map(|v| v * fade);
+            for bus in self.layer_effects.iter_mut().take(self.layer_samples.len()) {
+                bus.meter_sample = bus.meter_sample.map(|v| v * fade);
+            }
         }
         let main = self.layer_effects.last_mut().expect("Main bus is prepared");
         main.chain
@@ -1691,8 +1721,29 @@ impl MidiTrackRuntime {
             self.main_remaining -= 1;
         }
         let sample = std::array::from_fn(|ch| sample[ch] * self.main_gain[ch] * clip_gain);
+        // Read-only pre-track monitoring: regular buses include clip gain; Output
+        // includes its own gain/pan and clip gain. No monitor changes the audio sum.
+        let regular = self.layer_samples.len();
+        for (index, bus) in self.layer_effects.iter_mut().enumerate() {
+            let reading = if index == regular {
+                sample
+            } else {
+                bus.meter_sample.map(|v| v * clip_gain)
+            };
+            for (peak, value) in bus.peak.iter_mut().zip(reading) {
+                *peak = peak.max(value.abs());
+            }
+        }
         self.held_sample = sample;
         sample
+    }
+    pub fn reset_layer_peaks(&mut self) {
+        for bus in &mut self.layer_effects {
+            bus.peak = [0.0; 2];
+        }
+    }
+    pub fn layer_peaks(&self) -> impl Iterator<Item = (Id, [f32; 2])> + '_ {
+        self.layer_effects.iter().map(|bus| (bus.id, bus.peak))
     }
 }
 

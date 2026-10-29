@@ -73,6 +73,82 @@ fn plan(waveform: Waveform, rate: u32) -> RenderPlan {
         stretched_audio: HashMap::new(),
     }
 }
+
+#[test]
+fn layer_meters_follow_stereo_bus_mix_and_output_before_track_controls_without_allocations() {
+    for effects in [false, true] {
+        for mode in ["normal", "muted", "solo", "clip-gain"] {
+            let mut p = plan(Waveform::Sine, 48_000);
+            let track = p.project.tracks[0].id;
+            let instrument = p.project.tracks[0].instrument.as_mut().unwrap();
+            let mut peer = InstrumentLayerSettings::duplicate_group(&[&instrument.layers[0]])
+                .pop()
+                .unwrap();
+            instrument.layers[0].pan = -1.0;
+            instrument.layers[0].gain_db = -6.0;
+            instrument.layers[0].muted = mode == "muted";
+            instrument.layers[0].soloed = mode == "solo";
+            peer.pan = 1.0;
+            peer.gain_db = -9.0;
+            if effects {
+                instrument.layers[0]
+                    .effects
+                    .push(EffectInstance::equalizer());
+            }
+            let ids = [instrument.layers[0].id, peer.id, instrument.main.id];
+            instrument.layers.push(peer);
+            instrument.main.gain_db = -6.0;
+            p.project.tracks[0].pan = -1.0;
+            p.project.tracks[0].gain_db = -12.0;
+            p.project.master.gain_db = -12.0;
+            if mode == "clip-gain" {
+                p.project.tracks[0].clips[0].gain_db = -6.0;
+            }
+            let mut renderer = Renderer::new(p.clone());
+            renderer.play();
+            for _ in 0..512 {
+                renderer.next_sample();
+            }
+            renderer.reset_track_peaks();
+            ALLOCATIONS.with(|c| c.set(0));
+            TRACK_ALLOCATIONS.with(|c| c.set(true));
+            for _ in 0..2048 {
+                let audio = renderer.next_sample();
+                assert_eq!(
+                    audio[1], 0.0,
+                    "track pan removes right output, independently of bus meters"
+                );
+                assert_eq!(renderer.layer_peaks().count(), 3);
+            }
+            TRACK_ALLOCATIONS.with(|c| c.set(false));
+            assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+            let peaks: HashMap<_, _> = renderer.layer_peaks().collect();
+            let left = peaks[&(track, ids[0])];
+            let right = peaks[&(track, ids[1])];
+            let output = peaks[&(track, ids[2])];
+            assert_eq!(left[1], 0.0);
+            assert_eq!(right[0], 0.0);
+            assert_eq!(left[0] == 0.0, mode == "muted");
+            assert_eq!(right[1] == 0.0, mode == "solo");
+            for (actual, expected) in output
+                .into_iter()
+                .zip([left[0], right[1]].map(|v| v * linear_gain(-6.0)))
+            {
+                assert!(
+                    (actual - expected).abs() < 1e-6,
+                    "Output must meter its post-gain layer sum"
+                );
+            }
+            let mut reference = Renderer::new(p);
+            let mut audio = vec![[0.0; 2]; 2560];
+            reference.render_offline(&mut audio);
+            let expected = audio.iter().map(|s| s[0].abs()).fold(0.0_f32, f32::max);
+            assert!((output[0] * linear_gain(-24.0) - expected).abs() < 1e-6);
+            renderer.reset_track_peaks();
+            assert!(renderer.layer_peaks().all(|(_, peak)| peak == [0.0; 2]));
+        }
+    }
+}
 #[test]
 fn oscillator_output_is_finite_nonzero_and_independent_of_block_size_at_all_rates() {
     for rate in SAMPLE_RATES {

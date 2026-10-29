@@ -1019,6 +1019,9 @@ impl Renderer {
     }
     /// Reset once per output buffer, outside the per-sample loop.
     pub fn reset_track_peaks(&mut self) {
+        for runtime in self.midi.iter_mut().flatten() {
+            runtime.reset_layer_peaks();
+        }
         for g in &mut self.gains {
             g.peak = [0.0; 2];
         }
@@ -1026,6 +1029,21 @@ impl Renderer {
     /// Post-fader stereo peaks before master gain, in project track order.
     pub fn track_peaks(&self) -> impl Iterator<Item = [f32; 2]> + '_ {
         self.gains.iter().map(|g| g.peak)
+    }
+    /// Instrument bus peaks before track effects and track gain, keyed by stable owner IDs.
+    pub fn layer_peaks(&self) -> impl Iterator<Item = ((Id, Id), [f32; 2])> + '_ {
+        self.plan
+            .project
+            .tracks
+            .iter()
+            .zip(&self.midi)
+            .flat_map(|(track, runtime)| {
+                runtime.iter().flat_map(move |runtime| {
+                    runtime
+                        .layer_peaks()
+                        .map(move |(layer, peak)| ((track.id, layer), peak))
+                })
+            })
     }
     pub fn next_sample(&mut self) -> [f32; 2] {
         let fade_frames = (self.plan.project.sample_rate_hz / 200).max(1) as f32;

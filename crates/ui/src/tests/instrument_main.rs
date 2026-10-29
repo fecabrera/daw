@@ -101,7 +101,7 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
         assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
         assert_eq!(
             gain.center(),
-            Pos2::new(label.right() - 21.0, label.top() + 47.0)
+            Pos2::new(label.right() - 47.0, label.top() + 47.0)
         );
         let bounds = &app.instrument_ui.main_bounds;
         super::instrument_lane_toolbar::assert_toolbar(

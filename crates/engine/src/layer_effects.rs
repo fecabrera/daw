@@ -3,6 +3,9 @@ use daw_core::{EffectInstance, Id};
 
 #[derive(Clone)]
 pub(super) struct LayerEffects {
+    pub id: Id,
+    pub peak: [f32; 2],
+    pub meter_sample: [f32; 2],
     pub chain: super::effects::EffectChain,
     pub settings: Vec<EffectInstance>,
     pub delay: super::latency::Delay,
@@ -26,6 +29,9 @@ impl LayerEffects {
         max_latency: u64,
     ) -> Self {
         Self {
+            id,
+            peak: [0.0; 2],
+            meter_sample: [0.0; 2],
             chain: super::effects::EffectChain::chain(Some(id), effects, rate, block),
             settings: effects.to_vec(),
             delay: super::latency::Delay::new(
@@ -60,6 +66,8 @@ impl LayerEffects {
         std::array::from_fn(|ch| sample[ch] * self.gain[ch])
     }
     pub fn reset(&mut self) {
+        self.peak = [0.0; 2];
+        self.meter_sample = [0.0; 2];
         self.chain.reset();
         self.delay.reset();
         self.gain = self.target;

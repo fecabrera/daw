@@ -950,11 +950,11 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         assert_eq!(pan.size(), gain.size());
         assert_eq!(
             gain.center(),
-            Pos2::new(bounds.label.right() - 21.0, bounds.label.top() + 47.0)
+            Pos2::new(bounds.label.right() - 47.0, bounds.label.top() + 47.0)
         );
         assert_eq!(
             pan.center(),
-            Pos2::new(bounds.label.right() - 53.0, bounds.label.top() + 47.0)
+            Pos2::new(bounds.label.right() - 79.0, bounds.label.top() + 47.0)
         );
         let point = mute.center();
         app.dirty = false;

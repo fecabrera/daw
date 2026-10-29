@@ -266,7 +266,7 @@ fn header_point(app: &DawUi, track: Id) -> Pos2 {
     }
 }
 
-fn assert_header_meter_insets(
+pub(super) fn assert_header_meter_insets(
     shapes: &[egui::epaint::ClippedShape],
     header: Rect,
     ctx: &egui::Context,

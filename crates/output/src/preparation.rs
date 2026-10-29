@@ -6,6 +6,7 @@ use std::sync::{Condvar, Mutex};
 #[derive(Clone, Default)]
 pub(super) struct Bindings {
     pub tracks: HashMap<Id, Arc<StereoMeter>>,
+    pub layers: layer_meters::Layers,
     pub effects: HashMap<Id, Arc<daw_unit_core::PeakMeter>>,
     pub outputs: HashMap<Id, Arc<daw_unit_core::BandMeter<3>>>,
     pub bands: HashMap<ModulationTarget, Arc<daw_unit_core::BandMeter<3>>>,
@@ -164,6 +165,7 @@ impl Worker {
                             }
                             let bindings = Bindings {
                                 tracks: track_meters(&plan, &previous.tracks),
+                                layers: layer_meters::prepare(&plan, &previous.layers),
                                 effects: effect_meters(&plan, &previous.effects),
                                 outputs: output_meters(&plan, &previous.outputs),
                                 bands: band_meters(&plan, &previous.bands),
@@ -281,6 +283,7 @@ impl Worker {
                     bind_effect_meters(&mut renderer, &bindings.effects);
                     bind_band_meters(&mut renderer, &bindings.bands);
                     bind_output_meters(&mut renderer, &bindings.outputs);
+                    renderer.layer_meters = bindings.layers.clone();
                     renderer.bind_modulation(&bindings.modulation);
                     renderer.bind_live_midi_pitches(&bindings.live_pitches);
                     renderer.ready_at = Some(std::time::Instant::now());

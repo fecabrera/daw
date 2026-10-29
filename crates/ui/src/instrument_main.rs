@@ -111,17 +111,22 @@ impl DawUi {
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
                 header.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
+                let levels = self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)).map_or([(0.0, false); 2], |m| m.levels());
+                let cleared = meters::stereo_panel(&mut header, ROW_HEIGHT - 14.0, levels, |header| {
+                rows::centered(header, toolbars::CONTROL_HEIGHT, |ui| {
                     let icon = icons::header_icon_with_rotation(ui, icons::Lucide::Merge, Sense::hover(), std::f32::consts::FRAC_PI_2).on_hover_text("Instrument output");
                     icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));
                     let name = ui.label(egui::RichText::new(InstrumentBusSettings::DISPLAY_NAME).size(rows::NAME_FONT_SIZE));
                     #[cfg(test)] { bounds.icon = icon.rect; bounds.name = name.rect; }
                     #[cfg(not(test))] let _ = name;
                 });
-                let gain = rows::centered(&mut header, knobs::SIZE, |ui| {
+                let gain = rows::centered(header, knobs::SIZE, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| knobs::header_gain(ui, &mut bus.gain_db)).inner
                 }).inner;
+                #[cfg(test)] { bounds.mix = [gain.rect]; }
                 #[cfg(not(test))] let _ = gain;
+                });
+                meters::reset_on_click(ui, self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)), cleared);
                 response.widget_info(|| {
                     egui::WidgetInfo::selected(
                         egui::WidgetType::Button,
@@ -135,7 +140,6 @@ impl DawUi {
                     bounds.label = label;
                     bounds.collapse = collapse.rect;
                     bounds.toolbar = toolbar;
-                    bounds.mix = [gain.rect];
                 }
 
                 let components = egui::ScrollArea::horizontal()

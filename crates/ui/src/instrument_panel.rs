@@ -378,8 +378,13 @@ impl DawUi {
                                         header_ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                                         let mixing_enabled = !self.instrument_ui.dragging()
                                             && !self.instrument_ui.editing_name();
+                                        let mut controls = (Rect::NOTHING, Rect::NOTHING);
+                                        let mut mixing_bounds = [Rect::NOTHING; 4];
+                                        let meter_bounds = Rect::from_min_size(Pos2::new(header_ui.max_rect().right() - (meters::STEREO_WIDTH - meters::SCALE_WIDTH), header_ui.max_rect().top()), Vec2::new(meters::STEREO_WIDTH - meters::SCALE_WIDTH, ROW_HEIGHT - 14.0));
+                                        let levels = self.output.as_ref().and_then(|o| o.layer_meter(track.id, layer.id)).map_or([(0.0, false); 2], |m| m.levels());
+                                        let cleared = meters::stereo_panel(&mut header_ui, ROW_HEIGHT - 14.0, levels, |header_ui| {
                                         let header = rows::centered(
-                                            &mut header_ui,
+                                            header_ui,
                                             toolbars::CONTROL_HEIGHT,
                                             |ui| {
                                                 let name_width = (ui.available_width()
@@ -422,18 +427,21 @@ impl DawUi {
                                                 )
                                             })
                                             .inner;
-                                        let controls = (header.0, header.1);
-                                        let mixing_bounds = [
+                                        controls = (header.0, header.1);
+                                        mixing_bounds = [
                                             toggles[0].rect,
                                             toggles[1].rect,
                                             mixing.bounds[0],
                                             mixing.bounds[1],
                                         ];
+                                        });
+                                        meters::reset_on_click(ui, self.output.as_ref().and_then(|o| o.layer_meter(track.id, layer.id)), cleared);
                                         // Click-only buttons can pass a drag to the background. Exclude
                                         // controls at the press origin, even when the pointer leaves them.
                                         let control_press = ui.input(|input| {
                                             input.pointer.press_origin().or(input.pointer.interact_pos()).is_some_and(|point| {
                                                 collapse.rect.contains(point)
+                                                    || meter_bounds.contains(point)
                                                     || mixing_bounds
                                                         .iter()
                                                         .any(|rect| rect.contains(point))

@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Instrument layer stereo level meters — 2026-10-29
+
+Regular Instrument layers and Output now use the track stereo header meter, with shared rail geometry, clipping latch, held peak/reset and theme colors. Pan/Gain sit before the rails. Engine snapshots measure regular bus contributions after layer processing/mix and Output after its combined processing/mix, before track controls. The output worker prepares identity-scoped handles and binds them after pre-roll; the callback publishes atomics without allocations, locks or I/O. Monitoring leaves audio and saved project data unchanged.
+
+Focused engine, meter-binding and UI geometry/interaction checks pass. Strict workspace/all-target Clippy, formatting, whitespace, changed Markdown local-link checks and `python3 tools/check_cli.py` pass. `cargo build --offline --locked -p daw-cli` and `sh tools/package_macos.sh debug` succeed. `cargo test --offline --locked --workspace` passes: 1784 tests passed (including all 695 UI tests), 11 opt-in tests ignored, no failures, including documentation tests. Coverage includes layer effects and the legacy voice sum, gain/pan, mute/solo, clip gain, Output sum, pre-track scope, peak reset, handle retention/removal and track scoping, allocation-free processing/readout, all themes/display scales, expanded/compact headers, shared rail insets, silent idle rendering and preventing meter drags from reordering layers. Logs use `work/layer-level-meters-*`. Native device/UI and Windows/Linux execution have not run locally.
+
 ## Instrument lane collapse toolbars — 2026-10-28
 
 Regular Instrument layers and the pinned Output lane each have a right toolbar inside their own row. Every expand/collapse button stays at the top. The shared `lane_toolbar` component owns every effects/Instrument lane rail and button painting, dimensions, hover/focus and release behavior; layer names regain the space of the former header button. Component scroll/selection, inline effect insertion and catalog/installed component drop regions exclude the rails. Saved collapse state, row heights and instrument edits remain shared.
