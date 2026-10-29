@@ -45,17 +45,25 @@ Follow the crate responsibilities in AGENTS.md. Applications depend on shared li
 
 ## Dependencies
 
-Apply this category only when dependency inputs change between the pinned revisions. Otherwise record SKIPPED for both dependency criteria; do not run these audits or let missing evidence affect PASS/FAIL. Skipping is a scope decision, not a security or licensing clearance.
+Apply this category when dependencies or their use, exposure, linkage or delivery change between the pinned revisions. Otherwise record SKIPPED for both dependency criteria; do not run these audits or let missing evidence affect PASS/FAIL. Skipping is a scope decision, not a security or licensing clearance.
+
+### Affected dependency scope
+
+Build a criterion-specific inventory from the pinned diff and resolved graphs. Include added, removed or updated dependencies and affected transitive packages; changed features, target selection, linkage, native/vendor payloads, build behavior, packaging and notices; and unchanged versions whose use or exposure changes in the PR. Cite the change that affects each package, target and criterion. A new dependency edge includes its relevant transitive closure, even when those versions already exist in Cargo.lock.
+
+Read the wider graph only to establish that inventory and interactions. Do not audit unchanged, unaffected dependencies merely because they share a consumer, workspace, lockfile or final binary. A changed notice can require license verification without requiring a new vulnerability audit of that package. Packaging changes include existing dependencies only where their delivery or obligations are affected. Uncertain impact requires investigation or an explicit scoped limit, not automatic expansion to the entire graph.
+
+Apply findings and coverage gates only to this affected set. Exclude unrelated pre-existing findings and missing checks from counts and verdict; record the exclusion and reason in the decision trail. Do not describe exclusions as security or licensing clearance. For an existing report, preserve raw reports and previous artifacts, then reassess affected coverage and dispositions under the new scope without changing pinned revisions.
 
 ### Vulnerabilities
 
-Inventory target `Cargo.toml`/`Cargo.lock`, transitive packages, native/static libraries, build dependencies, Git sources/revisions, platform/feature gates, and packaged code. Compare baseline exposure to the target; label newly introduced, worsened, and pre-existing exposure. Cover the resolved target graph, not only newly edited manifest entries. Do not install/upgrade tools or change dependencies as part of review.
+Use target `Cargo.toml`/`Cargo.lock`, resolved transitive packages, native/static libraries, build dependencies, Git sources/revisions, platform/feature gates and packaged code to identify the affected vulnerability scope. Compare baseline and target exposure for that set; label newly introduced, worsened and pre-existing exposure only where the PR affects it. Do not install/upgrade tools or change dependencies as part of review.
 
 Use available audit tools and current primary advisories (RustSec, upstream advisories, OSV/GHSA records) and record database/source date, package, exact locked version, advisory ID, affected/fixed range, platform/features, and applicability. Validate findings against primary sources rather than relying on memory or a tool exit code. Record stale/offline databases and unresolved graphs as limited coverage. No database hit does not prove absence of vulnerabilities. Missing advisory access is not itself a package vulnerability.
 
 ### Licensing
 
-Read project `LICENSE`, dependency license expressions/text/exceptions, vendored/native code and notices, dependency features/linkage, and `tools/package_*` delivery scripts. Assess compatibility for each actual deliverable (desktop bundles, CLI, independently distributed units/tools). Distinguish declared BSD original code from bundled third-party obligations. Do not infer incompatibility solely from an SPDX label or treat a commercial license as present without evidence. Explain the specific unmet distribution/linkage/source/notice obligation and what evidence would resolve uncertainty. Check new versions and unchanged dependencies whose use/distribution changes.
+Read project `LICENSE` and the license expressions/text/exceptions, vendored/native notices, features/linkage and packaging paths relevant to the affected licensing scope. Assess compatibility for each actual deliverable (desktop bundles, CLI, independently distributed units/tools). Distinguish declared BSD original code from bundled third-party obligations. Do not infer incompatibility solely from an SPDX label or treat a commercial license as present without evidence. Explain the specific unmet distribution/linkage/source/notice obligation and what evidence would resolve uncertainty. Check new versions and unchanged dependencies whose use/distribution changes.
 
 **Integrated timestretch independence:** read `specs/audio/timestretch.md`, `specs/acceptance/timestretch.md`, and `crates/timestretch/PROVENANCE.md` before relevant DSP review. Never inspect, translate, adapt, or use Rubber Band implementation source/tests/comments as review guidance for Integrated DSP. Public API adapters and primary papers are separate. Inspect the repository's recorded licenses, public API contracts, provenance, and packaging obligations without opening forbidden implementation sources. Preserve GPL v2, Speex, KissFFT, LAME, FunDSP/EQ, font, icon, and UI notices according to current repository requirements.
 
