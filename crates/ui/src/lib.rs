@@ -92,6 +92,7 @@ mod separation;
 mod stereo_spread_panel;
 mod strip_reorder;
 mod timeline_toolbar;
+mod timeline_workspace;
 mod track_overview;
 mod track_selector;
 mod transport_controls;
@@ -2893,8 +2894,6 @@ impl DawUi {
                 effects: self.effects_catalog_visible(),
                 components: (self.view_mode == ViewMode::Instrument)
                     .then_some(self.instrument_catalog_visible),
-                clip_settings: (self.view_mode == ViewMode::Timeline)
-                    .then_some(self.clip_settings_visible),
                 chords: self
                     .view_mode
                     .has_clip_lanes()
@@ -2908,7 +2907,6 @@ impl DawUi {
             self.chords.catalog.clear();
             if self.chords_visible() {
                 self.set_effects_catalog_visible(false);
-                self.clip_settings_visible = false;
                 self.effects_catalog.clear();
             }
             ui.ctx().request_repaint();
@@ -2921,7 +2919,6 @@ impl DawUi {
                 self.chords.catalog.clear();
                 self.instrument_catalog_visible = false;
                 self.instrument_catalog.clear();
-                self.clip_settings_visible = false;
             }
             ui.ctx().request_repaint();
         }
@@ -2935,23 +2932,6 @@ impl DawUi {
             if self.instrument_catalog_visible {
                 self.set_effects_catalog_visible(false);
                 self.effects_catalog.clear();
-                self.clip_settings_visible = false;
-            }
-            ui.ctx().request_repaint();
-        }
-        if toggles
-            .clip_settings
-            .as_ref()
-            .is_some_and(|response| response.clicked())
-        {
-            self.clip_settings_visible = !self.clip_settings_visible;
-            if self.clip_settings_visible {
-                self.set_chords_visible(false);
-                self.chords.catalog.clear();
-                self.set_effects_catalog_visible(false);
-                self.instrument_catalog_visible = false;
-                self.effects_catalog.clear();
-                self.instrument_catalog.clear();
             }
             ui.ctx().request_repaint();
         }
@@ -2970,10 +2950,8 @@ impl DawUi {
             }
             self.effects_bounds.toolbar = rail;
             self.effects_bounds.library_toggle = toggles.library.rect;
-            self.effects_bounds.clip_settings_toggle = toggles
-                .clip_settings
-                .as_ref()
-                .map_or(Rect::NOTHING, |response| response.rect);
+            self.effects_bounds.clip_settings_toggle = Rect::NOTHING;
+            self.effects_bounds.clip_settings_toolbar = Rect::NOTHING;
             self.effects_bounds.lane_toggle = toggles.lane.rect;
         }
         let content = Rect::from_min_max(rail.right_top(), bounds.max);
@@ -2993,7 +2971,7 @@ impl DawUi {
         );
     }
 
-    fn timeline_workspace(
+    fn timeline_content(
         &mut self,
         ui: &mut egui::Ui,
     ) -> Option<(effects_panel::EffectTarget, Rect)> {

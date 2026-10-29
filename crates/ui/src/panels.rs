@@ -324,8 +324,16 @@ impl ControlPanel {
     }
 
     pub(super) fn finish(self, ui: &Ui) {
+        self.finish_edge(ui, self.rect.right() - 0.5);
+    }
+
+    pub(super) fn finish_left(self, ui: &Ui) {
+        self.finish_edge(ui, self.rect.left() + 0.5);
+    }
+
+    fn finish_edge(&self, ui: &Ui, x: f32) {
         ui.painter().vline(
-            self.rect.right() - 0.5,
+            x,
             self.rect.y_range(),
             Stroke::new(1.0, crate::theme::palette(ui.ctx()).border),
         );

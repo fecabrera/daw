@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Timeline right Clip settings rail — 2026-10-28
+
+Timeline Clip settings moves from the shared left catalog rail to a dedicated right rail spanning the inner timeline above the effects lane. The panel opens immediately to its left, can coexist with Effects/Chords on the left, retains shared fields and a fixed header with scrolling body, and returns canvas width when hidden. Hiding the effects lane extends the rail to status. `timeline_workspace.rs` composes the existing canvas and inspector; hit, seek, scrollbar and file-drop bounds exclude both settings regions. Other views have no right rail. The shared top-border implementation remains unchanged.
+
+All 687 UI tests pass, including existing field editing/validation/history, catalog/chord coexistence, display scaling and resizing, panel/lane visibility, view changes, modal guards, and rejecting timeline input/file drops in the right rail/inspector. Strict workspace/all-target Clippy, `cargo fmt --all --check`, whitespace and changed Markdown local-link checks pass. `cargo test --offline --locked --workspace` passes: 1773 tests passed, 11 opt-in tests ignored, no failures, including documentation tests. `sh tools/package_macos.sh debug` rebuilds the macOS app. Logs use `work/timeline-right-settings-*`. Native UI and Windows/Linux execution were not checked locally.
+
 ## Editor/Mixer workspace toolbars and continuous top separator — 2026-10-28
 
 Editor and Mixer now share the existing workspace toolbar and effects catalog/lane shell. Editor exposes Effects, Chords and Effects lane while retaining its options column; it has no Clip settings rail button. Mixer exposes Effects and Effects lane for its selected track/group or Master. Their effects panels start closed and keep independent UI-only visibility. Editor Chords visibility is independent of Timeline; chord actions follow the displayed MIDI track and overview drag timing uses Editor zoom/scroll. The single top separator now spans the rail, catalog and content in all four views. Paint it after child fills and reserve one point before content. Disable the playback panel’s own separator in every view so Editor does not stack adjacent lines. The shared status panel owns the Mixer bottom separator.

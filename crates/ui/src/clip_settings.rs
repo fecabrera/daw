@@ -112,7 +112,10 @@ impl super::DawUi {
     ) {
         let header = panel.header(ui, "Clip settings", |_| {});
         panels::ControlPanel::row_dividers(ui, header.response.rect, false, true);
-        self.clip_settings_body(ui, panel, bounds, enabled);
+        egui::ScrollArea::vertical()
+            .id_salt("timeline-clip-settings-scroll")
+            .auto_shrink([false, false])
+            .show(ui, |ui| self.clip_settings_body(ui, panel, bounds, enabled));
     }
 
     /// Timeline and Editor share fields, selection rules, and release-only audio preparation.

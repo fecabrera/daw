@@ -208,7 +208,7 @@ fn chord_enter_adds_selected_presets_and_catalog_tabs_remain_exclusive() {
     click(&mut app, &ctx, toggle, false);
     let toggle = app.effects_bounds.clip_settings_toggle.center();
     click(&mut app, &ctx, toggle, false);
-    assert!(app.clip_settings_visible && !app.chords.visible);
+    assert!(app.clip_settings_visible && app.chords.visible);
 }
 
 #[test]

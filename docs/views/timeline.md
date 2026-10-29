@@ -1,6 +1,6 @@
 # Timeline
 
-The left toolbar lists **Clip settings**, **Effects**, and **Chords**, from top to bottom.
+The left toolbar lists **Effects** and **Chords**. **Clip settings** uses the toolbar at the right of the timeline area, from the playback toolbar down to the effects lane.
 
 Timeline arranges audio and MIDI clips on tracks. Use Editor for MIDI notes, Instrument for MIDI sounds, and Mixer for track levels. Its horizontal scrollbar floats over the content, like the effects lane’s scrollbar; hover near the bottom of the timeline to reveal and expand it.
 
@@ -92,7 +92,7 @@ Horizontal scrolling moves the timeline while track controls stay fixed. Pinch z
 
 ## Clip settings
 
-In Timeline, open Clip settings from the left rail with the headphone-file button. It uses the same column as the Effects catalog; opening either panel closes the other. You can close both. Leaving Timeline closes this panel and discards any unconfirmed text. Audio tracks also offer these controls under **Clip options** in [Editor](editor.md).
+In Timeline, use the headphone-file button in the right toolbar to open Clip settings beside it. The panel can stay open with the Effects or Chords catalog on the left. Closing it gives its space back to the timeline. When the effects lane is hidden, the right toolbar extends to the status bar. Leaving Timeline closes this panel and discards any unconfirmed text. Audio tracks also offer these controls under **Clip options** in [Editor](editor.md).
 
 Select a clip to edit its name, gain, and transpose. The source row shows the audio file name, or MIDI pattern for a MIDI clip. These rows use the smaller catalog text, and the values are aligned to the left. The source is dimmed because it cannot be edited. A long name is shortened with an ellipsis; hover the source to see the full path. Gain is shown in dB, from silence (−∞ dB) to +12 dB, for example 0.0 dB. Transpose is shown in semitones, from −48 to +48, for example 0 semitones.
 

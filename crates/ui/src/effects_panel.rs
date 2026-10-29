@@ -21,6 +21,7 @@ pub(crate) struct EffectsUiBounds {
     pub toolbar: Rect,
     pub library_toggle: Rect,
     pub clip_settings_toggle: Rect,
+    pub clip_settings_toolbar: Rect,
     pub clip_settings: Rect,
     pub clip_name: Rect,
     pub clip_source: Rect,
@@ -73,6 +74,7 @@ impl Default for EffectsUiBounds {
             toolbar: Rect::NOTHING,
             library_toggle: Rect::NOTHING,
             clip_settings_toggle: Rect::NOTHING,
+            clip_settings_toolbar: Rect::NOTHING,
             clip_settings: Rect::NOTHING,
             clip_name: Rect::NOTHING,
             clip_source: Rect::NOTHING,
@@ -296,10 +298,8 @@ impl DawUi {
             && self.instrument_catalog_visible
             && !clip_settings_visible;
         let chords_visible = self.chords_visible();
-        let catalog_visible = clip_settings_visible
-            || self.effects_catalog_visible()
-            || components_visible
-            || chords_visible;
+        let catalog_visible =
+            self.effects_catalog_visible() || components_visible || chords_visible;
         if !clip_settings_visible && self.view_mode != ViewMode::Edit {
             self.clear_clip_settings_edits();
         }
@@ -338,8 +338,6 @@ impl DawUi {
                             Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, upper.height()));
                         if chords_visible {
                             self.chords_catalog_panel(ui, library, catalog_rect);
-                        } else if clip_settings_visible {
-                            self.clip_settings_panel(ui, library, catalog_rect, allowed);
                         } else if components_visible {
                             self.instrument_catalog_panel(
                                 ui,

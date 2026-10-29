@@ -218,7 +218,7 @@ fn clip_settings_keep_form_spacing_while_catalog_rows_use_shared_list_spacing() 
 }
 
 #[test]
-fn clip_settings_is_exclusive_with_the_catalogs_and_edits_the_selected_clip() {
+fn right_clip_settings_coexists_with_catalogs_and_edits_the_selected_clip() {
     let (mut app, track) = fixture();
     let ctx = context();
     let clip = app.session.project.tracks[0].clips[0].id;
@@ -232,18 +232,22 @@ fn clip_settings_is_exclusive_with_the_catalogs_and_edits_the_selected_clip() {
     let library = app.effects_bounds.library_toggle;
     let toggle = app.effects_bounds.clip_settings_toggle;
     assert_eq!(toggle.size(), Vec2::splat(24.0));
-    assert_eq!(toggle.left(), library.left());
-    assert_eq!(library.top() - toggle.bottom(), 7.0);
+    assert!(toggle.left() > library.right());
+    assert!(
+        app.effects_bounds
+            .clip_settings_toolbar
+            .contains_rect(toggle)
+    );
     assert!(app.timeline_catalog_visible);
     assert!(!app.clip_settings_visible);
     assert!(app.effects_bounds.library.width() > 0.0);
 
     click(&mut app, &ctx, toggle.center());
     assert!(app.clip_settings_visible);
-    assert!(!app.timeline_catalog_visible);
+    assert!(app.timeline_catalog_visible);
     assert!(!app.instrument_catalog_visible);
     assert!(!app.dirty);
-    assert_eq!(app.effects_bounds.library, Rect::NOTHING);
+    assert!(app.effects_bounds.library.is_positive());
     assert_eq!(
         app.effects_bounds.clip_settings.width(),
         panels::ControlPanel::WIDTH
@@ -392,11 +396,9 @@ fn clip_settings_is_exclusive_with_the_catalogs_and_edits_the_selected_clip() {
 
     let library_toggle = app.effects_bounds.library_toggle.center();
     click(&mut app, &ctx, library_toggle);
-    assert!(app.timeline_catalog_visible);
-    assert!(!app.clip_settings_visible);
-    assert!(app.effects_bounds.library.width() > 0.0);
-    let clip_toggle = app.effects_bounds.clip_settings_toggle.center();
-    click(&mut app, &ctx, clip_toggle);
+    assert!(!app.timeline_catalog_visible);
+    assert!(app.clip_settings_visible);
+    assert!(!app.effects_bounds.library.is_positive());
     let clip_toggle = app.effects_bounds.clip_settings_toggle.center();
     click(&mut app, &ctx, clip_toggle);
     assert!(!app.clip_settings_visible);
@@ -1242,4 +1244,133 @@ fn editor_clip_options_cancel_drafts_and_audio_previews_on_track_or_view_switche
         assert_eq!(app.session.project, before);
         assert!(!app.dirty);
     }
+}
+
+#[test]
+fn right_settings_toolbar_spans_only_the_timeline_and_reclaims_canvas_space() {
+    for color_theme in settings::ColorTheme::ALL {
+        for scale in [1.0, 1.5] {
+            let (mut app, track) = fixture();
+            let ctx = context();
+            app.set_settings(
+                &ctx,
+                settings::AppSettings {
+                    theme: color_theme,
+                    ..Default::default()
+                },
+            );
+            ctx.set_pixels_per_point(scale);
+            let clip = app.session.project.tracks[0].clips[0].id;
+            app.select_clip(clip, track, false);
+            let before = app.session.project.clone();
+            frame(&mut app, &ctx, vec![]);
+            // Let egui apply the requested display scale before comparing frames.
+            frame(&mut app, &ctx, vec![]);
+            let canvas = app.timeline_bounds;
+            let rail = app.effects_bounds.clip_settings_toolbar;
+            assert_eq!(rail.width(), timeline_toolbar::WIDTH);
+            assert_eq!(rail.top(), app.effects_bounds.toolbar.top() + 1.0);
+            assert_eq!(rail.bottom(), app.effects_bounds.strip.top());
+            assert_eq!(rail.right(), app.effects_bounds.strip.right());
+            assert_eq!(canvas.right(), rail.left());
+            assert_eq!(app.scrollbar_bounds.right(), canvas.right());
+            assert!(rail.contains_rect(app.effects_bounds.clip_settings_toggle));
+            assert!(
+                !app.effects_bounds
+                    .toolbar
+                    .intersects(app.effects_bounds.clip_settings_toggle)
+            );
+            assert_eq!(
+                app.effects_bounds.library_toggle.top(),
+                app.effects_bounds.toolbar.top() + 7.0
+            );
+            let view = (app.zoom, app.scroll);
+            let toggle = app.effects_bounds.clip_settings_toggle.center();
+            click(&mut app, &ctx, toggle);
+            assert!(app.clip_settings_visible && app.timeline_catalog_visible);
+            let inspector = app.effects_bounds.clip_settings;
+            assert_eq!(inspector.width(), TRACK_WIDTH);
+            assert_eq!(inspector.right(), rail.left());
+            assert_eq!(inspector.y_range(), rail.y_range());
+            assert_eq!(app.timeline_bounds.right(), inspector.left());
+            assert_eq!(app.timeline_bounds.left(), canvas.left());
+            assert_eq!(app.scrollbar_bounds.right(), inspector.left());
+            assert_eq!((app.zoom, app.scroll), view);
+            for size in [Vec2::new(1280.0, 800.0), Vec2::new(1600.0, 900.0)] {
+                frame_sized(&mut app, &ctx, vec![], size);
+                assert_eq!(
+                    app.effects_bounds.clip_settings_toolbar.bottom(),
+                    app.effects_bounds.strip.top()
+                );
+                assert_eq!(
+                    app.effects_bounds.clip_settings.right(),
+                    app.effects_bounds.clip_settings_toolbar.left()
+                );
+                assert_eq!(
+                    app.timeline_bounds.right(),
+                    app.effects_bounds.clip_settings.left()
+                );
+            }
+            frame(&mut app, &ctx, vec![]);
+            let toggle = app.effects_bounds.clip_settings_toggle.center();
+            click(&mut app, &ctx, toggle);
+            assert!(!app.clip_settings_visible && app.timeline_catalog_visible);
+            assert_eq!(
+                app.timeline_bounds.right(),
+                app.effects_bounds.clip_settings_toolbar.left()
+            );
+            assert!(!app.effects_bounds.clip_name.is_positive());
+            let lane = app.effects_bounds.lane_toggle.center();
+            click(&mut app, &ctx, lane);
+            assert!(!app.effects_lane_visible());
+            assert_eq!(
+                app.effects_bounds.clip_settings_toolbar.bottom(),
+                app.effects_bounds.toolbar.bottom()
+            );
+            assert_eq!(app.session.project, before);
+            assert!(!app.dirty);
+            for mode in [ViewMode::Edit, ViewMode::Mixer, ViewMode::Instrument] {
+                app.set_view_mode(mode, &ctx);
+                frame(&mut app, &ctx, vec![]);
+                assert!(!app.effects_bounds.clip_settings_toolbar.is_positive());
+                assert!(!app.effects_bounds.clip_settings_toggle.is_positive());
+            }
+        }
+    }
+}
+
+#[test]
+fn right_settings_rail_and_panel_exclude_timeline_input_and_file_drops() {
+    let source = super::TestWav::new();
+    let (mut app, track) = fixture();
+    let ctx = context();
+    let clip = app.session.project.tracks[0].clips[0].id;
+    app.select_clip(clip, track, false);
+    frame(&mut app, &ctx, vec![]);
+    let toggle = app.effects_bounds.clip_settings_toggle.center();
+    click(&mut app, &ctx, toggle);
+    let before = app.session.project.clone();
+    let rail = app.effects_bounds.clip_settings_toolbar;
+    let panel = app.effects_bounds.clip_settings;
+    for point in [rail.center(), panel.left_bottom() + Vec2::new(12.0, -12.0)] {
+        click(&mut app, &ctx, point);
+        assert_eq!(app.selected_clip, Some(clip));
+        assert_eq!(app.session.project, before);
+        super::file_frame(&mut app, &ctx, &source.0, point, false);
+        assert!(app.file_drop_target.is_none());
+        super::file_frame(&mut app, &ctx, &source.0, point, true);
+        assert!(app.file_drop_target.is_none());
+        assert!(app.job.is_none());
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+    frame(&mut app, &ctx, vec![]);
+    app.settings_open = true;
+    click(&mut app, &ctx, toggle);
+    assert!(app.clip_settings_visible);
+    app.settings_open = false;
+    frame(&mut app, &ctx, vec![]);
+    click(&mut app, &ctx, toggle);
+    assert!(!app.clip_settings_visible);
+    assert_eq!(app.session.project, before);
 }

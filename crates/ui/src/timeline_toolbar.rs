@@ -7,7 +7,6 @@ pub(super) const BUTTON_SIZE: f32 = icons::TOOLBAR_BUTTON_SIZE;
 pub(super) struct Buttons {
     pub library: egui::Response,
     pub components: Option<egui::Response>,
-    pub clip_settings: Option<egui::Response>,
     pub lane: egui::Response,
     pub chords: Option<egui::Response>,
 }
@@ -15,7 +14,6 @@ pub(super) struct Buttons {
 pub(super) struct Catalogs {
     pub effects: bool,
     pub components: Option<bool>,
-    pub clip_settings: Option<bool>,
     pub chords: Option<bool>,
 }
 
@@ -39,7 +37,7 @@ pub(super) fn show(
     let effects_at = top
         + Vec2::new(
             0.0,
-            if catalogs.clip_settings.is_some() || catalogs.components.is_some() {
+            if catalogs.components.is_some() {
                 step
             } else {
                 0.0
@@ -64,17 +62,6 @@ pub(super) fn show(
                 enabled,
             )
         }),
-        clip_settings: catalogs.clip_settings.map(|selected| {
-            toggle_at(
-                &mut rail,
-                top,
-                "clip-settings",
-                icons::Lucide::FileHeadphone,
-                "Show clip settings",
-                selected,
-                enabled,
-            )
-        }),
         library: toggle_at(
             &mut rail,
             effects_at,
@@ -89,7 +76,7 @@ pub(super) fn show(
                 &mut rail,
                 top + Vec2::new(
                     0.0,
-                    if catalogs.clip_settings.is_some() || catalogs.components.is_some() {
+                    if catalogs.components.is_some() {
                         2.0 * step
                     } else {
                         step
@@ -112,6 +99,38 @@ pub(super) fn show(
             enabled,
         ),
     }
+}
+
+/// Timeline-local rail. Its caller reserves this width outside canvas interactions.
+pub(super) fn clip_settings(
+    ui: &mut Ui,
+    bounds: Rect,
+    selected: bool,
+    enabled: bool,
+) -> egui::Response {
+    let palette = theme::palette(ui.ctx());
+    ui.painter().rect_filled(bounds, 0.0, palette.panel);
+    ui.painter().vline(
+        bounds.left() + 0.5,
+        bounds.y_range(),
+        Stroke::new(1.0, palette.border),
+    );
+    let inset = (WIDTH - BUTTON_SIZE) * 0.5;
+    let mut rail = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt("timeline-right-toolbar")
+            .max_rect(bounds),
+    );
+    rail.set_clip_rect(bounds.intersect(ui.clip_rect()));
+    toggle_at(
+        &mut rail,
+        bounds.min + Vec2::splat(inset),
+        "clip-settings",
+        icons::Lucide::FileHeadphone,
+        "Show clip settings",
+        selected,
+        enabled,
+    )
 }
 
 fn toggle_at(
