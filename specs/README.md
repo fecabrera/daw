@@ -21,6 +21,10 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Parallel cache preparation validation — 2026-10-19](validation/parallel-cache-preparation-2026-10-19.md).
 - [Architecture review — 2026-10-19](architecture/review-2026-10-19/README.md): current architecture, pipelines, workflow stages, cache ownership, findings and review decisions.
 
+## Projects and storage
+
+- [Project media source bundling](projects/source-bundling.md): staged plan for explicit collection, source verification, transactional copying, Save As, history and portability acceptance.
+
 ## Instruments and editing
 
 - [MIDI patterns, Oscillator, Envelope, and rendering](instruments/midi-patterns.md).

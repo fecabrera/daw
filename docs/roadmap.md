@@ -19,4 +19,4 @@ Projects reference external audio recordings. Saving does not bundle those files
 
 ## Planned work
 
-Planned capabilities include direct waveform editing, beat tracks and a step editor, effects for individual beat lanes, more effects, and custom instrument routing. These features are not available yet.
+Planned capabilities include collecting media into project folders for portability, direct waveform editing, beat tracks and a step editor, effects for individual beat lanes, more effects, and custom instrument routing. These features are not available yet.

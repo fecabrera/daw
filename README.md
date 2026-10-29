@@ -25,7 +25,7 @@ Audio and MIDI workflows are available in four views: **Timeline**, **Instrument
 
 The project format is experimental. Saved projects reference external recordings. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
 
-Planned work includes audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
+Planned work includes collecting media into project folders for portability, audio and beat editors, beat tracks, more effects, effects for individual beat lanes, and custom instrument routing. See the [features and roadmap](docs/roadmap.md) for details.
 
 ## Documentation
 
