@@ -4,6 +4,14 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Standalone timestretch CLI extraction fix — 2026-10-29
+
+Restored the explicit `sha2 = "0.10"` declaration in the portable CLI manifest. Extracting sibling `timestretch` and `timestretch-cli` packages no longer requires the DAW workspace (TT-09). The resolved workspace lockfile is unchanged.
+
+Added an integration test that copies both manifests outside the repository and runs offline Cargo metadata with default features and with `--no-default-features`. It checks manifest resolution without compiling or downloading dependencies. A separate temporary extraction of the complete packages builds successfully in both configurations, and its binary runs `--help` from the temporary directory. Restoring workspace inheritance in that copy reproduces the original manifest failure.
+
+`cargo test --locked --offline -p timestretch-cli` and the same command with `--no-default-features` pass. `cargo fmt --all --check` and `cargo clippy --locked --offline -p timestretch-cli --all-targets -- -D warnings` pass. Native Windows/Linux execution is not repeated; this change does not alter DSP or the reference adapters. No Rubber Band implementation sources were inspected.
+
 ## Instrument project track browser — 2026-10-29
 
 Added an Instrument-only Tracks toggle above Components/Effects in the existing left toolbar. The project browser lists audio/MIDI tracks and expandable nested groups in saved order. It reuses shared catalog row painting, spacing, selection, icons and list focus filtering. Browser disclosures stay independent of saved Timeline/Mixer collapse state. Single-track navigation retains Instrument view and clip selection, retires stale layer/component state and updates the shared track effects lane, including audio tracks. No project edits, source construction or DSP changes occur while browsing. See the [track browser contract](../views/instrument-tracks.md).
