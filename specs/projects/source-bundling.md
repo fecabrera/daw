@@ -80,7 +80,7 @@ Exit gate:
 
 ## Stage 1 — Inventory and preflight
 
-Implemented API, ownership, diagnostics and destination rules: [Stage 1](source-bundling-stage1.md). Preflight remains read-only; Stage 4 exposes it through desktop confirmation. A verified source can have separate imported/generated targets when their storage contracts differ; compatible references share a target.
+Implemented API, ownership, diagnostics and destination rules: [Stage 1](source-bundling-stage1.md). Preflight remains read-only; Stage 4 runs it on a worker and automatically executes a ready plan, without a confirmation dialog. A verified source can have separate imported/generated targets when their storage contracts differ; compatible references share a target.
 
 Work:
 

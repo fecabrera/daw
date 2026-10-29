@@ -16,6 +16,19 @@ pub(crate) fn included_path(folder: &Path, path: &str) -> Result<PathBuf> {
 /// Resolve the nearest existing ancestor, then append missing components. Missing
 /// recordings still use normal missing-source warnings; existing symlinks must resolve.
 fn contained(root: &Path, path: &Path) -> Result<PathBuf> {
+    let resolved = canonical_or_missing(path)?;
+    if !resolved.starts_with(root) {
+        return Err(error(format!(
+            "Included source escapes project media directory: {}",
+            path.display()
+        )));
+    }
+    Ok(resolved)
+}
+
+/// Canonicalize existing ancestors while retaining a missing leaf or suffix.
+/// Callers must still enforce their own approved ownership root and path syntax.
+pub(crate) fn canonical_or_missing(path: &Path) -> Result<PathBuf> {
     let mut existing = path;
     let mut missing = Vec::new();
     loop {
@@ -25,11 +38,11 @@ fn contained(root: &Path, path: &Path) -> Result<PathBuf> {
                 missing.push(
                     existing
                         .file_name()
-                        .ok_or_else(|| error("Invalid included path"))?,
+                        .ok_or_else(|| error("Invalid source path"))?,
                 );
                 existing = existing
                     .parent()
-                    .ok_or_else(|| error("Invalid included path"))?;
+                    .ok_or_else(|| error("Invalid source path"))?;
             }
             Err(e) => return Err(error(format!("{}: {e}", existing.display()))),
         }
@@ -38,12 +51,6 @@ fn contained(root: &Path, path: &Path) -> Result<PathBuf> {
         fs::canonicalize(existing).map_err(|e| error(format!("{}: {e}", existing.display())))?;
     for component in missing.iter().rev() {
         resolved.push(component);
-    }
-    if !resolved.starts_with(root) {
-        return Err(error(format!(
-            "Included source escapes project media directory: {}",
-            path.display()
-        )));
     }
     Ok(resolved)
 }

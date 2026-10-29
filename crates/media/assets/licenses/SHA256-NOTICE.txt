@@ -215,9 +215,9 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-cfg-if-1.0.4
+cfg-if-1.0.5
 Repository: https://github.com/rust-lang/cfg-if
-Source: https://crates.io/api/v1/crates/cfg-if/1.0.4/download
+Source: https://crates.io/api/v1/crates/cfg-if/1.0.5/download
 
 Copyright (c) 2014 Alex Crichton
 

@@ -3,6 +3,7 @@
 use super::execute::IoStep;
 use super::{Result, error, paths};
 use std::{
+    collections::VecDeque,
     fs::{self, File, OpenOptions},
     io,
     path::{Component, Path, PathBuf},
@@ -83,15 +84,20 @@ fn open_entry(path: &Path, directory: bool) -> io::Result<File> {
     options.open(path)
 }
 
+// Keep a fixed descriptor budget, independent of source or stem-group count.
+const MAX_RETAINED_HANDLES: usize = 32;
+
 pub(crate) struct OwnedFile {
     pub path: PathBuf,
-    pub file: File,
+    file: Option<File>,
+    sealed: bool,
+    pub removed: bool,
     identity: Identity,
     temporary: bool,
 }
 struct OwnedDir {
     path: PathBuf,
-    _file: File,
+    file: Option<File>,
     identity: Identity,
     temporary: bool,
 }
@@ -111,6 +117,9 @@ pub(crate) struct Store {
     dirs: Vec<OwnedDir>,
     pub mode: CleanupMode,
     finished: bool,
+    live_handles: usize,
+    completed_files: VecDeque<usize>,
+    completed_dirs: VecDeque<usize>,
 }
 impl Store {
     pub fn new(root: &Path) -> Result<Self> {
@@ -124,6 +133,9 @@ impl Store {
             dirs: Vec::new(),
             mode: CleanupMode::Rollback,
             finished: false,
+            live_handles: 0,
+            completed_files: VecDeque::new(),
+            completed_dirs: VecDeque::new(),
         })
     }
     pub fn check_root(&self) -> Result<()> {
@@ -142,13 +154,19 @@ impl Store {
                 "Collection directories must use the project filesystem",
             ));
         }
+        let index = self.dirs.len();
         self.dirs.push(OwnedDir {
             path,
-            _file: file,
+            file: Some(file),
             identity,
             temporary,
         });
-        Ok(())
+        self.live_handles += 1;
+        // Private staging stays pinned until its contents are removed.
+        if !temporary {
+            self.completed_dirs.push_back(index);
+        }
+        self.trim_handles()
     }
     pub fn ensure_directory(
         &mut self,
@@ -203,14 +221,16 @@ impl Store {
         }
         let path = self.root.join(relative);
         hook(IoStep::CreateDirectory, &path).map_err(error)?;
-        let mut builder = fs::DirBuilder::new();
+        let builder = fs::DirBuilder::new();
         #[cfg(unix)]
-        {
+        let builder = {
             use std::os::unix::fs::DirBuilderExt;
+            let mut builder = builder;
             if private {
                 builder.mode(0o700);
             }
-        }
+            builder
+        };
         match builder.create(&path) {
             Ok(()) => {
                 self.track_directory(path, private)?;
@@ -272,15 +292,69 @@ impl Store {
                 let index = self.files.len();
                 self.files.push(OwnedFile {
                     path,
-                    file,
+                    file: Some(file),
+                    sealed: false,
+                    removed: false,
                     identity,
                     temporary,
                 });
+                self.live_handles += 1;
+                self.trim_handles()?;
                 Ok(Some(index))
             }
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(None),
             Err(e) => Err(error(e)),
         }
+    }
+    pub fn file_mut(&mut self, index: usize) -> Result<&mut File> {
+        self.files[index]
+            .file
+            .as_mut()
+            .ok_or_else(|| error("Reservation handle was released"))
+    }
+    /// Completed destinations need no further writes. Keep recent pins for normal
+    /// rollback; release older ones before the next reservation exceeds the budget.
+    pub fn seal_file(&mut self, index: usize) -> Result<()> {
+        let entry = &mut self.files[index];
+        if entry.temporary {
+            return Err(error("Private files must remain pinned"));
+        }
+        if !entry.sealed {
+            entry.sealed = true;
+            self.completed_files.push_back(index);
+        }
+        self.trim_handles()
+    }
+    fn trim_handles(&mut self) -> Result<()> {
+        while self.live_handles > MAX_RETAINED_HANDLES {
+            let released = if let Some(index) = self.completed_files.pop_front() {
+                self.files[index].file.take().is_some()
+            } else if let Some(index) = self.completed_dirs.pop_front() {
+                self.dirs[index].file.take().is_some()
+            } else {
+                return Err(error("Too many active filesystem reservations"));
+            };
+            if released {
+                self.live_handles -= 1;
+            }
+        }
+        Ok(())
+    }
+    /// Remove a private proof immediately after all its targets are verified.
+    /// Its pin still proves ownership; the released pathname is never ours again.
+    pub fn remove_temporary(&mut self, index: usize) -> Result<()> {
+        let entry = &self.files[index];
+        if !entry.temporary || entry.file.is_none() {
+            return Err(error("Temporary reservation is not pinned"));
+        }
+        self.check_file(index)?;
+        fs::remove_file(&entry.path).map_err(error)?;
+        let entry = &mut self.files[index];
+        entry.removed = true;
+        if entry.file.take().is_some() {
+            self.live_handles -= 1;
+        }
+        Ok(())
     }
     pub fn check_file(&self, index: usize) -> Result<()> {
         self.check_root()?;
@@ -356,12 +430,21 @@ impl Store {
         }
         for index in (0..self.files.len()).rev() {
             let entry = &self.files[index];
-            if self.mode == CleanupMode::Committed && !entry.temporary {
+            if entry.removed || self.mode == CleanupMode::Committed && !entry.temporary {
                 continue;
             }
             match fs::symlink_metadata(&entry.path) {
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
                 _ => {}
+            }
+            // A closed inode/file ID can be recycled. Reopening with the same ID
+            // cannot prove ownership, so never delete an evicted reservation.
+            if entry.file.is_none() {
+                warnings.push(format!(
+                    "Cleanup retained {} because its reservation handle was released",
+                    entry.path.display()
+                ));
+                continue;
             }
             if let Err(e) = self.check_file(index) {
                 warnings.push(format!("Cleanup retained {}: {e}", entry.path.display()));
@@ -376,6 +459,13 @@ impl Store {
         }
         for dir in self.dirs.iter().rev() {
             if self.mode == CleanupMode::Committed && !dir.temporary {
+                continue;
+            }
+            if dir.file.is_none() {
+                warnings.push(format!(
+                    "Cleanup retained {} because its directory handle was released",
+                    dir.path.display()
+                ));
                 continue;
             }
             let relative = match dir.path.strip_prefix(&self.root) {
@@ -410,3 +500,6 @@ impl Drop for Store {
         let _ = self.cleanup();
     }
 }
+
+#[cfg(test)]
+mod tests;

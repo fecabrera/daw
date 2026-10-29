@@ -242,6 +242,11 @@ impl DawUi {
         status.report = if status.lease.cancel.load(Ordering::Relaxed)
             && status.lease.current.load(Ordering::Acquire)
         {
+            // Worker errors cross this boundary as text. Preserve the backend's
+            // cleanup diagnostics even when ordinary cancellation needs no dialog.
+            if error.contains("; cleanup warnings: ") {
+                status.warnings.push(error);
+            }
             job_report::State::Cancelled
         } else {
             job_report::State::Failed(error)
@@ -373,13 +378,18 @@ impl DawUi {
         let Some(status) = &self.collection_status else {
             return;
         };
+        if matches!(
+            status.report,
+            job_report::State::Complete | job_report::State::Cancelled
+        ) {
+            for warning in &status.warnings {
+                if !self.notices.contains(warning) {
+                    self.notices.push(warning.clone());
+                }
+            }
+        }
         self.collection_message = match &status.report {
             job_report::State::Complete => {
-                for warning in &status.warnings {
-                    if !self.notices.contains(warning) {
-                        self.notices.push(warning.clone());
-                    }
-                }
                 let progress = status.progress.unwrap();
                 Some(format!(
                     "Project sources collected and saved · {} files · {} bytes",

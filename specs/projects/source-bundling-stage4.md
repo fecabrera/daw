@@ -16,7 +16,7 @@ Before capture, release optional history under the existing memory-pressure poli
 
 Dispatch starts worker preflight without a save-changes prompt, review dialog or success dialog. Preflight uses the Stage 1 API with cancellation and no asserted free-space measurement. When all sources pass, immediately execute its sealed plan on the next worker through the existing job dispatcher. A zero-copy plan still saves current state. No manual confirmation state remains.
 
-Blocked reports become error-only dialogs with each source path, diagnostic and affected asset names. Missing or conflicting sources cannot authorize partial collection. No-copy success, ordinary cancellation and warnings do not open dialogs.
+Blocked reports become error-only dialogs with each source path, diagnostic and affected asset names. Missing or conflicting sources cannot authorize partial collection. No-copy success, ordinary cancellation and warnings do not open dialogs. Cancellation retains backend cleanup warnings in the status notices, including completed files kept after reservation-handle eviction.
 
 A bounded single-slot progress channel uses nonblocking `try_send`; intermediate updates can be dropped. The status bar shows checking/copying/verification/publication phases and copied file/byte totals. Its Cancel button retains the job receiver until worker acknowledgement, so a late commit cannot be discarded. Report completion only after confirmed commit and active-state publication. Persist completion/cancellation text until a new background job or project edit; retain warnings in the existing dismissible status notices. Never request a renderer update solely for relocation.
 

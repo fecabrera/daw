@@ -160,7 +160,7 @@ Use the supplied Audacity 4 screenshots as layout references.
 - Store each project in its own folder with manifest files and an assets directory.
 - Manifest files store project state, asset identities, metadata, and source references.
 - Normal imports retain external references. Explicit project-owned imported recordings use `storage: project` and `assets/sources/` paths; generated stems retain their separate lifecycle.
-- Reserve the assets directory for project-owned assets, including future included source audio files. External source audio is not copied into it during the MVP.
+- Reserve the assets directory for project-owned assets, including explicitly collected source recordings. Normal imports and ordinary Save keep later imports external; Collect project sources copies their complete original media into assets/sources/.
 - Session I/O supports external references and included recordings. Save As copies project-owned sources and protected history owners; normal Save does not collect later imports.
 - [Source bundling Stage 3](../projects/source-bundling-stage3.md) enables included-source open/save and history-aware Save As. [Stage 4](../projects/source-bundling-stage4.md) adds the guarded desktop collection command.
 - Use an experimental project.json manifest at the project folder root and an assets/ directory for project-owned assets. The manifest schema can change substantially during MVP development.

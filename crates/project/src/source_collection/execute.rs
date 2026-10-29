@@ -362,6 +362,7 @@ fn run(store: &mut Store, control: &mut Control<'_>) -> Result<CollectionOutcome
                     control,
                 )?;
                 verify_file(store, file_index, source.revision, control)?;
+                store.seal_file(file_index)?;
                 control.state.files_copied = control
                     .state
                     .files_copied
@@ -386,6 +387,7 @@ fn run(store: &mut Store, control: &mut Control<'_>) -> Result<CollectionOutcome
             };
             destinations.push((source.revision, target.owners.clone(), relative));
         }
+        store.remove_temporary(raw_index)?;
     }
     let (project, receipt) = build_receipt(control.plan, &destinations)?;
     let relocations = receipt_entries(control.plan.snapshot(), &receipt)?;
@@ -428,6 +430,9 @@ fn run(store: &mut Store, control: &mut Control<'_>) -> Result<CollectionOutcome
         }
     }
     for (index, file) in store.files.iter().enumerate() {
+        if file.removed {
+            continue;
+        }
         store.check_file(index)?;
         if file.path == candidate_path
             && SourceRevision::read(&candidate_path, &|| (control.cancelled)()).map_err(error)?

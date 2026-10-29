@@ -4,6 +4,18 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Source bundling PR review fixes — 2026-10-29
+
+Addressed F001–F007 and F009–F011 from [PR #3 comment 6501876175](https://github.com/fecabrera/daw/pull/3#issuecomment-6501876175). The store now retains a bounded 32 entry handles plus its canonical root, retires each private proof after target verification, and conservatively retains released reservations with warnings on rollback. Active proofs, the candidate manifest and private staging remain pinned; replacement/identity checks, exclusive reservations and commit ordering remain intact. Unix private directory permissions stay 0700 while Windows avoids the unused mutable builder. Save binds writes to a physical root, preserves valid caller alias spelling, and resolves missing owned paths through existing ancestors for same-folder reuse. A per-save verification cache reuses matching destination/revision/rate/metadata/PCM owners without accepting distinct mismatched history versions. Desktop cancellation keeps cleanup warnings in status notices.
+
+Added shared-store budget/rollback/replacement tests, alias Save/Save As cases, a 100-entry history case, deterministic verification-count coverage and cancellation-warning UI coverage. A Unix subprocess test at 256 descriptors succeeds with 300 distinct originals, collection, included-source Save As, generated Save As through 300 stem directories, and precommit cancellation with a replaced released file. The previous real CLI 130-source reproduction now succeeds at both 256 and 1024 descriptors; its repeat copies zero files. Affected project tests, all 17 bundling integration tests and all 18 collection UI tests pass. Existing fault, replacement, uncertain-commit and history cases remain covered.
+
+Added the exact locked Rfd MIT notice and corrected the cfg-if notice inventory to 1.0.5. Rfd bytes match the locked cache and independently fetched review evidence, and the rebuilt macOS app contains the exact notice. All three desktop packagers copy its notice directory. Corrected current MVP/confirmation wording and added the older-client limitation to the project guide. Formatting, strict locked/offline workspace/all-target Clippy, CLI build/smoke checks and `sh tools/package_macos.sh debug` pass. Logs use `work/source-review-fixes-*`.
+
+`cargo test --offline --locked --workspace` passes: 1880 tests passed, 11 opt-in tests ignored, no failures, including all 714 UI tests and documentation tests. Changed Markdown links/anchors and `git diff HEAD --check` pass.
+
+Native Windows strict Clippy/tests and Windows/Linux package execution remain unverified locally. No native app/device interaction, filesystem crash durability or release acceptance is claimed. F008 (the previously deferred ONNX runtime remediation) remains open; native runtime/dependency pins are unchanged.
+
 ## Immediate desktop source collection — 2026-10-29
 
 Replaced the initial Stage 4 review/confirmation and running/success dialogs. Both File menus now use **Collect project sources** without an ellipsis, in the Project Settings group after Export. Ready preflight continues automatically into transactional collection and saves current changes without a save prompt. Checking, copy/verification/save phases, file/byte counts, completion, cancellation and warnings appear in the status bar. Only errors/recovery open a dialog. Completion/cancellation release guards and restore focus automatically; subsequent edits/jobs clear completion text. Source/history coverage, cancellation acknowledgement, commit rules and prepared playback remain unchanged.

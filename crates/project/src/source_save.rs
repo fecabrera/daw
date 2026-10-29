@@ -15,6 +15,9 @@ use std::{
     sync::Arc,
 };
 
+mod verification;
+use verification::PreparedVerification;
+
 pub struct SaveSnapshot {
     session: Session,
     protected: Vec<Session>,
@@ -199,12 +202,24 @@ impl SaveSnapshot {
     }
     pub fn save(self, folder: &Path) -> Result<SavedSession> {
         let folder = crate::absolute(folder)?;
-        fs::create_dir_all(folder.join("assets")).map_err(error)?;
-        let mut store = Store::new(&folder)?;
-        let result = self.write(&folder, &mut store);
+        fs::create_dir_all(&folder).map_err(error)?;
+        let canonical_folder = fs::canonicalize(&folder).map_err(error)?;
+        let mut store = Store::new(&canonical_folder)?;
+        store.ensure_directory(Path::new("assets"), &mut |_, _| Ok(()))?;
+        let result = self.write(&canonical_folder, &mut store);
         let cleanup = store.cleanup();
         match result {
             Ok(mut saved) => {
+                // All writes use the pinned physical root. Preserve the caller's
+                // folder spelling only while it still names that same root.
+                if fs::canonicalize(&folder).is_ok_and(|path| path == canonical_folder) {
+                    saved.session.folder = Some(folder);
+                } else {
+                    saved.session.warnings.push(
+                        "Project saved to its physical folder; the requested folder alias changed"
+                            .into(),
+                    );
+                }
                 saved.session.warnings.extend(cleanup);
                 Ok(saved)
             }
@@ -226,6 +241,7 @@ impl SaveSnapshot {
         }
         let mut relocations = Vec::new();
         let mut verified_files = BTreeMap::new();
+        let mut prepared_checks = PreparedVerification::default();
         let mut targets = BTreeMap::<(PathBuf, bool), (Source, bool)>::new();
         let mut groups = BTreeMap::<PathBuf, PathBuf>::new();
         let mut hook = |_: IoStep, _: &Path| Ok(());
@@ -239,12 +255,12 @@ impl SaveSnapshot {
                 let source = session.source_path(asset)?;
                 let canonical = match fs::canonicalize(&source) {
                     Ok(path) => path,
-                    Err(e)
-                        if e.kind() == std::io::ErrorKind::NotFound
-                            && (source.starts_with(folder)
-                                || source.starts_with(&canonical_folder)) =>
-                    {
-                        source.clone()
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        let resolved = crate::source_storage::canonical_or_missing(&source)?;
+                        if !resolved.starts_with(&canonical_folder) {
+                            return Err(error(e));
+                        }
+                        resolved
                     }
                     Err(e) => return Err(error(e)),
                 };
@@ -333,16 +349,16 @@ impl SaveSnapshot {
                                 ));
                             }
                             remaining -= n as u64;
-                            store.files[index]
-                                .file
+                            store
+                                .file_mut(index)?
                                 .write_all(&buffer[..n])
                                 .map_err(error)?;
                         }
                         if input.read(&mut buffer[..1]).map_err(error)? != 0 {
                             return Err(error("Project-owned source grew during save"));
                         }
-                        store.files[index].file.flush().map_err(error)?;
-                        store.files[index].file.sync_all().map_err(error)?;
+                        store.file_mut(index)?.flush().map_err(error)?;
+                        store.file_mut(index)?.sync_all().map_err(error)?;
                         if SourceRevision::read(&canonical, &|| false).map_err(error)? != revision
                             || SourceRevision::read(&store.files[index].path, &|| false)
                                 .map_err(error)?
@@ -352,6 +368,7 @@ impl SaveSnapshot {
                         }
                         verified_files.insert(canonical.clone(), revision);
                         verified_files.insert(store.files[index].path.clone(), revision);
+                        store.seal_file(index)?;
                         relative
                     };
                     target.path = relative
@@ -369,8 +386,11 @@ impl SaveSnapshot {
                     // Ordinary Save preserves included references, including
                     // missing-source warnings, without reopening their media.
                 } else if let Some(audio) = session.audio.get(&asset.id) {
-                    daw_media::verify_prepared_source(&folder.join(&target.path), audio, &|| false)
-                        .map_err(error)?;
+                    let destination = folder.join(&target.path);
+                    let revision = *verified_files
+                        .get(&destination)
+                        .ok_or_else(|| error("Missing saved source revision"))?;
+                    prepared_checks.verify(&destination, revision, audio)?;
                 } else {
                     return Err(error("Missing prepared project-owned source"));
                 }
@@ -414,8 +434,8 @@ impl SaveSnapshot {
             }
             temporary = PathBuf::from(format!(".project-{}.tmp", Id::new_v4()));
         };
-        store.files[index].file.write_all(&bytes).map_err(error)?;
-        store.files[index].file.sync_all().map_err(error)?;
+        store.file_mut(index)?.write_all(&bytes).map_err(error)?;
+        store.file_mut(index)?.sync_all().map_err(error)?;
         store.sync_directories(&mut hook, &mut next.warnings)?;
         for i in 0..store.files.len() {
             store.check_file(i)?;

@@ -29,9 +29,11 @@ Temporary copies need additional space; free space is not measured. When no new 
 
 Editing and file actions remain blocked while collection runs. They become available again automatically after completion or cancellation. Playback can continue from prepared audio. Use **Cancel** in the status bar to stop collection before saving. After saving succeeds, cancellation does not undo collection; the status bar shows completion and any warnings. Errors stay in a dialog until you close it.
 
+Use an app version with source-collection support for collected projects. Saving with older versions can lose the information about included media and leave Save As dependent on the old folder.
+
 Move the whole project folder, including `assets/` and `stems/`, rather than only `project.json`. Later imports stay external until you collect again. Regular Save does not collect them automatically. Save As copies media already included in the project and protects sources retained only by the active Undo/Redo history.
 
-A failure before saving retains the previous project and playback. If the report says sources were saved but active state was retained, close the report and reopen the saved destination. If commit could not be confirmed, keep all destination files and the candidate manifest named in the report. Recovery is not automatic. Collection does not remove unused media or crash leftovers.
+A failure before saving retains the previous project and playback. If the report says sources were saved but active state was retained, close the report and reopen the saved destination. If commit could not be confirmed, keep all destination files and the candidate manifest named in the report. Recovery is not automatic. If cleanup reports retained files, those copies stay in place because the app cannot verify that it created them. Collection does not remove unused media or crash leftovers.
 
 ## Project Settings
 

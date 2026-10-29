@@ -308,10 +308,11 @@ fn failed_save_as_preserves_live_history_and_existing_destination_entries() {
         original
     );
     assert!(
-        fs::read_dir(destination.join("assets"))
-            .unwrap()
-            .next()
-            .is_none()
+        !destination.join("assets").exists()
+            || fs::read_dir(destination.join("assets"))
+                .unwrap()
+                .next()
+                .is_none()
     );
 }
 
@@ -338,10 +339,11 @@ fn save_as_rejects_owned_bytes_that_no_longer_match_prepared_audio() {
     assert_eq!(fs::read(input).unwrap(), fs::read(changed).unwrap());
     assert!(!destination.join("project.json").exists());
     assert!(
-        fs::read_dir(destination.join("assets"))
-            .unwrap()
-            .next()
-            .is_none()
+        !destination.join("assets").exists()
+            || fs::read_dir(destination.join("assets"))
+                .unwrap()
+                .next()
+                .is_none()
     );
 }
 #[test]
@@ -674,4 +676,230 @@ fn windows_junctions_cannot_redirect_included_reads_collection_or_save_as() {
     assert_eq!(fs::read(outside.join("source.wav")).unwrap(), before);
     assert_eq!(fs::read(outside.join("keep")).unwrap(), b"unrelated");
     fs::remove_dir(&link).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn ordinary_save_accepts_root_and_ancestor_aliases_with_empty_or_collected_projects() {
+    for included in [false, true] {
+        let f = Fixture::new();
+        let mut live = if included {
+            f.session()
+        } else {
+            Session::default()
+        };
+        let physical = f.0.join("original");
+        if included {
+            collect(&live, None).apply(&mut live, None, 7).unwrap();
+        } else {
+            live.save(&physical).unwrap();
+        }
+        let root_alias = f.0.join("root-alias");
+        let ancestor_alias = f.0.join("ancestor-alias");
+        std::os::unix::fs::symlink(&physical, &root_alias).unwrap();
+        std::os::unix::fs::symlink(&f.0, &ancestor_alias).unwrap();
+        for alias in [root_alias, ancestor_alias.join("original")] {
+            let mut opened = Session::open(&alias).unwrap();
+            opened.project.name = "Saved through alias".into();
+            opened.save(&alias).unwrap();
+            assert_eq!(
+                Session::open(&physical).unwrap().project.name,
+                "Saved through alias"
+            );
+            if included {
+                sources_inside(&opened, &physical);
+            }
+        }
+    }
+}
+#[cfg(unix)]
+#[test]
+fn missing_generated_media_stays_missing_on_alias_save_but_save_as_requires_it() {
+    for aliased in [false, true] {
+        let f = Fixture::new();
+        let mut live = f.session();
+        live.project.assets[0].source.kind = "generated".into();
+        live.save(&f.0.join("generated")).unwrap();
+        let source = live.source_path(&live.project.assets[0]).unwrap();
+        fs::remove_file(source).unwrap();
+        let folder = if aliased {
+            let alias = f.0.join("parent-alias");
+            std::os::unix::fs::symlink(&f.0, &alias).unwrap();
+            alias.join("generated")
+        } else {
+            f.0.join("generated")
+        };
+        let mut opened = Session::open(&folder).unwrap();
+        assert!(!opened.warnings.is_empty());
+        opened.save(&folder).unwrap();
+        assert!(!Session::open(&folder).unwrap().warnings.is_empty());
+        let before = fs::read(folder.join("project.json")).unwrap();
+        assert!(opened.save(&f.0.join("copy-missing")).is_err());
+        assert_eq!(fs::read(folder.join("project.json")).unwrap(), before);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn many_source_collection_and_owned_save_as_fit_a_256_descriptor_limit() {
+    const CHILD: &str = "DAW_SOURCE_BUNDLING_FD_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new("sh")
+            .args(["-c", "ulimit -n 256 || exit; exec \"$@\"", "source-fd-test"])
+            .arg(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "many_source_collection_and_owned_save_as_fit_a_256_descriptor_limit",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    let f = Fixture::new();
+    let mut live = Session::default();
+    let mut originals = Vec::new();
+    for i in 0..300 {
+        let path = f.0.join(format!("inputs/{i}/source.wav"));
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut writer = hound::WavWriter::create(
+            &path,
+            hound::WavSpec {
+                channels: 1,
+                sample_rate: 48000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            },
+        )
+        .unwrap();
+        for _ in 0..100 {
+            writer.write_sample(i as i16).unwrap();
+        }
+        writer.finalize().unwrap();
+        live.import(&path, None, 0).unwrap();
+        originals.push(path);
+    }
+    live.save(&f.0.join("external")).unwrap();
+    let outcome = collect(&live, None);
+    assert_eq!(outcome.progress().files_copied, 300);
+    outcome.apply(&mut live, None, 7).unwrap();
+    live.save(&f.0.join("included-copy")).unwrap();
+    sources_inside(&live, &f.0.join("included-copy"));
+    for (asset, original) in live.project.assets.iter_mut().zip(&originals) {
+        asset.source.kind = "generated".into();
+        asset.source.storage = None;
+        asset.source.path = original.to_string_lossy().into_owned();
+        asset.source.path_kind = "absolute".into();
+    }
+    live.save(&f.0.join("generated")).unwrap();
+    live.save(&f.0.join("generated-copy")).unwrap();
+    sources_inside(&live, &f.0.join("generated-copy"));
+    assert_eq!(
+        fs::read_dir(f.0.join("generated-copy/stems"))
+            .unwrap()
+            .count(),
+        300
+    );
+    for (asset, original) in live.project.assets.iter().zip(&originals) {
+        assert_eq!(
+            fs::read(live.source_path(asset).unwrap()).unwrap(),
+            fs::read(original).unwrap()
+        );
+    }
+    // Abort a large real collection after copy completion. A replaced, released
+    // reservation must survive rollback, and the old manifest stays authoritative.
+    for (asset, original) in live.project.assets.iter_mut().zip(&originals) {
+        asset.source.kind = "external".into();
+        asset.source.storage = None;
+        asset.source.path = original.to_string_lossy().into_owned();
+        asset.source.path_kind = "absolute".into();
+    }
+    let cancelled_folder = f.0.join("cancelled");
+    live.save(&cancelled_folder).unwrap();
+    let before = fs::read(cancelled_folder.join("project.json")).unwrap();
+    let plan = live
+        .source_collection_snapshot(None, 7)
+        .unwrap()
+        .preflight(None, &|| false)
+        .unwrap()
+        .into_plan()
+        .unwrap();
+    let replaced = cancelled_folder.join(&plan.sources()[0].targets[0].relative_path);
+    let cancelled = std::cell::Cell::new(false);
+    let result = plan.execute(&|_| true, &|| cancelled.get(), &mut |p| {
+        if p.phase == daw_project::source_collection::CollectionPhase::Publishing {
+            fs::remove_file(&replaced).unwrap();
+            fs::write(&replaced, b"foreign replacement").unwrap();
+            cancelled.set(true);
+        }
+        Ok(())
+    });
+    assert!(
+        result
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("handle was released")
+    );
+    assert_eq!(fs::read(replaced).unwrap(), b"foreign replacement");
+    assert_eq!(
+        fs::read(cancelled_folder.join("project.json")).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn history_heavy_save_as_reuses_shared_pcm_and_rejects_a_distinct_retained_version() {
+    for mismatch in [false, true] {
+        let f = Fixture::new();
+        let mut live = f.session();
+        collect(&live, None).apply(&mut live, None, 7).unwrap();
+        let asset = live.project.assets[0].id;
+        let pcm = live.audio[&asset].samples.clone();
+        let mut history = SessionHistory::new(&live, true).unwrap();
+        for i in 1..=100 {
+            let mut state = live.clone();
+            state.project.master.gain_db = -(i as f32) * 0.01;
+            if mismatch && i == 50 {
+                state.audio.get_mut(&asset).unwrap().samples = Arc::new(vec![[0.; 2]; pcm.len()]);
+            }
+            history.record(&state).unwrap();
+            live = state;
+            // The next state returns to the original shared prepared PCM.
+            live.audio.get_mut(&asset).unwrap().samples = pcm.clone();
+        }
+        let old_folder = live.folder.clone().unwrap();
+        let before = fs::read(old_folder.join("project.json")).unwrap();
+        let destination = f.0.join("history-copy");
+        let result = live
+            .save_snapshot(Some(&history))
+            .unwrap()
+            .save(&destination);
+        if mismatch {
+            assert!(result.is_err());
+            assert!(!destination.join("project.json").exists());
+            assert_eq!(fs::read(old_folder.join("project.json")).unwrap(), before);
+        } else {
+            result
+                .unwrap()
+                .apply(&mut live, Some(&mut history))
+                .unwrap();
+            fs::remove_dir_all(old_folder).unwrap();
+            let mut count = 0;
+            while let Some(previous) = history.undo(&live) {
+                live = previous;
+                sources_inside(&live, &destination);
+                assert!(Arc::ptr_eq(&pcm, &live.audio[&asset].samples));
+                count += 1;
+            }
+            assert_eq!(count, 100);
+        }
+    }
 }

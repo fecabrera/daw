@@ -34,8 +34,8 @@ pub(super) fn stream(
             return Err(error("Source was truncated while copying"));
         }
         (control.hook)(IoStep::Write, &output).map_err(error)?;
-        store.files[index]
-            .file
+        store
+            .file_mut(index)?
             .write_all(&buffer[..count])
             .map_err(error)?;
         control.check_cancel()?;
@@ -71,10 +71,10 @@ fn finish_file(index: usize, store: &mut Store, control: &mut Control<'_>) -> Re
     store.check_file(index)?;
     let path = store.files[index].path.clone();
     (control.hook)(IoStep::Flush, &path).map_err(error)?;
-    store.files[index].file.flush().map_err(error)?;
+    store.file_mut(index)?.flush().map_err(error)?;
     control.check_cancel()?;
     (control.hook)(IoStep::FileSync, &path).map_err(error)?;
-    store.files[index].file.sync_all().map_err(error)?;
+    store.file_mut(index)?.sync_all().map_err(error)?;
     control.check_cancel()?;
     Ok(())
 }
@@ -89,7 +89,7 @@ pub(super) fn write_manifest(
     for chunk in bytes.chunks(BUFFER_BYTES) {
         control.check_cancel()?;
         (control.hook)(IoStep::Write, &path).map_err(error)?;
-        store.files[index].file.write_all(chunk).map_err(error)?;
+        store.file_mut(index)?.write_all(chunk).map_err(error)?;
         control.check_cancel()?;
     }
     finish_file(index, store, control)

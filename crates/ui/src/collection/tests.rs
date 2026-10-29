@@ -653,3 +653,32 @@ fn status_bar_reports_copy_verification_and_publication_progress_and_worker_disc
         Some("Source collection failed")
     );
 }
+
+#[test]
+fn cancelled_collection_keeps_cleanup_warnings_in_the_status_bar() {
+    let f = Fixture::new();
+    let mut app = f.app();
+    let (ticket, _) = preflight(&mut app);
+    let status = app.collection_status.as_mut().unwrap();
+    status.stage = Stage::Copying;
+    status.lease.cancel.store(true, Ordering::Relaxed);
+    app.finish_collection(
+        ticket,
+        Err("Source collection cancelled; cleanup warnings: retained released reservation".into()),
+    );
+    assert_eq!(
+        app.collection_status.as_ref().unwrap().report,
+        job_report::State::Cancelled
+    );
+    assert!(
+        app.notices
+            .iter()
+            .any(|w| w.contains("retained released reservation"))
+    );
+    let ctx = context();
+    frame(&mut app, &ctx, vec![]);
+    let shapes = frame(&mut app, &ctx, vec![]);
+    assert!(has_text(&shapes, "retained released reservation"));
+    assert!(!has_text(&shapes, "Close"));
+    assert!(app.collection_status.is_none());
+}

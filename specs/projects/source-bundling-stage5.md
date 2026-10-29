@@ -88,3 +88,7 @@ The local host reports macOS 27.0.1 (build 26A434) and rustc 1.97.0 (2d8144b78, 
 Native app inventory was attempted twice through the computer-use tool. Both attempts failed with `Sky Computer Use native pipe startup failed`; no app/window was controlled and no native menu/device result is claimed. Windows/Linux native runners are not available in this session. Tests are wired into existing CI but were not pushed or dispatched here.
 
 See [validation history](../validation/README.md) for completed commands/results. Stages 0–4 remain implemented. Stage 5 stays **in progress** until required native platform and interaction evidence is recorded. The tests and checklist do not waive that release gate.
+
+## PR review regression follow-up
+
+The project suite now includes a Unix subprocess constrained to 256 descriptors with 300 distinct sources: collect, included-source Save As and generated-source Save As across 300 separate stem directories. Shared store tests bound retained file/directory pins and protect released reservations, replaced entries and reused temporary paths during rollback. Alias cases cover empty/included project roots, ancestor aliases, missing generated media and failed Save As. A 100-entry history Save As case retains shared prepared PCM and rejects a distinct mismatched retained version. Deterministic verification-cache checks count fresh comparisons without a timing threshold. These tests extend existing native CI workspace coverage; native Windows strict Clippy, package execution and release gates remain separate checks.
