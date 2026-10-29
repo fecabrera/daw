@@ -103,7 +103,13 @@ fn main_stays_below_scrolled_layers_and_reuses_mix_controls_in_both_themes() {
             gain.center(),
             Pos2::new(label.right() - 21.0, label.top() + 47.0)
         );
-        assert!(app.instrument_ui.main_bounds.collapse.right() < label.right());
+        let bounds = &app.instrument_ui.main_bounds;
+        super::instrument_lane_toolbar::assert_toolbar(
+            bounds.row,
+            bounds.label,
+            bounds.toolbar,
+            bounds.collapse,
+        );
         assert!(
             app.instrument_ui
                 .main_bounds
@@ -282,7 +288,10 @@ fn main_accepts_shared_modulators_from_catalog_and_rejects_audio_components() {
             button(macro_entry, true),
         ],
     );
-    let end = app.instrument_ui.main_bounds.row.right_center() - Vec2::new(20.0, 0.0);
+    let end = Pos2::new(
+        app.instrument_ui.main_bounds.toolbar.left() - 20.0,
+        app.instrument_ui.main_bounds.row.center().y,
+    );
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
     assert_eq!(app.instrument_catalog_bounds.drop_target, Some(main));
     assert_eq!(
@@ -322,7 +331,10 @@ fn empty_main_accepts_catalog_drops_across_its_label_and_body() {
                         let end = if label {
                             app.instrument_ui.main_bounds.label.center()
                         } else {
-                            Pos2::new(row.right() - 20.0, row.center().y)
+                            Pos2::new(
+                                app.instrument_ui.main_bounds.toolbar.left() - 20.0,
+                                row.center().y,
+                            )
                         };
                         frame(
                             &mut app,

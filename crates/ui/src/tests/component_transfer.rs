@@ -342,12 +342,14 @@ fn component_reorder_scrolls_both_owner_viewports_without_editing_the_preview() 
         let others_before = other_positions(&app);
         let x = position(&app);
         let p = source(&app, owner, moving);
-        let row = if main {
-            app.instrument_ui.main_bounds.row
-        } else {
-            app.midi_editor.layer_bounds[&owner].row
-        };
-        let edge = egui::pos2(row.right() - 3.0, p.y);
+        let viewport = app
+            .instrument_ui
+            .component_viewports
+            .iter()
+            .find(|(id, _)| *id == owner)
+            .unwrap()
+            .1;
+        let edge = egui::pos2(viewport.right() - 3.0, p.y);
         start(&mut app, &ctx, p);
         frame(&mut app, &ctx, vec![egui::Event::PointerMoved(edge)]);
         for _ in 0..40 {
@@ -1358,9 +1360,10 @@ fn component_group_noop_cancel_invalid_target_and_unselected_anchor_keep_effect_
             .unwrap()
             .2;
         let end = match mode {
-            "invalid-main" => {
-                app.instrument_ui.main_bounds.row.right_center() - Vec2::new(3.0, 0.0)
-            }
+            "invalid-main" => Pos2::new(
+                app.instrument_ui.main_bounds.toolbar.left() - 3.0,
+                app.instrument_ui.main_bounds.row.center().y,
+            ),
             "outside" => Pos2::new(2.0, 2.0),
             _ => first.left_center() + Vec2::new(2.0, 0.0),
         };

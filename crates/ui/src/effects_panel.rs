@@ -541,14 +541,19 @@ impl DawUi {
                 .rect_filled(strip, 0.0, theme::palette(ui.ctx()).background);
             // The status panel owns the single separator below the effects lane.
             panels::ControlPanel::row_dividers(ui, strip, true, false);
-            let toolbar = effects_toolbar::bounds(strip);
-            let response = effects_toolbar::show(
+            let toolbar = lane_toolbar::bounds(strip);
+            let response = lane_toolbar::show(
                 ui,
                 toolbar,
                 &mut compact,
                 allowed
                     && self.effects_drag.as_ref().is_none_or(|drag| !drag.active)
                     && selected.is_some(),
+                [
+                    icons::Lucide::ArrowUpFromLine,
+                    icons::Lucide::ArrowDownFromLine,
+                ],
+                ["Expand effects", "Collapse effects"],
             );
             #[cfg(test)]
             {
@@ -649,7 +654,7 @@ impl DawUi {
         .collect::<Vec<_>>();
         let mut remove = None;
         let mut slots = Vec::with_capacity(effects.len());
-        let content = Rect::from_min_max(strip.min, effects_toolbar::bounds(strip).left_bottom());
+        let content = Rect::from_min_max(strip.min, lane_toolbar::bounds(strip).left_bottom());
         let mut lane = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt(("effects-lane", target))

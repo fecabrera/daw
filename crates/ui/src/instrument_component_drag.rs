@@ -120,11 +120,7 @@ impl DawUi {
             .filter(|pointer| viewport.contains(*pointer))
             .and_then(|pointer| {
                 rows.iter().find_map(|(id, row)| {
-                    let rect = Rect::from_min_max(
-                        Pos2::new(viewport.left(), row.top()),
-                        Pos2::new(viewport.right(), row.bottom()),
-                    )
-                    .intersect(viewport);
+                    let rect = row.intersect(viewport);
                     rect.contains(pointer).then_some((*id, rect))
                 })
             });

@@ -105,6 +105,7 @@ pub(crate) struct LayerUiBounds {
     pub name: Rect,
     pub mix_controls: [Rect; 4],
     pub collapse: Rect,
+    pub toolbar: Rect,
     pub oscillator_panel: Rect,
     pub oscillator_header: Rect,
     pub oscillator_power: Rect,
@@ -305,7 +306,6 @@ impl DawUi {
             self.instrument_ui.track_effects_target = false;
             settings.layers.push(layer);
         }
-        let layer_action_width = header.inner.rect.width();
         // Reserve Main outside the vertical scrolling region.
         let main_label_height = panels::unit_height(settings.main.collapsed);
         let main_height = main_label_height.min(ui.available_height());
@@ -343,6 +343,16 @@ impl DawUi {
                                     ui.horizontal_top(|ui| {
                                         ui.spacing_mut().item_spacing.x = -1.0;
                                         ui.spacing_mut().item_spacing.y = 0.0;
+                                        let lane = Rect::from_min_size(ui.next_widget_position(), Vec2::new(ui.available_width(), height));
+                                        let toolbar = lane_toolbar::bounds(lane);
+                                        let collapse = lane_toolbar::show(
+                                            ui, toolbar, &mut layer.collapsed,
+                                            !self.instrument_ui.has_layer_gesture() && !self.instrument_ui.editing_name()
+                                                && self.editing_enabled() && ui.input(|input| input.focused),
+                                            [icons::Lucide::ArrowDownFromLine, icons::Lucide::ArrowUpFromLine],
+                                            ["Expand layer", "Collapse layer"],
+                                        );
+                                        if collapse.clicked() { ui.ctx().request_repaint(); }
                                         let (label, response) = ui.allocate_exact_size(
                                             Vec2::new(LAYER_HEADER_WIDTH, height),
                                             Sense::click_and_drag(),
@@ -374,8 +384,7 @@ impl DawUi {
                                             |ui| {
                                                 let name_width = (ui.available_width()
                                                     - icons::HEADER_ICON_WIDTH
-                                                    - layer_action_width
-                                                    - 2.0 * ui.spacing().item_spacing.x)
+                                                    - ui.spacing().item_spacing.x)
                                                     .max(1.0);
                                                 let icon = icons::header_icon(ui, icons::Lucide::AudioWaveform, Sense::click_and_drag());
                                                 icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument layer"));
@@ -397,35 +406,10 @@ impl DawUi {
                                                         },
                                                     )
                                                     .inner;
-                                                let collapse = icons::small_button(
-                                                    ui,
-                                                    if compact {
-                                                        icons::Lucide::ArrowDownFromLine
-                                                    } else {
-                                                        icons::Lucide::ArrowUpFromLine
-                                                    },
-                                                    if compact {
-                                                        "Expand layer"
-                                                    } else {
-                                                        "Collapse layer"
-                                                    },
-                                                    mixing_enabled
-                                                        && ui.input(|input| input.focused),
-                                                    theme::palette(ui.ctx()).text,
-                                                );
-                                                (
-                                                    icon.rect,
-                                                    name,
-                                                    collapse,
-                                                )
+                                                (icon.rect, name)
                                             },
                                         )
                                         .inner;
-                                        let collapse = header.2;
-                                        if collapse.clicked() {
-                                            layer.collapsed = !compact;
-                                            ui.ctx().request_repaint();
-                                        }
                                         let (mixing, toggles) = header_ui
                                             .add_enabled_ui(mixing_enabled, |ui| {
                                                 mix_controls::header_row(
@@ -516,6 +500,7 @@ impl DawUi {
                                         );
 
                                         let components = egui::ScrollArea::horizontal()
+                                            .max_width((toolbar.left() - ui.next_widget_position().x).max(0.0))
                                             .id_salt("layer-units")
                                             .auto_shrink([false, true])
                                             .show(ui, |ui| {
@@ -650,6 +635,7 @@ impl DawUi {
                                                     name: controls.1,
                                                     mix_controls: mixing_bounds,
                                                     collapse: collapse.rect,
+                                                    toolbar,
                                                     oscillator_panel: oscillator_panel
                                                         .unwrap_or(Rect::NOTHING),
                                                     oscillator_header,
@@ -687,6 +673,7 @@ impl DawUi {
                                                 envelope_power,
                                             );
                                         }
+                                        ui.advance_cursor_after_rect(toolbar);
                                     })
                                 })
                                 .inner;
@@ -736,7 +723,8 @@ impl DawUi {
             });
         let reorder_rows = layer_rows.clone();
         for (_, rect) in &mut layer_rows {
-            *rect = rect.intersect(scroll.inner_rect);
+            *rect = Rect::from_min_max(rect.min, lane_toolbar::bounds(*rect).left_bottom())
+                .intersect(scroll.inner_rect);
         }
         self.instrument_main(
             ui,
@@ -746,7 +734,10 @@ impl DawUi {
             &modulation_sources,
             &provider_sources,
         );
-        layer_rows.push((settings.main.id, main_rect));
+        layer_rows.push((
+            settings.main.id,
+            Rect::from_min_max(main_rect.min, lane_toolbar::bounds(main_rect).left_bottom()),
+        ));
         control_panel.finish(ui);
         // Fixed chrome must paint after scrolling rows, which share its boundary pixel.
         ui.painter().hline(
@@ -797,8 +788,17 @@ impl DawUi {
             )
             .intersect(ui.clip_rect()),
         );
-        for (_, id, rect) in &self.instrument_ui.effect_slots {
-            crate::unit_selection::paint(&outlines, *rect, self.selected_effects.contains(id));
+        for (owner, id, rect) in &self.instrument_ui.effect_slots {
+            if let Some((_, viewport)) = self
+                .instrument_ui
+                .component_viewports
+                .iter()
+                .find(|(id, _)| id == owner)
+            {
+                let mut lane = outlines.new_child(egui::UiBuilder::new().max_rect(*viewport));
+                lane.set_clip_rect(viewport.intersect(outlines.clip_rect()));
+                crate::unit_selection::paint(&lane, *rect, self.selected_effects.contains(id));
+            }
         }
         if let Some((transfer, owner, bounds, focus)) =
             self.instrument_ui.pending_effect_transfer.take()

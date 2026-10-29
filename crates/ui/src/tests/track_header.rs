@@ -557,9 +557,11 @@ fn header_mute_solo_align_with_knobs_and_stay_on_the_left() {
             }
             if scope == "layer" {
                 let bounds = &app.midi_editor.layer_bounds[&layer];
-                assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
-                assert!(
-                    (bounds.collapse.right() - bounds.mix_controls[2].right() - 3.0).abs() < 0.1
+                super::instrument_lane_toolbar::assert_toolbar(
+                    bounds.row,
+                    bounds.label,
+                    bounds.toolbar,
+                    bounds.collapse,
                 );
             }
             assert!(app.error.is_none());

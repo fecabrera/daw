@@ -552,14 +552,13 @@ fn component_catalog_drags_preview_and_commit_selected_types_to_the_hovered_laye
                     let filter = app.instrument_catalog_bounds.entries[3].center();
                     click(&mut app, &ctx, filter, true);
                     let original = serde_json::to_value(&app.session.project).unwrap();
-                    let viewport = app.instrument_catalog_bounds.layer_viewport;
                     let target = &app.midi_editor.layer_bounds[&layers[1]];
                     let end = if label {
                         target.label.center()
                     } else {
-                        Pos2::new(viewport.right() - 20.0, target.row.center().y)
+                        Pos2::new(target.toolbar.left() - 20.0, target.row.center().y)
                     };
-                    assert!(viewport.contains(end));
+                    assert!(app.instrument_catalog_bounds.layer_viewport.contains(end));
                     start_component_drag(&mut app, &ctx, 0);
                     assert!(!app.file_action_enabled(FileAction::Save));
                     assert!(!app.view_switch_enabled());
@@ -761,7 +760,10 @@ fn component_catalog_drag_scrolls_to_an_offscreen_layer_and_keeps_preview_clean(
     let viewport = app.instrument_catalog_bounds.layer_viewport;
     assert!(app.midi_editor.layer_bounds[&last].row.top() >= viewport.bottom());
     start_component_drag(&mut app, &ctx, 0);
-    let edge = Pos2::new(viewport.right() - 20.0, viewport.bottom() - 3.0);
+    let edge = Pos2::new(
+        viewport.right() - lane_toolbar::WIDTH - 20.0,
+        viewport.bottom() - 3.0,
+    );
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(edge)]);
     let original = serde_json::to_value(&app.session.project).unwrap();
     for _ in 0..180 {

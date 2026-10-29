@@ -10,6 +10,7 @@ pub(super) struct MainBounds {
     pub name: Rect,
     pub mix: [Rect; 1],
     pub collapse: Rect,
+    pub toolbar: Rect,
     pub envelopes: Vec<Rect>,
     pub lfos: Vec<Rect>,
 }
@@ -23,6 +24,7 @@ impl Default for MainBounds {
             name: Rect::NOTHING,
             mix: [Rect::NOTHING; 1],
             collapse: Rect::NOTHING,
+            toolbar: Rect::NOTHING,
             envelopes: Vec::new(),
             lfos: Vec::new(),
         }
@@ -90,6 +92,15 @@ impl DawUi {
         child.add_enabled_ui(enabled, |ui| {
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = -1.0;
+                let toolbar = lane_toolbar::bounds(rect);
+                let collapse = lane_toolbar::show(
+                    ui, toolbar, &mut bus.collapsed,
+                    !self.instrument_ui.has_layer_gesture() && !self.instrument_ui.editing_name()
+                        && self.editing_enabled() && ui.input(|input| input.focused),
+                    [icons::Lucide::ArrowUpFromLine, icons::Lucide::ArrowDownFromLine],
+                    ["Expand Output", "Collapse Output"],
+                );
+                if collapse.clicked() { ui.ctx().request_repaint(); }
                 let (label, response) =
                     ui.allocate_exact_size(Vec2::new(TRACK_WIDTH, height), Sense::click());
                 ui.painter()
@@ -100,36 +111,13 @@ impl DawUi {
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
                 header.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                let collapse = rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
+                rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
                     let icon = icons::header_icon_with_rotation(ui, icons::Lucide::Merge, Sense::hover(), std::f32::consts::FRAC_PI_2).on_hover_text("Instrument output");
                     icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));
                     let name = ui.label(egui::RichText::new(InstrumentBusSettings::DISPLAY_NAME).size(rows::NAME_FONT_SIZE));
                     #[cfg(test)] { bounds.icon = icon.rect; bounds.name = name.rect; }
                     #[cfg(not(test))] let _ = name;
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        icons::small_button(
-                            ui,
-                            if compact {
-                                icons::Lucide::ArrowUpFromLine
-                            } else {
-                                icons::Lucide::ArrowDownFromLine
-                            },
-                            if compact {
-                                "Expand Output"
-                            } else {
-                                "Collapse Output"
-                            },
-                            ui.input(|i| i.focused),
-                            theme::palette(ui.ctx()).text,
-                        )
-                    })
-                    .inner
-                })
-                .inner;
-                if collapse.clicked() {
-                    bus.collapsed = !compact;
-                    ui.ctx().request_repaint();
-                }
+                });
                 let gain = rows::centered(&mut header, knobs::SIZE, |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| knobs::header_gain(ui, &mut bus.gain_db)).inner
                 }).inner;
@@ -146,10 +134,12 @@ impl DawUi {
                 {
                     bounds.label = label;
                     bounds.collapse = collapse.rect;
+                    bounds.toolbar = toolbar;
                     bounds.mix = [gain.rect];
                 }
 
                 let components = egui::ScrollArea::horizontal()
+                    .max_width((toolbar.left() - ui.next_widget_position().x).max(0.0))
                     .id_salt("main-units")
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
@@ -231,6 +221,7 @@ impl DawUi {
                 let viewport = Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect());
                 self.finish_inline_layer_effects(ui, track, crate::layer_effects::InlineEffects { id: bus.id, effects: &mut bus.effects }, viewport);
                 self.instrument_ui.component_viewports.push((bus.id,viewport));
+                ui.advance_cursor_after_rect(toolbar);
             });
         });
         panels::ControlPanel::pinned_row_divider(ui, rect);

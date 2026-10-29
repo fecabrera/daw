@@ -10,14 +10,30 @@ pub(super) fn bounds(lane: Rect) -> Rect {
     )
 }
 
-pub(super) fn show(ui: &mut Ui, bounds: Rect, compact: &mut bool, enabled: bool) -> Response {
+/// Shared lane rail for Effects and each Instrument layer, outside horizontal scrolling.
+pub(super) fn show(
+    ui: &mut Ui,
+    bounds: Rect,
+    compact: &mut bool,
+    enabled: bool,
+    artwork: [icons::Lucide; 2],
+    names: [&str; 2],
+) -> Response {
     let colors = theme::palette(ui.ctx());
     ui.painter().rect_filled(bounds, 0.0, colors.panel);
-    ui.painter().hline(
-        bounds.x_range(),
-        bounds.top() + 0.5,
-        Stroke::new(1.0, colors.border),
-    );
+    // Pinned Output shares the preceding scroll region's bottom pixel.
+    // Its row owner paints that separator after the lane content.
+    let shared_top = ui
+        .stack()
+        .iter()
+        .any(|node| node.tags().contains(crate::panels::SHARED_TOP_BORDER_TAG));
+    if !shared_top {
+        ui.painter().hline(
+            bounds.x_range(),
+            bounds.top() + 0.5,
+            Stroke::new(1.0, colors.border),
+        );
+    }
     ui.painter().vline(
         bounds.left() + 0.5,
         bounds.y_range(),
@@ -26,25 +42,24 @@ pub(super) fn show(ui: &mut Ui, bounds: Rect, compact: &mut bool, enabled: bool)
     let inset = (WIDTH - icons::TOOLBAR_BUTTON_SIZE) * 0.5;
     let mut rail = ui.new_child(
         egui::UiBuilder::new()
-            .id_salt("effects-lane-toolbar")
+            .id_salt("lane-toolbar")
             .max_rect(bounds.shrink(inset)),
     );
     rail.set_clip_rect(bounds.intersect(ui.clip_rect()));
-    compact_button(&mut rail, compact, enabled)
+    compact_button(&mut rail, compact, enabled, artwork, names)
 }
 
-/// Toggle the saved chain presentation on release.
-fn compact_button(ui: &mut Ui, compact: &mut bool, enabled: bool) -> Response {
-    let icon = if *compact {
-        icons::Lucide::ArrowUpFromLine
-    } else {
-        icons::Lucide::ArrowDownFromLine
-    };
-    let name = if *compact {
-        "Expand effects"
-    } else {
-        "Collapse effects"
-    };
+/// Toggle the saved lane presentation on release.
+fn compact_button(
+    ui: &mut Ui,
+    compact: &mut bool,
+    enabled: bool,
+    artwork: [icons::Lucide; 2],
+    names: [&str; 2],
+) -> Response {
+    let index = usize::from(!*compact);
+    let icon = artwork[index];
+    let name = names[index];
     let response = ui
         .add_enabled_ui(enabled, |ui| {
             icons::borderless_toggle(

@@ -934,9 +934,12 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         assert_eq!(solo.size(), mute.size());
         assert_eq!(mute.center().y, gain.center().y);
         assert_eq!(solo.center().y, pan.center().y);
-        assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
-        assert!((bounds.collapse.right() - gain.right() - 3.0).abs() < 0.1);
-        assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
+        super::instrument_lane_toolbar::assert_toolbar(
+            bounds.row,
+            bounds.label,
+            bounds.toolbar,
+            bounds.collapse,
+        );
         assert_eq!(solo.left() - mute.right(), 6.0);
         for peer in &layers[1..] {
             let controls = app.midi_editor.layer_bounds[&peer.id].mix_controls;
@@ -1823,10 +1826,7 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
         );
         let blank = Rect::from_min_max(
             Pos2::new(bounds.label.right(), bounds.row.top()),
-            Pos2::new(
-                app.instrument_catalog_bounds.layer_viewport.right(),
-                bounds.row.bottom(),
-            ),
+            Pos2::new(bounds.toolbar.left(), bounds.row.bottom()),
         )
         .shrink(2.0);
         assert!(!shapes.iter().any(|s| matches!(&s.shape,
@@ -6848,14 +6848,13 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
             .collect();
         for layer in &layers {
             let bounds = &app.midi_editor.layer_bounds[&layer.id];
-            assert!((bounds.collapse.right() - bounds.mix_controls[2].right() - 3.0).abs() < 0.1);
-            assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
-            assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
-            assert!(bounds.label.contains_rect(bounds.collapse));
-            assert_eq!(
-                bounds.collapse.width(),
-                app.midi_editor.add_layer_bounds.width()
+            super::instrument_lane_toolbar::assert_toolbar(
+                bounds.row,
+                bounds.label,
+                bounds.toolbar,
+                bounds.collapse,
             );
+            assert_eq!(bounds.collapse.width(), icons::TOOLBAR_BUTTON_SIZE);
             let point = bounds.collapse.center();
             app.dirty = false;
             frame_shapes(
@@ -6898,14 +6897,13 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
             let bounds = &app.midi_editor.layer_bounds[&layer.id];
             assert_eq!(bounds.row.height(), ROW_HEIGHT);
             assert_eq!(bounds.label.height(), ROW_HEIGHT);
-            assert_eq!(
-                bounds.collapse.width(),
-                app.midi_editor.add_layer_bounds.width()
+            assert_eq!(bounds.collapse.width(), icons::TOOLBAR_BUTTON_SIZE);
+            super::instrument_lane_toolbar::assert_toolbar(
+                bounds.row,
+                bounds.label,
+                bounds.toolbar,
+                bounds.collapse,
             );
-            assert!((bounds.collapse.right() - bounds.mix_controls[2].right() - 3.0).abs() < 0.1);
-            assert_eq!(bounds.label.right() - bounds.collapse.right(), 7.0);
-            assert_eq!(bounds.collapse.top() - bounds.label.top(), 7.0);
-            assert!(bounds.label.contains_rect(bounds.collapse));
             assert_eq!(bounds.oscillator_panel.width(), widths[index].0);
             assert_eq!(bounds.envelope_panel.width(), widths[index].1);
             for panel in [bounds.oscillator_panel, bounds.envelope_panel] {

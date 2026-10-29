@@ -6,7 +6,7 @@ Layer sources pass through Amplitude, layer effects, and layer mix controls. Out
 
 ## Use Output
 
-Output stays at the bottom of Instrument while regular layers scroll. Its expand/collapse button shows or hides its controls. Output cannot be removed, renamed, or reordered.
+Output stays at the bottom of Instrument while regular layers scroll. The expand/collapse button at the top of its right toolbar shows or hides its controls. The toolbar stays at the right edge while components scroll horizontally. Output cannot be removed, renamed, or reordered.
 
 Use the gain knob at the right of the Output header’s second row to change the combined instrument level. Its default is 0 dB. Output has no Pan, Mute, or Solo control. Gain does not accept modulation.
 

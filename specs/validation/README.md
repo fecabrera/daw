@@ -4,6 +4,12 @@ Date: 2026-10-07.
 
 The prototype implements the iteration 1 feature scope. Automated checks and a macOS smoke test pass. Full acceptance on the reference platforms remains open.
 
+## Instrument lane collapse toolbars — 2026-10-28
+
+Regular Instrument layers and the pinned Output lane each have a right toolbar inside their own row. Every expand/collapse button stays at the top. The shared `lane_toolbar` component owns every effects/Instrument lane rail and button painting, dimensions, hover/focus and release behavior; layer names regain the space of the former header button. Component scroll/selection, inline effect insertion and catalog/installed component drop regions exclude the rails. Saved collapse state, row heights and instrument edits remain shared.
+
+Strict workspace/all-target Clippy, formatting, whitespace and changed Markdown local-link checks pass. `sh tools/package_macos.sh debug` rebuilds the macOS app. `cargo test --offline --locked --workspace` passes: 1780 tests passed (including all 694 UI tests), 11 opt-in tests ignored, no failures, including documentation tests. Coverage includes regular/Output rails, expanded/compact states, every theme and 1×/1.5× display scaling, stationary rails during component scrolling, owner-only release edits, modal guards, invalid toolbar drops, existing catalog transfers, independent lane scrolling, selected effect outlines clipped before each toolbar, and Output’s single top separator across its label, components, empty space and toolbar. The Output toolbar reuses the row-owned top separator instead of adding an adjacent pixel. Native UI interaction and Windows/Linux execution have not run locally. Logs use `work/instrument-lane-toolbar-*`.
+
 ## Development guide relocation — 2026-10-28
 
 Moved README’s Build and run section to `docs/development/`, with an index and separate Windows, macOS, Linux, plugin, and GitHub Actions guides. The root README retains a short development link. Updated incoming setup/plugin links and repository documentation rules for the developer-guide directory. Existing commands and platform/distribution limits are retained.
